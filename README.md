@@ -21,4 +21,49 @@ Người dùng có thể chỉnh vị trí, kích thước, thuộc tính và ti
 
 ## Trạng thái
 
-PAD Studio đang trong giai đoạn phát triển ban đầu. Hướng dẫn cài đặt và sử dụng sẽ được bổ sung khi có phiên bản chạy thử.
+PAD Studio đang trong giai đoạn phát triển ban đầu.
+
+Vertical slice đầu tiên đã có thể chạy:
+
+- Nhập chủ đề và định hướng cho video.
+- Validate dữ liệu ở frontend và backend.
+- Lưu project draft vào `projects/<project-id>/project.json`.
+- Tự động lưu thay đổi vào project hiện tại.
+- Liệt kê, mở lại, chỉnh sửa và xóa project cục bộ.
+- Chuyển sang màn hình chuẩn bị mạch giảng sau khi chốt đầu vào.
+- Giao diện responsive cho desktop và mobile.
+
+Thời lượng định hướng hiện dùng ba mức:
+
+- Ngắn gọn: 1–2 phút.
+- Tiêu chuẩn: 3–5 phút.
+- Chuyên sâu: 6–8 phút.
+
+Project metadata được giữ trong Git để có thể version control nội dung từng
+video. Chỉ thư mục render sinh ra tại `projects/**/renders/` bị ignore.
+
+Việc sinh mạch giảng bằng AI chưa được bật cho đến khi project chốt AI provider,
+model, prompt contract và giới hạn chi phí.
+
+## Chạy ở môi trường phát triển
+
+Yêu cầu Node.js 24.12 trở lên.
+
+```bash
+npm install
+npm run dev
+```
+
+Frontend chạy tại `http://127.0.0.1:5173`, backend chạy tại
+`http://127.0.0.1:4174`.
+
+## Kiểm tra và chạy production
+
+```bash
+npm run validate
+npm run build
+npm start
+```
+
+Sau khi build, backend phục vụ cả API và frontend tại
+`http://127.0.0.1:4174`.

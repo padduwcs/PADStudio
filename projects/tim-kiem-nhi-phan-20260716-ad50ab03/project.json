@@ -1,0 +1,14 @@
+{
+  "id": "tim-kiem-nhi-phan-20260716-ad50ab03",
+  "version": 1,
+  "status": "draft",
+  "currentStep": "outline",
+  "topicInput": {
+    "topic": "Tìm kiếm nhị phân",
+    "learningGoal": "tại sao độ phức tạp là O(nlogn), tại sao có thể tìm kiếm như vậy",
+    "audience": "beginner",
+    "duration": "concise"
+  },
+  "createdAt": "2026-07-16T16:46:05.579Z",
+  "updatedAt": "2026-07-16T17:02:19.598Z"
+}
