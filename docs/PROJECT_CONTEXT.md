@@ -65,6 +65,13 @@ yêu cầu AI làm lại và chỉ trở thành đầu vào cho voice–visual s
 chốt. Provider cụ thể có thể thay đổi về sau mà không làm thay đổi ranh giới
 review này.
 
+Bước voice–visual hiện chia từng ý đã chốt thành các beat có bốn phần: lời
+thuyết minh, visual cần thấy, chuyển động và thời lượng. Thứ tự section tiếp tục
+theo mạch giảng; người dùng chỉ sắp xếp beat bên trong từng section để không vô
+tình thay đổi logic giảng giải. Timing bắt đầu được tính nối tiếp từ duration,
+không lưu hai loại mốc có thể mâu thuẫn. AI tạo bản nháp có cấu trúc, còn người
+dùng chỉnh sửa và chốt trước khi hệ thống sinh scene hoặc gọi dịch vụ voice.
+
 ## Scene và component
 
 Mỗi video có scene và component riêng để có thể tùy biến theo cách giải thích của chủ đề đó. Không nên ép mọi video phụ thuộc vào một thư viện component dùng chung quá sớm.

@@ -1,10 +1,10 @@
 {
   "id": "tim-kiem-nhi-phan-20260717-11ddf179",
-  "version": 3,
-  "revision": 4,
+  "version": 4,
+  "revision": 7,
   "creationId": "5c130bee-8e11-419e-b4ec-9f4be509ac41",
   "status": "draft",
-  "currentStep": "outline",
+  "currentStep": "voiceVisual",
   "topicInput": {
     "topic": "Tìm kiếm nhị phân",
     "learningGoal": "khi nào có thể dùng tìm kiếm nhị phân, tại sao lại có độ phức tạp như thế. Hiểu được bản chất của thuật toán và có được hình dung cụ thể trong đầu (về ý tưởng)",
@@ -76,6 +76,154 @@
       }
     }
   },
+  "voiceVisualPlan": {
+    "voiceDirection": "Giọng Việt trẻ trung, rõ ràng, nhịp nhanh vừa phải như một video TikTok giáo dục. Mở đầu gây bất ngờ, sau đó dẫn dắt tự nhiên; nhấn nhẹ vào các ý “loại một nửa”, “có thứ tự”, “đơn điệu” và “log hai của n”.",
+    "visualDirection": "Khung hình dọc 9:16, đồ họa chuyển động tối giản, tương phản cao. Dùng dãy ô, trục số và vùng sáng–tối để người xem trực tiếp thấy phạm vi bị loại và phần còn lại. Số cùng ký hiệu toán học chỉ hỗ trợ định hướng, không thay thế diễn giải bằng hình ảnh.",
+    "sections": [
+      {
+        "outlineSectionId": "9e8542ae-98d9-437b-82e8-9a5ec0235b74",
+        "beats": [
+          {
+            "id": "a815e36e-ef4e-49f1-8ce8-ba50eb0dee96",
+            "voiceover": "Một triệu khả năng. Nếu kiểm tra lần lượt, trường hợp xấu nhất bạn có thể phải thử gần đủ một triệu lần.",
+            "visualDescription": "Một dãy ô kéo dài kín màn hình; ô chứa mục tiêu nằm gần cuối, còn kính lúp bắt đầu kiểm tra từ ô đầu tiên.",
+            "animationDescription": "Kính lúp nhảy qua từng ô theo thứ tự. Dãy liên tục cuộn lên trong khi số lần kiểm tra tăng rất nhanh.",
+            "durationSeconds": 6
+          },
+          {
+            "id": "a6135c0b-4943-436e-b3c0-d8af117c7d37",
+            "voiceover": "Còn tìm kiếm nhị phân chỉ cần khoảng hai mươi lần kiểm tra.",
+            "visualDescription": "Cùng một triệu ô được nén thành một thanh dài, với một điểm mục tiêu ẩn bên trong.",
+            "animationDescription": "Sau mỗi lần chạm vào điểm giữa, một nửa thanh chuyển tối và biến mất. Khoảng sáng co dần đến khi chỉ còn ô mục tiêu.",
+            "durationSeconds": 6
+          },
+          {
+            "id": "fcd776d2-06e9-4df0-8065-9b899e4f4f2b",
+            "voiceover": "Không phải vì mỗi lần kiểm tra nhanh hơn, mà vì mỗi quyết định loại chắc chắn được một nửa khả năng.",
+            "visualDescription": "Hai dãy giống nhau đặt cạnh nhau: cách kiểm tra tuần tự chỉ bỏ một ô, còn tìm kiếm nhị phân loại cả một nửa dãy.",
+            "animationDescription": "Hai con trỏ cùng thực hiện một lần kiểm tra. Một bên tiến thêm đúng một ô; bên kia làm biến mất đồng loạt nửa không thể chứa mục tiêu.",
+            "durationSeconds": 6
+          }
+        ]
+      },
+      {
+        "outlineSectionId": "89d948fb-5b52-499d-b53e-45cbd4234f33",
+        "beats": [
+          {
+            "id": "7bb3cf2e-b9ec-483d-ae4b-9aa9486c7976",
+            "voiceover": "Hãy tưởng tượng bạn cần đoán một số bí mật từ một đến một trăm. Ta bắt đầu ở chính giữa: năm mươi.",
+            "visualDescription": "Một trục số từ 1 đến 100 với thẻ số bí mật đang úp; mốc 50 nằm chính giữa và được chọn.",
+            "animationDescription": "Con trỏ hạ xuống mốc 50, chia trục số thành hai khoảng bằng nhau.",
+            "durationSeconds": 6
+          },
+          {
+            "id": "f9eed454-6821-4efe-9da2-724b1ea3b1b7",
+            "voiceover": "Nếu biết số bí mật lớn hơn năm mươi, ta loại ngay toàn bộ khoảng từ một đến năm mươi.",
+            "visualDescription": "Một tín hiệu hướng về phía các số lớn xuất hiện tại mốc 50; nửa trái của trục số được đánh dấu là không thể chứa đáp án.",
+            "animationDescription": "Vùng từ 1 đến 50 chuyển tối rồi co khỏi màn hình, trong khi vùng 51 đến 100 vẫn sáng.",
+            "durationSeconds": 7
+          },
+          {
+            "id": "f16d62e3-9826-4469-955b-2e1d85f01b77",
+            "voiceover": "Bây giờ chỉ còn từ năm mươi mốt đến một trăm. Ta lại chọn điểm giữa của khoảng này, khoảng bảy mươi lăm.",
+            "visualDescription": "Đoạn từ 51 đến 100 mở rộng kín khung hình; con trỏ mới nằm tại mốc 75.",
+            "animationDescription": "Hai đầu 51 và 100 trượt ra hai mép, sau đó con trỏ dịch đến 75 và chia đôi khoảng còn lại.",
+            "durationSeconds": 7
+          },
+          {
+            "id": "dec376ae-fa38-45cd-b7bd-133c50a6880f",
+            "voiceover": "Mỗi câu trả lời lớn hơn hoặc nhỏ hơn giúp giữ lại đúng phía vẫn có thể chứa đáp án. Cứ thế, phạm vi lại giảm một nửa.",
+            "visualDescription": "Số bí mật là 73. Sau khi thử 75, chỉ phần trục số thấp hơn 75 còn khả năng chứa đáp án.",
+            "animationDescription": "Nửa từ 75 trở lên biến mất. Phần còn lại tiếp tục được chia đôi qua vài nhịp cho đến khi con trỏ tìm thấy 73.",
+            "durationSeconds": 7
+          }
+        ]
+      },
+      {
+        "outlineSectionId": "e9bae20e-8099-431a-8bd2-82a5349fdbd0",
+        "beats": [
+          {
+            "id": "a06f6d01-68dd-46d3-94d4-d158bcc7aca9",
+            "voiceover": "Nhưng chỉ được loại một nửa khi dữ liệu đã có thứ tự.",
+            "visualDescription": "Một hàng thẻ số tăng dần từ trái sang phải; mốc giữa phân tách rõ nhóm số nhỏ và nhóm số lớn.",
+            "animationDescription": "Các thẻ ban đầu rời rạc tự xếp thành thứ tự. Khi chọn mốc giữa, một phía được loại mà không ảnh hưởng đến mục tiêu.",
+            "durationSeconds": 7
+          },
+          {
+            "id": "63486002-887d-4052-a4b5-799eb3a74de0",
+            "voiceover": "Hoặc bài toán phải có tính đơn điệu: khi vượt qua một ngưỡng, kết quả chỉ đổi theo một hướng.",
+            "visualDescription": "Một dãy mức tải tăng dần; các mức đầu ở trạng thái an toàn, còn từ một ngưỡng trở đi đều ở trạng thái quá tải.",
+            "animationDescription": "Điểm kiểm tra di chuyển từ trái sang phải. Trạng thái đổi từ an toàn sang quá tải đúng một lần và không đổi ngược lại.",
+            "durationSeconds": 7
+          },
+          {
+            "id": "27f9fba6-554c-4720-aea8-d7ac25243006",
+            "voiceover": "Nếu dữ liệu lộn xộn, mục tiêu lớn hơn phần tử giữa không có nghĩa là nó nằm bên phải.",
+            "visualDescription": "Một hàng số không theo thứ tự; số mục tiêu 80 nằm bên trái, trong khi phần tử ở giữa là 40.",
+            "animationDescription": "Con trỏ chọn 40 rồi chuẩn bị loại nửa trái. Ngay lúc đó, số 80 ở phía trái bật sáng để cho thấy đáp án sẽ bị loại nhầm.",
+            "durationSeconds": 7
+          },
+          {
+            "id": "9277fbe6-f62f-46ac-92b1-44ec1b4dc41d",
+            "voiceover": "Vì vậy, hãy hỏi: kiểm tra ở giữa có giúp mình loại chắc chắn cả một phía không? Nếu không, đừng dùng tìm kiếm nhị phân.",
+            "visualDescription": "Hai tình huống đặt cạnh nhau: dãy có thứ tự cho phép chia đôi an toàn, còn dãy lộn xộn không cho phép xác định phía chứa mục tiêu.",
+            "animationDescription": "Ở dãy có thứ tự, một nửa biến mất và mục tiêu vẫn được giữ lại. Ở dãy lộn xộn, thao tác chia đôi dừng lại trước khi xóa nhầm mục tiêu.",
+            "durationSeconds": 7
+          }
+        ]
+      },
+      {
+        "outlineSectionId": "11995f2f-27ca-422b-8326-0de66cc3d090",
+        "beats": [
+          {
+            "id": "37d9a56e-3271-49d6-ad29-26187f9cf0d5",
+            "voiceover": "Sau mỗi bước, phạm vi còn lại lần lượt là n, n chia hai, n chia bốn, rồi n chia tám.",
+            "visualDescription": "Bốn thanh xếp tầng, có độ dài lần lượt là toàn phần, một nửa, một phần tư và một phần tám.",
+            "animationDescription": "Thanh đầu liên tục bị chia đôi; sau mỗi nhịp, phần được giữ lại chuyển xuống tầng tiếp theo.",
+            "durationSeconds": 6
+          },
+          {
+            "id": "94e8d7cb-a1bb-420a-9286-a280c7c2d8dc",
+            "voiceover": "Sau k bước, ta còn xấp xỉ n chia cho hai mũ k khả năng.",
+            "visualDescription": "Một phạm vi gồm nhiều ô đi qua k tầng thu hẹp; ở mỗi tầng, số ô còn sáng chỉ bằng một nửa tầng trước.",
+            "animationDescription": "Điểm sáng đi xuống từng tầng. Mỗi lần di chuyển, một nửa số ô tắt đồng loạt.",
+            "durationSeconds": 7
+          },
+          {
+            "id": "2de73c0a-e8e4-46ee-b9fc-2f255ba941a6",
+            "voiceover": "Muốn chỉ còn một khả năng, hai mũ k phải xấp xỉ n. Vì thế, k xấp xỉ log hai của n.",
+            "visualDescription": "Nhiều ô được chia đôi qua từng tầng cho đến khi chỉ còn một ô; bên cạnh là quan hệ 2^k xấp xỉ n và k xấp xỉ log₂(n).",
+            "animationDescription": "Mỗi nhịp chia đôi tạo thêm một tầng. Khi còn đúng một ô, các thành phần tương ứng trong hai biểu thức lần lượt được nối sáng.",
+            "durationSeconds": 7
+          },
+          {
+            "id": "b5c089f1-f669-4d66-a885-e81f6974db1c",
+            "voiceover": "Và đây là cách nhớ nhanh nhất: dữ liệu tăng gấp đôi thường chỉ khiến tìm kiếm nhị phân cần thêm một lần kiểm tra.",
+            "visualDescription": "Hai phạm vi kích thước n và 2n đặt cạnh nhau; phạm vi 2n có nhiều gấp đôi số ô nhưng chỉ nhiều hơn một tầng chia đôi.",
+            "animationDescription": "Phạm vi 2n chia đôi một lần để trở thành kích thước n, sau đó cả hai cùng thu hẹp theo số nhịp giống hệt nhau.",
+            "durationSeconds": 7
+          }
+        ]
+      }
+    ],
+    "status": "approved",
+    "contentRevision": 2,
+    "sourceOutlineContentRevision": 2,
+    "generation": {
+      "generationId": "e9b96dd7-141b-42c2-8aca-42c48fce4525",
+      "provider": "codex",
+      "model": "gpt-5.6-sol",
+      "promptVersion": "voice-visual-v1",
+      "generatedAt": "2026-07-17T16:03:20.828Z",
+      "usage": {
+        "inputTokens": 11338,
+        "cachedInputTokens": 0,
+        "outputTokens": 1912,
+        "reasoningOutputTokens": 167,
+        "totalTokens": 13250
+      }
+    }
+  },
   "createdAt": "2026-07-17T14:45:10.554Z",
-  "updatedAt": "2026-07-17T15:06:21.689Z"
+  "updatedAt": "2026-07-17T16:09:55.272Z"
 }

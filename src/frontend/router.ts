@@ -4,7 +4,8 @@ import type {ProjectStep} from '../shared/topic.ts';
 export type AppRoute =
   | {name: 'new-topic'}
   | {name: 'project-topic'; projectId: string}
-  | {name: 'project-outline'; projectId: string};
+  | {name: 'project-outline'; projectId: string}
+  | {name: 'project-voice-visual'; projectId: string};
 
 function decodeProjectId(value: string) {
   try {
@@ -37,6 +38,18 @@ export function parseRoute(pathname: string): AppRoute {
     };
   }
 
+  const voiceVisualMatch =
+    /^\/projects\/([^/]+)\/voice-visual\/?$/.exec(pathname);
+  if (voiceVisualMatch?.[1]) {
+    const projectId = decodeProjectId(voiceVisualMatch[1]);
+    if (!projectId) return {name: 'new-topic'};
+
+    return {
+      name: 'project-voice-visual',
+      projectId,
+    };
+  }
+
   return {name: 'new-topic'};
 }
 
@@ -55,9 +68,14 @@ export function projectOutlinePath(projectId: string) {
   return `/projects/${encodeURIComponent(projectId)}/outline`;
 }
 
+export function projectVoiceVisualPath(projectId: string) {
+  return `/projects/${encodeURIComponent(projectId)}/voice-visual`;
+}
+
 const projectStepPaths = {
   topic: projectTopicPath,
   outline: projectOutlinePath,
+  voiceVisual: projectVoiceVisualPath,
 } satisfies Record<ProjectStep, (projectId: string) => string>;
 
 export function projectStepPath(projectId: string, step: ProjectStep) {

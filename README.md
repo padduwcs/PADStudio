@@ -33,6 +33,10 @@ Vertical slice đầu tiên đã có thể chạy:
 - Đăng nhập Codex và xác minh phiên bằng kết nối thật trước khi sang mạch giảng.
 - Dùng toàn bộ đầu vào để AI tóm tắt yêu cầu và đề xuất mạch giảng có cấu trúc.
 - Chỉnh sửa, sắp xếp, tạo lại và chốt mạch giảng trước bước voice–visual.
+- Tạo kế hoạch voice–visual theo từng ý đã chốt, gồm lời thuyết minh, visual,
+  chuyển động và thời lượng của từng beat.
+- Chỉnh sửa, sắp xếp beat, tạo lại theo góp ý và chốt kế hoạch trước khi sinh
+  scene hoặc gọi dịch vụ tạo voice.
 - Hiển thị lượng token của lần sinh gần nhất để người dùng theo dõi.
 - Liệt kê, mở lại, chỉnh sửa và xóa project cục bộ.
 - Giao diện responsive cho desktop và mobile.
@@ -48,7 +52,7 @@ video. Chỉ thư mục render sinh ra tại `projects/**/renders/` bị ignore.
 
 Mỗi project có hai chỉ số độc lập:
 
-- `version` là phiên bản cấu trúc file; dữ liệu v1 và v2 được đọc và nâng cấp lên
+- `version` là phiên bản cấu trúc file; dữ liệu v1, v2 và v3 được đọc và nâng cấp lên
   cấu trúc hiện tại ở lần ghi tiếp theo.
 - `revision` tăng sau mỗi thay đổi nội dung và được dùng với `If-Match` để
   chặn hai thao tác ghi đè lẫn nhau.
@@ -74,6 +78,12 @@ cũ khi tạo mới, chỉ gửi khi người dùng yêu cầu AI chỉnh theo g
 retry làm tăng chi phí. Mỗi request có `generationId` để retry lỗi mạng không
 gọi AI hai lần. Kết quả AI luôn là bản nháp; người dùng phải review và chốt
 trước khi sang voice–visual.
+
+Kế hoạch voice–visual dùng cùng cơ chế an toàn nhưng có prompt và schema riêng.
+Mỗi section của mạch giảng được giữ nguyên ranh giới và chia thành các beat ngắn.
+Mốc bắt đầu được suy ra từ tổng thời lượng beat để timeline không có hai nguồn dữ
+liệu mâu thuẫn. Nếu đầu vào hoặc mạch giảng thay đổi, kế hoạch downstream được
+đánh dấu cũ và phải tạo lại trước khi có thể chốt.
 
 ## Chạy ở môi trường phát triển
 

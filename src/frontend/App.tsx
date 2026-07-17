@@ -25,6 +25,7 @@ import {
   projectOutlinePath,
   projectStepPath,
   projectTopicPath,
+  projectVoiceVisualPath,
   useAppRoute,
 } from './router.ts';
 import {
@@ -34,6 +35,7 @@ import {
 } from './useTopicDraft.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useOutlineDraft} from './useOutlineDraft.ts';
+import {VoiceVisualPage} from './VoiceVisualPage.tsx';
 
 const pipelineSteps = [
   'Nhập chủ đề',
@@ -662,6 +664,13 @@ function OutlinePage({projectId}: {projectId: string}) {
     if (generatedProject) setGuidance('');
   }
 
+  async function handleApprove() {
+    const approvedProject = await outline.approve();
+    if (approvedProject) {
+      navigate(projectVoiceVisualPath(approvedProject.id), true);
+    }
+  }
+
   if (outline.loadState === 'loading') {
     return (
       <div className="page-state" role="status">
@@ -1160,21 +1169,23 @@ function OutlinePage({projectId}: {projectId: string}) {
             <div>
               <span>
                 {approved
-                  ? 'Mạch giảng đã được chốt'
+                  ? 'Mạch giảng đã sẵn sàng cho bước tiếp theo'
                   : 'Review kỹ trước khi chuyển sang voice–visual'}
               </span>
               <button
                 className="submit-button"
                 type="button"
                 disabled={
-                  approved ||
                   outline.approving ||
                   outline.generating ||
-                  outline.stale ||
-                  !outline.valid ||
+                  (!approved && (outline.stale || !outline.valid)) ||
                   outline.saveState === 'conflict'
                 }
-                onClick={() => void outline.approve()}
+                onClick={() =>
+                  approved
+                    ? navigate(projectVoiceVisualPath(project.id))
+                    : void handleApprove()
+                }
               >
                 {outline.approving ? (
                   <>
@@ -1183,8 +1194,8 @@ function OutlinePage({projectId}: {projectId: string}) {
                   </>
                 ) : approved ? (
                   <>
-                    <CheckIcon />
-                    Đã chốt mạch giảng
+                    Tiếp tục voice–visual
+                    <ArrowRightIcon />
                   </>
                 ) : (
                   <>
@@ -1206,7 +1217,12 @@ export default function App() {
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [newProjectKey, setNewProjectKey] = useState(0);
   const [projectReloadKey, setProjectReloadKey] = useState(0);
-  const activeStep = route.name === 'project-outline' ? 1 : 0;
+  const activeStep =
+    route.name === 'project-voice-visual'
+      ? 2
+      : route.name === 'project-outline'
+        ? 1
+        : 0;
   const activeProjectId =
     route.name === 'new-topic' ? undefined : route.projectId;
 
@@ -1267,6 +1283,12 @@ export default function App() {
         {route.name === 'project-outline' && (
           <OutlinePage
             key={`project-outline-${route.projectId}-${projectReloadKey}`}
+            projectId={route.projectId}
+          />
+        )}
+        {route.name === 'project-voice-visual' && (
+          <VoiceVisualPage
+            key={`project-voice-visual-${route.projectId}-${projectReloadKey}`}
             projectId={route.projectId}
           />
         )}

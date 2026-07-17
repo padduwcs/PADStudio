@@ -18,6 +18,7 @@ import type {
 import {createPadStudioServer} from './app.ts';
 import type {CodexConnectionService} from './codexConnection.ts';
 import type {OutlineGenerator} from './outlineGenerator.ts';
+import type {VoiceVisualGenerator} from './voiceVisualGenerator.ts';
 
 const topicInput = {
   topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
@@ -42,6 +43,7 @@ async function startTestApp(
   options: {
     codexConnection?: CodexConnectionService;
     outlineGenerator?: OutlineGenerator;
+    voiceVisualGenerator?: VoiceVisualGenerator;
   } = {},
 ) {
   const projectsDirectory = await mkdtemp(
@@ -51,6 +53,7 @@ async function startTestApp(
     projectsDirectory,
     codexConnection: options.codexConnection,
     outlineGenerator: options.outlineGenerator,
+    voiceVisualGenerator: options.voiceVisualGenerator,
     logger: {info() {}, error() {}},
   });
 
@@ -148,7 +151,7 @@ test('API tạo, cập nhật và xóa project với revision', async (context) 
   const {project} = await createProject(baseUrl);
 
   assert.equal(project.currentStep, 'outline');
-  assert.equal(project.version, 3);
+  assert.equal(project.version, 4);
   assert.equal(project.revision, 1);
 
   const savedProject = JSON.parse(
@@ -360,6 +363,244 @@ test('API tạo, chỉnh sửa và chốt mạch giảng an toàn', async (conte
   assert.equal(outdatedApproveBody.error.code, 'OUTLINE_OUTDATED');
 });
 
+test('API tạo, chỉnh sửa và chốt kế hoạch voice–visual an toàn', async (context) => {
+  const outlineGenerator: OutlineGenerator = {
+    async generate() {
+      return {
+        content: {
+          brief: {
+            summary:
+              'Video giải thích trực giác chia đôi bằng hình ảnh rõ ràng.',
+            assumptions: ['Dữ liệu đầu vào đã được sắp xếp.'],
+          },
+          centralMessage:
+            'Mỗi lần so sánh giúp loại bỏ một nửa vùng cần tìm.',
+          sections: [
+            {
+              id: randomUUID(),
+              title: 'Đặt vấn đề',
+              goal: 'Nhận ra hạn chế của tìm kiếm lần lượt.',
+              content:
+                'So sánh số bước khi tìm tuần tự với cách loại một nửa.',
+              estimatedSeconds: 30,
+            },
+            {
+              id: randomUUID(),
+              title: 'Trực giác chia đôi',
+              goal: 'Hiểu vì sao có thể bỏ một nửa dữ liệu.',
+              content:
+                'Dùng phần tử giữa để quyết định nửa nào còn khả năng.',
+              estimatedSeconds: 60,
+            },
+          ],
+        },
+        model: 'outline-test-model',
+        usage: null,
+      };
+    },
+  };
+  let generationCalls = 0;
+  const voiceVisualGenerator: VoiceVisualGenerator = {
+    async generate(request) {
+      generationCalls += 1;
+      return {
+        content: {
+          voiceDirection: 'Rõ ràng, gần gũi và có nhịp nghỉ tự nhiên.',
+          visualDirection:
+            'Hình khối tối giản, mỗi chuyển động đều thể hiện một quyết định.',
+          sections: request.outline.sections.map((section) => ({
+            outlineSectionId: section.id,
+            beats: [
+              {
+                id: randomUUID(),
+                voiceover:
+                  'Ta bắt đầu bằng cách nhìn vào toàn bộ vùng có thể chứa đáp án.',
+                visualDescription:
+                  'Một dãy phần tử trải ngang, toàn bộ vùng đang được làm sáng.',
+                animationDescription:
+                  'Máy quay giữ yên, vùng tìm kiếm xuất hiện từ trái sang phải.',
+                durationSeconds: Math.min(section.estimatedSeconds, 45),
+              },
+            ],
+          })),
+        },
+        model: 'voice-visual-test-model',
+        usage: {
+          inputTokens: 200,
+          cachedInputTokens: 20,
+          outputTokens: 100,
+          reasoningOutputTokens: 30,
+          totalTokens: 330,
+        },
+      };
+    },
+  };
+  const {baseUrl} = await startTestApp(context, {
+    outlineGenerator,
+    voiceVisualGenerator,
+  });
+  const {project} = await createProject(baseUrl);
+
+  const outlineGenerationResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"1"',
+      },
+      body: JSON.stringify({generationId: randomUUID()}),
+    },
+  );
+  assert.equal(outlineGenerationResponse.status, 200);
+
+  const outlineApproveResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/approve`,
+    {
+      method: 'POST',
+      headers: {'If-Match': '"2"'},
+    },
+  );
+  const outlineApproveBody = await outlineApproveResponse.json();
+  assert.equal(outlineApproveResponse.status, 200);
+  assert.equal(outlineApproveBody.project.currentStep, 'voiceVisual');
+
+  const generationId = randomUUID();
+  const generateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"3"',
+      },
+      body: JSON.stringify({generationId}),
+    },
+  );
+  const generateBody = await generateResponse.json();
+  assert.equal(generateResponse.status, 200);
+  assert.equal(generateBody.project.revision, 4);
+  assert.equal(generateBody.project.voiceVisualPlan.status, 'draft');
+  assert.equal(
+    generateBody.project.voiceVisualPlan.sections.length,
+    generateBody.project.outline.sections.length,
+  );
+  assert.equal(
+    generateBody.project.voiceVisualPlan.generation.usage.totalTokens,
+    330,
+  );
+
+  const repeatedResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"3"',
+      },
+      body: JSON.stringify({generationId}),
+    },
+  );
+  const repeatedBody = await repeatedResponse.json();
+  assert.equal(repeatedResponse.status, 200);
+  assert.equal(repeatedBody.project.revision, 4);
+  assert.equal(generationCalls, 1);
+
+  const generatedPlan = generateBody.project.voiceVisualPlan;
+  const updateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"4"',
+      },
+      body: JSON.stringify({
+        voiceDirection: generatedPlan.voiceDirection,
+        visualDirection: generatedPlan.visualDirection,
+        sections: generatedPlan.sections.map(
+          (
+            section: {
+              outlineSectionId: string;
+              beats: Array<Record<string, unknown>>;
+            },
+            index: number,
+          ) => ({
+            ...section,
+            beats:
+              index === 0
+                ? section.beats.map((beat, beatIndex) =>
+                    beatIndex === 0
+                      ? {
+                          ...beat,
+                          voiceover:
+                            'Ta bắt đầu bằng toàn bộ vùng có thể chứa đáp án rồi thu hẹp dần.',
+                        }
+                      : beat,
+                  )
+                : section.beats,
+          }),
+        ),
+      }),
+    },
+  );
+  const updateBody = await updateResponse.json();
+  assert.equal(updateResponse.status, 200);
+  assert.equal(updateBody.project.revision, 5);
+  assert.equal(updateBody.project.voiceVisualPlan.contentRevision, 2);
+
+  const approveResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual/approve`,
+    {
+      method: 'POST',
+      headers: {'If-Match': '"5"'},
+    },
+  );
+  const approveBody = await approveResponse.json();
+  assert.equal(approveResponse.status, 200);
+  assert.equal(approveBody.project.revision, 6);
+  assert.equal(approveBody.project.voiceVisualPlan.status, 'approved');
+
+  const outline = approveBody.project.outline;
+  const outlineUpdateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"6"',
+      },
+      body: JSON.stringify({
+        brief: outline.brief,
+        centralMessage:
+          'Mỗi quyết định đúng giúp loại bỏ chính xác một nửa vùng còn lại.',
+        sections: outline.sections,
+      }),
+    },
+  );
+  const outlineUpdateBody = await outlineUpdateResponse.json();
+  assert.equal(outlineUpdateResponse.status, 200);
+  assert.equal(outlineUpdateBody.project.currentStep, 'outline');
+  assert.equal(
+    outlineUpdateBody.project.voiceVisualPlan.status,
+    'draft',
+  );
+
+  const outdatedApproveResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual/approve`,
+    {
+      method: 'POST',
+      headers: {'If-Match': '"7"'},
+    },
+  );
+  const outdatedApproveBody = await outdatedApproveResponse.json();
+  assert.equal(outdatedApproveResponse.status, 409);
+  assert.equal(
+    outdatedApproveBody.error.code,
+    'VOICE_VISUAL_OUTDATED',
+  );
+});
+
 test('POST /api/projects trả lỗi đúng field khi input không hợp lệ', async (context) => {
   const {baseUrl} = await startTestApp(context);
   const response = await fetch(`${baseUrl}/api/projects`, {
@@ -529,7 +770,7 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
   const listBody = await listResponse.json();
 
   assert.equal(listBody.projects.length, 1);
-  assert.equal(listBody.projects[0].version, 3);
+  assert.equal(listBody.projects[0].version, 4);
   assert.equal(listBody.projects[0].revision, 1);
   assert.equal(listBody.issues.length, 2);
   assert.deepEqual(
@@ -545,7 +786,7 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
   );
   const updateBody = await updateResponse.json();
   assert.equal(updateResponse.status, 200);
-  assert.equal(updateBody.project.version, 3);
+  assert.equal(updateBody.project.version, 4);
   assert.equal(updateBody.project.revision, 2);
 
   const migratedOnDisk = JSON.parse(
@@ -554,6 +795,6 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
       'utf8',
     ),
   );
-  assert.equal(migratedOnDisk.version, 3);
+  assert.equal(migratedOnDisk.version, 4);
   assert.equal(migratedOnDisk.revision, 2);
 });

@@ -259,7 +259,10 @@ export function createFileProjectRepository(
       (update.currentStep === undefined ||
         update.currentStep === project.currentStep) &&
       (update.outline === undefined ||
-        JSON.stringify(update.outline) === JSON.stringify(project.outline))
+        JSON.stringify(update.outline) === JSON.stringify(project.outline)) &&
+      (update.voiceVisualPlan === undefined ||
+        JSON.stringify(update.voiceVisualPlan) ===
+          JSON.stringify(project.voiceVisualPlan))
     );
   }
 
@@ -280,11 +283,26 @@ export function createFileProjectRepository(
       (topicChanged && currentProject.outline
         ? {...currentProject.outline, status: 'draft' as const}
         : currentProject.outline);
+    const outlineChanged =
+      JSON.stringify(nextOutline) !== JSON.stringify(currentProject.outline);
+    const nextVoiceVisualPlan =
+      update.voiceVisualPlan ??
+      ((topicChanged || outlineChanged) && currentProject.voiceVisualPlan
+        ? {...currentProject.voiceVisualPlan, status: 'draft' as const}
+        : currentProject.voiceVisualPlan);
+    const nextCurrentStep =
+      update.currentStep ??
+      (topicChanged
+        ? 'topic'
+        : outlineChanged
+          ? 'outline'
+          : currentProject.currentStep);
     const project: TopicProject = {
       ...currentProject,
       ...(update.topicInput ? {topicInput: update.topicInput} : {}),
-      ...(update.currentStep ? {currentStep: update.currentStep} : {}),
+      currentStep: nextCurrentStep,
       outline: nextOutline,
+      voiceVisualPlan: nextVoiceVisualPlan,
       revision: currentProject.revision + 1,
       updatedAt: new Date().toISOString(),
     };
@@ -331,6 +349,7 @@ export function createFileProjectRepository(
           currentStep: request.currentStep,
           topicInput: request.topicInput,
           outline: null,
+          voiceVisualPlan: null,
           createdAt: now,
           updatedAt: now,
         };

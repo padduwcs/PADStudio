@@ -6,10 +6,12 @@ import type {
   ApiErrorPayload,
   CreateTopicProject,
   GenerateTeachingOutline,
+  GenerateVoiceVisualPlan,
   ProjectListIssue,
   TeachingOutlineContent,
   TopicProject,
   UpdateProject,
+  VoiceVisualPlanContent,
 } from '../shared/topic.ts';
 
 export class ApiRequestError extends Error {
@@ -170,6 +172,67 @@ export async function approveTeachingOutline(
 ) {
   const response = await fetch(
     `/api/projects/${encodeURIComponent(projectId)}/outline/approve`,
+    {
+      method: 'POST',
+      headers: {'If-Match': `"${expectedRevision}"`},
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function generateVoiceVisualPlan(
+  projectId: string,
+  request: GenerateVoiceVisualPlan,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/voice-visual/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function updateVoiceVisualPlan(
+  projectId: string,
+  content: VoiceVisualPlanContent,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/voice-visual`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(content),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function approveVoiceVisualPlan(
+  projectId: string,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/voice-visual/approve`,
     {
       method: 'POST',
       headers: {'If-Match': `"${expectedRevision}"`},

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  currentProjectVersion,
   parseTopicProject,
   TopicInputSchema,
   UpdateProjectSchema,
@@ -55,10 +56,11 @@ test('parseTopicProject nâng project v1 lên model hiện tại', () => {
     updatedAt: now,
   });
 
-  assert.equal(project.version, 3);
+  assert.equal(project.version, currentProjectVersion);
   assert.equal(project.revision, 1);
   assert.equal(project.creationId, null);
   assert.equal(project.outline, null);
+  assert.equal(project.voiceVisualPlan, null);
 });
 
 test('parseTopicProject nâng project v2 và giữ revision hiện tại', () => {
@@ -79,9 +81,34 @@ test('parseTopicProject nâng project v2 và giữ revision hiện tại', () =>
     updatedAt: now,
   });
 
-  assert.equal(project.version, 3);
+  assert.equal(project.version, currentProjectVersion);
   assert.equal(project.revision, 7);
   assert.equal(project.outline, null);
+  assert.equal(project.voiceVisualPlan, null);
+});
+
+test('parseTopicProject nâng project v3 và giữ outline hiện tại', () => {
+  const now = new Date().toISOString();
+  const project = parseTopicProject({
+    id: 'version-three-project',
+    version: 3,
+    revision: 4,
+    creationId: null,
+    status: 'draft',
+    currentStep: 'outline',
+    topicInput: {
+      topic: 'Cây tìm kiếm nhị phân',
+      audience: 'familiar',
+      duration: 'deep',
+    },
+    outline: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  assert.equal(project.version, currentProjectVersion);
+  assert.equal(project.revision, 4);
+  assert.equal(project.voiceVisualPlan, null);
 });
 
 test('parseTopicProject không âm thầm bỏ field lạ', () => {

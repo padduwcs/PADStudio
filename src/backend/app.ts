@@ -6,11 +6,14 @@ import {fileURLToPath} from 'node:url';
 import {
   CreateTopicProjectSchema,
   GenerateTeachingOutlineSchema,
+  GenerateVoiceVisualPlanSchema,
   TeachingOutlineContentSchema,
   UpdateProjectSchema,
+  VoiceVisualPlanContentSchema,
   type ApiErrorPayload,
   type TeachingOutline,
   type TopicProject,
+  type VoiceVisualPlan,
 } from '../shared/topic.ts';
 import {
   CodexConnectionError,
@@ -32,6 +35,13 @@ import {
   ProjectDataError,
   type ProjectRepository,
 } from './projectRepository.ts';
+import {
+  createCodexVoiceVisualGenerator,
+  VoiceVisualGenerationError,
+  VOICE_VISUAL_PROMPT_VERSION,
+  type VoiceVisualGenerationResult,
+  type VoiceVisualGenerator,
+} from './voiceVisualGenerator.ts';
 
 const MAX_BODY_SIZE = 64 * 1024;
 
@@ -53,6 +63,7 @@ interface AppOptions {
   repository?: ProjectRepository;
   codexConnection?: CodexConnectionService;
   outlineGenerator?: OutlineGenerator;
+  voiceVisualGenerator?: VoiceVisualGenerator;
   logger?: Pick<Console, 'error' | 'info'>;
 }
 
@@ -219,6 +230,21 @@ function getProjectOutlineRoute(pathname: string) {
   } as const;
 }
 
+function getProjectVoiceVisualRoute(pathname: string) {
+  const match =
+    /^\/api\/projects\/([^/]+)\/voice-visual(?:\/(generate|approve))?$/.exec(
+      pathname,
+    );
+  if (!match?.[1]) return null;
+  const projectId = decodeProjectId(match[1]);
+  if (!projectId) return null;
+
+  return {
+    projectId,
+    action: match[2] ?? 'update',
+  } as const;
+}
+
 function sameValue(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -229,6 +255,27 @@ function outlineContent(outline: TeachingOutline) {
     centralMessage: outline.centralMessage,
     sections: outline.sections,
   };
+}
+
+function voiceVisualContent(plan: VoiceVisualPlan) {
+  return {
+    voiceDirection: plan.voiceDirection,
+    visualDirection: plan.visualDirection,
+    sections: plan.sections,
+  };
+}
+
+function voiceVisualMatchesOutline(
+  plan: {sections: Array<{outlineSectionId: string}>},
+  outline: TeachingOutline,
+) {
+  return (
+    plan.sections.length === outline.sections.length &&
+    plan.sections.every(
+      (section, index) =>
+        section.outlineSectionId === outline.sections[index]?.id,
+    )
+  );
 }
 
 async function serveFrontend(
@@ -305,7 +352,9 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const repository =
     options.repository ?? createFileProjectRepository(projectsDirectory);
   const sharedCodexClient: CodexAppServerClient | null =
-    !options.codexConnection || !options.outlineGenerator
+    !options.codexConnection ||
+    !options.outlineGenerator ||
+    !options.voiceVisualGenerator
       ? new StdioCodexAppServerClient()
       : null;
   const codexConnection =
@@ -314,24 +363,30 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const outlineGenerator =
     options.outlineGenerator ??
     createCodexOutlineGenerator(sharedCodexClient!);
+  const voiceVisualGenerator =
+    options.voiceVisualGenerator ??
+    createCodexVoiceVisualGenerator(sharedCodexClient!);
   const logger = options.logger ?? console;
+  type GenerationCacheEntry<Result> = {
+    fingerprint: string;
+    promise: Promise<{result: Result; generatedAt: string}>;
+  };
   const outlineGenerations = new Map<
     string,
-    {
-      fingerprint: string;
-      promise: Promise<{
-        result: OutlineGenerationResult;
-        generatedAt: string;
-      }>;
-    }
+    GenerationCacheEntry<OutlineGenerationResult>
+  >();
+  const voiceVisualGenerations = new Map<
+    string,
+    GenerationCacheEntry<VoiceVisualGenerationResult>
   >();
 
-  function generateOutlineOnce(
+  function generateOnce<Result>(
+    generations: Map<string, GenerationCacheEntry<Result>>,
     key: string,
     fingerprint: string,
-    operation: () => Promise<OutlineGenerationResult>,
+    operation: () => Promise<Result>,
   ) {
-    const existing = outlineGenerations.get(key);
+    const existing = generations.get(key);
     if (existing) {
       if (existing.fingerprint !== fingerprint) {
         throw new RequestBodyError(
@@ -347,16 +402,16 @@ export function createPadStudioServer(options: AppOptions = {}) {
       result,
       generatedAt: new Date().toISOString(),
     }));
-    outlineGenerations.set(key, {fingerprint, promise});
+    generations.set(key, {fingerprint, promise});
     void promise.catch(() => {
-      if (outlineGenerations.get(key)?.promise === promise) {
-        outlineGenerations.delete(key);
+      if (generations.get(key)?.promise === promise) {
+        generations.delete(key);
       }
     });
 
-    if (outlineGenerations.size > 50) {
-      const oldestKey = outlineGenerations.keys().next().value;
-      if (oldestKey) outlineGenerations.delete(oldestKey);
+    if (generations.size > 50) {
+      const oldestKey = generations.keys().next().value;
+      if (oldestKey) generations.delete(oldestKey);
     }
 
     return promise;
@@ -463,7 +518,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
             ? currentProject.outline
             : undefined,
         });
-        const generation = await generateOutlineOnce(
+        const generation = await generateOnce(
+          outlineGenerations,
           generationKey,
           fingerprint,
           () =>
@@ -614,7 +670,299 @@ export function createPadStudioServer(options: AppOptions = {}) {
         };
         const updatedProject = await repository.updateProject(
           currentProject.id,
-          {outline},
+          {outline, currentStep: 'voiceVisual'},
+          expectedRevision,
+        );
+
+        if (!updatedProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+
+        sendProject(response, 200, updatedProject);
+        return;
+      }
+
+      const voiceVisualRoute = getProjectVoiceVisualRoute(
+        requestUrl.pathname,
+      );
+
+      if (
+        voiceVisualRoute?.action === 'generate' &&
+        request.method === 'POST'
+      ) {
+        const expectedRevision = readExpectedRevision(request);
+        const body = await readJsonBody(request);
+        const parsedRequest = GenerateVoiceVisualPlanSchema.safeParse(body);
+
+        if (!parsedRequest.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Yêu cầu tạo kế hoạch voice–visual chưa hợp lệ.',
+            fields: validationFields(parsedRequest.error.issues),
+          });
+          return;
+        }
+
+        const currentProject = await repository.getProject(
+          voiceVisualRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+
+        if (
+          currentProject.voiceVisualPlan?.generation.generationId ===
+          parsedRequest.data.generationId
+        ) {
+          sendProject(response, 200, currentProject);
+          return;
+        }
+
+        if (currentProject.revision !== expectedRevision) {
+          throw new ProjectConflictError(currentProject);
+        }
+
+        const outline = currentProject.outline;
+        if (!outline || outline.status !== 'approved') {
+          throw new RequestBodyError(
+            409,
+            'OUTLINE_NOT_APPROVED',
+            'Hãy chốt mạch giảng trước khi tạo kế hoạch voice–visual.',
+          );
+        }
+        if (!sameValue(outline.sourceInput, currentProject.topicInput)) {
+          throw new RequestBodyError(
+            409,
+            'OUTLINE_OUTDATED',
+            'Đầu vào đã thay đổi. Hãy tạo lại và chốt mạch giảng trước.',
+          );
+        }
+
+        const currentPlanUsable = Boolean(
+          currentProject.voiceVisualPlan &&
+            currentProject.voiceVisualPlan.sourceOutlineContentRevision ===
+              outline.contentRevision &&
+            voiceVisualMatchesOutline(
+              currentProject.voiceVisualPlan,
+              outline,
+            ),
+        );
+        if (
+          parsedRequest.data.guidance &&
+          currentProject.voiceVisualPlan &&
+          !currentPlanUsable
+        ) {
+          throw new RequestBodyError(
+            409,
+            'VOICE_VISUAL_OUTDATED',
+            'Mạch giảng đã thay đổi. Hãy tạo lại kế hoạch trước khi góp ý.',
+          );
+        }
+
+        const generationKey = `${currentProject.id}:${parsedRequest.data.generationId}`;
+        const currentPlan =
+          parsedRequest.data.guidance && currentPlanUsable
+            ? currentProject.voiceVisualPlan ?? undefined
+            : undefined;
+        const fingerprint = JSON.stringify({
+          topicInput: currentProject.topicInput,
+          outline: outlineContent(outline),
+          outlineContentRevision: outline.contentRevision,
+          guidance: parsedRequest.data.guidance,
+          currentPlan: currentPlan
+            ? voiceVisualContent(currentPlan)
+            : undefined,
+        });
+        const generation = await generateOnce(
+          voiceVisualGenerations,
+          generationKey,
+          fingerprint,
+          () =>
+            voiceVisualGenerator.generate({
+              topicInput: currentProject.topicInput,
+              outline,
+              guidance: parsedRequest.data.guidance,
+              currentPlan,
+            }),
+        );
+        const voiceVisualPlan: VoiceVisualPlan = {
+          ...generation.result.content,
+          status: 'draft',
+          contentRevision:
+            (currentProject.voiceVisualPlan?.contentRevision ?? 0) + 1,
+          sourceOutlineContentRevision: outline.contentRevision,
+          generation: {
+            generationId: parsedRequest.data.generationId,
+            provider: 'codex',
+            model: generation.result.model,
+            promptVersion: VOICE_VISUAL_PROMPT_VERSION,
+            generatedAt: generation.generatedAt,
+            usage: generation.result.usage,
+          },
+        };
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {voiceVisualPlan, currentStep: 'voiceVisual'},
+          expectedRevision,
+        );
+
+        if (!updatedProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+
+        sendProject(response, 200, updatedProject);
+        return;
+      }
+
+      if (
+        voiceVisualRoute?.action === 'update' &&
+        request.method === 'PUT'
+      ) {
+        const expectedRevision = readExpectedRevision(request);
+        const body = await readJsonBody(request);
+        const parsedContent = VoiceVisualPlanContentSchema.safeParse(body);
+
+        if (!parsedContent.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Kế hoạch voice–visual chưa hợp lệ.',
+            fields: validationFields(parsedContent.error.issues),
+          });
+          return;
+        }
+
+        const currentProject = await repository.getProject(
+          voiceVisualRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        if (!currentProject.voiceVisualPlan) {
+          throw new RequestBodyError(
+            409,
+            'VOICE_VISUAL_NOT_READY',
+            'Project chưa có kế hoạch voice–visual để chỉnh sửa.',
+          );
+        }
+        const outline = currentProject.outline;
+        if (
+          !outline ||
+          outline.status !== 'approved' ||
+          !sameValue(outline.sourceInput, currentProject.topicInput) ||
+          currentProject.voiceVisualPlan.sourceOutlineContentRevision !==
+            outline.contentRevision
+        ) {
+          throw new RequestBodyError(
+            409,
+            'VOICE_VISUAL_OUTDATED',
+            'Mạch giảng đã thay đổi. Hãy tạo lại kế hoạch voice–visual.',
+          );
+        }
+        if (!voiceVisualMatchesOutline(parsedContent.data, outline)) {
+          throw new RequestBodyError(
+            422,
+            'VOICE_VISUAL_OUTLINE_MISMATCH',
+            'Kế hoạch voice–visual không bao phủ đúng mạch giảng hiện tại.',
+          );
+        }
+
+        const unchanged = sameValue(
+          voiceVisualContent(currentProject.voiceVisualPlan),
+          parsedContent.data,
+        );
+        const voiceVisualPlan: VoiceVisualPlan = unchanged
+          ? currentProject.voiceVisualPlan
+          : {
+              ...parsedContent.data,
+              status: 'draft',
+              contentRevision:
+                currentProject.voiceVisualPlan.contentRevision + 1,
+              sourceOutlineContentRevision:
+                currentProject.voiceVisualPlan
+                  .sourceOutlineContentRevision,
+              generation: currentProject.voiceVisualPlan.generation,
+            };
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {voiceVisualPlan, currentStep: 'voiceVisual'},
+          expectedRevision,
+        );
+
+        if (!updatedProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+
+        sendProject(response, 200, updatedProject);
+        return;
+      }
+
+      if (
+        voiceVisualRoute?.action === 'approve' &&
+        request.method === 'POST'
+      ) {
+        const expectedRevision = readExpectedRevision(request);
+        const currentProject = await repository.getProject(
+          voiceVisualRoute.projectId,
+        );
+
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        const outline = currentProject.outline;
+        const voiceVisualPlan = currentProject.voiceVisualPlan;
+        if (!voiceVisualPlan) {
+          throw new RequestBodyError(
+            409,
+            'VOICE_VISUAL_NOT_READY',
+            'Hãy tạo kế hoạch voice–visual trước khi chốt.',
+          );
+        }
+        if (
+          !outline ||
+          outline.status !== 'approved' ||
+          !sameValue(outline.sourceInput, currentProject.topicInput) ||
+          voiceVisualPlan.sourceOutlineContentRevision !==
+            outline.contentRevision ||
+          !voiceVisualMatchesOutline(voiceVisualPlan, outline)
+        ) {
+          throw new RequestBodyError(
+            409,
+            'VOICE_VISUAL_OUTDATED',
+            'Mạch giảng đã thay đổi. Hãy tạo lại kế hoạch voice–visual trước khi chốt.',
+          );
+        }
+
+        const approvedPlan: VoiceVisualPlan = {
+          ...voiceVisualPlan,
+          status: 'approved',
+        };
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {voiceVisualPlan: approvedPlan, currentStep: 'voiceVisual'},
           expectedRevision,
         );
 
@@ -741,6 +1089,14 @@ export function createPadStudioServer(options: AppOptions = {}) {
       }
 
       if (error instanceof OutlineGenerationError) {
+        sendApiError(response, 503, {
+          code: error.code,
+          message: error.message,
+        });
+        return;
+      }
+
+      if (error instanceof VoiceVisualGenerationError) {
         sendApiError(response, 503, {
           code: error.code,
           message: error.message,
