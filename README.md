@@ -10,7 +10,8 @@
 Nhập chủ đề
 → Tạo và review mạch giảng
 → Tạo và review kế hoạch voice–visual
-→ Sinh scene Motion Canvas và voice
+→ Sinh và review scene Motion Canvas
+→ Sinh voice
 → Đồng bộ animation
 → Render bản nháp
 → Chỉnh sửa bằng Layout Editor
@@ -37,6 +38,11 @@ Vertical slice đầu tiên đã có thể chạy:
   chuyển động và thời lượng của từng beat.
 - Chỉnh sửa, sắp xếp beat, tạo lại theo góp ý và chốt kế hoạch trước khi sinh
   scene hoặc gọi dịch vụ tạo voice.
+- Sinh một scene Motion Canvas cho từng section đã chốt, kiểm tra quyền import
+  và biên dịch TypeScript trước khi nhận kết quả.
+- Xem source, tạo lại theo góp ý và chốt bộ scene trước khi sang bước tiếp theo.
+- Lưu từng lần sinh vào workspace bất biến riêng của project để bản mới không
+  ghi đè code scene đã có.
 - Hiển thị lượng token của lần sinh gần nhất để người dùng theo dõi.
 - Liệt kê, mở lại, chỉnh sửa và xóa project cục bộ.
 - Giao diện responsive cho desktop và mobile.
@@ -52,7 +58,7 @@ video. Chỉ thư mục render sinh ra tại `projects/**/renders/` bị ignore.
 
 Mỗi project có hai chỉ số độc lập:
 
-- `version` là phiên bản cấu trúc file; dữ liệu v1, v2 và v3 được đọc và nâng cấp lên
+- `version` là phiên bản cấu trúc file; dữ liệu v1, v2, v3 và v4 được đọc và nâng cấp lên
   cấu trúc hiện tại ở lần ghi tiếp theo.
 - `revision` tăng sau mỗi thay đổi nội dung và được dùng với `If-Match` để
   chặn hai thao tác ghi đè lẫn nhau.
@@ -85,6 +91,22 @@ Mốc bắt đầu được suy ra từ tổng thời lượng beat để timeli
 liệu mâu thuẫn. Nếu đầu vào hoặc mạch giảng thay đổi, kế hoạch downstream được
 đánh dấu cũ và phải tạo lại trước khi có thể chốt.
 
+Scene Motion Canvas chỉ được sinh từ mạch giảng và kế hoạch voice–visual đã chốt,
+qua structured output có schema riêng. Source bị giới hạn trong các package
+Motion Canvas, không được dùng network, filesystem hoặc runtime API ngoài phạm
+vi. Mỗi section được sinh bằng một Codex turn riêng và chạy song song có giới
+hạn. Pipeline dùng model mặc định do Codex catalog công bố, chọn reasoning
+`medium` cho lượt dựng đầy đủ và tự lùi về capability/default hợp lệ nếu catalog
+hoặc model thay đổi; không hard-code một họ model cụ thể. Scene đã sinh thành công
+được cache theo `generationId`, kể cả khi một scene timeout hoặc vòng sửa chưa
+hoàn tất; retry chỉ chạy lại scene lỗi. Lỗi TypeScript
+được gửi về một vòng sửa có định hướng cho đúng file lỗi, tối đa hai lần, thay
+vì sinh lại toàn bộ video. Mỗi generation chỉ được lưu tại
+`projects/<project-id>/motion-canvas/generations/<generation-id>/`; project chỉ
+giữ metadata và con trỏ đến generation hiện hành sau khi toàn bộ scene biên dịch
+thành công. Khi dữ liệu upstream đổi, bộ
+scene được đánh dấu cũ và không thể chốt cho đến khi sinh lại.
+
 ## Chạy ở môi trường phát triển
 
 Yêu cầu Node.js 24.12 trở lên và Codex CLI có trong `PATH`.
@@ -97,6 +119,24 @@ npm run dev
 Frontend chạy tại `http://127.0.0.1:5173`, backend chạy tại
 `http://127.0.0.1:4174`.
 
+Sau khi đã sinh scene cho một project, mở Motion Canvas editor bằng:
+
+```bash
+npm run motion:serve -- --project <project-id>
+```
+
+Kiểm tra runtime trên chính workspace đã sinh bằng:
+
+```bash
+npm run validate:motion -- --project <project-id>
+```
+
+Mặc định bước Motion Canvas dùng model mặc định trong Codex catalog và reasoning
+`medium`. Deployment có thể yêu cầu model hoặc effort cụ thể bằng
+`PAD_MOTION_CANVAS_MODEL` và `PAD_MOTION_CANVAS_REASONING_EFFORT`; generator sẽ
+đối chiếu capability trước khi gửi request, nên không truyền effort mà model
+không hỗ trợ.
+
 ## Kiểm tra và chạy production
 
 ```bash
@@ -104,6 +144,10 @@ npm run validate
 npm run build
 npm start
 ```
+
+`npm run validate` kiểm tra schema/API/UI, build PAD Studio và khởi động runtime
+Motion Canvas tạm để transform một project cùng các scene mẫu. Tham số
+`--project` ở trên dùng cùng phép kiểm tra đó cho workspace thật.
 
 Sau khi build, backend phục vụ cả API và frontend tại
 `http://127.0.0.1:4174`.

@@ -5,9 +5,11 @@ import type {
 import type {
   ApiErrorPayload,
   CreateTopicProject,
+  GenerateMotionCanvas,
   GenerateTeachingOutline,
   GenerateVoiceVisualPlan,
   ProjectListIssue,
+  MotionCanvasBundle,
   TeachingOutlineContent,
   TopicProject,
   UpdateProject,
@@ -233,6 +235,65 @@ export async function approveVoiceVisualPlan(
 ) {
   const response = await fetch(
     `/api/projects/${encodeURIComponent(projectId)}/voice-visual/approve`,
+    {
+      method: 'POST',
+      headers: {'If-Match': `"${expectedRevision}"`},
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function generateMotionCanvas(
+  projectId: string,
+  request: GenerateMotionCanvas,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function getMotionCanvasFiles(projectId: string) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/files`,
+  );
+  const payload = await readPayload<{
+    bundle: MotionCanvasBundle;
+    files: Array<{path: string; source: string}>;
+    serveCommand: string;
+  }>(response);
+
+  assertSuccessful(response, payload);
+  if (!payload || !('files' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi workspace Motion Canvas không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload;
+}
+
+export async function approveMotionCanvas(
+  projectId: string,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/approve`,
     {
       method: 'POST',
       headers: {'If-Match': `"${expectedRevision}"`},

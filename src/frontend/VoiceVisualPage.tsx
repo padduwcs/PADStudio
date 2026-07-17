@@ -9,7 +9,11 @@ import {
   LightbulbIcon,
   SparkIcon,
 } from './icons.tsx';
-import {navigate, projectOutlinePath} from './router.ts';
+import {
+  navigate,
+  projectMotionCanvasPath,
+  projectOutlinePath,
+} from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useVoiceVisualDraft} from './useVoiceVisualDraft.ts';
 
@@ -31,6 +35,13 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
       forcedGuidance ?? guidance,
     );
     if (generatedProject) setGuidance('');
+  }
+
+  async function handleApprove() {
+    const approvedProject = await plan.approve();
+    if (approvedProject) {
+      navigate(projectMotionCanvasPath(approvedProject.id), true);
+    }
   }
 
   if (plan.loadState === 'loading') {
@@ -627,14 +638,16 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                 className="submit-button"
                 type="button"
                 disabled={
-                  approved ||
                   plan.approving ||
                   plan.generating ||
-                  plan.stale ||
-                  !plan.valid ||
+                  (!approved && (plan.stale || !plan.valid)) ||
                   plan.saveState === 'conflict'
                 }
-                onClick={() => void plan.approve()}
+                onClick={() =>
+                  approved
+                    ? navigate(projectMotionCanvasPath(project.id))
+                    : void handleApprove()
+                }
               >
                 {plan.approving ? (
                   <>
@@ -643,8 +656,8 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                   </>
                 ) : approved ? (
                   <>
+                    Tiếp tục Motion Canvas
                     <CheckIcon />
-                    Đã chốt kế hoạch
                   </>
                 ) : (
                   <>

@@ -234,7 +234,9 @@ export function ProjectLibrary({
                   onClick={() => onOpenProject(project)}
                 >
                   <span className="project-step">
-                    {project.currentStep === 'voiceVisual'
+                    {project.currentStep === 'motionCanvas'
+                      ? 'Bước 04 · Motion Canvas'
+                      : project.currentStep === 'voiceVisual'
                       ? 'Bước 03 · Voice–visual'
                       : project.currentStep === 'outline'
                         ? 'Bước 02 · Mạch giảng'

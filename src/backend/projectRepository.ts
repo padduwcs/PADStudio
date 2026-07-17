@@ -262,7 +262,10 @@ export function createFileProjectRepository(
         JSON.stringify(update.outline) === JSON.stringify(project.outline)) &&
       (update.voiceVisualPlan === undefined ||
         JSON.stringify(update.voiceVisualPlan) ===
-          JSON.stringify(project.voiceVisualPlan))
+          JSON.stringify(project.voiceVisualPlan)) &&
+      (update.motionCanvasBundle === undefined ||
+        JSON.stringify(update.motionCanvasBundle) ===
+          JSON.stringify(project.motionCanvasBundle))
     );
   }
 
@@ -290,19 +293,36 @@ export function createFileProjectRepository(
       ((topicChanged || outlineChanged) && currentProject.voiceVisualPlan
         ? {...currentProject.voiceVisualPlan, status: 'draft' as const}
         : currentProject.voiceVisualPlan);
+    const voiceVisualContentChanged =
+      nextVoiceVisualPlan?.contentRevision !==
+      currentProject.voiceVisualPlan?.contentRevision;
+    const nextMotionCanvasBundle =
+      update.motionCanvasBundle ??
+      ((topicChanged || outlineChanged || voiceVisualContentChanged) &&
+      currentProject.motionCanvasBundle
+        ? {...currentProject.motionCanvasBundle, status: 'draft' as const}
+        : currentProject.motionCanvasBundle);
+    const motionCanvasChanged =
+      JSON.stringify(nextMotionCanvasBundle) !==
+      JSON.stringify(currentProject.motionCanvasBundle);
     const nextCurrentStep =
       update.currentStep ??
       (topicChanged
         ? 'topic'
         : outlineChanged
           ? 'outline'
-          : currentProject.currentStep);
+            : voiceVisualContentChanged
+              ? 'voiceVisual'
+              : motionCanvasChanged
+                ? 'motionCanvas'
+                : currentProject.currentStep);
     const project: TopicProject = {
       ...currentProject,
       ...(update.topicInput ? {topicInput: update.topicInput} : {}),
       currentStep: nextCurrentStep,
       outline: nextOutline,
       voiceVisualPlan: nextVoiceVisualPlan,
+      motionCanvasBundle: nextMotionCanvasBundle,
       revision: currentProject.revision + 1,
       updatedAt: new Date().toISOString(),
     };
@@ -350,6 +370,7 @@ export function createFileProjectRepository(
           topicInput: request.topicInput,
           outline: null,
           voiceVisualPlan: null,
+          motionCanvasBundle: null,
           createdAt: now,
           updatedAt: now,
         };

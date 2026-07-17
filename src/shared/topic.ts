@@ -2,11 +2,17 @@ import {z} from 'zod';
 
 export const audienceValues = ['beginner', 'familiar'] as const;
 export const durationValues = ['concise', 'standard', 'deep'] as const;
-export const projectStepValues = ['topic', 'outline', 'voiceVisual'] as const;
+export const projectStepValues = [
+  'topic',
+  'outline',
+  'voiceVisual',
+  'motionCanvas',
+] as const;
 export const projectStatusValues = ['draft'] as const;
 export const outlineStatusValues = ['draft', 'approved'] as const;
 export const voiceVisualStatusValues = ['draft', 'approved'] as const;
-export const currentProjectVersion = 4 as const;
+export const motionCanvasStatusValues = ['draft', 'approved'] as const;
+export const currentProjectVersion = 5 as const;
 
 export const ProjectStepSchema = z.enum(projectStepValues);
 export type ProjectStep = z.infer<typeof ProjectStepSchema>;
@@ -214,6 +220,68 @@ export const VoiceVisualPlanSchema = VoiceVisualPlanContentSchema.extend({
 
 export type VoiceVisualPlan = z.infer<typeof VoiceVisualPlanSchema>;
 
+export const MotionCanvasSceneSchema = z
+  .object({
+    id: z.string().uuid(),
+    outlineSectionId: z.string().uuid(),
+    name: z
+      .string()
+      .trim()
+      .min(3, 'Tên scene còn quá ngắn.')
+      .max(120, 'Tên scene nên ngắn hơn 120 ký tự.'),
+    filePath: z
+      .string()
+      .regex(
+        /^src\/scenes\/[a-z0-9][a-z0-9-]{0,80}\.tsx$/,
+        'Đường dẫn scene Motion Canvas không hợp lệ.',
+      ),
+    durationSeconds: z.number().int().min(4).max(360),
+  })
+  .strict();
+
+export type MotionCanvasScene = z.infer<typeof MotionCanvasSceneSchema>;
+
+export const MotionCanvasBundleSchema = z
+  .object({
+    status: z.enum(motionCanvasStatusValues),
+    contentRevision: z.number().int().positive(),
+    sourceVoiceVisualContentRevision: z.number().int().positive(),
+    workspacePath: z
+      .string()
+      .regex(
+        /^motion-canvas\/generations\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        'Đường dẫn workspace Motion Canvas không hợp lệ.',
+      ),
+    projectFile: z.literal('src/project.ts'),
+    width: z.number().int().min(480).max(3840),
+    height: z.number().int().min(480).max(3840),
+    fps: z.number().int().min(1).max(120),
+    scenes: z
+      .array(MotionCanvasSceneSchema)
+      .min(2, 'Cần ít nhất 2 scene Motion Canvas.')
+      .max(10, 'Không nên có quá 10 scene Motion Canvas.'),
+    validation: z
+      .object({
+        validatedAt: z.string().datetime(),
+        sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+        motionCanvasVersion: z.string().min(1).max(40),
+      })
+      .strict(),
+    generation: z
+      .object({
+        generationId: CreationIdSchema,
+        provider: z.literal('codex'),
+        model: z.string().min(1).max(160),
+        promptVersion: z.string().min(1).max(40),
+        generatedAt: z.string().datetime(),
+        usage: CodexTokenUsageSchema.nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export type MotionCanvasBundle = z.infer<typeof MotionCanvasBundleSchema>;
+
 const topicProjectV1Schema = z
   .object({
     id: z.string(),
@@ -255,19 +323,28 @@ const topicProjectV3Schema = z
   })
   .strict();
 
-export const TopicProjectSchema = z
+const topicProjectV4Schema = z
   .object({
     id: z.string(),
-    version: z.literal(currentProjectVersion),
+    version: z.literal(4),
     revision: z.number().int().positive(),
     creationId: CreationIdSchema.nullable(),
     status: ProjectStatusSchema,
-    currentStep: ProjectStepSchema,
+    currentStep: z.enum(['topic', 'outline', 'voiceVisual']),
     topicInput: TopicInputSchema,
     outline: TeachingOutlineSchema.nullable(),
     voiceVisualPlan: VoiceVisualPlanSchema.nullable(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
+  })
+  .strict();
+
+export const TopicProjectSchema = topicProjectV4Schema
+  .omit({version: true})
+  .extend({
+    version: z.literal(currentProjectVersion),
+    currentStep: ProjectStepSchema,
+    motionCanvasBundle: MotionCanvasBundleSchema.nullable(),
   })
   .strict();
 
@@ -277,12 +354,22 @@ export function parseTopicProject(value: unknown): TopicProject {
   const currentProject = TopicProjectSchema.safeParse(value);
   if (currentProject.success) return currentProject.data;
 
+  const versionFourProject = topicProjectV4Schema.safeParse(value);
+  if (versionFourProject.success) {
+    return {
+      ...versionFourProject.data,
+      version: currentProjectVersion,
+      motionCanvasBundle: null,
+    };
+  }
+
   const versionThreeProject = topicProjectV3Schema.safeParse(value);
   if (versionThreeProject.success) {
     return {
       ...versionThreeProject.data,
       version: currentProjectVersion,
       voiceVisualPlan: null,
+      motionCanvasBundle: null,
     };
   }
 
@@ -293,6 +380,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       version: currentProjectVersion,
       outline: null,
       voiceVisualPlan: null,
+      motionCanvasBundle: null,
     };
   }
 
@@ -305,6 +393,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       creationId: null,
       outline: null,
       voiceVisualPlan: null,
+      motionCanvasBundle: null,
     };
   }
 
@@ -327,6 +416,7 @@ export const UpdateProjectSchema = z
     currentStep: ProjectStepSchema.optional(),
     outline: TeachingOutlineSchema.optional(),
     voiceVisualPlan: VoiceVisualPlanSchema.optional(),
+    motionCanvasBundle: MotionCanvasBundleSchema.optional(),
   })
   .strict()
   .refine(
@@ -334,7 +424,8 @@ export const UpdateProjectSchema = z
       value.topicInput !== undefined ||
       value.currentStep !== undefined ||
       value.outline !== undefined ||
-      value.voiceVisualPlan !== undefined,
+      value.voiceVisualPlan !== undefined ||
+      value.motionCanvasBundle !== undefined,
     'Cần có ít nhất một thay đổi.',
   );
 
@@ -368,6 +459,21 @@ export const GenerateVoiceVisualPlanSchema = z
 
 export type GenerateVoiceVisualPlan = z.infer<
   typeof GenerateVoiceVisualPlanSchema
+>;
+
+export const GenerateMotionCanvasSchema = z
+  .object({
+    generationId: CreationIdSchema,
+    guidance: z
+      .string()
+      .trim()
+      .max(600, 'Góp ý cho scene nên ngắn hơn 600 ký tự.')
+      .optional(),
+  })
+  .strict();
+
+export type GenerateMotionCanvas = z.infer<
+  typeof GenerateMotionCanvasSchema
 >;
 
 export type ProjectListIssueCode =

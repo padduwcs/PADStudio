@@ -61,6 +61,7 @@ test('parseTopicProject nâng project v1 lên model hiện tại', () => {
   assert.equal(project.creationId, null);
   assert.equal(project.outline, null);
   assert.equal(project.voiceVisualPlan, null);
+  assert.equal(project.motionCanvasBundle, null);
 });
 
 test('parseTopicProject nâng project v2 và giữ revision hiện tại', () => {
@@ -85,6 +86,7 @@ test('parseTopicProject nâng project v2 và giữ revision hiện tại', () =>
   assert.equal(project.revision, 7);
   assert.equal(project.outline, null);
   assert.equal(project.voiceVisualPlan, null);
+  assert.equal(project.motionCanvasBundle, null);
 });
 
 test('parseTopicProject nâng project v3 và giữ outline hiện tại', () => {
@@ -109,6 +111,32 @@ test('parseTopicProject nâng project v3 và giữ outline hiện tại', () => 
   assert.equal(project.version, currentProjectVersion);
   assert.equal(project.revision, 4);
   assert.equal(project.voiceVisualPlan, null);
+  assert.equal(project.motionCanvasBundle, null);
+});
+
+test('parseTopicProject nâng project v4 và giữ kế hoạch voice–visual', () => {
+  const now = new Date().toISOString();
+  const project = parseTopicProject({
+    id: 'version-four-project',
+    version: 4,
+    revision: 5,
+    creationId: null,
+    status: 'draft',
+    currentStep: 'voiceVisual',
+    topicInput: {
+      topic: 'Cây tìm kiếm nhị phân',
+      audience: 'familiar',
+      duration: 'deep',
+    },
+    outline: null,
+    voiceVisualPlan: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  assert.equal(project.version, currentProjectVersion);
+  assert.equal(project.revision, 5);
+  assert.equal(project.motionCanvasBundle, null);
 });
 
 test('parseTopicProject không âm thầm bỏ field lạ', () => {

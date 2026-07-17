@@ -1,10 +1,9 @@
 {
   "id": "tim-kiem-nhi-phan-20260717-11ddf179",
-  "version": 4,
-  "revision": 7,
+  "revision": 10,
   "creationId": "5c130bee-8e11-419e-b4ec-9f4be509ac41",
   "status": "draft",
-  "currentStep": "voiceVisual",
+  "currentStep": "motionCanvas",
   "topicInput": {
     "topic": "Tìm kiếm nhị phân",
     "learningGoal": "khi nào có thể dùng tìm kiếm nhị phân, tại sao lại có độ phức tạp như thế. Hiểu được bản chất của thuật toán và có được hình dung cụ thể trong đầu (về ý tưởng)",
@@ -225,5 +224,65 @@
     }
   },
   "createdAt": "2026-07-17T14:45:10.554Z",
-  "updatedAt": "2026-07-17T16:09:55.272Z"
+  "updatedAt": "2026-07-17T19:05:22.353Z",
+  "version": 5,
+  "motionCanvasBundle": {
+    "status": "draft",
+    "contentRevision": 3,
+    "sourceVoiceVisualContentRevision": 2,
+    "workspacePath": "motion-canvas/generations/20a20c95-c1f5-45ac-a7f3-7164921ae7ab",
+    "projectFile": "src/project.ts",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "scenes": [
+      {
+        "id": "6f1c9412-c3aa-4111-842a-78313f1d6644",
+        "outlineSectionId": "9e8542ae-98d9-437b-82e8-9a5ec0235b74",
+        "name": "binary-search-million-hook",
+        "filePath": "src/scenes/01-binary-search-million-hook.tsx",
+        "durationSeconds": 18
+      },
+      {
+        "id": "931ff9b1-7d35-42de-8cfe-32d052de4beb",
+        "outlineSectionId": "89d948fb-5b52-499d-b53e-45cbd4234f33",
+        "name": "binary-guessing-game",
+        "filePath": "src/scenes/02-binary-guessing-game.tsx",
+        "durationSeconds": 27
+      },
+      {
+        "id": "ffad3edf-8f88-439a-a2d5-f8438c050563",
+        "outlineSectionId": "e9bae20e-8099-431a-8bd2-82a5349fdbd0",
+        "name": "binary-search-conditions",
+        "filePath": "src/scenes/03-binary-search-conditions.tsx",
+        "durationSeconds": 28
+      },
+      {
+        "id": "63f56d71-20b9-464f-a2dc-85a36b08a0b2",
+        "outlineSectionId": "11995f2f-27ca-422b-8326-0de66cc3d090",
+        "name": "binary_search_log_complexity",
+        "filePath": "src/scenes/04-binary-search-log-complexity.tsx",
+        "durationSeconds": 27
+      }
+    ],
+    "validation": {
+      "validatedAt": "2026-07-17T19:05:22.350Z",
+      "sourceHash": "c396cd7cc41001273bab5e97a471b024cbce97dc260e1464f8c2370100c34a80",
+      "motionCanvasVersion": "3.17.2"
+    },
+    "generation": {
+      "generationId": "20a20c95-c1f5-45ac-a7f3-7164921ae7ab",
+      "provider": "codex",
+      "model": "gpt-5.6-sol",
+      "promptVersion": "motion-canvas-v3",
+      "generatedAt": "2026-07-17T19:05:22.351Z",
+      "usage": {
+        "inputTokens": 37347,
+        "cachedInputTokens": 0,
+        "outputTokens": 17842,
+        "reasoningOutputTokens": 8067,
+        "totalTokens": 55189
+      }
+    }
+  }
 }

@@ -39,6 +39,7 @@ Nhập chủ đề
 → AI tạo kế hoạch voice–visual
 → Người dùng review kịch bản
 → Codex sinh scene Motion Canvas
+→ Người dùng review scene
 → ElevenLabs tạo voice
 → Đồng bộ animation theo voice
 → Render bản nháp
@@ -72,9 +73,26 @@ tình thay đổi logic giảng giải. Timing bắt đầu được tính nối
 không lưu hai loại mốc có thể mâu thuẫn. AI tạo bản nháp có cấu trúc, còn người
 dùng chỉnh sửa và chốt trước khi hệ thống sinh scene hoặc gọi dịch vụ voice.
 
+Hiện tại Codex sinh một scene cho mỗi section từ kế hoạch đã chốt. Các section
+được tách thành những Codex turn độc lập và chạy song song có giới hạn. Pipeline
+theo model mặc định của Codex catalog, chọn mức reasoning chất lượng cao khi
+capability cho phép (`medium` cho lượt dựng đầy đủ) và tự lùi về default hợp lệ
+thay vì phụ thuộc tên model.
+Kết quả được giới hạn bằng structured output và chính sách source, sau đó phải
+biên dịch TypeScript thành công trước khi trở thành bản nháp có thể review.
+Retry giữ lại scene đã thành công; compiler chỉ gửi file lỗi qua tối đa hai vòng
+sửa có định hướng. Mỗi lần sinh được lưu thành workspace bất biến riêng trong
+project; thay đổi mạch giảng hoặc kế hoạch voice–visual làm scene downstream
+trở thành dữ liệu cũ và buộc sinh lại. Người dùng vẫn là người chốt scene trước
+bước sản xuất tiếp theo.
+
 ## Scene và component
 
 Mỗi video có scene và component riêng để có thể tùy biến theo cách giải thích của chủ đề đó. Không nên ép mọi video phụ thuộc vào một thư viện component dùng chung quá sớm.
+
+Code scene đã sinh nằm trong
+`projects/<project-id>/motion-canvas/generations/<generation-id>/`, tách khỏi
+code của Studio nhưng vẫn thuộc project và được quản lý cùng metadata video.
 
 Những scene, component, animation pattern hoặc asset đã hoạt động tốt sẽ được lưu vào kho tham khảo. Khi làm video mới, chúng được sao chép và điều chỉnh theo ngữ cảnh thay vì mặc định trở thành dependency dùng chung.
 
@@ -95,9 +113,9 @@ Editor bổ sung cho code chứ không thay thế hoàn toàn code. Codex vẫn 
 
 - **AI**: phân tích chủ đề, đề xuất mạch giảng và lập kế hoạch voice–visual.
 - **Người dùng**: review nội dung, quyết định cách giảng, chỉnh layout và timing.
-- **Codex**: hiện cung cấp model cho đề xuất mạch giảng qua app-server; về sau
-  tiếp tục hỗ trợ sinh và sửa code scene Motion Canvas, triển khai và bảo trì
-  project.
+- **Codex**: cung cấp model cho mạch giảng, kế hoạch voice–visual và sinh code
+  scene Motion Canvas qua app-server; tiếp tục hỗ trợ sửa scene, triển khai và
+  bảo trì project.
 - **Motion Canvas**: nền tảng tạo animation bằng code.
 - **ElevenLabs**: tạo voice phục vụ video.
 - **PAD Studio**: kết nối các bước trên thành một quy trình sản xuất nhất quán.

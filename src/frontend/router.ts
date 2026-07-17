@@ -5,7 +5,8 @@ export type AppRoute =
   | {name: 'new-topic'}
   | {name: 'project-topic'; projectId: string}
   | {name: 'project-outline'; projectId: string}
-  | {name: 'project-voice-visual'; projectId: string};
+  | {name: 'project-voice-visual'; projectId: string}
+  | {name: 'project-motion-canvas'; projectId: string};
 
 function decodeProjectId(value: string) {
   try {
@@ -50,6 +51,18 @@ export function parseRoute(pathname: string): AppRoute {
     };
   }
 
+  const motionCanvasMatch =
+    /^\/projects\/([^/]+)\/motion-canvas\/?$/.exec(pathname);
+  if (motionCanvasMatch?.[1]) {
+    const projectId = decodeProjectId(motionCanvasMatch[1]);
+    if (!projectId) return {name: 'new-topic'};
+
+    return {
+      name: 'project-motion-canvas',
+      projectId,
+    };
+  }
+
   return {name: 'new-topic'};
 }
 
@@ -72,10 +85,15 @@ export function projectVoiceVisualPath(projectId: string) {
   return `/projects/${encodeURIComponent(projectId)}/voice-visual`;
 }
 
+export function projectMotionCanvasPath(projectId: string) {
+  return `/projects/${encodeURIComponent(projectId)}/motion-canvas`;
+}
+
 const projectStepPaths = {
   topic: projectTopicPath,
   outline: projectOutlinePath,
   voiceVisual: projectVoiceVisualPath,
+  motionCanvas: projectMotionCanvasPath,
 } satisfies Record<ProjectStep, (projectId: string) => string>;
 
 export function projectStepPath(projectId: string, step: ProjectStep) {

@@ -5,12 +5,14 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
   CreateTopicProjectSchema,
+  GenerateMotionCanvasSchema,
   GenerateTeachingOutlineSchema,
   GenerateVoiceVisualPlanSchema,
   TeachingOutlineContentSchema,
   UpdateProjectSchema,
   VoiceVisualPlanContentSchema,
   type ApiErrorPayload,
+  type MotionCanvasBundle,
   type TeachingOutline,
   type TopicProject,
   type VoiceVisualPlan,
@@ -29,6 +31,22 @@ import {
   type OutlineGenerationResult,
   type OutlineGenerator,
 } from './outlineGenerator.ts';
+import {
+  createCodexMotionCanvasGenerator,
+  MOTION_CANVAS_FPS,
+  MOTION_CANVAS_HEIGHT,
+  MOTION_CANVAS_PROMPT_VERSION,
+  MOTION_CANVAS_WIDTH,
+  MotionCanvasGenerationError,
+  type MotionCanvasGenerationResult,
+  type MotionCanvasGenerator,
+} from './motionCanvasGenerator.ts';
+import {
+  createMotionCanvasWorkspace,
+  MotionCanvasWorkspaceError,
+  type PreparedMotionCanvasWorkspace,
+  type MotionCanvasWorkspace,
+} from './motionCanvasWorkspace.ts';
 import {
   createFileProjectRepository,
   ProjectConflictError,
@@ -64,6 +82,8 @@ interface AppOptions {
   codexConnection?: CodexConnectionService;
   outlineGenerator?: OutlineGenerator;
   voiceVisualGenerator?: VoiceVisualGenerator;
+  motionCanvasGenerator?: MotionCanvasGenerator;
+  motionCanvasWorkspace?: MotionCanvasWorkspace;
   logger?: Pick<Console, 'error' | 'info'>;
 }
 
@@ -245,6 +265,21 @@ function getProjectVoiceVisualRoute(pathname: string) {
   } as const;
 }
 
+function getProjectMotionCanvasRoute(pathname: string) {
+  const match =
+    /^\/api\/projects\/([^/]+)\/motion-canvas(?:\/(generate|approve|files))?$/.exec(
+      pathname,
+    );
+  if (!match?.[1]) return null;
+  const projectId = decodeProjectId(match[1]);
+  if (!projectId) return null;
+
+  return {
+    projectId,
+    action: match[2] ?? 'read',
+  } as const;
+}
+
 function sameValue(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -274,6 +309,19 @@ function voiceVisualMatchesOutline(
     plan.sections.every(
       (section, index) =>
         section.outlineSectionId === outline.sections[index]?.id,
+    )
+  );
+}
+
+function motionCanvasMatchesOutline(
+  bundle: MotionCanvasBundle,
+  outline: TeachingOutline,
+) {
+  return (
+    bundle.scenes.length === outline.sections.length &&
+    bundle.scenes.every(
+      (scene, index) =>
+        scene.outlineSectionId === outline.sections[index]?.id,
     )
   );
 }
@@ -354,7 +402,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const sharedCodexClient: CodexAppServerClient | null =
     !options.codexConnection ||
     !options.outlineGenerator ||
-    !options.voiceVisualGenerator
+    !options.voiceVisualGenerator ||
+    !options.motionCanvasGenerator
       ? new StdioCodexAppServerClient()
       : null;
   const codexConnection =
@@ -366,6 +415,22 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const voiceVisualGenerator =
     options.voiceVisualGenerator ??
     createCodexVoiceVisualGenerator(sharedCodexClient!);
+  const motionCanvasGenerator =
+    options.motionCanvasGenerator ??
+    createCodexMotionCanvasGenerator(sharedCodexClient!, {
+      ...(process.env.PAD_MOTION_CANVAS_MODEL?.trim()
+        ? {model: process.env.PAD_MOTION_CANVAS_MODEL.trim()}
+        : {}),
+      ...(process.env.PAD_MOTION_CANVAS_REASONING_EFFORT?.trim()
+        ? {
+            reasoningEffort:
+              process.env.PAD_MOTION_CANVAS_REASONING_EFFORT.trim(),
+          }
+        : {}),
+    });
+  const motionCanvasWorkspace =
+    options.motionCanvasWorkspace ??
+    createMotionCanvasWorkspace(projectsDirectory);
   const logger = options.logger ?? console;
   type GenerationCacheEntry<Result> = {
     fingerprint: string;
@@ -378,6 +443,13 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const voiceVisualGenerations = new Map<
     string,
     GenerationCacheEntry<VoiceVisualGenerationResult>
+  >();
+  const motionCanvasGenerations = new Map<
+    string,
+    GenerationCacheEntry<{
+      generated: MotionCanvasGenerationResult;
+      prepared: PreparedMotionCanvasWorkspace;
+    }>
   >();
 
   function generateOnce<Result>(
@@ -486,7 +558,6 @@ export function createPadStudioServer(options: AppOptions = {}) {
           });
           return;
         }
-
         const currentProject = await repository.getProject(
           outlineRoute.projectId,
         );
@@ -962,7 +1033,308 @@ export function createPadStudioServer(options: AppOptions = {}) {
         };
         const updatedProject = await repository.updateProject(
           currentProject.id,
-          {voiceVisualPlan: approvedPlan, currentStep: 'voiceVisual'},
+          {voiceVisualPlan: approvedPlan, currentStep: 'motionCanvas'},
+          expectedRevision,
+        );
+
+        if (!updatedProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+
+        sendProject(response, 200, updatedProject);
+        return;
+      }
+
+      const motionCanvasRoute = getProjectMotionCanvasRoute(
+        requestUrl.pathname,
+      );
+
+      if (
+        motionCanvasRoute?.action === 'generate' &&
+        request.method === 'POST'
+      ) {
+        const expectedRevision = readExpectedRevision(request);
+        const body = await readJsonBody(request);
+        const parsedRequest = GenerateMotionCanvasSchema.safeParse(body);
+
+        if (!parsedRequest.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Yêu cầu sinh scene Motion Canvas chưa hợp lệ.',
+            fields: validationFields(parsedRequest.error.issues),
+          });
+          return;
+        }
+        const generationId =
+          parsedRequest.data.generationId.toLowerCase();
+
+        const currentProject = await repository.getProject(
+          motionCanvasRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+
+        if (
+          currentProject.motionCanvasBundle?.generation.generationId ===
+          generationId
+        ) {
+          sendProject(response, 200, currentProject);
+          return;
+        }
+
+        if (currentProject.revision !== expectedRevision) {
+          throw new ProjectConflictError(currentProject);
+        }
+
+        const outline = currentProject.outline;
+        const voiceVisualPlan = currentProject.voiceVisualPlan;
+        if (
+          !outline ||
+          outline.status !== 'approved' ||
+          !sameValue(outline.sourceInput, currentProject.topicInput) ||
+          !voiceVisualPlan ||
+          voiceVisualPlan.status !== 'approved' ||
+          voiceVisualPlan.sourceOutlineContentRevision !==
+            outline.contentRevision ||
+          !voiceVisualMatchesOutline(voiceVisualPlan, outline)
+        ) {
+          throw new RequestBodyError(
+            409,
+            'VOICE_VISUAL_NOT_APPROVED',
+            'Hãy chốt kế hoạch voice–visual hiện tại trước khi sinh scene.',
+          );
+        }
+
+        const currentBundleUsable = Boolean(
+          currentProject.motionCanvasBundle &&
+            currentProject.motionCanvasBundle
+              .sourceVoiceVisualContentRevision ===
+              voiceVisualPlan.contentRevision &&
+            motionCanvasMatchesOutline(
+              currentProject.motionCanvasBundle,
+              outline,
+            ),
+        );
+        if (
+          parsedRequest.data.guidance &&
+          currentProject.motionCanvasBundle &&
+          !currentBundleUsable
+        ) {
+          throw new RequestBodyError(
+            409,
+            'MOTION_CANVAS_OUTDATED',
+            'Kế hoạch voice–visual đã thay đổi. Hãy sinh lại toàn bộ scene trước khi góp ý.',
+          );
+        }
+
+        const currentScenes =
+          parsedRequest.data.guidance &&
+          currentBundleUsable &&
+          currentProject.motionCanvasBundle
+            ? await motionCanvasWorkspace.readSceneSources(
+                currentProject.id,
+                currentProject.motionCanvasBundle,
+              )
+            : undefined;
+        const generationKey = `${currentProject.id}:${generationId}`;
+        const fingerprint = JSON.stringify({
+          topicInput: currentProject.topicInput,
+          outline: outlineContent(outline),
+          outlineContentRevision: outline.contentRevision,
+          voiceVisual: voiceVisualContent(voiceVisualPlan),
+          voiceVisualContentRevision: voiceVisualPlan.contentRevision,
+          guidance: parsedRequest.data.guidance,
+          currentScenes,
+        });
+        const generation = await generateOnce(
+          motionCanvasGenerations,
+          generationKey,
+          fingerprint,
+          async () => {
+            const generationRequest = {
+              generationId,
+              topicInput: currentProject.topicInput,
+              outline,
+              voiceVisualPlan,
+              guidance: parsedRequest.data.guidance,
+              currentScenes,
+            };
+            let generated =
+              await motionCanvasGenerator.generate(generationRequest);
+            let prepared: PreparedMotionCanvasWorkspace | null = null;
+            let repairAttempts = 0;
+            while (!prepared) {
+              try {
+                prepared = await motionCanvasWorkspace.prepare(
+                  currentProject.id,
+                  generationId,
+                  generated.scenes,
+                );
+              } catch (error) {
+                if (
+                  error instanceof MotionCanvasWorkspaceError &&
+                  error.code === 'MOTION_CANVAS_VALIDATION_FAILED' &&
+                  error.details &&
+                  motionCanvasGenerator.repair &&
+                  repairAttempts < 2
+                ) {
+                  repairAttempts += 1;
+                  generated = await motionCanvasGenerator.repair(
+                    generationRequest,
+                    generated,
+                    error.details,
+                  );
+                  continue;
+                }
+                throw error;
+              }
+            }
+            return {generated, prepared};
+          },
+        );
+        const preparedWorkspace = generation.result.prepared;
+        const motionCanvasBundle: MotionCanvasBundle = {
+          status: 'draft',
+          contentRevision:
+            (currentProject.motionCanvasBundle?.contentRevision ?? 0) + 1,
+          sourceVoiceVisualContentRevision:
+            voiceVisualPlan.contentRevision,
+          workspacePath: preparedWorkspace.workspacePath,
+          projectFile: preparedWorkspace.projectFile,
+          width: MOTION_CANVAS_WIDTH,
+          height: MOTION_CANVAS_HEIGHT,
+          fps: MOTION_CANVAS_FPS,
+          scenes: preparedWorkspace.scenes,
+          validation: preparedWorkspace.validation,
+          generation: {
+            generationId,
+            provider: 'codex',
+            model: generation.result.generated.model,
+            promptVersion: MOTION_CANVAS_PROMPT_VERSION,
+            generatedAt: generation.generatedAt,
+            usage: generation.result.generated.usage,
+          },
+        };
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {motionCanvasBundle, currentStep: 'motionCanvas'},
+          expectedRevision,
+        );
+
+        if (!updatedProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+
+        motionCanvasGenerator.discardGeneration?.(generationId);
+        sendProject(response, 200, updatedProject);
+        return;
+      }
+
+      if (
+        motionCanvasRoute?.action === 'files' &&
+        request.method === 'GET'
+      ) {
+        const currentProject = await repository.getProject(
+          motionCanvasRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        if (!currentProject.motionCanvasBundle) {
+          throw new RequestBodyError(
+            409,
+            'MOTION_CANVAS_NOT_READY',
+            'Project chưa có scene Motion Canvas.',
+          );
+        }
+
+        const files = await motionCanvasWorkspace.readFiles(
+          currentProject.id,
+          currentProject.motionCanvasBundle,
+        );
+        sendJson(response, 200, {
+          bundle: currentProject.motionCanvasBundle,
+          files,
+          serveCommand: `npm run motion:serve -- --project ${currentProject.id}`,
+        });
+        return;
+      }
+
+      if (
+        motionCanvasRoute?.action === 'approve' &&
+        request.method === 'POST'
+      ) {
+        const expectedRevision = readExpectedRevision(request);
+        const currentProject = await repository.getProject(
+          motionCanvasRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        if (currentProject.revision !== expectedRevision) {
+          throw new ProjectConflictError(currentProject);
+        }
+
+        const outline = currentProject.outline;
+        const voiceVisualPlan = currentProject.voiceVisualPlan;
+        const motionCanvasBundle = currentProject.motionCanvasBundle;
+        if (!motionCanvasBundle) {
+          throw new RequestBodyError(
+            409,
+            'MOTION_CANVAS_NOT_READY',
+            'Hãy sinh scene Motion Canvas trước khi chốt.',
+          );
+        }
+        if (
+          !outline ||
+          outline.status !== 'approved' ||
+          !voiceVisualPlan ||
+          voiceVisualPlan.status !== 'approved' ||
+          !sameValue(outline.sourceInput, currentProject.topicInput) ||
+          voiceVisualPlan.sourceOutlineContentRevision !==
+            outline.contentRevision ||
+          motionCanvasBundle.sourceVoiceVisualContentRevision !==
+            voiceVisualPlan.contentRevision ||
+          !motionCanvasMatchesOutline(motionCanvasBundle, outline)
+        ) {
+          throw new RequestBodyError(
+            409,
+            'MOTION_CANVAS_OUTDATED',
+            'Kế hoạch voice–visual đã thay đổi. Hãy sinh lại scene trước khi chốt.',
+          );
+        }
+
+        const approvedBundle: MotionCanvasBundle = {
+          ...motionCanvasBundle,
+          status: 'approved',
+        };
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {
+            motionCanvasBundle: approvedBundle,
+            currentStep: 'motionCanvas',
+          },
           expectedRevision,
         );
 
@@ -1101,6 +1473,30 @@ export function createPadStudioServer(options: AppOptions = {}) {
           code: error.code,
           message: error.message,
         });
+        return;
+      }
+
+      if (error instanceof MotionCanvasGenerationError) {
+        sendApiError(response, 503, {
+          code: error.code,
+          message: error.message,
+        });
+        return;
+      }
+
+      if (error instanceof MotionCanvasWorkspaceError) {
+        sendApiError(
+          response,
+          error.code === 'MOTION_CANVAS_WORKSPACE_CONFLICT'
+            ? 409
+            : error.code === 'MOTION_CANVAS_VALIDATION_FAILED'
+              ? 422
+              : 500,
+          {
+            code: error.code,
+            message: error.message,
+          },
+        );
         return;
       }
 

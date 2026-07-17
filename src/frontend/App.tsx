@@ -20,6 +20,7 @@ import {
   UserIcon,
 } from './icons.tsx';
 import {ProjectLibrary} from './ProjectLibrary.tsx';
+import {MotionCanvasPage} from './MotionCanvasPage.tsx';
 import {
   navigate,
   projectOutlinePath,
@@ -41,7 +42,7 @@ const pipelineSteps = [
   'Nhập chủ đề',
   'Mạch giảng',
   'Voice — visual',
-  'Sinh scene & voice',
+  'Sinh scene Motion Canvas',
   'Đồng bộ',
   'Layout Editor',
   'Render cuối',
@@ -1218,7 +1219,9 @@ export default function App() {
   const [newProjectKey, setNewProjectKey] = useState(0);
   const [projectReloadKey, setProjectReloadKey] = useState(0);
   const activeStep =
-    route.name === 'project-voice-visual'
+    route.name === 'project-motion-canvas'
+      ? 3
+      : route.name === 'project-voice-visual'
       ? 2
       : route.name === 'project-outline'
         ? 1
@@ -1289,6 +1292,12 @@ export default function App() {
         {route.name === 'project-voice-visual' && (
           <VoiceVisualPage
             key={`project-voice-visual-${route.projectId}-${projectReloadKey}`}
+            projectId={route.projectId}
+          />
+        )}
+        {route.name === 'project-motion-canvas' && (
+          <MotionCanvasPage
+            key={`project-motion-canvas-${route.projectId}-${projectReloadKey}`}
             projectId={route.projectId}
           />
         )}

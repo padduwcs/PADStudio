@@ -156,6 +156,8 @@ export async function runCodexStructuredGeneration({
   prompt,
   baseInstructions,
   developerInstructions,
+  model,
+  reasoningEffort,
 }: {
   client: CodexAppServerClient;
   runtimeDirectory: string;
@@ -164,6 +166,8 @@ export async function runCodexStructuredGeneration({
   prompt: string;
   baseInstructions: string;
   developerInstructions: string;
+  model?: string;
+  reasoningEffort?: string;
 }) {
   await mkdir(runtimeDirectory, {recursive: true});
 
@@ -245,6 +249,7 @@ export async function runCodexStructuredGeneration({
         personality: 'none',
         baseInstructions,
         developerInstructions,
+        ...(model ? {model} : {}),
       }),
     );
     threadId = threadResponse.thread.id;
@@ -260,6 +265,7 @@ export async function runCodexStructuredGeneration({
           personality: 'none',
           summary: 'none',
           outputSchema,
+          ...(reasoningEffort ? {effort: reasoningEffort} : {}),
         }),
       );
       turnId = turnResponse.turn.id;

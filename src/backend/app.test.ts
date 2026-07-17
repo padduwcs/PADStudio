@@ -18,6 +18,7 @@ import type {
 import {createPadStudioServer} from './app.ts';
 import type {CodexConnectionService} from './codexConnection.ts';
 import type {OutlineGenerator} from './outlineGenerator.ts';
+import type {MotionCanvasGenerator} from './motionCanvasGenerator.ts';
 import type {VoiceVisualGenerator} from './voiceVisualGenerator.ts';
 
 const topicInput = {
@@ -44,6 +45,7 @@ async function startTestApp(
     codexConnection?: CodexConnectionService;
     outlineGenerator?: OutlineGenerator;
     voiceVisualGenerator?: VoiceVisualGenerator;
+    motionCanvasGenerator?: MotionCanvasGenerator;
   } = {},
 ) {
   const projectsDirectory = await mkdtemp(
@@ -54,6 +56,7 @@ async function startTestApp(
     codexConnection: options.codexConnection,
     outlineGenerator: options.outlineGenerator,
     voiceVisualGenerator: options.voiceVisualGenerator,
+    motionCanvasGenerator: options.motionCanvasGenerator,
     logger: {info() {}, error() {}},
   });
 
@@ -151,7 +154,7 @@ test('API tạo, cập nhật và xóa project với revision', async (context) 
   const {project} = await createProject(baseUrl);
 
   assert.equal(project.currentStep, 'outline');
-  assert.equal(project.version, 4);
+  assert.equal(project.version, 5);
   assert.equal(project.revision, 1);
 
   const savedProject = JSON.parse(
@@ -435,9 +438,40 @@ test('API tạo, chỉnh sửa và chốt kế hoạch voice–visual an toàn',
       };
     },
   };
+  let motionGenerationCalls = 0;
+  const motionCanvasGenerator: MotionCanvasGenerator = {
+    async generate(request) {
+      motionGenerationCalls += 1;
+      return {
+        scenes: request.outline.sections.map((section, index) => ({
+          id: randomUUID(),
+          outlineSectionId: section.id,
+          name: `Scene ${index + 1}: ${section.title}`,
+          filePath: `src/scenes/0${index + 1}-scene-${index + 1}.tsx`,
+          durationSeconds: request.voiceVisualPlan.sections[
+            index
+          ]!.beats.reduce(
+            (total, beat) => total + beat.durationSeconds,
+            0,
+          ),
+          source: `import {makeScene2D, Rect} from '@motion-canvas/2d';
+import {waitFor} from '@motion-canvas/core';
+
+export default makeScene2D(function* (view) {
+  view.add(<Rect width={720} height={120} radius={24} fill={'#dbe9e2'} />);
+  yield* waitFor(10);
+});
+`,
+        })),
+        model: 'motion-canvas-test-model',
+        usage: null,
+      };
+    },
+  };
   const {baseUrl} = await startTestApp(context, {
     outlineGenerator,
     voiceVisualGenerator,
+    motionCanvasGenerator,
   });
   const {project} = await createProject(baseUrl);
 
@@ -560,15 +594,79 @@ test('API tạo, chỉnh sửa và chốt kế hoạch voice–visual an toàn',
   assert.equal(approveResponse.status, 200);
   assert.equal(approveBody.project.revision, 6);
   assert.equal(approveBody.project.voiceVisualPlan.status, 'approved');
+  assert.equal(approveBody.project.currentStep, 'motionCanvas');
 
-  const outline = approveBody.project.outline;
+  const motionGenerationId = randomUUID();
+  const motionGenerateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"6"',
+      },
+      body: JSON.stringify({generationId: motionGenerationId}),
+    },
+  );
+  const motionGenerateBody = await motionGenerateResponse.json();
+  assert.equal(motionGenerateResponse.status, 200);
+  assert.equal(motionGenerateBody.project.revision, 7);
+  assert.equal(
+    motionGenerateBody.project.motionCanvasBundle.status,
+    'draft',
+  );
+  assert.equal(
+    motionGenerateBody.project.motionCanvasBundle.scenes.length,
+    motionGenerateBody.project.outline.sections.length,
+  );
+
+  const repeatedMotionResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"6"',
+      },
+      body: JSON.stringify({generationId: motionGenerationId}),
+    },
+  );
+  const repeatedMotionBody = await repeatedMotionResponse.json();
+  assert.equal(repeatedMotionResponse.status, 200);
+  assert.equal(repeatedMotionBody.project.revision, 7);
+  assert.equal(motionGenerationCalls, 1);
+
+  const motionFilesResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/files`,
+  );
+  const motionFilesBody = await motionFilesResponse.json();
+  assert.equal(motionFilesResponse.status, 200);
+  assert.equal(motionFilesBody.files.length, 3);
+  assert.match(motionFilesBody.files[0].source, /makeProject/);
+
+  const motionApproveResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/approve`,
+    {
+      method: 'POST',
+      headers: {'If-Match': '"7"'},
+    },
+  );
+  const motionApproveBody = await motionApproveResponse.json();
+  assert.equal(motionApproveResponse.status, 200);
+  assert.equal(motionApproveBody.project.revision, 8);
+  assert.equal(
+    motionApproveBody.project.motionCanvasBundle.status,
+    'approved',
+  );
+
+  const outline = motionApproveBody.project.outline;
   const outlineUpdateResponse = await fetch(
     `${baseUrl}/api/projects/${project.id}/outline`,
     {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'If-Match': '"6"',
+        'If-Match': '"8"',
       },
       body: JSON.stringify({
         brief: outline.brief,
@@ -585,12 +683,16 @@ test('API tạo, chỉnh sửa và chốt kế hoạch voice–visual an toàn',
     outlineUpdateBody.project.voiceVisualPlan.status,
     'draft',
   );
+  assert.equal(
+    outlineUpdateBody.project.motionCanvasBundle.status,
+    'draft',
+  );
 
   const outdatedApproveResponse = await fetch(
     `${baseUrl}/api/projects/${project.id}/voice-visual/approve`,
     {
       method: 'POST',
-      headers: {'If-Match': '"7"'},
+      headers: {'If-Match': '"9"'},
     },
   );
   const outdatedApproveBody = await outdatedApproveResponse.json();
@@ -598,6 +700,21 @@ test('API tạo, chỉnh sửa và chốt kế hoạch voice–visual an toàn',
   assert.equal(
     outdatedApproveBody.error.code,
     'VOICE_VISUAL_OUTDATED',
+  );
+
+  const outdatedMotionApproveResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/approve`,
+    {
+      method: 'POST',
+      headers: {'If-Match': '"9"'},
+    },
+  );
+  const outdatedMotionApproveBody =
+    await outdatedMotionApproveResponse.json();
+  assert.equal(outdatedMotionApproveResponse.status, 409);
+  assert.equal(
+    outdatedMotionApproveBody.error.code,
+    'MOTION_CANVAS_OUTDATED',
   );
 });
 
@@ -770,7 +887,7 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
   const listBody = await listResponse.json();
 
   assert.equal(listBody.projects.length, 1);
-  assert.equal(listBody.projects[0].version, 4);
+  assert.equal(listBody.projects[0].version, 5);
   assert.equal(listBody.projects[0].revision, 1);
   assert.equal(listBody.issues.length, 2);
   assert.deepEqual(
@@ -786,7 +903,7 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
   );
   const updateBody = await updateResponse.json();
   assert.equal(updateResponse.status, 200);
-  assert.equal(updateBody.project.version, 4);
+  assert.equal(updateBody.project.version, 5);
   assert.equal(updateBody.project.revision, 2);
 
   const migratedOnDisk = JSON.parse(
@@ -795,6 +912,6 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
       'utf8',
     ),
   );
-  assert.equal(migratedOnDisk.version, 4);
+  assert.equal(migratedOnDisk.version, 5);
   assert.equal(migratedOnDisk.revision, 2);
 });

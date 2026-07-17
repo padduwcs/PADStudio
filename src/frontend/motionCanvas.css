@@ -1,0 +1,274 @@
+.motion-canvas-workspace {
+  width: min(1180px, 100%);
+  margin: 18px auto 0;
+}
+
+.motion-canvas-empty-grid,
+.motion-canvas-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 24px;
+  align-items: start;
+}
+
+.motion-canvas-empty-state {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin: 4px 28px 24px;
+  padding: 21px;
+  border: 1px dashed #cfd9d3;
+  border-radius: 14px;
+  background: #f7f8f4;
+}
+
+.motion-canvas-empty-state h3,
+.motion-canvas-empty-state p {
+  margin: 0;
+}
+
+.motion-canvas-empty-state h3 {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.motion-canvas-empty-state p {
+  margin-top: 6px;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.motion-canvas-main,
+.motion-canvas-scenes {
+  display: grid;
+  gap: 20px;
+}
+
+.motion-canvas-summary,
+.motion-canvas-scene {
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+.motion-canvas-summary {
+  padding: 24px;
+}
+
+.motion-canvas-summary > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.motion-canvas-summary h2,
+.motion-canvas-scene h2 {
+  margin: 7px 0 0;
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.motion-canvas-command {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 22px;
+  padding: 14px;
+  border: 1px solid #dfe3dd;
+  border-radius: 12px;
+  background: #f5f7f3;
+}
+
+.motion-canvas-command > div {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.motion-canvas-command span {
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.motion-canvas-command code,
+.motion-canvas-file-row code {
+  overflow: hidden;
+  color: var(--green-800);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.motion-canvas-command button {
+  flex: 0 0 auto;
+  padding: 8px 11px;
+  border: 1px solid var(--green-700);
+  border-radius: 9px;
+  color: var(--green-700);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.motion-canvas-validation {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  margin: 18px 0 0;
+  border: 1px solid #e2e5df;
+  border-radius: 11px;
+  background: #e2e5df;
+}
+
+.motion-canvas-validation div {
+  display: grid;
+  gap: 4px;
+  padding: 11px;
+  background: white;
+}
+
+.motion-canvas-validation dt {
+  color: var(--ink-soft);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.motion-canvas-validation dd {
+  overflow: hidden;
+  margin: 0;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+}
+
+.motion-canvas-scene {
+  overflow: hidden;
+}
+
+.motion-canvas-scene > header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 15px;
+  align-items: start;
+  padding: 20px 22px;
+  border-bottom: 1px solid #e5e7e1;
+  background: #f7f7f3;
+}
+
+.motion-canvas-scene > header h2 {
+  margin-top: 0;
+}
+
+.motion-canvas-scene > header p {
+  margin: 5px 0 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.motion-canvas-file-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #eceee9;
+}
+
+.motion-canvas-file-row span {
+  flex: 0 0 auto;
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+.motion-canvas-scene details {
+  padding: 0 16px 16px;
+}
+
+.motion-canvas-scene summary {
+  padding: 13px 0 10px;
+  color: var(--green-700);
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.motion-canvas-scene pre {
+  max-height: 480px;
+  overflow: auto;
+  margin: 0;
+  padding: 15px;
+  border-radius: 11px;
+  color: #dbe8e2;
+  background: #142b25;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.motion-canvas-side {
+  min-width: 0;
+}
+
+.motion-canvas-side .outline-side-card {
+  position: sticky;
+  top: 24px;
+}
+
+@media (max-width: 920px) {
+  .motion-canvas-empty-grid,
+  .motion-canvas-editor-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .motion-canvas-side .outline-side-card {
+    position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  .motion-canvas-summary {
+    padding: 18px;
+  }
+
+  .motion-canvas-summary > header,
+  .motion-canvas-command {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .motion-canvas-command button {
+    width: 100%;
+  }
+
+  .motion-canvas-validation {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .motion-canvas-scene > header {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .motion-canvas-scene > header .voice-visual-section-duration {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .motion-canvas-file-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
