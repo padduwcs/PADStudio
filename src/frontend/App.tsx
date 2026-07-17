@@ -8,6 +8,7 @@ import {
 import type {TopicProject} from '../shared/topic.ts';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {ApiRequestError, getProject} from './api.ts';
+import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -24,6 +25,7 @@ import {ProjectLibrary} from './ProjectLibrary.tsx';
 import {
   navigate,
   projectOutlinePath,
+  projectStepPath,
   projectTopicPath,
   useAppRoute,
 } from './router.ts';
@@ -32,6 +34,7 @@ import {
   type TopicFormState,
   useTopicDraft,
 } from './useTopicDraft.ts';
+import {useCodexConnection} from './useCodexConnection.ts';
 
 const pipelineSteps = [
   'Nhập chủ đề',
@@ -308,9 +311,11 @@ function BriefPreview({
 function TopicPage({
   projectId,
   onContinue,
+  autosavePaused,
 }: {
   projectId?: string;
   onContinue: (project: TopicProject) => void;
+  autosavePaused: boolean;
 }) {
   const {
     form,
@@ -323,17 +328,34 @@ function TopicPage({
     project,
     updateField,
     submit,
-  } = useTopicDraft({projectId, onContinue});
+  } = useTopicDraft({projectId, onContinue, autosavePaused});
+  const codexConnection = useCodexConnection();
+
+  async function continueWithVerifiedCodex() {
+    if (submitState === 'submitting' || codexConnection.checking) return;
+
+    const connectionStatus = await codexConnection.verify();
+    if (connectionStatus?.state !== 'connected') return;
+
+    await submit();
+  }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    await submit();
+    if (!codexConnection.connected) return;
+    await continueWithVerifiedCodex();
   }
 
   function handleFormKeyDown(event: KeyboardEvent<HTMLFormElement>) {
     if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
       event.preventDefault();
-      if (submitState !== 'submitting') void submit();
+      if (
+        submitState !== 'submitting' &&
+        saveState !== 'conflict' &&
+        codexConnection.connected
+      ) {
+        void continueWithVerifiedCodex();
+      }
     }
   }
 
@@ -511,6 +533,8 @@ function TopicPage({
                 </fieldset>
               </div>
 
+              <CodexConnectionCard connection={codexConnection} />
+
               {submitError && submitState === 'error' && (
                 <div className="submit-error" role="alert">
                   {submitError}
@@ -534,13 +558,19 @@ function TopicPage({
                 {projectId
                   ? saveState === 'saving'
                     ? 'Đang tự động lưu…'
+                    : saveState === 'conflict'
+                      ? 'Có thay đổi mới ở nơi khác'
                     : saveState === 'error'
                       ? 'Tự động lưu thất bại'
-                      : 'Đã lưu vào project'
+                      : saveState === 'idle'
+                        ? 'Có thay đổi chưa thể lưu'
+                        : 'Đã lưu vào project'
                   : 'Bản nháp lưu trên trình duyệt'}
                 <small>
                   {projectId
-                    ? 'Thay đổi hợp lệ được lưu sau 0,7 giây'
+                    ? saveState === 'conflict'
+                      ? 'Mở lại project trước khi tiếp tục chỉnh sửa'
+                      : 'Thay đổi hợp lệ được lưu sau 0,7 giây'
                     : 'Chưa gọi AI ở bước này'}
                 </small>
               </span>
@@ -548,12 +578,17 @@ function TopicPage({
                 <button
                   className="submit-button"
                   type="submit"
-                  disabled={submitState === 'submitting'}
+                  disabled={
+                    submitState === 'submitting' ||
+                    saveState === 'conflict' ||
+                    codexConnection.checking ||
+                    !codexConnection.connected
+                  }
                 >
                   {submitState === 'submitting' ? (
                     <>
                       <span className="spinner" />
-                      Đang tạo dự án…
+                      {projectId ? 'Đang lưu dự án…' : 'Đang tạo dự án…'}
                     </>
                   ) : (
                     <>
@@ -731,6 +766,7 @@ export default function App() {
   const route = useAppRoute();
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [newProjectKey, setNewProjectKey] = useState(0);
+  const [projectReloadKey, setProjectReloadKey] = useState(0);
   const activeStep = route.name === 'project-outline' ? 1 : 0;
   const activeProjectId =
     route.name === 'new-topic' ? undefined : route.projectId;
@@ -746,15 +782,13 @@ export default function App() {
   }
 
   function handleOpenProject(project: TopicProject) {
+    setProjectReloadKey((current) => current + 1);
     closeLibrary();
-    navigate(
-      project.currentStep === 'outline'
-        ? projectOutlinePath(project.id)
-        : projectTopicPath(project.id),
-    );
+    navigate(projectStepPath(project.id, project.currentStep));
   }
 
   function handleEditProject(project: TopicProject) {
+    setProjectReloadKey((current) => current + 1);
     closeLibrary();
     navigate(projectTopicPath(project.id));
   }
@@ -775,6 +809,7 @@ export default function App() {
         {route.name === 'new-topic' && (
           <TopicPage
             key={`new-topic-${newProjectKey}`}
+            autosavePaused={libraryOpen}
             onContinue={(project) =>
               navigate(projectOutlinePath(project.id), true)
             }
@@ -782,14 +817,19 @@ export default function App() {
         )}
         {route.name === 'project-topic' && (
           <TopicPage
+            key={`project-topic-${route.projectId}-${projectReloadKey}`}
             projectId={route.projectId}
+            autosavePaused={libraryOpen}
             onContinue={(project) =>
               navigate(projectOutlinePath(project.id), true)
             }
           />
         )}
         {route.name === 'project-outline' && (
-          <OutlinePage projectId={route.projectId} />
+          <OutlinePage
+            key={`project-outline-${route.projectId}-${projectReloadKey}`}
+            projectId={route.projectId}
+          />
         )}
       </main>
 

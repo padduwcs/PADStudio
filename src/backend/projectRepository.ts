@@ -9,8 +9,11 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 import {
-  TopicProjectSchema,
-  type TopicInput,
+  currentProjectVersion,
+  parseTopicProject,
+  type CreateTopicProject,
+  type ProjectListIssue,
+  type ProjectListIssueCode,
   type TopicProject,
   type UpdateTopicProject,
 } from '../shared/topic.ts';
@@ -33,14 +36,18 @@ function createProjectId(topic: string) {
 }
 
 export interface ProjectRepository {
-  createTopicProject(input: TopicInput): Promise<TopicProject>;
-  listProjects(): Promise<TopicProject[]>;
+  createTopicProject(request: CreateTopicProject): Promise<TopicProject>;
+  listProjects(): Promise<{
+    projects: TopicProject[];
+    issues: ProjectListIssue[];
+  }>;
   getProject(projectId: string): Promise<TopicProject | null>;
   updateProject(
     projectId: string,
     update: UpdateTopicProject,
+    expectedRevision: number,
   ): Promise<TopicProject | null>;
-  deleteProject(projectId: string): Promise<boolean>;
+  deleteProject(projectId: string, expectedRevision: number): Promise<boolean>;
 }
 
 function isValidProjectId(projectId: string) {
@@ -53,9 +60,57 @@ function assertProjectId(projectId: string) {
   }
 }
 
+export class ProjectConflictError extends Error {
+  readonly currentProject: TopicProject;
+
+  constructor(currentProject: TopicProject) {
+    super('Project đã được thay đổi bởi một thao tác khác.');
+    this.currentProject = currentProject;
+  }
+}
+
+export class ProjectDataError extends Error {
+  readonly projectId: string;
+  readonly code: ProjectListIssueCode;
+
+  constructor(
+    projectId: string,
+    code: ProjectListIssueCode,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
+    this.projectId = projectId;
+    this.code = code;
+  }
+}
+
 export function createFileProjectRepository(
   projectsDirectory: string,
 ): ProjectRepository {
+  const operationQueues = new Map<string, Promise<void>>();
+
+  function runSerialized<Result>(
+    key: string,
+    operation: () => Promise<Result>,
+  ): Promise<Result> {
+    const previousOperation =
+      operationQueues.get(key) ?? Promise.resolve();
+    const result = previousOperation.then(operation);
+    const settledResult = result.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    operationQueues.set(key, settledResult);
+
+    return result.finally(() => {
+      if (operationQueues.get(key) === settledResult) {
+        operationQueues.delete(key);
+      }
+    });
+  }
+
   function getProjectPaths(projectId: string) {
     assertProjectId(projectId);
     const projectDirectory = path.join(projectsDirectory, projectId);
@@ -63,30 +118,36 @@ export function createFileProjectRepository(
     return {
       projectDirectory,
       projectFile: path.join(projectDirectory, 'project.json'),
-      temporaryFile: path.join(projectDirectory, 'project.json.tmp'),
     };
   }
 
   async function writeProject(project: TopicProject) {
-    const {projectDirectory, projectFile, temporaryFile} = getProjectPaths(
-      project.id,
+    const {projectDirectory, projectFile} = getProjectPaths(project.id);
+    const temporaryFile = path.join(
+      projectDirectory,
+      `project.json.${randomUUID()}.tmp`,
     );
 
     await mkdir(projectDirectory, {recursive: true});
-    await writeFile(
-      temporaryFile,
-      `${JSON.stringify(project, null, 2)}\n`,
-      'utf8',
-    );
-    await rename(temporaryFile, projectFile);
+
+    try {
+      await writeFile(
+        temporaryFile,
+        `${JSON.stringify(project, null, 2)}\n`,
+        'utf8',
+      );
+      await rename(temporaryFile, projectFile);
+    } finally {
+      await rm(temporaryFile, {force: true}).catch(() => undefined);
+    }
   }
 
   async function readProject(projectId: string) {
     const {projectFile} = getProjectPaths(projectId);
+    let fileContents: string;
 
     try {
-      const project = JSON.parse(await readFile(projectFile, 'utf8'));
-      return TopicProjectSchema.parse(project);
+      fileContents = await readFile(projectFile, 'utf8');
     } catch (error) {
       if (
         error &&
@@ -97,74 +158,214 @@ export function createFileProjectRepository(
         return null;
       }
 
-      throw error;
+      throw new ProjectDataError(
+        projectId,
+        'PROJECT_READ_ERROR',
+        `Không thể đọc dữ liệu của project “${projectId}”.`,
+        {cause: error},
+      );
+    }
+
+    let storedProject: unknown;
+
+    try {
+      storedProject = JSON.parse(fileContents);
+    } catch (error) {
+      throw new ProjectDataError(
+        projectId,
+        'INVALID_PROJECT_DATA',
+        `Dữ liệu của project “${projectId}” không phải JSON hợp lệ.`,
+        {cause: error},
+      );
+    }
+
+    try {
+      return parseTopicProject(storedProject);
+    } catch (error) {
+      const storedVersion =
+        storedProject &&
+        typeof storedProject === 'object' &&
+        'version' in storedProject
+          ? storedProject.version
+          : undefined;
+      const unsupportedVersion =
+        typeof storedVersion === 'number' &&
+        storedVersion > currentProjectVersion;
+
+      throw new ProjectDataError(
+        projectId,
+        unsupportedVersion
+          ? 'UNSUPPORTED_PROJECT_VERSION'
+          : 'INVALID_PROJECT_DATA',
+        unsupportedVersion
+          ? `Project “${projectId}” dùng phiên bản dữ liệu mới hơn ứng dụng hiện tại.`
+          : `Dữ liệu của project “${projectId}” không đúng cấu trúc hỗ trợ.`,
+        {cause: error},
+      );
     }
   }
 
-  return {
-    async createTopicProject(input) {
-      const now = new Date().toISOString();
-      const project: TopicProject = {
-        id: createProjectId(input.topic),
-        version: 1,
-        status: 'draft',
-        currentStep: 'topic',
-        topicInput: input,
-        createdAt: now,
-        updatedAt: now,
-      };
+  async function listProjectRecords() {
+    await mkdir(projectsDirectory, {recursive: true});
+    const entries = await readdir(projectsDirectory, {withFileTypes: true});
+    const projectEntries = entries.filter(
+      (entry) => entry.isDirectory() && isValidProjectId(entry.name),
+    );
+    const results = await Promise.all(
+      projectEntries.map(async (entry) => {
+        try {
+          return {
+            project: await readProject(entry.name),
+            issue: null,
+          };
+        } catch (error) {
+          const issue: ProjectListIssue =
+            error instanceof ProjectDataError
+              ? {
+                  projectId: error.projectId,
+                  code: error.code,
+                  message: error.message,
+                }
+              : {
+                  projectId: entry.name,
+                  code: 'PROJECT_READ_ERROR',
+                  message: `Không thể đọc dữ liệu của project “${entry.name}”.`,
+                };
 
-      await writeProject(project);
-      return project;
+          return {project: null, issue};
+        }
+      }),
+    );
+
+    return {
+      projects: results
+        .map((result) => result.project)
+        .filter((project): project is TopicProject => project !== null)
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
+      issues: results
+        .map((result) => result.issue)
+        .filter((issue): issue is ProjectListIssue => issue !== null),
+    };
+  }
+
+  function updateAlreadyApplied(
+    project: TopicProject,
+    update: UpdateTopicProject,
+  ) {
+    return (
+      (update.topicInput === undefined ||
+        JSON.stringify(update.topicInput) ===
+          JSON.stringify(project.topicInput)) &&
+      (update.currentStep === undefined ||
+        update.currentStep === project.currentStep)
+    );
+  }
+
+  async function applyUpdate(
+    currentProject: TopicProject,
+    update: UpdateTopicProject,
+  ) {
+    if (updateAlreadyApplied(currentProject, update)) {
+      return currentProject;
+    }
+
+    const project: TopicProject = {
+      ...currentProject,
+      ...(update.topicInput ? {topicInput: update.topicInput} : {}),
+      ...(update.currentStep ? {currentStep: update.currentStep} : {}),
+      revision: currentProject.revision + 1,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await writeProject(project);
+    return project;
+  }
+
+  return {
+    async createTopicProject(request) {
+      return runSerialized(`creation:${request.creationId}`, async () => {
+        const {projects} = await listProjectRecords();
+        const existingProject = projects.find(
+          (project) => project.creationId === request.creationId,
+        );
+
+        if (existingProject) {
+          return runSerialized(existingProject.id, async () => {
+            const currentProject = await readProject(existingProject.id);
+            if (!currentProject) {
+              throw new Error('Project vừa được tạo không còn tồn tại.');
+            }
+
+            const requestedState = {
+              topicInput: request.topicInput,
+              currentStep: request.currentStep,
+            };
+
+            if (updateAlreadyApplied(currentProject, requestedState)) {
+              return currentProject;
+            }
+
+            throw new ProjectConflictError(currentProject);
+          });
+        }
+
+        const now = new Date().toISOString();
+        const project: TopicProject = {
+          id: createProjectId(request.topicInput.topic),
+          version: currentProjectVersion,
+          revision: 1,
+          creationId: request.creationId,
+          status: 'draft',
+          currentStep: request.currentStep,
+          topicInput: request.topicInput,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        await runSerialized(project.id, () => writeProject(project));
+        return project;
+      });
     },
 
     async listProjects() {
-      await mkdir(projectsDirectory, {recursive: true});
-      const entries = await readdir(projectsDirectory, {withFileTypes: true});
-      const projectResults = await Promise.allSettled(
-        entries
-          .filter(
-            (entry) => entry.isDirectory() && isValidProjectId(entry.name),
-          )
-          .map((entry) => readProject(entry.name)),
-      );
-
-      return projectResults
-        .filter(
-          (
-            result,
-          ): result is PromiseFulfilledResult<TopicProject | null> =>
-            result.status === 'fulfilled',
-        )
-        .map((result) => result.value)
-        .filter((project): project is TopicProject => project !== null)
-        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+      return listProjectRecords();
     },
 
     getProject: readProject,
 
-    async updateProject(projectId, update) {
-      const currentProject = await readProject(projectId);
-      if (!currentProject) return null;
+    async updateProject(projectId, update, expectedRevision) {
+      return runSerialized(projectId, async () => {
+        const currentProject = await readProject(projectId);
+        if (!currentProject) return null;
 
-      const project: TopicProject = {
-        ...currentProject,
-        ...(update.topicInput ? {topicInput: update.topicInput} : {}),
-        ...(update.currentStep ? {currentStep: update.currentStep} : {}),
-        updatedAt: new Date().toISOString(),
-      };
+        if (currentProject.revision !== expectedRevision) {
+          if (
+            expectedRevision < currentProject.revision &&
+            updateAlreadyApplied(currentProject, update)
+          ) {
+            return currentProject;
+          }
 
-      await writeProject(project);
-      return project;
+          throw new ProjectConflictError(currentProject);
+        }
+
+        return applyUpdate(currentProject, update);
+      });
     },
 
-    async deleteProject(projectId) {
-      const project = await readProject(projectId);
-      if (!project) return false;
+    async deleteProject(projectId, expectedRevision) {
+      return runSerialized(projectId, async () => {
+        const project = await readProject(projectId);
+        if (!project) return false;
 
-      const {projectDirectory} = getProjectPaths(projectId);
-      await rm(projectDirectory, {recursive: true, force: false});
-      return true;
+        if (project.revision !== expectedRevision) {
+          throw new ProjectConflictError(project);
+        }
+
+        const {projectDirectory} = getProjectPaths(projectId);
+        await rm(projectDirectory, {recursive: true, force: false});
+        return true;
+      });
     },
   };
 }

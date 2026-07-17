@@ -1,5 +1,8 @@
 import {useEffect, useState} from 'react';
-import type {TopicProject} from '../shared/topic.ts';
+import type {
+  ProjectListIssue,
+  TopicProject,
+} from '../shared/topic.ts';
 import {ApiRequestError, deleteProject, listProjects} from './api.ts';
 import {
   ArrowRightIcon,
@@ -44,6 +47,7 @@ export function ProjectLibrary({
   onDeleted: (projectId: string) => void;
 }) {
   const [projects, setProjects] = useState<TopicProject[]>([]);
+  const [issues, setIssues] = useState<ProjectListIssue[]>([]);
   const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [error, setError] = useState('');
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -55,12 +59,15 @@ export function ProjectLibrary({
     let active = true;
     setState('loading');
     setError('');
+    setProjects([]);
+    setIssues([]);
     setConfirmingId(null);
 
     void listProjects()
       .then((projectList) => {
         if (!active) return;
-        setProjects(projectList);
+        setProjects(projectList.projects);
+        setIssues(projectList.issues);
         setState('idle');
       })
       .catch((requestError) => {
@@ -95,18 +102,31 @@ export function ProjectLibrary({
     };
   }, [onClose, open]);
 
-  async function handleDelete(projectId: string) {
-    setDeletingId(projectId);
+  async function handleDelete(project: TopicProject) {
+    setDeletingId(project.id);
     setError('');
 
     try {
-      await deleteProject(projectId);
+      await deleteProject(project.id, project.revision);
       setProjects((current) =>
-        current.filter((project) => project.id !== projectId),
+        current.filter((item) => item.id !== project.id),
       );
       setConfirmingId(null);
-      onDeleted(projectId);
+      onDeleted(project.id);
     } catch (requestError) {
+      if (
+        requestError instanceof ApiRequestError &&
+        requestError.code === 'PROJECT_CONFLICT' &&
+        requestError.currentProject
+      ) {
+        setProjects((current) =>
+          current.map((item) =>
+            item.id === project.id ? requestError.currentProject! : item,
+          ),
+        );
+        setConfirmingId(null);
+      }
+
       setError(
         requestError instanceof ApiRequestError
           ? requestError.message
@@ -168,6 +188,19 @@ export function ProjectLibrary({
           </div>
         )}
 
+        {issues.length > 0 && (
+          <div className="library-warning" role="status">
+            <strong>
+              {issues.length} project chưa thể đọc
+            </strong>
+            <ul>
+              {issues.map((issue) => (
+                <li key={issue.projectId}>{issue.message}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div className="project-list">
           {state === 'loading' && (
             <div className="library-loading" role="status">
@@ -224,7 +257,7 @@ export function ProjectLibrary({
                     <button
                       type="button"
                       disabled={isDeleting}
-                      onClick={() => void handleDelete(project.id)}
+                      onClick={() => void handleDelete(project)}
                     >
                       {isDeleting ? 'Đang xóa…' : 'Xóa'}
                     </button>

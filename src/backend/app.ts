@@ -4,12 +4,20 @@ import {createServer, type IncomingMessage, type ServerResponse} from 'node:http
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
-  TopicInputSchema,
+  CreateTopicProjectSchema,
   UpdateTopicProjectSchema,
   type ApiErrorPayload,
+  type TopicProject,
 } from '../shared/topic.ts';
 import {
+  CodexConnectionError,
+  createCodexConnectionService,
+  type CodexConnectionService,
+} from './codexConnection.ts';
+import {
   createFileProjectRepository,
+  ProjectConflictError,
+  ProjectDataError,
   type ProjectRepository,
 } from './projectRepository.ts';
 
@@ -31,6 +39,7 @@ interface AppOptions {
   projectsDirectory?: string;
   frontendDirectory?: string;
   repository?: ProjectRepository;
+  codexConnection?: CodexConnectionService;
   logger?: Pick<Console, 'error' | 'info'>;
 }
 
@@ -38,12 +47,27 @@ function sendJson(
   response: ServerResponse,
   statusCode: number,
   payload: unknown,
+  headers: Record<string, string> = {},
 ) {
   response.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
+    ...headers,
   });
   response.end(JSON.stringify(payload));
+}
+
+function sendProject(
+  response: ServerResponse,
+  statusCode: number,
+  project: TopicProject,
+) {
+  sendJson(
+    response,
+    statusCode,
+    {project},
+    {ETag: `"${project.revision}"`},
+  );
 }
 
 function sendApiError(
@@ -99,13 +123,51 @@ class RequestBodyError extends Error {
   }
 }
 
+function readExpectedRevision(request: IncomingMessage) {
+  const header = request.headers['if-match'];
+  const value = Array.isArray(header) ? header[0] : header;
+
+  if (!value) {
+    throw new RequestBodyError(
+      428,
+      'PRECONDITION_REQUIRED',
+      'Cần gửi revision hiện tại của project trước khi thay đổi.',
+    );
+  }
+
+  const match = /^(?:"([1-9]\d*)"|([1-9]\d*))$/.exec(value.trim());
+  const revisionValue = match?.[1] ?? match?.[2];
+  if (!revisionValue) {
+    throw new RequestBodyError(
+      400,
+      'INVALID_PRECONDITION',
+      'Revision của project không hợp lệ.',
+    );
+  }
+
+  const revision = Number(revisionValue);
+  if (!Number.isSafeInteger(revision)) {
+    throw new RequestBodyError(
+      400,
+      'INVALID_PRECONDITION',
+      'Revision của project không hợp lệ.',
+    );
+  }
+
+  return revision;
+}
+
 function validationFields(
   issues: Array<{path: PropertyKey[]; message: string}>,
 ) {
   const fields: Record<string, string[]> = {};
 
   for (const issue of issues) {
-    const field = String(issue.path[0] ?? 'form');
+    const field = String(
+      issue.path[0] === 'topicInput'
+        ? (issue.path[1] ?? 'form')
+        : (issue.path[0] ?? 'form'),
+    );
     fields[field] ??= [];
     fields[field].push(issue.message);
   }
@@ -198,9 +260,11 @@ export function createPadStudioServer(options: AppOptions = {}) {
     path.resolve(moduleDirectory, '../../dist/frontend');
   const repository =
     options.repository ?? createFileProjectRepository(projectsDirectory);
+  const codexConnection =
+    options.codexConnection ?? createCodexConnectionService();
   const logger = options.logger ?? console;
 
-  return createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     try {
       const requestUrl = new URL(request.url ?? '/', 'http://localhost');
 
@@ -209,15 +273,33 @@ export function createPadStudioServer(options: AppOptions = {}) {
         return;
       }
 
+      if (
+        requestUrl.pathname === '/api/integrations/codex/status' &&
+        request.method === 'GET'
+      ) {
+        const status = await codexConnection.verifyConnection();
+        sendJson(response, 200, {status});
+        return;
+      }
+
+      if (
+        requestUrl.pathname === '/api/integrations/codex/login' &&
+        request.method === 'POST'
+      ) {
+        const login = await codexConnection.startChatGptLogin();
+        sendJson(response, 200, {login});
+        return;
+      }
+
       if (requestUrl.pathname === '/api/projects' && request.method === 'GET') {
-        const projects = await repository.listProjects();
-        sendJson(response, 200, {projects});
+        const projectList = await repository.listProjects();
+        sendJson(response, 200, projectList);
         return;
       }
 
       if (requestUrl.pathname === '/api/projects' && request.method === 'POST') {
         const body = await readJsonBody(request);
-        const parsedInput = TopicInputSchema.safeParse(body);
+        const parsedInput = CreateTopicProjectSchema.safeParse(body);
 
         if (!parsedInput.success) {
           sendApiError(response, 422, {
@@ -229,7 +311,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
         }
 
         const project = await repository.createTopicProject(parsedInput.data);
-        sendJson(response, 201, {project});
+        sendProject(response, 201, project);
         return;
       }
 
@@ -246,11 +328,12 @@ export function createPadStudioServer(options: AppOptions = {}) {
           return;
         }
 
-        sendJson(response, 200, {project});
+        sendProject(response, 200, project);
         return;
       }
 
       if (projectId && request.method === 'PUT') {
+        const expectedRevision = readExpectedRevision(request);
         const body = await readJsonBody(request);
         const parsedUpdate = UpdateTopicProjectSchema.safeParse(body);
 
@@ -266,6 +349,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
         const project = await repository.updateProject(
           projectId,
           parsedUpdate.data,
+          expectedRevision,
         );
 
         if (!project) {
@@ -276,20 +360,13 @@ export function createPadStudioServer(options: AppOptions = {}) {
           return;
         }
 
-        sendJson(response, 200, {project});
+        sendProject(response, 200, project);
         return;
       }
 
       if (projectId && request.method === 'DELETE') {
-        const deleted = await repository.deleteProject(projectId);
-
-        if (!deleted) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
+        const expectedRevision = readExpectedRevision(request);
+        await repository.deleteProject(projectId, expectedRevision);
 
         response.writeHead(204, {'Cache-Control': 'no-store'});
         response.end();
@@ -322,6 +399,32 @@ export function createPadStudioServer(options: AppOptions = {}) {
         return;
       }
 
+      if (error instanceof ProjectConflictError) {
+        sendApiError(response, 409, {
+          code: 'PROJECT_CONFLICT',
+          message:
+            'Project vừa được thay đổi ở nơi khác. Hãy kiểm tra dữ liệu mới trước khi thử lại.',
+          currentProject: error.currentProject,
+        });
+        return;
+      }
+
+      if (error instanceof ProjectDataError) {
+        sendApiError(response, 422, {
+          code: error.code,
+          message: error.message,
+        });
+        return;
+      }
+
+      if (error instanceof CodexConnectionError) {
+        sendApiError(response, 503, {
+          code: error.code,
+          message: error.message,
+        });
+        return;
+      }
+
       logger.error(error);
       sendApiError(response, 500, {
         code: 'INTERNAL_ERROR',
@@ -329,4 +432,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
       });
     }
   });
+
+  server.on('close', () => codexConnection.close());
+  return server;
 }

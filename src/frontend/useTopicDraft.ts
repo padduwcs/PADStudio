@@ -1,8 +1,10 @@
-import {useEffect, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import {
+  CreationIdSchema,
   TopicInputSchema,
   type TopicInput,
   type TopicProject,
+  type UpdateTopicProject,
 } from '../shared/topic.ts';
 import {
   ApiRequestError,
@@ -10,11 +12,18 @@ import {
   getProject,
   updateTopicProject,
 } from './api.ts';
+import {ProjectOperationQueue} from './projectOperationQueue.ts';
 
 const STORAGE_KEY = 'pad-studio:topic-form:v1';
+const CREATION_ID_KEY = 'pad-studio:topic-creation-id:v1';
 
 export function clearLocalTopicDraft() {
-  localStorage.removeItem(STORAGE_KEY);
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(CREATION_ID_KEY);
+  } catch {
+    // Browser draft persistence is best-effort.
+  }
 }
 
 export interface TopicFormState {
@@ -27,7 +36,12 @@ export interface TopicFormState {
 type FieldErrors = Partial<Record<keyof TopicFormState, string>>;
 type SubmitState = 'idle' | 'submitting' | 'success' | 'error';
 type LoadState = 'loading' | 'ready' | 'error';
-export type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+export type SaveState =
+  | 'idle'
+  | 'saving'
+  | 'saved'
+  | 'error'
+  | 'conflict';
 
 const initialForm: TopicFormState = {
   topic: '',
@@ -59,6 +73,20 @@ function loadLocalDraft(): TopicFormState {
     };
   } catch {
     return initialForm;
+  }
+}
+
+function getOrCreateCreationId() {
+  try {
+    const storedValue = localStorage.getItem(CREATION_ID_KEY);
+    const storedCreationId = CreationIdSchema.safeParse(storedValue);
+    if (storedCreationId.success) return storedCreationId.data;
+
+    const creationId = crypto.randomUUID();
+    localStorage.setItem(CREATION_ID_KEY, creationId);
+    return creationId;
+  } catch {
+    return crypto.randomUUID();
   }
 }
 
@@ -94,9 +122,11 @@ function getFieldErrors(
 export function useTopicDraft({
   projectId,
   onContinue,
+  autosavePaused = false,
 }: {
   projectId?: string;
   onContinue: (project: TopicProject) => void;
+  autosavePaused?: boolean;
 }) {
   const [form, setForm] = useState<TopicFormState>(() =>
     projectId ? initialForm : loadLocalDraft(),
@@ -110,9 +140,52 @@ export function useTopicDraft({
   const [loadError, setLoadError] = useState('');
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [project, setProject] = useState<TopicProject | null>(null);
+  const projectRef = useRef<TopicProject | null>(null);
+  const projectSessionRef = useRef(0);
+  const operationQueueRef = useRef(new ProjectOperationQueue());
+  const creationIdRef = useRef<string | null>(
+    projectId ? null : getOrCreateCreationId(),
+  );
+
+  const enqueueProjectUpdate = useCallback(
+    (update: UpdateTopicProject) => {
+      const targetProjectId = projectId;
+      const targetSession = projectSessionRef.current;
+      const queue = operationQueueRef.current;
+
+      return queue.enqueue(async () => {
+        const currentProject = projectRef.current;
+        if (
+          !targetProjectId ||
+          projectSessionRef.current !== targetSession ||
+          currentProject?.id !== targetProjectId
+        ) {
+          throw new ProjectOperationCancelledError();
+        }
+
+        const updatedProject = await updateTopicProject(
+          targetProjectId,
+          update,
+          currentProject.revision,
+        );
+
+        if (projectSessionRef.current === targetSession) {
+          projectRef.current = updatedProject;
+          setProject(updatedProject);
+        }
+
+        return updatedProject;
+      });
+    },
+    [projectId],
+  );
 
   useEffect(() => {
     let active = true;
+    const session = projectSessionRef.current + 1;
+    projectSessionRef.current = session;
+    operationQueueRef.current = new ProjectOperationQueue();
+    projectRef.current = null;
     setFieldErrors({});
     setSubmitError('');
     setSubmitState('idle');
@@ -121,6 +194,7 @@ export function useTopicDraft({
     if (!projectId) {
       setForm(loadLocalDraft());
       setProject(null);
+      creationIdRef.current = getOrCreateCreationId();
       setLoadState('ready');
       setSaveState('idle');
       return () => {
@@ -133,7 +207,8 @@ export function useTopicDraft({
 
     void getProject(projectId)
       .then((loadedProject) => {
-        if (!active) return;
+        if (!active || projectSessionRef.current !== session) return;
+        projectRef.current = loadedProject;
         setProject(loadedProject);
         setForm(toFormState(loadedProject.topicInput));
         setLoadState('ready');
@@ -169,7 +244,9 @@ export function useTopicDraft({
       !projectId ||
       !project ||
       loadState !== 'ready' ||
-      submitState === 'submitting'
+      submitState === 'submitting' ||
+      autosavePaused ||
+      saveState === 'conflict'
     ) {
       return;
     }
@@ -191,15 +268,21 @@ export function useTopicDraft({
     const timeout = window.setTimeout(() => {
       setSaveState('saving');
 
-      void updateTopicProject(projectId, {topicInput: parsedInput.data})
-        .then((updatedProject) => {
+      void enqueueProjectUpdate({topicInput: parsedInput.data})
+        .then(() => {
           if (!active) return;
-          setProject(updatedProject);
           setSaveState('saved');
         })
-        .catch(() => {
+        .catch((error) => {
           if (!active) return;
-          setSaveState('error');
+
+          if (error instanceof ProjectOperationCancelledError) return;
+          setSaveState(
+            error instanceof ApiRequestError &&
+              error.code === 'PROJECT_CONFLICT'
+              ? 'conflict'
+              : 'error',
+          );
         });
     }, 700);
 
@@ -207,7 +290,15 @@ export function useTopicDraft({
       active = false;
       window.clearTimeout(timeout);
     };
-  }, [form, loadState, project, projectId, submitState]);
+  }, [
+    autosavePaused,
+    enqueueProjectUpdate,
+    form,
+    loadState,
+    project,
+    projectId,
+    submitState,
+  ]);
 
   function updateField<Key extends keyof TopicFormState>(
     field: Key,
@@ -237,20 +328,20 @@ export function useTopicDraft({
     setSubmitState('submitting');
 
     try {
-      const baseProject = projectId
-        ? await updateTopicProject(projectId, {
+      const continuedProject = projectId
+        ? await enqueueProjectUpdate({
             topicInput: parsedInput.data,
             currentStep: 'outline',
           })
-        : await createTopicProject(parsedInput.data);
-      const continuedProject =
-        baseProject.currentStep === 'outline'
-          ? baseProject
-          : await updateTopicProject(baseProject.id, {
-              currentStep: 'outline',
-            });
+        : await createTopicProject({
+            creationId: creationIdRef.current ?? getOrCreateCreationId(),
+            topicInput: parsedInput.data,
+            currentStep: 'outline',
+          });
 
       clearLocalTopicDraft();
+      creationIdRef.current = null;
+      projectRef.current = continuedProject;
       setProject(continuedProject);
       setSaveState('saved');
       setSubmitState('success');
@@ -263,7 +354,14 @@ export function useTopicDraft({
           serverErrors[field as keyof TopicFormState] = messages[0];
         }
         setFieldErrors(serverErrors);
-        setSubmitError(error.message);
+        setSubmitError(
+          error.code === 'PROJECT_CONFLICT'
+            ? `${error.message} Hãy mở lại project để tránh ghi đè thay đổi mới.`
+            : error.message,
+        );
+        if (error.code === 'PROJECT_CONFLICT') {
+          setSaveState('conflict');
+        }
       } else {
         setSubmitError('Đã có lỗi ngoài dự kiến. Hãy thử lại.');
       }
@@ -286,3 +384,5 @@ export function useTopicDraft({
     submit,
   };
 }
+
+class ProjectOperationCancelledError extends Error {}

@@ -1,24 +1,39 @@
 import {useEffect, useState} from 'react';
+import type {ProjectStep} from '../shared/topic.ts';
 
 export type AppRoute =
   | {name: 'new-topic'}
   | {name: 'project-topic'; projectId: string}
   | {name: 'project-outline'; projectId: string};
 
-function parseRoute(pathname: string): AppRoute {
+function decodeProjectId(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return null;
+  }
+}
+
+export function parseRoute(pathname: string): AppRoute {
   const topicMatch = /^\/projects\/([^/]+)\/topic\/?$/.exec(pathname);
   if (topicMatch?.[1]) {
+    const projectId = decodeProjectId(topicMatch[1]);
+    if (!projectId) return {name: 'new-topic'};
+
     return {
       name: 'project-topic',
-      projectId: decodeURIComponent(topicMatch[1]),
+      projectId,
     };
   }
 
   const outlineMatch = /^\/projects\/([^/]+)\/outline\/?$/.exec(pathname);
   if (outlineMatch?.[1]) {
+    const projectId = decodeProjectId(outlineMatch[1]);
+    if (!projectId) return {name: 'new-topic'};
+
     return {
       name: 'project-outline',
-      projectId: decodeURIComponent(outlineMatch[1]),
+      projectId,
     };
   }
 
@@ -38,6 +53,15 @@ export function projectTopicPath(projectId: string) {
 
 export function projectOutlinePath(projectId: string) {
   return `/projects/${encodeURIComponent(projectId)}/outline`;
+}
+
+const projectStepPaths = {
+  topic: projectTopicPath,
+  outline: projectOutlinePath,
+} satisfies Record<ProjectStep, (projectId: string) => string>;
+
+export function projectStepPath(projectId: string, step: ProjectStep) {
+  return projectStepPaths[step](projectId);
 }
 
 export function useAppRoute() {
