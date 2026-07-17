@@ -17,6 +17,7 @@ import type {
 } from '../shared/topic.ts';
 import {createPadStudioServer} from './app.ts';
 import type {CodexConnectionService} from './codexConnection.ts';
+import type {OutlineGenerator} from './outlineGenerator.ts';
 
 const topicInput = {
   topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
@@ -38,7 +39,10 @@ function createRequest(
 
 async function startTestApp(
   context: TestContext,
-  options: {codexConnection?: CodexConnectionService} = {},
+  options: {
+    codexConnection?: CodexConnectionService;
+    outlineGenerator?: OutlineGenerator;
+  } = {},
 ) {
   const projectsDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-studio-test-'),
@@ -46,6 +50,7 @@ async function startTestApp(
   const server = createPadStudioServer({
     projectsDirectory,
     codexConnection: options.codexConnection,
+    outlineGenerator: options.outlineGenerator,
     logger: {info() {}, error() {}},
   });
 
@@ -143,7 +148,7 @@ test('API tạo, cập nhật và xóa project với revision', async (context) 
   const {project} = await createProject(baseUrl);
 
   assert.equal(project.currentStep, 'outline');
-  assert.equal(project.version, 2);
+  assert.equal(project.version, 3);
   assert.equal(project.revision, 1);
 
   const savedProject = JSON.parse(
@@ -206,6 +211,153 @@ test('API tạo, cập nhật và xóa project với revision', async (context) 
     `${baseUrl}/api/projects/${project.id}`,
   );
   assert.equal(missingResponse.status, 404);
+});
+
+test('API tạo, chỉnh sửa và chốt mạch giảng an toàn', async (context) => {
+  let generationCalls = 0;
+  const outlineGenerator: OutlineGenerator = {
+    async generate() {
+      generationCalls += 1;
+      return {
+        content: {
+          brief: {
+            summary:
+              'Video ngắn giải thích trực giác chia đôi cho người mới học.',
+            assumptions: ['Dữ liệu đầu vào đã được sắp xếp.'],
+          },
+          centralMessage:
+            'Mỗi lần so sánh giúp loại bỏ một nửa vùng cần tìm.',
+          sections: [
+            {
+              id: randomUUID(),
+              title: 'Đặt vấn đề',
+              goal: 'Nhận ra hạn chế của việc tìm kiếm lần lượt.',
+              content:
+                'Bắt đầu với nhu cầu tìm một giá trị trong một dãy dài.',
+              estimatedSeconds: 30,
+            },
+            {
+              id: randomUUID(),
+              title: 'Trực giác chia đôi',
+              goal: 'Hiểu vì sao có thể bỏ một nửa dữ liệu.',
+              content:
+                'So sánh với phần tử giữa và chỉ giữ nửa có thể chứa mục tiêu.',
+              estimatedSeconds: 60,
+            },
+          ],
+        },
+        model: 'test-model',
+        usage: {
+          inputTokens: 120,
+          cachedInputTokens: 0,
+          outputTokens: 80,
+          reasoningOutputTokens: 20,
+          totalTokens: 220,
+        },
+      };
+    },
+  };
+  const {baseUrl} = await startTestApp(context, {outlineGenerator});
+  const {project} = await createProject(baseUrl);
+  const generationId = randomUUID();
+
+  const generateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${project.revision}"`,
+      },
+      body: JSON.stringify({generationId}),
+    },
+  );
+  const generateBody = await generateResponse.json();
+
+  assert.equal(generateResponse.status, 200);
+  assert.equal(generateBody.project.revision, 2);
+  assert.equal(generateBody.project.outline.status, 'draft');
+  assert.equal(generateBody.project.outline.generation.model, 'test-model');
+  assert.equal(
+    generateBody.project.outline.generation.usage.totalTokens,
+    220,
+  );
+
+  const repeatedResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${project.revision}"`,
+      },
+      body: JSON.stringify({generationId}),
+    },
+  );
+  const repeatedBody = await repeatedResponse.json();
+  assert.equal(repeatedResponse.status, 200);
+  assert.equal(repeatedBody.project.revision, 2);
+  assert.equal(generationCalls, 1);
+
+  const generatedOutline = generateBody.project.outline;
+  const updateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"2"',
+      },
+      body: JSON.stringify({
+        brief: generatedOutline.brief,
+        centralMessage:
+          'Mỗi bước tìm kiếm loại bỏ chính xác một nửa vùng còn lại.',
+        sections: generatedOutline.sections,
+      }),
+    },
+  );
+  const updateBody = await updateResponse.json();
+  assert.equal(updateResponse.status, 200);
+  assert.equal(updateBody.project.revision, 3);
+  assert.equal(updateBody.project.outline.contentRevision, 2);
+
+  const approveResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/approve`,
+    {
+      method: 'POST',
+      headers: {'If-Match': '"3"'},
+    },
+  );
+  const approveBody = await approveResponse.json();
+  assert.equal(approveResponse.status, 200);
+  assert.equal(approveBody.project.revision, 4);
+  assert.equal(approveBody.project.outline.status, 'approved');
+
+  const topicUpdateResponse = await updateProject(
+    baseUrl,
+    project.id,
+    4,
+    {
+      topicInput: {
+        ...project.topicInput,
+        videoDirection: 'Video dọc 60 giây, nhịp nhanh.',
+      },
+    },
+  );
+  const topicUpdateBody = await topicUpdateResponse.json();
+  assert.equal(topicUpdateResponse.status, 200);
+  assert.equal(topicUpdateBody.project.outline.status, 'draft');
+
+  const outdatedApproveResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/approve`,
+    {
+      method: 'POST',
+      headers: {'If-Match': '"5"'},
+    },
+  );
+  const outdatedApproveBody = await outdatedApproveResponse.json();
+  assert.equal(outdatedApproveResponse.status, 409);
+  assert.equal(outdatedApproveBody.error.code, 'OUTLINE_OUTDATED');
 });
 
 test('POST /api/projects trả lỗi đúng field khi input không hợp lệ', async (context) => {
@@ -377,7 +529,7 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
   const listBody = await listResponse.json();
 
   assert.equal(listBody.projects.length, 1);
-  assert.equal(listBody.projects[0].version, 2);
+  assert.equal(listBody.projects[0].version, 3);
   assert.equal(listBody.projects[0].revision, 1);
   assert.equal(listBody.issues.length, 2);
   assert.deepEqual(
@@ -393,7 +545,7 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
   );
   const updateBody = await updateResponse.json();
   assert.equal(updateResponse.status, 200);
-  assert.equal(updateBody.project.version, 2);
+  assert.equal(updateBody.project.version, 3);
   assert.equal(updateBody.project.revision, 2);
 
   const migratedOnDisk = JSON.parse(
@@ -402,6 +554,6 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
       'utf8',
     ),
   );
-  assert.equal(migratedOnDisk.version, 2);
+  assert.equal(migratedOnDisk.version, 3);
   assert.equal(migratedOnDisk.revision, 2);
 });

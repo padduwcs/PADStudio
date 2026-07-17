@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
   parseTopicProject,
   TopicInputSchema,
-  UpdateTopicProjectSchema,
+  UpdateProjectSchema,
 } from './topic.ts';
 
 test('TopicInputSchema chuẩn hóa khoảng trắng ở đầu và cuối', () => {
@@ -31,10 +31,10 @@ test('TopicInputSchema từ chối chủ đề quá mơ hồ', () => {
   assert.equal(result.success, false);
 });
 
-test('UpdateTopicProjectSchema yêu cầu ít nhất một thay đổi', () => {
-  assert.equal(UpdateTopicProjectSchema.safeParse({}).success, false);
+test('UpdateProjectSchema yêu cầu ít nhất một thay đổi', () => {
+  assert.equal(UpdateProjectSchema.safeParse({}).success, false);
   assert.equal(
-    UpdateTopicProjectSchema.safeParse({currentStep: 'outline'}).success,
+    UpdateProjectSchema.safeParse({currentStep: 'outline'}).success,
     true,
   );
 });
@@ -55,9 +55,33 @@ test('parseTopicProject nâng project v1 lên model hiện tại', () => {
     updatedAt: now,
   });
 
-  assert.equal(project.version, 2);
+  assert.equal(project.version, 3);
   assert.equal(project.revision, 1);
   assert.equal(project.creationId, null);
+  assert.equal(project.outline, null);
+});
+
+test('parseTopicProject nâng project v2 và giữ revision hiện tại', () => {
+  const now = new Date().toISOString();
+  const project = parseTopicProject({
+    id: 'version-two-project',
+    version: 2,
+    revision: 7,
+    creationId: null,
+    status: 'draft',
+    currentStep: 'outline',
+    topicInput: {
+      topic: 'Cây tìm kiếm nhị phân',
+      audience: 'familiar',
+      duration: 'deep',
+    },
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  assert.equal(project.version, 3);
+  assert.equal(project.revision, 7);
+  assert.equal(project.outline, null);
 });
 
 test('parseTopicProject không âm thầm bỏ field lạ', () => {
@@ -66,7 +90,7 @@ test('parseTopicProject không âm thầm bỏ field lạ', () => {
   assert.throws(() =>
     parseTopicProject({
       id: 'future-project',
-      version: 2,
+      version: 3,
       revision: 1,
       creationId: null,
       status: 'draft',
@@ -76,6 +100,7 @@ test('parseTopicProject không âm thầm bỏ field lạ', () => {
         audience: 'beginner',
         duration: 'standard',
       },
+      outline: null,
       createdAt: now,
       updatedAt: now,
       futureField: true,

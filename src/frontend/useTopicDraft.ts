@@ -4,7 +4,7 @@ import {
   TopicInputSchema,
   type TopicInput,
   type TopicProject,
-  type UpdateTopicProject,
+  type UpdateProject,
 } from '../shared/topic.ts';
 import {
   ApiRequestError,
@@ -29,6 +29,7 @@ export function clearLocalTopicDraft() {
 export interface TopicFormState {
   topic: string;
   learningGoal: string;
+  videoDirection: string;
   audience: TopicInput['audience'];
   duration: TopicInput['duration'];
 }
@@ -46,6 +47,7 @@ export type SaveState =
 const initialForm: TopicFormState = {
   topic: '',
   learningGoal: '',
+  videoDirection: '',
   audience: 'beginner',
   duration: 'standard',
 };
@@ -60,6 +62,8 @@ function loadLocalDraft(): TopicFormState {
       topic: typeof value.topic === 'string' ? value.topic : '',
       learningGoal:
         typeof value.learningGoal === 'string' ? value.learningGoal : '',
+      videoDirection:
+        typeof value.videoDirection === 'string' ? value.videoDirection : '',
       audience:
         value.audience === 'familiar' || value.audience === 'beginner'
           ? value.audience
@@ -94,6 +98,7 @@ function toFormState(input: TopicInput): TopicFormState {
   return {
     topic: input.topic,
     learningGoal: input.learningGoal ?? '',
+    videoDirection: input.videoDirection ?? '',
     audience: input.audience,
     duration: input.duration,
   };
@@ -103,6 +108,7 @@ function toCandidate(form: TopicFormState) {
   return {
     ...form,
     learningGoal: form.learningGoal.trim() || undefined,
+    videoDirection: form.videoDirection.trim() || undefined,
   };
 }
 
@@ -148,7 +154,7 @@ export function useTopicDraft({
   );
 
   const enqueueProjectUpdate = useCallback(
-    (update: UpdateTopicProject) => {
+    (update: UpdateProject) => {
       const targetProjectId = projectId;
       const targetSession = projectSessionRef.current;
       const queue = operationQueueRef.current;

@@ -28,6 +28,10 @@ class FakeCodexClient implements CodexAppServerClient {
     return Promise.resolve(this.handler(method, params));
   }
 
+  subscribe() {
+    return () => undefined;
+  }
+
   close() {
     this.closed = true;
   }

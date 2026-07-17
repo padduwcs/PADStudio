@@ -15,7 +15,7 @@ import {
   type ProjectListIssue,
   type ProjectListIssueCode,
   type TopicProject,
-  type UpdateTopicProject,
+  type UpdateProject,
 } from '../shared/topic.ts';
 
 function toSlug(value: string) {
@@ -44,7 +44,7 @@ export interface ProjectRepository {
   getProject(projectId: string): Promise<TopicProject | null>;
   updateProject(
     projectId: string,
-    update: UpdateTopicProject,
+    update: UpdateProject,
     expectedRevision: number,
   ): Promise<TopicProject | null>;
   deleteProject(projectId: string, expectedRevision: number): Promise<boolean>;
@@ -250,29 +250,41 @@ export function createFileProjectRepository(
 
   function updateAlreadyApplied(
     project: TopicProject,
-    update: UpdateTopicProject,
+    update: UpdateProject,
   ) {
     return (
       (update.topicInput === undefined ||
         JSON.stringify(update.topicInput) ===
           JSON.stringify(project.topicInput)) &&
       (update.currentStep === undefined ||
-        update.currentStep === project.currentStep)
+        update.currentStep === project.currentStep) &&
+      (update.outline === undefined ||
+        JSON.stringify(update.outline) === JSON.stringify(project.outline))
     );
   }
 
   async function applyUpdate(
     currentProject: TopicProject,
-    update: UpdateTopicProject,
+    update: UpdateProject,
   ) {
     if (updateAlreadyApplied(currentProject, update)) {
       return currentProject;
     }
 
+    const topicChanged =
+      update.topicInput !== undefined &&
+      JSON.stringify(update.topicInput) !==
+        JSON.stringify(currentProject.topicInput);
+    const nextOutline =
+      update.outline ??
+      (topicChanged && currentProject.outline
+        ? {...currentProject.outline, status: 'draft' as const}
+        : currentProject.outline);
     const project: TopicProject = {
       ...currentProject,
       ...(update.topicInput ? {topicInput: update.topicInput} : {}),
       ...(update.currentStep ? {currentStep: update.currentStep} : {}),
+      outline: nextOutline,
       revision: currentProject.revision + 1,
       updatedAt: new Date().toISOString(),
     };
@@ -318,6 +330,7 @@ export function createFileProjectRepository(
           status: 'draft',
           currentStep: request.currentStep,
           topicInput: request.topicInput,
+          outline: null,
           createdAt: now,
           updatedAt: now,
         };

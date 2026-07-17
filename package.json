@@ -12,7 +12,7 @@
     "dev:backend": "node --watch src/backend/server.ts",
     "build": "tsc --noEmit && vite build",
     "start": "node src/backend/server.ts",
-    "test": "node --test src/shared/topic.test.ts src/backend/app.test.ts src/backend/codexConnection.test.ts src/frontend/codexConnectionCache.test.ts src/frontend/projectOperationQueue.test.ts src/frontend/router.test.ts",
+    "test": "node --test src/shared/topic.test.ts src/backend/app.test.ts src/backend/codexConnection.test.ts src/backend/outlineGenerator.test.ts src/frontend/codexConnectionCache.test.ts src/frontend/projectOperationQueue.test.ts src/frontend/router.test.ts",
     "validate": "npm run test && npm run build"
   },
   "dependencies": {

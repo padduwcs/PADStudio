@@ -31,8 +31,10 @@ Vertical slice đầu tiên đã có thể chạy:
 - Tự động lưu thay đổi vào project hiện tại.
 - Phát hiện xung đột chỉnh sửa thay vì âm thầm ghi đè dữ liệu mới hơn.
 - Đăng nhập Codex và xác minh phiên bằng kết nối thật trước khi sang mạch giảng.
+- Dùng toàn bộ đầu vào để AI tóm tắt yêu cầu và đề xuất mạch giảng có cấu trúc.
+- Chỉnh sửa, sắp xếp, tạo lại và chốt mạch giảng trước bước voice–visual.
+- Hiển thị lượng token của lần sinh gần nhất để người dùng theo dõi.
 - Liệt kê, mở lại, chỉnh sửa và xóa project cục bộ.
-- Chuyển sang màn hình chuẩn bị mạch giảng sau khi chốt đầu vào.
 - Giao diện responsive cho desktop và mobile.
 
 Thời lượng định hướng hiện dùng ba mức:
@@ -46,7 +48,7 @@ video. Chỉ thư mục render sinh ra tại `projects/**/renders/` bị ignore.
 
 Mỗi project có hai chỉ số độc lập:
 
-- `version` là phiên bản cấu trúc file; dữ liệu v1 được đọc và nâng cấp lên
+- `version` là phiên bản cấu trúc file; dữ liệu v1 và v2 được đọc và nâng cấp lên
   cấu trúc hiện tại ở lần ghi tiếp theo.
 - `revision` tăng sau mỗi thay đổi nội dung và được dùng với `If-Match` để
   chặn hai thao tác ghi đè lẫn nhau.
@@ -66,8 +68,12 @@ hoặc email) để nhận diện phiên cũ trong lúc xác minh nền. Cache n
 khi Codex trả về trạng thái đã đăng xuất; lỗi mạng hoặc lỗi CLI chỉ yêu cầu kiểm
 tra lại.
 
-Việc sinh mạch giảng bằng AI chưa được bật cho đến khi project chốt AI provider,
-model, prompt contract và giới hạn chi phí.
+Mạch giảng được sinh qua một thread Codex tạm thời với structured output và
+sandbox chỉ đọc. PAD Studio dùng một prompt ngắn có version, không gửi lại mạch
+cũ khi tạo mới, chỉ gửi khi người dùng yêu cầu AI chỉnh theo góp ý và không tự
+retry làm tăng chi phí. Mỗi request có `generationId` để retry lỗi mạng không
+gọi AI hai lần. Kết quả AI luôn là bản nháp; người dùng phải review và chốt
+trước khi sang voice–visual.
 
 ## Chạy ở môi trường phát triển
 

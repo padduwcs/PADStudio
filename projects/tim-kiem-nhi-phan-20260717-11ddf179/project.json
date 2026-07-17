@@ -1,0 +1,81 @@
+{
+  "id": "tim-kiem-nhi-phan-20260717-11ddf179",
+  "version": 3,
+  "revision": 4,
+  "creationId": "5c130bee-8e11-419e-b4ec-9f4be509ac41",
+  "status": "draft",
+  "currentStep": "outline",
+  "topicInput": {
+    "topic": "Tìm kiếm nhị phân",
+    "learningGoal": "khi nào có thể dùng tìm kiếm nhị phân, tại sao lại có độ phức tạp như thế. Hiểu được bản chất của thuật toán và có được hình dung cụ thể trong đầu (về ý tưởng)",
+    "videoDirection": "Video ngắn đăng tiktok, dễ xu hướng, có hook để thu hút người xem, dẫn dắt logic, cô đọng, không lòng vòng",
+    "audience": "beginner",
+    "duration": "concise"
+  },
+  "outline": {
+    "brief": {
+      "summary": "Mạch giảng 4 ý trong 100 giây: mở bằng chênh lệch gây tò mò, dùng trò đoán số để tạo hình dung, rút ra điều kiện áp dụng rồi giải thích trực giác O(log n).",
+      "assumptions": [
+        "Minh họa chính là tìm một giá trị trong phạm vi đã có thứ tự và có thể kiểm tra trực tiếp phần tử ở giữa.",
+        "Không đi sâu vào cách cài đặt, phần tử trùng, chi phí sắp xếp dữ liệu hoặc các biến thể nâng cao.",
+        "Khái niệm điều kiện đơn điệu chỉ được giới thiệu ở mức trực giác phù hợp với người mới."
+      ]
+    },
+    "centralMessage": "Bản chất của tìm kiếm nhị phân là dựa vào thứ tự hoặc tính đơn điệu để loại chắc chắn một nửa khả năng sau mỗi lần kiểm tra; vì liên tục chia đôi nên số bước tăng theo log₂(n).",
+    "sections": [
+      {
+        "id": "9e8542ae-98d9-437b-82e8-9a5ec0235b74",
+        "title": "Một triệu khả năng, khoảng 20 lần kiểm tra",
+        "goal": "Tạo hook bằng một kết quả trái với trực giác và làm rõ lợi thế cốt lõi của thuật toán.",
+        "content": "Nếu kiểm tra lần lượt, trường hợp xấu nhất có thể phải đi qua gần một triệu lựa chọn. Tìm kiếm nhị phân chỉ cần khoảng 20 lần kiểm tra vì mỗi quyết định loại được cả một nửa số khả năng, chứ không phải vì từng lần kiểm tra diễn ra nhanh hơn.",
+        "estimatedSeconds": 18
+      },
+      {
+        "id": "89d948fb-5b52-499d-b53e-45cbd4234f33",
+        "title": "Hình dung bằng trò đoán số",
+        "goal": "Biến cơ chế chia đôi thành một mô hình tinh thần gần gũi và dễ nhớ.",
+        "content": "Với một số bí mật từ 1 đến 100, bắt đầu ở 50. Nếu kết quả cho biết số cần tìm lớn hơn, toàn bộ khoảng 1–50 bị loại; lần tiếp theo chỉ xét giữa khoảng 51–100. Mỗi phản hồi lớn hơn hoặc nhỏ hơn giúp giữ lại đúng nửa vẫn có khả năng chứa đáp án.",
+        "estimatedSeconds": 27
+      },
+      {
+        "id": "e9bae20e-8099-431a-8bd2-82a5349fdbd0",
+        "title": "Khi nào mới được phép dùng?",
+        "goal": "Làm rõ điều kiện áp dụng và ngăn hiểu nhầm rằng dữ liệu nào cũng có thể chia đôi.",
+        "content": "Phép loại một nửa chỉ đáng tin khi dữ liệu đã có thứ tự, hoặc khi bài toán có một điều kiện đơn điệu giúp xác định đáp án nằm về một phía của mốc giữa. Với dữ liệu lộn xộn, việc mục tiêu lớn hơn phần tử giữa không chứng minh nó nằm bên phải, nên không thể loại an toàn nửa còn lại.",
+        "estimatedSeconds": 28
+      },
+      {
+        "id": "11995f2f-27ca-422b-8326-0de66cc3d090",
+        "title": "Vì sao độ phức tạp là O(log n)?",
+        "goal": "Nối trực giác chia đôi với nguồn gốc của độ phức tạp logarithm.",
+        "content": "Phạm vi còn lại co theo chuỗi n, n/2, n/4, n/8 cho đến khoảng 1. Sau k bước, còn xấp xỉ n/2^k khả năng; để lượng này về 1 thì 2^k xấp xỉ n, nên k xấp xỉ log₂(n). Hệ quả dễ nhớ là dữ liệu tăng gấp đôi thường chỉ làm tăng thêm một bước kiểm tra.",
+        "estimatedSeconds": 27
+      }
+    ],
+    "status": "approved",
+    "contentRevision": 2,
+    "sourceInput": {
+      "topic": "Tìm kiếm nhị phân",
+      "learningGoal": "khi nào có thể dùng tìm kiếm nhị phân, tại sao lại có độ phức tạp như thế. Hiểu được bản chất của thuật toán và có được hình dung cụ thể trong đầu (về ý tưởng)",
+      "videoDirection": "Video ngắn đăng tiktok, dễ xu hướng, có hook để thu hút người xem, dẫn dắt logic, cô đọng, không lòng vòng",
+      "audience": "beginner",
+      "duration": "concise"
+    },
+    "generation": {
+      "generationId": "f978a6e7-5c1a-4c3a-be58-0cb883e55375",
+      "provider": "codex",
+      "model": "gpt-5.6-sol",
+      "promptVersion": "outline-v1",
+      "generatedAt": "2026-07-17T15:05:20.592Z",
+      "usage": {
+        "inputTokens": 9494,
+        "cachedInputTokens": 0,
+        "outputTokens": 1067,
+        "reasoningOutputTokens": 371,
+        "totalTokens": 10561
+      }
+    }
+  },
+  "createdAt": "2026-07-17T14:45:10.554Z",
+  "updatedAt": "2026-07-17T15:06:21.689Z"
+}

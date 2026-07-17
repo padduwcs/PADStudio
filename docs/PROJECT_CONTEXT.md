@@ -58,6 +58,13 @@ Hai lớp kế hoạch cần được phân biệt:
 
 Một hình ảnh đẹp nhưng không hỗ trợ đúng mạch giảng không được xem là kết quả tốt. Tương tự, voice đúng nội dung nhưng không có visual đồng bộ cũng chưa đạt mục tiêu của PAD Studio.
 
+Triển khai đầu tiên dùng `codex app-server` để đọc toàn bộ đầu vào, tạo bản tóm
+tắt cách AI hiểu yêu cầu và đề xuất mạch giảng có cấu trúc. Nội dung người dùng
+nhập luôn được giữ nguyên; kết quả AI là bản nháp riêng, có thể chỉnh tay hoặc
+yêu cầu AI làm lại và chỉ trở thành đầu vào cho voice–visual sau khi người dùng
+chốt. Provider cụ thể có thể thay đổi về sau mà không làm thay đổi ranh giới
+review này.
+
 ## Scene và component
 
 Mỗi video có scene và component riêng để có thể tùy biến theo cách giải thích của chủ đề đó. Không nên ép mọi video phụ thuộc vào một thư viện component dùng chung quá sớm.
@@ -81,7 +88,9 @@ Editor bổ sung cho code chứ không thay thế hoàn toàn code. Codex vẫn 
 
 - **AI**: phân tích chủ đề, đề xuất mạch giảng và lập kế hoạch voice–visual.
 - **Người dùng**: review nội dung, quyết định cách giảng, chỉnh layout và timing.
-- **Codex**: hỗ trợ thiết kế hệ thống, sinh và sửa code scene Motion Canvas, triển khai và bảo trì project.
+- **Codex**: hiện cung cấp model cho đề xuất mạch giảng qua app-server; về sau
+  tiếp tục hỗ trợ sinh và sửa code scene Motion Canvas, triển khai và bảo trì
+  project.
 - **Motion Canvas**: nền tảng tạo animation bằng code.
 - **ElevenLabs**: tạo voice phục vụ video.
 - **PAD Studio**: kết nối các bước trên thành một quy trình sản xuất nhất quán.
@@ -108,4 +117,3 @@ Khi làm việc với PAD Studio, agent cần:
 4. Không thiết kế hệ thống phức tạp hơn nhu cầu hiện tại nếu chưa có lý do rõ ràng.
 5. Phân biệt code của Studio với scene, component và tài nguyên thuộc từng video.
 6. Hỏi hoặc nêu rõ giả định khi một quyết định có thể làm thay đổi định hướng sản phẩm.
-

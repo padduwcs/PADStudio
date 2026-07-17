@@ -2,12 +2,10 @@ import {
   type FormEvent,
   type KeyboardEvent,
   useCallback,
-  useEffect,
   useState,
 } from 'react';
 import type {TopicProject} from '../shared/topic.ts';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
-import {ApiRequestError, getProject} from './api.ts';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {
   ArrowLeftIcon,
@@ -35,6 +33,7 @@ import {
   useTopicDraft,
 } from './useTopicDraft.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
+import {useOutlineDraft} from './useOutlineDraft.ts';
 
 const pipelineSteps = [
   'Nhập chủ đề',
@@ -263,6 +262,13 @@ function BriefPreview({
         </p>
       </div>
 
+      {form.videoDirection.trim() && (
+        <div className="preview-direction">
+          <span className="preview-label">Định hướng video</span>
+          <p>{form.videoDirection}</p>
+        </div>
+      )}
+
       <dl className="brief-meta">
         <div>
           <dt>
@@ -487,6 +493,37 @@ function TopicPage({
                 )}
               </div>
 
+              <div className="form-section video-direction-field">
+                <div className="field-heading">
+                  <label htmlFor="video-direction">
+                    Mô tả video bạn muốn làm
+                    <small>Tùy chọn</small>
+                  </label>
+                  <span>{form.videoDirection.length} / 1200</span>
+                </div>
+                <textarea
+                  className={fieldErrors.videoDirection ? 'has-error' : ''}
+                  id="video-direction"
+                  name="videoDirection"
+                  value={form.videoDirection}
+                  maxLength={1200}
+                  rows={4}
+                  placeholder="Ví dụ: Video ngắn đăng TikTok, nhịp nhanh, mở đầu bằng một câu hỏi gây tò mò, không dùng code và tập trung vào trực giác."
+                  aria-invalid={Boolean(fieldErrors.videoDirection)}
+                  onChange={(event) =>
+                    updateField('videoDirection', event.target.value)
+                  }
+                />
+                {fieldErrors.videoDirection ? (
+                  <p className="field-error">{fieldErrors.videoDirection}</p>
+                ) : (
+                  <p className="field-help">
+                    Có thể ghi nền tảng đăng, phong cách, nhịp độ, điều cần nhấn
+                    mạnh hoặc cần tránh.
+                  </p>
+                )}
+              </div>
+
               <div className="options-grid">
                 <fieldset className="form-section option-group">
                   <legend>
@@ -612,37 +649,20 @@ function TopicPage({
 }
 
 function OutlinePage({projectId}: {projectId: string}) {
-  const [project, setProject] = useState<TopicProject | null>(null);
-  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [error, setError] = useState('');
+  const outline = useOutlineDraft(projectId);
+  const codexConnection = useCodexConnection();
+  const [guidance, setGuidance] = useState('');
 
-  useEffect(() => {
-    let active = true;
-    setState('loading');
-    setError('');
+  async function handleGenerate() {
+    if (outline.generating || codexConnection.checking) return;
+    const connectionStatus = await codexConnection.verify();
+    if (connectionStatus?.state !== 'connected') return;
 
-    void getProject(projectId)
-      .then((loadedProject) => {
-        if (!active) return;
-        setProject(loadedProject);
-        setState('ready');
-      })
-      .catch((requestError) => {
-        if (!active) return;
-        setError(
-          requestError instanceof ApiRequestError
-            ? requestError.message
-            : 'Không thể mở project.',
-        );
-        setState('error');
-      });
+    const generatedProject = await outline.generate(guidance);
+    if (generatedProject) setGuidance('');
+  }
 
-    return () => {
-      active = false;
-    };
-  }, [projectId]);
-
-  if (state === 'loading') {
+  if (outline.loadState === 'loading') {
     return (
       <div className="page-state" role="status">
         <span className="spinner dark" />
@@ -651,17 +671,29 @@ function OutlinePage({projectId}: {projectId: string}) {
     );
   }
 
-  if (state === 'error' || !project) {
+  if (outline.loadState === 'error' || !outline.project) {
     return (
       <div className="page-state is-error" role="alert">
         <strong>Không thể mở bước mạch giảng</strong>
-        <p>{error}</p>
+        <p>{outline.loadError}</p>
         <button type="button" onClick={() => navigate('/')}>
           Về project mới
         </button>
       </div>
     );
   }
+
+  const {project, draft} = outline;
+  const totalSeconds =
+    draft?.sections.reduce(
+      (total, section) => total + section.estimatedSeconds,
+      0,
+    ) ?? 0;
+  const usage = project.outline?.generation.usage;
+  const approved =
+    project.outline?.status === 'approved' &&
+    outline.saveState === 'saved' &&
+    !outline.stale;
 
   return (
     <div className="outline-workspace">
@@ -675,49 +707,448 @@ function OutlinePage({projectId}: {projectId: string}) {
           Xây logic giải thích trước khi viết lời.
         </AdaptiveHeading>
         <p>
-          Đầu vào đã được lưu. Đây sẽ là nơi AI đề xuất thứ tự các ý và mô hình
-          tư duy để bạn review trước khi sang voice–visual.
+          AI đọc toàn bộ yêu cầu, tóm tắt cách hiểu và đề xuất thứ tự các ý.
+          Bạn luôn có thể sửa trước khi chốt.
         </p>
       </header>
 
-      <div className="outline-grid">
-        <section className="outline-primary-card">
-          <div className="outline-card-heading">
-            <span className="preview-kicker">
-              <SparkIcon />
-              Sẵn sàng tạo đề xuất
-            </span>
-            <span className="draft-status is-saved">
-              <span />
-              Đầu vào đã lưu
-            </span>
-          </div>
+      <div className="outline-codex">
+        <CodexConnectionCard connection={codexConnection} />
+      </div>
 
-          <div className="outline-topic">
-            <span className="preview-label">Chủ đề</span>
-            <AdaptiveHeading as="h2">
-              {project.topicInput.topic}
-            </AdaptiveHeading>
-            <p>
-              {project.topicInput.learningGoal ||
-                'Chưa có mục tiêu học bổ sung.'}
-            </p>
-          </div>
+      {outline.saveState === 'conflict' && (
+        <div className="outline-alert is-error" role="alert">
+          <span>
+            Project đã thay đổi ở nơi khác. Hãy tải lại trước khi tiếp tục.
+          </span>
+          <button type="button" onClick={outline.reload}>
+            Tải lại
+          </button>
+        </div>
+      )}
 
-          <div className="outline-empty-state">
-            <span className="outline-empty-icon">
-              <LayersIcon />
-            </span>
-            <div>
-              <h3>Chưa có mạch giảng được sinh</h3>
+      {outline.stale && (
+        <div className="outline-alert" role="status">
+          Đầu vào đã thay đổi. Mạch giảng hiện tại cần được tạo lại trước khi
+          chốt.
+        </div>
+      )}
+
+      {outline.actionError && (
+        <div className="outline-alert is-error" role="alert">
+          {outline.actionError}
+        </div>
+      )}
+
+      {!draft ? (
+        <div className="outline-grid">
+          <section className="outline-primary-card">
+            <div className="outline-card-heading">
+              <span className="preview-kicker">
+                <SparkIcon />
+                Sẵn sàng tạo đề xuất
+              </span>
+              <span className="draft-status is-saved">
+                <span />
+                Đầu vào đã lưu
+              </span>
+            </div>
+
+            <div className="outline-topic">
+              <span className="preview-label">Chủ đề</span>
+              <AdaptiveHeading as="h2">
+                {project.topicInput.topic}
+              </AdaptiveHeading>
               <p>
-                PAD Studio chưa được cấu hình AI provider và model. Mình giữ
-                trạng thái này minh bạch thay vì tạo một kết quả giả.
+                {project.topicInput.learningGoal ||
+                  'Chưa có mục tiêu học bổ sung.'}
               </p>
             </div>
+
+            <div className="outline-empty-state">
+              <span className="outline-empty-icon">
+                <LayersIcon />
+              </span>
+              <div>
+                <h3>Chưa có mạch giảng</h3>
+                <p>
+                  Codex sẽ tóm tắt yêu cầu và tạo một bản nháp để bạn review.
+                  AI chỉ chạy khi bạn bấm nút bên dưới.
+                </p>
+              </div>
+            </div>
+
+            <footer className="outline-actions">
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => navigate(projectTopicPath(project.id))}
+              >
+                <ArrowLeftIcon />
+                Chỉnh lại đầu vào
+              </button>
+              <button
+                className="submit-button"
+                type="button"
+                disabled={
+                  outline.generating ||
+                  codexConnection.checking ||
+                  !codexConnection.connected
+                }
+                onClick={() => void handleGenerate()}
+              >
+                {outline.generating ? (
+                  <>
+                    <span className="spinner" />
+                    Đang tạo mạch giảng…
+                  </>
+                ) : (
+                  <>
+                    Phân tích & tạo mạch giảng
+                    <SparkIcon />
+                  </>
+                )}
+              </button>
+            </footer>
+          </section>
+
+          <aside className="outline-side-card">
+            <span className="preview-label">Thông tin đầu vào</span>
+            <dl>
+              <div>
+                <dt>Người xem</dt>
+                <dd>{audienceLabels[project.topicInput.audience]}</dd>
+              </div>
+              <div>
+                <dt>Thời lượng</dt>
+                <dd>{durationLabels[project.topicInput.duration]}</dd>
+              </div>
+              <div>
+                <dt>Định hướng riêng</dt>
+                <dd>
+                  {project.topicInput.videoDirection
+                    ? 'Đã mô tả'
+                    : 'Không có'}
+                </dd>
+              </div>
+            </dl>
+            <div className="outline-next-note">
+              <LightbulbIcon />
+              <p>
+                PAD Studio dùng một lần gọi có cấu trúc và không tự động gọi
+                lại để hạn chế token.
+              </p>
+            </div>
+          </aside>
+        </div>
+      ) : (
+        <>
+          <div className="outline-editor-grid">
+            <div className="outline-editor-main">
+              <section className="outline-review-card">
+                <header>
+                  <div>
+                    <span className="preview-kicker">
+                      <SparkIcon />
+                      AI hiểu yêu cầu như sau
+                    </span>
+                    <h2>Bản tóm tắt video</h2>
+                  </div>
+                  <span
+                    className={`draft-status${approved ? ' is-saved' : ''}`}
+                  >
+                    <span />
+                    {approved ? 'Đã chốt' : 'Bản nháp'}
+                  </span>
+                </header>
+
+                <label className="outline-field">
+                  <span>Tóm tắt yêu cầu</span>
+                  <textarea
+                    rows={4}
+                    maxLength={700}
+                    value={draft.brief.summary}
+                    onChange={(event) =>
+                      outline.updateBriefSummary(event.target.value)
+                    }
+                  />
+                </label>
+
+                <div className="outline-assumptions">
+                  <div className="outline-subheading">
+                    <span>Những điều AI đang giả định</span>
+                    <button
+                      type="button"
+                      disabled={draft.brief.assumptions.length >= 6}
+                      onClick={outline.addAssumption}
+                    >
+                      + Thêm
+                    </button>
+                  </div>
+                  {draft.brief.assumptions.length === 0 ? (
+                    <p className="outline-empty-copy">
+                      Không có giả định bổ sung.
+                    </p>
+                  ) : (
+                    <div className="assumption-list">
+                      {draft.brief.assumptions.map((assumption, index) => (
+                        <div className="assumption-row" key={index}>
+                          <input
+                            value={assumption}
+                            maxLength={220}
+                            aria-label={`Giả định ${index + 1}`}
+                            onChange={(event) =>
+                              outline.updateAssumption(
+                                index,
+                                event.target.value,
+                              )
+                            }
+                          />
+                          <button
+                            type="button"
+                            aria-label={`Xóa giả định ${index + 1}`}
+                            onClick={() => outline.removeAssumption(index)}
+                          >
+                            Xóa
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <label className="outline-field">
+                  <span>Thông điệp trung tâm</span>
+                  <textarea
+                    rows={3}
+                    maxLength={400}
+                    value={draft.centralMessage}
+                    onChange={(event) =>
+                      outline.updateCentralMessage(event.target.value)
+                    }
+                  />
+                </label>
+              </section>
+
+              <section className="outline-sections">
+                <div className="outline-section-heading">
+                  <div>
+                    <span className="preview-label">Mạch giảng</span>
+                    <h2>Thứ tự các ý cần giải thích</h2>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={draft.sections.length >= 10}
+                    onClick={outline.addSection}
+                  >
+                    + Thêm ý
+                  </button>
+                </div>
+
+                {draft.sections.map((section, index) => (
+                  <article className="outline-section-card" key={section.id}>
+                    <header>
+                      <span className="outline-section-index">
+                        {String(index + 1).padStart(2, '0')}
+                      </span>
+                      <input
+                        className="outline-section-title"
+                        value={section.title}
+                        maxLength={120}
+                        aria-label={`Tên ý ${index + 1}`}
+                        onChange={(event) =>
+                          outline.updateSection(
+                            section.id,
+                            'title',
+                            event.target.value,
+                          )
+                        }
+                      />
+                      <div className="outline-section-controls">
+                        <button
+                          type="button"
+                          disabled={index === 0}
+                          aria-label={`Đưa ý ${index + 1} lên`}
+                          onClick={() => outline.moveSection(section.id, -1)}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          disabled={index === draft.sections.length - 1}
+                          aria-label={`Đưa ý ${index + 1} xuống`}
+                          onClick={() => outline.moveSection(section.id, 1)}
+                        >
+                          ↓
+                        </button>
+                        <button
+                          className="is-danger"
+                          type="button"
+                          disabled={draft.sections.length <= 2}
+                          onClick={() => outline.removeSection(section.id)}
+                        >
+                          Xóa
+                        </button>
+                      </div>
+                    </header>
+
+                    <div className="outline-section-fields">
+                      <label className="outline-field">
+                        <span>Người xem cần hiểu gì?</span>
+                        <textarea
+                          rows={2}
+                          maxLength={280}
+                          value={section.goal}
+                          onChange={(event) =>
+                            outline.updateSection(
+                              section.id,
+                              'goal',
+                              event.target.value,
+                            )
+                          }
+                        />
+                      </label>
+                      <label className="outline-field">
+                        <span>Nội dung cần giải thích</span>
+                        <textarea
+                          rows={4}
+                          maxLength={900}
+                          value={section.content}
+                          onChange={(event) =>
+                            outline.updateSection(
+                              section.id,
+                              'content',
+                              event.target.value,
+                            )
+                          }
+                        />
+                      </label>
+                      <label className="outline-time-field">
+                        <span>Thời lượng</span>
+                        <span>
+                          <input
+                            type="number"
+                            min={10}
+                            max={240}
+                            value={section.estimatedSeconds}
+                            onChange={(event) =>
+                              outline.updateSection(
+                                section.id,
+                                'estimatedSeconds',
+                                Number(event.target.value),
+                              )
+                            }
+                          />
+                          giây
+                        </span>
+                      </label>
+                    </div>
+                  </article>
+                ))}
+              </section>
+
+              <section className="outline-ai-revision">
+                <div>
+                  <span className="preview-kicker">
+                    <SparkIcon />
+                    Nhờ AI chỉnh lại
+                  </span>
+                  <h2>Bạn muốn thay đổi điều gì?</h2>
+                  <p>
+                    Chỉ khi có góp ý, mạch hiện tại mới được gửi lại cho AI.
+                  </p>
+                </div>
+                <textarea
+                  rows={3}
+                  maxLength={600}
+                  value={guidance}
+                  placeholder="Ví dụ: Mở đầu hấp dẫn hơn, rút ngắn phần ví dụ và nhấn mạnh điều kiện dữ liệu phải được sắp xếp."
+                  onChange={(event) => setGuidance(event.target.value)}
+                />
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={
+                    outline.generating ||
+                    outline.saveState === 'conflict' ||
+                    codexConnection.checking ||
+                    !codexConnection.connected
+                  }
+                  onClick={() => void handleGenerate()}
+                >
+                  {outline.generating ? (
+                    <>
+                      <span className="spinner dark" />
+                      AI đang chỉnh…
+                    </>
+                  ) : (
+                    <>
+                      <SparkIcon />
+                      {guidance.trim()
+                        ? 'Chỉnh theo góp ý'
+                        : 'Tạo lại toàn bộ'}
+                    </>
+                  )}
+                </button>
+              </section>
+            </div>
+
+            <aside className="outline-editor-side">
+              <section className="outline-side-card">
+                <span className="preview-label">Tổng quan</span>
+                <dl>
+                  <div>
+                    <dt>Số ý</dt>
+                    <dd>{draft.sections.length}</dd>
+                  </div>
+                  <div>
+                    <dt>Thời lượng</dt>
+                    <dd>
+                      {Math.floor(totalSeconds / 60)}:
+                      {String(totalSeconds % 60).padStart(2, '0')}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Trạng thái</dt>
+                    <dd>{approved ? 'Đã chốt' : 'Đang review'}</dd>
+                  </div>
+                  <div>
+                    <dt>Tự lưu</dt>
+                    <dd>
+                      {outline.saveState === 'saving'
+                        ? 'Đang lưu…'
+                        : outline.saveState === 'error'
+                          ? 'Lưu lỗi'
+                          : outline.saveState === 'idle'
+                            ? 'Chưa hợp lệ'
+                            : 'Đã lưu'}
+                    </dd>
+                  </div>
+                </dl>
+
+                {usage && (
+                  <div className="outline-usage">
+                    <span>Token lần tạo gần nhất</span>
+                    <strong>{usage.totalTokens.toLocaleString('vi-VN')}</strong>
+                    <small>
+                      Input {usage.inputTokens.toLocaleString('vi-VN')} · Output{' '}
+                      {usage.outputTokens.toLocaleString('vi-VN')}
+                    </small>
+                  </div>
+                )}
+
+                <div className="outline-next-note">
+                  <LightbulbIcon />
+                  <p>
+                    Chốt chỉ xác nhận mạch giảng. PAD Studio chưa tạo voice hoặc
+                    hình ảnh ở bước này.
+                  </p>
+                </div>
+              </section>
+            </aside>
           </div>
 
-          <footer className="outline-actions">
+          <footer className="outline-final-actions">
             <button
               className="secondary-button"
               type="button"
@@ -726,38 +1157,46 @@ function OutlinePage({projectId}: {projectId: string}) {
               <ArrowLeftIcon />
               Chỉnh lại đầu vào
             </button>
-            <button className="submit-button" type="button" disabled>
-              Tạo mạch giảng
-              <SparkIcon />
-            </button>
+            <div>
+              <span>
+                {approved
+                  ? 'Mạch giảng đã được chốt'
+                  : 'Review kỹ trước khi chuyển sang voice–visual'}
+              </span>
+              <button
+                className="submit-button"
+                type="button"
+                disabled={
+                  approved ||
+                  outline.approving ||
+                  outline.generating ||
+                  outline.stale ||
+                  !outline.valid ||
+                  outline.saveState === 'conflict'
+                }
+                onClick={() => void outline.approve()}
+              >
+                {outline.approving ? (
+                  <>
+                    <span className="spinner" />
+                    Đang chốt…
+                  </>
+                ) : approved ? (
+                  <>
+                    <CheckIcon />
+                    Đã chốt mạch giảng
+                  </>
+                ) : (
+                  <>
+                    Chốt mạch giảng
+                    <CheckIcon />
+                  </>
+                )}
+              </button>
+            </div>
           </footer>
-        </section>
-
-        <aside className="outline-side-card">
-          <span className="preview-label">Thông số đã chốt</span>
-          <dl>
-            <div>
-              <dt>Người xem</dt>
-              <dd>{audienceLabels[project.topicInput.audience]}</dd>
-            </div>
-            <div>
-              <dt>Thời lượng</dt>
-              <dd>{durationLabels[project.topicInput.duration]}</dd>
-            </div>
-            <div>
-              <dt>Trạng thái</dt>
-              <dd>Project draft</dd>
-            </div>
-          </dl>
-          <div className="outline-next-note">
-            <LightbulbIcon />
-            <p>
-              Bước sinh mạch giảng cần một quyết định riêng về AI provider,
-              model, prompt contract và giới hạn chi phí.
-            </p>
-          </div>
-        </aside>
-      </div>
+        </>
+      )}
     </div>
   );
 }

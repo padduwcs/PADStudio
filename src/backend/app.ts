@@ -5,15 +5,27 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
   CreateTopicProjectSchema,
-  UpdateTopicProjectSchema,
+  GenerateTeachingOutlineSchema,
+  TeachingOutlineContentSchema,
+  UpdateProjectSchema,
   type ApiErrorPayload,
+  type TeachingOutline,
   type TopicProject,
 } from '../shared/topic.ts';
 import {
   CodexConnectionError,
   createCodexConnectionService,
+  StdioCodexAppServerClient,
+  type CodexAppServerClient,
   type CodexConnectionService,
 } from './codexConnection.ts';
+import {
+  createCodexOutlineGenerator,
+  OutlineGenerationError,
+  OUTLINE_PROMPT_VERSION,
+  type OutlineGenerationResult,
+  type OutlineGenerator,
+} from './outlineGenerator.ts';
 import {
   createFileProjectRepository,
   ProjectConflictError,
@@ -40,6 +52,7 @@ interface AppOptions {
   frontendDirectory?: string;
   repository?: ProjectRepository;
   codexConnection?: CodexConnectionService;
+  outlineGenerator?: OutlineGenerator;
   logger?: Pick<Console, 'error' | 'info'>;
 }
 
@@ -179,12 +192,43 @@ function getProjectId(pathname: string) {
   const match = /^\/api\/projects\/([^/]+)$/.exec(pathname);
   if (!match?.[1]) return null;
 
+  return decodeProjectId(match[1]);
+}
+
+function decodeProjectId(value: string) {
   try {
-    const projectId = decodeURIComponent(match[1]);
+    const projectId = decodeURIComponent(value);
     return /^[a-z0-9][a-z0-9-]{0,100}$/.test(projectId) ? projectId : null;
   } catch {
     return null;
   }
+}
+
+function getProjectOutlineRoute(pathname: string) {
+  const match =
+    /^\/api\/projects\/([^/]+)\/outline(?:\/(generate|approve))?$/.exec(
+      pathname,
+    );
+  if (!match?.[1]) return null;
+  const projectId = decodeProjectId(match[1]);
+  if (!projectId) return null;
+
+  return {
+    projectId,
+    action: match[2] ?? 'update',
+  } as const;
+}
+
+function sameValue(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function outlineContent(outline: TeachingOutline) {
+  return {
+    brief: outline.brief,
+    centralMessage: outline.centralMessage,
+    sections: outline.sections,
+  };
 }
 
 async function serveFrontend(
@@ -260,9 +304,63 @@ export function createPadStudioServer(options: AppOptions = {}) {
     path.resolve(moduleDirectory, '../../dist/frontend');
   const repository =
     options.repository ?? createFileProjectRepository(projectsDirectory);
+  const sharedCodexClient: CodexAppServerClient | null =
+    !options.codexConnection || !options.outlineGenerator
+      ? new StdioCodexAppServerClient()
+      : null;
   const codexConnection =
-    options.codexConnection ?? createCodexConnectionService();
+    options.codexConnection ??
+    createCodexConnectionService(sharedCodexClient!);
+  const outlineGenerator =
+    options.outlineGenerator ??
+    createCodexOutlineGenerator(sharedCodexClient!);
   const logger = options.logger ?? console;
+  const outlineGenerations = new Map<
+    string,
+    {
+      fingerprint: string;
+      promise: Promise<{
+        result: OutlineGenerationResult;
+        generatedAt: string;
+      }>;
+    }
+  >();
+
+  function generateOutlineOnce(
+    key: string,
+    fingerprint: string,
+    operation: () => Promise<OutlineGenerationResult>,
+  ) {
+    const existing = outlineGenerations.get(key);
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) {
+        throw new RequestBodyError(
+          409,
+          'GENERATION_ID_REUSED',
+          'Yêu cầu tạo mạch giảng này đã được dùng với nội dung khác.',
+        );
+      }
+      return existing.promise;
+    }
+
+    const promise = operation().then((result) => ({
+      result,
+      generatedAt: new Date().toISOString(),
+    }));
+    outlineGenerations.set(key, {fingerprint, promise});
+    void promise.catch(() => {
+      if (outlineGenerations.get(key)?.promise === promise) {
+        outlineGenerations.delete(key);
+      }
+    });
+
+    if (outlineGenerations.size > 50) {
+      const oldestKey = outlineGenerations.keys().next().value;
+      if (oldestKey) outlineGenerations.delete(oldestKey);
+    }
+
+    return promise;
+  }
 
   const server = createServer(async (request, response) => {
     try {
@@ -315,6 +413,223 @@ export function createPadStudioServer(options: AppOptions = {}) {
         return;
       }
 
+      const outlineRoute = getProjectOutlineRoute(requestUrl.pathname);
+
+      if (
+        outlineRoute?.action === 'generate' &&
+        request.method === 'POST'
+      ) {
+        const expectedRevision = readExpectedRevision(request);
+        const body = await readJsonBody(request);
+        const parsedRequest = GenerateTeachingOutlineSchema.safeParse(body);
+
+        if (!parsedRequest.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Yêu cầu tạo mạch giảng chưa hợp lệ.',
+            fields: validationFields(parsedRequest.error.issues),
+          });
+          return;
+        }
+
+        const currentProject = await repository.getProject(
+          outlineRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+
+        if (
+          currentProject.outline?.generation.generationId ===
+          parsedRequest.data.generationId
+        ) {
+          sendProject(response, 200, currentProject);
+          return;
+        }
+
+        if (currentProject.revision !== expectedRevision) {
+          throw new ProjectConflictError(currentProject);
+        }
+
+        const generationKey = `${currentProject.id}:${parsedRequest.data.generationId}`;
+        const fingerprint = JSON.stringify({
+          topicInput: currentProject.topicInput,
+          guidance: parsedRequest.data.guidance,
+          currentOutline: parsedRequest.data.guidance
+            ? currentProject.outline
+            : undefined,
+        });
+        const generation = await generateOutlineOnce(
+          generationKey,
+          fingerprint,
+          () =>
+            outlineGenerator.generate({
+              topicInput: currentProject.topicInput,
+              guidance: parsedRequest.data.guidance,
+              currentOutline: currentProject.outline ?? undefined,
+            }),
+        );
+        const outline: TeachingOutline = {
+          ...generation.result.content,
+          status: 'draft',
+          contentRevision:
+            (currentProject.outline?.contentRevision ?? 0) + 1,
+          sourceInput: currentProject.topicInput,
+          generation: {
+            generationId: parsedRequest.data.generationId,
+            provider: 'codex',
+            model: generation.result.model,
+            promptVersion: OUTLINE_PROMPT_VERSION,
+            generatedAt: generation.generatedAt,
+            usage: generation.result.usage,
+          },
+        };
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {outline},
+          expectedRevision,
+        );
+
+        if (!updatedProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+
+        sendProject(response, 200, updatedProject);
+        return;
+      }
+
+      if (
+        outlineRoute?.action === 'update' &&
+        request.method === 'PUT'
+      ) {
+        const expectedRevision = readExpectedRevision(request);
+        const body = await readJsonBody(request);
+        const parsedContent = TeachingOutlineContentSchema.safeParse(body);
+
+        if (!parsedContent.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Mạch giảng chưa hợp lệ.',
+            fields: validationFields(parsedContent.error.issues),
+          });
+          return;
+        }
+
+        const currentProject = await repository.getProject(
+          outlineRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        if (!currentProject.outline) {
+          throw new RequestBodyError(
+            409,
+            'OUTLINE_NOT_READY',
+            'Project chưa có mạch giảng để chỉnh sửa.',
+          );
+        }
+
+        const unchanged = sameValue(
+          outlineContent(currentProject.outline),
+          parsedContent.data,
+        );
+        const outline: TeachingOutline = unchanged
+          ? currentProject.outline
+          : {
+              ...parsedContent.data,
+              status: 'draft',
+              contentRevision: currentProject.outline.contentRevision + 1,
+              sourceInput: currentProject.outline.sourceInput,
+              generation: currentProject.outline.generation,
+            };
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {outline},
+          expectedRevision,
+        );
+
+        if (!updatedProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+
+        sendProject(response, 200, updatedProject);
+        return;
+      }
+
+      if (
+        outlineRoute?.action === 'approve' &&
+        request.method === 'POST'
+      ) {
+        const expectedRevision = readExpectedRevision(request);
+        const currentProject = await repository.getProject(
+          outlineRoute.projectId,
+        );
+
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        if (!currentProject.outline) {
+          throw new RequestBodyError(
+            409,
+            'OUTLINE_NOT_READY',
+            'Hãy tạo mạch giảng trước khi chốt.',
+          );
+        }
+        if (
+          !sameValue(
+            currentProject.outline.sourceInput,
+            currentProject.topicInput,
+          )
+        ) {
+          throw new RequestBodyError(
+            409,
+            'OUTLINE_OUTDATED',
+            'Đầu vào đã thay đổi. Hãy tạo lại mạch giảng trước khi chốt.',
+          );
+        }
+
+        const outline: TeachingOutline = {
+          ...currentProject.outline,
+          status: 'approved',
+        };
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {outline},
+          expectedRevision,
+        );
+
+        if (!updatedProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+
+        sendProject(response, 200, updatedProject);
+        return;
+      }
+
       const projectId = getProjectId(requestUrl.pathname);
 
       if (projectId && request.method === 'GET') {
@@ -335,7 +650,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
       if (projectId && request.method === 'PUT') {
         const expectedRevision = readExpectedRevision(request);
         const body = await readJsonBody(request);
-        const parsedUpdate = UpdateTopicProjectSchema.safeParse(body);
+        const parsedUpdate = UpdateProjectSchema.safeParse(body);
 
         if (!parsedUpdate.success) {
           sendApiError(response, 422, {
@@ -425,6 +740,14 @@ export function createPadStudioServer(options: AppOptions = {}) {
         return;
       }
 
+      if (error instanceof OutlineGenerationError) {
+        sendApiError(response, 503, {
+          code: error.code,
+          message: error.message,
+        });
+        return;
+      }
+
       logger.error(error);
       sendApiError(response, 500, {
         code: 'INTERNAL_ERROR',
@@ -433,6 +756,11 @@ export function createPadStudioServer(options: AppOptions = {}) {
     }
   });
 
-  server.on('close', () => codexConnection.close());
+  server.on('close', () => {
+    codexConnection.close();
+    if (options.codexConnection && sharedCodexClient) {
+      sharedCodexClient.close();
+    }
+  });
   return server;
 }

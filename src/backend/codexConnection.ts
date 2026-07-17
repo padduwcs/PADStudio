@@ -72,8 +72,16 @@ type PendingRequest = {
   timeout: ReturnType<typeof setTimeout>;
 };
 
+export type CodexAppServerNotification = {
+  method: string;
+  params?: unknown;
+};
+
 export interface CodexAppServerClient {
   request(method: string, params?: unknown): Promise<unknown>;
+  subscribe(
+    listener: (notification: CodexAppServerNotification) => void,
+  ): () => void;
   close(): void;
 }
 
@@ -179,12 +187,20 @@ export class StdioCodexAppServerClient implements CodexAppServerClient {
   private startPromise: Promise<void> | null = null;
   private nextRequestId = 1;
   private pendingRequests = new Map<number, PendingRequest>();
+  private notificationListeners = new Set<
+    (notification: CodexAppServerNotification) => void
+  >();
   private initialized = false;
   private closing = false;
 
   async request(method: string, params?: unknown) {
     await this.ensureStarted();
     return this.sendRequest(method, params);
+  }
+
+  subscribe(listener: (notification: CodexAppServerNotification) => void) {
+    this.notificationListeners.add(listener);
+    return () => this.notificationListeners.delete(listener);
   }
 
   close() {
@@ -198,6 +214,7 @@ export class StdioCodexAppServerClient implements CodexAppServerClient {
     this.child = null;
     this.startPromise = null;
     this.initialized = false;
+    this.notificationListeners.clear();
   }
 
   private ensureStarted() {
@@ -333,13 +350,22 @@ export class StdioCodexAppServerClient implements CodexAppServerClient {
       return;
     }
 
-    if (
-      !message ||
-      typeof message !== 'object' ||
-      'method' in message ||
-      !('id' in message) ||
-      typeof message.id !== 'number'
-    ) {
+    if (!message || typeof message !== 'object') return;
+
+    if ('method' in message && typeof message.method === 'string') {
+      if (!('id' in message)) {
+        const notification = {
+          method: message.method,
+          ...('params' in message ? {params: message.params} : {}),
+        };
+        for (const listener of this.notificationListeners) {
+          listener(notification);
+        }
+      }
+      return;
+    }
+
+    if (!('id' in message) || typeof message.id !== 'number') {
       return;
     }
 

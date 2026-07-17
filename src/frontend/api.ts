@@ -5,9 +5,11 @@ import type {
 import type {
   ApiErrorPayload,
   CreateTopicProject,
+  GenerateTeachingOutline,
   ProjectListIssue,
+  TeachingOutlineContent,
   TopicProject,
-  UpdateTopicProject,
+  UpdateProject,
 } from '../shared/topic.ts';
 
 export class ApiRequestError extends Error {
@@ -101,7 +103,7 @@ export async function getProject(projectId: string) {
 
 export async function updateTopicProject(
   projectId: string,
-  update: UpdateTopicProject,
+  update: UpdateProject,
   expectedRevision: number,
 ) {
   const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
@@ -112,6 +114,67 @@ export async function updateTopicProject(
     },
     body: JSON.stringify(update),
   });
+  const payload = await readPayload<{project: TopicProject}>(response);
+
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function generateTeachingOutline(
+  projectId: string,
+  request: GenerateTeachingOutline,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/outline/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function updateTeachingOutline(
+  projectId: string,
+  content: TeachingOutlineContent,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/outline`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(content),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function approveTeachingOutline(
+  projectId: string,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/outline/approve`,
+    {
+      method: 'POST',
+      headers: {'If-Match': `"${expectedRevision}"`},
+    },
+  );
   const payload = await readPayload<{project: TopicProject}>(response);
 
   assertSuccessful(response, payload);
