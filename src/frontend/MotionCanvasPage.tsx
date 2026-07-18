@@ -1,7 +1,6 @@
 import {useState} from 'react';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
-import {ElevenLabsConnectionCard} from './ElevenLabsConnectionCard.tsx';
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
@@ -17,7 +16,6 @@ import {
   projectVoiceVisualPath,
 } from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
-import {useElevenLabsConnection} from './useElevenLabsConnection.ts';
 import {useMotionCanvasDraft} from './useMotionCanvasDraft.ts';
 
 function formatTime(seconds: number) {
@@ -27,7 +25,6 @@ function formatTime(seconds: number) {
 export function MotionCanvasPage({projectId}: {projectId: string}) {
   const motionCanvas = useMotionCanvasDraft(projectId);
   const codexConnection = useCodexConnection();
-  const elevenLabsConnection = useElevenLabsConnection();
   const [guidance, setGuidance] = useState('');
   const [copied, setCopied] = useState(false);
 
@@ -130,9 +127,8 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
         </p>
       </header>
 
-      <div className="outline-codex integration-connections">
+      <div className="outline-codex motion-canvas-connection">
         <CodexConnectionCard connection={codexConnection} />
-        <ElevenLabsConnectionCard connection={elevenLabsConnection} />
       </div>
 
       {motionCanvas.conflict && (
@@ -344,6 +340,7 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                     (file) => file.path === scene.filePath,
                   );
                   const outlineSection = outline.sections[index]!;
+                  const planSection = plan.sections[index];
 
                   return (
                     <article
@@ -355,17 +352,65 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                           {String(index + 1).padStart(2, '0')}
                         </span>
                         <div>
-                          <h2>{scene.name}</h2>
+                          <h2>{outlineSection.title}</h2>
                           <p>{outlineSection.goal}</p>
+                          <span className="motion-canvas-scene-name">
+                            Scene source · {scene.name}
+                          </span>
                         </div>
                         <span className="voice-visual-section-duration">
                           <ClockIcon />
                           {formatTime(scene.durationSeconds)}
+                          {planSection
+                            ? ` · ${planSection.beats.length} beat`
+                            : ''}
                         </span>
                       </header>
+
+                      {planSection && (
+                        <div className="motion-canvas-timeline">
+                          <div className="motion-canvas-timeline-heading">
+                            <span>Timeline visual dự kiến</span>
+                            <small>
+                              {scene.timingEvents?.length
+                                ? 'Điều khiển bằng beat events'
+                                : 'Timing legacy'}
+                            </small>
+                          </div>
+                          <div
+                            className="motion-canvas-timeline-track"
+                            aria-label={`Timeline của ${outlineSection.title}`}
+                          >
+                            {planSection.beats.map((beat, beatIndex) => {
+                              const timing = scene.timingEvents?.find(
+                                (event) => event.beatId === beat.id,
+                              );
+                              const duration =
+                                timing?.plannedDurationSeconds ??
+                                beat.durationSeconds;
+
+                              return (
+                                <div
+                                  className="motion-canvas-timeline-beat"
+                                  style={{flexGrow: duration}}
+                                  title={beat.visualDescription}
+                                  key={beat.id}
+                                >
+                                  <span>Beat {beatIndex + 1}</span>
+                                  <p>{beat.visualDescription}</p>
+                                  <small>{formatTime(duration)}</small>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       <div className="motion-canvas-file-row">
                         <code>{scene.filePath}</code>
-                        <span>{sourceFile?.source.split('\n').length ?? 0} dòng</span>
+                        <span>
+                          {sourceFile?.source.split('\n').length ?? 0} dòng
+                        </span>
                       </div>
                       {sourceFile && (
                         <details>

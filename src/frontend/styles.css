@@ -689,7 +689,7 @@ textarea.has-error,
 
 .choice-card strong {
   color: #334d44;
-  font-size: 10.5px;
+  font-size: 11.5px;
   font-weight: 700;
   line-height: 1.25;
 }
@@ -697,7 +697,7 @@ textarea.has-error,
 .choice-card small {
   margin-top: 2px;
   color: #8a9892;
-  font-size: 8.5px;
+  font-size: 9.5px;
   line-height: 1.35;
 }
 
@@ -746,7 +746,7 @@ textarea.has-error,
   gap: 4px;
   margin-bottom: 3px;
   color: #73847e;
-  font-size: 8px;
+  font-size: 9.5px;
   font-weight: 750;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -764,27 +764,28 @@ textarea.has-error,
 
 .codex-connection-content strong {
   color: var(--ink);
-  font-size: 12px;
+  font-size: 13.5px;
 }
 
 .codex-connection-content p {
   margin: 3px 0 0;
   color: var(--ink-soft);
-  font-size: 10px;
+  font-size: 11.5px;
   line-height: 1.45;
 }
 
 .codex-connection-content small {
   margin-top: 3px;
   color: #7b8b85;
-  font-size: 8.5px;
+  font-size: 10px;
+  line-height: 1.45;
 }
 
 .codex-connection-content a {
   display: inline-block;
   margin-top: 7px;
   color: var(--green-700);
-  font-size: 9.5px;
+  font-size: 10.5px;
   font-weight: 750;
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -806,7 +807,7 @@ textarea.has-error,
   border-radius: 8px;
   color: var(--green-800);
   background: white;
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 750;
   cursor: pointer;
 }
@@ -831,7 +832,7 @@ textarea.has-error,
   align-items: center;
   gap: 7px;
   color: var(--green-700);
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -953,7 +954,7 @@ textarea.has-error,
   color: white;
   background: var(--green-800);
   box-shadow: 0 7px 18px rgba(24, 74, 61, 0.17);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 720;
   white-space: nowrap;
   cursor: pointer;
@@ -1192,7 +1193,7 @@ kbd {
 
 .preview-label {
   color: #8f9d97;
-  font-size: 8px;
+  font-size: 9.5px;
   font-weight: 760;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -1522,14 +1523,14 @@ kbd {
 .outline-empty-state h3 {
   margin: 0;
   color: #385249;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .outline-empty-state p {
   max-width: 500px;
   margin: 6px 0 0;
   color: #778a82;
-  font-size: 10.5px;
+  font-size: 12px;
   line-height: 1.6;
 }
 
@@ -1553,7 +1554,7 @@ kbd {
   border-radius: 9px;
   color: #536a61;
   background: white;
-  font-size: 10.5px;
+  font-size: 11.5px;
   font-weight: 680;
   cursor: pointer;
 }
@@ -1589,13 +1590,13 @@ kbd {
 
 .outline-side-card dt {
   color: #89968f;
-  font-size: 9px;
+  font-size: 10.5px;
 }
 
 .outline-side-card dd {
   margin: 0;
   color: #3d584e;
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 700;
   text-align: right;
   overflow-wrap: anywhere;
@@ -1620,7 +1621,7 @@ kbd {
 
 .outline-next-note p {
   margin: 0;
-  font-size: 9px;
+  font-size: 10.5px;
   line-height: 1.55;
 }
 
@@ -1743,7 +1744,7 @@ kbd {
 .outline-time-field > span:first-child,
 .outline-subheading > span {
   color: #5e7169;
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 750;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1752,7 +1753,7 @@ kbd {
 .outline-field textarea {
   min-height: 0;
   padding: 12px 13px;
-  font-size: 11.5px;
+  font-size: 13px;
 }
 
 .outline-assumptions {
@@ -1777,7 +1778,7 @@ kbd {
   border-radius: 7px;
   color: var(--green-700);
   background: white;
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -1791,7 +1792,7 @@ kbd {
 .outline-empty-copy {
   margin: 12px 0 0;
   color: #89968f;
-  font-size: 10px;
+  font-size: 11.5px;
 }
 
 .assumption-list {
@@ -1827,14 +1828,14 @@ kbd {
 .assumption-row input {
   width: 100%;
   padding: 8px 10px;
-  font-size: 10.5px;
+  font-size: 12px;
 }
 
 .assumption-row button {
   border: 0;
   color: #9b554b;
   background: transparent;
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 650;
   cursor: pointer;
 }
@@ -1888,7 +1889,7 @@ kbd {
 .outline-section-title {
   width: 100%;
   padding: 7px 9px;
-  font-size: 11.5px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -1906,7 +1907,7 @@ kbd {
   border-radius: 7px;
   color: #667970;
   background: white;
-  font-size: 9px;
+  font-size: 10.5px;
   font-weight: 700;
   cursor: pointer;
 }
@@ -1938,13 +1939,13 @@ kbd {
   align-items: center;
   gap: 6px;
   color: #7b8a84;
-  font-size: 9.5px;
+  font-size: 11px;
 }
 
 .outline-time-field input {
   width: 72px;
   padding: 7px 8px;
-  font-size: 10.5px;
+  font-size: 12px;
   text-align: right;
 }
 
@@ -1959,14 +1960,14 @@ kbd {
 .outline-ai-revision p {
   margin: 6px 0 0;
   color: #82918b;
-  font-size: 9.5px;
+  font-size: 11.5px;
   line-height: 1.5;
 }
 
 .outline-ai-revision textarea {
   min-height: 78px;
   padding: 11px 12px;
-  font-size: 10.5px;
+  font-size: 12.5px;
 }
 
 .outline-ai-revision .secondary-button {
@@ -1989,7 +1990,7 @@ kbd {
 
 .outline-usage span {
   color: #788a82;
-  font-size: 8px;
+  font-size: 9.5px;
   font-weight: 700;
   text-transform: uppercase;
 }
@@ -2003,7 +2004,7 @@ kbd {
 .outline-usage small {
   margin-top: 3px;
   color: #7c8d85;
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .outline-final-actions {
@@ -2027,7 +2028,7 @@ kbd {
 
 .outline-final-actions > div > span {
   color: #7b8b85;
-  font-size: 9.5px;
+  font-size: 11px;
 }
 
 .library-layer {

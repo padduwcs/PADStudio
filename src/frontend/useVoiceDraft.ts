@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {ElevenLabsCatalog} from '../shared/elevenLabs.ts';
 import type {
   ElevenLabsVoiceSettings,
@@ -30,6 +30,35 @@ export interface VoiceDraftConfiguration {
   seed: number | null;
 }
 
+function sameValue(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function voicePrerequisitesAreReady(project: TopicProject) {
+  const outline = project.outline;
+  const plan = project.voiceVisualPlan;
+  const motion = project.motionCanvasBundle;
+
+  return Boolean(
+    outline?.status === 'approved' &&
+      sameValue(outline.sourceInput, project.topicInput) &&
+      plan?.status === 'approved' &&
+      plan.sourceOutlineContentRevision === outline.contentRevision &&
+      plan.sections.length === outline.sections.length &&
+      plan.sections.every(
+        (section, index) =>
+          section.outlineSectionId === outline.sections[index]?.id,
+      ) &&
+      motion?.status === 'approved' &&
+      motion.sourceVoiceVisualContentRevision === plan.contentRevision &&
+      motion.scenes.length === outline.sections.length &&
+      motion.scenes.every(
+        (scene, index) =>
+          scene.outlineSectionId === outline.sections[index]?.id,
+      ),
+  );
+}
+
 export function useVoiceDraft(projectId: string) {
   const [project, setProject] = useState<TopicProject | null>(null);
   const [catalog, setCatalog] = useState<ElevenLabsCatalog | null>(null);
@@ -46,6 +75,10 @@ export function useVoiceDraft(projectId: string) {
   const [approving, setApproving] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [libraryMessage, setLibraryMessage] = useState('');
+  const generationRequestRef = useRef<{
+    fingerprint: string;
+    generationId: string;
+  } | null>(null);
 
   const applyCatalogDefaults = useCallback(
     (nextCatalog: ElevenLabsCatalog, currentProject: TopicProject) => {
@@ -124,6 +157,7 @@ export function useVoiceDraft(projectId: string) {
   );
 
   const load = useCallback(async () => {
+    generationRequestRef.current = null;
     setLoadState('loading');
     setLoadError('');
     try {
@@ -255,13 +289,7 @@ export function useVoiceDraft(projectId: string) {
     });
   }
 
-  const ready = Boolean(
-    project?.outline?.status === 'approved' &&
-      project.voiceVisualPlan?.status === 'approved' &&
-      project.motionCanvasBundle?.status === 'approved' &&
-      project.motionCanvasBundle.sourceVoiceVisualContentRevision ===
-        project.voiceVisualPlan.contentRevision,
-  );
+  const ready = project ? voicePrerequisitesAreReady(project) : false;
   const stale = Boolean(
     project?.voiceBundle &&
       project.voiceVisualPlan &&
@@ -275,9 +303,23 @@ export function useVoiceDraft(projectId: string) {
     setGenerating(true);
     setActionError('');
     try {
-      const request: GenerateVoice = {
-        generationId: crypto.randomUUID(),
+      const requestConfiguration = {
         ...configuration,
+      };
+      const fingerprint = JSON.stringify({
+        projectId: project.id,
+        revision: project.revision,
+        configuration: requestConfiguration,
+      });
+      const previousRequest = generationRequestRef.current;
+      const generationId =
+        previousRequest?.fingerprint === fingerprint
+          ? previousRequest.generationId
+          : crypto.randomUUID();
+      generationRequestRef.current = {fingerprint, generationId};
+      const request: GenerateVoice = {
+        generationId,
+        ...requestConfiguration,
       };
       const updated = await generateVoice(
         project.id,
@@ -285,6 +327,7 @@ export function useVoiceDraft(projectId: string) {
         project.revision,
       );
       setProject(updated);
+      generationRequestRef.current = null;
       return updated;
     } catch (error) {
       if (error instanceof ApiRequestError && error.code === 'PROJECT_CONFLICT') {

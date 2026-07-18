@@ -11,7 +11,10 @@ import {
 import {voiceAudioUrl} from './api.ts';
 import {navigate, projectMotionCanvasPath} from './router.ts';
 import {useElevenLabsConnection} from './useElevenLabsConnection.ts';
-import {useVoiceDraft} from './useVoiceDraft.ts';
+import {
+  type VoiceDraftConfiguration,
+  useVoiceDraft,
+} from './useVoiceDraft.ts';
 
 function formatTime(seconds: number) {
   const rounded = Math.max(0, Math.round(seconds));
@@ -25,10 +28,18 @@ function settingLabel(value: number) {
   });
 }
 
+function sameVoiceConfiguration(
+  left: VoiceDraftConfiguration,
+  right: VoiceDraftConfiguration,
+) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 export function VoicePage({projectId}: {projectId: string}) {
   const voice = useVoiceDraft(projectId);
   const connection = useElevenLabsConnection();
   const [search, setSearch] = useState('');
+  const [showAllVoices, setShowAllVoices] = useState(false);
 
   async function handleGenerate() {
     if (voice.generating || connection.checking) return;
@@ -39,6 +50,7 @@ export function VoicePage({projectId}: {projectId: string}) {
 
   function handleSearch(event: FormEvent) {
     event.preventDefault();
+    setShowAllVoices(false);
     void voice.searchVoices(search);
   }
 
@@ -87,6 +99,20 @@ export function VoicePage({projectId}: {projectId: string}) {
 
   const bundle = project.voiceBundle;
   const approved = bundle?.status === 'approved' && !voice.stale;
+  const bundleConfiguration: VoiceDraftConfiguration | null = bundle
+    ? {
+        voiceId: bundle.configuration.voiceId,
+        modelId: bundle.configuration.modelId,
+        outputFormat: bundle.configuration.outputFormat,
+        settings: bundle.configuration.settings,
+        seed: bundle.configuration.seed,
+      }
+    : null;
+  const configurationChanged = Boolean(
+    bundleConfiguration &&
+      voice.configuration &&
+      !sameVoiceConfiguration(bundleConfiguration, voice.configuration),
+  );
   const freeTier =
     connection.status?.state === 'connected' &&
     connection.status.subscription.tier.toLowerCase() === 'free';
@@ -104,6 +130,18 @@ export function VoicePage({projectId}: {projectId: string}) {
       Math.max(0, section.beats.length - 1) * 2,
     0,
   );
+  const catalogVoices = voice.catalog?.voices ?? [];
+  const orderedVoices = voice.selectedVoice
+    ? [
+        voice.selectedVoice,
+        ...catalogVoices.filter(
+          (item) => item.voiceId !== voice.selectedVoice?.voiceId,
+        ),
+      ]
+    : catalogVoices;
+  const visibleVoices = showAllVoices
+    ? orderedVoices
+    : orderedVoices.slice(0, 6);
 
   return (
     <div className="voice-workspace">
@@ -161,7 +199,7 @@ export function VoicePage({projectId}: {projectId: string}) {
             </div>
 
             <form className="voice-search" onSubmit={handleSearch}>
-              <label htmlFor="voice-search">Tìm voice theo tên hoặc ID</label>
+              <label htmlFor="voice-search">Tìm giọng đọc theo tên hoặc ID</label>
               <div>
                 <input
                   id="voice-search"
@@ -175,15 +213,18 @@ export function VoicePage({projectId}: {projectId: string}) {
                   type="submit"
                   disabled={voice.catalogLoading}
                 >
-                  {voice.catalogLoading ? 'Đang tìm…' : 'Tài khoản'}
+                  {voice.catalogLoading
+                    ? 'Đang tìm…'
+                    : 'Tìm trong tài khoản'}
                 </button>
                 <button
                   className="secondary-button"
                   type="button"
                   disabled={voice.catalogLoading || !search.trim()}
-                  onClick={() =>
-                    void voice.searchVoices(search, true)
-                  }
+                  onClick={() => {
+                    setShowAllVoices(false);
+                    void voice.searchVoices(search, true);
+                  }}
                 >
                   Voice Library
                 </button>
@@ -222,85 +263,103 @@ export function VoicePage({projectId}: {projectId: string}) {
               <p className="voice-inline-note">{voice.libraryMessage}</p>
             )}
 
+            {voice.catalogLoading && !voice.catalog && (
+              <div className="voice-catalog-loading" role="status">
+                <span className="spinner dark" />
+                Đang tải voice và model từ tài khoản ElevenLabs…
+              </div>
+            )}
+
             <div className="voice-choice-grid">
               <div>
-                <span className="preview-label">Voice</span>
+                <div className="voice-choice-heading">
+                  <span className="preview-label">Voice</span>
+                  <small>
+                    {voice.catalog?.voices.length ?? 0} kết quả
+                  </small>
+                </div>
                 <div className="voice-choice-list">
-                  {voice.catalog?.voices.map((item) => (
-                    <label
-                      className={`voice-choice${voice.configuration?.voiceId === item.voiceId ? ' is-selected' : ''}`}
+                  {visibleVoices.map((item) => (
+                    <div
+                      className={`voice-choice${item.previewUrl ? ' has-preview' : ''}${voice.configuration?.voiceId === item.voiceId ? ' is-selected' : ''}`}
                       key={item.voiceId}
                     >
-                      <input
-                        type="radio"
-                        name="voice"
-                        disabled={
-                          freeTier &&
-                          item.requiresPaidApiOnFreeTier
-                        }
-                        checked={
-                          voice.configuration?.voiceId === item.voiceId
-                        }
-                        onChange={() =>
-                          voice.updateConfiguration((current) => {
-                            const recommendedModel =
-                              voice.catalog?.models.find(
-                                (model) =>
-                                  model.modelId === 'eleven_v3' &&
-                                  model.languages.includes('vi'),
-                              ) ??
-                              item.highQualityBaseModelIds
-                                .map((modelId) =>
-                                  voice.catalog?.models.find(
-                                    (model) =>
-                                      model.modelId === modelId &&
-                                      model.languages.includes('vi'),
-                                  ),
-                                )
-                                .find(
-                                  (model) => model !== undefined,
-                                );
-                            if (!recommendedModel) {
-                              return {...current, voiceId: item.voiceId};
-                            }
-                            return {
-                              ...current,
-                              voiceId: item.voiceId,
-                              modelId: recommendedModel.modelId,
-                              settings: {
-                                ...current.settings,
-                                style: recommendedModel.canUseStyle
-                                  ? current.settings.style
-                                  : 0,
-                                useSpeakerBoost:
-                                  recommendedModel.canUseSpeakerBoost &&
-                                  current.settings.useSpeakerBoost,
-                              },
-                            };
-                          })
-                        }
-                      />
-                      <span>
-                        <strong>{item.name}</strong>
-                        <small>
-                          {item.labels.accent ??
-                            item.labels.description ??
-                            item.category ??
-                            'Voice ElevenLabs'}
-                          {freeTier &&
-                          item.requiresPaidApiOnFreeTier
-                            ? ' · API cần gói trả phí'
-                            : ''}
-                        </small>
-                      </span>
+                      <label className="voice-choice-select">
+                        <input
+                          type="radio"
+                          name="voice"
+                          disabled={
+                            freeTier &&
+                            item.requiresPaidApiOnFreeTier
+                          }
+                          checked={
+                            voice.configuration?.voiceId === item.voiceId
+                          }
+                          onChange={() =>
+                            voice.updateConfiguration((current) => {
+                              const recommendedModel =
+                                voice.catalog?.models.find(
+                                  (model) =>
+                                    model.modelId === 'eleven_v3' &&
+                                    model.languages.includes('vi'),
+                                ) ??
+                                item.highQualityBaseModelIds
+                                  .map((modelId) =>
+                                    voice.catalog?.models.find(
+                                      (model) =>
+                                        model.modelId === modelId &&
+                                        model.languages.includes('vi'),
+                                    ),
+                                  )
+                                  .find(
+                                    (model) => model !== undefined,
+                                  );
+                              if (!recommendedModel) {
+                                return {
+                                  ...current,
+                                  voiceId: item.voiceId,
+                                };
+                              }
+                              return {
+                                ...current,
+                                voiceId: item.voiceId,
+                                modelId: recommendedModel.modelId,
+                                settings: {
+                                  ...current.settings,
+                                  style: recommendedModel.canUseStyle
+                                    ? current.settings.style
+                                    : 0,
+                                  useSpeakerBoost:
+                                    recommendedModel.canUseSpeakerBoost &&
+                                    current.settings.useSpeakerBoost,
+                                },
+                              };
+                            })
+                          }
+                        />
+                        <span>
+                          <strong>{item.name}</strong>
+                          <small>
+                            {item.labels.accent ??
+                              item.labels.description ??
+                              item.category ??
+                              'Voice ElevenLabs'}
+                            {freeTier &&
+                            item.requiresPaidApiOnFreeTier
+                              ? ' · API cần gói trả phí'
+                              : ''}
+                          </small>
+                        </span>
+                      </label>
                       {item.previewUrl && (
                         <audio
                           controls
                           preload="none"
                           src={item.previewUrl}
+                          aria-label={`Nghe thử voice ${item.name}`}
                         />
                       )}
-                    </label>
+                    </div>
                   ))}
                   {!voice.catalogLoading &&
                     voice.catalog?.voices.length === 0 && (
@@ -309,11 +368,27 @@ export function VoicePage({projectId}: {projectId: string}) {
                         ID rồi tìm lại.
                       </p>
                     )}
+                  {orderedVoices.length > 6 && (
+                    <button
+                      className="voice-show-more"
+                      type="button"
+                      onClick={() =>
+                        setShowAllVoices((current) => !current)
+                      }
+                    >
+                      {showAllVoices
+                        ? 'Thu gọn danh sách'
+                        : `Xem thêm ${orderedVoices.length - 6} voice`}
+                    </button>
+                  )}
                 </div>
               </div>
 
               <div>
-                <span className="preview-label">Model TTS</span>
+                <div className="voice-choice-heading">
+                  <span className="preview-label">Model TTS</span>
+                  <small>Chỉ hiện model có tiếng Việt</small>
+                </div>
                 <div className="voice-model-list">
                   {voice.catalog?.models
                     .filter((model) => model.languages.includes('vi'))
@@ -368,6 +443,10 @@ export function VoicePage({projectId}: {projectId: string}) {
                   <div>
                     <span className="preview-label">Voice settings</span>
                     <h2>Tinh chỉnh cho bản đọc thật</h2>
+                    <p>
+                      {voice.selectedVoice?.name ?? 'Chưa chọn voice'} ·{' '}
+                      {voice.selectedModel?.name ?? 'Chưa chọn model'}
+                    </p>
                   </div>
                   <label>
                     <input
@@ -438,6 +517,13 @@ export function VoicePage({projectId}: {projectId: string}) {
                   {characterCount.toLocaleString('vi-VN')} ký tự ·{' '}
                   {plan.sections.length} request
                 </strong>
+                <small>
+                  {configurationChanged
+                    ? 'Cấu hình bên trên đã khác generation hiện tại.'
+                    : bundle
+                      ? 'Tạo lại chỉ khi bạn muốn thay voice hoặc cách đọc.'
+                      : 'Audio chỉ được lưu khi toàn bộ section thành công.'}
+                </small>
               </div>
               <button
                 className="submit-button"
@@ -507,20 +593,43 @@ export function VoicePage({projectId}: {projectId: string}) {
                     <audio
                       controls
                       preload="metadata"
+                      aria-label={`Voice section ${index + 1}: ${outline.sections[index]?.title ?? ''}`}
                       src={voiceAudioUrl(
                         project.id,
                         section.outlineSectionId,
                         bundle.generation.generationId,
                       )}
                     />
-                    <div className="voice-beat-timings">
-                      {section.beats.map((beat, beatIndex) => (
-                        <span key={beat.beatId}>
-                          Beat {beatIndex + 1}: {beat.startSeconds.toFixed(2)}–
-                          {beat.endSeconds.toFixed(2)}s
-                        </span>
-                      ))}
-                    </div>
+                    <details
+                      className="voice-beat-review"
+                      open={index === 0}
+                    >
+                      <summary>
+                        Xem lời và timing của {section.beats.length} beat
+                      </summary>
+                      <ol className="voice-beat-review-list">
+                        {section.beats.map((beat, beatIndex) => {
+                          const sourceBeat =
+                            plan.sections[index]?.beats[beatIndex];
+
+                          return (
+                            <li key={beat.beatId}>
+                              <div>
+                                <strong>Beat {beatIndex + 1}</strong>
+                                <span>
+                                  {beat.startSeconds.toFixed(2)}–
+                                  {beat.endSeconds.toFixed(2)}s
+                                </span>
+                              </div>
+                              <p>
+                                {sourceBeat?.voiceover ??
+                                  'Không tìm thấy lời đọc nguồn của beat.'}
+                              </p>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    </details>
                   </div>
                 </article>
               ))}
@@ -530,7 +639,16 @@ export function VoicePage({projectId}: {projectId: string}) {
 
         <aside className="voice-side">
           <section className="outline-side-card">
-            <span className="preview-label">Generation hiện tại</span>
+            <div className="voice-side-heading">
+              <span className="preview-label">Generation hiện tại</span>
+              <strong>
+                {approved
+                  ? 'Đã chốt'
+                  : bundle
+                    ? 'Chờ review'
+                    : 'Chưa tạo'}
+              </strong>
+            </div>
             <dl>
               <div>
                 <dt>Voice</dt>
@@ -559,6 +677,12 @@ export function VoicePage({projectId}: {projectId: string}) {
                 </dd>
               </div>
             </dl>
+            {configurationChanged && (
+              <div className="voice-config-warning">
+                Cấu hình đang chọn chưa áp dụng vào audio bên dưới. Hãy tạo
+                generation mới nếu muốn dùng thay đổi này.
+              </div>
+            )}
             <div className="outline-next-note">
               <LightbulbIcon />
               <p>

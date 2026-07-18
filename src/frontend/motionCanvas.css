@@ -1,14 +1,18 @@
 .motion-canvas-workspace {
   width: min(1180px, 100%);
-  margin: 18px auto 0;
+  margin: 8px auto 0;
 }
 
 .motion-canvas-empty-grid,
 .motion-canvas-editor-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(0, 1fr) 288px;
   gap: 24px;
   align-items: start;
+}
+
+.motion-canvas-connection {
+  max-width: 100%;
 }
 
 .motion-canvas-empty-state {
@@ -54,7 +58,7 @@
 }
 
 .motion-canvas-summary {
-  padding: 24px;
+  padding: 26px;
 }
 
 .motion-canvas-summary > header {
@@ -68,7 +72,7 @@
 .motion-canvas-scene h2 {
   margin: 7px 0 0;
   color: var(--ink);
-  font-size: 18px;
+  font-size: 19px;
   line-height: 1.3;
 }
 
@@ -78,7 +82,7 @@
   justify-content: space-between;
   gap: 16px;
   margin-top: 22px;
-  padding: 14px;
+  padding: 15px 16px;
   border: 1px solid #dfe3dd;
   border-radius: 12px;
   background: #f5f7f3;
@@ -92,7 +96,7 @@
 
 .motion-canvas-command span {
   color: var(--ink-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -101,7 +105,7 @@
   overflow: hidden;
   color: var(--green-800);
   font-family: "Cascadia Code", Consolas, monospace;
-  font-size: 11px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -113,14 +117,14 @@
   border-radius: 9px;
   color: var(--green-700);
   background: transparent;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   cursor: pointer;
 }
 
 .motion-canvas-validation {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
   margin: 18px 0 0;
@@ -132,13 +136,14 @@
 .motion-canvas-validation div {
   display: grid;
   gap: 4px;
-  padding: 11px;
+  min-width: 0;
+  padding: 12px;
   background: white;
 }
 
 .motion-canvas-validation dt {
   color: var(--ink-soft);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -148,7 +153,7 @@
   overflow: hidden;
   margin: 0;
   color: var(--ink);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 750;
   text-overflow: ellipsis;
 }
@@ -162,7 +167,7 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 15px;
   align-items: start;
-  padding: 20px 22px;
+  padding: 22px 24px;
   border-bottom: 1px solid #e5e7e1;
   background: #f7f7f3;
 }
@@ -174,8 +179,104 @@
 .motion-canvas-scene > header p {
   margin: 5px 0 0;
   color: var(--ink-soft);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
+}
+
+.motion-canvas-scene-name {
+  display: block;
+  margin-top: 8px;
+  color: #86958f;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.motion-canvas-timeline {
+  display: grid;
+  gap: 10px;
+  padding: 17px 20px;
+  border-bottom: 1px solid #e9ebe6;
+  background: #fff;
+}
+
+.motion-canvas-timeline-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.motion-canvas-timeline-heading > span {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.motion-canvas-timeline-heading small {
+  color: var(--ink-soft);
+  font-size: 10.5px;
+}
+
+.motion-canvas-timeline-track {
+  display: flex;
+  gap: 7px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-color: #c4d3cc transparent;
+  scrollbar-width: thin;
+}
+
+.motion-canvas-timeline-beat {
+  display: grid;
+  min-width: 112px;
+  min-height: 94px;
+  align-content: start;
+  gap: 5px;
+  padding: 11px 12px;
+  border: 1px solid #dbe5df;
+  border-radius: 11px;
+  background: #f2f7f4;
+}
+
+.motion-canvas-timeline-beat:nth-child(even) {
+  border-color: #eadfd8;
+  background: #fff6f0;
+}
+
+.motion-canvas-timeline-beat > span {
+  color: var(--green-700);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.motion-canvas-timeline-beat:nth-child(even) > span {
+  color: #b55e39;
+}
+
+.motion-canvas-timeline-beat p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: #536860;
+  font-size: 11px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.motion-canvas-timeline-beat small {
+  align-self: end;
+  color: #758780;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
 }
 
 .motion-canvas-file-row {
@@ -183,14 +284,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 16px;
+  padding: 13px 20px;
   border-bottom: 1px solid #eceee9;
 }
 
 .motion-canvas-file-row span {
   flex: 0 0 auto;
   color: var(--ink-soft);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .motion-canvas-scene details {
@@ -200,7 +301,7 @@
 .motion-canvas-scene summary {
   padding: 13px 0 10px;
   color: var(--green-700);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   cursor: pointer;
 }
@@ -239,6 +340,12 @@
   }
 }
 
+@media (max-width: 1080px) and (min-width: 921px) {
+  .motion-canvas-validation {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 640px) {
   .motion-canvas-summary {
     padding: 18px;
@@ -252,6 +359,13 @@
 
   .motion-canvas-command button {
     width: 100%;
+  }
+
+  .motion-canvas-command code {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .motion-canvas-validation {
@@ -270,5 +384,15 @@
   .motion-canvas-file-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .motion-canvas-timeline {
+    padding-inline: 16px;
+  }
+
+  .motion-canvas-timeline-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
   }
 }

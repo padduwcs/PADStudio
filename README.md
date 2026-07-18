@@ -152,7 +152,8 @@ npm run dev
 ```
 
 Frontend chạy tại `http://127.0.0.1:5173`, backend chạy tại
-`http://127.0.0.1:4174`.
+`http://127.0.0.1:4174`. Nếu cổng backend này đang được dùng, lệnh dev tự chọn
+cổng trống kế tiếp và cập nhật Vite proxy tương ứng.
 
 ### Kết nối ElevenLabs
 

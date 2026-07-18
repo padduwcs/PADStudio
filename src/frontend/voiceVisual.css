@@ -103,6 +103,10 @@
   gap: 16px;
 }
 
+.voice-visual-direction-grid textarea {
+  min-height: 118px;
+}
+
 .voice-visual-section {
   overflow: hidden;
 }
@@ -124,7 +128,7 @@
 .voice-visual-section-header p {
   margin: 5px 0 0;
   color: var(--ink-soft);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -136,7 +140,7 @@
   border-radius: 9px;
   color: var(--ink-soft);
   background: white;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -176,7 +180,7 @@
 
 .voice-visual-beat-index {
   color: var(--green-700);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -186,7 +190,7 @@
   padding-left: 10px;
   border-left: 1px solid var(--line);
   color: var(--ink-soft);
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -211,7 +215,7 @@
   color: var(--ink);
   outline: none;
   background: #fff;
-  font-size: 13px;
+  font-size: 13.5px;
   line-height: 1.55;
 }
 
