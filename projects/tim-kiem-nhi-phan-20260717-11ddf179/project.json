@@ -1,6 +1,6 @@
 {
   "id": "tim-kiem-nhi-phan-20260717-11ddf179",
-  "revision": 10,
+  "revision": 11,
   "creationId": "5c130bee-8e11-419e-b4ec-9f4be509ac41",
   "status": "draft",
   "currentStep": "motionCanvas",
@@ -224,10 +224,10 @@
     }
   },
   "createdAt": "2026-07-17T14:45:10.554Z",
-  "updatedAt": "2026-07-17T19:05:22.353Z",
+  "updatedAt": "2026-07-17T19:26:13.864Z",
   "version": 5,
   "motionCanvasBundle": {
-    "status": "draft",
+    "status": "approved",
     "contentRevision": 3,
     "sourceVoiceVisualContentRevision": 2,
     "workspacePath": "motion-canvas/generations/20a20c95-c1f5-45ac-a7f3-7164921ae7ab",

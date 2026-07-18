@@ -1,6 +1,7 @@
 import {useState} from 'react';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
+import {ElevenLabsConnectionCard} from './ElevenLabsConnectionCard.tsx';
 import {
   ArrowLeftIcon,
   CheckIcon,
@@ -11,6 +12,7 @@ import {
 } from './icons.tsx';
 import {navigate, projectVoiceVisualPath} from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
+import {useElevenLabsConnection} from './useElevenLabsConnection.ts';
 import {useMotionCanvasDraft} from './useMotionCanvasDraft.ts';
 
 function formatTime(seconds: number) {
@@ -20,6 +22,7 @@ function formatTime(seconds: number) {
 export function MotionCanvasPage({projectId}: {projectId: string}) {
   const motionCanvas = useMotionCanvasDraft(projectId);
   const codexConnection = useCodexConnection();
+  const elevenLabsConnection = useElevenLabsConnection();
   const [guidance, setGuidance] = useState('');
   const [copied, setCopied] = useState(false);
 
@@ -115,8 +118,9 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
         </p>
       </header>
 
-      <div className="outline-codex">
+      <div className="outline-codex integration-connections">
         <CodexConnectionCard connection={codexConnection} />
+        <ElevenLabsConnectionCard connection={elevenLabsConnection} />
       </div>
 
       {motionCanvas.conflict && (

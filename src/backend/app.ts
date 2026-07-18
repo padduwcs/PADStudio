@@ -25,6 +25,10 @@ import {
   type CodexConnectionService,
 } from './codexConnection.ts';
 import {
+  createElevenLabsConnectionService,
+  type ElevenLabsConnectionService,
+} from './elevenLabsConnection.ts';
+import {
   createCodexOutlineGenerator,
   OutlineGenerationError,
   OUTLINE_PROMPT_VERSION,
@@ -80,6 +84,7 @@ interface AppOptions {
   frontendDirectory?: string;
   repository?: ProjectRepository;
   codexConnection?: CodexConnectionService;
+  elevenLabsConnection?: ElevenLabsConnectionService;
   outlineGenerator?: OutlineGenerator;
   voiceVisualGenerator?: VoiceVisualGenerator;
   motionCanvasGenerator?: MotionCanvasGenerator;
@@ -409,6 +414,9 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const codexConnection =
     options.codexConnection ??
     createCodexConnectionService(sharedCodexClient!);
+  const elevenLabsConnection =
+    options.elevenLabsConnection ??
+    createElevenLabsConnectionService();
   const outlineGenerator =
     options.outlineGenerator ??
     createCodexOutlineGenerator(sharedCodexClient!);
@@ -513,6 +521,15 @@ export function createPadStudioServer(options: AppOptions = {}) {
       ) {
         const login = await codexConnection.startChatGptLogin();
         sendJson(response, 200, {login});
+        return;
+      }
+
+      if (
+        requestUrl.pathname === '/api/integrations/elevenlabs/status' &&
+        request.method === 'GET'
+      ) {
+        const status = await elevenLabsConnection.verifyConnection();
+        sendJson(response, 200, {status});
         return;
       }
 

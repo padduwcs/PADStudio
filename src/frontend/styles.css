@@ -790,6 +790,15 @@ textarea.has-error,
   text-underline-offset: 2px;
 }
 
+.codex-connection-content code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  color: var(--green-800);
+  background: #e9efeb;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 0.9em;
+}
+
 .codex-connection-actions button {
   min-width: 105px;
   padding: 8px 11px;
@@ -1630,6 +1639,10 @@ kbd {
 
 .outline-codex .codex-connection-card {
   border-top: 0;
+}
+
+.integration-connections .codex-connection-card + .codex-connection-card {
+  border-top: 1px solid #e2e5df;
 }
 
 .outline-alert {

@@ -43,6 +43,8 @@ Vertical slice đầu tiên đã có thể chạy:
 - Xem source, tạo lại theo góp ý và chốt bộ scene trước khi sang bước tiếp theo.
 - Lưu từng lần sinh vào workspace bất biến riêng của project để bản mới không
   ghi đè code scene đã có.
+- Kết nối ElevenLabs bằng API key chỉ lưu ở backend và xác minh live qua
+  subscription cùng model catalog trước khi báo đã xác thực.
 - Hiển thị lượng token của lần sinh gần nhất để người dùng theo dõi.
 - Liệt kê, mở lại, chỉnh sửa và xóa project cục bộ.
 - Giao diện responsive cho desktop và mobile.
@@ -118,6 +120,40 @@ npm run dev
 
 Frontend chạy tại `http://127.0.0.1:5173`, backend chạy tại
 `http://127.0.0.1:4174`.
+
+### Kết nối ElevenLabs
+
+ElevenLabs cho phép dùng API trên cả gói Free, vì vậy chưa cần mua gói trả phí
+để thử kết nối. Tạo API key tại
+[`Developers → API Keys`](https://elevenlabs.io/app/settings/api-keys), bật
+quyền đọc subscription/user và quyền Text to Speech, sau đó tạo file `.env` từ
+file mẫu:
+
+```bash
+cp .env.example .env
+```
+
+Trên PowerShell có thể dùng:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Điền key vào biến sau và khởi động lại PAD Studio:
+
+```dotenv
+ELEVENLABS_API_KEY=your_api_key_here
+```
+
+API key chỉ được đọc ở backend và không được trả về frontend. Card ElevenLabs
+ở bước Motion Canvas gọi thật `GET /v1/user/subscription` và `GET /v1/models`;
+chỉ khi cả subscription hợp lệ và model catalog có Text to Speech thì trạng
+thái mới là “đã xác thực”. Hai request kiểm tra này không tạo audio và không
+tiêu credits. Có thể kiểm tra response nội bộ tại:
+
+```text
+GET /api/integrations/elevenlabs/status
+```
 
 Sau khi đã sinh scene cho một project, mở Motion Canvas editor bằng:
 

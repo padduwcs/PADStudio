@@ -17,6 +17,7 @@ import type {
 } from '../shared/topic.ts';
 import {createPadStudioServer} from './app.ts';
 import type {CodexConnectionService} from './codexConnection.ts';
+import type {ElevenLabsConnectionService} from './elevenLabsConnection.ts';
 import type {OutlineGenerator} from './outlineGenerator.ts';
 import type {MotionCanvasGenerator} from './motionCanvasGenerator.ts';
 import type {VoiceVisualGenerator} from './voiceVisualGenerator.ts';
@@ -43,6 +44,7 @@ async function startTestApp(
   context: TestContext,
   options: {
     codexConnection?: CodexConnectionService;
+    elevenLabsConnection?: ElevenLabsConnectionService;
     outlineGenerator?: OutlineGenerator;
     voiceVisualGenerator?: VoiceVisualGenerator;
     motionCanvasGenerator?: MotionCanvasGenerator;
@@ -54,6 +56,7 @@ async function startTestApp(
   const server = createPadStudioServer({
     projectsDirectory,
     codexConnection: options.codexConnection,
+    elevenLabsConnection: options.elevenLabsConnection,
     outlineGenerator: options.outlineGenerator,
     voiceVisualGenerator: options.voiceVisualGenerator,
     motionCanvasGenerator: options.motionCanvasGenerator,
@@ -147,6 +150,44 @@ test('API Codex trả trạng thái xác minh thật và URL đăng nhập', asy
   const loginBody = await loginResponse.json();
   assert.equal(loginResponse.status, 200);
   assert.equal(loginBody.login.loginId, 'login-123');
+});
+
+test('API ElevenLabs trả trạng thái từ phép xác minh live', async (context) => {
+  let verifyCalls = 0;
+  const elevenLabsConnection: ElevenLabsConnectionService = {
+    async verifyConnection() {
+      verifyCalls += 1;
+      return {
+        state: 'connected',
+        subscription: {
+          tier: 'free',
+          status: 'free',
+          characterCount: 120,
+          characterLimit: 10_000,
+          nextResetAt: '2026-08-01T00:00:00.000Z',
+        },
+        capabilities: {
+          textToSpeechModels: 3,
+          supportsVietnamese: true,
+        },
+        verifiedAt: new Date().toISOString(),
+      };
+    },
+  };
+  const {baseUrl} = await startTestApp(context, {
+    elevenLabsConnection,
+  });
+
+  const response = await fetch(
+    `${baseUrl}/api/integrations/elevenlabs/status`,
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.status.state, 'connected');
+  assert.equal(body.status.subscription.tier, 'free');
+  assert.equal(body.status.capabilities.supportsVietnamese, true);
+  assert.equal(verifyCalls, 1);
 });
 
 test('API tạo, cập nhật và xóa project với revision', async (context) => {

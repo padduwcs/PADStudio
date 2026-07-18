@@ -2,6 +2,7 @@ import type {
   CodexConnectionStatus,
   CodexLoginStart,
 } from '../shared/codex.ts';
+import type {ElevenLabsConnectionStatus} from '../shared/elevenLabs.ts';
 import type {
   ApiErrorPayload,
   CreateTopicProject,
@@ -350,4 +351,21 @@ export async function startCodexLogin() {
   }
 
   return payload.login;
+}
+
+export async function verifyElevenLabsConnection() {
+  const response = await fetch('/api/integrations/elevenlabs/status');
+  const payload = await readPayload<{
+    status: ElevenLabsConnectionStatus;
+  }>(response);
+
+  assertSuccessful(response, payload);
+  if (!payload || !('status' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi trạng thái ElevenLabs không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+
+  return payload.status;
 }
