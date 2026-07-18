@@ -21,6 +21,7 @@ import {
 } from './icons.tsx';
 import {ProjectLibrary} from './ProjectLibrary.tsx';
 import {MotionCanvasPage} from './MotionCanvasPage.tsx';
+import {VoicePage} from './VoicePage.tsx';
 import {
   navigate,
   projectOutlinePath,
@@ -43,6 +44,7 @@ const pipelineSteps = [
   'Mạch giảng',
   'Voice — visual',
   'Sinh scene Motion Canvas',
+  'Tạo voice ElevenLabs',
   'Đồng bộ',
   'Layout Editor',
   'Render cuối',
@@ -128,7 +130,7 @@ function PipelineSidebar({
 
       <div className="sidebar-heading">
         <span>Quy trình sản xuất</span>
-        <strong>{String(activeStep + 1).padStart(2, '0')} / 07</strong>
+        <strong>{String(activeStep + 1).padStart(2, '0')} / 08</strong>
       </div>
 
       <nav aria-label="Các bước sản xuất video">
@@ -175,9 +177,9 @@ function MobileHeader({
         >
           <FolderIcon />
         </button>
-        <span>Bước {activeStep + 1} / 7</span>
+        <span>Bước {activeStep + 1} / 8</span>
         <span className="mobile-progress-track">
-          <span style={{width: `${((activeStep + 1) / 7) * 100}%`}} />
+          <span style={{width: `${((activeStep + 1) / 8) * 100}%`}} />
         </span>
       </div>
     </header>
@@ -1219,7 +1221,9 @@ export default function App() {
   const [newProjectKey, setNewProjectKey] = useState(0);
   const [projectReloadKey, setProjectReloadKey] = useState(0);
   const activeStep =
-    route.name === 'project-motion-canvas'
+    route.name === 'project-voice'
+      ? 4
+      : route.name === 'project-motion-canvas'
       ? 3
       : route.name === 'project-voice-visual'
       ? 2
@@ -1298,6 +1302,12 @@ export default function App() {
         {route.name === 'project-motion-canvas' && (
           <MotionCanvasPage
             key={`project-motion-canvas-${route.projectId}-${projectReloadKey}`}
+            projectId={route.projectId}
+          />
+        )}
+        {route.name === 'project-voice' && (
+          <VoicePage
+            key={`project-voice-${route.projectId}-${projectReloadKey}`}
             projectId={route.projectId}
           />
         )}

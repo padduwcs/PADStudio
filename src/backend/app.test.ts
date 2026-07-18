@@ -18,6 +18,7 @@ import type {
 import {createPadStudioServer} from './app.ts';
 import type {CodexConnectionService} from './codexConnection.ts';
 import type {ElevenLabsConnectionService} from './elevenLabsConnection.ts';
+import type {ElevenLabsVoiceService} from './elevenLabsVoiceService.ts';
 import type {OutlineGenerator} from './outlineGenerator.ts';
 import type {MotionCanvasGenerator} from './motionCanvasGenerator.ts';
 import type {VoiceVisualGenerator} from './voiceVisualGenerator.ts';
@@ -45,6 +46,7 @@ async function startTestApp(
   options: {
     codexConnection?: CodexConnectionService;
     elevenLabsConnection?: ElevenLabsConnectionService;
+    elevenLabsVoiceService?: ElevenLabsVoiceService;
     outlineGenerator?: OutlineGenerator;
     voiceVisualGenerator?: VoiceVisualGenerator;
     motionCanvasGenerator?: MotionCanvasGenerator;
@@ -57,6 +59,7 @@ async function startTestApp(
     projectsDirectory,
     codexConnection: options.codexConnection,
     elevenLabsConnection: options.elevenLabsConnection,
+    elevenLabsVoiceService: options.elevenLabsVoiceService,
     outlineGenerator: options.outlineGenerator,
     voiceVisualGenerator: options.voiceVisualGenerator,
     motionCanvasGenerator: options.motionCanvasGenerator,
@@ -195,7 +198,7 @@ test('API tạo, cập nhật và xóa project với revision', async (context) 
   const {project} = await createProject(baseUrl);
 
   assert.equal(project.currentStep, 'outline');
-  assert.equal(project.version, 5);
+  assert.equal(project.version, 6);
   assert.equal(project.revision, 1);
 
   const savedProject = JSON.parse(
@@ -509,10 +512,69 @@ export default makeScene2D(function* (view) {
       };
     },
   };
+  let voiceGenerationCalls = 0;
+  const elevenLabsVoiceService: ElevenLabsVoiceService = {
+    async getCatalog() {
+      return {
+        voices: [],
+        models: [],
+        recentPresets: [],
+        history: {available: false, message: null},
+      };
+    },
+    async searchSharedVoices() {
+      return {available: false, message: null, voices: []};
+    },
+    async resolveConfiguration(input) {
+      return {
+        model: {
+          modelId: input.modelId,
+          name: 'Multilingual v2',
+          description: null,
+          languages: ['vi'],
+          maximumTextLengthPerRequest: 10_000,
+          costMultiplier: 1,
+          canUseStyle: true,
+          canUseSpeakerBoost: true,
+        },
+        configuration: {
+          voiceId: input.voiceId,
+          voiceName: 'Giọng kiểm thử',
+          voiceCategory: 'premade',
+          modelId: input.modelId,
+          modelName: 'Multilingual v2',
+          languageCode: 'vi',
+          outputFormat: input.outputFormat,
+          settings: input.settings,
+          seed: input.seed,
+        },
+      };
+    },
+    async generateSection(input) {
+      voiceGenerationCalls += 1;
+      const characters = Array.from(input.text);
+      return {
+        audio: Buffer.from(`audio-${voiceGenerationCalls}`),
+        alignment: {
+          characters,
+          characterStartTimesSeconds: characters.map(
+            (_character, index) => index * 0.05,
+          ),
+          characterEndTimesSeconds: characters.map(
+            (_character, index) => (index + 1) * 0.05,
+          ),
+        },
+        normalizedAlignment: null,
+        requestId: `voice-request-${voiceGenerationCalls}`,
+        characterCost: characters.length,
+      };
+    },
+  };
   const {baseUrl} = await startTestApp(context, {
     outlineGenerator,
     voiceVisualGenerator,
     motionCanvasGenerator,
+    elevenLabsVoiceService,
   });
   const {project} = await createProject(baseUrl);
 
@@ -699,15 +761,193 @@ export default makeScene2D(function* (view) {
     motionApproveBody.project.motionCanvasBundle.status,
     'approved',
   );
+  assert.equal(motionApproveBody.project.currentStep, 'voice');
 
-  const outline = motionApproveBody.project.outline;
+  const voiceGenerationId = randomUUID();
+  const voiceGenerateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"8"',
+      },
+      body: JSON.stringify({
+        generationId: voiceGenerationId,
+        voiceId: 'voice-test',
+        modelId: 'eleven_multilingual_v2',
+        outputFormat: 'mp3_44100_128',
+        settings: {
+          stability: 0.5,
+          similarityBoost: 0.75,
+          style: 0,
+          useSpeakerBoost: true,
+          speed: 1,
+        },
+        seed: null,
+      }),
+    },
+  );
+  const voiceGenerateBody = await voiceGenerateResponse.json();
+  assert.equal(voiceGenerateResponse.status, 200);
+  assert.equal(voiceGenerateBody.project.revision, 9);
+  assert.equal(voiceGenerateBody.project.voiceBundle.status, 'draft');
+  assert.equal(
+    voiceGenerateBody.project.voiceBundle.sections.length,
+    voiceGenerateBody.project.outline.sections.length,
+  );
+  assert.equal(
+    voiceGenerationCalls,
+    voiceGenerateBody.project.outline.sections.length,
+  );
+
+  const voiceAudioResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice/audio/${voiceGenerateBody.project.outline.sections[0].id}`,
+  );
+  assert.equal(voiceAudioResponse.status, 200);
+  assert.equal(voiceAudioResponse.headers.get('content-type'), 'audio/mpeg');
+  assert.match(
+    Buffer.from(await voiceAudioResponse.arrayBuffer()).toString(),
+    /^audio-/,
+  );
+
+  const staleVoiceAudioResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice/audio/${voiceGenerateBody.project.outline.sections[0].id}?generation=${randomUUID()}`,
+  );
+  const staleVoiceAudioBody = await staleVoiceAudioResponse.json();
+  assert.equal(staleVoiceAudioResponse.status, 404);
+  assert.equal(staleVoiceAudioBody.error.code, 'VOICE_GENERATION_NOT_FOUND');
+
+  const repeatedVoiceResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"8"',
+      },
+      body: JSON.stringify({
+        generationId: voiceGenerationId,
+        voiceId: 'voice-test',
+        modelId: 'eleven_multilingual_v2',
+        outputFormat: 'mp3_44100_128',
+        settings: {
+          stability: 0.5,
+          similarityBoost: 0.75,
+          style: 0,
+          useSpeakerBoost: true,
+          speed: 1,
+        },
+        seed: null,
+      }),
+    },
+  );
+  assert.equal(repeatedVoiceResponse.status, 200);
+  assert.equal((await repeatedVoiceResponse.json()).project.revision, 9);
+
+  const voiceApproveResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice/approve`,
+    {
+      method: 'POST',
+      headers: {'If-Match': '"9"'},
+    },
+  );
+  const voiceApproveBody = await voiceApproveResponse.json();
+  assert.equal(voiceApproveResponse.status, 200);
+  assert.equal(voiceApproveBody.project.revision, 10);
+  assert.equal(voiceApproveBody.project.voiceBundle.status, 'approved');
+
+  const approvedPlan = voiceApproveBody.project.voiceVisualPlan;
+  const visualOnlyUpdateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"10"',
+      },
+      body: JSON.stringify({
+        voiceDirection: approvedPlan.voiceDirection,
+        visualDirection: approvedPlan.visualDirection,
+        sections: approvedPlan.sections.map(
+          (
+            section: {
+              outlineSectionId: string;
+              beats: Array<Record<string, unknown>>;
+            },
+            sectionIndex: number,
+          ) => ({
+            ...section,
+            beats: section.beats.map((beat, beatIndex) =>
+              sectionIndex === 0 && beatIndex === 0
+                ? {
+                    ...beat,
+                    visualDescription:
+                      'Cùng lời đọc nhưng visual được bố cục lại rõ hơn.',
+                  }
+                : beat,
+            ),
+          }),
+        ),
+      }),
+    },
+  );
+  const visualOnlyUpdateBody = await visualOnlyUpdateResponse.json();
+  assert.equal(visualOnlyUpdateResponse.status, 200);
+  assert.equal(visualOnlyUpdateBody.project.revision, 11);
+  assert.equal(visualOnlyUpdateBody.project.voiceBundle.status, 'approved');
+  assert.equal(
+    visualOnlyUpdateBody.project.motionCanvasBundle.status,
+    'draft',
+  );
+
+  const visualPlan = visualOnlyUpdateBody.project.voiceVisualPlan;
+  const voiceTextUpdateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"11"',
+      },
+      body: JSON.stringify({
+        voiceDirection: visualPlan.voiceDirection,
+        visualDirection: visualPlan.visualDirection,
+        sections: visualPlan.sections.map(
+          (
+            section: {
+              outlineSectionId: string;
+              beats: Array<Record<string, unknown>>;
+            },
+            sectionIndex: number,
+          ) => ({
+            ...section,
+            beats: section.beats.map((beat, beatIndex) =>
+              sectionIndex === 0 && beatIndex === 0
+                ? {
+                    ...beat,
+                    voiceover: `${String(beat.voiceover)} Thêm một ý mới.`,
+                  }
+                : beat,
+            ),
+          }),
+        ),
+      }),
+    },
+  );
+  const voiceTextUpdateBody = await voiceTextUpdateResponse.json();
+  assert.equal(voiceTextUpdateResponse.status, 200);
+  assert.equal(voiceTextUpdateBody.project.revision, 12);
+  assert.equal(voiceTextUpdateBody.project.voiceBundle.status, 'draft');
+
+  const outline = voiceTextUpdateBody.project.outline;
   const outlineUpdateResponse = await fetch(
     `${baseUrl}/api/projects/${project.id}/outline`,
     {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'If-Match': '"8"',
+        'If-Match': '"12"',
       },
       body: JSON.stringify({
         brief: outline.brief,
@@ -728,12 +968,13 @@ export default makeScene2D(function* (view) {
     outlineUpdateBody.project.motionCanvasBundle.status,
     'draft',
   );
+  assert.equal(outlineUpdateBody.project.voiceBundle.status, 'draft');
 
   const outdatedApproveResponse = await fetch(
     `${baseUrl}/api/projects/${project.id}/voice-visual/approve`,
     {
       method: 'POST',
-      headers: {'If-Match': '"9"'},
+      headers: {'If-Match': '"13"'},
     },
   );
   const outdatedApproveBody = await outdatedApproveResponse.json();
@@ -747,7 +988,7 @@ export default makeScene2D(function* (view) {
     `${baseUrl}/api/projects/${project.id}/motion-canvas/approve`,
     {
       method: 'POST',
-      headers: {'If-Match': '"9"'},
+      headers: {'If-Match': '"13"'},
     },
   );
   const outdatedMotionApproveBody =
@@ -928,7 +1169,7 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
   const listBody = await listResponse.json();
 
   assert.equal(listBody.projects.length, 1);
-  assert.equal(listBody.projects[0].version, 5);
+  assert.equal(listBody.projects[0].version, 6);
   assert.equal(listBody.projects[0].revision, 1);
   assert.equal(listBody.issues.length, 2);
   assert.deepEqual(
@@ -944,7 +1185,7 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
   );
   const updateBody = await updateResponse.json();
   assert.equal(updateResponse.status, 200);
-  assert.equal(updateBody.project.version, 5);
+  assert.equal(updateBody.project.version, 6);
   assert.equal(updateBody.project.revision, 2);
 
   const migratedOnDisk = JSON.parse(
@@ -953,6 +1194,6 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
       'utf8',
     ),
   );
-  assert.equal(migratedOnDisk.version, 5);
+  assert.equal(migratedOnDisk.version, 6);
   assert.equal(migratedOnDisk.revision, 2);
 });

@@ -149,6 +149,11 @@ function generationPayload(
         estimatedSeconds: outlineSection.estimatedSeconds,
       },
       beats: voiceVisualSection.beats.map((beat) => ({
+        id: beat.id,
+        timing: {
+          startEvent: `beat:${beat.id}:start`,
+          endEvent: `beat:${beat.id}:end`,
+        },
         voiceover: beat.voiceover,
         visualDescription: beat.visualDescription,
         animationDescription: beat.animationDescription,
@@ -176,7 +181,7 @@ function buildPrompt(
     'Trả object gồm name và source. Source phải export default makeScene2D(function* (view) {...}).',
     'Chỉ import từ @motion-canvas/2d hoặc @motion-canvas/core; không dùng package, asset, mạng, filesystem hay API trình duyệt khác.',
     'Import makeScene2D, Rect, Circle, Line, Txt, Layout và các visual node chỉ từ @motion-canvas/2d.',
-    'Import all, chain, sequence, createRef, createSignal, tween, waitFor và easing chỉ từ @motion-canvas/core.',
+    'Import all, chain, sequence, createRef, createSignal, tween, waitFor, waitUntil, useDuration và easing chỉ từ @motion-canvas/core.',
     'Dùng đúng tên export createRef, createSignal và easeInOutCubic; không import ref, signal hoặc easing.',
     'Không dùng JSX.Element hoặc namespace JSX trong type annotation. JSX key nếu có phải là string.',
     'Không dùng scaleX/scaleY; dùng scale([x, y], duration) hoặc width/height với duration.',
@@ -186,7 +191,8 @@ function buildPrompt(
     'Scene phải tự chứa toàn bộ node và animation, chạy độc lập và không import file tương đối.',
     'Thiết kế cho khung dọc 1080x1920, ưu tiên hình khối, vị trí, màu và chuyển động để giải thích bản chất.',
     'Không hiển thị source code. Không dùng caption để gánh nội dung chính; chữ ngắn, số và ký hiệu chỉ được dùng khi bản thân visual cần chúng.',
-    'Mỗi beat phải có thay đổi visual tương ứng. Tổng thời gian yield của scene phải gần tổng durationSeconds của các beat.',
+    'Mỗi beat phải gọi đúng một lần yield* waitUntil(startEvent), sau đó lấy const beatDuration = useDuration(endEvent), chạy thay đổi visual tương ứng theo tỷ lệ beatDuration, rồi gọi đúng một lần yield* waitUntil(endEvent).',
+    'Không hardcode waitFor để quyết định ranh giới beat. Time-event là hợp đồng bắt buộc để audio có thể điều khiển timeline ở bước đồng bộ.',
     'Giữ source gọn, số node hợp lý, tái sử dụng reference và tránh hiệu ứng trang trí không truyền đạt thông tin.',
     'Tuân theo visualDirection để các scene độc lập vẫn có cùng ngôn ngữ hình ảnh.',
     'Source là mã thuần, không bọc bằng Markdown fence.',
@@ -204,7 +210,8 @@ function buildRepairPrompt(
     'Sửa scene Motion Canvas sau để TypeScript biên dịch thành công.',
     'Giữ nguyên ý nghĩa visual, thứ tự beat và tổng timing. Chỉ thay đổi những phần cần để sửa lỗi và làm API đúng.',
     'Trả object gồm name và source; source là mã thuần, không dùng Markdown fence.',
-    'Quy tắc import: visual node và makeScene2D từ @motion-canvas/2d; flow, ref, signal, tween, waitFor và easing từ @motion-canvas/core.',
+    'Quy tắc import: visual node và makeScene2D từ @motion-canvas/2d; flow, ref, signal, tween, waitFor, waitUntil, useDuration và easing từ @motion-canvas/core.',
+    'Giữ nguyên đầy đủ các lệnh waitUntil(startEvent/endEvent) và useDuration(endEvent) của từng beat trong context; đây là hợp đồng timing bắt buộc.',
     'Tên export phải dùng chính xác: createRef, createSignal, easeInOutCubic; không import ref, signal hoặc easing.',
     'Không dùng JSX.Element, scaleX/scaleY, JSX key dạng number, hoặc yield* một node/setter không có duration.',
     'Giá trị flex dùng kebab-case như space-between, space-around hoặc space-evenly; không dùng spaceBetween.',
@@ -393,6 +400,61 @@ export function validateMotionCanvasSceneSource(source: string) {
     throw new MotionCanvasGenerationError(
       'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
       'Codex trả về scene không có default export Motion Canvas hợp lệ.',
+    );
+  }
+}
+
+export function validateMotionCanvasTimingContract(
+  source: string,
+  beats: Array<{id: string}>,
+) {
+  const sourceFile = ts.createSourceFile(
+    'generated-scene.tsx',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const waitEvents: string[] = [];
+  const durationEvents: string[] = [];
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.arguments.length === 1 &&
+      ts.isStringLiteral(node.arguments[0]!)
+    ) {
+      if (node.expression.text === 'waitUntil') {
+        waitEvents.push(node.arguments[0]!.text);
+      }
+      if (node.expression.text === 'useDuration') {
+        durationEvents.push(node.arguments[0]!.text);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+
+  const expectedWaitEvents = beats.flatMap((beat) => [
+    `beat:${beat.id}:start`,
+    `beat:${beat.id}:end`,
+  ]);
+  const expectedDurationEvents = beats.map(
+    (beat) => `beat:${beat.id}:end`,
+  );
+  const exactWaitContract =
+    waitEvents.length === expectedWaitEvents.length &&
+    waitEvents.every((event, index) => event === expectedWaitEvents[index]);
+  const exactDurationContract =
+    durationEvents.length === expectedDurationEvents.length &&
+    durationEvents.every(
+      (event, index) => event === expectedDurationEvents[index],
+    );
+  if (!exactWaitContract || !exactDurationContract) {
+    throw new MotionCanvasGenerationError(
+      'CODEX_MOTION_CANVAS_INVALID_TIMING_CONTRACT',
+      'Scene không giữ đúng time-event start/end và useDuration của từng beat.',
     );
   }
 }
@@ -662,6 +724,10 @@ export function createCodexMotionCanvasGenerator(
         }
 
         validateMotionCanvasSceneSource(parsed.data.source);
+        validateMotionCanvasTimingContract(
+          parsed.data.source,
+          voiceVisualSection.beats,
+        );
         const slug =
           toSlug(parsed.data.name) || `scene-${sectionIndex + 1}`;
         return {
@@ -674,6 +740,12 @@ export function createCodexMotionCanvasGenerator(
               (total, beat) => total + beat.durationSeconds,
               0,
             ),
+            timingEvents: voiceVisualSection.beats.map((beat) => ({
+              beatId: beat.id,
+              startEvent: `beat:${beat.id}:start`,
+              endEvent: `beat:${beat.id}:end`,
+              plannedDurationSeconds: beat.durationSeconds,
+            })),
             source: `${parsed.data.source.trim()}\n`,
           },
           model: generated.model,
@@ -752,6 +824,10 @@ export function createCodexMotionCanvasGenerator(
         );
       }
       validateMotionCanvasSceneSource(parsed.data.source);
+      validateMotionCanvasTimingContract(
+        parsed.data.source,
+        request.voiceVisualPlan.sections[sectionIndex]!.beats,
+      );
 
       const result: GeneratedSceneResult = {
         scene: {

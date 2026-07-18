@@ -30,6 +30,7 @@ test('Motion Canvas workspace ghi generation bất biến và kiểm tra TypeScr
   const projectId = 'motion-workspace-test';
   const generationId = randomUUID();
   const outlineIds = [randomUUID(), randomUUID()];
+  const beatIds = [randomUUID(), randomUUID()];
   const scenes: MotionCanvasSourceScene[] = outlineIds.map(
     (outlineSectionId, index) => ({
       id: randomUUID(),
@@ -37,6 +38,14 @@ test('Motion Canvas workspace ghi generation bất biến và kiểm tra TypeScr
       name: `Scene ${index + 1}`,
       filePath: `src/scenes/0${index + 1}-scene-${index + 1}.tsx`,
       durationSeconds: 10,
+      timingEvents: [
+        {
+          beatId: beatIds[index]!,
+          startEvent: `beat:${beatIds[index]}:start`,
+          endEvent: `beat:${beatIds[index]}:end`,
+          plannedDurationSeconds: 10,
+        },
+      ],
       source,
     }),
   );
@@ -64,6 +73,21 @@ test('Motion Canvas workspace ghi generation bất biến và kiểm tra TypeScr
   );
   assert.match(projectSource, /makeProject/);
   assert.match(projectSource, /01-scene-1\?scene/);
+  const sceneMeta = JSON.parse(
+    await readFile(
+      path.join(
+        projectsDirectory,
+        projectId,
+        prepared.workspacePath,
+        scenes[0]!.filePath.replace(/\.tsx$/, '.meta'),
+      ),
+      'utf8',
+    ),
+  );
+  assert.deepEqual(sceneMeta.timeEvents, [
+    {name: `beat:${beatIds[0]}:start`, targetTime: 0},
+    {name: `beat:${beatIds[0]}:end`, targetTime: 10},
+  ]);
 
   const bundle: MotionCanvasBundle = {
     status: 'draft',

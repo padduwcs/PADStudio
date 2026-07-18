@@ -1,4 +1,4 @@
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {
   mkdir,
   readdir,
@@ -83,6 +83,35 @@ export class ProjectDataError extends Error {
     this.projectId = projectId;
     this.code = code;
   }
+}
+
+function voiceSourceMatchesPlan(
+  bundle: TopicProject['voiceBundle'],
+  plan: TopicProject['voiceVisualPlan'],
+) {
+  if (!bundle || !plan || bundle.sections.length !== plan.sections.length) {
+    return false;
+  }
+  return bundle.sections.every((section, index) => {
+    const planSection = plan.sections[index];
+    return (
+      planSection !== undefined &&
+      section.outlineSectionId === planSection.outlineSectionId &&
+      section.sourceTextHash ===
+        createHash('sha256')
+          .update(
+            planSection.beats
+              .map((beat) => beat.voiceover.trim())
+              .join('\n\n'),
+          )
+          .digest('hex') &&
+      section.beats.length === planSection.beats.length &&
+      section.beats.every(
+        (beat, beatIndex) =>
+          beat.beatId === planSection.beats[beatIndex]?.id,
+      )
+    );
+  });
 }
 
 export function createFileProjectRepository(
@@ -265,7 +294,10 @@ export function createFileProjectRepository(
           JSON.stringify(project.voiceVisualPlan)) &&
       (update.motionCanvasBundle === undefined ||
         JSON.stringify(update.motionCanvasBundle) ===
-          JSON.stringify(project.motionCanvasBundle))
+          JSON.stringify(project.motionCanvasBundle)) &&
+      (update.voiceBundle === undefined ||
+        JSON.stringify(update.voiceBundle) ===
+          JSON.stringify(project.voiceBundle))
     );
   }
 
@@ -305,6 +337,22 @@ export function createFileProjectRepository(
     const motionCanvasChanged =
       JSON.stringify(nextMotionCanvasBundle) !==
       JSON.stringify(currentProject.motionCanvasBundle);
+    const voiceSourceChanged = Boolean(
+      currentProject.voiceBundle &&
+        !voiceSourceMatchesPlan(
+          currentProject.voiceBundle,
+          nextVoiceVisualPlan,
+        ),
+    );
+    const nextVoiceBundle =
+      update.voiceBundle ??
+      ((topicChanged || outlineChanged || voiceSourceChanged) &&
+      currentProject.voiceBundle
+        ? {...currentProject.voiceBundle, status: 'draft' as const}
+        : currentProject.voiceBundle);
+    const voiceChanged =
+      JSON.stringify(nextVoiceBundle) !==
+      JSON.stringify(currentProject.voiceBundle);
     const nextCurrentStep =
       update.currentStep ??
       (topicChanged
@@ -315,6 +363,8 @@ export function createFileProjectRepository(
               ? 'voiceVisual'
               : motionCanvasChanged
                 ? 'motionCanvas'
+                : voiceChanged
+                  ? 'voice'
                 : currentProject.currentStep);
     const project: TopicProject = {
       ...currentProject,
@@ -323,6 +373,7 @@ export function createFileProjectRepository(
       outline: nextOutline,
       voiceVisualPlan: nextVoiceVisualPlan,
       motionCanvasBundle: nextMotionCanvasBundle,
+      voiceBundle: nextVoiceBundle,
       revision: currentProject.revision + 1,
       updatedAt: new Date().toISOString(),
     };
@@ -371,6 +422,7 @@ export function createFileProjectRepository(
           outline: null,
           voiceVisualPlan: null,
           motionCanvasBundle: null,
+          voiceBundle: null,
           createdAt: now,
           updatedAt: now,
         };

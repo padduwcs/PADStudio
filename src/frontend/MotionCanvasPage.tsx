@@ -4,13 +4,18 @@ import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {ElevenLabsConnectionCard} from './ElevenLabsConnectionCard.tsx';
 import {
   ArrowLeftIcon,
+  ArrowRightIcon,
   CheckIcon,
   ClockIcon,
   LayersIcon,
   LightbulbIcon,
   SparkIcon,
 } from './icons.tsx';
-import {navigate, projectVoiceVisualPath} from './router.ts';
+import {
+  navigate,
+  projectVoicePath,
+  projectVoiceVisualPath,
+} from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useElevenLabsConnection} from './useElevenLabsConnection.ts';
 import {useMotionCanvasDraft} from './useMotionCanvasDraft.ts';
@@ -45,6 +50,13 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
       window.setTimeout(() => setCopied(false), 1_500);
     } catch {
       setCopied(false);
+    }
+  }
+
+  async function handleApprove() {
+    const approvedProject = await motionCanvas.approve();
+    if (approvedProject) {
+      navigate(projectVoicePath(approvedProject.id), true);
     }
   }
 
@@ -310,6 +322,14 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                     <dd>{bundle.validation.motionCanvasVersion}</dd>
                   </div>
                   <div>
+                    <dt>Timing contract</dt>
+                    <dd>
+                      {bundle.timingContractVersion === 1
+                        ? 'Beat events v1'
+                        : 'Legacy · cần sinh lại trước sync'}
+                    </dd>
+                  </div>
+                  <div>
                     <dt>Source hash</dt>
                     <dd title={bundle.validation.sourceHash}>
                       {bundle.validation.sourceHash.slice(0, 12)}
@@ -476,13 +496,16 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                 className="submit-button"
                 type="button"
                 disabled={
-                  approved ||
                   motionCanvas.approving ||
                   motionCanvas.generating ||
                   motionCanvas.stale ||
                   motionCanvas.conflict
                 }
-                onClick={() => void motionCanvas.approve()}
+                onClick={() =>
+                  approved
+                    ? navigate(projectVoicePath(project.id))
+                    : void handleApprove()
+                }
               >
                 {motionCanvas.approving ? (
                   <>
@@ -491,8 +514,8 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                   </>
                 ) : approved ? (
                   <>
-                    <CheckIcon />
-                    Đã chốt scene
+                    Sang bước tạo voice
+                    <ArrowRightIcon />
                   </>
                 ) : (
                   <>

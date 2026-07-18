@@ -7,12 +7,14 @@ export const projectStepValues = [
   'outline',
   'voiceVisual',
   'motionCanvas',
+  'voice',
 ] as const;
 export const projectStatusValues = ['draft'] as const;
 export const outlineStatusValues = ['draft', 'approved'] as const;
 export const voiceVisualStatusValues = ['draft', 'approved'] as const;
 export const motionCanvasStatusValues = ['draft', 'approved'] as const;
-export const currentProjectVersion = 5 as const;
+export const voiceStatusValues = ['draft', 'approved'] as const;
+export const currentProjectVersion = 6 as const;
 
 export const ProjectStepSchema = z.enum(projectStepValues);
 export type ProjectStep = z.infer<typeof ProjectStepSchema>;
@@ -236,6 +238,20 @@ export const MotionCanvasSceneSchema = z
         'Đường dẫn scene Motion Canvas không hợp lệ.',
       ),
     durationSeconds: z.number().int().min(4).max(360),
+    timingEvents: z
+      .array(
+        z
+          .object({
+            beatId: z.string().uuid(),
+            startEvent: z.string().regex(/^beat:[0-9a-f-]{36}:start$/),
+            endEvent: z.string().regex(/^beat:[0-9a-f-]{36}:end$/),
+            plannedDurationSeconds: z.number().int().min(4).max(45),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(8)
+      .optional(),
   })
   .strict();
 
@@ -256,6 +272,7 @@ export const MotionCanvasBundleSchema = z
     width: z.number().int().min(480).max(3840),
     height: z.number().int().min(480).max(3840),
     fps: z.number().int().min(1).max(120),
+    timingContractVersion: z.literal(1).optional(),
     scenes: z
       .array(MotionCanvasSceneSchema)
       .min(2, 'Cần ít nhất 2 scene Motion Canvas.')
@@ -281,6 +298,111 @@ export const MotionCanvasBundleSchema = z
   .strict();
 
 export type MotionCanvasBundle = z.infer<typeof MotionCanvasBundleSchema>;
+
+export const ElevenLabsVoiceSettingsSchema = z
+  .object({
+    stability: z.number().min(0).max(1),
+    similarityBoost: z.number().min(0).max(1),
+    style: z.number().min(0).max(1),
+    useSpeakerBoost: z.boolean(),
+    speed: z.number().min(0.7).max(1.2),
+  })
+  .strict();
+
+export type ElevenLabsVoiceSettings = z.infer<
+  typeof ElevenLabsVoiceSettingsSchema
+>;
+
+export const VoiceConfigurationSchema = z
+  .object({
+    voiceId: z.string().trim().min(1).max(160),
+    voiceName: z.string().trim().min(1).max(160),
+    voiceCategory: z.string().trim().min(1).max(80).nullable(),
+    modelId: z.string().trim().min(1).max(160),
+    modelName: z.string().trim().min(1).max(160),
+    languageCode: z.literal('vi'),
+    outputFormat: z
+      .string()
+      .regex(
+        /^(mp3|pcm|ulaw|alaw|opus)_[a-z0-9_]+$/,
+        'Định dạng audio ElevenLabs không hợp lệ.',
+      )
+      .max(80),
+    settings: ElevenLabsVoiceSettingsSchema,
+    seed: z.number().int().min(0).max(4_294_967_295).nullable(),
+  })
+  .strict();
+
+export type VoiceConfiguration = z.infer<typeof VoiceConfigurationSchema>;
+
+export const VoiceBeatTimingSchema = z
+  .object({
+    beatId: z.string().uuid(),
+    textStartIndex: z.number().int().nonnegative(),
+    textEndIndex: z.number().int().positive(),
+    startSeconds: z.number().nonnegative(),
+    endSeconds: z.number().positive(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.textEndIndex > value.textStartIndex &&
+      value.endSeconds >= value.startSeconds,
+    'Timing của beat không hợp lệ.',
+  );
+
+export const VoiceSectionAudioSchema = z
+  .object({
+    outlineSectionId: z.string().uuid(),
+    audioPath: z
+      .string()
+      .regex(
+        /^audio\/[0-9]{2}-[0-9a-f-]{36}\.(mp3|wav|pcm|opus)$/,
+        'Đường dẫn audio của section không hợp lệ.',
+      ),
+    alignmentPath: z
+      .string()
+      .regex(
+        /^alignments\/[0-9]{2}-[0-9a-f-]{36}\.json$/,
+        'Đường dẫn alignment của section không hợp lệ.',
+      ),
+    durationSeconds: z.number().positive(),
+    characterCost: z.number().int().nonnegative(),
+    requestId: z.string().trim().min(1).max(200).nullable(),
+    sourceTextHash: z.string().regex(/^[a-f0-9]{64}$/),
+    beats: z.array(VoiceBeatTimingSchema).min(1).max(8),
+  })
+  .strict();
+
+export type VoiceSectionAudio = z.infer<typeof VoiceSectionAudioSchema>;
+
+export const VoiceBundleSchema = z
+  .object({
+    status: z.enum(voiceStatusValues),
+    contentRevision: z.number().int().positive(),
+    sourceVoiceVisualContentRevision: z.number().int().positive(),
+    workspacePath: z
+      .string()
+      .regex(
+        /^voice\/generations\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        'Đường dẫn workspace voice không hợp lệ.',
+      ),
+    configuration: VoiceConfigurationSchema,
+    sections: z.array(VoiceSectionAudioSchema).min(2).max(10),
+    totalDurationSeconds: z.number().positive(),
+    generation: z
+      .object({
+        generationId: CreationIdSchema,
+        provider: z.literal('elevenlabs'),
+        generatedAt: z.string().datetime(),
+        characterCost: z.number().int().nonnegative(),
+        requestIds: z.array(z.string().trim().min(1).max(200)).max(10),
+      })
+      .strict(),
+  })
+  .strict();
+
+export type VoiceBundle = z.infer<typeof VoiceBundleSchema>;
 
 const topicProjectV1Schema = z
   .object({
@@ -339,12 +461,21 @@ const topicProjectV4Schema = z
   })
   .strict();
 
-export const TopicProjectSchema = topicProjectV4Schema
+const topicProjectV5Schema = topicProjectV4Schema
   .omit({version: true})
+  .extend({
+    version: z.literal(5),
+    currentStep: z.enum(['topic', 'outline', 'voiceVisual', 'motionCanvas']),
+    motionCanvasBundle: MotionCanvasBundleSchema.nullable(),
+  })
+  .strict();
+
+export const TopicProjectSchema = topicProjectV5Schema
+  .omit({version: true, currentStep: true})
   .extend({
     version: z.literal(currentProjectVersion),
     currentStep: ProjectStepSchema,
-    motionCanvasBundle: MotionCanvasBundleSchema.nullable(),
+    voiceBundle: VoiceBundleSchema.nullable(),
   })
   .strict();
 
@@ -354,12 +485,22 @@ export function parseTopicProject(value: unknown): TopicProject {
   const currentProject = TopicProjectSchema.safeParse(value);
   if (currentProject.success) return currentProject.data;
 
+  const versionFiveProject = topicProjectV5Schema.safeParse(value);
+  if (versionFiveProject.success) {
+    return {
+      ...versionFiveProject.data,
+      version: currentProjectVersion,
+      voiceBundle: null,
+    };
+  }
+
   const versionFourProject = topicProjectV4Schema.safeParse(value);
   if (versionFourProject.success) {
     return {
       ...versionFourProject.data,
       version: currentProjectVersion,
       motionCanvasBundle: null,
+      voiceBundle: null,
     };
   }
 
@@ -370,6 +511,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       version: currentProjectVersion,
       voiceVisualPlan: null,
       motionCanvasBundle: null,
+      voiceBundle: null,
     };
   }
 
@@ -381,6 +523,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       outline: null,
       voiceVisualPlan: null,
       motionCanvasBundle: null,
+      voiceBundle: null,
     };
   }
 
@@ -394,6 +537,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       outline: null,
       voiceVisualPlan: null,
       motionCanvasBundle: null,
+      voiceBundle: null,
     };
   }
 
@@ -417,6 +561,7 @@ export const UpdateProjectSchema = z
     outline: TeachingOutlineSchema.optional(),
     voiceVisualPlan: VoiceVisualPlanSchema.optional(),
     motionCanvasBundle: MotionCanvasBundleSchema.optional(),
+    voiceBundle: VoiceBundleSchema.optional(),
   })
   .strict()
   .refine(
@@ -425,7 +570,8 @@ export const UpdateProjectSchema = z
       value.currentStep !== undefined ||
       value.outline !== undefined ||
       value.voiceVisualPlan !== undefined ||
-      value.motionCanvasBundle !== undefined,
+      value.motionCanvasBundle !== undefined ||
+      value.voiceBundle !== undefined,
     'Cần có ít nhất một thay đổi.',
   );
 
@@ -475,6 +621,23 @@ export const GenerateMotionCanvasSchema = z
 export type GenerateMotionCanvas = z.infer<
   typeof GenerateMotionCanvasSchema
 >;
+
+export const GenerateVoiceSchema = z
+  .object({
+    generationId: CreationIdSchema,
+    voiceId: z.string().trim().min(1).max(160),
+    modelId: z.string().trim().min(1).max(160),
+    outputFormat: z
+      .string()
+      .regex(/^(mp3|pcm|ulaw|alaw|opus)_[a-z0-9_]+$/)
+      .max(80)
+      .default('mp3_44100_128'),
+    settings: ElevenLabsVoiceSettingsSchema,
+    seed: z.number().int().min(0).max(4_294_967_295).nullable().default(null),
+  })
+  .strict();
+
+export type GenerateVoice = z.infer<typeof GenerateVoiceSchema>;
 
 export type ProjectListIssueCode =
   | 'INVALID_PROJECT_DATA'

@@ -4,6 +4,7 @@ import App from './App.tsx';
 import './styles.css';
 import './voiceVisual.css';
 import './motionCanvas.css';
+import './voice.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

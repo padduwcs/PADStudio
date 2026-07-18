@@ -2,12 +2,17 @@ import type {
   CodexConnectionStatus,
   CodexLoginStart,
 } from '../shared/codex.ts';
-import type {ElevenLabsConnectionStatus} from '../shared/elevenLabs.ts';
+import type {
+  ElevenLabsCatalog,
+  ElevenLabsConnectionStatus,
+  ElevenLabsSharedVoiceSearch,
+} from '../shared/elevenLabs.ts';
 import type {
   ApiErrorPayload,
   CreateTopicProject,
   GenerateMotionCanvas,
   GenerateTeachingOutline,
+  GenerateVoice,
   GenerateVoiceVisualPlan,
   ProjectListIssue,
   MotionCanvasBundle,
@@ -304,6 +309,86 @@ export async function approveMotionCanvas(
 
   assertSuccessful(response, payload);
   return getProjectPayload(payload);
+}
+
+export async function getElevenLabsCatalog(search = '') {
+  const query = new URLSearchParams();
+  if (search.trim()) query.set('search', search.trim());
+  const response = await fetch(
+    `/api/integrations/elevenlabs/catalog?${query.toString()}`,
+  );
+  const payload = await readPayload<{catalog: ElevenLabsCatalog}>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('catalog' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi danh mục ElevenLabs không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.catalog;
+}
+
+export async function searchElevenLabsSharedVoices(search = '') {
+  const query = new URLSearchParams({search: search.trim()});
+  const response = await fetch(
+    `/api/integrations/elevenlabs/shared-voices?${query.toString()}`,
+  );
+  const payload = await readPayload<{result: ElevenLabsSharedVoiceSearch}>(
+    response,
+  );
+  assertSuccessful(response, payload);
+  if (!payload || !('result' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi Voice Library không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.result;
+}
+
+export async function generateVoice(
+  projectId: string,
+  request: GenerateVoice,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/voice/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function approveVoice(
+  projectId: string,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/voice/approve`,
+    {
+      method: 'POST',
+      headers: {'If-Match': `"${expectedRevision}"`},
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export function voiceAudioUrl(
+  projectId: string,
+  outlineSectionId: string,
+  generationId: string,
+) {
+  return `/api/projects/${encodeURIComponent(projectId)}/voice/audio/${encodeURIComponent(outlineSectionId)}?generation=${encodeURIComponent(generationId)}`;
 }
 
 export async function deleteProject(

@@ -130,6 +130,26 @@ function projectMetaSource() {
   )}\n`;
 }
 
+function sceneMetaSource(scene: MotionCanvasSourceScene) {
+  let targetTime = 0;
+  const timeEvents = (scene.timingEvents ?? []).flatMap((event) => {
+    const start = {name: event.startEvent, targetTime};
+    targetTime += event.plannedDurationSeconds;
+    const end = {name: event.endEvent, targetTime};
+    return [start, end];
+  });
+  const seed = Number.parseInt(scene.id.replaceAll('-', '').slice(0, 8), 16);
+  return `${JSON.stringify(
+    {
+      version: 0,
+      timeEvents,
+      seed: Number.isSafeInteger(seed) ? seed : 0,
+    },
+    null,
+    2,
+  )}\n`;
+}
+
 function tsconfigSource(
   motionCanvas2dConfig: string,
   motionCanvasPackagesPattern: string,
@@ -398,6 +418,10 @@ declare type Callback = (...args: any[]) => void;
         ...scenes.map((scene) => ({
           path: scene.filePath,
           source: scene.source,
+        })),
+        ...scenes.map((scene) => ({
+          path: scene.filePath.replace(/\.tsx$/, '.meta'),
+          source: sceneMetaSource(scene),
         })),
       ];
 

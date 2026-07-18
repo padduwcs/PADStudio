@@ -1,4 +1,5 @@
 import {createReadStream} from 'node:fs';
+import {createHash} from 'node:crypto';
 import {readFile, stat} from 'node:fs/promises';
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http';
 import path from 'node:path';
@@ -7,6 +8,7 @@ import {
   CreateTopicProjectSchema,
   GenerateMotionCanvasSchema,
   GenerateTeachingOutlineSchema,
+  GenerateVoiceSchema,
   GenerateVoiceVisualPlanSchema,
   TeachingOutlineContentSchema,
   UpdateProjectSchema,
@@ -15,8 +17,10 @@ import {
   type MotionCanvasBundle,
   type TeachingOutline,
   type TopicProject,
+  type VoiceBundle,
   type VoiceVisualPlan,
 } from '../shared/topic.ts';
+import type {ElevenLabsUsagePreset} from '../shared/elevenLabs.ts';
 import {
   CodexConnectionError,
   createCodexConnectionService,
@@ -28,6 +32,12 @@ import {
   createElevenLabsConnectionService,
   type ElevenLabsConnectionService,
 } from './elevenLabsConnection.ts';
+import {
+  createElevenLabsVoiceService,
+  ElevenLabsVoiceError,
+  type ElevenLabsSectionGeneration,
+  type ElevenLabsVoiceService,
+} from './elevenLabsVoiceService.ts';
 import {
   createCodexOutlineGenerator,
   OutlineGenerationError,
@@ -64,6 +74,12 @@ import {
   type VoiceVisualGenerationResult,
   type VoiceVisualGenerator,
 } from './voiceVisualGenerator.ts';
+import {
+  createVoiceWorkspace,
+  type PreparedVoiceWorkspace,
+  VoiceWorkspaceError,
+  type VoiceWorkspace,
+} from './voiceWorkspace.ts';
 
 const MAX_BODY_SIZE = 64 * 1024;
 
@@ -85,10 +101,12 @@ interface AppOptions {
   repository?: ProjectRepository;
   codexConnection?: CodexConnectionService;
   elevenLabsConnection?: ElevenLabsConnectionService;
+  elevenLabsVoiceService?: ElevenLabsVoiceService;
   outlineGenerator?: OutlineGenerator;
   voiceVisualGenerator?: VoiceVisualGenerator;
   motionCanvasGenerator?: MotionCanvasGenerator;
   motionCanvasWorkspace?: MotionCanvasWorkspace;
+  voiceWorkspace?: VoiceWorkspace;
   logger?: Pick<Console, 'error' | 'info'>;
 }
 
@@ -285,6 +303,37 @@ function getProjectMotionCanvasRoute(pathname: string) {
   } as const;
 }
 
+function getProjectVoiceRoute(pathname: string) {
+  const audioMatch =
+    /^\/api\/projects\/([^/]+)\/voice\/audio\/([^/]+)$/.exec(pathname);
+  if (audioMatch?.[1] && audioMatch[2]) {
+    const projectId = decodeProjectId(audioMatch[1]);
+    if (!projectId) return null;
+    try {
+      return {
+        projectId,
+        action: 'audio' as const,
+        outlineSectionId: decodeURIComponent(audioMatch[2]),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  const match =
+    /^\/api\/projects\/([^/]+)\/voice(?:\/(generate|approve))?$/.exec(
+      pathname,
+    );
+  if (!match?.[1]) return null;
+  const projectId = decodeProjectId(match[1]);
+  if (!projectId) return null;
+  return {
+    projectId,
+    action: (match[2] ?? 'read') as 'generate' | 'approve' | 'read',
+    outlineSectionId: null,
+  };
+}
+
 function sameValue(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -329,6 +378,87 @@ function motionCanvasMatchesOutline(
         scene.outlineSectionId === outline.sections[index]?.id,
     )
   );
+}
+
+function voiceMatchesPlan(bundle: VoiceBundle, plan: VoiceVisualPlan) {
+  return (
+    bundle.sections.length === plan.sections.length &&
+    bundle.sections.every(
+      (section, index) =>
+        section.outlineSectionId === plan.sections[index]?.outlineSectionId &&
+        section.sourceTextHash ===
+          createHash('sha256')
+            .update(
+              plan.sections[index]!.beats
+                .map((beat) => beat.voiceover.trim())
+                .join('\n\n'),
+            )
+            .digest('hex') &&
+        section.beats.length === plan.sections[index]?.beats.length &&
+        section.beats.every(
+          (beat, beatIndex) =>
+            beat.beatId === plan.sections[index]?.beats[beatIndex]?.id,
+        ),
+    )
+  );
+}
+
+function buildVoiceSourceSections(plan: VoiceVisualPlan) {
+  return plan.sections.map((section) => {
+    const characters: string[] = [];
+    const beats = section.beats.map((beat, index) => {
+      if (index > 0) characters.push('\n', '\n');
+      const textStartIndex = characters.length;
+      characters.push(...Array.from(beat.voiceover.trim()));
+      return {
+        beatId: beat.id,
+        textStartIndex,
+        textEndIndex: characters.length,
+      };
+    });
+    return {
+      outlineSectionId: section.outlineSectionId,
+      text: characters.join(''),
+      beats,
+    };
+  });
+}
+
+async function localVoicePresets(
+  repository: ProjectRepository,
+): Promise<ElevenLabsUsagePreset[]> {
+  const {projects} = await repository.listProjects();
+  const grouped = new Map<string, ElevenLabsUsagePreset>();
+  for (const project of projects) {
+    const bundle = project.voiceBundle;
+    if (!bundle) continue;
+    const configuration = bundle.configuration;
+    const key = JSON.stringify({
+      voiceId: configuration.voiceId,
+      modelId: configuration.modelId,
+      settings: configuration.settings,
+    });
+    const current = grouped.get(key);
+    if (current) {
+      current.successfulGenerations += 1;
+      if (bundle.generation.generatedAt > current.usedAt) {
+        current.usedAt = bundle.generation.generatedAt;
+      }
+      continue;
+    }
+    grouped.set(key, {
+      id: `pad-studio:${configuration.voiceId}:${configuration.modelId}:${grouped.size}`,
+      source: 'pad-studio',
+      voiceId: configuration.voiceId,
+      voiceName: configuration.voiceName,
+      modelId: configuration.modelId,
+      modelName: configuration.modelName,
+      usedAt: bundle.generation.generatedAt,
+      successfulGenerations: 1,
+      settings: configuration.settings,
+    });
+  }
+  return [...grouped.values()];
 }
 
 async function serveFrontend(
@@ -417,6 +547,9 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const elevenLabsConnection =
     options.elevenLabsConnection ??
     createElevenLabsConnectionService();
+  const elevenLabsVoiceService =
+    options.elevenLabsVoiceService ??
+    createElevenLabsVoiceService();
   const outlineGenerator =
     options.outlineGenerator ??
     createCodexOutlineGenerator(sharedCodexClient!);
@@ -439,6 +572,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const motionCanvasWorkspace =
     options.motionCanvasWorkspace ??
     createMotionCanvasWorkspace(projectsDirectory);
+  const voiceWorkspace =
+    options.voiceWorkspace ?? createVoiceWorkspace(projectsDirectory);
   const logger = options.logger ?? console;
   type GenerationCacheEntry<Result> = {
     fingerprint: string;
@@ -458,6 +593,17 @@ export function createPadStudioServer(options: AppOptions = {}) {
       generated: MotionCanvasGenerationResult;
       prepared: PreparedMotionCanvasWorkspace;
     }>
+  >();
+  const voiceGenerations = new Map<
+    string,
+    GenerationCacheEntry<{
+      configuration: VoiceBundle['configuration'];
+      prepared: PreparedVoiceWorkspace;
+    }>
+  >();
+  const voiceSectionGenerations = new Map<
+    string,
+    GenerationCacheEntry<ElevenLabsSectionGeneration>
   >();
 
   function generateOnce<Result>(
@@ -530,6 +676,30 @@ export function createPadStudioServer(options: AppOptions = {}) {
       ) {
         const status = await elevenLabsConnection.verifyConnection();
         sendJson(response, 200, {status});
+        return;
+      }
+
+      if (
+        requestUrl.pathname === '/api/integrations/elevenlabs/catalog' &&
+        request.method === 'GET'
+      ) {
+        const catalog = await elevenLabsVoiceService.getCatalog(
+          requestUrl.searchParams.get('search')?.trim().slice(0, 120) ?? '',
+          await localVoicePresets(repository),
+        );
+        sendJson(response, 200, {catalog});
+        return;
+      }
+
+      if (
+        requestUrl.pathname ===
+          '/api/integrations/elevenlabs/shared-voices' &&
+        request.method === 'GET'
+      ) {
+        const result = await elevenLabsVoiceService.searchSharedVoices(
+          requestUrl.searchParams.get('search')?.trim().slice(0, 120) ?? '',
+        );
+        sendJson(response, 200, {result});
         return;
       }
 
@@ -1230,6 +1400,11 @@ export function createPadStudioServer(options: AppOptions = {}) {
           width: MOTION_CANVAS_WIDTH,
           height: MOTION_CANVAS_HEIGHT,
           fps: MOTION_CANVAS_FPS,
+          ...(preparedWorkspace.scenes.every(
+            (scene) => scene.timingEvents?.length,
+          )
+            ? {timingContractVersion: 1 as const}
+            : {}),
           scenes: preparedWorkspace.scenes,
           validation: preparedWorkspace.validation,
           generation: {
@@ -1350,7 +1525,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
           currentProject.id,
           {
             motionCanvasBundle: approvedBundle,
-            currentStep: 'motionCanvas',
+            currentStep: 'voice',
           },
           expectedRevision,
         );
@@ -1363,6 +1538,284 @@ export function createPadStudioServer(options: AppOptions = {}) {
           return;
         }
 
+        sendProject(response, 200, updatedProject);
+        return;
+      }
+
+      const voiceRoute = getProjectVoiceRoute(requestUrl.pathname);
+
+      if (
+        voiceRoute?.action === 'generate' &&
+        request.method === 'POST'
+      ) {
+        const expectedRevision = readExpectedRevision(request);
+        const body = await readJsonBody(request);
+        const parsedRequest = GenerateVoiceSchema.safeParse(body);
+        if (!parsedRequest.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Cấu hình tạo voice chưa hợp lệ.',
+            fields: validationFields(parsedRequest.error.issues),
+          });
+          return;
+        }
+        const generationId = parsedRequest.data.generationId.toLowerCase();
+        const currentProject = await repository.getProject(
+          voiceRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        if (
+          currentProject.voiceBundle?.generation.generationId === generationId
+        ) {
+          sendProject(response, 200, currentProject);
+          return;
+        }
+        if (currentProject.revision !== expectedRevision) {
+          throw new ProjectConflictError(currentProject);
+        }
+
+        const outline = currentProject.outline;
+        const plan = currentProject.voiceVisualPlan;
+        const motionBundle = currentProject.motionCanvasBundle;
+        if (
+          !outline ||
+          outline.status !== 'approved' ||
+          !plan ||
+          plan.status !== 'approved' ||
+          !motionBundle ||
+          motionBundle.status !== 'approved' ||
+          !sameValue(outline.sourceInput, currentProject.topicInput) ||
+          plan.sourceOutlineContentRevision !== outline.contentRevision ||
+          motionBundle.sourceVoiceVisualContentRevision !==
+            plan.contentRevision ||
+          !voiceVisualMatchesOutline(plan, outline) ||
+          !motionCanvasMatchesOutline(motionBundle, outline)
+        ) {
+          throw new RequestBodyError(
+            409,
+            'VOICE_PREREQUISITES_NOT_APPROVED',
+            'Hãy chốt voice–visual và Motion Canvas hiện tại trước khi tạo voice.',
+          );
+        }
+
+        const sourceSections = buildVoiceSourceSections(plan);
+        const generationKey = `${currentProject.id}:${generationId}`;
+        const fingerprint = JSON.stringify({
+          voiceVisualContentRevision: plan.contentRevision,
+          sourceSections,
+          configuration: parsedRequest.data,
+        });
+        const generation = await generateOnce(
+          voiceGenerations,
+          generationKey,
+          fingerprint,
+          async () => {
+            const resolved =
+              await elevenLabsVoiceService.resolveConfiguration({
+                voiceId: parsedRequest.data.voiceId,
+                modelId: parsedRequest.data.modelId,
+                outputFormat: parsedRequest.data.outputFormat,
+                settings: parsedRequest.data.settings,
+                seed: parsedRequest.data.seed,
+              });
+            const maximumCharacters =
+              resolved.model.maximumTextLengthPerRequest;
+            if (
+              maximumCharacters &&
+              sourceSections.some(
+                (section) =>
+                  Array.from(section.text).length > maximumCharacters,
+              )
+            ) {
+              throw new RequestBodyError(
+                422,
+                'VOICE_SECTION_TOO_LONG',
+                `Một section vượt giới hạn ${maximumCharacters.toLocaleString('vi-VN')} ký tự của model đã chọn. Hãy chia nhỏ beat hoặc chọn model hỗ trợ nội dung dài hơn.`,
+              );
+            }
+
+            const generatedSections = [];
+            for (const [index, section] of sourceSections.entries()) {
+              const sectionRequest = {
+                  voiceId: resolved.configuration.voiceId,
+                  modelId: resolved.configuration.modelId,
+                  outputFormat: resolved.configuration.outputFormat,
+                  text: section.text,
+                  settings: resolved.configuration.settings,
+                  seed: resolved.configuration.seed,
+                  canUseStyle: resolved.model.canUseStyle,
+                  canUseSpeakerBoost:
+                    resolved.model.canUseSpeakerBoost,
+                  ...(resolved.configuration.modelId === 'eleven_v3'
+                    ? {}
+                    : {
+                        previousText:
+                          sourceSections[index - 1]?.text.slice(-1_000),
+                        nextText:
+                          sourceSections[index + 1]?.text.slice(0, 1_000),
+                      }),
+                };
+              const sectionGeneration = await generateOnce(
+                voiceSectionGenerations,
+                `${generationKey}:${section.outlineSectionId}`,
+                JSON.stringify(sectionRequest),
+                () =>
+                  elevenLabsVoiceService.generateSection(sectionRequest),
+              );
+              generatedSections.push({
+                ...section,
+                outputFormat: resolved.configuration.outputFormat,
+                generated: sectionGeneration.result,
+              });
+            }
+            const prepared = await voiceWorkspace.prepare(
+              currentProject.id,
+              generationId,
+              generatedSections,
+            );
+            return {
+              configuration: resolved.configuration,
+              prepared,
+            };
+          },
+        );
+
+        const voiceBundle: VoiceBundle = {
+          status: 'draft',
+          contentRevision:
+            (currentProject.voiceBundle?.contentRevision ?? 0) + 1,
+          sourceVoiceVisualContentRevision: plan.contentRevision,
+          workspacePath: generation.result.prepared.workspacePath,
+          configuration: generation.result.configuration,
+          sections: generation.result.prepared.sections,
+          totalDurationSeconds:
+            generation.result.prepared.totalDurationSeconds,
+          generation: {
+            generationId,
+            provider: 'elevenlabs',
+            generatedAt: generation.generatedAt,
+            characterCost: generation.result.prepared.characterCost,
+            requestIds: generation.result.prepared.requestIds,
+          },
+        };
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {voiceBundle, currentStep: 'voice'},
+          expectedRevision,
+        );
+        if (!updatedProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        sendProject(response, 200, updatedProject);
+        return;
+      }
+
+      if (voiceRoute?.action === 'audio' && request.method === 'GET') {
+        const currentProject = await repository.getProject(
+          voiceRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        if (
+          !currentProject.voiceBundle ||
+          !voiceRoute.outlineSectionId
+        ) {
+          throw new RequestBodyError(
+            404,
+            'VOICE_AUDIO_NOT_FOUND',
+            'Project chưa có audio voice này.',
+          );
+        }
+        const requestedGeneration =
+          requestUrl.searchParams.get('generation');
+        if (
+          requestedGeneration &&
+          requestedGeneration !==
+            currentProject.voiceBundle.generation.generationId
+        ) {
+          throw new RequestBodyError(
+            404,
+            'VOICE_GENERATION_NOT_FOUND',
+            'Generation voice được yêu cầu không còn là bản hiện tại.',
+          );
+        }
+        const result = await voiceWorkspace.readAudio(
+          currentProject.id,
+          currentProject.voiceBundle,
+          voiceRoute.outlineSectionId,
+        );
+        response.writeHead(200, {
+          'Content-Type': result.contentType,
+          'Content-Length': result.audio.byteLength,
+          'Cache-Control': 'private, max-age=31536000, immutable',
+          ETag: `"${currentProject.voiceBundle.generation.generationId}:${voiceRoute.outlineSectionId}"`,
+        });
+        response.end(result.audio);
+        return;
+      }
+
+      if (
+        voiceRoute?.action === 'approve' &&
+        request.method === 'POST'
+      ) {
+        const expectedRevision = readExpectedRevision(request);
+        const currentProject = await repository.getProject(
+          voiceRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        if (currentProject.revision !== expectedRevision) {
+          throw new ProjectConflictError(currentProject);
+        }
+        const plan = currentProject.voiceVisualPlan;
+        const bundle = currentProject.voiceBundle;
+        if (
+          !plan ||
+          plan.status !== 'approved' ||
+          !bundle ||
+          !voiceMatchesPlan(bundle, plan)
+        ) {
+          throw new RequestBodyError(
+            409,
+            'VOICE_OUTDATED',
+            'Voice chưa có hoặc không còn khớp với lời đọc đã chốt.',
+          );
+        }
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {
+            voiceBundle: {...bundle, status: 'approved'},
+            currentStep: 'voice',
+          },
+          expectedRevision,
+        );
+        if (!updatedProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
         sendProject(response, 200, updatedProject);
         return;
       }
@@ -1509,6 +1962,32 @@ export function createPadStudioServer(options: AppOptions = {}) {
             : error.code === 'MOTION_CANVAS_VALIDATION_FAILED'
               ? 422
               : 500,
+          {
+            code: error.code,
+            message: error.message,
+          },
+        );
+        return;
+      }
+
+      if (error instanceof ElevenLabsVoiceError) {
+        sendApiError(response, error.statusCode, {
+          code: error.code,
+          message: error.message,
+        });
+        return;
+      }
+
+      if (error instanceof VoiceWorkspaceError) {
+        sendApiError(
+          response,
+          error.code === 'VOICE_WORKSPACE_CONFLICT'
+            ? 409
+            : error.code === 'VOICE_ALIGNMENT_INVALID'
+              ? 422
+              : error.code === 'VOICE_AUDIO_NOT_FOUND'
+                ? 404
+                : 500,
           {
             code: error.code,
             message: error.message,

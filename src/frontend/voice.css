@@ -1,0 +1,341 @@
+.voice-workspace {
+  display: grid;
+  gap: 28px;
+}
+
+.voice-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 24px;
+  align-items: start;
+}
+
+.voice-main,
+.voice-side {
+  display: grid;
+  gap: 24px;
+}
+
+.voice-config-card {
+  display: grid;
+  gap: 28px;
+}
+
+.voice-search {
+  display: grid;
+  gap: 9px;
+}
+
+.voice-search > label,
+.voice-search input {
+  font: inherit;
+}
+
+.voice-search > label {
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.voice-search > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+}
+
+.voice-search input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: #fff;
+  color: var(--ink);
+}
+
+.voice-presets {
+  display: grid;
+  gap: 12px;
+}
+
+.voice-presets > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.voice-presets button {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.voice-presets button:hover {
+  border-color: var(--orange);
+}
+
+.voice-presets strong,
+.voice-presets span,
+.voice-presets small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-presets span,
+.voice-presets small,
+.voice-inline-note {
+  color: var(--ink-soft);
+}
+
+.voice-presets small,
+.voice-inline-note {
+  font-size: 12px;
+}
+
+.voice-choice-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
+  gap: 24px;
+}
+
+.voice-choice-grid > div,
+.voice-choice-list,
+.voice-model-list {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.voice-choice-list,
+.voice-model-list {
+  max-height: 430px;
+  overflow: auto;
+  padding-right: 3px;
+}
+
+.voice-choice,
+.voice-model {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.voice-choice.is-selected,
+.voice-model.is-selected {
+  border-color: var(--orange);
+  box-shadow: 0 0 0 2px rgb(47 133 90 / 10%);
+}
+
+.voice-choice:has(input:disabled) {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.voice-choice > span,
+.voice-model > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.voice-choice strong,
+.voice-model strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voice-choice small,
+.voice-model small {
+  color: var(--ink-soft);
+}
+
+.voice-choice audio {
+  grid-column: 2;
+  width: 100%;
+  height: 32px;
+}
+
+.voice-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 24px;
+  padding: 20px;
+  border-radius: 16px;
+  background: var(--canvas);
+}
+
+.voice-settings header {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: end;
+}
+
+.voice-settings h2 {
+  margin: 6px 0 0;
+  font-size: 20px;
+}
+
+.voice-settings header > label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.voice-range {
+  display: grid;
+  gap: 9px;
+}
+
+.voice-range > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.voice-range strong {
+  color: var(--ink);
+}
+
+.voice-range input {
+  width: 100%;
+  accent-color: var(--orange);
+}
+
+.voice-generation-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: center;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.voice-generation-summary > div {
+  display: grid;
+  gap: 5px;
+}
+
+.voice-generation-summary span {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.voice-generation-summary strong {
+  color: var(--ink);
+}
+
+.voice-review {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #fff;
+}
+
+.voice-review > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: center;
+  padding: 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.voice-review h2 {
+  margin: 6px 0 0;
+}
+
+.voice-review-section {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 16px;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.voice-review-section:last-child {
+  border-bottom: 0;
+}
+
+.voice-review-section h3 {
+  margin: 0;
+}
+
+.voice-review-section p {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 7px 0 12px;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.voice-review-section p svg {
+  width: 15px;
+}
+
+.voice-review-section audio {
+  display: block;
+  width: 100%;
+}
+
+.voice-beat-timings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.voice-beat-timings span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: var(--canvas);
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+@media (max-width: 1100px) {
+  .voice-editor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .voice-side {
+    grid-row: 1;
+  }
+}
+
+@media (max-width: 760px) {
+  .voice-choice-grid,
+  .voice-settings,
+  .voice-presets > div {
+    grid-template-columns: 1fr;
+  }
+
+  .voice-search > div,
+  .voice-generation-summary {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .voice-generation-summary .submit-button {
+    width: 100%;
+  }
+}

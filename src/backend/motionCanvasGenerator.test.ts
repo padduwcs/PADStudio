@@ -13,6 +13,7 @@ import {
   MotionCanvasGenerationError,
   type MotionCanvasGenerationRequest,
   validateMotionCanvasSceneSource,
+  validateMotionCanvasTimingContract,
 } from './motionCanvasGenerator.ts';
 
 const sceneSource = `import {makeScene2D, Rect} from '@motion-canvas/2d';
@@ -23,6 +24,24 @@ export default makeScene2D(function* (view) {
   yield* waitFor(12);
 });
 `;
+
+function timedSceneSource(beatIds: string[]) {
+  return `import {makeScene2D, Rect} from '@motion-canvas/2d';
+import {useDuration, waitFor, waitUntil} from '@motion-canvas/core';
+
+export default makeScene2D(function* (view) {
+  view.add(<Rect width={640} height={120} radius={24} fill={'#dbe9e2'} />);
+${beatIds
+  .map(
+    (beatId, index) => `  yield* waitUntil('beat:${beatId}:start');
+  const beatDuration${index} = useDuration('beat:${beatId}:end');
+  yield* waitFor(beatDuration${index});
+  yield* waitUntil('beat:${beatId}:end');`,
+  )
+  .join('\n')}
+});
+`;
+}
 
 class FakeCodexClient implements CodexAppServerClient {
   readonly calls: Array<{method: string; params?: unknown}> = [];
@@ -87,6 +106,15 @@ class FakeCodexClient implements CodexAppServerClient {
       const turnNumber = this.turnCount;
       const turnId = `turn-motion-${turnNumber}`;
       const threadId = (params as {threadId: string}).threadId;
+      const beatIds = [
+        ...new Set(
+          [
+            ...JSON.stringify(params).matchAll(
+              /beat:([0-9a-f-]{36}):start/g,
+            ),
+          ].map((match) => match[1]!),
+        ),
+      ];
       if (!(this.failFirstTurn && turnNumber === 1)) {
         queueMicrotask(() => {
           this.emit({
@@ -100,7 +128,7 @@ class FakeCodexClient implements CodexAppServerClient {
                 phase: 'final_answer',
                 text: JSON.stringify({
                   name: `Scene ${turnNumber}`,
-                  source: sceneSource,
+                  source: timedSceneSource(beatIds),
                 }),
               },
             },
@@ -461,6 +489,24 @@ test('Motion Canvas source policy phân tích code thay vì nội dung text', ()
   );
 });
 
+test('Motion Canvas timing contract bắt buộc đúng thứ tự start/end của beat', () => {
+  const beatId = randomUUID();
+  const validSource = timedSceneSource([beatId]);
+  assert.doesNotThrow(() =>
+    validateMotionCanvasTimingContract(validSource, [{id: beatId}]),
+  );
+  assert.throws(
+    () =>
+      validateMotionCanvasTimingContract(
+        validSource.replace(`beat:${beatId}:end`, `beat:${beatId}:start`),
+        [{id: beatId}],
+      ),
+    (error) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_TIMING_CONTRACT',
+  );
+});
+
 test('Motion Canvas generator chỉ sinh lại scene đã timeout', async (context) => {
   const runtimeDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-studio-motion-retry-'),
@@ -524,7 +570,7 @@ test('Motion Canvas generator chỉ sửa scene có compiler diagnostics', async
   );
 
   assert.equal(repaired.scenes.length, 2);
-  assert.equal(repaired.scenes[0]?.source, sceneSource);
+  assert.equal(repaired.scenes[0]?.source, firstScene.source);
   assert.equal(repaired.scenes[1]?.id, generated.scenes[1]?.id);
   assert.equal(
     client.calls.filter((call) => call.method === 'turn/start').length,
