@@ -1,4 +1,8 @@
 import {useState} from 'react';
+import {
+  narrationMetrics,
+  targetNarrationTokenCount,
+} from '../shared/narrationTiming.ts';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {
@@ -105,6 +109,14 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
       (total, section) => total + section.beats.length,
       0,
     ) ?? 0;
+  const planNarration =
+    draft?.sections
+      .flatMap((section) => section.beats.map((beat) => beat.voiceover))
+      .join('\n\n') ?? '';
+  const planNarrationMetrics = narrationMetrics(
+    planNarration,
+    draft?.timingCalibration,
+  );
   const usage = project.voiceVisualPlan?.generation.usage;
   const approved =
     project.voiceVisualPlan?.status === 'approved' &&
@@ -124,8 +136,9 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
           Khớp lời kể với điều người xem nhìn thấy.
         </AdaptiveHeading>
         <p>
-          Mỗi beat nối một đoạn voice với visual, chuyển động và thời lượng.
-          Bạn review kế hoạch này trước khi PAD Studio sinh scene và voice.
+          Mỗi beat nối một đoạn voice với visual và chuyển động. Timing được
+          tính từ chính lời kể; bạn chỉ thêm thời gian giữ hình khi thật sự
+          cần.
         </p>
       </header>
 
@@ -327,6 +340,16 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                     (total, beat) => total + beat.durationSeconds,
                     0,
                   );
+                  const sectionNarration = planSection.beats
+                    .map((beat) => beat.voiceover)
+                    .join('\n\n');
+                  const sectionMetrics = narrationMetrics(
+                    sectionNarration,
+                    draft.timingCalibration,
+                  );
+                  const sectionTokenTarget = targetNarrationTokenCount(
+                    outlineSection.estimatedSeconds,
+                  );
 
                   return (
                     <section
@@ -343,8 +366,9 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                         </div>
                         <span className="voice-visual-section-duration">
                           <ClockIcon />
-                          {formatTime(sectionSeconds)} /{' '}
-                          {formatTime(outlineSection.estimatedSeconds)}
+                          {formatTime(sectionSeconds)} ·{' '}
+                          {sectionMetrics.whitespaceTokenCount}/
+                          {sectionTokenTarget} đơn vị
                         </span>
                       </header>
 
@@ -470,19 +494,37 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                   />
                                 </label>
                                 <label className="outline-time-field">
-                                  <span>Thời lượng</span>
+                                  <span>Timing từ lời kể</span>
+                                  <span>
+                                    <strong>
+                                      {formatTime(beat.durationSeconds)}
+                                    </strong>
+                                    <small>
+                                      {
+                                        narrationMetrics(
+                                          beat.voiceover,
+                                          draft.timingCalibration,
+                                        )
+                                          .whitespaceTokenCount
+                                      }{' '}
+                                      đơn vị
+                                    </small>
+                                  </span>
+                                </label>
+                                <label className="outline-time-field">
+                                  <span>Giữ hình thêm</span>
                                   <span>
                                     <input
                                       type="number"
-                                      min={4}
-                                      max={45}
+                                      min={0}
+                                      max={30}
                                       disabled={plan.stale}
-                                      value={beat.durationSeconds}
+                                      value={beat.visualHoldSeconds}
                                       onChange={(event) =>
                                         plan.updateBeat(
                                           planSection.outlineSectionId,
                                           beat.id,
-                                          'durationSeconds',
+                                          'visualHoldSeconds',
                                           Number(event.target.value),
                                         )
                                       }
@@ -570,12 +612,15 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                     <dd>{beatCount}</dd>
                   </div>
                   <div>
-                    <dt>Thời lượng</dt>
+                    <dt>Timing narration</dt>
                     <dd>{formatTime(totalSeconds)}</dd>
                   </div>
                   <div>
-                    <dt>Mạch giảng</dt>
-                    <dd>{formatTime(outlineSeconds)}</dd>
+                    <dt>Ngân sách lời</dt>
+                    <dd>
+                      {planNarrationMetrics.whitespaceTokenCount}/
+                      {targetNarrationTokenCount(outlineSeconds)}
+                    </dd>
                   </div>
                   <div>
                     <dt>Trạng thái</dt>
@@ -611,8 +656,11 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                 <div className="outline-next-note">
                   <LightbulbIcon />
                   <p>
-                    Mốc bắt đầu được tính tự động từ thời lượng các beat nên
-                    timeline luôn liền mạch.
+                    Timing dự kiến kết hợp số đơn vị tiếng Việt và số ký tự.
+                    Voice thật sẽ thay bằng timestamp chính xác của ElevenLabs.
+                    {draft.timingCalibration.source === 'voice-history'
+                      ? ` Hiện đang hiệu chỉnh theo ${draft.timingCalibration.voiceName ?? 'voice gần nhất'} từ ${draft.timingCalibration.sampleCount} generation.`
+                      : ' Hiện đang dùng tốc độ mặc định cho narration tiếng Việt.'}
                   </p>
                 </div>
               </section>

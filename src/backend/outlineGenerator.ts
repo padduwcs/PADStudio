@@ -8,6 +8,10 @@ import type {
   TeachingOutlineContent,
   TopicInput,
 } from '../shared/topic.ts';
+import {
+  narrationDurationTargets,
+  targetNarrationTokenCount,
+} from '../shared/narrationTiming.ts';
 import type {CodexAppServerClient} from './codexConnection.ts';
 import {
   CodexStructuredGenerationError,
@@ -15,7 +19,7 @@ import {
   runCodexStructuredGeneration,
 } from './codexStructuredGeneration.ts';
 
-export const OUTLINE_PROMPT_VERSION = 'outline-v1';
+export const OUTLINE_PROMPT_VERSION = 'outline-v2';
 
 const generatedOutlineSchema = z
   .object({
@@ -47,9 +51,9 @@ const outputJsonSchema = z.toJSONSchema(generatedOutlineSchema, {
 });
 
 const durationInstructions: Record<TopicInput['duration'], string> = {
-  concise: '60–120 giây, thường 2–4 ý',
-  standard: '180–300 giây, thường 4–6 ý',
-  deep: '360–480 giây, thường 5–8 ý',
+  concise: '60–120 giây, mục tiêu 90 giây, thường 2–4 ý',
+  standard: '180–300 giây, mục tiêu 240 giây, thường 4–6 ý',
+  deep: '360–480 giây, mục tiêu 420 giây, thường 5–8 ý',
 };
 
 export interface OutlineGenerationRequest {
@@ -86,9 +90,23 @@ function currentOutlineForPrompt(outline: TeachingOutline) {
 }
 
 function buildPrompt(request: OutlineGenerationRequest) {
+  const durationTarget = narrationDurationTargets[request.topicInput.duration];
   const payload: Record<string, unknown> = {
     topicInput: request.topicInput,
     targetDuration: durationInstructions[request.topicInput.duration],
+    narrationBudget: {
+      ...durationTarget,
+      minimumWhitespaceTokenCount: targetNarrationTokenCount(
+        durationTarget.minimumSeconds,
+      ),
+      targetWhitespaceTokenCount: targetNarrationTokenCount(
+        durationTarget.targetSeconds,
+      ),
+      maximumWhitespaceTokenCount: targetNarrationTokenCount(
+        durationTarget.maximumSeconds,
+      ),
+      targetSpeakingRate: '180 đơn vị phân tách bằng khoảng trắng mỗi phút',
+    },
   };
 
   if (request.guidance) {
@@ -101,10 +119,41 @@ function buildPrompt(request: OutlineGenerationRequest) {
   return [
     'Tạo mạch giảng tiếng Việt từ JSON sau.',
     'Giữ đúng ý người dùng; nêu giả định khi đầu vào chưa rõ.',
-    'Mỗi ý phải có vai trò riêng và tổng thời lượng phải phù hợp.',
+    'Mỗi ý phải có vai trò riêng; phân bổ estimatedSeconds sao cho tổng gần targetSeconds và đủ ngân sách narration tương ứng.',
     'Không viết lời thoại, code, cảnh quay, caption hay hướng dẫn animation.',
     JSON.stringify(payload),
   ].join('\n');
+}
+
+function allocateTargetDurations(
+  sections: Array<{estimatedSeconds: number}>,
+  targetSeconds: number,
+) {
+  const totalWeight = sections.reduce(
+    (total, section) => total + section.estimatedSeconds,
+    0,
+  );
+  const durations = sections.map((section) =>
+    Math.max(
+      10,
+      Math.min(
+        240,
+        Math.round((section.estimatedSeconds / totalWeight) * targetSeconds),
+      ),
+    ),
+  );
+  let difference =
+    targetSeconds - durations.reduce((total, value) => total + value, 0);
+  while (difference !== 0) {
+    const direction = Math.sign(difference);
+    const index = durations.findIndex((value) =>
+      direction > 0 ? value < 240 : value > 10,
+    );
+    if (index < 0) break;
+    durations[index] = durations[index]! + direction;
+    difference -= direction;
+  }
+  return durations;
 }
 
 function mapStructuredError(error: CodexStructuredGenerationError) {
@@ -186,12 +235,17 @@ export function createCodexOutlineGenerator(
           );
         }
 
+        const targetDurations = allocateTargetDurations(
+          parsedOutline.data.sections,
+          narrationDurationTargets[request.topicInput.duration].targetSeconds,
+        );
         return {
           content: {
             ...parsedOutline.data,
-            sections: parsedOutline.data.sections.map((section) => ({
+            sections: parsedOutline.data.sections.map((section, index) => ({
               id: randomUUID(),
               ...section,
+              estimatedSeconds: targetDurations[index]!,
             })),
           },
           model: generated.model,

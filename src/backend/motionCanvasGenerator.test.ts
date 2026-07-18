@@ -200,6 +200,15 @@ function createGenerationRequest(): MotionCanvasGenerationRequest {
   const voiceVisualPlan = {
     voiceDirection: 'Giọng kể rõ ràng, gần gũi với người mới.',
     visualDirection: 'Hình khối tối giản thể hiện vùng tìm kiếm.',
+    timingCalibration: {
+      source: 'default' as const,
+      whitespaceTokensPerMinute: 195,
+      charactersPerSecond: 14.5,
+      voiceId: null,
+      modelId: null,
+      voiceName: null,
+      sampleCount: 0,
+    },
     sections: outline.sections.map((section) => ({
       outlineSectionId: section.id,
       beats: [
@@ -208,12 +217,14 @@ function createGenerationRequest(): MotionCanvasGenerationRequest {
           voiceover: 'Ta quan sát vùng có thể chứa đáp án.',
           visualDescription: 'Một thanh dài đại diện cho vùng tìm kiếm.',
           animationDescription: 'Thanh xuất hiện rồi thu hẹp một nửa.',
+          visualHoldSeconds: 0,
           durationSeconds: 12,
         },
       ],
     })),
     status: 'approved' as const,
     contentRevision: 1,
+    narrationRevision: 1,
     sourceOutlineContentRevision: 1,
     generation: {
       generationId: randomUUID(),
@@ -282,6 +293,15 @@ test('Motion Canvas generator ánh xạ scene theo đúng voice–visual', async
   const voiceVisualPlan = {
     voiceDirection: 'Giọng kể rõ ràng, gần gũi với người mới.',
     visualDirection: 'Hình khối tối giản thể hiện vùng tìm kiếm.',
+    timingCalibration: {
+      source: 'default' as const,
+      whitespaceTokensPerMinute: 195,
+      charactersPerSecond: 14.5,
+      voiceId: null,
+      modelId: null,
+      voiceName: null,
+      sampleCount: 0,
+    },
     sections: outline.sections.map((section) => ({
       outlineSectionId: section.id,
       beats: [
@@ -290,12 +310,14 @@ test('Motion Canvas generator ánh xạ scene theo đúng voice–visual', async
           voiceover: 'Ta quan sát toàn bộ vùng có thể chứa đáp án.',
           visualDescription: 'Một thanh dài đại diện cho vùng tìm kiếm.',
           animationDescription: 'Thanh xuất hiện rồi sáng dần từ trái sang phải.',
+          visualHoldSeconds: 0,
           durationSeconds: 12,
         },
       ],
     })),
     status: 'approved' as const,
     contentRevision: 1,
+    narrationRevision: 1,
     sourceOutlineContentRevision: 1,
     generation: {
       generationId: randomUUID(),

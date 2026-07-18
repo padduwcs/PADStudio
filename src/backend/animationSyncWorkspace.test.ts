@@ -104,38 +104,37 @@ test('Animation sync tạo track WAV và time-event theo voice thật', async (c
     await writeFile(destination, sceneSource(beatIds[index]!), 'utf8');
   }
 
+  let voiceOffset = 0;
   const voiceSections = outlineIds.map((outlineSectionId, index) => {
-    const audioPath =
-      `audio/0${index + 1}-${outlineSectionId}.wav` as const;
+    const startSeconds = voiceOffset;
+    const durationSeconds = voiceDurations[index]!;
+    voiceOffset += durationSeconds;
     return {
       outlineSectionId,
-      audioPath,
-      alignmentPath:
-        `alignments/0${index + 1}-${outlineSectionId}.json` as const,
-      durationSeconds: voiceDurations[index]!,
-      characterCost: 10,
-      requestId: `request-${index + 1}`,
+      textStartIndex: index * 12,
+      textEndIndex: index * 12 + 10,
+      startSeconds,
+      endSeconds: voiceOffset,
+      durationSeconds,
       sourceTextHash: 'a'.repeat(64),
       beats: [
         {
           beatId: beatIds[index]!,
-          textStartIndex: 0,
-          textEndIndex: 10,
+          textStartIndex: index * 12,
+          textEndIndex: index * 12 + 10,
           startSeconds: 0,
-          endSeconds: voiceDurations[index]!,
+          endSeconds: durationSeconds,
         },
       ],
     };
   });
-  for (const [index, section] of voiceSections.entries()) {
-    const destination = path.join(
-      projectDirectory,
-      voiceWorkspacePath,
-      section.audioPath,
-    );
-    await mkdir(path.dirname(destination), {recursive: true});
-    await writeFile(destination, wavSilence(voiceDurations[index]!));
-  }
+  const masterAudioPath = path.join(
+    projectDirectory,
+    voiceWorkspacePath,
+    'audio/narration.wav',
+  );
+  await mkdir(path.dirname(masterAudioPath), {recursive: true});
+  await writeFile(masterAudioPath, wavSilence(1.25));
 
   const motionBundle: MotionCanvasBundle = {
     status: 'approved',
@@ -165,7 +164,7 @@ test('Animation sync tạo track WAV và time-event theo voice thật', async (c
   const voiceBundle: VoiceBundle = {
     status: 'approved',
     contentRevision: 4,
-    sourceVoiceVisualContentRevision: 3,
+    sourceNarrationRevision: 1,
     workspacePath: voiceWorkspacePath,
     configuration: {
       voiceId: 'voice-test',
@@ -183,6 +182,21 @@ test('Animation sync tạo track WAV và time-event theo voice thật', async (c
         speed: 1,
       },
       seed: null,
+    },
+    track: {
+      audioPath: 'audio/narration.wav',
+      alignmentPath: 'alignments/narration.json',
+      sourceTextHash: 'c'.repeat(64),
+      durationSeconds: 1.25,
+      characterCost: 20,
+      strategy: 'single-request',
+      chunkCount: 1,
+      calibration: {
+        whitespaceTokenCount: 4,
+        characterCount: 22,
+        whitespaceTokensPerMinute: 192,
+        charactersPerSecond: 17.6,
+      },
     },
     sections: voiceSections,
     totalDurationSeconds: 1.25,

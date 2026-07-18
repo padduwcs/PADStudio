@@ -69,6 +69,10 @@ export interface ElevenLabsUsagePreset {
     useSpeakerBoost: boolean;
     speed: number;
   } | null;
+  timingCalibration: {
+    whitespaceTokensPerMinute: number;
+    charactersPerSecond: number;
+  } | null;
 }
 
 export interface ElevenLabsCatalog {

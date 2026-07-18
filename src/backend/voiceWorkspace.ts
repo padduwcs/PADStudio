@@ -1,3 +1,4 @@
+import {execFile} from 'node:child_process';
 import {createHash, randomUUID} from 'node:crypto';
 import {
   cp,
@@ -10,6 +11,12 @@ import {
 } from 'node:fs/promises';
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
+import {promisify} from 'node:util';
+import {
+  calibrationFromActualNarration,
+  countNarrationCharacters,
+  countNarrationWhitespaceTokens,
+} from '../shared/narrationTiming.ts';
 import type {
   VoiceBundle,
   VoiceSectionAudio,
@@ -18,26 +25,34 @@ import type {
   ElevenLabsAlignment,
   ElevenLabsSectionGeneration,
 } from './elevenLabsVoiceService.ts';
+import type {
+  NarrationSourceSection,
+} from './narrationSource.ts';
 
+const execFileAsync = promisify(execFile);
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const OUTPUT_SAMPLE_RATE = 48_000;
+const MASTER_AUDIO_PATH = 'audio/narration.wav' as const;
+const MASTER_ALIGNMENT_PATH = 'alignments/narration.json' as const;
 
-export interface VoiceSourceBeat {
-  beatId: string;
-  textStartIndex: number;
-  textEndIndex: number;
-}
-
-export interface GeneratedVoiceSection {
-  outlineSectionId: string;
+export interface GeneratedVoiceChunk {
   outputFormat: string;
   text: string;
-  beats: VoiceSourceBeat[];
+  textStartIndex: number;
+  textEndIndex: number;
   generated: ElevenLabsSectionGeneration;
+}
+
+export interface GeneratedVoiceNarration {
+  text: string;
+  sections: NarrationSourceSection[];
+  chunks: GeneratedVoiceChunk[];
 }
 
 export interface PreparedVoiceWorkspace {
   workspacePath: string;
+  track: VoiceBundle['track'];
   sections: VoiceSectionAudio[];
   totalDurationSeconds: number;
   characterCost: number;
@@ -48,7 +63,7 @@ export interface VoiceWorkspace {
   prepare(
     projectId: string,
     generationId: string,
-    sections: GeneratedVoiceSection[],
+    narration: GeneratedVoiceNarration,
   ): Promise<PreparedVoiceWorkspace>;
   readAudio(
     projectId: string,
@@ -84,7 +99,7 @@ function isInside(root: string, candidate: string) {
   );
 }
 
-function sectionDuration(alignment: ElevenLabsAlignment) {
+function alignmentDuration(alignment: ElevenLabsAlignment) {
   return alignment.characterEndTimesSeconds.at(-1) ?? 0;
 }
 
@@ -143,10 +158,61 @@ function audioExtension(outputFormat: string) {
   return 'pcm';
 }
 
-function audioContentType(filePath: string) {
-  if (filePath.endsWith('.mp3')) return 'audio/mpeg';
-  if (filePath.endsWith('.opus')) return 'audio/ogg; codecs=opus';
-  return 'application/octet-stream';
+function rawInputArguments(outputFormat: string, filePath: string) {
+  if (path.extname(filePath).toLowerCase() !== '.pcm') return [];
+  const sampleRateMatch = /_(\d+)(?:_|$)/.exec(outputFormat);
+  const sampleRate = sampleRateMatch?.[1] ?? '44100';
+  const format = outputFormat.startsWith('ulaw_')
+    ? 'mulaw'
+    : outputFormat.startsWith('alaw_')
+      ? 'alaw'
+      : 's16le';
+  return ['-f', format, '-ar', sampleRate, '-ac', '1'];
+}
+
+function ffmpegArguments(
+  chunks: Array<{
+    filePath: string;
+    outputFormat: string;
+    durationSeconds: number;
+  }>,
+  destination: string,
+) {
+  const args = ['-hide_banner', '-loglevel', 'error', '-nostdin'];
+  for (const chunk of chunks) {
+    args.push(
+      ...rawInputArguments(chunk.outputFormat, chunk.filePath),
+      '-i',
+      chunk.filePath,
+    );
+  }
+  const filters = chunks.map(
+    (chunk, index) =>
+      `[${index}:a]atrim=duration=${chunk.durationSeconds.toFixed(6)},asetpts=PTS-STARTPTS,aresample=${OUTPUT_SAMPLE_RATE},aformat=sample_fmts=s16:channel_layouts=stereo[a${index}]`,
+  );
+  if (chunks.length === 1) {
+    filters.push('[a0]anull[outa]');
+  } else {
+    filters.push(
+      `${chunks.map((_chunk, index) => `[a${index}]`).join('')}concat=n=${chunks.length}:v=0:a=1[outa]`,
+    );
+  }
+  args.push(
+    '-filter_complex',
+    filters.join(';'),
+    '-map',
+    '[outa]',
+    '-vn',
+    '-c:a',
+    'pcm_s16le',
+    '-ar',
+    String(OUTPUT_SAMPLE_RATE),
+    '-ac',
+    '2',
+    '-y',
+    destination,
+  );
+  return args;
 }
 
 async function commitWorkspace(stagingDirectory: string, finalDirectory: string) {
@@ -198,10 +264,133 @@ async function commitWorkspace(stagingDirectory: string, finalDirectory: string)
   }
 }
 
+function validateNarration(narration: GeneratedVoiceNarration) {
+  const textLength = Array.from(narration.text).length;
+  if (
+    narration.sections.length < 2 ||
+    narration.chunks.length < 1 ||
+    narration.chunks.length > 40
+  ) {
+    throw new VoiceWorkspaceError(
+      'VOICE_WORKSPACE_INVALID',
+      'Dữ liệu master narration không hợp lệ.',
+    );
+  }
+  let expectedStart = 0;
+  for (const chunk of narration.chunks) {
+    const chunkLength = Array.from(chunk.text).length;
+    if (
+      chunk.textStartIndex !== expectedStart ||
+      chunk.textEndIndex !== expectedStart + chunkLength ||
+      chunk.textEndIndex > textLength ||
+      !alignmentMatchesText(chunk.generated.alignment, chunk.text) ||
+      chunk.generated.audio.byteLength === 0 ||
+      alignmentDuration(chunk.generated.alignment) <= 0
+    ) {
+      throw new VoiceWorkspaceError(
+        'VOICE_ALIGNMENT_INVALID',
+        'Alignment ElevenLabs không khớp master narration.',
+      );
+    }
+    expectedStart = chunk.textEndIndex;
+  }
+  if (
+    expectedStart !== textLength ||
+    narration.chunks.map((chunk) => chunk.text).join('') !== narration.text
+  ) {
+    throw new VoiceWorkspaceError(
+      'VOICE_ALIGNMENT_INVALID',
+      'Các continuity group không bao phủ nguyên văn narration.',
+    );
+  }
+}
+
+function combineAlignments(chunks: GeneratedVoiceChunk[]) {
+  const alignment: ElevenLabsAlignment = {
+    characters: [],
+    characterStartTimesSeconds: [],
+    characterEndTimesSeconds: [],
+  };
+  let offsetSeconds = 0;
+  for (const chunk of chunks) {
+    alignment.characters.push(...chunk.generated.alignment.characters);
+    alignment.characterStartTimesSeconds.push(
+      ...chunk.generated.alignment.characterStartTimesSeconds.map(
+        (value) => value + offsetSeconds,
+      ),
+    );
+    alignment.characterEndTimesSeconds.push(
+      ...chunk.generated.alignment.characterEndTimesSeconds.map(
+        (value) => value + offsetSeconds,
+      ),
+    );
+    offsetSeconds += alignmentDuration(chunk.generated.alignment);
+  }
+  return {alignment, durationSeconds: offsetSeconds};
+}
+
+function preparedSections(
+  narration: GeneratedVoiceNarration,
+  alignment: ElevenLabsAlignment,
+  totalDurationSeconds: number,
+) {
+  return narration.sections.map((section, sectionIndex) => {
+    const nextSection = narration.sections[sectionIndex + 1];
+    const startSeconds =
+      sectionIndex === 0
+        ? 0
+        : timeAt(alignment, section.textStartIndex, 'start');
+    const endSeconds = nextSection
+      ? timeAt(alignment, nextSection.textStartIndex, 'start')
+      : totalDurationSeconds;
+    const durationSeconds = endSeconds - startSeconds;
+    if (durationSeconds <= 0) {
+      throw new VoiceWorkspaceError(
+        'VOICE_ALIGNMENT_INVALID',
+        'Timing section trong master narration không tăng dần.',
+      );
+    }
+    return {
+      outlineSectionId: section.outlineSectionId,
+      textStartIndex: section.textStartIndex,
+      textEndIndex: section.textEndIndex,
+      startSeconds,
+      endSeconds,
+      durationSeconds,
+      sourceTextHash: createHash('sha256')
+        .update(
+          Array.from(narration.text)
+            .slice(section.textStartIndex, section.textEndIndex)
+            .join(''),
+        )
+        .digest('hex'),
+      beats: section.beats.map((beat, beatIndex) => ({
+        beatId: beat.beatId,
+        textStartIndex: beat.textStartIndex,
+        textEndIndex: beat.textEndIndex,
+        startSeconds: Math.max(
+          0,
+          timeAt(alignment, beat.textStartIndex, 'start') - startSeconds,
+        ),
+        endSeconds:
+          beatIndex === section.beats.length - 1
+            ? durationSeconds
+            : Math.max(
+                0,
+                timeAt(alignment, beat.textEndIndex - 1, 'end') -
+                  startSeconds,
+              ),
+      })),
+    };
+  });
+}
+
 export function createVoiceWorkspace(
   projectsDirectory: string,
+  options: {ffmpegPath?: string} = {},
 ): VoiceWorkspace {
   const resolvedProjectsDirectory = path.resolve(projectsDirectory);
+  const ffmpegPath = options.ffmpegPath ?? process.env.FFMPEG_PATH ?? 'ffmpeg';
 
   function projectDirectory(projectId: string) {
     assertProjectId(projectId);
@@ -221,14 +410,15 @@ export function createVoiceWorkspace(
   }
 
   return {
-    async prepare(projectId, generationId, sections) {
+    async prepare(projectId, generationId, narration) {
       assertProjectId(projectId);
-      if (!uuidPattern.test(generationId) || sections.length < 2) {
+      if (!uuidPattern.test(generationId)) {
         throw new VoiceWorkspaceError(
           'VOICE_WORKSPACE_INVALID',
-          'Dữ liệu generation voice không hợp lệ.',
+          'Generation ID của workspace voice không hợp lệ.',
         );
       }
+      validateNarration(narration);
 
       const root = projectDirectory(projectId);
       const generationsDirectory = path.join(root, 'voice', 'generations');
@@ -250,97 +440,173 @@ export function createVoiceWorkspace(
         );
       }
 
-      const preparedSections: VoiceSectionAudio[] = [];
       try {
-        for (const [index, section] of sections.entries()) {
-          const alignment = section.generated.alignment;
-          const durationSeconds = sectionDuration(alignment);
-          if (
-            !alignmentMatchesText(alignment, section.text) ||
-            section.generated.audio.byteLength === 0 ||
-            durationSeconds <= 0
-          ) {
-            throw new VoiceWorkspaceError(
-              'VOICE_ALIGNMENT_INVALID',
-              'Alignment ElevenLabs không khớp nguyên văn section.',
-            );
-          }
-
-          const prefix = `${String(index + 1).padStart(2, '0')}-${section.outlineSectionId}`;
-          const extension = audioExtension(section.outputFormat);
-          const audioPath = `audio/${prefix}.${extension}`;
-          const alignmentPath = `alignments/${prefix}.json`;
+        const rawChunks: Array<{
+          filePath: string;
+          outputFormat: string;
+          durationSeconds: number;
+        }> = [];
+        for (const [index, chunk] of narration.chunks.entries()) {
+          const prefix = String(index + 1).padStart(2, '0');
+          const extension = audioExtension(chunk.outputFormat);
+          const audioPath = `chunks/audio/${prefix}.${extension}`;
+          const alignmentPath = `chunks/alignments/${prefix}.json`;
           const audioFile = path.resolve(stagingDirectory, audioPath);
-          const alignmentFile = path.resolve(
-            stagingDirectory,
-            alignmentPath,
-          );
+          const alignmentFile = path.resolve(stagingDirectory, alignmentPath);
           if (
             !isInside(stagingDirectory, audioFile) ||
             !isInside(stagingDirectory, alignmentFile)
           ) {
             throw new VoiceWorkspaceError(
               'VOICE_WORKSPACE_INVALID',
-              'Đường dẫn artifact voice không hợp lệ.',
+              'Đường dẫn continuity group không hợp lệ.',
             );
           }
           await mkdir(path.dirname(audioFile), {recursive: true});
           await mkdir(path.dirname(alignmentFile), {recursive: true});
-          await writeFile(audioFile, section.generated.audio);
+          await writeFile(audioFile, chunk.generated.audio);
           await writeFile(
             alignmentFile,
             `${JSON.stringify(
               {
-                version: 1,
-                outlineSectionId: section.outlineSectionId,
-                text: section.text,
-                alignment: section.generated.alignment,
-                normalizedAlignment:
-                  section.generated.normalizedAlignment,
+                version: 2,
+                textStartIndex: chunk.textStartIndex,
+                textEndIndex: chunk.textEndIndex,
+                text: chunk.text,
+                alignment: chunk.generated.alignment,
+                normalizedAlignment: chunk.generated.normalizedAlignment,
+                requestId: chunk.generated.requestId,
               },
               null,
               2,
             )}\n`,
             'utf8',
           );
-
-          preparedSections.push({
-            outlineSectionId: section.outlineSectionId,
-            audioPath,
-            alignmentPath,
-            durationSeconds,
-            characterCost: section.generated.characterCost,
-            requestId: section.generated.requestId,
-            sourceTextHash: createHash('sha256')
-              .update(section.text)
-              .digest('hex'),
-            beats: section.beats.map((beat) => ({
-              ...beat,
-              startSeconds: timeAt(
-                alignment,
-                beat.textStartIndex,
-                'start',
-              ),
-              endSeconds: timeAt(
-                alignment,
-                beat.textEndIndex - 1,
-                'end',
-              ),
-            })),
+          rawChunks.push({
+            filePath: audioFile,
+            outputFormat: chunk.outputFormat,
+            durationSeconds: alignmentDuration(chunk.generated.alignment),
           });
         }
 
-        const manifest = {
-          version: 1,
-          generationId,
-          sections: preparedSections,
+        const combined = combineAlignments(narration.chunks);
+        const masterAudioFile = path.resolve(
+          stagingDirectory,
+          MASTER_AUDIO_PATH,
+        );
+        const masterAlignmentFile = path.resolve(
+          stagingDirectory,
+          MASTER_ALIGNMENT_PATH,
+        );
+        await mkdir(path.dirname(masterAudioFile), {recursive: true});
+        await mkdir(path.dirname(masterAlignmentFile), {recursive: true});
+        try {
+          await execFileAsync(
+            ffmpegPath,
+            ffmpegArguments(rawChunks, masterAudioFile),
+            {
+              windowsHide: true,
+              timeout: 120_000,
+              maxBuffer: 2 * 1024 * 1024,
+            },
+          );
+        } catch (error) {
+          const code =
+            error && typeof error === 'object' && 'code' in error
+              ? String(error.code)
+              : '';
+          throw new VoiceWorkspaceError(
+            code === 'ENOENT'
+              ? 'FFMPEG_NOT_AVAILABLE'
+              : 'VOICE_MASTER_AUDIO_FAILED',
+            code === 'ENOENT'
+              ? 'Không tìm thấy FFmpeg để dựng master narration.'
+              : 'Không thể dựng master narration từ các continuity group.',
+            {cause: error},
+          );
+        }
+
+        const sections = preparedSections(
+          narration,
+          combined.alignment,
+          combined.durationSeconds,
+        );
+        const characterCost = narration.chunks.reduce(
+          (total, chunk) => total + chunk.generated.characterCost,
+          0,
+        );
+        const requestIds = narration.chunks
+          .map((chunk) => chunk.generated.requestId)
+          .filter((requestId): requestId is string => requestId !== null);
+        const calibration = calibrationFromActualNarration(
+          narration.text,
+          combined.durationSeconds,
+        );
+        if (!calibration) {
+          throw new VoiceWorkspaceError(
+            'VOICE_ALIGNMENT_INVALID',
+            'Không thể hiệu chỉnh timing từ master narration.',
+          );
+        }
+        const track: VoiceBundle['track'] = {
+          audioPath: MASTER_AUDIO_PATH,
+          alignmentPath: MASTER_ALIGNMENT_PATH,
+          sourceTextHash: createHash('sha256')
+            .update(narration.text)
+            .digest('hex'),
+          durationSeconds: combined.durationSeconds,
+          characterCost,
+          strategy:
+            narration.chunks.length === 1
+              ? 'single-request'
+              : 'continuity-groups',
+          chunkCount: narration.chunks.length,
+          calibration: {
+            whitespaceTokenCount:
+              countNarrationWhitespaceTokens(narration.text),
+            characterCount: countNarrationCharacters(narration.text),
+            ...calibration,
+          },
         };
         await writeFile(
+          masterAlignmentFile,
+          `${JSON.stringify(
+            {
+              version: 2,
+              text: narration.text,
+              alignment: combined.alignment,
+              sections,
+            },
+            null,
+            2,
+          )}\n`,
+          'utf8',
+        );
+        await writeFile(
           path.join(stagingDirectory, 'manifest.json'),
-          `${JSON.stringify(manifest, null, 2)}\n`,
+          `${JSON.stringify(
+            {
+              version: 2,
+              generationId,
+              track,
+              sections,
+              requestIds,
+            },
+            null,
+            2,
+          )}\n`,
           'utf8',
         );
         await commitWorkspace(stagingDirectory, finalDirectory);
+
+        return {
+          workspacePath,
+          track,
+          sections,
+          totalDurationSeconds: combined.durationSeconds,
+          characterCost,
+          requestIds,
+        };
       } catch (error) {
         await rm(stagingDirectory, {recursive: true, force: true}).catch(
           () => undefined,
@@ -348,55 +614,40 @@ export function createVoiceWorkspace(
         if (error instanceof VoiceWorkspaceError) throw error;
         throw new VoiceWorkspaceError(
           'VOICE_WORKSPACE_WRITE_FAILED',
-          'Không thể lưu audio và timing của voice.',
+          'Không thể lưu master audio và timing của voice.',
           {cause: error},
         );
       }
-
-      return {
-        workspacePath,
-        sections: preparedSections,
-        totalDurationSeconds: preparedSections.reduce(
-          (total, section) => total + section.durationSeconds,
-          0,
-        ),
-        characterCost: preparedSections.reduce(
-          (total, section) => total + section.characterCost,
-          0,
-        ),
-        requestIds: preparedSections
-          .map((section) => section.requestId)
-          .filter((requestId): requestId is string => requestId !== null),
-      };
     },
 
     async readAudio(projectId, bundle, outlineSectionId) {
-      const section = bundle.sections.find(
-        (item) => item.outlineSectionId === outlineSectionId,
-      );
-      if (!section) {
+      if (
+        !bundle.sections.some(
+          (section) => section.outlineSectionId === outlineSectionId,
+        )
+      ) {
         throw new VoiceWorkspaceError(
           'VOICE_AUDIO_NOT_FOUND',
-          'Không tìm thấy audio của section.',
+          'Không tìm thấy section trong master narration.',
         );
       }
       const directory = resolveBundleDirectory(projectId, bundle);
-      const filePath = path.resolve(directory, section.audioPath);
+      const filePath = path.resolve(directory, bundle.track.audioPath);
       if (!isInside(directory, filePath)) {
         throw new VoiceWorkspaceError(
           'VOICE_WORKSPACE_INVALID',
-          'Đường dẫn audio nằm ngoài workspace voice.',
+          'Đường dẫn master narration nằm ngoài workspace voice.',
         );
       }
       try {
         return {
           audio: await readFile(filePath),
-          contentType: audioContentType(filePath),
+          contentType: 'audio/wav',
         };
       } catch (error) {
         throw new VoiceWorkspaceError(
           'VOICE_AUDIO_READ_FAILED',
-          'Không thể đọc audio của section.',
+          'Không thể đọc master narration.',
           {cause: error},
         );
       }

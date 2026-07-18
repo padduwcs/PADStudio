@@ -35,7 +35,8 @@ Vertical slice đầu tiên đã có thể chạy:
 - Dùng toàn bộ đầu vào để AI tóm tắt yêu cầu và đề xuất mạch giảng có cấu trúc.
 - Chỉnh sửa, sắp xếp, tạo lại và chốt mạch giảng trước bước voice–visual.
 - Tạo kế hoạch voice–visual theo từng ý đã chốt, gồm lời thuyết minh, visual,
-  chuyển động và thời lượng của từng beat.
+  chuyển động và thời lượng của từng beat; thời lượng được PAD Studio tính từ
+  chính lời đọc thay vì để AI ước lượng theo animation.
 - Chỉnh sửa, sắp xếp beat, tạo lại theo góp ý và chốt kế hoạch trước khi sinh
   scene hoặc gọi dịch vụ tạo voice.
 - Sinh một scene Motion Canvas cho từng section đã chốt, kiểm tra quyền import
@@ -52,15 +53,18 @@ Vertical slice đầu tiên đã có thể chạy:
   gợi lại cấu hình của những generation đã tạo thành công trong PAD Studio.
 - Có thể đọc thêm cấu hình từng dùng trên web ElevenLabs khi API key được cấp
   `History → Read`; thiếu quyền này không chặn tạo voice.
-- Tạo TTS thật theo từng section bằng endpoint có timestamps; model hỗ trợ sẽ
-  nhận context section trước/sau để giữ mạch đọc, còn Eleven v3 không dùng
-  Request Stitching theo capability hiện tại của ElevenLabs. Audio, alignment
-  và timing từng beat được lưu vào generation bất biến để review.
-- Phát lại từng section trên UI, hiển thị thời lượng/credit ghi nhận và yêu cầu
-  người dùng chốt voice trước khi sang bước đồng bộ.
-- Ánh xạ timing thật của từng beat voice vào Motion Canvas time-event, ghép các
-  section audio thành một track narration WAV và biên dịch workspace đồng bộ
-  trước khi cho phép review/chốt.
+- Viết narration như một bài nói liên tục xuyên section, có word budget theo
+  preset thời lượng và không mở bài/kết bài lại ở mỗi ranh giới.
+- Tạo TTS thật cho toàn bộ narration trong một request khi nằm trong giới hạn
+  model. Bài dài được chia thành số continuity group tối thiểu; model hỗ trợ sẽ
+  nhận context và request ID trước đó. Eleven v3 không dùng Request Stitching
+  vì capability này hiện không được API hỗ trợ.
+- Lưu một master track `audio/narration.wav`, alignment toàn bài và timing
+  global của từng section/beat vào generation bất biến để review.
+- Phát master track trên UI; nút nghe section chỉ seek một khoảng trên cùng
+  audio, nên việc review không tạo cảm giác các file rời.
+- Ánh xạ timing thật của từng beat voice vào Motion Canvas time-event và biên
+  dịch workspace đồng bộ mà không cắt/ghép lại audio theo section.
 - Nhúng player chỉ-đọc để xem đúng animation và narration đã ghép chạy cùng
   nhau ngay trong bước đồng bộ; timeline chi tiết được thu gọn thành thông tin
   chẩn đoán phụ.
@@ -86,8 +90,10 @@ version control nội dung từng video. Chỉ thư mục render sinh ra tại
 
 Mỗi project có hai chỉ số độc lập:
 
-- `version` là phiên bản cấu trúc file; dữ liệu v1 đến v6 được đọc và nâng cấp
-  lên cấu trúc hiện tại ở lần ghi tiếp theo.
+- `version` là phiên bản cấu trúc file; dữ liệu v1 đến v7 được đọc và nâng cấp
+  lên cấu trúc v8 hiện tại ở lần ghi tiếp theo. Voice/sync section-based của v7
+  được chủ động vô hiệu hóa để tạo lại bằng master narration, không giả vờ
+  migrate audio cũ thành audio liên tục.
 - `revision` tăng sau mỗi thay đổi nội dung và được dùng với `If-Match` để
   chặn hai thao tác ghi đè lẫn nhau.
 
@@ -115,9 +121,15 @@ trước khi sang voice–visual.
 
 Kế hoạch voice–visual dùng cùng cơ chế an toàn nhưng có prompt và schema riêng.
 Mỗi section của mạch giảng được giữ nguyên ranh giới và chia thành các beat ngắn.
-Mốc bắt đầu được suy ra từ tổng thời lượng beat để timeline không có hai nguồn dữ
-liệu mâu thuẫn. Nếu đầu vào hoặc mạch giảng thay đổi, kế hoạch downstream được
-đánh dấu cũ và phải tạo lại trước khi có thể chốt.
+Outline phân bổ tổng thời lượng cố định theo preset: ngắn gọn 90 giây, tiêu
+chuẩn 240 giây và chuyên sâu 420 giây. Từ ngân sách đó, PAD Studio tính word
+budget với tốc độ mục tiêu 180 đơn vị trắng/phút; AI chỉ viết nội dung, còn
+duration của beat được tính bằng mô hình kết hợp số từ và số ký tự. Mặc định hệ
+thống dùng 195 đơn vị/phút và 14,5 ký tự/giây; sau khi có voice thật, median của
+các generation cùng voice/model/speed được dùng làm timing calibration cho kế
+hoạch mới. Người dùng chỉ có thể thêm `visualHoldSeconds` khi visual cần giữ lâu
+hơn lời nói. Nếu đầu vào hoặc mạch giảng thay đổi, kế hoạch downstream được đánh
+dấu cũ và phải tạo lại trước khi có thể chốt.
 
 Scene Motion Canvas chỉ được sinh từ mạch giảng và kế hoạch voice–visual đã chốt,
 qua structured output có schema riêng. Source bị giới hạn trong các package
@@ -153,23 +165,27 @@ không sửa source bất biến và không buộc tạo lại voice.
 
 Voice là nhánh downstream độc lập với code Motion Canvas: đổi lời đọc làm voice
 và scene trở thành cũ, nhưng chỉ chỉnh animation không buộc tạo lại audio.
-ElevenLabs được gọi tuần tự theo từng section bằng
-`POST /v1/text-to-speech/:voice_id/with-timestamps`, mặc định
+PAD Studio ghép toàn bộ beat và section thành một nguồn narration chính xác rồi
+gọi `POST /v1/text-to-speech/:voice_id/with-timestamps`, mặc định
 `mp3_44100_128`; `eleven_v3` là lựa chọn mặc định ưu tiên chất lượng biểu cảm.
-PAD Studio chỉ gửi `style`, Speaker Boost và Request Stitching khi model công
-bố hỗ trợ. Mỗi section ghép nguyên các beat bằng hai ký tự xuống dòng, lưu
-character alignment gốc và ánh xạ lại mốc đầu/cuối theo UUID của beat.
+Nếu narration vượt giới hạn model, hệ thống chia tại ranh giới beat/section an
+toàn với số chunk tối thiểu và gọi tuần tự. PAD Studio chỉ gửi `style`, Speaker
+Boost và Request Stitching khi model công bố hỗ trợ. Audio chunk chỉ là artifact
+chẩn đoán; FFmpeg trim theo alignment rồi tạo một master WAV 48 kHz stereo.
+Alignment được hợp nhất thành chỉ số ký tự và thời gian global, sau đó ánh xạ
+lại section/beat theo UUID.
 Request có `generationId` để retry cùng thao tác không tiêu credit lần hai trong
 vòng đời server; chỉ generation hoàn tất mới được trỏ từ `project.json` và xuất
-hiện trong danh sách “Đã dùng thành công”.
+hiện trong danh sách “Đã dùng thành công”. `characterCost` trong manifest là
+header do request ElevenLabs trả về; tổng quota trên card subscription vẫn là
+nguồn chính xác cho credit cấp tài khoản.
 
 Bước đồng bộ không gọi AI hoặc ElevenLabs lần nữa. Backend dùng alignment đã lưu
 để thay `targetTime` của các event `beat:<beat-id>:start/end`, sao chép scene vào
-workspace bất biến riêng và ghép audio section bằng FFmpeg. Mỗi input được trim
-theo thời lượng alignment trước khi concat thành `audio/narration.wav` 48 kHz
-stereo, tránh padding của codec làm timeline trôi. Workspace chỉ được ghi nhận
-sau khi TypeScript biên dịch thành công và thời lượng WAV khớp tổng timing voice
-trong sai số tối đa một frame.
+workspace bất biến riêng và chuẩn hóa master voice một lần thành
+`audio/narration.wav` 48 kHz stereo. Không còn điểm concat tại ranh giới section.
+Workspace chỉ được ghi nhận sau khi TypeScript biên dịch thành công và thời
+lượng WAV khớp tổng timing voice trong sai số tối đa một frame.
 
 Khi mở bước 06, backend khởi động một Motion Canvas player chỉ-đọc trên loopback
 cho generation hiện hành. Player phát trực tiếp scene đã đồng bộ cùng
@@ -194,8 +210,11 @@ npm run dev
 ```
 
 Frontend chạy tại `http://127.0.0.1:5173`, backend chạy tại
-`http://127.0.0.1:4174`. Nếu cổng backend này đang được dùng, lệnh dev tự chọn
-cổng trống kế tiếp và cập nhật Vite proxy tương ứng.
+`http://127.0.0.1:4174`. Cả hai cổng đều chạy ở chế độ strict: nếu cổng đang bị
+chiếm, lệnh dev báo lỗi rõ ràng thay vì âm thầm đổi port. Khi một tiến trình con
+thoát hoặc nhận `Ctrl+C`, dev runner chờ dừng toàn bộ cây backend/frontend; backend
+cũng đóng các keep-alive connection còn giữ cổng. Chỉ đặt `PORT` khi chủ động
+muốn chạy một instance khác.
 
 ### Kết nối ElevenLabs
 
@@ -264,8 +283,11 @@ Kết quả được lưu tại:
 
 ```text
 projects/<project-id>/voice/generations/<generation-id>/
-├── audio/
-├── alignments/
+├── audio/narration.wav
+├── alignments/narration.json
+├── chunks/
+│   ├── audio/
+│   └── alignments/
 └── manifest.json
 ```
 

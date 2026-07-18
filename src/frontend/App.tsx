@@ -5,6 +5,7 @@ import {
   useState,
 } from 'react';
 import type {TopicProject} from '../shared/topic.ts';
+import {targetNarrationTokenCount} from '../shared/narrationTiming.ts';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {
@@ -1037,7 +1038,13 @@ function OutlinePage({projectId}: {projectId: string}) {
                         />
                       </label>
                       <label className="outline-time-field">
-                        <span>Thời lượng</span>
+                        <span>
+                          Mục tiêu narration ·{' '}
+                          {targetNarrationTokenCount(
+                            section.estimatedSeconds,
+                          )}{' '}
+                          đơn vị
+                        </span>
                         <span>
                           <input
                             type="number"
@@ -1119,6 +1126,12 @@ function OutlinePage({projectId}: {projectId: string}) {
                     <dd>
                       {Math.floor(totalSeconds / 60)}:
                       {String(totalSeconds % 60).padStart(2, '0')}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Ngân sách lời</dt>
+                    <dd>
+                      {targetNarrationTokenCount(totalSeconds)} đơn vị
                     </dd>
                   </div>
                   <div>

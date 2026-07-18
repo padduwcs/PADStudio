@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {
   mkdir,
   mkdtemp,
@@ -25,6 +25,7 @@ import type {ElevenLabsVoiceService} from './elevenLabsVoiceService.ts';
 import type {OutlineGenerator} from './outlineGenerator.ts';
 import type {MotionCanvasGenerator} from './motionCanvasGenerator.ts';
 import type {VoiceVisualGenerator} from './voiceVisualGenerator.ts';
+import type {VoiceWorkspace} from './voiceWorkspace.ts';
 
 const topicInput = {
   topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
@@ -53,6 +54,7 @@ async function startTestApp(
     outlineGenerator?: OutlineGenerator;
     voiceVisualGenerator?: VoiceVisualGenerator;
     motionCanvasGenerator?: MotionCanvasGenerator;
+    voiceWorkspace?: VoiceWorkspace;
     animationSyncWorkspace?: AnimationSyncWorkspace;
     animationSyncPreviewService?: AnimationSyncPreviewService;
   } = {},
@@ -68,6 +70,7 @@ async function startTestApp(
     outlineGenerator: options.outlineGenerator,
     voiceVisualGenerator: options.voiceVisualGenerator,
     motionCanvasGenerator: options.motionCanvasGenerator,
+    voiceWorkspace: options.voiceWorkspace,
     animationSyncWorkspace: options.animationSyncWorkspace,
     animationSyncPreviewService: options.animationSyncPreviewService,
     logger: {info() {}, error() {}},
@@ -462,6 +465,15 @@ test('API tạo, chỉnh sửa và chốt kế hoạch voice–visual an toàn',
           voiceDirection: 'Rõ ràng, gần gũi và có nhịp nghỉ tự nhiên.',
           visualDirection:
             'Hình khối tối giản, mỗi chuyển động đều thể hiện một quyết định.',
+          timingCalibration: {
+            source: 'default',
+            whitespaceTokensPerMinute: 195,
+            charactersPerSecond: 14.5,
+            voiceId: null,
+            modelId: null,
+            voiceName: null,
+            sampleCount: 0,
+          },
           sections: request.outline.sections.map((section) => ({
             outlineSectionId: section.id,
             beats: [
@@ -473,6 +485,7 @@ test('API tạo, chỉnh sửa và chốt kế hoạch voice–visual an toàn',
                   'Một dãy phần tử trải ngang, toàn bộ vùng đang được làm sáng.',
                 animationDescription:
                   'Máy quay giữ yên, vùng tìm kiếm xuất hiện từ trái sang phải.',
+                visualHoldSeconds: 0,
                 durationSeconds: Math.min(section.estimatedSeconds, 45),
               },
             ],
@@ -589,6 +602,114 @@ export default makeScene2D(function* (view) {
       };
     },
   };
+  const voiceWorkspace: VoiceWorkspace = {
+    async prepare(_projectId, generationId, narration) {
+      const characterStartTimesSeconds: number[] = [];
+      const characterEndTimesSeconds: number[] = [];
+      let offsetSeconds = 0;
+      let characterCost = 0;
+      const requestIds: string[] = [];
+      for (const chunk of narration.chunks) {
+        characterStartTimesSeconds.push(
+          ...chunk.generated.alignment.characterStartTimesSeconds.map(
+            (value) => value + offsetSeconds,
+          ),
+        );
+        characterEndTimesSeconds.push(
+          ...chunk.generated.alignment.characterEndTimesSeconds.map(
+            (value) => value + offsetSeconds,
+          ),
+        );
+        offsetSeconds +=
+          chunk.generated.alignment.characterEndTimesSeconds.at(-1) ?? 0;
+        characterCost += chunk.generated.characterCost;
+        if (chunk.generated.requestId) {
+          requestIds.push(chunk.generated.requestId);
+        }
+      }
+      const totalDurationSeconds = offsetSeconds;
+      const sections = narration.sections.map((section, sectionIndex) => {
+        const startSeconds =
+          sectionIndex === 0
+            ? 0
+            : characterStartTimesSeconds[section.textStartIndex] ?? 0;
+        const nextSection = narration.sections[sectionIndex + 1];
+        const endSeconds = nextSection
+          ? characterStartTimesSeconds[nextSection.textStartIndex] ?? 0
+          : totalDurationSeconds;
+        const durationSeconds = endSeconds - startSeconds;
+        return {
+          outlineSectionId: section.outlineSectionId,
+          textStartIndex: section.textStartIndex,
+          textEndIndex: section.textEndIndex,
+          startSeconds,
+          endSeconds,
+          durationSeconds,
+          sourceTextHash: createHash('sha256')
+            .update(
+              Array.from(narration.text)
+                .slice(section.textStartIndex, section.textEndIndex)
+                .join(''),
+            )
+            .digest('hex'),
+          beats: section.beats.map((beat, beatIndex) => ({
+            beatId: beat.beatId,
+            textStartIndex: beat.textStartIndex,
+            textEndIndex: beat.textEndIndex,
+            startSeconds: Math.max(
+              0,
+              (characterStartTimesSeconds[beat.textStartIndex] ?? 0) -
+                startSeconds,
+            ),
+            endSeconds:
+              beatIndex === section.beats.length - 1
+                ? durationSeconds
+                : Math.max(
+                    0,
+                    (characterEndTimesSeconds[beat.textEndIndex - 1] ?? 0) -
+                      startSeconds,
+                  ),
+          })),
+        };
+      });
+      return {
+        workspacePath: `voice/generations/${generationId}`,
+        track: {
+          audioPath: 'audio/narration.wav',
+          alignmentPath: 'alignments/narration.json',
+          sourceTextHash: createHash('sha256')
+            .update(narration.text)
+            .digest('hex'),
+          durationSeconds: totalDurationSeconds,
+          characterCost,
+          strategy:
+            narration.chunks.length === 1
+              ? 'single-request'
+              : 'continuity-groups',
+          chunkCount: narration.chunks.length,
+          calibration: {
+            whitespaceTokenCount: narration.text.split(/\s+/u).length,
+            characterCount: Array.from(narration.text).length,
+            whitespaceTokensPerMinute:
+              (narration.text.split(/\s+/u).length * 60) /
+              totalDurationSeconds,
+            charactersPerSecond:
+              Array.from(narration.text).length / totalDurationSeconds,
+          },
+        },
+        sections,
+        totalDurationSeconds,
+        characterCost,
+        requestIds,
+      };
+    },
+    async readAudio() {
+      return {
+        audio: Buffer.from('RIFF-master-audio'),
+        contentType: 'audio/wav',
+      };
+    },
+  };
   let animationSyncCalls = 0;
   let animationSyncPreviewCalls = 0;
   const animationSyncWorkspace: AnimationSyncWorkspace = {
@@ -670,6 +791,7 @@ export default makeScene2D(function* (view) {
     voiceVisualGenerator,
     motionCanvasGenerator,
     elevenLabsVoiceService,
+    voiceWorkspace,
     animationSyncWorkspace,
     animationSyncPreviewService,
   });
@@ -895,17 +1017,21 @@ export default makeScene2D(function* (view) {
   );
   assert.equal(
     voiceGenerationCalls,
-    voiceGenerateBody.project.outline.sections.length,
+    1,
+  );
+  assert.equal(
+    voiceGenerateBody.project.voiceBundle.track.strategy,
+    'single-request',
   );
 
   const voiceAudioResponse = await fetch(
     `${baseUrl}/api/projects/${project.id}/voice/audio/${voiceGenerateBody.project.outline.sections[0].id}`,
   );
   assert.equal(voiceAudioResponse.status, 200);
-  assert.equal(voiceAudioResponse.headers.get('content-type'), 'audio/mpeg');
+  assert.equal(voiceAudioResponse.headers.get('content-type'), 'audio/wav');
   assert.match(
     Buffer.from(await voiceAudioResponse.arrayBuffer()).toString(),
-    /^audio-/,
+    /^RIFF-master/,
   );
 
   const staleVoiceAudioResponse = await fetch(
@@ -1080,6 +1206,10 @@ export default makeScene2D(function* (view) {
   assert.equal(visualOnlyUpdateBody.project.revision, 13);
   assert.equal(visualOnlyUpdateBody.project.voiceBundle.status, 'approved');
   assert.equal(
+    visualOnlyUpdateBody.project.voiceVisualPlan.narrationRevision,
+    approvedPlan.narrationRevision,
+  );
+  assert.equal(
     visualOnlyUpdateBody.project.motionCanvasBundle.status,
     'draft',
   );
@@ -1126,6 +1256,15 @@ export default makeScene2D(function* (view) {
   assert.equal(voiceTextUpdateResponse.status, 200);
   assert.equal(voiceTextUpdateBody.project.revision, 14);
   assert.equal(voiceTextUpdateBody.project.voiceBundle.status, 'draft');
+  assert.equal(
+    voiceTextUpdateBody.project.voiceVisualPlan.narrationRevision,
+    visualPlan.narrationRevision + 1,
+  );
+  assert.ok(
+    voiceTextUpdateBody.project.voiceVisualPlan.sections[0].beats[0]
+      .durationSeconds >=
+      visualPlan.sections[0].beats[0].durationSeconds,
+  );
 
   const outline = voiceTextUpdateBody.project.outline;
   const outlineUpdateResponse = await fetch(

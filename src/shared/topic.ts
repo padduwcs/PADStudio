@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {DEFAULT_NARRATION_CALIBRATION} from './narrationTiming.ts';
 
 export const audienceValues = ['beginner', 'familiar'] as const;
 export const durationValues = ['concise', 'standard', 'deep'] as const;
@@ -16,7 +17,7 @@ export const voiceVisualStatusValues = ['draft', 'approved'] as const;
 export const motionCanvasStatusValues = ['draft', 'approved'] as const;
 export const voiceStatusValues = ['draft', 'approved'] as const;
 export const animationSyncStatusValues = ['draft', 'approved'] as const;
-export const currentProjectVersion = 7 as const;
+export const currentProjectVersion = 8 as const;
 
 export const ProjectStepSchema = z.enum(projectStepValues);
 export type ProjectStep = z.infer<typeof ProjectStepSchema>;
@@ -163,11 +164,17 @@ export const VoiceVisualBeatSchema = z
       .trim()
       .min(8, 'Mô tả chuyển động của beat cần rõ hơn.')
       .max(500, 'Mô tả chuyển động của beat nên ngắn hơn 500 ký tự.'),
+    visualHoldSeconds: z
+      .number()
+      .int()
+      .min(0, 'Thời gian giữ hình không thể âm.')
+      .max(30, 'Mỗi beat chỉ nên giữ hình thêm tối đa 30 giây.')
+      .default(0),
     durationSeconds: z
       .number()
       .int()
       .min(4, 'Mỗi beat cần ít nhất 4 giây.')
-      .max(45, 'Mỗi beat không nên dài quá 45 giây.'),
+      .max(90, 'Mỗi beat không nên dài quá 90 giây.'),
   })
   .strict();
 
@@ -195,6 +202,25 @@ export const VoiceVisualPlanContentSchema = z
       .trim()
       .min(6, 'Định hướng hình ảnh cần rõ hơn.')
       .max(420, 'Định hướng hình ảnh nên ngắn hơn 420 ký tự.'),
+    timingCalibration: z
+      .object({
+        source: z.enum(['default', 'voice-history']),
+        whitespaceTokensPerMinute: z.number().positive(),
+        charactersPerSecond: z.number().positive(),
+        voiceId: z.string().trim().min(1).max(160).nullable(),
+        modelId: z.string().trim().min(1).max(160).nullable(),
+        voiceName: z.string().trim().min(1).max(160).nullable(),
+        sampleCount: z.number().int().nonnegative(),
+      })
+      .strict()
+      .default({
+        source: 'default',
+        ...DEFAULT_NARRATION_CALIBRATION,
+        voiceId: null,
+        modelId: null,
+        voiceName: null,
+        sampleCount: 0,
+      }),
     sections: z
       .array(VoiceVisualSectionSchema)
       .min(2, 'Kế hoạch cần bao phủ ít nhất 2 ý.')
@@ -209,6 +235,7 @@ export type VoiceVisualPlanContent = z.infer<
 export const VoiceVisualPlanSchema = VoiceVisualPlanContentSchema.extend({
   status: z.enum(voiceVisualStatusValues),
   contentRevision: z.number().int().positive(),
+  narrationRevision: z.number().int().positive().default(1),
   sourceOutlineContentRevision: z.number().int().positive(),
   generation: z
     .object({
@@ -247,7 +274,7 @@ export const MotionCanvasSceneSchema = z
             beatId: z.string().uuid(),
             startEvent: z.string().regex(/^beat:[0-9a-f-]{36}:start$/),
             endEvent: z.string().regex(/^beat:[0-9a-f-]{36}:end$/),
-            plannedDurationSeconds: z.number().int().min(4).max(45),
+            plannedDurationSeconds: z.number().int().min(4).max(90),
           })
           .strict(),
       )
@@ -353,7 +380,7 @@ export const VoiceBeatTimingSchema = z
     'Timing của beat không hợp lệ.',
   );
 
-export const VoiceSectionAudioSchema = z
+const LegacyVoiceSectionAudioSchema = z
   .object({
     outlineSectionId: z.string().uuid(),
     audioPath: z
@@ -376,9 +403,7 @@ export const VoiceSectionAudioSchema = z
   })
   .strict();
 
-export type VoiceSectionAudio = z.infer<typeof VoiceSectionAudioSchema>;
-
-export const VoiceBundleSchema = z
+const LegacyVoiceBundleSchema = z
   .object({
     status: z.enum(voiceStatusValues),
     contentRevision: z.number().int().positive(),
@@ -390,7 +415,7 @@ export const VoiceBundleSchema = z
         'Đường dẫn workspace voice không hợp lệ.',
       ),
     configuration: VoiceConfigurationSchema,
-    sections: z.array(VoiceSectionAudioSchema).min(2).max(10),
+    sections: z.array(LegacyVoiceSectionAudioSchema).min(2).max(10),
     totalDurationSeconds: z.number().positive(),
     generation: z
       .object({
@@ -404,6 +429,91 @@ export const VoiceBundleSchema = z
   })
   .strict();
 
+export const VoiceNarrationTrackSchema = z
+  .object({
+    audioPath: z.literal('audio/narration.wav'),
+    alignmentPath: z.literal('alignments/narration.json'),
+    sourceTextHash: z.string().regex(/^[a-f0-9]{64}$/),
+    durationSeconds: z.number().positive(),
+    characterCost: z.number().int().nonnegative(),
+    strategy: z.enum(['single-request', 'continuity-groups']),
+    chunkCount: z.number().int().min(1).max(40),
+    calibration: z
+      .object({
+        whitespaceTokenCount: z.number().int().positive(),
+        characterCount: z.number().int().positive(),
+        whitespaceTokensPerMinute: z.number().positive(),
+        charactersPerSecond: z.number().positive(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const VoiceSectionAudioSchema = z
+  .object({
+    outlineSectionId: z.string().uuid(),
+    textStartIndex: z.number().int().nonnegative(),
+    textEndIndex: z.number().int().positive(),
+    startSeconds: z.number().nonnegative(),
+    endSeconds: z.number().positive(),
+    durationSeconds: z.number().positive(),
+    sourceTextHash: z.string().regex(/^[a-f0-9]{64}$/),
+    beats: z.array(VoiceBeatTimingSchema).min(1).max(8),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.textEndIndex > value.textStartIndex &&
+      value.endSeconds > value.startSeconds &&
+      Math.abs(
+        value.durationSeconds - (value.endSeconds - value.startSeconds),
+      ) < 0.001,
+    'Timing global của section voice không hợp lệ.',
+  );
+
+export type VoiceSectionAudio = z.infer<typeof VoiceSectionAudioSchema>;
+
+export const VoiceBundleSchema = z
+  .object({
+    status: z.enum(voiceStatusValues),
+    contentRevision: z.number().int().positive(),
+    sourceNarrationRevision: z.number().int().positive(),
+    workspacePath: z
+      .string()
+      .regex(
+        /^voice\/generations\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        'Đường dẫn workspace voice không hợp lệ.',
+      ),
+    configuration: VoiceConfigurationSchema,
+    track: VoiceNarrationTrackSchema,
+    sections: z.array(VoiceSectionAudioSchema).min(2).max(10),
+    totalDurationSeconds: z.number().positive(),
+    generation: z
+      .object({
+        generationId: CreationIdSchema,
+        provider: z.literal('elevenlabs'),
+        generatedAt: z.string().datetime(),
+        characterCost: z.number().int().nonnegative(),
+        requestIds: z.array(z.string().trim().min(1).max(200)).max(40),
+      })
+      .strict(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      Math.abs(value.totalDurationSeconds - value.track.durationSeconds) <
+        0.001 &&
+      value.sections.every(
+        (section, index) =>
+          section.endSeconds <= value.totalDurationSeconds + 0.001 &&
+          (index === 0 ||
+            Math.abs(
+              section.startSeconds - value.sections[index - 1]!.endSeconds,
+            ) < 0.001),
+      ),
+    'Track master và timing section voice không khớp.',
+  );
+
 export type VoiceBundle = z.infer<typeof VoiceBundleSchema>;
 
 export const AnimationSyncBeatSchema = z
@@ -411,7 +521,7 @@ export const AnimationSyncBeatSchema = z
     beatId: z.string().uuid(),
     startEvent: z.string().regex(/^beat:[0-9a-f-]{36}:start$/),
     endEvent: z.string().regex(/^beat:[0-9a-f-]{36}:end$/),
-    plannedDurationSeconds: z.number().int().min(4).max(45),
+    plannedDurationSeconds: z.number().int().min(4).max(90),
     voiceStartSeconds: z.number().nonnegative(),
     voiceEndSeconds: z.number().positive(),
     synchronizedDurationSeconds: z.number().positive(),
@@ -603,15 +713,28 @@ const topicProjectV6Schema = topicProjectV5Schema
       'motionCanvas',
       'voice',
     ]),
-    voiceBundle: VoiceBundleSchema.nullable(),
+    voiceBundle: LegacyVoiceBundleSchema.nullable(),
   })
   .strict();
 
-export const TopicProjectSchema = topicProjectV6Schema
+const topicProjectV7Schema = topicProjectV6Schema
   .omit({version: true, currentStep: true})
   .extend({
-    version: z.literal(currentProjectVersion),
+    version: z.literal(7),
     currentStep: ProjectStepSchema,
+    animationSyncBundle: AnimationSyncBundleSchema.nullable(),
+  })
+  .strict();
+
+export const TopicProjectSchema = topicProjectV7Schema
+  .omit({
+    version: true,
+    voiceBundle: true,
+    animationSyncBundle: true,
+  })
+  .extend({
+    version: z.literal(currentProjectVersion),
+    voiceBundle: VoiceBundleSchema.nullable(),
     animationSyncBundle: AnimationSyncBundleSchema.nullable(),
   })
   .strict();
@@ -622,11 +745,26 @@ export function parseTopicProject(value: unknown): TopicProject {
   const currentProject = TopicProjectSchema.safeParse(value);
   if (currentProject.success) return currentProject.data;
 
+  const versionSevenProject = topicProjectV7Schema.safeParse(value);
+  if (versionSevenProject.success) {
+    return {
+      ...versionSevenProject.data,
+      version: currentProjectVersion,
+      currentStep:
+        versionSevenProject.data.currentStep === 'sync'
+          ? 'voice'
+          : versionSevenProject.data.currentStep,
+      voiceBundle: null,
+      animationSyncBundle: null,
+    };
+  }
+
   const versionSixProject = topicProjectV6Schema.safeParse(value);
   if (versionSixProject.success) {
     return {
       ...versionSixProject.data,
       version: currentProjectVersion,
+      voiceBundle: null,
       animationSyncBundle: null,
     };
   }

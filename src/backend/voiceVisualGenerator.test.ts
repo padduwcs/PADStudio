@@ -49,7 +49,6 @@ class FakeCodexClient implements CodexAppServerClient {
                           'Một dãy phần tử trải ngang và toàn bộ vùng được sáng.',
                         animationDescription:
                           'Dãy xuất hiện lần lượt rồi dừng ở trạng thái đầy đủ.',
-                        durationSeconds: 12,
                       },
                     ],
                   },
@@ -62,7 +61,6 @@ class FakeCodexClient implements CodexAppServerClient {
                           'Phần tử giữa nổi bật, một nửa dãy chuyển sang màu mờ.',
                         animationDescription:
                           'Con trỏ đi vào giữa rồi nửa bị loại thu nhỏ và biến mất.',
-                        durationSeconds: 16,
                       },
                     ],
                   },
@@ -169,6 +167,10 @@ test('Codex voice–visual generator ánh xạ kết quả vào đúng section o
     result.content.sections[0]?.beats[0]?.id ?? '',
     /^[0-9a-f-]{36}$/,
   );
+  assert.equal(result.content.sections[0]?.beats[0]?.visualHoldSeconds, 0);
+  assert.ok(
+    (result.content.sections[0]?.beats[0]?.durationSeconds ?? 0) >= 4,
+  );
 
   const turnCall = client.calls.find((call) => call.method === 'turn/start');
   const turnParams = turnCall?.params as {
@@ -179,5 +181,9 @@ test('Codex voice–visual generator ánh xạ kết quả vào đúng section o
   assert.equal(
     turnParams.input?.[0]?.text?.includes('currentPlan'),
     false,
+  );
+  assert.equal(
+    turnParams.input?.[0]?.text?.includes('targetNarrationTokenCount'),
+    true,
   );
 });

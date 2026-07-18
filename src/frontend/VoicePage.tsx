@@ -1,4 +1,8 @@
-import {type FormEvent, useState} from 'react';
+import {type FormEvent, useRef, useState} from 'react';
+import {
+  narrationMetrics,
+  type NarrationCalibration,
+} from '../shared/narrationTiming.ts';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {ElevenLabsConnectionCard} from './ElevenLabsConnectionCard.tsx';
 import {
@@ -45,6 +49,8 @@ export function VoicePage({projectId}: {projectId: string}) {
   const connection = useElevenLabsConnection();
   const [search, setSearch] = useState('');
   const [showAllVoices, setShowAllVoices] = useState(false);
+  const masterAudioRef = useRef<HTMLAudioElement | null>(null);
+  const playbackEndRef = useRef<number | null>(null);
 
   async function handleGenerate() {
     if (voice.generating || connection.checking) return;
@@ -64,6 +70,24 @@ export function VoicePage({projectId}: {projectId: string}) {
     event.preventDefault();
     setShowAllVoices(false);
     void voice.searchVoices(search);
+  }
+
+  function playSection(startSeconds: number, endSeconds: number) {
+    const audio = masterAudioRef.current;
+    if (!audio) return;
+    playbackEndRef.current = endSeconds;
+    audio.currentTime = startSeconds;
+    void audio.play();
+  }
+
+  function handleMasterTimeUpdate() {
+    const audio = masterAudioRef.current;
+    const endSeconds = playbackEndRef.current;
+    if (!audio || endSeconds === null) return;
+    if (audio.currentTime >= endSeconds - 0.03) {
+      audio.pause();
+      playbackEndRef.current = null;
+    }
   }
 
   if (voice.loadState === 'loading') {
@@ -131,17 +155,28 @@ export function VoicePage({projectId}: {projectId: string}) {
   const selectedRequiresPaid =
     freeTier &&
     Boolean(voice.selectedVoice?.requiresPaidApiOnFreeTier);
-  const characterCount = plan.sections.reduce(
-    (total, section) =>
-      total +
-      section.beats.reduce(
-        (sectionTotal, beat) =>
-          sectionTotal + Array.from(beat.voiceover.trim()).length,
-        0,
-      ) +
-      Math.max(0, section.beats.length - 1) * 2,
-    0,
+  const narrationText = plan.sections
+    .flatMap((section) => section.beats.map((beat) => beat.voiceover.trim()))
+    .join('\n\n');
+  const characterCount = Array.from(narrationText).length;
+  const selectedPreset = voice.catalog?.recentPresets.find(
+    (preset) =>
+      preset.source === 'pad-studio' &&
+      preset.voiceId === voice.configuration?.voiceId &&
+      preset.modelId === voice.configuration?.modelId &&
+      preset.timingCalibration,
   );
+  const selectedCalibration =
+    selectedPreset?.timingCalibration as NarrationCalibration | null;
+  const estimatedNarration = narrationMetrics(
+    narrationText,
+    selectedCalibration ?? undefined,
+  );
+  const maximumRequestCharacters =
+    voice.selectedModel?.maximumTextLengthPerRequest;
+  const expectedRequestCount = maximumRequestCharacters
+    ? Math.max(1, Math.ceil(characterCount / maximumRequestCharacters))
+    : 1;
   const catalogVoices = voice.catalog?.voices ?? [];
   const orderedVoices = voice.selectedVoice
     ? [
@@ -164,11 +199,12 @@ export function VoicePage({projectId}: {projectId: string}) {
           ElevenLabs Voice
         </div>
         <AdaptiveHeading as="h1">
-          Tạo giọng đọc thật, rồi review từng section.
+          Tạo một mạch giọng xuyên suốt toàn bộ video.
         </AdaptiveHeading>
         <p>
-          PAD Studio gọi TTS có timestamps, giữ audio theo generation và ánh xạ
-          timing về đúng beat ID để sẵn sàng đồng bộ animation ở bước sau.
+          PAD Studio ưu tiên một lượt TTS cho toàn narration, lưu master audio
+          và ánh xạ timestamp về đúng section/beat. Nếu model giới hạn độ dài,
+          hệ thống mới chia thành số continuity group ít nhất.
         </p>
       </header>
 
@@ -440,7 +476,7 @@ export function VoicePage({projectId}: {projectId: string}) {
                           {model.languages.includes('vi')
                             ? 'Có tiếng Việt'
                             : 'Chưa công bố tiếng Việt'}
-                          {' · '}×{model.costMultiplier} credit
+                          {' · '}hệ số catalog ×{model.costMultiplier}
                         </small>
                       </span>
                     </label>
@@ -527,14 +563,19 @@ export function VoicePage({projectId}: {projectId: string}) {
                 <span>Khối lượng dự kiến</span>
                 <strong>
                   {characterCount.toLocaleString('vi-VN')} ký tự ·{' '}
-                  {plan.sections.length} request
+                  {estimatedNarration.whitespaceTokenCount.toLocaleString(
+                    'vi-VN',
+                  )}{' '}
+                  đơn vị · ≈{formatTime(estimatedNarration.estimatedSeconds)}
                 </strong>
                 <small>
                   {configurationChanged
                     ? 'Cấu hình bên trên đã khác generation hiện tại.'
                     : bundle
                       ? 'Tạo lại chỉ khi bạn muốn thay voice hoặc cách đọc.'
-                      : 'Audio chỉ được lưu khi toàn bộ section thành công.'}
+                      : expectedRequestCount === 1
+                        ? 'Toàn bài nằm trong một request để giữ giọng liền mạch.'
+                        : `Dự kiến khoảng ${expectedRequestCount} continuity group theo giới hạn model.`}
                 </small>
               </div>
               <button
@@ -572,9 +613,9 @@ export function VoicePage({projectId}: {projectId: string}) {
                 <div>
                   <span className="preview-kicker">
                     <CheckIcon />
-                    Audio và timing đã lưu
+                    Master audio và timing đã lưu
                   </span>
-                  <h2>Review từng section</h2>
+                  <h2>Review một mạch giọng liên tục</h2>
                 </div>
                 <span
                   className={`draft-status${approved ? ' is-saved' : ''}`}
@@ -583,6 +624,45 @@ export function VoicePage({projectId}: {projectId: string}) {
                   {approved ? 'Đã chốt' : 'Chờ review'}
                 </span>
               </header>
+
+              <div className="voice-master-player">
+                <div>
+                  <strong>
+                    {bundle.track.strategy === 'single-request'
+                      ? 'Một request xuyên suốt'
+                      : `${bundle.track.chunkCount} continuity group`}
+                  </strong>
+                  <span>
+                    {formatTime(bundle.totalDurationSeconds)} ·{' '}
+                    {bundle.track.calibration.whitespaceTokensPerMinute.toFixed(
+                      1,
+                    )}{' '}
+                    đơn vị/phút
+                  </span>
+                </div>
+                <audio
+                  ref={masterAudioRef}
+                  controls
+                  preload="metadata"
+                  aria-label="Master narration toàn video"
+                  src={voiceAudioUrl(
+                    project.id,
+                    bundle.sections[0]!.outlineSectionId,
+                    bundle.generation.generationId,
+                  )}
+                  onTimeUpdate={handleMasterTimeUpdate}
+                  onSeeked={() => {
+                    if (
+                      playbackEndRef.current !== null &&
+                      masterAudioRef.current &&
+                      masterAudioRef.current.currentTime >=
+                        playbackEndRef.current
+                    ) {
+                      playbackEndRef.current = null;
+                    }
+                  }}
+                />
+              </div>
 
               {bundle.sections.map((section, index) => (
                 <article
@@ -600,18 +680,21 @@ export function VoicePage({projectId}: {projectId: string}) {
                       {' · '}
                       {section.beats.length} beat
                       {' · '}
-                      {section.characterCost.toLocaleString('vi-VN')} credit
+                      {section.startSeconds.toFixed(2)}–
+                      {section.endSeconds.toFixed(2)}s trên master
                     </p>
-                    <audio
-                      controls
-                      preload="metadata"
-                      aria-label={`Voice section ${index + 1}: ${outline.sections[index]?.title ?? ''}`}
-                      src={voiceAudioUrl(
-                        project.id,
-                        section.outlineSectionId,
-                        bundle.generation.generationId,
-                      )}
-                    />
+                    <button
+                      className="secondary-button voice-play-section"
+                      type="button"
+                      onClick={() =>
+                        playSection(
+                          section.startSeconds,
+                          section.endSeconds,
+                        )
+                      }
+                    >
+                      Nghe riêng section trên master
+                    </button>
                     <details
                       className="voice-beat-review"
                       open={index === 0}
@@ -679,7 +762,17 @@ export function VoicePage({projectId}: {projectId: string}) {
                 </dd>
               </div>
               <div>
-                <dt>Credit ghi nhận</dt>
+                <dt>Continuity</dt>
+                <dd>
+                  {bundle
+                    ? bundle.track.strategy === 'single-request'
+                      ? '1 request'
+                      : `${bundle.track.chunkCount} group`
+                    : '—'}
+                </dd>
+              </div>
+              <div>
+                <dt>Ký tự tính phí (API)</dt>
                 <dd>
                   {bundle
                     ? bundle.generation.characterCost.toLocaleString(
@@ -700,6 +793,8 @@ export function VoicePage({projectId}: {projectId: string}) {
               <p>
                 Preview có sẵn của voice không tiêu credit. Nút tạo voice gọi
                 TTS thật; chỉ generation thành công mới được ghi vào gợi ý đã
+                dùng. Con số phía trên lấy từ header của request; quota tài
+                khoản ở thẻ ElevenLabs là nguồn chính xác cho tổng credit đã
                 dùng.
               </p>
             </div>

@@ -409,6 +409,37 @@
   margin: 6px 0 0;
 }
 
+.voice-master-player {
+  display: grid;
+  gap: 14px;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(135deg, #f2f7f3, #fffaf5);
+}
+
+.voice-master-player > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.voice-master-player span {
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.voice-master-player audio {
+  width: 100%;
+}
+
+.voice-play-section {
+  width: fit-content;
+  min-height: 34px;
+  margin-bottom: 2px;
+  padding: 7px 10px;
+  font-size: 11px;
+}
+
 .voice-review-section {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);

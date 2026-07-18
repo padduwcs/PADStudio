@@ -25,15 +25,31 @@ server.listen(port, host, () => {
   console.info(`PAD Studio backend: http://${host}:${port}`);
 });
 
+let shutdownPromise: Promise<void> | null = null;
+
 function shutdown() {
-  if (!server.listening) return;
-  server.close((error) => {
-    if (error) {
-      console.error(error);
-      process.exitCode = 1;
+  if (shutdownPromise) return shutdownPromise;
+  shutdownPromise = new Promise((resolve) => {
+    if (!server.listening) {
+      resolve();
+      return;
     }
+    const forceClose = setTimeout(() => {
+      server.closeAllConnections();
+    }, 1_500);
+    forceClose.unref();
+    server.closeIdleConnections();
+    server.close((error) => {
+      clearTimeout(forceClose);
+      if (error) {
+        console.error(error);
+        process.exitCode = 1;
+      }
+      resolve();
+    });
   });
+  return shutdownPromise;
 }
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
+process.on('SIGINT', () => void shutdown());
+process.on('SIGTERM', () => void shutdown());

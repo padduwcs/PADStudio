@@ -294,8 +294,8 @@ export function useVoiceDraft(projectId: string) {
     project?.voiceBundle &&
       project.voiceVisualPlan &&
       project.voiceBundle.status === 'draft' &&
-      project.voiceBundle.sourceVoiceVisualContentRevision !==
-        project.voiceVisualPlan.contentRevision,
+      project.voiceBundle.sourceNarrationRevision !==
+        project.voiceVisualPlan.narrationRevision,
   );
 
   async function generate() {

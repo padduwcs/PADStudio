@@ -17,6 +17,7 @@ import {
   type TopicProject,
   type UpdateProject,
 } from '../shared/topic.ts';
+import {buildNarrationSource} from './narrationSource.ts';
 
 function toSlug(value: string) {
   return value
@@ -92,17 +93,30 @@ function voiceSourceMatchesPlan(
   if (!bundle || !plan || bundle.sections.length !== plan.sections.length) {
     return false;
   }
+  const narration = buildNarrationSource(plan);
+  if (
+    bundle.sourceNarrationRevision !== plan.narrationRevision ||
+    bundle.track.sourceTextHash !==
+      createHash('sha256').update(narration.text).digest('hex')
+  ) {
+    return false;
+  }
   return bundle.sections.every((section, index) => {
     const planSection = plan.sections[index];
+    const sourceSection = narration.sections[index];
     return (
       planSection !== undefined &&
+      sourceSection !== undefined &&
       section.outlineSectionId === planSection.outlineSectionId &&
       section.sourceTextHash ===
         createHash('sha256')
           .update(
-            planSection.beats
-              .map((beat) => beat.voiceover.trim())
-              .join('\n\n'),
+            Array.from(narration.text)
+              .slice(
+                sourceSection.textStartIndex,
+                sourceSection.textEndIndex,
+              )
+              .join(''),
           )
           .digest('hex') &&
       section.beats.length === planSection.beats.length &&

@@ -109,6 +109,7 @@ test('ElevenLabs TTS with timestamps gửi cấu hình đầy đủ và đọc r
     seed: 42,
     previousText: 'Trước đó',
     nextText: 'Tiếp theo',
+    previousRequestIds: ['request-before'],
   });
 
   assert.equal(sentBody.model_id, model.model_id);
@@ -120,6 +121,7 @@ test('ElevenLabs TTS with timestamps gửi cấu hình đầy đủ và đọc r
     use_speaker_boost: true,
     speed: 0.95,
   });
+  assert.deepEqual(sentBody.previous_request_ids, ['request-before']);
   assert.equal(result.requestId, 'request-123');
   assert.equal(result.characterCost, 8);
   assert.equal(result.audio.toString(), 'audio-data');
@@ -167,6 +169,7 @@ test('Eleven v3 bỏ capability không hỗ trợ và không gửi Request Stitc
     canUseSpeakerBoost: false,
     previousText: 'Nội dung trước.',
     nextText: 'Nội dung sau.',
+    previousRequestIds: ['request-before'],
   });
 
   const voiceSettings = sentBody.voice_settings as Record<string, unknown>;
@@ -174,6 +177,7 @@ test('Eleven v3 bỏ capability không hỗ trợ và không gửi Request Stitc
   assert.equal('use_speaker_boost' in voiceSettings, false);
   assert.equal('previous_text' in sentBody, false);
   assert.equal('next_text' in sentBody, false);
+  assert.equal('previous_request_ids' in sentBody, false);
 });
 
 test('resolveConfiguration chấp nhận is_owner null từ voice premade', async () => {

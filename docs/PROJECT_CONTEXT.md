@@ -67,11 +67,21 @@ chốt. Provider cụ thể có thể thay đổi về sau mà không làm thay 
 review này.
 
 Bước voice–visual hiện chia từng ý đã chốt thành các beat có bốn phần: lời
-thuyết minh, visual cần thấy, chuyển động và thời lượng. Thứ tự section tiếp tục
+thuyết minh, visual cần thấy, chuyển động và thời lượng. Lời đọc phải được viết
+như một bài nói xuyên suốt: section sau tiếp tục nhịp và ý của section trước,
+không chào lại, không mở bài hoặc kết luận nhỏ lặp lại. Thứ tự section tiếp tục
 theo mạch giảng; người dùng chỉ sắp xếp beat bên trong từng section để không vô
-tình thay đổi logic giảng giải. Timing bắt đầu được tính nối tiếp từ duration,
-không lưu hai loại mốc có thể mâu thuẫn. AI tạo bản nháp có cấu trúc, còn người
-dùng chỉnh sửa và chốt trước khi hệ thống sinh scene hoặc gọi dịch vụ voice.
+tình thay đổi logic giảng giải.
+
+Thời lượng video được dẫn dắt bởi narration, không bởi độ dài animation mà AI
+tự đoán. Outline phân bổ ngân sách thời lượng tổng theo preset, rồi chuyển thành
+word budget cho từng section. AI viết nội dung trong ngân sách đó; PAD Studio
+tính duration beat từ số từ và số ký tự, cộng thêm `visualHoldSeconds` do người
+dùng chủ động đặt. Khi đã có voice thật, tốc độ đọc đo từ alignment của cùng
+voice/model/speed được dùng để hiệu chỉnh những kế hoạch mới. Timing bắt đầu
+được tính nối tiếp từ duration, không lưu hai loại mốc có thể mâu thuẫn. AI tạo
+bản nháp có cấu trúc, còn người dùng chỉnh sửa và chốt trước khi hệ thống sinh
+scene hoặc gọi dịch vụ voice.
 
 Hiện tại Codex sinh một scene cho mỗi section từ kế hoạch đã chốt. Các section
 được tách thành những Codex turn độc lập và chạy song song có giới hạn. Pipeline
@@ -85,6 +95,27 @@ sửa có định hướng. Mỗi lần sinh được lưu thành workspace bấ
 project; thay đổi mạch giảng hoặc kế hoạch voice–visual làm scene downstream
 trở thành dữ liệu cũ và buộc sinh lại. Người dùng vẫn là người chốt scene trước
 bước sản xuất tiếp theo.
+
+## Master narration
+
+Voice là một track toàn bài, không phải tập hợp file section. PAD Studio ghép
+nguyên văn toàn bộ beat bằng các ranh giới xuống dòng ổn định và ưu tiên gửi
+trong một request ElevenLabs để cùng một lần suy diễn quyết định voice,
+prosody và nhịp đọc từ đầu đến cuối. Nếu giới hạn ký tự của model bắt buộc phải
+chia, hệ thống chọn số continuity group tối thiểu tại ranh giới beat/section an
+toàn; model có capability phù hợp nhận context và request ID trước đó.
+
+Các chunk thô và alignment gốc vẫn được giữ trong generation bất biến để chẩn
+đoán. FFmpeg trim từng chunk theo alignment rồi tạo
+`voice/.../audio/narration.wav`; alignment toàn bài lưu chỉ số ký tự và thời
+gian global của section/beat. UI chỉ có một master player. Thao tác “nghe
+section” seek một khoảng trên cùng track, không phát một file TTS độc lập.
+
+Narration có `narrationRevision` riêng. Chỉnh lời hoặc cấu trúc beat làm voice
+trở thành cũ; chỉ chỉnh visual/animation giữ nguyên narration revision và không
+buộc tiêu credit để tạo lại audio. Project schema v7 dùng audio theo section
+được nâng lên v8 bằng cách giữ nội dung nhưng yêu cầu tạo lại voice/sync, vì
+không thể biến các lần suy diễn cũ thành một giọng liên tục một cách trung thực.
 
 ## Đồng bộ animation theo voice
 
@@ -105,10 +136,11 @@ kết thúc beat sớm, còn source Motion Canvas gốc vẫn bất biến.
 
 Mỗi generation đồng bộ được lưu bất biến tại
 `projects/<project-id>/sync/generations/<generation-id>/`. Workspace chứa bản
-sao scene, metadata timing thật, track `audio/narration.wav` ghép bằng FFmpeg và
-`project.ts` đã gắn audio. Trước khi được đưa ra review, workspace phải biên dịch
-TypeScript thành công và thời lượng audio phải khớp tổng timing voice trong sai
-số tối đa một frame. Scene và voice nguồn không bị sửa hoặc ghi đè.
+sao scene, metadata timing thật, bản chuẩn hóa của master track tại
+`audio/narration.wav` và `project.ts` đã gắn audio. Sync không ghép lại theo
+section và không gọi AI/ElevenLabs. Trước khi được đưa ra review, workspace phải
+biên dịch TypeScript thành công và thời lượng audio phải khớp tổng timing voice
+trong sai số tối đa một frame. Scene và voice nguồn không bị sửa hoặc ghi đè.
 
 Review đồng bộ lấy player animation + narration làm bề mặt chính, không lấy
 timeline làm đại diện cho trải nghiệm video. Backend dựng một Motion Canvas

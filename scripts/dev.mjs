@@ -39,29 +39,14 @@ function canListen(host, port) {
   });
 }
 
-async function findBackendPort(host, requestedPort) {
-  const lastCandidate = Math.min(65_535, requestedPort + 20);
-
-  for (let candidate = requestedPort; candidate <= lastCandidate; candidate += 1) {
-    if (await canListen(host, candidate)) return candidate;
-  }
-
+if (!(await canListen(backendHost, requestedBackendPort))) {
   throw new Error(
-    `Không tìm thấy cổng backend trống từ ${requestedPort} đến ${lastCandidate}.`,
+    `Cổng backend ${requestedBackendPort} đang được sử dụng. Hãy dừng tiến trình cũ thay vì đổi port, hoặc đặt PORT rõ ràng nếu bạn chủ động chạy nhiều instance.`,
   );
 }
 
-const backendPort = await findBackendPort(
-  backendHost,
-  requestedBackendPort,
-);
+const backendPort = requestedBackendPort;
 const backendUrl = `http://${backendHost}:${backendPort}`;
-
-if (backendPort !== requestedBackendPort) {
-  console.warn(
-    `Cổng backend ${requestedBackendPort} đang được dùng; PAD Studio chuyển sang ${backendPort}.`,
-  );
-}
 
 const childEnvironment = {
   ...process.env,
@@ -84,33 +69,43 @@ const children = [
 
 let shuttingDown = false;
 const stoppingPids = new Set();
+let shutdownPromise;
 
 function stopChild(child, signal) {
-  if (!child.pid || child.killed || stoppingPids.has(child.pid)) return;
+  if (!child.pid || child.killed || stoppingPids.has(child.pid)) {
+    return Promise.resolve();
+  }
   stoppingPids.add(child.pid);
 
   if (process.platform !== 'win32') {
     child.kill(signal);
-    return;
+    return new Promise((resolve) => {
+      if (child.exitCode !== null) resolve();
+      else child.once('exit', resolve);
+    });
   }
 
-  const killer = spawn(
-    'taskkill',
-    ['/pid', String(child.pid), '/t', '/f'],
-    {stdio: 'ignore', windowsHide: true},
-  );
-  killer.on('error', () => {
-    if (!child.killed) child.kill();
+  return new Promise((resolve) => {
+    const killer = spawn(
+      'taskkill',
+      ['/pid', String(child.pid), '/t', '/f'],
+      {stdio: 'ignore', windowsHide: true},
+    );
+    killer.on('error', () => {
+      if (!child.killed) child.kill();
+      resolve();
+    });
+    killer.on('exit', resolve);
   });
 }
 
 function stopChildren(signal = 'SIGTERM') {
-  if (shuttingDown) return;
+  if (shutdownPromise) return shutdownPromise;
   shuttingDown = true;
-
-  for (const child of children) {
-    stopChild(child, signal);
-  }
+  shutdownPromise = Promise.all(
+    children.map((child) => stopChild(child, signal)),
+  ).then(() => undefined);
+  return shutdownPromise;
 }
 
 for (const child of children) {
@@ -119,13 +114,22 @@ for (const child of children) {
     process.exitCode = 1;
     stopChildren();
   });
-  child.on('exit', (code) => {
-    if (!shuttingDown && code !== 0) {
-      stopChildren();
-      process.exitCode = code ?? 1;
+  child.on('exit', (code, signal) => {
+    if (!shuttingDown) {
+      process.exitCode = code === 0 && !signal ? 0 : (code ?? 1);
+      void stopChildren().then(() => {
+        process.exit(process.exitCode ?? 0);
+      });
     }
   });
 }
 
-process.on('SIGINT', () => stopChildren('SIGINT'));
-process.on('SIGTERM', () => stopChildren('SIGTERM'));
+function handleSignal(signal) {
+  process.exitCode = 0;
+  void stopChildren(signal).then(() => {
+    process.exit(process.exitCode ?? 0);
+  });
+}
+
+process.on('SIGINT', () => handleSignal('SIGINT'));
+process.on('SIGTERM', () => handleSignal('SIGTERM'));

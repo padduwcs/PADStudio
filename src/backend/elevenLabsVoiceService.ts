@@ -150,6 +150,7 @@ export interface ElevenLabsVoiceService {
     canUseSpeakerBoost?: boolean;
     previousText?: string;
     nextText?: string;
+    previousRequestIds?: string[];
   }): Promise<ElevenLabsSectionGeneration>;
 }
 
@@ -471,6 +472,7 @@ export function createElevenLabsVoiceService(
               speed: item.settings.speed ?? 1,
             }
           : null,
+        timingCalibration: null,
       })),
       available: true,
       message: null,
@@ -608,6 +610,13 @@ export function createElevenLabsVoiceService(
               : {}),
             ...(supportsRequestStitching && input.nextText
               ? {next_text: input.nextText}
+              : {}),
+            ...(supportsRequestStitching &&
+            input.previousRequestIds?.length
+              ? {
+                  previous_request_ids:
+                    input.previousRequestIds.slice(-3),
+                }
               : {}),
           }),
         },

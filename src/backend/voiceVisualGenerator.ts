@@ -9,6 +9,12 @@ import type {
   VoiceVisualPlan,
   VoiceVisualPlanContent,
 } from '../shared/topic.ts';
+import {
+  DEFAULT_NARRATION_CALIBRATION,
+  narrationDurationTargets,
+  plannedBeatDurationSeconds,
+  targetNarrationTokenCount,
+} from '../shared/narrationTiming.ts';
 import type {CodexAppServerClient} from './codexConnection.ts';
 import {
   CodexStructuredGenerationError,
@@ -16,7 +22,7 @@ import {
   runCodexStructuredGeneration,
 } from './codexStructuredGeneration.ts';
 
-export const VOICE_VISUAL_PROMPT_VERSION = 'voice-visual-v1';
+export const VOICE_VISUAL_PROMPT_VERSION = 'voice-visual-v2';
 
 const generatedVoiceVisualSchema = z
   .object({
@@ -33,7 +39,6 @@ const generatedVoiceVisualSchema = z
                     voiceover: z.string().trim().min(12).max(1000),
                     visualDescription: z.string().trim().min(12).max(700),
                     animationDescription: z.string().trim().min(8).max(500),
-                    durationSeconds: z.number().int().min(4).max(45),
                   })
                   .strict(),
               )
@@ -54,6 +59,7 @@ const outputJsonSchema = z.toJSONSchema(generatedVoiceVisualSchema, {
 export interface VoiceVisualGenerationRequest {
   topicInput: TopicInput;
   outline: TeachingOutline;
+  timingCalibration?: VoiceVisualPlanContent['timingCalibration'];
   guidance?: string;
   currentPlan?: VoiceVisualPlan;
 }
@@ -87,7 +93,9 @@ function outlineForPrompt(outline: TeachingOutline) {
         title,
         goal,
         content,
-        estimatedSeconds,
+        targetDurationSeconds: estimatedSeconds,
+        targetNarrationTokenCount:
+          targetNarrationTokenCount(estimatedSeconds),
       }),
     ),
   };
@@ -97,8 +105,9 @@ function currentPlanForPrompt(plan: VoiceVisualPlan) {
   return {
     voiceDirection: plan.voiceDirection,
     visualDirection: plan.visualDirection,
+    timingCalibration: plan.timingCalibration,
     sections: plan.sections.map((section) => ({
-      beats: section.beats.map(({id: _id, ...beat}) => beat),
+      beats: section.beats.map(({id: _id, durationSeconds: _duration, ...beat}) => beat),
     })),
   };
 }
@@ -107,6 +116,17 @@ function buildPrompt(request: VoiceVisualGenerationRequest) {
   const payload: Record<string, unknown> = {
     topicInput: request.topicInput,
     outline: outlineForPrompt(request.outline),
+    narrationBudget: {
+      ...narrationDurationTargets[request.topicInput.duration],
+      targetWhitespaceTokenCount: targetNarrationTokenCount(
+        narrationDurationTargets[request.topicInput.duration].targetSeconds,
+      ),
+    },
+    timingCalibration:
+      request.timingCalibration ?? {
+        source: 'default',
+        ...DEFAULT_NARRATION_CALIBRATION,
+      },
   };
 
   if (request.guidance) {
@@ -121,9 +141,11 @@ function buildPrompt(request: VoiceVisualGenerationRequest) {
     'Giữ nguyên số lượng và thứ tự các section của outline; mỗi phần tử output tương ứng đúng một section.',
     'Chia mỗi section thành 1–4 beat ngắn. Mỗi beat chỉ truyền đạt một ý.',
     'voiceover là lời kể tự nhiên sẵn sàng cho TTS, không chứa chỉ dẫn sân khấu.',
+    'Viết toàn bộ voiceover như một bài nói liên tục: section sau nối trực tiếp ý và nhịp của section trước, không lặp mở bài, không tự giới thiệu lại và không kết luận riêng từng section.',
+    'Bám sát targetNarrationTokenCount của từng section và tổng narrationBudget; đây là ngân sách các đơn vị phân tách bằng khoảng trắng, không phải số từ ngôn ngữ học.',
     'visualDescription mô tả điều người xem cần thấy; animationDescription mô tả thay đổi hoặc chuyển động cụ thể.',
     'Visual phải tự truyền đạt ý cùng voice, không phụ thuộc caption, không hiển thị source code và không thêm chi tiết trang trí vô nghĩa.',
-    'Tổng durationSeconds của mỗi section nên gần estimatedSeconds trong outline.',
+    'Không tự ước lượng duration; PAD Studio sẽ tính timing từ chính lời thoại.',
     JSON.stringify(payload),
   ].join('\n');
 }
@@ -219,11 +241,27 @@ export function createCodexVoiceVisualGenerator(
           content: {
             voiceDirection: parsedPlan.data.voiceDirection,
             visualDirection: parsedPlan.data.visualDirection,
+            timingCalibration:
+              request.timingCalibration ?? {
+                source: 'default',
+                ...DEFAULT_NARRATION_CALIBRATION,
+                voiceId: null,
+                modelId: null,
+                voiceName: null,
+                sampleCount: 0,
+              },
             sections: parsedPlan.data.sections.map((section, index) => ({
               outlineSectionId: request.outline.sections[index]!.id,
               beats: section.beats.map((beat) => ({
                 id: randomUUID(),
                 ...beat,
+                visualHoldSeconds: 0,
+                durationSeconds: plannedBeatDurationSeconds(
+                  beat.voiceover,
+                  0,
+                  request.timingCalibration ??
+                    DEFAULT_NARRATION_CALIBRATION,
+                ),
               })),
             })),
           },

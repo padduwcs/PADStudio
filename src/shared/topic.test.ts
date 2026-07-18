@@ -171,6 +171,82 @@ test('parseTopicProject nâng project v6 và bổ sung workspace đồng bộ', 
   assert.equal(project.animationSyncBundle, null);
 });
 
+test('parseTopicProject nâng v7, bổ sung timing profile và buộc tạo lại voice section-based', () => {
+  const now = new Date().toISOString();
+  const outlineSectionIds = [
+    '11111111-1111-4111-8111-111111111111',
+    '22222222-2222-4222-8222-222222222222',
+  ];
+  const project = parseTopicProject({
+    id: 'version-seven-project',
+    version: 7,
+    revision: 12,
+    creationId: null,
+    status: 'draft',
+    currentStep: 'sync',
+    topicInput: {
+      topic: 'Ngăn xếp hoạt động như thế nào?',
+      audience: 'beginner',
+      duration: 'concise',
+    },
+    outline: null,
+    voiceVisualPlan: {
+      voiceDirection: 'Giọng rõ ràng và gần gũi với người mới.',
+      visualDirection: 'Hình khối tối giản mô tả thao tác vào và ra.',
+      sections: outlineSectionIds.map((outlineSectionId, index) => ({
+        outlineSectionId,
+        beats: [
+          {
+            id:
+              index === 0
+                ? '33333333-3333-4333-8333-333333333333'
+                : '44444444-4444-4444-8444-444444444444',
+            voiceover:
+              index === 0
+                ? 'Ta đặt phần tử đầu tiên lên trên cùng của ngăn xếp.'
+                : 'Sau đó, phần tử trên cùng sẽ được lấy ra trước.',
+            visualDescription:
+              'Một khối chữ nhật nằm trên đỉnh của chồng phần tử.',
+            animationDescription:
+              'Khối di chuyển theo chiều dọc để thể hiện thao tác.',
+            durationSeconds: 12,
+          },
+        ],
+      })),
+      status: 'approved',
+      contentRevision: 2,
+      sourceOutlineContentRevision: 1,
+      generation: {
+        generationId: '55555555-5555-4555-8555-555555555555',
+        provider: 'codex',
+        model: 'legacy-model',
+        promptVersion: 'voice-visual-v1',
+        generatedAt: now,
+        usage: null,
+      },
+    },
+    motionCanvasBundle: null,
+    voiceBundle: null,
+    animationSyncBundle: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  assert.equal(project.version, currentProjectVersion);
+  assert.equal(project.currentStep, 'voice');
+  assert.equal(project.voiceVisualPlan?.narrationRevision, 1);
+  assert.equal(
+    project.voiceVisualPlan?.timingCalibration.source,
+    'default',
+  );
+  assert.equal(
+    project.voiceVisualPlan?.sections[0]?.beats[0]?.visualHoldSeconds,
+    0,
+  );
+  assert.equal(project.voiceBundle, null);
+  assert.equal(project.animationSyncBundle, null);
+});
+
 test('parseTopicProject không âm thầm bỏ field lạ', () => {
   const now = new Date().toISOString();
 

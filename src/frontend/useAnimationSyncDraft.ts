@@ -30,7 +30,7 @@ function upstreamIsApproved(project: TopicProject) {
       motion?.status === 'approved' &&
       motion.sourceVoiceVisualContentRevision === plan.contentRevision &&
       voice?.status === 'approved' &&
-      voice.sourceVoiceVisualContentRevision === plan.contentRevision &&
+      voice.sourceNarrationRevision === plan.narrationRevision &&
       outline.sections.length === plan.sections.length &&
       outline.sections.length === motion.scenes.length &&
       outline.sections.length === voice.sections.length &&

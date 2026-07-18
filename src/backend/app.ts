@@ -21,6 +21,7 @@ import {
   type TopicProject,
   type VoiceBundle,
   type VoiceVisualPlan,
+  type VoiceVisualPlanContent,
 } from '../shared/topic.ts';
 import type {ElevenLabsUsagePreset} from '../shared/elevenLabs.ts';
 import {
@@ -75,6 +76,10 @@ import {
   type MotionCanvasWorkspace,
 } from './motionCanvasWorkspace.ts';
 import {
+  buildNarrationSource,
+  splitNarrationSource,
+} from './narrationSource.ts';
+import {
   createFileProjectRepository,
   ProjectConflictError,
   ProjectDataError,
@@ -93,6 +98,7 @@ import {
   VoiceWorkspaceError,
   type VoiceWorkspace,
 } from './voiceWorkspace.ts';
+import {plannedBeatDurationSeconds} from '../shared/narrationTiming.ts';
 
 const MAX_BODY_SIZE = 64 * 1024;
 
@@ -386,8 +392,110 @@ function voiceVisualContent(plan: VoiceVisualPlan) {
   return {
     voiceDirection: plan.voiceDirection,
     visualDirection: plan.visualDirection,
+    timingCalibration: plan.timingCalibration,
     sections: plan.sections,
   };
+}
+
+function normalizedVoiceVisualContent(
+  content: VoiceVisualPlanContent,
+) {
+  return {
+    ...content,
+    sections: content.sections.map((section) => ({
+      ...section,
+      beats: section.beats.map((beat) => {
+        const visualHoldSeconds = Math.max(
+          0,
+          Math.min(30, Math.round(beat.visualHoldSeconds)),
+        );
+        return {
+          ...beat,
+          visualHoldSeconds,
+          durationSeconds: plannedBeatDurationSeconds(
+            beat.voiceover,
+            visualHoldSeconds,
+            content.timingCalibration,
+          ),
+        };
+      }),
+    })),
+  };
+}
+
+function median(values: number[]) {
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1]! + sorted[middle]!) / 2
+    : sorted[middle]!;
+}
+
+async function preferredNarrationCalibration(
+  repository: ProjectRepository,
+): Promise<VoiceVisualPlanContent['timingCalibration'] | undefined> {
+  const {projects} = await repository.listProjects();
+  const bundles = projects
+    .map((project) => project.voiceBundle)
+    .filter((bundle): bundle is VoiceBundle => bundle !== null)
+    .sort((left, right) =>
+      right.generation.generatedAt.localeCompare(left.generation.generatedAt),
+    );
+  const latest = bundles[0];
+  if (!latest) return undefined;
+  const matching = bundles.filter(
+    (bundle) =>
+      bundle.configuration.voiceId === latest.configuration.voiceId &&
+      bundle.configuration.modelId === latest.configuration.modelId &&
+      bundle.configuration.settings.speed ===
+        latest.configuration.settings.speed,
+  );
+  return {
+    source: 'voice-history',
+    voiceId: latest.configuration.voiceId,
+    modelId: latest.configuration.modelId,
+    voiceName: latest.configuration.voiceName,
+    sampleCount: matching.length,
+    whitespaceTokensPerMinute: median(
+      matching.map(
+        (bundle) =>
+          bundle.track.calibration.whitespaceTokensPerMinute,
+      ),
+    ),
+    charactersPerSecond: median(
+      matching.map(
+        (bundle) => bundle.track.calibration.charactersPerSecond,
+      ),
+    ),
+  };
+}
+
+function narrationIdentity(plan: {
+  sections: Array<{
+    outlineSectionId: string;
+    beats: Array<{id: string; voiceover: string}>;
+  }>;
+}) {
+  return plan.sections.map((section) => ({
+    outlineSectionId: section.outlineSectionId,
+    beats: section.beats.map((beat) => ({
+      id: beat.id,
+      voiceover: beat.voiceover.trim(),
+    })),
+  }));
+}
+
+function nextNarrationRevision(
+  currentPlan: VoiceVisualPlan | null,
+  nextPlan: VoiceVisualPlanContent,
+) {
+  if (!currentPlan) return 1;
+  return sameValue(
+    narrationIdentity(currentPlan),
+    narrationIdentity(nextPlan),
+  )
+    ? currentPlan.narrationRevision
+    : currentPlan.narrationRevision + 1;
 }
 
 function voiceVisualMatchesOutline(
@@ -417,7 +525,11 @@ function motionCanvasMatchesOutline(
 }
 
 function voiceMatchesPlan(bundle: VoiceBundle, plan: VoiceVisualPlan) {
+  const narration = buildNarrationSource(plan);
   return (
+    bundle.sourceNarrationRevision === plan.narrationRevision &&
+    bundle.track.sourceTextHash ===
+      createHash('sha256').update(narration.text).digest('hex') &&
     bundle.sections.length === plan.sections.length &&
     bundle.sections.every(
       (section, index) =>
@@ -425,9 +537,12 @@ function voiceMatchesPlan(bundle: VoiceBundle, plan: VoiceVisualPlan) {
         section.sourceTextHash ===
           createHash('sha256')
             .update(
-              plan.sections[index]!.beats
-                .map((beat) => beat.voiceover.trim())
-                .join('\n\n'),
+              Array.from(narration.text)
+                .slice(
+                  narration.sections[index]!.textStartIndex,
+                  narration.sections[index]!.textEndIndex,
+                )
+                .join(''),
             )
             .digest('hex') &&
         section.beats.length === plan.sections[index]?.beats.length &&
@@ -484,27 +599,6 @@ function animationSyncMatchesSources(
   );
 }
 
-function buildVoiceSourceSections(plan: VoiceVisualPlan) {
-  return plan.sections.map((section) => {
-    const characters: string[] = [];
-    const beats = section.beats.map((beat, index) => {
-      if (index > 0) characters.push('\n', '\n');
-      const textStartIndex = characters.length;
-      characters.push(...Array.from(beat.voiceover.trim()));
-      return {
-        beatId: beat.id,
-        textStartIndex,
-        textEndIndex: characters.length,
-      };
-    });
-    return {
-      outlineSectionId: section.outlineSectionId,
-      text: characters.join(''),
-      beats,
-    };
-  });
-}
-
 async function localVoicePresets(
   repository: ProjectRepository,
 ): Promise<ElevenLabsUsagePreset[]> {
@@ -524,6 +618,12 @@ async function localVoicePresets(
       current.successfulGenerations += 1;
       if (bundle.generation.generatedAt > current.usedAt) {
         current.usedAt = bundle.generation.generatedAt;
+        current.timingCalibration = {
+          whitespaceTokensPerMinute:
+            bundle.track.calibration.whitespaceTokensPerMinute,
+          charactersPerSecond:
+            bundle.track.calibration.charactersPerSecond,
+        };
       }
       continue;
     }
@@ -537,6 +637,12 @@ async function localVoicePresets(
       usedAt: bundle.generation.generatedAt,
       successfulGenerations: 1,
       settings: configuration.settings,
+      timingCalibration: {
+        whitespaceTokensPerMinute:
+          bundle.track.calibration.whitespaceTokensPerMinute,
+        charactersPerSecond:
+          bundle.track.calibration.charactersPerSecond,
+      },
     });
   }
   return [...grouped.values()];
@@ -1121,6 +1227,9 @@ export function createPadStudioServer(options: AppOptions = {}) {
           parsedRequest.data.guidance && currentPlanUsable
             ? currentProject.voiceVisualPlan ?? undefined
             : undefined;
+        const timingCalibration =
+          currentPlan?.timingCalibration ??
+          (await preferredNarrationCalibration(repository));
         const fingerprint = JSON.stringify({
           topicInput: currentProject.topicInput,
           outline: outlineContent(outline),
@@ -1129,6 +1238,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
           currentPlan: currentPlan
             ? voiceVisualContent(currentPlan)
             : undefined,
+          timingCalibration,
         });
         const generation = await generateOnce(
           voiceVisualGenerations,
@@ -1138,15 +1248,23 @@ export function createPadStudioServer(options: AppOptions = {}) {
             voiceVisualGenerator.generate({
               topicInput: currentProject.topicInput,
               outline,
+              timingCalibration,
               guidance: parsedRequest.data.guidance,
               currentPlan,
             }),
         );
+        const generatedContent = normalizedVoiceVisualContent(
+          generation.result.content,
+        );
         const voiceVisualPlan: VoiceVisualPlan = {
-          ...generation.result.content,
+          ...generatedContent,
           status: 'draft',
           contentRevision:
             (currentProject.voiceVisualPlan?.contentRevision ?? 0) + 1,
+          narrationRevision: nextNarrationRevision(
+            currentProject.voiceVisualPlan,
+            generatedContent,
+          ),
           sourceOutlineContentRevision: outline.contentRevision,
           generation: {
             generationId: parsedRequest.data.generationId,
@@ -1223,7 +1341,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
             'Mạch giảng đã thay đổi. Hãy tạo lại kế hoạch voice–visual.',
           );
         }
-        if (!voiceVisualMatchesOutline(parsedContent.data, outline)) {
+        const normalizedContent = normalizedVoiceVisualContent(
+          parsedContent.data,
+        );
+        if (!voiceVisualMatchesOutline(normalizedContent, outline)) {
           throw new RequestBodyError(
             422,
             'VOICE_VISUAL_OUTLINE_MISMATCH',
@@ -1233,15 +1354,19 @@ export function createPadStudioServer(options: AppOptions = {}) {
 
         const unchanged = sameValue(
           voiceVisualContent(currentProject.voiceVisualPlan),
-          parsedContent.data,
+          normalizedContent,
         );
         const voiceVisualPlan: VoiceVisualPlan = unchanged
           ? currentProject.voiceVisualPlan
           : {
-              ...parsedContent.data,
+              ...normalizedContent,
               status: 'draft',
               contentRevision:
                 currentProject.voiceVisualPlan.contentRevision + 1,
+              narrationRevision: nextNarrationRevision(
+                currentProject.voiceVisualPlan,
+                normalizedContent,
+              ),
               sourceOutlineContentRevision:
                 currentProject.voiceVisualPlan
                   .sourceOutlineContentRevision,
@@ -1695,11 +1820,11 @@ export function createPadStudioServer(options: AppOptions = {}) {
           );
         }
 
-        const sourceSections = buildVoiceSourceSections(plan);
+        const narrationSource = buildNarrationSource(plan);
         const generationKey = `${currentProject.id}:${generationId}`;
         const fingerprint = JSON.stringify({
-          voiceVisualContentRevision: plan.contentRevision,
-          sourceSections,
+          narrationRevision: plan.narrationRevision,
+          narrationSource,
           configuration: parsedRequest.data,
         });
         const generation = await generateOnce(
@@ -1717,27 +1842,30 @@ export function createPadStudioServer(options: AppOptions = {}) {
               });
             const maximumCharacters =
               resolved.model.maximumTextLengthPerRequest;
-            if (
-              maximumCharacters &&
-              sourceSections.some(
-                (section) =>
-                  Array.from(section.text).length > maximumCharacters,
-              )
-            ) {
+            let sourceChunks;
+            try {
+              sourceChunks = splitNarrationSource(
+                narrationSource,
+                maximumCharacters,
+              );
+            } catch (error) {
               throw new RequestBodyError(
                 422,
-                'VOICE_SECTION_TOO_LONG',
-                `Một section vượt giới hạn ${maximumCharacters.toLocaleString('vi-VN')} ký tự của model đã chọn. Hãy chia nhỏ beat hoặc chọn model hỗ trợ nội dung dài hơn.`,
+                'VOICE_BEAT_TOO_LONG',
+                error instanceof Error
+                  ? error.message
+                  : 'Một beat narration vượt giới hạn của model đã chọn.',
               );
             }
 
-            const generatedSections = [];
-            for (const [index, section] of sourceSections.entries()) {
-              const sectionRequest = {
+            const generatedChunks = [];
+            const previousRequestIds: string[] = [];
+            for (const [index, chunk] of sourceChunks.entries()) {
+              const chunkRequest = {
                   voiceId: resolved.configuration.voiceId,
                   modelId: resolved.configuration.modelId,
                   outputFormat: resolved.configuration.outputFormat,
-                  text: section.text,
+                  text: chunk.text,
                   settings: resolved.configuration.settings,
                   seed: resolved.configuration.seed,
                   canUseStyle: resolved.model.canUseStyle,
@@ -1747,28 +1875,45 @@ export function createPadStudioServer(options: AppOptions = {}) {
                     ? {}
                     : {
                         previousText:
-                          sourceSections[index - 1]?.text.slice(-1_000),
+                          Array.from(narrationSource.text)
+                            .slice(
+                              Math.max(0, chunk.textStartIndex - 1_000),
+                              chunk.textStartIndex,
+                            )
+                            .join(''),
                         nextText:
-                          sourceSections[index + 1]?.text.slice(0, 1_000),
+                          Array.from(narrationSource.text)
+                            .slice(
+                              chunk.textEndIndex,
+                              chunk.textEndIndex + 1_000,
+                            )
+                            .join(''),
+                        previousRequestIds: [...previousRequestIds],
                       }),
                 };
-              const sectionGeneration = await generateOnce(
+              const chunkGeneration = await generateOnce(
                 voiceSectionGenerations,
-                `${generationKey}:${section.outlineSectionId}`,
-                JSON.stringify(sectionRequest),
+                `${generationKey}:chunk:${index + 1}`,
+                JSON.stringify(chunkRequest),
                 () =>
-                  elevenLabsVoiceService.generateSection(sectionRequest),
+                  elevenLabsVoiceService.generateSection(chunkRequest),
               );
-              generatedSections.push({
-                ...section,
+              if (chunkGeneration.result.requestId) {
+                previousRequestIds.push(chunkGeneration.result.requestId);
+              }
+              generatedChunks.push({
+                ...chunk,
                 outputFormat: resolved.configuration.outputFormat,
-                generated: sectionGeneration.result,
+                generated: chunkGeneration.result,
               });
             }
             const prepared = await voiceWorkspace.prepare(
               currentProject.id,
               generationId,
-              generatedSections,
+              {
+                ...narrationSource,
+                chunks: generatedChunks,
+              },
             );
             return {
               configuration: resolved.configuration,
@@ -1781,9 +1926,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
           status: 'draft',
           contentRevision:
             (currentProject.voiceBundle?.contentRevision ?? 0) + 1,
-          sourceVoiceVisualContentRevision: plan.contentRevision,
+          sourceNarrationRevision: plan.narrationRevision,
           workspacePath: generation.result.prepared.workspacePath,
           configuration: generation.result.configuration,
+          track: generation.result.prepared.track,
           sections: generation.result.prepared.sections,
           totalDurationSeconds:
             generation.result.prepared.totalDurationSeconds,
@@ -1969,7 +2115,6 @@ export function createPadStudioServer(options: AppOptions = {}) {
           plan.sourceOutlineContentRevision !== outline.contentRevision ||
           motion.sourceVoiceVisualContentRevision !==
             plan.contentRevision ||
-          voice.sourceVoiceVisualContentRevision !== plan.contentRevision ||
           !voiceVisualMatchesOutline(plan, outline) ||
           !motionCanvasMatchesOutline(motion, outline) ||
           !voiceMatchesPlan(voice, plan)

@@ -6,6 +6,7 @@ import {
   type VoiceVisualBeat,
   type VoiceVisualPlanContent,
 } from '../shared/topic.ts';
+import {plannedBeatDurationSeconds} from '../shared/narrationTiming.ts';
 import {
   ApiRequestError,
   approveVoiceVisualPlan,
@@ -34,6 +35,7 @@ function getPlanContent(
   return {
     voiceDirection: project.voiceVisualPlan.voiceDirection,
     visualDirection: project.voiceVisualPlan.visualDirection,
+    timingCalibration: project.voiceVisualPlan.timingCalibration,
     sections: project.voiceVisualPlan.sections,
   };
 }
@@ -274,7 +276,25 @@ export function useVoiceVisualDraft(projectId: string) {
           ? {
               ...section,
               beats: section.beats.map((beat) =>
-                beat.id === beatId ? {...beat, [field]: value} : beat,
+                beat.id === beatId
+                  ? (() => {
+                      const updated = {...beat, [field]: value};
+                      if (
+                        field !== 'voiceover' &&
+                        field !== 'visualHoldSeconds'
+                      ) {
+                        return updated;
+                      }
+                      return {
+                        ...updated,
+                        durationSeconds: plannedBeatDurationSeconds(
+                          String(updated.voiceover),
+                          Number(updated.visualHoldSeconds),
+                          current.timingCalibration,
+                        ),
+                      };
+                    })()
+                  : beat,
               ),
             }
           : section,
@@ -300,7 +320,12 @@ export function useVoiceVisualDraft(projectId: string) {
                     'Mô tả hình ảnh giúp người xem hiểu đúng ý đang được kể.',
                   animationDescription:
                     'Chuyển đổi trạng thái hình ảnh để làm rõ mối liên hệ.',
-                  durationSeconds: 12,
+                  visualHoldSeconds: 0,
+                  durationSeconds: plannedBeatDurationSeconds(
+                    'Viết lời thuyết minh cho ý tiếp theo của phần này.',
+                    0,
+                    current.timingCalibration,
+                  ),
                 },
               ],
             }

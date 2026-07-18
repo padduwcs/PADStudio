@@ -8,9 +8,76 @@ import type {VoiceBundle} from '../shared/topic.ts';
 import {
   createVoiceWorkspace,
   VoiceWorkspaceError,
+  type GeneratedVoiceNarration,
 } from './voiceWorkspace.ts';
 
-test('Voice workspace lưu audio, alignment và timing beat bất biến', async (context) => {
+function rawPcm(durationSeconds: number, sampleRate = 44_100) {
+  return Buffer.alloc(Math.ceil(durationSeconds * sampleRate) * 2);
+}
+
+function narrationFixture(): GeneratedVoiceNarration {
+  const firstText = 'Xin chào.';
+  const secondText = 'Bắt đầu nhé.';
+  const text = `${firstText}\n\n${secondText}`;
+  const characters = Array.from(text);
+  const firstLength = Array.from(firstText).length;
+  const secondStart = firstLength + 2;
+  const durationSeconds = characters.length * 0.05;
+  return {
+    text,
+    sections: [
+      {
+        outlineSectionId: randomUUID(),
+        textStartIndex: 0,
+        textEndIndex: firstLength,
+        beats: [
+          {
+            beatId: randomUUID(),
+            textStartIndex: 0,
+            textEndIndex: firstLength,
+          },
+        ],
+      },
+      {
+        outlineSectionId: randomUUID(),
+        textStartIndex: secondStart,
+        textEndIndex: characters.length,
+        beats: [
+          {
+            beatId: randomUUID(),
+            textStartIndex: secondStart,
+            textEndIndex: characters.length,
+          },
+        ],
+      },
+    ],
+    chunks: [
+      {
+        outputFormat: 'pcm_44100',
+        text,
+        textStartIndex: 0,
+        textEndIndex: characters.length,
+        generated: {
+          audio: rawPcm(durationSeconds),
+          alignment: {
+            characters,
+            characterStartTimesSeconds: characters.map(
+              (_character, index) => index * 0.05,
+            ),
+            characterEndTimesSeconds: characters.map(
+              (_character, index) => (index + 1) * 0.05,
+            ),
+          },
+          normalizedAlignment: null,
+          requestId: 'request-master',
+          characterCost: characters.length,
+        },
+      },
+    ],
+  };
+}
+
+test('Voice workspace lưu master narration, alignment global và timing section bất biến', async (context) => {
   const projectsDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-studio-voice-workspace-'),
   );
@@ -19,55 +86,30 @@ test('Voice workspace lưu audio, alignment và timing beat bất biến', async
   );
   const projectId = 'voice-workspace-test';
   const generationId = randomUUID();
-  const outlineIds = [randomUUID(), randomUUID()];
-  const beatIds = [randomUUID(), randomUUID()];
   const workspace = createVoiceWorkspace(projectsDirectory);
-  const sections = outlineIds.map((outlineSectionId, index) => {
-    const text = index === 0 ? 'Xin chào.' : 'Bắt đầu nhé.';
-    const characters = Array.from(text);
-    return {
-      outlineSectionId,
-      outputFormat: 'mp3_44100_128',
-      text,
-      beats: [
-        {
-          beatId: beatIds[index]!,
-          textStartIndex: 0,
-          textEndIndex: characters.length,
-        },
-      ],
-      generated: {
-        audio: Buffer.from(`audio-${index}`),
-        alignment: {
-          characters,
-          characterStartTimesSeconds: characters.map(
-            (_character, characterIndex) => characterIndex * 0.1,
-          ),
-          characterEndTimesSeconds: characters.map(
-            (_character, characterIndex) => (characterIndex + 1) * 0.1,
-          ),
-        },
-        normalizedAlignment: null,
-        requestId: `request-${index}`,
-        characterCost: characters.length,
-      },
-    };
-  });
+  const narration = narrationFixture();
 
   const prepared = await workspace.prepare(
     projectId,
     generationId,
-    sections,
+    narration,
   );
   assert.equal(prepared.sections.length, 2);
-  assert.equal(prepared.sections[0]?.beats[0]?.startSeconds, 0);
-  assert.ok((prepared.sections[0]?.beats[0]?.endSeconds ?? 0) > 0);
-  assert.equal(prepared.requestIds.length, 2);
+  assert.equal(prepared.track.strategy, 'single-request');
+  assert.equal(prepared.track.chunkCount, 1);
+  assert.equal(prepared.sections[0]?.startSeconds, 0);
+  assert.equal(
+    prepared.sections[0]?.endSeconds,
+    prepared.sections[1]?.startSeconds,
+  );
+  assert.equal(prepared.sections[1]?.endSeconds, prepared.totalDurationSeconds);
+  assert.equal(prepared.requestIds[0], 'request-master');
+  assert.ok(prepared.track.calibration.whitespaceTokensPerMinute > 0);
 
   const bundle: VoiceBundle = {
     status: 'draft',
     contentRevision: 1,
-    sourceVoiceVisualContentRevision: 1,
+    sourceNarrationRevision: 1,
     workspacePath: prepared.workspacePath,
     configuration: {
       voiceId: 'voice-test',
@@ -76,7 +118,7 @@ test('Voice workspace lưu audio, alignment và timing beat bất biến', async
       modelId: 'eleven_multilingual_v2',
       modelName: 'Multilingual v2',
       languageCode: 'vi',
-      outputFormat: 'mp3_44100_128',
+      outputFormat: 'pcm_44100',
       settings: {
         stability: 0.5,
         similarityBoost: 0.75,
@@ -86,6 +128,7 @@ test('Voice workspace lưu audio, alignment và timing beat bất biến', async
       },
       seed: null,
     },
+    track: prepared.track,
     sections: prepared.sections,
     totalDurationSeconds: prepared.totalDurationSeconds,
     generation: {
@@ -99,10 +142,10 @@ test('Voice workspace lưu audio, alignment và timing beat bất biến', async
   const audio = await workspace.readAudio(
     projectId,
     bundle,
-    outlineIds[0]!,
+    narration.sections[0]!.outlineSectionId,
   );
-  assert.equal(audio.contentType, 'audio/mpeg');
-  assert.equal(audio.audio.toString(), 'audio-0');
+  assert.equal(audio.contentType, 'audio/wav');
+  assert.equal(audio.audio.toString('ascii', 0, 4), 'RIFF');
 
   const alignment = JSON.parse(
     await readFile(
@@ -110,35 +153,22 @@ test('Voice workspace lưu audio, alignment và timing beat bất biến', async
         projectsDirectory,
         projectId,
         prepared.workspacePath,
-        prepared.sections[0]!.alignmentPath,
+        prepared.track.alignmentPath,
       ),
       'utf8',
     ),
   );
-  assert.equal(alignment.text, sections[0]!.text);
+  assert.equal(alignment.text, narration.text);
+  assert.equal(alignment.sections.length, 2);
 
-  const invalidSections = sections.map((section, index) => ({
-    ...section,
-    generated: {
-      ...section.generated,
-      alignment:
-        index === 0
-          ? {
-              ...section.generated.alignment,
-              characters: [
-                'Y',
-                ...section.generated.alignment.characters.slice(1),
-              ],
-            }
-          : section.generated.alignment,
-    },
-  }));
+  const invalidNarration = narrationFixture();
+  invalidNarration.chunks[0]!.generated.alignment.characters[0] = 'Y';
   await assert.rejects(
     () =>
       workspace.prepare(
         projectId,
         randomUUID(),
-        invalidSections,
+        invalidNarration,
       ),
     (error) =>
       error instanceof VoiceWorkspaceError &&

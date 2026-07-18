@@ -537,35 +537,23 @@ function rawInputArguments(outputFormat: string, filePath: string) {
 }
 
 function ffmpegArguments(
-  inputFiles: string[],
+  inputFile: string,
   voiceBundle: VoiceBundle,
   destination: string,
 ) {
-  const args = ['-hide_banner', '-loglevel', 'error', '-nostdin'];
-  for (const inputFile of inputFiles) {
-    args.push(
-      ...rawInputArguments(
-        voiceBundle.configuration.outputFormat,
-        inputFile,
-      ),
-      '-i',
+  return [
+    '-hide_banner',
+    '-loglevel',
+    'error',
+    '-nostdin',
+    ...rawInputArguments(
+      voiceBundle.configuration.outputFormat,
       inputFile,
-    );
-  }
-
-  const filters = voiceBundle.sections.map(
-    (section, index) =>
-      `[${index}:a]atrim=duration=${section.durationSeconds.toFixed(6)},asetpts=PTS-STARTPTS,aresample=${OUTPUT_SAMPLE_RATE},aformat=sample_fmts=s16:channel_layouts=stereo[a${index}]`,
-  );
-  filters.push(
-    `${voiceBundle.sections.map((_section, index) => `[a${index}]`).join('')}concat=n=${voiceBundle.sections.length}:v=0:a=1[outa]`,
-  );
-
-  args.push(
-    '-filter_complex',
-    filters.join(';'),
-    '-map',
-    '[outa]',
+    ),
+    '-i',
+    inputFile,
+    '-af',
+    `atrim=duration=${voiceBundle.totalDurationSeconds.toFixed(6)},asetpts=PTS-STARTPTS,aresample=${OUTPUT_SAMPLE_RATE},aformat=sample_fmts=s16:channel_layouts=stereo`,
     '-vn',
     '-c:a',
     'pcm_s16le',
@@ -575,8 +563,7 @@ function ffmpegArguments(
     '2',
     '-y',
     destination,
-  );
-  return args;
+  ];
 }
 
 function wavDuration(buffer: Buffer) {
@@ -826,16 +813,16 @@ export function createAnimationSyncWorkspace(
           }
         }),
       );
-      const audioInputs = voiceBundle.sections.map((section) => {
-        const input = path.resolve(voiceDirectory, section.audioPath);
-        if (!isInside(voiceDirectory, input)) {
-          throw new AnimationSyncWorkspaceError(
-            'ANIMATION_SYNC_WORKSPACE_INVALID',
-            'Đường dẫn audio voice không hợp lệ.',
-          );
-        }
-        return input;
-      });
+      const audioInput = path.resolve(
+        voiceDirectory,
+        voiceBundle.track.audioPath,
+      );
+      if (!isInside(voiceDirectory, audioInput)) {
+        throw new AnimationSyncWorkspaceError(
+          'ANIMATION_SYNC_WORKSPACE_INVALID',
+          'Đường dẫn master narration không hợp lệ.',
+        );
+      }
 
       const storedMotionCanvas2dConfig = portableConfigPath(
         finalDirectory,
@@ -899,7 +886,7 @@ export function createAnimationSyncWorkspace(
           await execFileAsync(
             ffmpegPath,
             ffmpegArguments(
-              audioInputs,
+              audioInput,
               voiceBundle,
               audioDestination,
             ),
@@ -921,7 +908,7 @@ export function createAnimationSyncWorkspace(
               : 'ANIMATION_SYNC_AUDIO_MERGE_FAILED',
             code === 'ENOENT'
               ? 'Không tìm thấy FFmpeg. Hãy cài FFmpeg hoặc cấu hình FFMPEG_PATH.'
-              : 'Không thể ghép audio section thành track narration.',
+              : 'Không thể chuẩn hóa master narration cho workspace đồng bộ.',
             {cause: error},
           );
         }
@@ -957,10 +944,7 @@ export function createAnimationSyncWorkspace(
 
         const audio = await readFile(audioDestination);
         const audioDurationSeconds = wavDuration(audio);
-        const totalDurationSeconds = voiceBundle.sections.reduce(
-          (total, section) => total + section.durationSeconds,
-          0,
-        );
+        const totalDurationSeconds = voiceBundle.totalDurationSeconds;
         if (
           Math.abs(audioDurationSeconds - totalDurationSeconds) >
           Math.max(0.05, 1 / motionCanvasBundle.fps)

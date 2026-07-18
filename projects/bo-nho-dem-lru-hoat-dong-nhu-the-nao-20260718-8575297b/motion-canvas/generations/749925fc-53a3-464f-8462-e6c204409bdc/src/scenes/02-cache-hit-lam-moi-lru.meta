@@ -1,0 +1,22 @@
+{
+  "version": 0,
+  "timeEvents": [
+    {
+      "name": "beat:a359a3b8-fe1f-4543-89ac-f0e314b6c26c:start",
+      "targetTime": 0
+    },
+    {
+      "name": "beat:a359a3b8-fe1f-4543-89ac-f0e314b6c26c:end",
+      "targetTime": 9
+    },
+    {
+      "name": "beat:ee38263f-8f86-438b-8edc-2aa400521d43:start",
+      "targetTime": 9
+    },
+    {
+      "name": "beat:ee38263f-8f86-438b-8edc-2aa400521d43:end",
+      "targetTime": 20
+    }
+  ],
+  "seed": 1229135331
+}

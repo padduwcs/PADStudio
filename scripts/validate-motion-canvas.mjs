@@ -154,37 +154,35 @@ export default makeScene2D(function* (view) {
       const voiceGenerationId = randomUUID();
       const voiceWorkspacePath =
         `voice/generations/${voiceGenerationId}`;
-      const voiceSections = [];
-      for (const [index, outlineSectionId] of outlineSectionIds.entries()) {
-        const audioPath = `audio/0${index + 1}-${outlineSectionId}.pcm`;
-        const audioFile = path.join(
-          validationDirectory,
-          projectId,
-          voiceWorkspacePath,
-          audioPath,
-        );
-        await mkdir(path.dirname(audioFile), {recursive: true});
-        await writeFile(audioFile, rawPcmSilence(0.25));
-        voiceSections.push({
+      const masterAudioPath = 'audio/narration.pcm';
+      const masterAudioFile = path.join(
+        validationDirectory,
+        projectId,
+        voiceWorkspacePath,
+        masterAudioPath,
+      );
+      await mkdir(path.dirname(masterAudioFile), {recursive: true});
+      await writeFile(masterAudioFile, rawPcmSilence(0.5));
+      const voiceSections = outlineSectionIds.map(
+        (outlineSectionId, index) => ({
           outlineSectionId,
-          audioPath,
-          alignmentPath:
-            `alignments/0${index + 1}-${outlineSectionId}.json`,
+          textStartIndex: index,
+          textEndIndex: index + 1,
+          startSeconds: index * 0.25,
+          endSeconds: (index + 1) * 0.25,
           durationSeconds: 0.25,
-          characterCost: 1,
-          requestId: `runtime-${index + 1}`,
           sourceTextHash: 'a'.repeat(64),
           beats: [
             {
               beatId: beatIds[index],
-              textStartIndex: 0,
-              textEndIndex: 1,
+              textStartIndex: index,
+              textEndIndex: index + 1,
               startSeconds: 0,
               endSeconds: 0.25,
             },
           ],
-        });
-      }
+        }),
+      );
       const syncWorkspace = createAnimationSyncWorkspace(
         validationDirectory,
       );
@@ -215,7 +213,7 @@ export default makeScene2D(function* (view) {
         {
           status: 'approved',
           contentRevision: 1,
-          sourceVoiceVisualContentRevision: 1,
+          sourceNarrationRevision: 1,
           workspacePath: voiceWorkspacePath,
           configuration: {
             voiceId: 'runtime-validation',
@@ -233,6 +231,21 @@ export default makeScene2D(function* (view) {
               speed: 1,
             },
             seed: null,
+          },
+          track: {
+            audioPath: masterAudioPath,
+            alignmentPath: 'alignments/narration.json',
+            sourceTextHash: 'a'.repeat(64),
+            durationSeconds: 0.5,
+            characterCost: 2,
+            strategy: 'single-request',
+            chunkCount: 1,
+            calibration: {
+              whitespaceTokenCount: 2,
+              characterCount: 2,
+              whitespaceTokensPerMinute: 240,
+              charactersPerSecond: 4,
+            },
           },
           sections: voiceSections,
           totalDurationSeconds: 0.5,
