@@ -358,10 +358,11 @@ npm run smoke:live -- --allow-credits
 ## CI và chính sách lưu media
 
 GitHub Actions chạy trên Node.js 24 cho mọi pull request và mỗi lần push vào
-`main`. Pipeline cài đúng dependency từ lockfile, kiểm tra chính sách media, chạy
-toàn bộ `npm run validate`, smoke-test sync player bằng Chrome headless và xác
-nhận các bước kiểm tra không làm bẩn worktree. CI dùng workspace/audio tổng hợp,
-không gọi Codex hoặc ElevenLabs và không tiêu token hay credit.
+`main`. Pipeline dùng Ubuntu 24.04, cài FFmpeg tường minh, cài đúng dependency
+từ lockfile, kiểm tra chính sách media, chạy toàn bộ `npm run validate`,
+smoke-test sync player bằng Chrome headless và xác nhận các bước kiểm tra không
+làm bẩn worktree. CI dùng workspace/audio tổng hợp, không gọi Codex hoặc
+ElevenLabs và không tiêu token hay credit.
 
 Các file audio `.wav`, `.mp3`, `.pcm` và `.opus` mới phải được lưu bằng Git
 LFS. Cài Git LFS một lần trên máy phát triển trước khi stage generation có

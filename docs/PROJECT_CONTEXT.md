@@ -213,8 +213,8 @@ Các ranh giới kỹ thuật đang bảo vệ những nguyên tắc trên:
 - JSON request bị giới hạn ở 1 MiB và tiếp tục phải qua schema strict. Mức này
   đủ cho kế hoạch voice–visual tối đa hiện tại nhưng vẫn chặn payload bất thường.
 - `npm run validate` là quality gate cục bộ chuẩn. CI chạy cùng gate trên
-  Node.js 24 và smoke-test player bằng trình duyệt headless, không gọi dịch vụ
-  live hoặc tiêu quota.
+  Node.js 24/Ubuntu 24.04, cài FFmpeg tường minh và smoke-test player bằng
+  trình duyệt headless; không gọi dịch vụ live hoặc tiêu quota.
 - Audio `.wav`/`.mp3`/`.pcm`/`.opus` mới được lưu bằng Git LFS. Mười file audio
   legacy đã pin blob theo chính sách forward-only; chỉ migration riêng mới được
   thay đổi lịch sử hoặc chuyển các blob cũ.

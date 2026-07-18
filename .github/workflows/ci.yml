@@ -16,7 +16,7 @@ concurrency:
 jobs:
   validate:
     name: Validate on Node.js 24
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     steps:
@@ -37,6 +37,13 @@ jobs:
 
       - name: Install locked dependencies
         run: npm ci
+
+      - name: Install FFmpeg
+        timeout-minutes: 5
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg
+          ffmpeg -version
 
       - name: Enforce media storage policy
         run: node scripts/check-media-policy.mjs
