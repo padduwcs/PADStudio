@@ -13,10 +13,19 @@ const command = process.argv[2];
 const projectArgumentIndex = process.argv.indexOf('--project');
 const projectId =
   projectArgumentIndex >= 0 ? process.argv[projectArgumentIndex + 1] : '';
+const stageArgumentIndex = process.argv.indexOf('--stage');
+const stage =
+  stageArgumentIndex >= 0
+    ? process.argv[stageArgumentIndex + 1]
+    : 'motion';
 
-if (command !== 'serve' || !projectId) {
+if (
+  command !== 'serve' ||
+  !projectId ||
+  (stage !== 'motion' && stage !== 'sync')
+) {
   console.error(
-    'Cách dùng: npm run motion:serve -- --project <project-id>',
+    'Cách dùng: npm run motion:serve -- --project <project-id> [--stage motion|sync]',
   );
   process.exitCode = 1;
 } else if (!/^[a-z0-9][a-z0-9-]{0,100}$/.test(projectId)) {
@@ -29,10 +38,17 @@ if (command !== 'serve' || !projectId) {
       await readFile(path.join(projectDirectory, 'project.json'), 'utf8'),
     ),
   );
-  const bundle = projectData.motionCanvasBundle;
+  const bundle =
+    stage === 'sync'
+      ? projectData.animationSyncBundle
+      : projectData.motionCanvasBundle;
 
   if (!bundle?.workspacePath || !bundle?.projectFile) {
-    console.error('Project chưa có workspace Motion Canvas.');
+    console.error(
+      stage === 'sync'
+        ? 'Project chưa có workspace đồng bộ.'
+        : 'Project chưa có workspace Motion Canvas.',
+    );
     process.exitCode = 1;
   } else {
     const workspaceDirectory = path.resolve(
@@ -46,7 +62,7 @@ if (command !== 'serve' || !projectId) {
     const outputDirectory = path.join(
       projectDirectory,
       'renders',
-      'motion-canvas',
+      stage === 'sync' ? 'sync' : 'motion-canvas',
     );
     const runtimePackage = path.join(
       rootDirectory,

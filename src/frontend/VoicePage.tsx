@@ -3,13 +3,18 @@ import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {ElevenLabsConnectionCard} from './ElevenLabsConnectionCard.tsx';
 import {
   ArrowLeftIcon,
+  ArrowRightIcon,
   CheckIcon,
   ClockIcon,
   LightbulbIcon,
   SparkIcon,
 } from './icons.tsx';
 import {voiceAudioUrl} from './api.ts';
-import {navigate, projectMotionCanvasPath} from './router.ts';
+import {
+  navigate,
+  projectMotionCanvasPath,
+  projectSyncPath,
+} from './router.ts';
 import {useElevenLabsConnection} from './useElevenLabsConnection.ts';
 import {
   type VoiceDraftConfiguration,
@@ -46,6 +51,13 @@ export function VoicePage({projectId}: {projectId: string}) {
     const status = await connection.verify();
     if (status?.state !== 'connected') return;
     await voice.generate();
+  }
+
+  async function handleApprove() {
+    const updatedProject = await voice.approve();
+    if (updatedProject) {
+      navigate(projectSyncPath(updatedProject.id), true);
+    }
   }
 
   function handleSearch(event: FormEvent) {
@@ -717,13 +729,16 @@ export function VoicePage({projectId}: {projectId: string}) {
               className="submit-button"
               type="button"
               disabled={
-                approved ||
                 voice.approving ||
                 voice.generating ||
                 voice.stale ||
                 voice.conflict
               }
-              onClick={() => void voice.approve()}
+              onClick={() =>
+                approved
+                  ? navigate(projectSyncPath(project.id))
+                  : void handleApprove()
+              }
             >
               {voice.approving ? (
                 <>
@@ -732,8 +747,8 @@ export function VoicePage({projectId}: {projectId: string}) {
                 </>
               ) : approved ? (
                 <>
-                  <CheckIcon />
-                  Đã chốt voice
+                  Tiếp tục đồng bộ
+                  <ArrowRightIcon />
                 </>
               ) : (
                 <>

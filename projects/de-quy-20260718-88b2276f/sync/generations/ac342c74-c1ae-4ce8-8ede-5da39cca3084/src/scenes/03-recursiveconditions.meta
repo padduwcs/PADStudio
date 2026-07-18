@@ -1,0 +1,38 @@
+{
+  "version": 0,
+  "timeEvents": [
+    {
+      "name": "beat:3efac0dd-1595-4851-a023-bb17f75df87e:start",
+      "targetTime": 0
+    },
+    {
+      "name": "beat:3efac0dd-1595-4851-a023-bb17f75df87e:end",
+      "targetTime": 6.32
+    },
+    {
+      "name": "beat:339b17b8-fa6e-4ee9-a857-9c83451bdd59:start",
+      "targetTime": 6.545
+    },
+    {
+      "name": "beat:339b17b8-fa6e-4ee9-a857-9c83451bdd59:end",
+      "targetTime": 15.041
+    },
+    {
+      "name": "beat:17c93655-adc7-4605-93d5-87112492fc01:start",
+      "targetTime": 15.401
+    },
+    {
+      "name": "beat:17c93655-adc7-4605-93d5-87112492fc01:end",
+      "targetTime": 21.321
+    },
+    {
+      "name": "beat:4e64fb60-a552-4062-8062-73e584f5399f:start",
+      "targetTime": 21.641
+    },
+    {
+      "name": "beat:4e64fb60-a552-4062-8062-73e584f5399f:end",
+      "targetTime": 31.441
+    }
+  ],
+  "seed": 4132983809
+}

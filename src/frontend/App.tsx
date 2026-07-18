@@ -20,6 +20,7 @@ import {
   UserIcon,
 } from './icons.tsx';
 import {ProjectLibrary} from './ProjectLibrary.tsx';
+import {AnimationSyncPage} from './AnimationSyncPage.tsx';
 import {MotionCanvasPage} from './MotionCanvasPage.tsx';
 import {VoicePage} from './VoicePage.tsx';
 import {
@@ -1221,7 +1222,9 @@ export default function App() {
   const [newProjectKey, setNewProjectKey] = useState(0);
   const [projectReloadKey, setProjectReloadKey] = useState(0);
   const activeStep =
-    route.name === 'project-voice'
+    route.name === 'project-sync'
+      ? 5
+      : route.name === 'project-voice'
       ? 4
       : route.name === 'project-motion-canvas'
       ? 3
@@ -1308,6 +1311,12 @@ export default function App() {
         {route.name === 'project-voice' && (
           <VoicePage
             key={`project-voice-${route.projectId}-${projectReloadKey}`}
+            projectId={route.projectId}
+          />
+        )}
+        {route.name === 'project-sync' && (
+          <AnimationSyncPage
+            key={`project-sync-${route.projectId}-${projectReloadKey}`}
             projectId={route.projectId}
           />
         )}

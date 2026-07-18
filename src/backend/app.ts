@@ -6,6 +6,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
   CreateTopicProjectSchema,
+  GenerateAnimationSyncSchema,
   GenerateMotionCanvasSchema,
   GenerateTeachingOutlineSchema,
   GenerateVoiceSchema,
@@ -14,6 +15,7 @@ import {
   UpdateProjectSchema,
   VoiceVisualPlanContentSchema,
   type ApiErrorPayload,
+  type AnimationSyncBundle,
   type MotionCanvasBundle,
   type TeachingOutline,
   type TopicProject,
@@ -21,6 +23,17 @@ import {
   type VoiceVisualPlan,
 } from '../shared/topic.ts';
 import type {ElevenLabsUsagePreset} from '../shared/elevenLabs.ts';
+import {
+  AnimationSyncWorkspaceError,
+  createAnimationSyncWorkspace,
+  type AnimationSyncWorkspace,
+  type PreparedAnimationSyncWorkspace,
+} from './animationSyncWorkspace.ts';
+import {
+  AnimationSyncPreviewError,
+  createAnimationSyncPreviewService,
+  type AnimationSyncPreviewService,
+} from './animationSyncPreviewService.ts';
 import {
   CodexConnectionError,
   createCodexConnectionService,
@@ -107,6 +120,8 @@ interface AppOptions {
   motionCanvasGenerator?: MotionCanvasGenerator;
   motionCanvasWorkspace?: MotionCanvasWorkspace;
   voiceWorkspace?: VoiceWorkspace;
+  animationSyncWorkspace?: AnimationSyncWorkspace;
+  animationSyncPreviewService?: AnimationSyncPreviewService;
   logger?: Pick<Console, 'error' | 'info'>;
 }
 
@@ -334,6 +349,27 @@ function getProjectVoiceRoute(pathname: string) {
   };
 }
 
+function getProjectAnimationSyncRoute(pathname: string) {
+  const match =
+    /^\/api\/projects\/([^/]+)\/sync(?:\/(generate|approve|files|audio|preview))?$/.exec(
+      pathname,
+    );
+  if (!match?.[1]) return null;
+  const projectId = decodeProjectId(match[1]);
+  if (!projectId) return null;
+
+  return {
+    projectId,
+    action: (match[2] ?? 'read') as
+      | 'generate'
+      | 'approve'
+      | 'files'
+      | 'audio'
+      | 'preview'
+      | 'read',
+  };
+}
+
 function sameValue(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -400,6 +436,51 @@ function voiceMatchesPlan(bundle: VoiceBundle, plan: VoiceVisualPlan) {
             beat.beatId === plan.sections[index]?.beats[beatIndex]?.id,
         ),
     )
+  );
+}
+
+function animationSyncMatchesSources(
+  bundle: AnimationSyncBundle,
+  motion: MotionCanvasBundle,
+  voice: VoiceBundle,
+) {
+  return (
+    motion.timingContractVersion === 1 &&
+    bundle.sourceMotionCanvasContentRevision === motion.contentRevision &&
+    bundle.sourceVoiceContentRevision === voice.contentRevision &&
+    bundle.sections.length === motion.scenes.length &&
+    bundle.sections.length === voice.sections.length &&
+    bundle.sections.every((section, sectionIndex) => {
+      const scene = motion.scenes[sectionIndex];
+      const voiceSection = voice.sections[sectionIndex];
+      const timingEvents = scene?.timingEvents;
+      return Boolean(
+        scene &&
+          voiceSection &&
+          timingEvents &&
+          section.sceneId === scene.id &&
+          section.filePath === scene.filePath &&
+          section.outlineSectionId === scene.outlineSectionId &&
+          section.outlineSectionId === voiceSection.outlineSectionId &&
+          section.beats.length === timingEvents.length &&
+          section.beats.length === voiceSection.beats.length &&
+          section.beats.every((beat, beatIndex) => {
+            const timing = timingEvents[beatIndex];
+            const voiceBeat = voiceSection.beats[beatIndex];
+            return (
+              timing &&
+              voiceBeat &&
+              beat.beatId === timing.beatId &&
+              beat.beatId === voiceBeat.beatId &&
+              beat.startEvent === timing.startEvent &&
+              beat.endEvent === timing.endEvent &&
+              Math.abs(beat.voiceStartSeconds - voiceBeat.startSeconds) <
+                0.001 &&
+              Math.abs(beat.voiceEndSeconds - voiceBeat.endSeconds) < 0.001
+            );
+          }),
+      );
+    })
   );
 }
 
@@ -574,6 +655,12 @@ export function createPadStudioServer(options: AppOptions = {}) {
     createMotionCanvasWorkspace(projectsDirectory);
   const voiceWorkspace =
     options.voiceWorkspace ?? createVoiceWorkspace(projectsDirectory);
+  const animationSyncWorkspace =
+    options.animationSyncWorkspace ??
+    createAnimationSyncWorkspace(projectsDirectory);
+  const animationSyncPreviewService =
+    options.animationSyncPreviewService ??
+    createAnimationSyncPreviewService(projectsDirectory);
   const logger = options.logger ?? console;
   type GenerationCacheEntry<Result> = {
     fingerprint: string;
@@ -605,6 +692,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
     string,
     GenerationCacheEntry<ElevenLabsSectionGeneration>
   >();
+  const animationSyncGenerations = new Map<
+    string,
+    GenerationCacheEntry<PreparedAnimationSyncWorkspace>
+  >();
 
   function generateOnce<Result>(
     generations: Map<string, GenerationCacheEntry<Result>>,
@@ -618,7 +709,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
         throw new RequestBodyError(
           409,
           'GENERATION_ID_REUSED',
-          'Yêu cầu tạo mạch giảng này đã được dùng với nội dung khác.',
+          'Generation ID đã được dùng với nội dung khác.',
         );
       }
       return existing.promise;
@@ -1805,7 +1896,318 @@ export function createPadStudioServer(options: AppOptions = {}) {
           currentProject.id,
           {
             voiceBundle: {...bundle, status: 'approved'},
-            currentStep: 'voice',
+            currentStep: 'sync',
+          },
+          expectedRevision,
+        );
+        if (!updatedProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        sendProject(response, 200, updatedProject);
+        return;
+      }
+
+      const animationSyncRoute = getProjectAnimationSyncRoute(
+        requestUrl.pathname,
+      );
+
+      if (
+        animationSyncRoute?.action === 'generate' &&
+        request.method === 'POST'
+      ) {
+        const expectedRevision = readExpectedRevision(request);
+        const body = await readJsonBody(request);
+        const parsedRequest = GenerateAnimationSyncSchema.safeParse(body);
+        if (!parsedRequest.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Yêu cầu đồng bộ animation chưa hợp lệ.',
+            fields: validationFields(parsedRequest.error.issues),
+          });
+          return;
+        }
+        const generationId = parsedRequest.data.generationId.toLowerCase();
+        const currentProject = await repository.getProject(
+          animationSyncRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        if (
+          currentProject.animationSyncBundle?.generation.generationId ===
+          generationId
+        ) {
+          sendProject(response, 200, currentProject);
+          return;
+        }
+        if (currentProject.revision !== expectedRevision) {
+          throw new ProjectConflictError(currentProject);
+        }
+
+        const outline = currentProject.outline;
+        const plan = currentProject.voiceVisualPlan;
+        const motion = currentProject.motionCanvasBundle;
+        const voice = currentProject.voiceBundle;
+        if (
+          !outline ||
+          outline.status !== 'approved' ||
+          !plan ||
+          plan.status !== 'approved' ||
+          !motion ||
+          motion.status !== 'approved' ||
+          !voice ||
+          voice.status !== 'approved' ||
+          !sameValue(outline.sourceInput, currentProject.topicInput) ||
+          plan.sourceOutlineContentRevision !== outline.contentRevision ||
+          motion.sourceVoiceVisualContentRevision !==
+            plan.contentRevision ||
+          voice.sourceVoiceVisualContentRevision !== plan.contentRevision ||
+          !voiceVisualMatchesOutline(plan, outline) ||
+          !motionCanvasMatchesOutline(motion, outline) ||
+          !voiceMatchesPlan(voice, plan)
+        ) {
+          throw new RequestBodyError(
+            409,
+            'ANIMATION_SYNC_PREREQUISITES_NOT_APPROVED',
+            'Hãy chốt Motion Canvas và voice hiện tại trước khi đồng bộ.',
+          );
+        }
+        if (motion.timingContractVersion !== 1) {
+          throw new RequestBodyError(
+            409,
+            'ANIMATION_SYNC_TIMING_CONTRACT_REQUIRED',
+            'Scene hiện tại là bản legacy. Hãy sinh lại và chốt Motion Canvas trước khi đồng bộ.',
+          );
+        }
+
+        const generationKey = `${currentProject.id}:${generationId}`;
+        const fingerprint = JSON.stringify({
+          motionContentRevision: motion.contentRevision,
+          motionSourceHash: motion.validation.sourceHash,
+          voiceContentRevision: voice.contentRevision,
+          voiceGenerationId: voice.generation.generationId,
+          voiceSections: voice.sections,
+        });
+        const generation = await generateOnce(
+          animationSyncGenerations,
+          generationKey,
+          fingerprint,
+          () =>
+            animationSyncWorkspace.prepare(
+              currentProject.id,
+              generationId,
+              motion,
+              voice,
+            ),
+        );
+        const prepared = generation.result;
+        const animationSyncBundle: AnimationSyncBundle = {
+          status: 'draft',
+          contentRevision:
+            (currentProject.animationSyncBundle?.contentRevision ?? 0) + 1,
+          sourceMotionCanvasContentRevision: motion.contentRevision,
+          sourceVoiceContentRevision: voice.contentRevision,
+          workspacePath: prepared.workspacePath,
+          projectFile: prepared.projectFile,
+          audioFile: prepared.audioFile,
+          totalDurationSeconds: prepared.totalDurationSeconds,
+          sections: prepared.sections,
+          validation: prepared.validation,
+          generation: {
+            generationId,
+            provider: 'local',
+            tool: 'ffmpeg',
+            generatedAt: generation.generatedAt,
+          },
+        };
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {animationSyncBundle, currentStep: 'sync'},
+          expectedRevision,
+        );
+        if (!updatedProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        sendProject(response, 200, updatedProject);
+        return;
+      }
+
+      if (
+        animationSyncRoute?.action === 'preview' &&
+        request.method === 'GET'
+      ) {
+        const currentProject = await repository.getProject(
+          animationSyncRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        const bundle = currentProject.animationSyncBundle;
+        if (!bundle) {
+          throw new RequestBodyError(
+            409,
+            'ANIMATION_SYNC_NOT_READY',
+            'Hãy đồng bộ animation trước khi mở bản nháp.',
+          );
+        }
+        const requestedGeneration =
+          requestUrl.searchParams.get('generation');
+        if (
+          requestedGeneration &&
+          requestedGeneration !== bundle.generation.generationId
+        ) {
+          throw new RequestBodyError(
+            404,
+            'ANIMATION_SYNC_GENERATION_NOT_FOUND',
+            'Generation bản nháp được yêu cầu không còn là bản hiện tại.',
+          );
+        }
+        const preview = await animationSyncPreviewService.start(
+          currentProject.id,
+          bundle,
+        );
+        response.setHeader('Cache-Control', 'no-store');
+        sendJson(response, 200, {preview});
+        return;
+      }
+
+      if (
+        animationSyncRoute?.action === 'files' &&
+        request.method === 'GET'
+      ) {
+        const currentProject = await repository.getProject(
+          animationSyncRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        if (!currentProject.animationSyncBundle) {
+          throw new RequestBodyError(
+            409,
+            'ANIMATION_SYNC_NOT_READY',
+            'Project chưa có workspace đồng bộ.',
+          );
+        }
+        const files = await animationSyncWorkspace.readFiles(
+          currentProject.id,
+          currentProject.animationSyncBundle,
+        );
+        sendJson(response, 200, {
+          bundle: currentProject.animationSyncBundle,
+          files,
+          serveCommand: `npm run sync:serve -- --project ${currentProject.id}`,
+        });
+        return;
+      }
+
+      if (
+        animationSyncRoute?.action === 'audio' &&
+        request.method === 'GET'
+      ) {
+        const currentProject = await repository.getProject(
+          animationSyncRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        const bundle = currentProject.animationSyncBundle;
+        if (!bundle) {
+          throw new RequestBodyError(
+            404,
+            'ANIMATION_SYNC_AUDIO_NOT_FOUND',
+            'Project chưa có narration đã đồng bộ.',
+          );
+        }
+        const requestedGeneration =
+          requestUrl.searchParams.get('generation');
+        if (
+          requestedGeneration &&
+          requestedGeneration !== bundle.generation.generationId
+        ) {
+          throw new RequestBodyError(
+            404,
+            'ANIMATION_SYNC_GENERATION_NOT_FOUND',
+            'Generation đồng bộ được yêu cầu không còn là bản hiện tại.',
+          );
+        }
+        const audio = await animationSyncWorkspace.readAudio(
+          currentProject.id,
+          bundle,
+        );
+        response.writeHead(200, {
+          'Content-Type': 'audio/wav',
+          'Content-Length': audio.byteLength,
+          'Cache-Control': 'private, max-age=31536000, immutable',
+          ETag: `"${bundle.generation.generationId}"`,
+        });
+        response.end(audio);
+        return;
+      }
+
+      if (
+        animationSyncRoute?.action === 'approve' &&
+        request.method === 'POST'
+      ) {
+        const expectedRevision = readExpectedRevision(request);
+        const currentProject = await repository.getProject(
+          animationSyncRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        if (currentProject.revision !== expectedRevision) {
+          throw new ProjectConflictError(currentProject);
+        }
+        const motion = currentProject.motionCanvasBundle;
+        const voice = currentProject.voiceBundle;
+        const bundle = currentProject.animationSyncBundle;
+        if (
+          !motion ||
+          motion.status !== 'approved' ||
+          !voice ||
+          voice.status !== 'approved' ||
+          !bundle ||
+          !animationSyncMatchesSources(bundle, motion, voice)
+        ) {
+          throw new RequestBodyError(
+            409,
+            'ANIMATION_SYNC_OUTDATED',
+            'Bản đồng bộ chưa có hoặc không còn khớp với scene và voice hiện tại.',
+          );
+        }
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {
+            animationSyncBundle: {...bundle, status: 'approved'},
+            currentStep: 'sync',
           },
           expectedRevision,
         );
@@ -1996,6 +2398,42 @@ export function createPadStudioServer(options: AppOptions = {}) {
         return;
       }
 
+      if (error instanceof AnimationSyncWorkspaceError) {
+        sendApiError(
+          response,
+          error.code === 'ANIMATION_SYNC_WORKSPACE_CONFLICT' ||
+            error.code === 'ANIMATION_SYNC_TIMING_CONTRACT_REQUIRED' ||
+            error.code === 'ANIMATION_SYNC_SOURCE_MISMATCH'
+            ? 409
+            : error.code === 'ANIMATION_SYNC_VALIDATION_FAILED' ||
+                error.code === 'ANIMATION_SYNC_AUDIO_INVALID' ||
+                error.code === 'ANIMATION_SYNC_AUDIO_DURATION_MISMATCH'
+              ? 422
+              : error.code === 'FFMPEG_NOT_AVAILABLE'
+                ? 503
+                : 500,
+          {
+            code: error.code,
+            message: error.message,
+          },
+        );
+        return;
+      }
+
+      if (error instanceof AnimationSyncPreviewError) {
+        sendApiError(
+          response,
+          error.code === 'ANIMATION_SYNC_PREVIEW_INVALID'
+            ? 422
+            : 503,
+          {
+            code: error.code,
+            message: error.message,
+          },
+        );
+        return;
+      }
+
       logger.error(error);
       sendApiError(response, 500, {
         code: 'INTERNAL_ERROR',
@@ -2006,6 +2444,9 @@ export function createPadStudioServer(options: AppOptions = {}) {
 
   server.on('close', () => {
     codexConnection.close();
+    void animationSyncPreviewService.close().catch((error) => {
+      logger.error(error);
+    });
     if (options.codexConnection && sharedCodexClient) {
       sharedCodexClient.close();
     }

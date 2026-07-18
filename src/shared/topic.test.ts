@@ -38,6 +38,10 @@ test('UpdateProjectSchema yêu cầu ít nhất một thay đổi', () => {
     UpdateProjectSchema.safeParse({currentStep: 'outline'}).success,
     true,
   );
+  assert.equal(
+    UpdateProjectSchema.safeParse({currentStep: 'sync'}).success,
+    true,
+  );
 });
 
 test('parseTopicProject nâng project v1 lên model hiện tại', () => {
@@ -137,6 +141,34 @@ test('parseTopicProject nâng project v4 và giữ kế hoạch voice–visual',
   assert.equal(project.version, currentProjectVersion);
   assert.equal(project.revision, 5);
   assert.equal(project.motionCanvasBundle, null);
+});
+
+test('parseTopicProject nâng project v6 và bổ sung workspace đồng bộ', () => {
+  const now = new Date().toISOString();
+  const project = parseTopicProject({
+    id: 'version-six-project',
+    version: 6,
+    revision: 10,
+    creationId: null,
+    status: 'draft',
+    currentStep: 'voice',
+    topicInput: {
+      topic: 'Đệ quy hoạt động như thế nào?',
+      audience: 'beginner',
+      duration: 'standard',
+    },
+    outline: null,
+    voiceVisualPlan: null,
+    motionCanvasBundle: null,
+    voiceBundle: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  assert.equal(project.version, currentProjectVersion);
+  assert.equal(project.revision, 10);
+  assert.equal(project.currentStep, 'voice');
+  assert.equal(project.animationSyncBundle, null);
 });
 
 test('parseTopicProject không âm thầm bỏ field lạ', () => {

@@ -15,6 +15,9 @@ import type {
   CreateTopicProject,
   TopicProject,
 } from '../shared/topic.ts';
+import {currentProjectVersion} from '../shared/topic.ts';
+import type {AnimationSyncWorkspace} from './animationSyncWorkspace.ts';
+import type {AnimationSyncPreviewService} from './animationSyncPreviewService.ts';
 import {createPadStudioServer} from './app.ts';
 import type {CodexConnectionService} from './codexConnection.ts';
 import type {ElevenLabsConnectionService} from './elevenLabsConnection.ts';
@@ -50,6 +53,8 @@ async function startTestApp(
     outlineGenerator?: OutlineGenerator;
     voiceVisualGenerator?: VoiceVisualGenerator;
     motionCanvasGenerator?: MotionCanvasGenerator;
+    animationSyncWorkspace?: AnimationSyncWorkspace;
+    animationSyncPreviewService?: AnimationSyncPreviewService;
   } = {},
 ) {
   const projectsDirectory = await mkdtemp(
@@ -63,6 +68,8 @@ async function startTestApp(
     outlineGenerator: options.outlineGenerator,
     voiceVisualGenerator: options.voiceVisualGenerator,
     motionCanvasGenerator: options.motionCanvasGenerator,
+    animationSyncWorkspace: options.animationSyncWorkspace,
+    animationSyncPreviewService: options.animationSyncPreviewService,
     logger: {info() {}, error() {}},
   });
 
@@ -198,7 +205,7 @@ test('API tạo, cập nhật và xóa project với revision', async (context) 
   const {project} = await createProject(baseUrl);
 
   assert.equal(project.currentStep, 'outline');
-  assert.equal(project.version, 6);
+  assert.equal(project.version, currentProjectVersion);
   assert.equal(project.revision, 1);
 
   const savedProject = JSON.parse(
@@ -487,26 +494,38 @@ test('API tạo, chỉnh sửa và chốt kế hoạch voice–visual an toàn',
     async generate(request) {
       motionGenerationCalls += 1;
       return {
-        scenes: request.outline.sections.map((section, index) => ({
-          id: randomUUID(),
-          outlineSectionId: section.id,
-          name: `Scene ${index + 1}: ${section.title}`,
-          filePath: `src/scenes/0${index + 1}-scene-${index + 1}.tsx`,
-          durationSeconds: request.voiceVisualPlan.sections[
-            index
-          ]!.beats.reduce(
-            (total, beat) => total + beat.durationSeconds,
-            0,
-          ),
-          source: `import {makeScene2D, Rect} from '@motion-canvas/2d';
-import {waitFor} from '@motion-canvas/core';
+        scenes: request.outline.sections.map((section, index) => {
+          const planSection = request.voiceVisualPlan.sections[index]!;
+          const beat = planSection.beats[0]!;
+          return {
+            id: randomUUID(),
+            outlineSectionId: section.id,
+            name: `Scene ${index + 1}: ${section.title}`,
+            filePath: `src/scenes/0${index + 1}-scene-${index + 1}.tsx`,
+            durationSeconds: planSection.beats.reduce(
+              (total, item) => total + item.durationSeconds,
+              0,
+            ),
+            timingEvents: planSection.beats.map((item) => ({
+              beatId: item.id,
+              startEvent: `beat:${item.id}:start`,
+              endEvent: `beat:${item.id}:end`,
+              plannedDurationSeconds: item.durationSeconds,
+            })),
+            source: `import {makeScene2D, Rect} from '@motion-canvas/2d';
+import {createRef, useDuration, waitUntil} from '@motion-canvas/core';
 
 export default makeScene2D(function* (view) {
-  view.add(<Rect width={720} height={120} radius={24} fill={'#dbe9e2'} />);
-  yield* waitFor(10);
+  const card = createRef<Rect>();
+  view.add(<Rect ref={card} width={120} height={120} radius={24} fill={'#dbe9e2'} />);
+  yield* waitUntil('beat:${beat.id}:start');
+  const beatDuration = useDuration('beat:${beat.id}:end');
+  yield* card().width(720, beatDuration);
+  yield* waitUntil('beat:${beat.id}:end');
 });
 `,
-        })),
+          };
+        }),
         model: 'motion-canvas-test-model',
         usage: null,
       };
@@ -570,11 +589,89 @@ export default makeScene2D(function* (view) {
       };
     },
   };
+  let animationSyncCalls = 0;
+  let animationSyncPreviewCalls = 0;
+  const animationSyncWorkspace: AnimationSyncWorkspace = {
+    async prepare(
+      _projectId,
+      generationId,
+      motionCanvasBundle,
+      voiceBundle,
+    ) {
+      animationSyncCalls += 1;
+      return {
+        workspacePath: `sync/generations/${generationId}`,
+        projectFile: 'src/project.ts',
+        audioFile: 'audio/narration.wav',
+        totalDurationSeconds: voiceBundle.totalDurationSeconds,
+        sections: motionCanvasBundle.scenes.map((scene, sectionIndex) => {
+          const voiceSection = voiceBundle.sections[sectionIndex]!;
+          const timingEvents = scene.timingEvents!;
+          const plannedDurationSeconds = timingEvents.reduce(
+            (total, event) => total + event.plannedDurationSeconds,
+            0,
+          );
+          return {
+            outlineSectionId: scene.outlineSectionId,
+            sceneId: scene.id,
+            filePath: scene.filePath,
+            plannedDurationSeconds,
+            synchronizedDurationSeconds: voiceSection.durationSeconds,
+            driftSeconds:
+              voiceSection.durationSeconds - plannedDurationSeconds,
+            beats: timingEvents.map((event, beatIndex) => {
+              const voiceBeat = voiceSection.beats[beatIndex]!;
+              return {
+                beatId: event.beatId,
+                startEvent: event.startEvent,
+                endEvent: event.endEvent,
+                plannedDurationSeconds: event.plannedDurationSeconds,
+                voiceStartSeconds: voiceBeat.startSeconds,
+                voiceEndSeconds: voiceBeat.endSeconds,
+                synchronizedDurationSeconds:
+                  voiceBeat.endSeconds - voiceBeat.startSeconds,
+              };
+            }),
+          };
+        }),
+        validation: {
+          validatedAt: new Date().toISOString(),
+          sourceHash: 'c'.repeat(64),
+          motionCanvasVersion: '3.17.2',
+          audioDurationSeconds: voiceBundle.totalDurationSeconds,
+        },
+      };
+    },
+    async readFiles(_projectId, bundle) {
+      return [
+        {path: 'src/project.ts', source: 'makeProject({audio: narration})'},
+        ...bundle.sections.map((section) => ({
+          path: section.filePath,
+          source: 'scene source',
+        })),
+      ];
+    },
+    async readAudio() {
+      return Buffer.from('RIFF-test-audio');
+    },
+  };
+  const animationSyncPreviewService: AnimationSyncPreviewService = {
+    async start(_projectId, bundle) {
+      animationSyncPreviewCalls += 1;
+      return {
+        generationId: bundle.generation.generationId,
+        url: `http://127.0.0.1:9000/?generation=${bundle.generation.generationId}`,
+      };
+    },
+    async close() {},
+  };
   const {baseUrl} = await startTestApp(context, {
     outlineGenerator,
     voiceVisualGenerator,
     motionCanvasGenerator,
     elevenLabsVoiceService,
+    animationSyncWorkspace,
+    animationSyncPreviewService,
   });
   const {project} = await createProject(baseUrl);
 
@@ -856,15 +953,101 @@ export default makeScene2D(function* (view) {
   assert.equal(voiceApproveResponse.status, 200);
   assert.equal(voiceApproveBody.project.revision, 10);
   assert.equal(voiceApproveBody.project.voiceBundle.status, 'approved');
+  assert.equal(voiceApproveBody.project.currentStep, 'sync');
 
-  const approvedPlan = voiceApproveBody.project.voiceVisualPlan;
+  const syncGenerationId = randomUUID();
+  const syncGenerateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/sync/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"10"',
+      },
+      body: JSON.stringify({generationId: syncGenerationId}),
+    },
+  );
+  const syncGenerateBody = await syncGenerateResponse.json();
+  assert.equal(syncGenerateResponse.status, 200);
+  assert.equal(syncGenerateBody.project.revision, 11);
+  assert.equal(
+    syncGenerateBody.project.animationSyncBundle.status,
+    'draft',
+  );
+  assert.equal(
+    syncGenerateBody.project.animationSyncBundle.sections.length,
+    syncGenerateBody.project.outline.sections.length,
+  );
+  assert.equal(animationSyncCalls, 1);
+
+  const repeatedSyncResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/sync/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"10"',
+      },
+      body: JSON.stringify({generationId: syncGenerationId}),
+    },
+  );
+  assert.equal(repeatedSyncResponse.status, 200);
+  assert.equal((await repeatedSyncResponse.json()).project.revision, 11);
+  assert.equal(animationSyncCalls, 1);
+
+  const syncFilesResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/sync/files`,
+  );
+  const syncFilesBody = await syncFilesResponse.json();
+  assert.equal(syncFilesResponse.status, 200);
+  assert.equal(syncFilesBody.files.length, 3);
+  assert.match(syncFilesBody.serveCommand, /sync:serve/);
+
+  const syncAudioResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/sync/audio?generation=${syncGenerationId}`,
+  );
+  assert.equal(syncAudioResponse.status, 200);
+  assert.equal(syncAudioResponse.headers.get('content-type'), 'audio/wav');
+  assert.match(
+    Buffer.from(await syncAudioResponse.arrayBuffer()).toString(),
+    /^RIFF/,
+  );
+
+  const syncPreviewResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/sync/preview?generation=${syncGenerationId}`,
+  );
+  const syncPreviewBody = await syncPreviewResponse.json();
+  assert.equal(syncPreviewResponse.status, 200);
+  assert.equal(
+    syncPreviewBody.preview.generationId,
+    syncGenerationId,
+  );
+  assert.match(syncPreviewBody.preview.url, /^http:\/\/127\.0\.0\.1:/);
+  assert.equal(animationSyncPreviewCalls, 1);
+
+  const syncApproveResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/sync/approve`,
+    {
+      method: 'POST',
+      headers: {'If-Match': '"11"'},
+    },
+  );
+  const syncApproveBody = await syncApproveResponse.json();
+  assert.equal(syncApproveResponse.status, 200);
+  assert.equal(syncApproveBody.project.revision, 12);
+  assert.equal(
+    syncApproveBody.project.animationSyncBundle.status,
+    'approved',
+  );
+
+  const approvedPlan = syncApproveBody.project.voiceVisualPlan;
   const visualOnlyUpdateResponse = await fetch(
     `${baseUrl}/api/projects/${project.id}/voice-visual`,
     {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'If-Match': '"10"',
+        'If-Match': '"12"',
       },
       body: JSON.stringify({
         voiceDirection: approvedPlan.voiceDirection,
@@ -894,10 +1077,14 @@ export default makeScene2D(function* (view) {
   );
   const visualOnlyUpdateBody = await visualOnlyUpdateResponse.json();
   assert.equal(visualOnlyUpdateResponse.status, 200);
-  assert.equal(visualOnlyUpdateBody.project.revision, 11);
+  assert.equal(visualOnlyUpdateBody.project.revision, 13);
   assert.equal(visualOnlyUpdateBody.project.voiceBundle.status, 'approved');
   assert.equal(
     visualOnlyUpdateBody.project.motionCanvasBundle.status,
+    'draft',
+  );
+  assert.equal(
+    visualOnlyUpdateBody.project.animationSyncBundle.status,
     'draft',
   );
 
@@ -908,7 +1095,7 @@ export default makeScene2D(function* (view) {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'If-Match': '"11"',
+        'If-Match': '"13"',
       },
       body: JSON.stringify({
         voiceDirection: visualPlan.voiceDirection,
@@ -937,7 +1124,7 @@ export default makeScene2D(function* (view) {
   );
   const voiceTextUpdateBody = await voiceTextUpdateResponse.json();
   assert.equal(voiceTextUpdateResponse.status, 200);
-  assert.equal(voiceTextUpdateBody.project.revision, 12);
+  assert.equal(voiceTextUpdateBody.project.revision, 14);
   assert.equal(voiceTextUpdateBody.project.voiceBundle.status, 'draft');
 
   const outline = voiceTextUpdateBody.project.outline;
@@ -947,7 +1134,7 @@ export default makeScene2D(function* (view) {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'If-Match': '"12"',
+        'If-Match': '"14"',
       },
       body: JSON.stringify({
         brief: outline.brief,
@@ -969,12 +1156,16 @@ export default makeScene2D(function* (view) {
     'draft',
   );
   assert.equal(outlineUpdateBody.project.voiceBundle.status, 'draft');
+  assert.equal(
+    outlineUpdateBody.project.animationSyncBundle.status,
+    'draft',
+  );
 
   const outdatedApproveResponse = await fetch(
     `${baseUrl}/api/projects/${project.id}/voice-visual/approve`,
     {
       method: 'POST',
-      headers: {'If-Match': '"13"'},
+      headers: {'If-Match': '"15"'},
     },
   );
   const outdatedApproveBody = await outdatedApproveResponse.json();
@@ -988,7 +1179,7 @@ export default makeScene2D(function* (view) {
     `${baseUrl}/api/projects/${project.id}/motion-canvas/approve`,
     {
       method: 'POST',
-      headers: {'If-Match': '"13"'},
+      headers: {'If-Match': '"15"'},
     },
   );
   const outdatedMotionApproveBody =
@@ -1169,7 +1360,7 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
   const listBody = await listResponse.json();
 
   assert.equal(listBody.projects.length, 1);
-  assert.equal(listBody.projects[0].version, 6);
+  assert.equal(listBody.projects[0].version, currentProjectVersion);
   assert.equal(listBody.projects[0].revision, 1);
   assert.equal(listBody.issues.length, 2);
   assert.deepEqual(
@@ -1185,7 +1376,7 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
   );
   const updateBody = await updateResponse.json();
   assert.equal(updateResponse.status, 200);
-  assert.equal(updateBody.project.version, 6);
+  assert.equal(updateBody.project.version, currentProjectVersion);
   assert.equal(updateBody.project.revision, 2);
 
   const migratedOnDisk = JSON.parse(
@@ -1194,6 +1385,6 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
       'utf8',
     ),
   );
-  assert.equal(migratedOnDisk.version, 6);
+  assert.equal(migratedOnDisk.version, currentProjectVersion);
   assert.equal(migratedOnDisk.revision, 2);
 });

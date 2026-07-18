@@ -86,6 +86,43 @@ project; thay đổi mạch giảng hoặc kế hoạch voice–visual làm scen
 trở thành dữ liệu cũ và buộc sinh lại. Người dùng vẫn là người chốt scene trước
 bước sản xuất tiếp theo.
 
+## Đồng bộ animation theo voice
+
+Bước đồng bộ hiện hành là một phép biến đổi cục bộ, xác định và không gọi thêm
+AI hoặc ElevenLabs. Đầu vào bắt buộc là Motion Canvas và voice cùng tham chiếu
+kế hoạch voice–visual hiện hành, đều đã được người dùng chốt. Mỗi scene mới có
+timing contract v1 với đúng cặp event `beat:<beat-id>:start/end`; alignment voice
+thật thay các mốc dự kiến trong file `.meta`, còn source scene tiếp tục lấy thời
+lượng bằng `useDuration`.
+
+Trong source, mốc start được đăng ký bởi `waitUntil(start)` và mốc end bởi
+`useDuration(end)`; không đăng ký lại end bằng `waitUntil`. Scene lưu
+`beatEndTime` và chờ phần thời gian còn lại sau visual, bảo đảm duration runtime
+khớp narration trong sai số một frame. JSX key sinh từ mảng phải có prefix tĩnh
+riêng. Khi đồng bộ generation timing v1 đời đầu, workspace sync chuẩn hóa các lỗi
+tương thích này trên bản sao để player không gặp duplicate event/node key hoặc
+kết thúc beat sớm, còn source Motion Canvas gốc vẫn bất biến.
+
+Mỗi generation đồng bộ được lưu bất biến tại
+`projects/<project-id>/sync/generations/<generation-id>/`. Workspace chứa bản
+sao scene, metadata timing thật, track `audio/narration.wav` ghép bằng FFmpeg và
+`project.ts` đã gắn audio. Trước khi được đưa ra review, workspace phải biên dịch
+TypeScript thành công và thời lượng audio phải khớp tổng timing voice trong sai
+số tối đa một frame. Scene và voice nguồn không bị sửa hoặc ghi đè.
+
+Review đồng bộ lấy player animation + narration làm bề mặt chính, không lấy
+timeline làm đại diện cho trải nghiệm video. Backend dựng một Motion Canvas
+player chỉ-đọc, cục bộ và tạm thời cho đúng generation; UI nhúng player này để
+play/pause, tua, mute và xem toàn màn hình. Timeline section/beat vẫn còn nhưng
+được thu gọn dưới dạng dữ liệu chẩn đoán. Nút chốt chỉ mở sau khi đúng iframe,
+origin và generation báo render sẵn sàng, rồi người dùng thực sự bấm phát. Player
+không có editor plugin nên không thể ghi ngược vào workspace bất biến.
+
+Bundle đồng bộ lưu revision của cả hai nguồn cùng mapping section/scene/beat.
+Nếu scene, event hoặc timing voice thay đổi, bundle tự trở thành draft cũ và
+không thể chốt cho đến khi đồng bộ lại. Workspace legacy chưa có timing contract
+v1 phải sinh lại Motion Canvas; hệ thống không suy đoán timing từ code cũ.
+
 ## Scene và component
 
 Mỗi video có scene và component riêng để có thể tùy biến theo cách giải thích của chủ đề đó. Không nên ép mọi video phụ thuộc vào một thư viện component dùng chung quá sớm.

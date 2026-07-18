@@ -9,7 +9,9 @@ import type {
 } from '../shared/elevenLabs.ts';
 import type {
   ApiErrorPayload,
+  AnimationSyncBundle,
   CreateTopicProject,
+  GenerateAnimationSync,
   GenerateMotionCanvas,
   GenerateTeachingOutline,
   GenerateVoice,
@@ -381,6 +383,93 @@ export async function approveVoice(
   const payload = await readPayload<{project: TopicProject}>(response);
   assertSuccessful(response, payload);
   return getProjectPayload(payload);
+}
+
+export async function generateAnimationSync(
+  projectId: string,
+  request: GenerateAnimationSync,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/sync/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function getAnimationSyncFiles(projectId: string) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/sync/files`,
+  );
+  const payload = await readPayload<{
+    bundle: AnimationSyncBundle;
+    files: Array<{path: string; source: string}>;
+    serveCommand: string;
+  }>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('files' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi workspace đồng bộ không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload;
+}
+
+export async function getAnimationSyncPreview(
+  projectId: string,
+  generationId: string,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/sync/preview?generation=${encodeURIComponent(generationId)}`,
+  );
+  const payload = await readPayload<{
+    preview: {generationId: string; url: string};
+  }>(response);
+  assertSuccessful(response, payload);
+  if (
+    !payload ||
+    !('preview' in payload) ||
+    typeof payload.preview?.url !== 'string'
+  ) {
+    throw new ApiRequestError(
+      'Phản hồi bản nháp đồng bộ không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.preview;
+}
+
+export async function approveAnimationSync(
+  projectId: string,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/sync/approve`,
+    {
+      method: 'POST',
+      headers: {'If-Match': `"${expectedRevision}"`},
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export function animationSyncAudioUrl(
+  projectId: string,
+  generationId: string,
+) {
+  return `/api/projects/${encodeURIComponent(projectId)}/sync/audio?generation=${encodeURIComponent(generationId)}`;
 }
 
 export function voiceAudioUrl(

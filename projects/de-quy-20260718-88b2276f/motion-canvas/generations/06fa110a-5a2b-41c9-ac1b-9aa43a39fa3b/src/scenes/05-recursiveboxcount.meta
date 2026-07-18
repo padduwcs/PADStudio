@@ -1,0 +1,38 @@
+{
+  "version": 0,
+  "timeEvents": [
+    {
+      "name": "beat:135f098a-4806-4831-99ef-9e54a84c9628:start",
+      "targetTime": 0
+    },
+    {
+      "name": "beat:135f098a-4806-4831-99ef-9e54a84c9628:end",
+      "targetTime": 12
+    },
+    {
+      "name": "beat:9968e088-be00-45af-b49a-88aa9d6ed085:start",
+      "targetTime": 12
+    },
+    {
+      "name": "beat:9968e088-be00-45af-b49a-88aa9d6ed085:end",
+      "targetTime": 24
+    },
+    {
+      "name": "beat:b43015b8-712a-4c73-97cb-ebd0771ad96b:start",
+      "targetTime": 24
+    },
+    {
+      "name": "beat:b43015b8-712a-4c73-97cb-ebd0771ad96b:end",
+      "targetTime": 37
+    },
+    {
+      "name": "beat:a745c2aa-2300-4e42-b313-6f5a8bde6eaa:start",
+      "targetTime": 37
+    },
+    {
+      "name": "beat:a745c2aa-2300-4e42-b313-6f5a8bde6eaa:end",
+      "targetTime": 50
+    }
+  ],
+  "seed": 633134366
+}

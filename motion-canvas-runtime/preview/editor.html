@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <link rel="stylesheet" href="{{style}}" />
+    <title>PAD Studio · Bản nháp đồng bộ</title>
+  </head>
+  <body>
+    <main id="root" aria-live="polite"></main>
+    <script>
+      (() => {
+        const report = (value) => {
+          const message =
+            value instanceof Error
+              ? value.message
+              : typeof value === 'string'
+                ? value
+                : 'Không thể khởi động player đồng bộ.';
+          const root = document.querySelector('#root');
+          if (root && !root.hasChildNodes()) {
+            root.dataset.bootstrapError = 'true';
+            const panel = document.createElement('section');
+            panel.className = 'preview-bootstrap-error';
+            const title = document.createElement('strong');
+            title.textContent = 'Không thể tải bản nháp';
+            const detail = document.createElement('p');
+            detail.textContent = message;
+            panel.append(title, detail);
+            root.replaceChildren(panel);
+          }
+          const generationId =
+            new URLSearchParams(window.location.search).get('generation') ?? '';
+          window.parent.postMessage(
+            {
+              source: 'pad-studio-sync-preview',
+              type: 'error',
+              generationId,
+              message,
+            },
+            '*',
+          );
+        };
+        window.addEventListener('error', (event) =>
+          report(event.error ?? event.message),
+        );
+        window.addEventListener('unhandledrejection', (event) =>
+          report(event.reason),
+        );
+      })();
+    </script>
+    <script type="module" src="{{source}}"></script>
+  </body>
+</html>

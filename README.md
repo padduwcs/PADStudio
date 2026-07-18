@@ -58,6 +58,18 @@ Vertical slice đầu tiên đã có thể chạy:
   và timing từng beat được lưu vào generation bất biến để review.
 - Phát lại từng section trên UI, hiển thị thời lượng/credit ghi nhận và yêu cầu
   người dùng chốt voice trước khi sang bước đồng bộ.
+- Ánh xạ timing thật của từng beat voice vào Motion Canvas time-event, ghép các
+  section audio thành một track narration WAV và biên dịch workspace đồng bộ
+  trước khi cho phép review/chốt.
+- Nhúng player chỉ-đọc để xem đúng animation và narration đã ghép chạy cùng
+  nhau ngay trong bước đồng bộ; timeline chi tiết được thu gọn thành thông tin
+  chẩn đoán phụ.
+- Chỉ cho phép chốt bản đồng bộ sau khi player đã tải thành công và người dùng
+  thực sự bấm phát generation hiện hành; đồng thời vẫn cung cấp lệnh mở preview
+  độc lập khi cần kiểm tra sâu.
+- Lưu mỗi lần đồng bộ vào
+  `projects/<project-id>/sync/generations/<generation-id>/`; thay đổi scene hoặc
+  voice nguồn tự động làm bản đồng bộ trở thành bản nháp cũ.
 - Hiển thị lượng token của lần sinh gần nhất để người dùng theo dõi.
 - Liệt kê, mở lại, chỉnh sửa và xóa project cục bộ.
 - Giao diện responsive cho desktop và mobile.
@@ -74,7 +86,7 @@ version control nội dung từng video. Chỉ thư mục render sinh ra tại
 
 Mỗi project có hai chỉ số độc lập:
 
-- `version` là phiên bản cấu trúc file; dữ liệu v1 đến v5 được đọc và nâng cấp
+- `version` là phiên bản cấu trúc file; dữ liệu v1 đến v6 được đọc và nâng cấp
   lên cấu trúc hiện tại ở lần ghi tiếp theo.
 - `revision` tăng sau mỗi thay đổi nội dung và được dùng với `If-Match` để
   chặn hai thao tác ghi đè lẫn nhau.
@@ -130,6 +142,15 @@ audio. Workspace cũ không có contract này vẫn được mở và dùng đ�
 nhưng UI đánh dấu `Legacy · cần sinh lại trước sync`; bước đồng bộ sau có thể
 phân biệt rõ thay vì âm thầm đoán timing.
 
+Mỗi beat đăng ký mốc đầu bằng `waitUntil(start)` và mốc cuối bằng
+`useDuration(end)` đúng một lần. Không gọi thêm `waitUntil(end)`, vì API này cũng
+đăng ký time-event và sẽ tạo duplicate event trong Motion Canvas. Sau visual,
+scene dùng `waitFor` với phần thời gian còn lại tới `beatEndTime`, để playhead
+luôn chạm đúng mốc end kể cả animation ngắn hơn beat. Generator từ chối JSX key
+chỉ dựa vào index; workspace sync vẫn chuẩn hóa key, duplicate `waitUntil(end)`
+và phần bù cuối beat của những generation timing v1 đời đầu khi sao chép, nên
+không sửa source bất biến và không buộc tạo lại voice.
+
 Voice là nhánh downstream độc lập với code Motion Canvas: đổi lời đọc làm voice
 và scene trở thành cũ, nhưng chỉ chỉnh animation không buộc tạo lại audio.
 ElevenLabs được gọi tuần tự theo từng section bằng
@@ -142,9 +163,30 @@ Request có `generationId` để retry cùng thao tác không tiêu credit lần
 vòng đời server; chỉ generation hoàn tất mới được trỏ từ `project.json` và xuất
 hiện trong danh sách “Đã dùng thành công”.
 
+Bước đồng bộ không gọi AI hoặc ElevenLabs lần nữa. Backend dùng alignment đã lưu
+để thay `targetTime` của các event `beat:<beat-id>:start/end`, sao chép scene vào
+workspace bất biến riêng và ghép audio section bằng FFmpeg. Mỗi input được trim
+theo thời lượng alignment trước khi concat thành `audio/narration.wav` 48 kHz
+stereo, tránh padding của codec làm timeline trôi. Workspace chỉ được ghi nhận
+sau khi TypeScript biên dịch thành công và thời lượng WAV khớp tổng timing voice
+trong sai số tối đa một frame.
+
+Khi mở bước 06, backend khởi động một Motion Canvas player chỉ-đọc trên loopback
+cho generation hiện hành. Player phát trực tiếp scene đã đồng bộ cùng
+`audio/narration.wav`, có play/pause, tua, mute và toàn màn hình. PAD Studio xác
+minh đúng origin, iframe và generation trước khi nhận trạng thái “đã tải/đã
+phát”; vì vậy preview cũ không thể vô tình mở khóa nút chốt của generation mới.
+Preview là runtime tạm thời, không sửa file `.meta` hay source trong workspace.
+
+Project cũ vẫn mở được, nhưng generation Motion Canvas chưa có
+`timingContractVersion: 1` phải được sinh lại trước khi đồng bộ. PAD Studio không
+đoán timing từ source legacy vì có thể làm animation chạy sai ý.
+
 ## Chạy ở môi trường phát triển
 
-Yêu cầu Node.js 24.12 trở lên và Codex CLI có trong `PATH`.
+Yêu cầu Node.js 24.12 trở lên, Codex CLI và FFmpeg có trong `PATH`.
+Nếu FFmpeg không nằm trong `PATH`, cấu hình đường dẫn executable bằng
+`FFMPEG_PATH` trong `.env`.
 
 ```bash
 npm install
@@ -239,6 +281,24 @@ Kiểm tra runtime trên chính workspace đã sinh bằng:
 npm run validate:motion -- --project <project-id>
 ```
 
+Sau khi tạo bản đồng bộ ở bước 06, mở workspace có narration và timing thật bằng:
+
+```bash
+npm run sync:serve -- --project <project-id>
+```
+
+Kiểm tra runtime trực tiếp trên workspace đồng bộ bằng:
+
+```bash
+npm run validate:motion -- --project <project-id> --stage sync
+```
+
+Để smoke-test cả player trong Chromium/Chrome headless:
+
+```bash
+npm run validate:sync -- --browser "<đường-dẫn-tới-chrome-hoặc-chromium>"
+```
+
 Mặc định bước Motion Canvas dùng model mặc định trong Codex catalog và reasoning
 `medium`. Deployment có thể yêu cầu model hoặc effort cụ thể bằng
 `PAD_MOTION_CANVAS_MODEL` và `PAD_MOTION_CANVAS_REASONING_EFFORT`; generator sẽ
@@ -253,9 +313,10 @@ npm run build
 npm start
 ```
 
-`npm run validate` kiểm tra schema/API/UI, build PAD Studio và khởi động runtime
-Motion Canvas tạm để transform một project cùng các scene mẫu. Tham số
-`--project` ở trên dùng cùng phép kiểm tra đó cho workspace thật.
+`npm run validate` kiểm tra schema/API/UI, build PAD Studio, ghép một track sync
+mẫu bằng FFmpeg và khởi động runtime Motion Canvas tạm để transform cả workspace
+scene lẫn workspace đồng bộ có narration. Tham số `--project` ở trên dùng cùng
+phép kiểm tra đó cho workspace thật.
 
 Sau khi build, backend phục vụ cả API và frontend tại
 `http://127.0.0.1:4174`.

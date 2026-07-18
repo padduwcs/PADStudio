@@ -1,4 +1,5 @@
 import motionCanvasModule from '@motion-canvas/vite-plugin';
+import {fileURLToPath} from 'node:url';
 
 const motionCanvas =
   typeof motionCanvasModule === 'function'
@@ -13,6 +14,9 @@ const motionCanvas =
 // Windows separators would otherwise be interpreted as a dynamic pattern.
 const project = process.env.PAD_MOTION_PROJECT_FILE?.replaceAll('\\', '/');
 const output = process.env.PAD_MOTION_OUTPUT_DIRECTORY;
+const previewEditor = fileURLToPath(
+  new URL('./preview/main.js', import.meta.url),
+).replaceAll('\\', '/');
 
 if (!project || !output) {
   throw new Error(
@@ -25,6 +29,9 @@ export default {
     motionCanvas({
       project,
       output,
+      ...(process.env.PAD_MOTION_PREVIEW_ONLY === 'true'
+        ? {editor: previewEditor}
+        : {}),
       buildForEditor:
         process.env.PAD_MOTION_BUILD_FOR_EDITOR === 'true',
     }),

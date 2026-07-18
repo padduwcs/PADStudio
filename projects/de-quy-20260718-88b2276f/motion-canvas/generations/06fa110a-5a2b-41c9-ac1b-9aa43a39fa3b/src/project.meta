@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "shared": {
+    "background": "rgb(17,31,27)",
+    "range": [
+      0,
+      null
+    ],
+    "size": {
+      "x": 1080,
+      "y": 1920
+    },
+    "audioOffset": 0
+  },
+  "preview": {
+    "fps": 30,
+    "resolutionScale": 0.5
+  },
+  "rendering": {
+    "fps": 30,
+    "resolutionScale": 1,
+    "colorSpace": "srgb",
+    "fileType": "image/png",
+    "quality": 1
+  }
+}

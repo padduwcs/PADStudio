@@ -27,7 +27,7 @@ export default makeScene2D(function* (view) {
 
 function timedSceneSource(beatIds: string[]) {
   return `import {makeScene2D, Rect} from '@motion-canvas/2d';
-import {useDuration, waitFor, waitUntil} from '@motion-canvas/core';
+import {useDuration, useThread, waitFor, waitUntil} from '@motion-canvas/core';
 
 export default makeScene2D(function* (view) {
   view.add(<Rect width={640} height={120} radius={24} fill={'#dbe9e2'} />);
@@ -35,8 +35,9 @@ ${beatIds
   .map(
     (beatId, index) => `  yield* waitUntil('beat:${beatId}:start');
   const beatDuration${index} = useDuration('beat:${beatId}:end');
+  const beatEndTime${index} = useThread().time() + beatDuration${index};
   yield* waitFor(beatDuration${index});
-  yield* waitUntil('beat:${beatId}:end');`,
+  yield* waitFor(Math.max(0, beatEndTime${index} - useThread().time()));`,
   )
   .join('\n')}
 });
@@ -489,7 +490,30 @@ test('Motion Canvas source policy phân tích code thay vì nội dung text', ()
   );
 });
 
-test('Motion Canvas timing contract bắt buộc đúng thứ tự start/end của beat', () => {
+test('Motion Canvas source policy yêu cầu JSX key có prefix riêng', () => {
+  assert.throws(
+    () =>
+      validateMotionCanvasSceneSource(
+        sceneSource.replace(
+          '<Rect width={640}',
+          '<Rect key={String(0)} width={640}',
+        ),
+      ),
+    (error) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+  );
+  assert.doesNotThrow(() =>
+    validateMotionCanvasSceneSource(
+      sceneSource.replace(
+        '<Rect width={640}',
+        "<Rect key={'card-' + String(0)} width={640}",
+      ),
+    ),
+  );
+});
+
+test('Motion Canvas timing contract chỉ đăng ký start/end một lần', () => {
   const beatId = randomUUID();
   const validSource = timedSceneSource([beatId]);
   assert.doesNotThrow(() =>
@@ -499,6 +523,19 @@ test('Motion Canvas timing contract bắt buộc đúng thứ tự start/end c�
     () =>
       validateMotionCanvasTimingContract(
         validSource.replace(`beat:${beatId}:end`, `beat:${beatId}:start`),
+        [{id: beatId}],
+      ),
+    (error) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_TIMING_CONTRACT',
+  );
+  assert.throws(
+    () =>
+      validateMotionCanvasTimingContract(
+        validSource.replace(
+          '});',
+          `  yield* waitUntil('beat:${beatId}:end');\n});`,
+        ),
         [{id: beatId}],
       ),
     (error) =>

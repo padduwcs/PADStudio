@@ -184,6 +184,7 @@ function buildPrompt(
     'Import all, chain, sequence, createRef, createSignal, tween, waitFor, waitUntil, useDuration và easing chỉ từ @motion-canvas/core.',
     'Dùng đúng tên export createRef, createSignal và easeInOutCubic; không import ref, signal hoặc easing.',
     'Không dùng JSX.Element hoặc namespace JSX trong type annotation. JSX key nếu có phải là string.',
+    'Mỗi vị trí JSX key sinh từ mảng phải có prefix chuỗi tĩnh, mô tả và khác các vị trí key khác, ví dụ key={`box-${index}`}; không dùng key={String(index)}.',
     'Không dùng scaleX/scaleY; dùng scale([x, y], duration) hoặc width/height với duration.',
     'Không yield* view.add/node.add. Mọi giá trị truyền vào all/chain hoặc yield* phải là animation generator, thường là signal(value, duration).',
     'Txt.text phải là string; chuyển số bằng String(value).',
@@ -191,7 +192,8 @@ function buildPrompt(
     'Scene phải tự chứa toàn bộ node và animation, chạy độc lập và không import file tương đối.',
     'Thiết kế cho khung dọc 1080x1920, ưu tiên hình khối, vị trí, màu và chuyển động để giải thích bản chất.',
     'Không hiển thị source code. Không dùng caption để gánh nội dung chính; chữ ngắn, số và ký hiệu chỉ được dùng khi bản thân visual cần chúng.',
-    'Mỗi beat phải gọi đúng một lần yield* waitUntil(startEvent), sau đó lấy const beatDuration = useDuration(endEvent), chạy thay đổi visual tương ứng theo tỷ lệ beatDuration, rồi gọi đúng một lần yield* waitUntil(endEvent).',
+    'Mỗi beat phải gọi đúng một lần yield* waitUntil(startEvent), sau đó khai báo const beatDuration = useDuration(endEvent) và const beatEndTime = useThread().time() + beatDuration. Chạy visual theo tỷ lệ beatDuration rồi kết thúc beat bằng yield* waitFor(Math.max(0, beatEndTime - useThread().time())). Dùng tên duration/endTime riêng cho từng beat nếu không tạo block scope.',
+    'Không gọi waitUntil(endEvent), vì waitUntil cũng đăng ký event và sẽ gây trùng với useDuration. Import useThread và waitFor từ @motion-canvas/core.',
     'Không hardcode waitFor để quyết định ranh giới beat. Time-event là hợp đồng bắt buộc để audio có thể điều khiển timeline ở bước đồng bộ.',
     'Giữ source gọn, số node hợp lý, tái sử dụng reference và tránh hiệu ứng trang trí không truyền đạt thông tin.',
     'Tuân theo visualDirection để các scene độc lập vẫn có cùng ngôn ngữ hình ảnh.',
@@ -211,9 +213,11 @@ function buildRepairPrompt(
     'Giữ nguyên ý nghĩa visual, thứ tự beat và tổng timing. Chỉ thay đổi những phần cần để sửa lỗi và làm API đúng.',
     'Trả object gồm name và source; source là mã thuần, không dùng Markdown fence.',
     'Quy tắc import: visual node và makeScene2D từ @motion-canvas/2d; flow, ref, signal, tween, waitFor, waitUntil, useDuration và easing từ @motion-canvas/core.',
-    'Giữ nguyên đầy đủ các lệnh waitUntil(startEvent/endEvent) và useDuration(endEvent) của từng beat trong context; đây là hợp đồng timing bắt buộc.',
+    'Giữ nguyên đúng waitUntil(startEvent) và useDuration(endEvent) của từng beat trong context; không thêm waitUntil(endEvent), vì đây sẽ là đăng ký event trùng.',
+    'Ngay sau useDuration, lưu beatEndTime = useThread().time() + beatDuration; sau visual, gọi yield* waitFor(Math.max(0, beatEndTime - useThread().time())) để beat luôn kết thúc đúng mốc dù visual ngắn hơn.',
     'Tên export phải dùng chính xác: createRef, createSignal, easeInOutCubic; không import ref, signal hoặc easing.',
     'Không dùng JSX.Element, scaleX/scaleY, JSX key dạng number, hoặc yield* một node/setter không có duration.',
+    'Mỗi JSX key sinh từ mảng phải có prefix chuỗi tĩnh riêng và không trùng prefix của vị trí key khác; không dùng key={String(index)}.',
     'Giá trị flex dùng kebab-case như space-between, space-around hoặc space-evenly; không dùng spaceBetween.',
     JSON.stringify({
       context: generationPayload(request, sectionIndex),
@@ -282,6 +286,7 @@ export function validateMotionCanvasSceneSource(source: string) {
     ['Bun', 'runtime API'],
   ]);
   const declaredIdentifiers = new Set<string>();
+  const jsxKeyPrefixes = new Set<string>();
   let hasDefaultSceneExport = false;
 
   function collectBindingName(name: ts.BindingName) {
@@ -356,6 +361,27 @@ export function validateMotionCanvasSceneSource(source: string) {
         'CODEX_MOTION_CANVAS_UNSAFE_SOURCE',
         'Scene Motion Canvas dùng import assignment ngoài phạm vi cho phép.',
       );
+    }
+
+    if (
+      ts.isJsxAttribute(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === 'key'
+    ) {
+      const initializer = node.initializer;
+      const initializerSource = initializer?.getText(sourceFile) ?? '';
+      const prefix = initializer && ts.isStringLiteral(initializer)
+        ? initializer.text
+        : /['"`]([^'"`${}]*[A-Za-z][^'"`${}]*)/.exec(
+            initializerSource,
+          )?.[1] ?? '';
+      if (!prefix || jsxKeyPrefixes.has(prefix)) {
+        throw new MotionCanvasGenerationError(
+          'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+          'JSX key sinh từ mảng phải có prefix chuỗi tĩnh riêng, không chỉ dùng index và không trùng vị trí khác.',
+        );
+      }
+      jsxKeyPrefixes.add(prefix);
     }
 
     if (
@@ -436,10 +462,9 @@ export function validateMotionCanvasTimingContract(
   }
   visit(sourceFile);
 
-  const expectedWaitEvents = beats.flatMap((beat) => [
-    `beat:${beat.id}:start`,
-    `beat:${beat.id}:end`,
-  ]);
+  const expectedWaitEvents = beats.map(
+    (beat) => `beat:${beat.id}:start`,
+  );
   const expectedDurationEvents = beats.map(
     (beat) => `beat:${beat.id}:end`,
   );
@@ -451,10 +476,35 @@ export function validateMotionCanvasTimingContract(
     durationEvents.every(
       (event, index) => event === expectedDurationEvents[index],
     );
-  if (!exactWaitContract || !exactDurationContract) {
+  const escapePattern = (value: string) =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const exactBeatEndContract = beats.every((beat) => {
+    const endEvent = escapePattern(`beat:${beat.id}:end`);
+    const durationDeclaration = new RegExp(
+      `\\bconst\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*` +
+        `useDuration\\(\\s*['"]${endEvent}['"]\\s*\\)\\s*;`,
+    ).exec(source);
+    const durationName = durationDeclaration?.[1];
+    if (!durationName) return false;
+    const endDeclaration = new RegExp(
+      `\\bconst\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*` +
+        `useThread\\(\\)\\.time\\(\\)\\s*\\+\\s*${durationName}\\s*;`,
+    ).exec(source);
+    const endName = endDeclaration?.[1];
+    if (!endName) return false;
+    return new RegExp(
+      `yield\\s*\\*\\s*waitFor\\(\\s*Math\\.max\\(\\s*0\\s*,\\s*` +
+        `${endName}\\s*-\\s*useThread\\(\\)\\.time\\(\\)\\s*\\)\\s*\\)`,
+    ).test(source);
+  });
+  if (
+    !exactWaitContract ||
+    !exactDurationContract ||
+    !exactBeatEndContract
+  ) {
     throw new MotionCanvasGenerationError(
       'CODEX_MOTION_CANVAS_INVALID_TIMING_CONTRACT',
-      'Scene không giữ đúng time-event start/end và useDuration của từng beat.',
+      'Scene không giữ đúng start, duration/endTime và phép bù thời gian cuối của từng beat.',
     );
   }
 }

@@ -8,13 +8,15 @@ export const projectStepValues = [
   'voiceVisual',
   'motionCanvas',
   'voice',
+  'sync',
 ] as const;
 export const projectStatusValues = ['draft'] as const;
 export const outlineStatusValues = ['draft', 'approved'] as const;
 export const voiceVisualStatusValues = ['draft', 'approved'] as const;
 export const motionCanvasStatusValues = ['draft', 'approved'] as const;
 export const voiceStatusValues = ['draft', 'approved'] as const;
-export const currentProjectVersion = 6 as const;
+export const animationSyncStatusValues = ['draft', 'approved'] as const;
+export const currentProjectVersion = 7 as const;
 
 export const ProjectStepSchema = z.enum(projectStepValues);
 export type ProjectStep = z.infer<typeof ProjectStepSchema>;
@@ -404,6 +406,126 @@ export const VoiceBundleSchema = z
 
 export type VoiceBundle = z.infer<typeof VoiceBundleSchema>;
 
+export const AnimationSyncBeatSchema = z
+  .object({
+    beatId: z.string().uuid(),
+    startEvent: z.string().regex(/^beat:[0-9a-f-]{36}:start$/),
+    endEvent: z.string().regex(/^beat:[0-9a-f-]{36}:end$/),
+    plannedDurationSeconds: z.number().int().min(4).max(45),
+    voiceStartSeconds: z.number().nonnegative(),
+    voiceEndSeconds: z.number().positive(),
+    synchronizedDurationSeconds: z.number().positive(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.voiceEndSeconds >= value.voiceStartSeconds &&
+      Math.abs(
+        value.synchronizedDurationSeconds -
+          (value.voiceEndSeconds - value.voiceStartSeconds),
+      ) < 0.001,
+    'Timing đồng bộ của beat không hợp lệ.',
+  );
+
+export const AnimationSyncSectionSchema = z
+  .object({
+    outlineSectionId: z.string().uuid(),
+    sceneId: z.string().uuid(),
+    filePath: z
+      .string()
+      .regex(/^src\/scenes\/[a-z0-9][a-z0-9-]{0,80}\.tsx$/),
+    plannedDurationSeconds: z.number().positive(),
+    synchronizedDurationSeconds: z.number().positive(),
+    driftSeconds: z.number().finite(),
+    beats: z.array(AnimationSyncBeatSchema).min(1).max(8),
+  })
+  .strict()
+  .refine(
+    (value) => {
+      const plannedDuration = value.beats.reduce(
+        (total, beat) => total + beat.plannedDurationSeconds,
+        0,
+      );
+      const finalBeat = value.beats.at(-1);
+      const beatIds = new Set(value.beats.map((beat) => beat.beatId));
+      return (
+        beatIds.size === value.beats.length &&
+        Math.abs(value.plannedDurationSeconds - plannedDuration) < 0.001 &&
+        Math.abs(
+          value.driftSeconds -
+            (value.synchronizedDurationSeconds -
+              value.plannedDurationSeconds),
+        ) < 0.001 &&
+        finalBeat !== undefined &&
+        Math.abs(
+          finalBeat.voiceEndSeconds - value.synchronizedDurationSeconds,
+        ) < 0.001 &&
+        value.beats.every(
+          (beat, index) =>
+            index === 0 ||
+            beat.voiceStartSeconds >=
+              value.beats[index - 1]!.voiceEndSeconds - 0.001,
+        )
+      );
+    },
+    'Timing đồng bộ của section không hợp lệ.',
+  );
+
+export const AnimationSyncBundleSchema = z
+  .object({
+    status: z.enum(animationSyncStatusValues),
+    contentRevision: z.number().int().positive(),
+    sourceMotionCanvasContentRevision: z.number().int().positive(),
+    sourceVoiceContentRevision: z.number().int().positive(),
+    workspacePath: z
+      .string()
+      .regex(
+        /^sync\/generations\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+        'Đường dẫn workspace đồng bộ không hợp lệ.',
+      ),
+    projectFile: z.literal('src/project.ts'),
+    audioFile: z.literal('audio/narration.wav'),
+    totalDurationSeconds: z.number().positive(),
+    sections: z.array(AnimationSyncSectionSchema).min(2).max(10),
+    validation: z
+      .object({
+        validatedAt: z.string().datetime(),
+        sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+        motionCanvasVersion: z.string().min(1).max(40),
+        audioDurationSeconds: z.number().positive(),
+      })
+      .strict(),
+    generation: z
+      .object({
+        generationId: CreationIdSchema,
+        provider: z.literal('local'),
+        tool: z.literal('ffmpeg'),
+        generatedAt: z.string().datetime(),
+      })
+      .strict(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      Math.abs(
+        value.totalDurationSeconds -
+          value.sections.reduce(
+            (total, section) =>
+              total + section.synchronizedDurationSeconds,
+            0,
+          ),
+      ) < 0.001 &&
+      Math.abs(
+        value.validation.audioDurationSeconds -
+          value.totalDurationSeconds,
+      ) < 0.05,
+    'Tổng thời lượng workspace đồng bộ không hợp lệ.',
+  );
+
+export type AnimationSyncBundle = z.infer<
+  typeof AnimationSyncBundleSchema
+>;
+
 const topicProjectV1Schema = z
   .object({
     id: z.string(),
@@ -470,12 +592,27 @@ const topicProjectV5Schema = topicProjectV4Schema
   })
   .strict();
 
-export const TopicProjectSchema = topicProjectV5Schema
+const topicProjectV6Schema = topicProjectV5Schema
+  .omit({version: true, currentStep: true})
+  .extend({
+    version: z.literal(6),
+    currentStep: z.enum([
+      'topic',
+      'outline',
+      'voiceVisual',
+      'motionCanvas',
+      'voice',
+    ]),
+    voiceBundle: VoiceBundleSchema.nullable(),
+  })
+  .strict();
+
+export const TopicProjectSchema = topicProjectV6Schema
   .omit({version: true, currentStep: true})
   .extend({
     version: z.literal(currentProjectVersion),
     currentStep: ProjectStepSchema,
-    voiceBundle: VoiceBundleSchema.nullable(),
+    animationSyncBundle: AnimationSyncBundleSchema.nullable(),
   })
   .strict();
 
@@ -485,12 +622,22 @@ export function parseTopicProject(value: unknown): TopicProject {
   const currentProject = TopicProjectSchema.safeParse(value);
   if (currentProject.success) return currentProject.data;
 
+  const versionSixProject = topicProjectV6Schema.safeParse(value);
+  if (versionSixProject.success) {
+    return {
+      ...versionSixProject.data,
+      version: currentProjectVersion,
+      animationSyncBundle: null,
+    };
+  }
+
   const versionFiveProject = topicProjectV5Schema.safeParse(value);
   if (versionFiveProject.success) {
     return {
       ...versionFiveProject.data,
       version: currentProjectVersion,
       voiceBundle: null,
+      animationSyncBundle: null,
     };
   }
 
@@ -501,6 +648,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       version: currentProjectVersion,
       motionCanvasBundle: null,
       voiceBundle: null,
+      animationSyncBundle: null,
     };
   }
 
@@ -512,6 +660,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       voiceVisualPlan: null,
       motionCanvasBundle: null,
       voiceBundle: null,
+      animationSyncBundle: null,
     };
   }
 
@@ -524,6 +673,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       voiceVisualPlan: null,
       motionCanvasBundle: null,
       voiceBundle: null,
+      animationSyncBundle: null,
     };
   }
 
@@ -538,6 +688,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       voiceVisualPlan: null,
       motionCanvasBundle: null,
       voiceBundle: null,
+      animationSyncBundle: null,
     };
   }
 
@@ -562,6 +713,7 @@ export const UpdateProjectSchema = z
     voiceVisualPlan: VoiceVisualPlanSchema.optional(),
     motionCanvasBundle: MotionCanvasBundleSchema.optional(),
     voiceBundle: VoiceBundleSchema.optional(),
+    animationSyncBundle: AnimationSyncBundleSchema.optional(),
   })
   .strict()
   .refine(
@@ -571,7 +723,8 @@ export const UpdateProjectSchema = z
       value.outline !== undefined ||
       value.voiceVisualPlan !== undefined ||
       value.motionCanvasBundle !== undefined ||
-      value.voiceBundle !== undefined,
+      value.voiceBundle !== undefined ||
+      value.animationSyncBundle !== undefined,
     'Cần có ít nhất một thay đổi.',
   );
 
@@ -638,6 +791,16 @@ export const GenerateVoiceSchema = z
   .strict();
 
 export type GenerateVoice = z.infer<typeof GenerateVoiceSchema>;
+
+export const GenerateAnimationSyncSchema = z
+  .object({
+    generationId: CreationIdSchema,
+  })
+  .strict();
+
+export type GenerateAnimationSync = z.infer<
+  typeof GenerateAnimationSyncSchema
+>;
 
 export type ProjectListIssueCode =
   | 'INVALID_PROJECT_DATA'

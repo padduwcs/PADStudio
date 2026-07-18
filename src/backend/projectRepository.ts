@@ -114,6 +114,57 @@ function voiceSourceMatchesPlan(
   });
 }
 
+function animationSyncMatchesSources(
+  sync: NonNullable<TopicProject['animationSyncBundle']>,
+  motion: TopicProject['motionCanvasBundle'],
+  voice: TopicProject['voiceBundle'],
+) {
+  return Boolean(
+    motion &&
+      voice &&
+      motion.status === 'approved' &&
+      voice.status === 'approved' &&
+      motion.timingContractVersion === 1 &&
+      sync.sourceMotionCanvasContentRevision === motion.contentRevision &&
+      sync.sourceVoiceContentRevision === voice.contentRevision &&
+      sync.sections.length === motion.scenes.length &&
+      sync.sections.length === voice.sections.length &&
+      sync.sections.every((section, sectionIndex) => {
+        const scene = motion.scenes[sectionIndex];
+        const voiceSection = voice.sections[sectionIndex];
+        const timingEvents = scene?.timingEvents;
+        return Boolean(
+          scene &&
+            voiceSection &&
+            timingEvents &&
+            section.sceneId === scene.id &&
+            section.filePath === scene.filePath &&
+            section.outlineSectionId === scene.outlineSectionId &&
+            section.outlineSectionId === voiceSection.outlineSectionId &&
+            section.beats.length === timingEvents.length &&
+            section.beats.length === voiceSection.beats.length &&
+            section.beats.every((beat, beatIndex) => {
+              const timing = timingEvents[beatIndex];
+              const voiceBeat = voiceSection.beats[beatIndex];
+              return (
+                timing &&
+                voiceBeat &&
+                beat.beatId === timing.beatId &&
+                beat.beatId === voiceBeat.beatId &&
+                beat.startEvent === timing.startEvent &&
+                beat.endEvent === timing.endEvent &&
+                Math.abs(
+                  beat.voiceStartSeconds - voiceBeat.startSeconds,
+                ) < 0.001 &&
+                Math.abs(beat.voiceEndSeconds - voiceBeat.endSeconds) <
+                  0.001
+              );
+            }),
+        );
+      }),
+  );
+}
+
 export function createFileProjectRepository(
   projectsDirectory: string,
 ): ProjectRepository {
@@ -297,7 +348,10 @@ export function createFileProjectRepository(
           JSON.stringify(project.motionCanvasBundle)) &&
       (update.voiceBundle === undefined ||
         JSON.stringify(update.voiceBundle) ===
-          JSON.stringify(project.voiceBundle))
+          JSON.stringify(project.voiceBundle)) &&
+      (update.animationSyncBundle === undefined ||
+        JSON.stringify(update.animationSyncBundle) ===
+          JSON.stringify(project.animationSyncBundle))
     );
   }
 
@@ -353,6 +407,25 @@ export function createFileProjectRepository(
     const voiceChanged =
       JSON.stringify(nextVoiceBundle) !==
       JSON.stringify(currentProject.voiceBundle);
+    const syncSourcesChanged = Boolean(
+      currentProject.animationSyncBundle &&
+        !animationSyncMatchesSources(
+          currentProject.animationSyncBundle,
+          nextMotionCanvasBundle,
+          nextVoiceBundle,
+        ),
+    );
+    const nextAnimationSyncBundle =
+      update.animationSyncBundle ??
+      (syncSourcesChanged && currentProject.animationSyncBundle
+        ? {
+            ...currentProject.animationSyncBundle,
+            status: 'draft' as const,
+          }
+        : currentProject.animationSyncBundle);
+    const animationSyncChanged =
+      JSON.stringify(nextAnimationSyncBundle) !==
+      JSON.stringify(currentProject.animationSyncBundle);
     const nextCurrentStep =
       update.currentStep ??
       (topicChanged
@@ -365,7 +438,9 @@ export function createFileProjectRepository(
                 ? 'motionCanvas'
                 : voiceChanged
                   ? 'voice'
-                : currentProject.currentStep);
+                  : animationSyncChanged
+                    ? 'sync'
+                    : currentProject.currentStep);
     const project: TopicProject = {
       ...currentProject,
       ...(update.topicInput ? {topicInput: update.topicInput} : {}),
@@ -374,6 +449,7 @@ export function createFileProjectRepository(
       voiceVisualPlan: nextVoiceVisualPlan,
       motionCanvasBundle: nextMotionCanvasBundle,
       voiceBundle: nextVoiceBundle,
+      animationSyncBundle: nextAnimationSyncBundle,
       revision: currentProject.revision + 1,
       updatedAt: new Date().toISOString(),
     };
@@ -423,6 +499,7 @@ export function createFileProjectRepository(
           voiceVisualPlan: null,
           motionCanvasBundle: null,
           voiceBundle: null,
+          animationSyncBundle: null,
           createdAt: now,
           updatedAt: now,
         };

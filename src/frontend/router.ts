@@ -7,7 +7,8 @@ export type AppRoute =
   | {name: 'project-outline'; projectId: string}
   | {name: 'project-voice-visual'; projectId: string}
   | {name: 'project-motion-canvas'; projectId: string}
-  | {name: 'project-voice'; projectId: string};
+  | {name: 'project-voice'; projectId: string}
+  | {name: 'project-sync'; projectId: string};
 
 function decodeProjectId(value: string) {
   try {
@@ -71,6 +72,13 @@ export function parseRoute(pathname: string): AppRoute {
     return {name: 'project-voice', projectId};
   }
 
+  const syncMatch = /^\/projects\/([^/]+)\/sync\/?$/.exec(pathname);
+  if (syncMatch?.[1]) {
+    const projectId = decodeProjectId(syncMatch[1]);
+    if (!projectId) return {name: 'new-topic'};
+    return {name: 'project-sync', projectId};
+  }
+
   return {name: 'new-topic'};
 }
 
@@ -101,12 +109,17 @@ export function projectVoicePath(projectId: string) {
   return `/projects/${encodeURIComponent(projectId)}/voice`;
 }
 
+export function projectSyncPath(projectId: string) {
+  return `/projects/${encodeURIComponent(projectId)}/sync`;
+}
+
 const projectStepPaths = {
   topic: projectTopicPath,
   outline: projectOutlinePath,
   voiceVisual: projectVoiceVisualPath,
   motionCanvas: projectMotionCanvasPath,
   voice: projectVoicePath,
+  sync: projectSyncPath,
 } satisfies Record<ProjectStep, (projectId: string) => string>;
 
 export function projectStepPath(projectId: string, step: ProjectStep) {

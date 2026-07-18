@@ -1,9 +1,8 @@
 {
   "id": "de-quy-20260718-88b2276f",
-  "revision": 10,
+  "revision": 17,
   "creationId": "03d3fcb8-6ce2-4e5d-b1b8-40647e68f3e0",
   "status": "draft",
-  "currentStep": "voice",
   "topicInput": {
     "topic": "Đệ quy",
     "learningGoal": "Đệ quy là gì? Hình dung được hình ảnh trong đầu về \"đệ quy\" để dù có thể chưa biết code nhưng vẫn nắm được ý tưởng khi nghe đến",
@@ -271,76 +270,206 @@
     }
   },
   "createdAt": "2026-07-18T08:25:51.827Z",
-  "updatedAt": "2026-07-18T11:49:14.948Z",
-  "version": 6,
+  "updatedAt": "2026-07-18T15:05:37.865Z",
   "motionCanvasBundle": {
     "status": "approved",
-    "contentRevision": 1,
+    "contentRevision": 2,
     "sourceVoiceVisualContentRevision": 3,
-    "workspacePath": "motion-canvas/generations/9e2c4119-9e7c-4e70-b11d-e29cc5014c25",
+    "workspacePath": "motion-canvas/generations/06fa110a-5a2b-41c9-ac1b-9aa43a39fa3b",
     "projectFile": "src/project.ts",
     "width": 1080,
     "height": 1920,
     "fps": 30,
+    "timingContractVersion": 1,
     "scenes": [
       {
-        "id": "8b655a6c-f6be-4ac8-b6bd-2f3fbe0c0ca9",
+        "id": "ca1ebc9c-ad85-4061-8ec1-192ca829f3fc",
         "outlineSectionId": "66f5a6b2-2047-4966-b846-21fc276101b9",
-        "name": "de_quy_khong_lap_vo_tan",
-        "filePath": "src/scenes/01-de-quy-khong-lap-vo-tan.tsx",
-        "durationSeconds": 40
+        "name": "de-quy-hop-long-nhau",
+        "filePath": "src/scenes/01-de-quy-hop-long-nhau.tsx",
+        "durationSeconds": 40,
+        "timingEvents": [
+          {
+            "beatId": "cdb43b5b-fb9f-426b-811d-1ea5138988ea",
+            "startEvent": "beat:cdb43b5b-fb9f-426b-811d-1ea5138988ea:start",
+            "endEvent": "beat:cdb43b5b-fb9f-426b-811d-1ea5138988ea:end",
+            "plannedDurationSeconds": 10
+          },
+          {
+            "beatId": "ccb859f2-4ba6-4d84-9d89-54e56b0d86e8",
+            "startEvent": "beat:ccb859f2-4ba6-4d84-9d89-54e56b0d86e8:start",
+            "endEvent": "beat:ccb859f2-4ba6-4d84-9d89-54e56b0d86e8:end",
+            "plannedDurationSeconds": 10
+          },
+          {
+            "beatId": "f1b8379d-5625-4150-aadb-533054d9c0c0",
+            "startEvent": "beat:f1b8379d-5625-4150-aadb-533054d9c0c0:start",
+            "endEvent": "beat:f1b8379d-5625-4150-aadb-533054d9c0c0:end",
+            "plannedDurationSeconds": 10
+          },
+          {
+            "beatId": "41834f5c-1841-4a8d-a49b-c45fbb1b9e46",
+            "startEvent": "beat:41834f5c-1841-4a8d-a49b-c45fbb1b9e46:start",
+            "endEvent": "beat:41834f5c-1841-4a8d-a49b-c45fbb1b9e46:end",
+            "plannedDurationSeconds": 10
+          }
+        ]
       },
       {
-        "id": "9e11eba9-c2dd-43a2-94e2-b4503350d4b7",
+        "id": "cb2e2075-b629-4d24-867a-fb182c79831d",
         "outlineSectionId": "7f3f1c64-ac1b-41b1-aad4-efa01bc68400",
-        "name": "nested_boxes_core",
-        "filePath": "src/scenes/02-nested-boxes-core.tsx",
-        "durationSeconds": 50
+        "name": "NestedBoxesCore",
+        "filePath": "src/scenes/02-nestedboxescore.tsx",
+        "durationSeconds": 50,
+        "timingEvents": [
+          {
+            "beatId": "69e8662b-5f20-4106-af3f-e689f1273695",
+            "startEvent": "beat:69e8662b-5f20-4106-af3f-e689f1273695:start",
+            "endEvent": "beat:69e8662b-5f20-4106-af3f-e689f1273695:end",
+            "plannedDurationSeconds": 12
+          },
+          {
+            "beatId": "885465fa-07cc-4cae-b1de-a96de6525637",
+            "startEvent": "beat:885465fa-07cc-4cae-b1de-a96de6525637:start",
+            "endEvent": "beat:885465fa-07cc-4cae-b1de-a96de6525637:end",
+            "plannedDurationSeconds": 12
+          },
+          {
+            "beatId": "71a2a021-aa85-45ff-8fcc-b1696a9ef17d",
+            "startEvent": "beat:71a2a021-aa85-45ff-8fcc-b1696a9ef17d:start",
+            "endEvent": "beat:71a2a021-aa85-45ff-8fcc-b1696a9ef17d:end",
+            "plannedDurationSeconds": 13
+          },
+          {
+            "beatId": "97247e1f-c78c-4a3e-897d-f7142a6e9313",
+            "startEvent": "beat:97247e1f-c78c-4a3e-897d-f7142a6e9313:start",
+            "endEvent": "beat:97247e1f-c78c-4a3e-897d-f7142a6e9313:end",
+            "plannedDurationSeconds": 13
+          }
+        ]
       },
       {
-        "id": "b6fd0b7f-9a38-432e-a6e2-d95e47540ca5",
+        "id": "f6585401-cc93-4817-a565-0ec3854890af",
         "outlineSectionId": "803fea6e-8021-4767-895c-7bc3ba621824",
-        "name": "de_quy_hai_dieu_kien",
-        "filePath": "src/scenes/03-de-quy-hai-dieu-kien.tsx",
-        "durationSeconds": 50
+        "name": "RecursiveConditions",
+        "filePath": "src/scenes/03-recursiveconditions.tsx",
+        "durationSeconds": 50,
+        "timingEvents": [
+          {
+            "beatId": "3efac0dd-1595-4851-a023-bb17f75df87e",
+            "startEvent": "beat:3efac0dd-1595-4851-a023-bb17f75df87e:start",
+            "endEvent": "beat:3efac0dd-1595-4851-a023-bb17f75df87e:end",
+            "plannedDurationSeconds": 12
+          },
+          {
+            "beatId": "339b17b8-fa6e-4ee9-a857-9c83451bdd59",
+            "startEvent": "beat:339b17b8-fa6e-4ee9-a857-9c83451bdd59:start",
+            "endEvent": "beat:339b17b8-fa6e-4ee9-a857-9c83451bdd59:end",
+            "plannedDurationSeconds": 13
+          },
+          {
+            "beatId": "17c93655-adc7-4605-93d5-87112492fc01",
+            "startEvent": "beat:17c93655-adc7-4605-93d5-87112492fc01:start",
+            "endEvent": "beat:17c93655-adc7-4605-93d5-87112492fc01:end",
+            "plannedDurationSeconds": 12
+          },
+          {
+            "beatId": "4e64fb60-a552-4062-8062-73e584f5399f",
+            "startEvent": "beat:4e64fb60-a552-4062-8062-73e584f5399f:start",
+            "endEvent": "beat:4e64fb60-a552-4062-8062-73e584f5399f:end",
+            "plannedDurationSeconds": 13
+          }
+        ]
       },
       {
-        "id": "0b1344ae-1471-4c89-8006-6ca16ab9ffd3",
+        "id": "8f165859-4804-4959-8ea6-9a5af44748da",
         "outlineSectionId": "0848969e-51df-4563-bae9-e76349342003",
-        "name": "RecursiveDescentAndReturn",
-        "filePath": "src/scenes/04-recursivedescentandreturn.tsx",
-        "durationSeconds": 60
+        "name": "recursive_down_then_up",
+        "filePath": "src/scenes/04-recursive-down-then-up.tsx",
+        "durationSeconds": 60,
+        "timingEvents": [
+          {
+            "beatId": "6ad7847f-33e9-45c5-a0b8-43d8f6db793b",
+            "startEvent": "beat:6ad7847f-33e9-45c5-a0b8-43d8f6db793b:start",
+            "endEvent": "beat:6ad7847f-33e9-45c5-a0b8-43d8f6db793b:end",
+            "plannedDurationSeconds": 15
+          },
+          {
+            "beatId": "9a8cf26a-ac7f-4608-806e-fc9b101e9f0e",
+            "startEvent": "beat:9a8cf26a-ac7f-4608-806e-fc9b101e9f0e:start",
+            "endEvent": "beat:9a8cf26a-ac7f-4608-806e-fc9b101e9f0e:end",
+            "plannedDurationSeconds": 15
+          },
+          {
+            "beatId": "ab652f37-1fd8-455a-8ba8-34a85df38c40",
+            "startEvent": "beat:ab652f37-1fd8-455a-8ba8-34a85df38c40:start",
+            "endEvent": "beat:ab652f37-1fd8-455a-8ba8-34a85df38c40:end",
+            "plannedDurationSeconds": 15
+          },
+          {
+            "beatId": "11c1d084-f338-4257-b0b0-7821c73348b7",
+            "startEvent": "beat:11c1d084-f338-4257-b0b0-7821c73348b7:start",
+            "endEvent": "beat:11c1d084-f338-4257-b0b0-7821c73348b7:end",
+            "plannedDurationSeconds": 15
+          }
+        ]
       },
       {
-        "id": "20b191ae-cad9-4c06-bbd1-dde7d5a78ca3",
+        "id": "25bcdd1e-56c0-452d-84ae-fdb56d204cab",
         "outlineSectionId": "a2d66544-ccb4-478b-aaad-b15a337e9c7b",
-        "name": "RecursiveBoxCounting",
-        "filePath": "src/scenes/05-recursiveboxcounting.tsx",
-        "durationSeconds": 50
+        "name": "RecursiveBoxCount",
+        "filePath": "src/scenes/05-recursiveboxcount.tsx",
+        "durationSeconds": 50,
+        "timingEvents": [
+          {
+            "beatId": "135f098a-4806-4831-99ef-9e54a84c9628",
+            "startEvent": "beat:135f098a-4806-4831-99ef-9e54a84c9628:start",
+            "endEvent": "beat:135f098a-4806-4831-99ef-9e54a84c9628:end",
+            "plannedDurationSeconds": 12
+          },
+          {
+            "beatId": "9968e088-be00-45af-b49a-88aa9d6ed085",
+            "startEvent": "beat:9968e088-be00-45af-b49a-88aa9d6ed085:start",
+            "endEvent": "beat:9968e088-be00-45af-b49a-88aa9d6ed085:end",
+            "plannedDurationSeconds": 12
+          },
+          {
+            "beatId": "b43015b8-712a-4c73-97cb-ebd0771ad96b",
+            "startEvent": "beat:b43015b8-712a-4c73-97cb-ebd0771ad96b:start",
+            "endEvent": "beat:b43015b8-712a-4c73-97cb-ebd0771ad96b:end",
+            "plannedDurationSeconds": 13
+          },
+          {
+            "beatId": "a745c2aa-2300-4e42-b313-6f5a8bde6eaa",
+            "startEvent": "beat:a745c2aa-2300-4e42-b313-6f5a8bde6eaa:start",
+            "endEvent": "beat:a745c2aa-2300-4e42-b313-6f5a8bde6eaa:end",
+            "plannedDurationSeconds": 13
+          }
+        ]
       }
     ],
     "validation": {
-      "validatedAt": "2026-07-18T08:42:19.555Z",
-      "sourceHash": "bd8e357cc79a9d899f3dc21decbd4e31e8c20a16bfdf53edfa6975767b9b76fc",
+      "validatedAt": "2026-07-18T13:54:11.999Z",
+      "sourceHash": "64a5e48f98711b15c1b223404dee4dc7b3281c566737fa9ed0e5efc793f24906",
       "motionCanvasVersion": "3.17.2"
     },
     "generation": {
-      "generationId": "9e2c4119-9e7c-4e70-b11d-e29cc5014c25",
+      "generationId": "06fa110a-5a2b-41c9-ac1b-9aa43a39fa3b",
       "provider": "codex",
       "model": "gpt-5.6-sol",
       "promptVersion": "motion-canvas-v3",
-      "generatedAt": "2026-07-18T08:42:19.558Z",
+      "generatedAt": "2026-07-18T13:54:12.002Z",
       "usage": {
-        "inputTokens": 50979,
-        "cachedInputTokens": 7936,
-        "outputTokens": 22413,
-        "reasoningOutputTokens": 9419,
-        "totalTokens": 73392
+        "inputTokens": 70807,
+        "cachedInputTokens": 0,
+        "outputTokens": 29102,
+        "reasoningOutputTokens": 8328,
+        "totalTokens": 99909
       }
     }
   },
   "voiceBundle": {
-    "status": "draft",
+    "status": "approved",
     "contentRevision": 1,
     "sourceVoiceVisualContentRevision": 3,
     "workspacePath": "voice/generations/83babbb8-0a86-434f-aa81-7d8447640fc9",
@@ -571,6 +700,262 @@
         "5vM3SriJWA0mRbmVvPfz",
         "rZ59O3kPGvThcZrKn7tB"
       ]
+    }
+  },
+  "version": 7,
+  "currentStep": "sync",
+  "animationSyncBundle": {
+    "status": "draft",
+    "contentRevision": 4,
+    "sourceMotionCanvasContentRevision": 2,
+    "sourceVoiceContentRevision": 1,
+    "workspacePath": "sync/generations/ac342c74-c1ae-4ce8-8ede-5da39cca3084",
+    "projectFile": "src/project.ts",
+    "audioFile": "audio/narration.wav",
+    "totalDurationSeconds": 163.281,
+    "sections": [
+      {
+        "outlineSectionId": "66f5a6b2-2047-4966-b846-21fc276101b9",
+        "sceneId": "ca1ebc9c-ad85-4061-8ec1-192ca829f3fc",
+        "filePath": "src/scenes/01-de-quy-hop-long-nhau.tsx",
+        "plannedDurationSeconds": 40,
+        "synchronizedDurationSeconds": 33.68,
+        "driftSeconds": -6.32,
+        "beats": [
+          {
+            "beatId": "cdb43b5b-fb9f-426b-811d-1ea5138988ea",
+            "startEvent": "beat:cdb43b5b-fb9f-426b-811d-1ea5138988ea:start",
+            "endEvent": "beat:cdb43b5b-fb9f-426b-811d-1ea5138988ea:end",
+            "plannedDurationSeconds": 10,
+            "voiceStartSeconds": 0,
+            "voiceEndSeconds": 7.68,
+            "synchronizedDurationSeconds": 7.68
+          },
+          {
+            "beatId": "ccb859f2-4ba6-4d84-9d89-54e56b0d86e8",
+            "startEvent": "beat:ccb859f2-4ba6-4d84-9d89-54e56b0d86e8:start",
+            "endEvent": "beat:ccb859f2-4ba6-4d84-9d89-54e56b0d86e8:end",
+            "plannedDurationSeconds": 10,
+            "voiceStartSeconds": 8.34,
+            "voiceEndSeconds": 16.12,
+            "synchronizedDurationSeconds": 7.780000000000001
+          },
+          {
+            "beatId": "f1b8379d-5625-4150-aadb-533054d9c0c0",
+            "startEvent": "beat:f1b8379d-5625-4150-aadb-533054d9c0c0:start",
+            "endEvent": "beat:f1b8379d-5625-4150-aadb-533054d9c0c0:end",
+            "plannedDurationSeconds": 10,
+            "voiceStartSeconds": 16.48,
+            "voiceEndSeconds": 24.48,
+            "synchronizedDurationSeconds": 8
+          },
+          {
+            "beatId": "41834f5c-1841-4a8d-a49b-c45fbb1b9e46",
+            "startEvent": "beat:41834f5c-1841-4a8d-a49b-c45fbb1b9e46:start",
+            "endEvent": "beat:41834f5c-1841-4a8d-a49b-c45fbb1b9e46:end",
+            "plannedDurationSeconds": 10,
+            "voiceStartSeconds": 25.18,
+            "voiceEndSeconds": 33.68,
+            "synchronizedDurationSeconds": 8.5
+          }
+        ]
+      },
+      {
+        "outlineSectionId": "7f3f1c64-ac1b-41b1-aad4-efa01bc68400",
+        "sceneId": "cb2e2075-b629-4d24-867a-fb182c79831d",
+        "filePath": "src/scenes/02-nestedboxescore.tsx",
+        "plannedDurationSeconds": 50,
+        "synchronizedDurationSeconds": 29.92,
+        "driftSeconds": -20.08,
+        "beats": [
+          {
+            "beatId": "69e8662b-5f20-4106-af3f-e689f1273695",
+            "startEvent": "beat:69e8662b-5f20-4106-af3f-e689f1273695:start",
+            "endEvent": "beat:69e8662b-5f20-4106-af3f-e689f1273695:end",
+            "plannedDurationSeconds": 12,
+            "voiceStartSeconds": 0,
+            "voiceEndSeconds": 6.12,
+            "synchronizedDurationSeconds": 6.12
+          },
+          {
+            "beatId": "885465fa-07cc-4cae-b1de-a96de6525637",
+            "startEvent": "beat:885465fa-07cc-4cae-b1de-a96de6525637:start",
+            "endEvent": "beat:885465fa-07cc-4cae-b1de-a96de6525637:end",
+            "plannedDurationSeconds": 12,
+            "voiceStartSeconds": 6.4,
+            "voiceEndSeconds": 13.24,
+            "synchronizedDurationSeconds": 6.84
+          },
+          {
+            "beatId": "71a2a021-aa85-45ff-8fcc-b1696a9ef17d",
+            "startEvent": "beat:71a2a021-aa85-45ff-8fcc-b1696a9ef17d:start",
+            "endEvent": "beat:71a2a021-aa85-45ff-8fcc-b1696a9ef17d:end",
+            "plannedDurationSeconds": 13,
+            "voiceStartSeconds": 13.72,
+            "voiceEndSeconds": 21,
+            "synchronizedDurationSeconds": 7.279999999999999
+          },
+          {
+            "beatId": "97247e1f-c78c-4a3e-897d-f7142a6e9313",
+            "startEvent": "beat:97247e1f-c78c-4a3e-897d-f7142a6e9313:start",
+            "endEvent": "beat:97247e1f-c78c-4a3e-897d-f7142a6e9313:end",
+            "plannedDurationSeconds": 13,
+            "voiceStartSeconds": 21.36,
+            "voiceEndSeconds": 29.92,
+            "synchronizedDurationSeconds": 8.560000000000002
+          }
+        ]
+      },
+      {
+        "outlineSectionId": "803fea6e-8021-4767-895c-7bc3ba621824",
+        "sceneId": "f6585401-cc93-4817-a565-0ec3854890af",
+        "filePath": "src/scenes/03-recursiveconditions.tsx",
+        "plannedDurationSeconds": 50,
+        "synchronizedDurationSeconds": 31.441,
+        "driftSeconds": -18.559,
+        "beats": [
+          {
+            "beatId": "3efac0dd-1595-4851-a023-bb17f75df87e",
+            "startEvent": "beat:3efac0dd-1595-4851-a023-bb17f75df87e:start",
+            "endEvent": "beat:3efac0dd-1595-4851-a023-bb17f75df87e:end",
+            "plannedDurationSeconds": 12,
+            "voiceStartSeconds": 0,
+            "voiceEndSeconds": 6.32,
+            "synchronizedDurationSeconds": 6.32
+          },
+          {
+            "beatId": "339b17b8-fa6e-4ee9-a857-9c83451bdd59",
+            "startEvent": "beat:339b17b8-fa6e-4ee9-a857-9c83451bdd59:start",
+            "endEvent": "beat:339b17b8-fa6e-4ee9-a857-9c83451bdd59:end",
+            "plannedDurationSeconds": 13,
+            "voiceStartSeconds": 6.545,
+            "voiceEndSeconds": 15.041,
+            "synchronizedDurationSeconds": 8.496
+          },
+          {
+            "beatId": "17c93655-adc7-4605-93d5-87112492fc01",
+            "startEvent": "beat:17c93655-adc7-4605-93d5-87112492fc01:start",
+            "endEvent": "beat:17c93655-adc7-4605-93d5-87112492fc01:end",
+            "plannedDurationSeconds": 12,
+            "voiceStartSeconds": 15.401,
+            "voiceEndSeconds": 21.321,
+            "synchronizedDurationSeconds": 5.920000000000002
+          },
+          {
+            "beatId": "4e64fb60-a552-4062-8062-73e584f5399f",
+            "startEvent": "beat:4e64fb60-a552-4062-8062-73e584f5399f:start",
+            "endEvent": "beat:4e64fb60-a552-4062-8062-73e584f5399f:end",
+            "plannedDurationSeconds": 13,
+            "voiceStartSeconds": 21.641,
+            "voiceEndSeconds": 31.441,
+            "synchronizedDurationSeconds": 9.8
+          }
+        ]
+      },
+      {
+        "outlineSectionId": "0848969e-51df-4563-bae9-e76349342003",
+        "sceneId": "8f165859-4804-4959-8ea6-9a5af44748da",
+        "filePath": "src/scenes/04-recursive-down-then-up.tsx",
+        "plannedDurationSeconds": 60,
+        "synchronizedDurationSeconds": 34.24,
+        "driftSeconds": -25.759999999999998,
+        "beats": [
+          {
+            "beatId": "6ad7847f-33e9-45c5-a0b8-43d8f6db793b",
+            "startEvent": "beat:6ad7847f-33e9-45c5-a0b8-43d8f6db793b:start",
+            "endEvent": "beat:6ad7847f-33e9-45c5-a0b8-43d8f6db793b:end",
+            "plannedDurationSeconds": 15,
+            "voiceStartSeconds": 0,
+            "voiceEndSeconds": 7.8,
+            "synchronizedDurationSeconds": 7.8
+          },
+          {
+            "beatId": "9a8cf26a-ac7f-4608-806e-fc9b101e9f0e",
+            "startEvent": "beat:9a8cf26a-ac7f-4608-806e-fc9b101e9f0e:start",
+            "endEvent": "beat:9a8cf26a-ac7f-4608-806e-fc9b101e9f0e:end",
+            "plannedDurationSeconds": 15,
+            "voiceStartSeconds": 8.187,
+            "voiceEndSeconds": 15.16,
+            "synchronizedDurationSeconds": 6.973000000000001
+          },
+          {
+            "beatId": "ab652f37-1fd8-455a-8ba8-34a85df38c40",
+            "startEvent": "beat:ab652f37-1fd8-455a-8ba8-34a85df38c40:start",
+            "endEvent": "beat:ab652f37-1fd8-455a-8ba8-34a85df38c40:end",
+            "plannedDurationSeconds": 15,
+            "voiceStartSeconds": 15.8,
+            "voiceEndSeconds": 23.92,
+            "synchronizedDurationSeconds": 8.120000000000001
+          },
+          {
+            "beatId": "11c1d084-f338-4257-b0b0-7821c73348b7",
+            "startEvent": "beat:11c1d084-f338-4257-b0b0-7821c73348b7:start",
+            "endEvent": "beat:11c1d084-f338-4257-b0b0-7821c73348b7:end",
+            "plannedDurationSeconds": 15,
+            "voiceStartSeconds": 24.44,
+            "voiceEndSeconds": 34.24,
+            "synchronizedDurationSeconds": 9.8
+          }
+        ]
+      },
+      {
+        "outlineSectionId": "a2d66544-ccb4-478b-aaad-b15a337e9c7b",
+        "sceneId": "25bcdd1e-56c0-452d-84ae-fdb56d204cab",
+        "filePath": "src/scenes/05-recursiveboxcount.tsx",
+        "plannedDurationSeconds": 50,
+        "synchronizedDurationSeconds": 34,
+        "driftSeconds": -16,
+        "beats": [
+          {
+            "beatId": "135f098a-4806-4831-99ef-9e54a84c9628",
+            "startEvent": "beat:135f098a-4806-4831-99ef-9e54a84c9628:start",
+            "endEvent": "beat:135f098a-4806-4831-99ef-9e54a84c9628:end",
+            "plannedDurationSeconds": 12,
+            "voiceStartSeconds": 0,
+            "voiceEndSeconds": 7.44,
+            "synchronizedDurationSeconds": 7.44
+          },
+          {
+            "beatId": "9968e088-be00-45af-b49a-88aa9d6ed085",
+            "startEvent": "beat:9968e088-be00-45af-b49a-88aa9d6ed085:start",
+            "endEvent": "beat:9968e088-be00-45af-b49a-88aa9d6ed085:end",
+            "plannedDurationSeconds": 12,
+            "voiceStartSeconds": 7.7,
+            "voiceEndSeconds": 15.04,
+            "synchronizedDurationSeconds": 7.339999999999999
+          },
+          {
+            "beatId": "b43015b8-712a-4c73-97cb-ebd0771ad96b",
+            "startEvent": "beat:b43015b8-712a-4c73-97cb-ebd0771ad96b:start",
+            "endEvent": "beat:b43015b8-712a-4c73-97cb-ebd0771ad96b:end",
+            "plannedDurationSeconds": 13,
+            "voiceStartSeconds": 15.74,
+            "voiceEndSeconds": 23.92,
+            "synchronizedDurationSeconds": 8.180000000000001
+          },
+          {
+            "beatId": "a745c2aa-2300-4e42-b313-6f5a8bde6eaa",
+            "startEvent": "beat:a745c2aa-2300-4e42-b313-6f5a8bde6eaa:start",
+            "endEvent": "beat:a745c2aa-2300-4e42-b313-6f5a8bde6eaa:end",
+            "plannedDurationSeconds": 13,
+            "voiceStartSeconds": 24.62,
+            "voiceEndSeconds": 34,
+            "synchronizedDurationSeconds": 9.379999999999999
+          }
+        ]
+      }
+    ],
+    "validation": {
+      "validatedAt": "2026-07-18T15:05:37.848Z",
+      "sourceHash": "529ced2e46a8588ad71d937e86c33075509a03459d34a3df5dbadf4ee9b99f99",
+      "motionCanvasVersion": "3.17.2",
+      "audioDurationSeconds": 163.28
+    },
+    "generation": {
+      "generationId": "ac342c74-c1ae-4ce8-8ede-5da39cca3084",
+      "provider": "local",
+      "tool": "ffmpeg",
+      "generatedAt": "2026-07-18T15:05:37.859Z"
     }
   }
 }
