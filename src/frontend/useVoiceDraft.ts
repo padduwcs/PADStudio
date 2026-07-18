@@ -6,6 +6,10 @@ import type {
   TopicProject,
 } from '../shared/topic.ts';
 import {
+  voiceIsStale,
+  voicePrerequisitesAreReady,
+} from '../shared/projectPipeline.ts';
+import {
   ApiRequestError,
   approveVoice,
   generateVoice,
@@ -28,35 +32,6 @@ export interface VoiceDraftConfiguration {
   outputFormat: string;
   settings: ElevenLabsVoiceSettings;
   seed: number | null;
-}
-
-function sameValue(left: unknown, right: unknown) {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-function voicePrerequisitesAreReady(project: TopicProject) {
-  const outline = project.outline;
-  const plan = project.voiceVisualPlan;
-  const motion = project.motionCanvasBundle;
-
-  return Boolean(
-    outline?.status === 'approved' &&
-      sameValue(outline.sourceInput, project.topicInput) &&
-      plan?.status === 'approved' &&
-      plan.sourceOutlineContentRevision === outline.contentRevision &&
-      plan.sections.length === outline.sections.length &&
-      plan.sections.every(
-        (section, index) =>
-          section.outlineSectionId === outline.sections[index]?.id,
-      ) &&
-      motion?.status === 'approved' &&
-      motion.sourceVoiceVisualContentRevision === plan.contentRevision &&
-      motion.scenes.length === outline.sections.length &&
-      motion.scenes.every(
-        (scene, index) =>
-          scene.outlineSectionId === outline.sections[index]?.id,
-      ),
-  );
 }
 
 export function useVoiceDraft(projectId: string) {
@@ -290,13 +265,7 @@ export function useVoiceDraft(projectId: string) {
   }
 
   const ready = project ? voicePrerequisitesAreReady(project) : false;
-  const stale = Boolean(
-    project?.voiceBundle &&
-      project.voiceVisualPlan &&
-      project.voiceBundle.status === 'draft' &&
-      project.voiceBundle.sourceNarrationRevision !==
-        project.voiceVisualPlan.narrationRevision,
-  );
+  const stale = project ? voiceIsStale(project) : false;
 
   async function generate() {
     if (!project || !configuration || generating || conflict) return null;

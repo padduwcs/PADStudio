@@ -1,12 +1,17 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {
   VoiceVisualPlanContentSchema,
-  type TeachingOutline,
   type TopicProject,
   type VoiceVisualBeat,
   type VoiceVisualPlanContent,
 } from '../shared/topic.ts';
 import {plannedBeatDurationSeconds} from '../shared/narrationTiming.ts';
+import {
+  outlineIsReady,
+  sameValue,
+  voiceVisualIsStale,
+  voiceVisualMatchesOutline,
+} from '../shared/projectPipeline.ts';
 import {
   ApiRequestError,
   approveVoiceVisualPlan,
@@ -24,10 +29,6 @@ export type VoiceVisualSaveState =
   | 'error'
   | 'conflict';
 
-function sameValue(left: unknown, right: unknown) {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
 function getPlanContent(
   project: TopicProject,
 ): VoiceVisualPlanContent | null {
@@ -38,39 +39,6 @@ function getPlanContent(
     timingCalibration: project.voiceVisualPlan.timingCalibration,
     sections: project.voiceVisualPlan.sections,
   };
-}
-
-function matchesOutline(
-  content: VoiceVisualPlanContent,
-  outline: TeachingOutline,
-) {
-  return (
-    content.sections.length === outline.sections.length &&
-    content.sections.every(
-      (section, index) =>
-        section.outlineSectionId === outline.sections[index]?.id,
-    )
-  );
-}
-
-function outlineIsReady(project: TopicProject) {
-  return Boolean(
-    project.outline?.status === 'approved' &&
-      sameValue(project.outline.sourceInput, project.topicInput),
-  );
-}
-
-function planIsStale(project: TopicProject) {
-  const plan = project.voiceVisualPlan;
-  const outline = project.outline;
-  if (!plan) return false;
-
-  return Boolean(
-    !outline ||
-      !outlineIsReady(project) ||
-      plan.sourceOutlineContentRevision !== outline.contentRevision ||
-      !matchesOutline(getPlanContent(project)!, outline),
-  );
 }
 
 export function useVoiceVisualDraft(projectId: string) {
@@ -143,7 +111,7 @@ export function useVoiceVisualDraft(projectId: string) {
     if (!currentProject || !currentDraft) {
       throw new VoiceVisualOperationCancelledError();
     }
-    if (planIsStale(currentProject)) {
+    if (voiceVisualIsStale(currentProject)) {
       throw new VoiceVisualOutdatedError();
     }
 
@@ -151,7 +119,7 @@ export function useVoiceVisualDraft(projectId: string) {
     if (
       !parsedDraft.success ||
       !currentProject.outline ||
-      !matchesOutline(parsedDraft.data, currentProject.outline)
+      !voiceVisualMatchesOutline(parsedDraft.data, currentProject.outline)
     ) {
       throw new VoiceVisualDraftInvalidError();
     }
@@ -184,7 +152,7 @@ export function useVoiceVisualDraft(projectId: string) {
       generating ||
       approving ||
       saveState === 'conflict' ||
-      planIsStale(project)
+      voiceVisualIsStale(project)
     ) {
       return;
     }
@@ -193,7 +161,7 @@ export function useVoiceVisualDraft(projectId: string) {
     if (
       !parsedDraft.success ||
       !project.outline ||
-      !matchesOutline(parsedDraft.data, project.outline)
+      !voiceVisualMatchesOutline(parsedDraft.data, project.outline)
     ) {
       setSaveState('idle');
       return;
@@ -394,7 +362,10 @@ export function useVoiceVisualDraft(projectId: string) {
           }
 
           const normalizedGuidance = guidance.trim() || undefined;
-          if (normalizedGuidance && planIsStale(currentProject)) {
+          if (
+            normalizedGuidance &&
+            voiceVisualIsStale(currentProject)
+          ) {
             throw new VoiceVisualOutdatedError();
           }
           if (normalizedGuidance && draftRef.current) {
@@ -488,13 +459,13 @@ export function useVoiceVisualDraft(projectId: string) {
     }
   }
 
-  const stale = project ? planIsStale(project) : false;
+  const stale = project ? voiceVisualIsStale(project) : false;
   const ready = project ? outlineIsReady(project) : false;
   const valid = Boolean(
     draft &&
       project?.outline &&
       VoiceVisualPlanContentSchema.safeParse(draft).success &&
-      matchesOutline(draft, project.outline),
+      voiceVisualMatchesOutline(draft, project.outline),
   );
 
   return {

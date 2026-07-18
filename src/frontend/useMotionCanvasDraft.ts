@@ -1,6 +1,10 @@
 import {useEffect, useRef, useState} from 'react';
 import type {TopicProject} from '../shared/topic.ts';
 import {
+  motionCanvasIsReady,
+  motionCanvasIsStale,
+} from '../shared/projectPipeline.ts';
+import {
   ApiRequestError,
   approveMotionCanvas,
   generateMotionCanvas,
@@ -10,46 +14,6 @@ import {
 import {ProjectOperationQueue} from './projectOperationQueue.ts';
 
 type LoadState = 'loading' | 'ready' | 'error';
-
-function sameValue(left: unknown, right: unknown) {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-function voiceVisualIsReady(project: TopicProject) {
-  const outline = project.outline;
-  const plan = project.voiceVisualPlan;
-  return Boolean(
-    outline &&
-      outline.status === 'approved' &&
-      sameValue(outline.sourceInput, project.topicInput) &&
-      plan?.status === 'approved' &&
-      plan.sourceOutlineContentRevision === outline.contentRevision &&
-      plan.sections.length === outline.sections.length &&
-      plan.sections.every(
-        (section, index) =>
-          section.outlineSectionId === outline.sections[index]?.id,
-      ),
-  );
-}
-
-function bundleIsStale(project: TopicProject) {
-  const bundle = project.motionCanvasBundle;
-  const plan = project.voiceVisualPlan;
-  const outline = project.outline;
-  if (!bundle) return false;
-
-  return Boolean(
-    !plan ||
-      !outline ||
-      !voiceVisualIsReady(project) ||
-      bundle.sourceVoiceVisualContentRevision !== plan.contentRevision ||
-      bundle.scenes.length !== outline.sections.length ||
-      !bundle.scenes.every(
-        (scene, index) =>
-          scene.outlineSectionId === outline.sections[index]?.id,
-      ),
-  );
-}
 
 export function useMotionCanvasDraft(projectId: string) {
   const [project, setProject] = useState<TopicProject | null>(null);
@@ -135,12 +99,15 @@ export function useMotionCanvasDraft(projectId: string) {
         async () => {
           const currentProject = projectRef.current;
           if (!currentProject) throw new MotionCanvasOperationCancelledError();
-          if (!voiceVisualIsReady(currentProject)) {
+          if (!motionCanvasIsReady(currentProject)) {
             throw new MotionCanvasInputNotReadyError();
           }
 
           const normalizedGuidance = guidance.trim() || undefined;
-          if (normalizedGuidance && bundleIsStale(currentProject)) {
+          if (
+            normalizedGuidance &&
+            motionCanvasIsStale(currentProject)
+          ) {
             throw new MotionCanvasOutdatedError();
           }
           const fingerprint = JSON.stringify({
@@ -211,7 +178,7 @@ export function useMotionCanvasDraft(projectId: string) {
         async () => {
           const currentProject = projectRef.current;
           if (!currentProject) throw new MotionCanvasOperationCancelledError();
-          if (bundleIsStale(currentProject)) {
+          if (motionCanvasIsStale(currentProject)) {
             throw new MotionCanvasOutdatedError();
           }
           return approveMotionCanvas(
@@ -252,8 +219,8 @@ export function useMotionCanvasDraft(projectId: string) {
     generating,
     approving,
     conflict,
-    ready: project ? voiceVisualIsReady(project) : false,
-    stale: project ? bundleIsStale(project) : false,
+    ready: project ? motionCanvasIsReady(project) : false,
+    stale: project ? motionCanvasIsStale(project) : false,
     generate,
     approve,
     reload: () => setReloadKey((current) => current + 1),

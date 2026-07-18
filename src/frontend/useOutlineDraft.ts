@@ -6,6 +6,10 @@ import {
   type TopicProject,
 } from '../shared/topic.ts';
 import {
+  outlineIsStale,
+  sameValue,
+} from '../shared/projectPipeline.ts';
+import {
   ApiRequestError,
   approveTeachingOutline,
   generateTeachingOutline,
@@ -29,10 +33,6 @@ function getOutlineContent(project: TopicProject): TeachingOutlineContent | null
     centralMessage: project.outline.centralMessage,
     sections: project.outline.sections,
   };
-}
-
-function sameValue(left: unknown, right: unknown) {
-  return JSON.stringify(left) === JSON.stringify(right);
 }
 
 export function useOutlineDraft(projectId: string) {
@@ -410,10 +410,7 @@ export function useOutlineDraft(projectId: string) {
     }
   }
 
-  const stale = Boolean(
-    project?.outline &&
-      !sameValue(project.outline.sourceInput, project.topicInput),
-  );
+  const stale = project ? outlineIsStale(project) : false;
   const valid = Boolean(
     draft && TeachingOutlineContentSchema.safeParse(draft).success,
   );

@@ -340,5 +340,44 @@ mẫu bằng FFmpeg và khởi động runtime Motion Canvas tạm để transfo
 scene lẫn workspace đồng bộ có narration. Tham số `--project` ở trên dùng cùng
 phép kiểm tra đó cho workspace thật.
 
+Để kiểm tra credential và kết nối thật mà chưa tạo nội dung:
+
+```bash
+npm run smoke:live
+```
+
+Chỉ khi chủ động chấp nhận tiêu quota, chạy thêm cờ sau. Script tạo một outline
+ngắn qua đúng production path và một câu TTS ngắn trong bộ nhớ; lượng token
+Codex phụ thuộc model mặc định hiện hành và có thể lên tới vài nghìn. Script
+không ghi credential hay audio thử vào repository:
+
+```bash
+npm run smoke:live -- --allow-credits
+```
+
+## CI và chính sách lưu media
+
+GitHub Actions chạy trên Node.js 24 cho mọi pull request và mỗi lần push vào
+`main`. Pipeline cài đúng dependency từ lockfile, kiểm tra chính sách media, chạy
+toàn bộ `npm run validate`, smoke-test sync player bằng Chrome headless và xác
+nhận các bước kiểm tra không làm bẩn worktree. CI dùng workspace/audio tổng hợp,
+không gọi Codex hoặc ElevenLabs và không tiêu token hay credit.
+
+Các file audio `.wav`, `.mp3`, `.pcm` và `.opus` mới phải được lưu bằng Git
+LFS. Cài Git LFS một lần trên máy phát triển trước khi stage generation có
+audio:
+
+```bash
+git lfs install
+git add projects/<project-id>/
+node scripts/check-media-policy.mjs
+```
+
+Mười file audio đã có từ trước vẫn là Git blob thông thường và được khai báo
+ngoại lệ theo đúng đường dẫn trong `.gitattributes`. Cách làm forward-only này
+không renormalize binary hiện tại và không rewrite lịch sử. Nếu cần chuyển phần
+legacy sang LFS, hãy thực hiện trong một thay đổi migration riêng sau khi đã
+thống nhất tác động tới clone hiện có và quota LFS.
+
 Sau khi build, backend phục vụ cả API và frontend tại
 `http://127.0.0.1:4174`.

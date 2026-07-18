@@ -1,6 +1,10 @@
 import {useEffect, useRef, useState} from 'react';
 import type {TopicProject} from '../shared/topic.ts';
 import {
+  animationSyncIsStale,
+  animationSyncPrerequisitesAreReady,
+} from '../shared/projectPipeline.ts';
+import {
   ApiRequestError,
   approveAnimationSync,
   generateAnimationSync,
@@ -11,85 +15,6 @@ import {ProjectOperationQueue} from './projectOperationQueue.ts';
 
 type LoadState = 'loading' | 'ready' | 'error';
 type PreviewState = 'idle' | 'loading' | 'ready' | 'error';
-
-function sameValue(left: unknown, right: unknown) {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-function upstreamIsApproved(project: TopicProject) {
-  const outline = project.outline;
-  const plan = project.voiceVisualPlan;
-  const motion = project.motionCanvasBundle;
-  const voice = project.voiceBundle;
-
-  return Boolean(
-    outline?.status === 'approved' &&
-      sameValue(outline.sourceInput, project.topicInput) &&
-      plan?.status === 'approved' &&
-      plan.sourceOutlineContentRevision === outline.contentRevision &&
-      motion?.status === 'approved' &&
-      motion.sourceVoiceVisualContentRevision === plan.contentRevision &&
-      voice?.status === 'approved' &&
-      voice.sourceNarrationRevision === plan.narrationRevision &&
-      outline.sections.length === plan.sections.length &&
-      outline.sections.length === motion.scenes.length &&
-      outline.sections.length === voice.sections.length &&
-      outline.sections.every(
-        (section, index) =>
-          plan.sections[index]?.outlineSectionId === section.id &&
-          motion.scenes[index]?.outlineSectionId === section.id &&
-          voice.sections[index]?.outlineSectionId === section.id,
-      ),
-  );
-}
-
-function syncIsStale(project: TopicProject) {
-  const sync = project.animationSyncBundle;
-  const motion = project.motionCanvasBundle;
-  const voice = project.voiceBundle;
-  if (!sync) return false;
-
-  return Boolean(
-    !motion ||
-      !voice ||
-      !upstreamIsApproved(project) ||
-      motion.timingContractVersion !== 1 ||
-      sync.sourceMotionCanvasContentRevision !== motion.contentRevision ||
-      sync.sourceVoiceContentRevision !== voice.contentRevision ||
-      sync.sections.length !== motion.scenes.length ||
-      sync.sections.length !== voice.sections.length ||
-      !sync.sections.every((section, sectionIndex) => {
-        const scene = motion.scenes[sectionIndex];
-        const voiceSection = voice.sections[sectionIndex];
-        return (
-          scene &&
-          voiceSection &&
-          scene.timingEvents &&
-          section.sceneId === scene.id &&
-          section.filePath === scene.filePath &&
-          section.outlineSectionId === scene.outlineSectionId &&
-          section.outlineSectionId === voiceSection.outlineSectionId &&
-          section.beats.length === scene.timingEvents.length &&
-          section.beats.length === voiceSection.beats.length &&
-          section.beats.every((beat, beatIndex) => {
-            const timing = scene.timingEvents?.[beatIndex];
-            const voiceBeat = voiceSection.beats[beatIndex];
-            return (
-              timing &&
-              voiceBeat &&
-              beat.beatId === timing.beatId &&
-              beat.beatId === voiceBeat.beatId &&
-              beat.startEvent === timing.startEvent &&
-              beat.endEvent === timing.endEvent &&
-              Math.abs(beat.voiceStartSeconds - voiceBeat.startSeconds) <
-                0.001 &&
-              Math.abs(beat.voiceEndSeconds - voiceBeat.endSeconds) < 0.001
-            );
-          })
-        );
-      }),
-  );
-}
 
 export function useAnimationSyncDraft(projectId: string) {
   const [project, setProject] = useState<TopicProject | null>(null);
@@ -209,7 +134,7 @@ export function useAnimationSyncDraft(projectId: string) {
         async () => {
           const currentProject = projectRef.current;
           if (!currentProject) throw new AnimationSyncOperationCancelledError();
-          if (!upstreamIsApproved(currentProject)) {
+          if (!animationSyncPrerequisitesAreReady(currentProject)) {
             throw new AnimationSyncInputNotReadyError();
           }
           if (currentProject.motionCanvasBundle?.timingContractVersion !== 1) {
@@ -281,7 +206,7 @@ export function useAnimationSyncDraft(projectId: string) {
         async () => {
           const currentProject = projectRef.current;
           if (!currentProject) throw new AnimationSyncOperationCancelledError();
-          if (syncIsStale(currentProject)) {
+          if (animationSyncIsStale(currentProject)) {
             throw new AnimationSyncOutdatedError();
           }
           return approveAnimationSync(
@@ -312,7 +237,9 @@ export function useAnimationSyncDraft(projectId: string) {
     }
   }
 
-  const upstreamReady = project ? upstreamIsApproved(project) : false;
+  const upstreamReady = project
+    ? animationSyncPrerequisitesAreReady(project)
+    : false;
   const legacy = Boolean(
     project?.motionCanvasBundle &&
       project.motionCanvasBundle.timingContractVersion !== 1,
@@ -333,7 +260,7 @@ export function useAnimationSyncDraft(projectId: string) {
     upstreamReady,
     ready: upstreamReady && !legacy,
     legacy,
-    stale: project ? syncIsStale(project) : false,
+    stale: project ? animationSyncIsStale(project) : false,
     generate,
     approve,
     retryPreview: () =>

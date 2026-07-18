@@ -1,5 +1,4 @@
 import {createReadStream} from 'node:fs';
-import {createHash} from 'node:crypto';
 import {readFile, stat} from 'node:fs/promises';
 import {createServer, type IncomingMessage, type ServerResponse} from 'node:http';
 import path from 'node:path';
@@ -24,6 +23,11 @@ import {
   type VoiceVisualPlanContent,
 } from '../shared/topic.ts';
 import type {ElevenLabsUsagePreset} from '../shared/elevenLabs.ts';
+import {
+  motionCanvasMatchesOutline,
+  sameValue,
+  voiceVisualMatchesOutline,
+} from '../shared/projectPipeline.ts';
 import {
   AnimationSyncWorkspaceError,
   createAnimationSyncWorkspace,
@@ -86,6 +90,10 @@ import {
   type ProjectRepository,
 } from './projectRepository.ts';
 import {
+  animationSyncMatchesSources,
+  voiceMatchesPlan,
+} from './projectConsistency.ts';
+import {
   createCodexVoiceVisualGenerator,
   VoiceVisualGenerationError,
   VOICE_VISUAL_PROMPT_VERSION,
@@ -100,7 +108,10 @@ import {
 } from './voiceWorkspace.ts';
 import {plannedBeatDurationSeconds} from '../shared/narrationTiming.ts';
 
-const MAX_BODY_SIZE = 64 * 1024;
+// A valid voice–visual plan can contain up to 80 narration/visual beats.
+// Keep a bounded request size, but leave enough room for the strict schema's
+// maximum UTF-8 payload instead of rejecting valid content before validation.
+const MAX_JSON_BODY_SIZE = 1024 * 1024;
 
 const contentTypes: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
@@ -174,7 +185,7 @@ async function readJsonBody(request: IncomingMessage) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     receivedBytes += buffer.byteLength;
 
-    if (receivedBytes > MAX_BODY_SIZE) {
+    if (receivedBytes > MAX_JSON_BODY_SIZE) {
       throw new RequestBodyError(
         413,
         'PAYLOAD_TOO_LARGE',
@@ -376,10 +387,6 @@ function getProjectAnimationSyncRoute(pathname: string) {
   };
 }
 
-function sameValue(left: unknown, right: unknown) {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
 function outlineContent(outline: TeachingOutline) {
   return {
     brief: outline.brief,
@@ -496,107 +503,6 @@ function nextNarrationRevision(
   )
     ? currentPlan.narrationRevision
     : currentPlan.narrationRevision + 1;
-}
-
-function voiceVisualMatchesOutline(
-  plan: {sections: Array<{outlineSectionId: string}>},
-  outline: TeachingOutline,
-) {
-  return (
-    plan.sections.length === outline.sections.length &&
-    plan.sections.every(
-      (section, index) =>
-        section.outlineSectionId === outline.sections[index]?.id,
-    )
-  );
-}
-
-function motionCanvasMatchesOutline(
-  bundle: MotionCanvasBundle,
-  outline: TeachingOutline,
-) {
-  return (
-    bundle.scenes.length === outline.sections.length &&
-    bundle.scenes.every(
-      (scene, index) =>
-        scene.outlineSectionId === outline.sections[index]?.id,
-    )
-  );
-}
-
-function voiceMatchesPlan(bundle: VoiceBundle, plan: VoiceVisualPlan) {
-  const narration = buildNarrationSource(plan);
-  return (
-    bundle.sourceNarrationRevision === plan.narrationRevision &&
-    bundle.track.sourceTextHash ===
-      createHash('sha256').update(narration.text).digest('hex') &&
-    bundle.sections.length === plan.sections.length &&
-    bundle.sections.every(
-      (section, index) =>
-        section.outlineSectionId === plan.sections[index]?.outlineSectionId &&
-        section.sourceTextHash ===
-          createHash('sha256')
-            .update(
-              Array.from(narration.text)
-                .slice(
-                  narration.sections[index]!.textStartIndex,
-                  narration.sections[index]!.textEndIndex,
-                )
-                .join(''),
-            )
-            .digest('hex') &&
-        section.beats.length === plan.sections[index]?.beats.length &&
-        section.beats.every(
-          (beat, beatIndex) =>
-            beat.beatId === plan.sections[index]?.beats[beatIndex]?.id,
-        ),
-    )
-  );
-}
-
-function animationSyncMatchesSources(
-  bundle: AnimationSyncBundle,
-  motion: MotionCanvasBundle,
-  voice: VoiceBundle,
-) {
-  return (
-    motion.timingContractVersion === 1 &&
-    bundle.sourceMotionCanvasContentRevision === motion.contentRevision &&
-    bundle.sourceVoiceContentRevision === voice.contentRevision &&
-    bundle.sections.length === motion.scenes.length &&
-    bundle.sections.length === voice.sections.length &&
-    bundle.sections.every((section, sectionIndex) => {
-      const scene = motion.scenes[sectionIndex];
-      const voiceSection = voice.sections[sectionIndex];
-      const timingEvents = scene?.timingEvents;
-      return Boolean(
-        scene &&
-          voiceSection &&
-          timingEvents &&
-          section.sceneId === scene.id &&
-          section.filePath === scene.filePath &&
-          section.outlineSectionId === scene.outlineSectionId &&
-          section.outlineSectionId === voiceSection.outlineSectionId &&
-          section.beats.length === timingEvents.length &&
-          section.beats.length === voiceSection.beats.length &&
-          section.beats.every((beat, beatIndex) => {
-            const timing = timingEvents[beatIndex];
-            const voiceBeat = voiceSection.beats[beatIndex];
-            return (
-              timing &&
-              voiceBeat &&
-              beat.beatId === timing.beatId &&
-              beat.beatId === voiceBeat.beatId &&
-              beat.startEvent === timing.startEvent &&
-              beat.endEvent === timing.endEvent &&
-              Math.abs(beat.voiceStartSeconds - voiceBeat.startSeconds) <
-                0.001 &&
-              Math.abs(beat.voiceEndSeconds - voiceBeat.endSeconds) < 0.001
-            );
-          }),
-      );
-    })
-  );
 }
 
 async function localVoicePresets(

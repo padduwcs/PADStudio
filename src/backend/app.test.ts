@@ -273,6 +273,106 @@ test('API tạo, cập nhật và xóa project với revision', async (context) 
   assert.equal(missingResponse.status, 404);
 });
 
+test('generic project PUT không thể ghi artifact hoặc vượt review gate', async (context) => {
+  const {baseUrl} = await startTestApp(context);
+  const {project} = await createProject(baseUrl);
+  const sectionIds = [randomUUID(), randomUUID()];
+  const attemptedOutline: NonNullable<TopicProject['outline']> = {
+    brief: {
+      summary:
+        'Một mạch giảng hợp lệ được dùng để thử đi vòng qua API chuyên biệt.',
+      assumptions: ['Dữ liệu đầu vào đã được sắp xếp.'],
+    },
+    centralMessage:
+      'Mỗi lần so sánh giúp loại bỏ một nửa vùng tìm kiếm còn lại.',
+    sections: sectionIds.map((id, index) => ({
+      id,
+      title: `Phần kiến thức ${index + 1}`,
+      goal: 'Giải thích rõ một bước quan trọng của thuật toán.',
+      content:
+        'Minh họa trực quan cách thuật toán thu hẹp phạm vi cần tìm kiếm.',
+      estimatedSeconds: 30,
+    })),
+    status: 'approved',
+    contentRevision: 1,
+    sourceInput: project.topicInput,
+    generation: {
+      generationId: randomUUID(),
+      provider: 'codex',
+      model: 'test-model',
+      promptVersion: 'test-v1',
+      generatedAt: new Date().toISOString(),
+      usage: null,
+    },
+  };
+  const attemptedMotionBundle: NonNullable<
+    TopicProject['motionCanvasBundle']
+  > = {
+    status: 'approved',
+    contentRevision: 1,
+    sourceVoiceVisualContentRevision: 1,
+    workspacePath: `motion-canvas/generations/${randomUUID()}`,
+    projectFile: 'src/project.ts',
+    width: 1920,
+    height: 1080,
+    fps: 30,
+    timingContractVersion: 1,
+    scenes: sectionIds.map((outlineSectionId, index) => ({
+      id: randomUUID(),
+      outlineSectionId,
+      name: `Scene ${index + 1}`,
+      filePath: `src/scenes/scene-${index + 1}.tsx`,
+      durationSeconds: 30,
+    })),
+    validation: {
+      validatedAt: new Date().toISOString(),
+      sourceHash: 'a'.repeat(64),
+      motionCanvasVersion: '3.17.2',
+    },
+    generation: {
+      generationId: randomUUID(),
+      provider: 'codex',
+      model: 'test-model',
+      promptVersion: 'test-v1',
+      generatedAt: new Date().toISOString(),
+      usage: null,
+    },
+  };
+  const forbiddenUpdates = [
+    {label: 'project status', body: {status: 'draft'}},
+    {label: 'outline', body: {outline: attemptedOutline}},
+    {
+      label: 'Motion Canvas bundle',
+      body: {motionCanvasBundle: attemptedMotionBundle},
+    },
+    {label: 'downstream currentStep', body: {currentStep: 'sync'}},
+    {label: 'voice–visual artifact', body: {voiceVisualPlan: {}}},
+    {label: 'voice artifact', body: {voiceBundle: {}}},
+    {label: 'sync artifact', body: {animationSyncBundle: {}}},
+  ];
+
+  for (const attempt of forbiddenUpdates) {
+    const response = await updateProject(
+      baseUrl,
+      project.id,
+      project.revision,
+      attempt.body,
+    );
+    const body = await response.json();
+
+    assert.equal(response.status, 422, attempt.label);
+    assert.equal(body.error.code, 'VALIDATION_ERROR', attempt.label);
+  }
+
+  const currentBody = await (
+    await fetch(`${baseUrl}/api/projects/${project.id}`)
+  ).json();
+  assert.equal(currentBody.project.revision, project.revision);
+  assert.equal(currentBody.project.currentStep, 'outline');
+  assert.equal(currentBody.project.outline, null);
+  assert.equal(currentBody.project.motionCanvasBundle, null);
+});
+
 test('API tạo, chỉnh sửa và chốt mạch giảng an toàn', async (context) => {
   let generationCalls = 0;
   const outlineGenerator: OutlineGenerator = {
@@ -1352,6 +1452,45 @@ test('POST /api/projects trả lỗi đúng field khi input không hợp lệ', 
   assert.ok(body.error.fields.topic.length > 0);
 });
 
+test('POST /api/projects không thể khởi tạo ở bước tùy ý', async (context) => {
+  const {baseUrl} = await startTestApp(context);
+  const response = await fetch(`${baseUrl}/api/projects`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({...createRequest(), currentStep: 'sync'}),
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 422);
+  assert.equal(body.error.code, 'VALIDATION_ERROR');
+
+  const listBody = await (await fetch(`${baseUrl}/api/projects`)).json();
+  assert.equal(listBody.projects.length, 0);
+});
+
+test('API đọc JSON trên 64 KiB và từ chối payload lớn hơn 1 MiB', async (context) => {
+  const {baseUrl} = await startTestApp(context);
+  const acceptedResponse = await fetch(`${baseUrl}/api/projects`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({unknown: 'x'.repeat(70_000)}),
+  });
+  const acceptedBody = await acceptedResponse.json();
+
+  assert.equal(acceptedResponse.status, 422);
+  assert.equal(acceptedBody.error.code, 'VALIDATION_ERROR');
+
+  const rejectedResponse = await fetch(`${baseUrl}/api/projects`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({unknown: 'x'.repeat(1024 * 1024)}),
+  });
+  const rejectedBody = await rejectedResponse.json();
+
+  assert.equal(rejectedResponse.status, 413);
+  assert.equal(rejectedBody.error.code, 'PAYLOAD_TOO_LARGE');
+});
+
 test('PUT yêu cầu revision hiện tại qua If-Match', async (context) => {
   const {baseUrl} = await startTestApp(context);
   const {project} = await createProject(baseUrl);
@@ -1461,6 +1600,7 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
   const legacyId = 'legacy-project';
   const invalidId = 'invalid-project';
   const futureId = 'future-project';
+  const mismatchedId = 'mismatched-project';
   const now = new Date().toISOString();
   const legacyProject = {
     id: legacyId,
@@ -1476,6 +1616,7 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
     mkdir(path.join(projectsDirectory, legacyId), {recursive: true}),
     mkdir(path.join(projectsDirectory, invalidId), {recursive: true}),
     mkdir(path.join(projectsDirectory, futureId), {recursive: true}),
+    mkdir(path.join(projectsDirectory, mismatchedId), {recursive: true}),
   ]);
   await Promise.all([
     writeFile(
@@ -1493,6 +1634,11 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
       JSON.stringify({...legacyProject, id: futureId, version: 99}),
       'utf8',
     ),
+    writeFile(
+      path.join(projectsDirectory, mismatchedId, 'project.json'),
+      JSON.stringify({...legacyProject, id: 'different-project'}),
+      'utf8',
+    ),
   ]);
 
   const listResponse = await fetch(`${baseUrl}/api/projects`);
@@ -1501,11 +1647,22 @@ test('project v1 được migrate và project hỏng được báo rõ', async (
   assert.equal(listBody.projects.length, 1);
   assert.equal(listBody.projects[0].version, currentProjectVersion);
   assert.equal(listBody.projects[0].revision, 1);
-  assert.equal(listBody.issues.length, 2);
+  assert.equal(listBody.issues.length, 3);
   assert.deepEqual(
     listBody.issues.map((issue: {code: string}) => issue.code).sort(),
-    ['INVALID_PROJECT_DATA', 'UNSUPPORTED_PROJECT_VERSION'],
+    [
+      'INVALID_PROJECT_DATA',
+      'INVALID_PROJECT_DATA',
+      'UNSUPPORTED_PROJECT_VERSION',
+    ],
   );
+
+  const mismatchedResponse = await fetch(
+    `${baseUrl}/api/projects/${mismatchedId}`,
+  );
+  const mismatchedBody = await mismatchedResponse.json();
+  assert.equal(mismatchedResponse.status, 422);
+  assert.equal(mismatchedBody.error.code, 'INVALID_PROJECT_DATA');
 
   const updateResponse = await updateProject(
     baseUrl,

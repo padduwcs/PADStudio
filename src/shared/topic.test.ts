@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  CreateTopicProjectSchema,
   currentProjectVersion,
   parseTopicProject,
   TopicInputSchema,
@@ -32,7 +33,33 @@ test('TopicInputSchema từ chối chủ đề quá mơ hồ', () => {
   assert.equal(result.success, false);
 });
 
-test('UpdateProjectSchema yêu cầu ít nhất một thay đổi', () => {
+test('CreateTopicProjectSchema chỉ khởi tạo project ở bước outline', () => {
+  const request = {
+    creationId: '00000000-0000-4000-8000-000000000001',
+    topicInput: {
+      topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
+      audience: 'beginner',
+      duration: 'standard',
+    },
+  };
+
+  assert.equal(
+    CreateTopicProjectSchema.safeParse({
+      ...request,
+      currentStep: 'outline',
+    }).success,
+    true,
+  );
+  assert.equal(
+    CreateTopicProjectSchema.safeParse({
+      ...request,
+      currentStep: 'sync',
+    }).success,
+    false,
+  );
+});
+
+test('UpdateProjectSchema chỉ cho phép dữ liệu của trang topic', () => {
   assert.equal(UpdateProjectSchema.safeParse({}).success, false);
   assert.equal(
     UpdateProjectSchema.safeParse({currentStep: 'outline'}).success,
@@ -40,8 +67,35 @@ test('UpdateProjectSchema yêu cầu ít nhất một thay đổi', () => {
   );
   assert.equal(
     UpdateProjectSchema.safeParse({currentStep: 'sync'}).success,
+    false,
+  );
+  assert.equal(
+    UpdateProjectSchema.safeParse({
+      topicInput: {
+        topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
+        audience: 'beginner',
+        duration: 'standard',
+      },
+    }).success,
     true,
   );
+
+  for (const forbiddenField of [
+    'status',
+    'outline',
+    'voiceVisualPlan',
+    'motionCanvasBundle',
+    'voiceBundle',
+    'animationSyncBundle',
+  ]) {
+    assert.equal(
+      UpdateProjectSchema.safeParse({
+        [forbiddenField]: {status: 'approved'},
+      }).success,
+      false,
+      forbiddenField,
+    );
+  }
 });
 
 test('parseTopicProject nâng project v1 lên model hiện tại', () => {

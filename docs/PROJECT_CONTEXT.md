@@ -201,6 +201,24 @@ Các dịch vụ hoặc công nghệ cụ thể có thể thay đổi. Vai trò 
 - Những quyết định ảnh hưởng đến workflow hoặc chất lượng giảng giải cần được người dùng review.
 - Cấu trúc kỹ thuật phải phục vụ việc sản xuất video, không trở thành mục tiêu tự thân.
 
+Các ranh giới kỹ thuật đang bảo vệ những nguyên tắc trên:
+
+- API cập nhật project tổng quát chỉ được sửa đầu vào chủ đề và quay về bước
+  outline. Mọi artifact downstream phải đi qua endpoint chuyên biệt có kiểm tra
+  revision, nguồn hiện hành và review gate; không mở rộng generic update để
+  triển khai nhanh một bước mới.
+- Trạng thái `ready`/`stale` và phép đối chiếu section/beat/event dùng predicate
+  chung ở `src/shared/projectPipeline.ts`. Backend bổ sung kiểm tra hash narration
+  khi quyết định voice có còn đúng nguồn hay không.
+- JSON request bị giới hạn ở 1 MiB và tiếp tục phải qua schema strict. Mức này
+  đủ cho kế hoạch voice–visual tối đa hiện tại nhưng vẫn chặn payload bất thường.
+- `npm run validate` là quality gate cục bộ chuẩn. CI chạy cùng gate trên
+  Node.js 24 và smoke-test player bằng trình duyệt headless, không gọi dịch vụ
+  live hoặc tiêu quota.
+- Audio `.wav`/`.mp3`/`.pcm`/`.opus` mới được lưu bằng Git LFS. Mười file audio
+  legacy đã pin blob theo chính sách forward-only; chỉ migration riêng mới được
+  thay đổi lịch sử hoặc chuyển các blob cũ.
+
 ## Cách agent sử dụng tài liệu này
 
 Khi làm việc với PAD Studio, agent cần:

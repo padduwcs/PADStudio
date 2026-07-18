@@ -1,4 +1,4 @@
-import {createHash, randomUUID} from 'node:crypto';
+import {randomUUID} from 'node:crypto';
 import {
   mkdir,
   readdir,
@@ -15,9 +15,11 @@ import {
   type ProjectListIssue,
   type ProjectListIssueCode,
   type TopicProject,
-  type UpdateProject,
 } from '../shared/topic.ts';
-import {buildNarrationSource} from './narrationSource.ts';
+import {
+  animationSyncMatchesSources,
+  voiceMatchesPlan,
+} from './projectConsistency.ts';
 
 function toSlug(value: string) {
   return value
@@ -45,11 +47,21 @@ export interface ProjectRepository {
   getProject(projectId: string): Promise<TopicProject | null>;
   updateProject(
     projectId: string,
-    update: UpdateProject,
+    update: ProjectRepositoryUpdate,
     expectedRevision: number,
   ): Promise<TopicProject | null>;
   deleteProject(projectId: string, expectedRevision: number): Promise<boolean>;
 }
+
+type ProjectRepositoryUpdate = {
+  topicInput?: TopicProject['topicInput'];
+  currentStep?: TopicProject['currentStep'];
+  outline?: NonNullable<TopicProject['outline']>;
+  voiceVisualPlan?: NonNullable<TopicProject['voiceVisualPlan']>;
+  motionCanvasBundle?: NonNullable<TopicProject['motionCanvasBundle']>;
+  voiceBundle?: NonNullable<TopicProject['voiceBundle']>;
+  animationSyncBundle?: NonNullable<TopicProject['animationSyncBundle']>;
+};
 
 function isValidProjectId(projectId: string) {
   return /^[a-z0-9][a-z0-9-]{0,100}$/.test(projectId);
@@ -84,99 +96,6 @@ export class ProjectDataError extends Error {
     this.projectId = projectId;
     this.code = code;
   }
-}
-
-function voiceSourceMatchesPlan(
-  bundle: TopicProject['voiceBundle'],
-  plan: TopicProject['voiceVisualPlan'],
-) {
-  if (!bundle || !plan || bundle.sections.length !== plan.sections.length) {
-    return false;
-  }
-  const narration = buildNarrationSource(plan);
-  if (
-    bundle.sourceNarrationRevision !== plan.narrationRevision ||
-    bundle.track.sourceTextHash !==
-      createHash('sha256').update(narration.text).digest('hex')
-  ) {
-    return false;
-  }
-  return bundle.sections.every((section, index) => {
-    const planSection = plan.sections[index];
-    const sourceSection = narration.sections[index];
-    return (
-      planSection !== undefined &&
-      sourceSection !== undefined &&
-      section.outlineSectionId === planSection.outlineSectionId &&
-      section.sourceTextHash ===
-        createHash('sha256')
-          .update(
-            Array.from(narration.text)
-              .slice(
-                sourceSection.textStartIndex,
-                sourceSection.textEndIndex,
-              )
-              .join(''),
-          )
-          .digest('hex') &&
-      section.beats.length === planSection.beats.length &&
-      section.beats.every(
-        (beat, beatIndex) =>
-          beat.beatId === planSection.beats[beatIndex]?.id,
-      )
-    );
-  });
-}
-
-function animationSyncMatchesSources(
-  sync: NonNullable<TopicProject['animationSyncBundle']>,
-  motion: TopicProject['motionCanvasBundle'],
-  voice: TopicProject['voiceBundle'],
-) {
-  return Boolean(
-    motion &&
-      voice &&
-      motion.status === 'approved' &&
-      voice.status === 'approved' &&
-      motion.timingContractVersion === 1 &&
-      sync.sourceMotionCanvasContentRevision === motion.contentRevision &&
-      sync.sourceVoiceContentRevision === voice.contentRevision &&
-      sync.sections.length === motion.scenes.length &&
-      sync.sections.length === voice.sections.length &&
-      sync.sections.every((section, sectionIndex) => {
-        const scene = motion.scenes[sectionIndex];
-        const voiceSection = voice.sections[sectionIndex];
-        const timingEvents = scene?.timingEvents;
-        return Boolean(
-          scene &&
-            voiceSection &&
-            timingEvents &&
-            section.sceneId === scene.id &&
-            section.filePath === scene.filePath &&
-            section.outlineSectionId === scene.outlineSectionId &&
-            section.outlineSectionId === voiceSection.outlineSectionId &&
-            section.beats.length === timingEvents.length &&
-            section.beats.length === voiceSection.beats.length &&
-            section.beats.every((beat, beatIndex) => {
-              const timing = timingEvents[beatIndex];
-              const voiceBeat = voiceSection.beats[beatIndex];
-              return (
-                timing &&
-                voiceBeat &&
-                beat.beatId === timing.beatId &&
-                beat.beatId === voiceBeat.beatId &&
-                beat.startEvent === timing.startEvent &&
-                beat.endEvent === timing.endEvent &&
-                Math.abs(
-                  beat.voiceStartSeconds - voiceBeat.startSeconds,
-                ) < 0.001 &&
-                Math.abs(beat.voiceEndSeconds - voiceBeat.endSeconds) <
-                  0.001
-              );
-            }),
-        );
-      }),
-  );
 }
 
 export function createFileProjectRepository(
@@ -273,8 +192,10 @@ export function createFileProjectRepository(
       );
     }
 
+    let project: TopicProject;
+
     try {
-      return parseTopicProject(storedProject);
+      project = parseTopicProject(storedProject);
     } catch (error) {
       const storedVersion =
         storedProject &&
@@ -297,6 +218,16 @@ export function createFileProjectRepository(
         {cause: error},
       );
     }
+
+    if (project.id !== projectId) {
+      throw new ProjectDataError(
+        projectId,
+        'INVALID_PROJECT_DATA',
+        `ID trong dữ liệu project “${project.id}” không khớp thư mục “${projectId}”.`,
+      );
+    }
+
+    return project;
   }
 
   async function listProjectRecords() {
@@ -344,7 +275,7 @@ export function createFileProjectRepository(
 
   function updateAlreadyApplied(
     project: TopicProject,
-    update: UpdateProject,
+    update: ProjectRepositoryUpdate,
   ) {
     return (
       (update.topicInput === undefined ||
@@ -371,7 +302,7 @@ export function createFileProjectRepository(
 
   async function applyUpdate(
     currentProject: TopicProject,
-    update: UpdateProject,
+    update: ProjectRepositoryUpdate,
   ) {
     if (updateAlreadyApplied(currentProject, update)) {
       return currentProject;
@@ -407,10 +338,11 @@ export function createFileProjectRepository(
       JSON.stringify(currentProject.motionCanvasBundle);
     const voiceSourceChanged = Boolean(
       currentProject.voiceBundle &&
-        !voiceSourceMatchesPlan(
-          currentProject.voiceBundle,
-          nextVoiceVisualPlan,
-        ),
+        (!nextVoiceVisualPlan ||
+          !voiceMatchesPlan(
+            currentProject.voiceBundle,
+            nextVoiceVisualPlan,
+          )),
     );
     const nextVoiceBundle =
       update.voiceBundle ??
@@ -423,11 +355,15 @@ export function createFileProjectRepository(
       JSON.stringify(currentProject.voiceBundle);
     const syncSourcesChanged = Boolean(
       currentProject.animationSyncBundle &&
-        !animationSyncMatchesSources(
-          currentProject.animationSyncBundle,
-          nextMotionCanvasBundle,
-          nextVoiceBundle,
-        ),
+        (!nextMotionCanvasBundle ||
+          !nextVoiceBundle ||
+          nextMotionCanvasBundle.status !== 'approved' ||
+          nextVoiceBundle.status !== 'approved' ||
+          !animationSyncMatchesSources(
+            currentProject.animationSyncBundle,
+            nextMotionCanvasBundle,
+            nextVoiceBundle,
+          )),
     );
     const nextAnimationSyncBundle =
       update.animationSyncBundle ??

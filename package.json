@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "packageManager": "npm@11.12.1",
   "workspaces": [
     "motion-canvas-runtime"
   ],
@@ -17,10 +18,12 @@
     "sync:serve": "node scripts/motion-canvas.mjs serve --stage sync",
     "validate:motion": "node scripts/validate-motion-canvas.mjs",
     "validate:sync": "node scripts/validate-motion-canvas.mjs --stage sync",
+    "check:media": "node scripts/check-media-policy.mjs",
+    "smoke:live": "node scripts/live-integrations.mjs",
     "build": "tsc --noEmit && vite build",
     "start": "node src/backend/server.ts",
-    "test": "node --test src/shared/topic.test.ts src/shared/narrationTiming.test.ts src/backend/app.test.ts src/backend/animationSyncWorkspace.test.ts src/backend/codexConnection.test.ts src/backend/elevenLabsConnection.test.ts src/backend/elevenLabsVoiceService.test.ts src/backend/narrationSource.test.ts src/backend/outlineGenerator.test.ts src/backend/voiceVisualGenerator.test.ts src/backend/motionCanvasGenerator.test.ts src/backend/motionCanvasWorkspace.test.ts src/backend/voiceWorkspace.test.ts src/frontend/codexConnectionCache.test.ts src/frontend/projectOperationQueue.test.ts src/frontend/router.test.ts",
-    "validate": "npm run test && npm run build && npm run validate:motion && npm run validate:sync"
+    "test": "node --test src/shared/topic.test.ts src/shared/projectPipeline.test.ts src/shared/narrationTiming.test.ts src/backend/app.test.ts src/backend/animationSyncWorkspace.test.ts src/backend/codexConnection.test.ts src/backend/elevenLabsConnection.test.ts src/backend/elevenLabsVoiceService.test.ts src/backend/narrationSource.test.ts src/backend/outlineGenerator.test.ts src/backend/voiceVisualGenerator.test.ts src/backend/motionCanvasGenerator.test.ts src/backend/motionCanvasWorkspace.test.ts src/backend/voiceWorkspace.test.ts src/frontend/codexConnectionCache.test.ts src/frontend/projectOperationQueue.test.ts src/frontend/router.test.ts",
+    "validate": "npm run check:media && npm run test && npm run build && npm run validate:motion && npm run validate:sync"
   },
   "dependencies": {
     "react": "19.2.7",

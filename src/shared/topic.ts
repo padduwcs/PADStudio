@@ -837,7 +837,7 @@ export const CreateTopicProjectSchema = z
   .object({
     creationId: CreationIdSchema,
     topicInput: TopicInputSchema,
-    currentStep: ProjectStepSchema,
+    currentStep: z.literal('outline'),
   })
   .strict();
 
@@ -846,23 +846,13 @@ export type CreateTopicProject = z.infer<typeof CreateTopicProjectSchema>;
 export const UpdateProjectSchema = z
   .object({
     topicInput: TopicInputSchema.optional(),
-    currentStep: ProjectStepSchema.optional(),
-    outline: TeachingOutlineSchema.optional(),
-    voiceVisualPlan: VoiceVisualPlanSchema.optional(),
-    motionCanvasBundle: MotionCanvasBundleSchema.optional(),
-    voiceBundle: VoiceBundleSchema.optional(),
-    animationSyncBundle: AnimationSyncBundleSchema.optional(),
+    currentStep: z.literal('outline').optional(),
   })
   .strict()
   .refine(
     (value) =>
       value.topicInput !== undefined ||
-      value.currentStep !== undefined ||
-      value.outline !== undefined ||
-      value.voiceVisualPlan !== undefined ||
-      value.motionCanvasBundle !== undefined ||
-      value.voiceBundle !== undefined ||
-      value.animationSyncBundle !== undefined,
+      value.currentStep !== undefined,
     'Cần có ít nhất một thay đổi.',
   );
 
