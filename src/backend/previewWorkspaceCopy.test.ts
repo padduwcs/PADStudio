@@ -81,6 +81,85 @@ test('copyPreviewWorkspace sao chép đệ quy chính xác và không sửa ngu�
   );
 });
 
+test('copyPreviewWorkspace rebase đường dẫn tsconfig khi preview đổi độ sâu thư mục', async (context) => {
+  const root = await temporaryDirectory(context);
+  const source = path.join(
+    root,
+    'projects',
+    'project-1',
+    'sync',
+    'generations',
+    'generation-1',
+  );
+  const destination = path.join(
+    root,
+    'cache',
+    'preview',
+    'workspace',
+  );
+  const motionCanvasConfig = path.join(
+    root,
+    'repository',
+    'node_modules',
+    '@motion-canvas',
+    '2d',
+    'tsconfig.project.json',
+  );
+  const motionCanvasPackages = path.join(
+    root,
+    'repository',
+    'node_modules',
+    '@motion-canvas',
+    '*',
+  );
+  const sourceConfig = {
+    extends: path.relative(source, motionCanvasConfig),
+    compilerOptions: {
+      baseUrl: '.',
+      paths: {
+        '@motion-canvas/*': [
+          path.relative(source, motionCanvasPackages),
+        ],
+        'package-alias': ['some-package'],
+      },
+    },
+    include: ['src'],
+  };
+  await mkdir(path.join(source, 'src'), {recursive: true});
+  await mkdir(path.dirname(destination), {recursive: true});
+  await writeFile(
+    path.join(source, 'tsconfig.json'),
+    `${JSON.stringify(sourceConfig, null, 2)}\n`,
+    'utf8',
+  );
+
+  await copyPreviewWorkspace(source, destination);
+
+  const previewConfig = JSON.parse(
+    await readFile(path.join(destination, 'tsconfig.json'), 'utf8'),
+  ) as {
+    extends: string;
+    compilerOptions: {paths: Record<string, string[]>};
+  };
+  assert.equal(
+    previewConfig.extends,
+    motionCanvasConfig.replaceAll(path.sep, '/'),
+  );
+  assert.deepEqual(
+    previewConfig.compilerOptions.paths['@motion-canvas/*'],
+    [motionCanvasPackages.replaceAll(path.sep, '/')],
+  );
+  assert.deepEqual(
+    previewConfig.compilerOptions.paths['package-alias'],
+    ['some-package'],
+  );
+  assert.deepEqual(
+    JSON.parse(await readFile(path.join(source, 'tsconfig.json'), 'utf8')),
+    sourceConfig,
+    'Bản preview không được sửa tsconfig của workspace nguồn.',
+  );
+});
+
 test('copyPreviewWorkspace từ chối destination có sẵn và giữ nguyên dữ liệu', async (context) => {
   const root = await temporaryDirectory(context);
   const source = path.join(root, 'source');

@@ -41,8 +41,10 @@ jobs:
       - name: Install FFmpeg
         timeout-minutes: 5
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends ffmpeg
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends ffmpeg
+          fi
           ffmpeg -version
 
       - name: Enforce media storage policy
@@ -51,8 +53,17 @@ jobs:
       - name: Verify fetched Git LFS objects
         run: git lfs fsck --objects HEAD
 
-      - name: Run full validation
-        run: npm run validate
+      - name: Run unit and integration tests
+        run: npm test
+
+      - name: Build application
+        run: npm run build
+
+      - name: Validate Motion Canvas workspace
+        run: npm run validate:motion
+
+      - name: Validate synchronized workspace
+        run: npm run validate:sync
 
       - name: Smoke-test sync player in Chrome
         shell: bash

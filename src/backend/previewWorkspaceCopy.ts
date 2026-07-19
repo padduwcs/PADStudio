@@ -4,8 +4,10 @@ import {
   lstat,
   mkdir,
   opendir,
+  readFile,
   realpath,
   rm,
+  writeFile,
 } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -129,6 +131,106 @@ async function copyDirectory(
   }
 }
 
+function isPathReference(value: string) {
+  return (
+    path.isAbsolute(value) ||
+    value.startsWith('./') ||
+    value.startsWith('../') ||
+    value.startsWith('.\\') ||
+    value.startsWith('..\\')
+  );
+}
+
+function absoluteConfigPath(baseDirectory: string, value: string) {
+  const absolutePath = path.isAbsolute(value)
+    ? value
+    : path.resolve(baseDirectory, value);
+  return absolutePath.replaceAll(path.sep, '/');
+}
+
+async function rebaseTypeScriptConfig(
+  sourceDirectory: string,
+  destinationDirectory: string,
+) {
+  const destinationConfig = path.join(
+    destinationDirectory,
+    'tsconfig.json',
+  );
+  let source: string;
+  try {
+    source = await readFile(destinationConfig, 'utf8');
+  } catch (error) {
+    if (
+      error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === 'ENOENT'
+    ) {
+      return;
+    }
+    throw error;
+  }
+
+  const config = JSON.parse(source) as {
+    extends?: unknown;
+    compilerOptions?: {
+      baseUrl?: unknown;
+      paths?: unknown;
+    };
+  };
+  let changed = false;
+  if (
+    typeof config.extends === 'string' &&
+    isPathReference(config.extends)
+  ) {
+    config.extends = absoluteConfigPath(
+      sourceDirectory,
+      config.extends,
+    );
+    changed = true;
+  }
+
+  const compilerOptions = config.compilerOptions;
+  const paths = compilerOptions?.paths;
+  if (
+    paths &&
+    typeof paths === 'object' &&
+    !Array.isArray(paths)
+  ) {
+    const baseUrl =
+      typeof compilerOptions.baseUrl === 'string'
+        ? compilerOptions.baseUrl
+        : '.';
+    const sourceBaseDirectory = path.isAbsolute(baseUrl)
+      ? baseUrl
+      : path.resolve(sourceDirectory, baseUrl);
+    for (const [alias, targets] of Object.entries(paths)) {
+      if (!Array.isArray(targets)) continue;
+      const rebasedTargets = targets.map((target) =>
+        typeof target === 'string' && isPathReference(target)
+          ? absoluteConfigPath(sourceBaseDirectory, target)
+          : target,
+      );
+      if (
+        rebasedTargets.some(
+          (target, index) => target !== targets[index],
+        )
+      ) {
+        (paths as Record<string, unknown>)[alias] = rebasedTargets;
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    await writeFile(
+      destinationConfig,
+      `${JSON.stringify(config, null, 2)}\n`,
+      'utf8',
+    );
+  }
+}
+
 export async function copyPreviewWorkspace(
   sourceDirectory: string,
   destinationDirectory: string,
@@ -200,6 +302,7 @@ export async function copyPreviewWorkspace(
     await mkdir(destination);
     destinationCreated = true;
     await copyDirectory(source, destination, '');
+    await rebaseTypeScriptConfig(source, destination);
   } catch (error) {
     if (destinationCreated) {
       await rm(destination, {recursive: true, force: true}).catch(
