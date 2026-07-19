@@ -14,6 +14,7 @@ import {
   projectMotionCanvasPath,
   projectVoicePath,
 } from './router.ts';
+import {ResponsiveAside} from './ResponsiveAside.tsx';
 import {useAnimationSyncDraft} from './useAnimationSyncDraft.ts';
 
 function formatTime(seconds: number) {
@@ -304,40 +305,42 @@ export function AnimationSyncPage({projectId}: {projectId: string}) {
               </button>
             </footer>
           </section>
-          <aside className="outline-side-card sync-prerequisite-card">
-            <span className="preview-label">Nguồn đã khóa</span>
-            <dl>
-              <div>
-                <dt>Scene</dt>
-                <dd>{motion.scenes.length}</dd>
+          <ResponsiveAside label="Nguồn đã khóa">
+            <section className="outline-side-card sync-prerequisite-card">
+              <span className="preview-label">Nguồn đã khóa</span>
+              <dl>
+                <div>
+                  <dt>Scene</dt>
+                  <dd>{motion.scenes.length}</dd>
+                </div>
+                <div>
+                  <dt>Beat timing</dt>
+                  <dd>
+                    {motion.scenes.reduce(
+                      (total, scene) =>
+                        total + (scene.timingEvents?.length ?? 0),
+                      0,
+                    )}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Voice</dt>
+                  <dd>{formatTime(voice.totalDurationSeconds)}</dd>
+                </div>
+                <div>
+                  <dt>Contract</dt>
+                  <dd>Timing v1</dd>
+                </div>
+              </dl>
+              <div className="outline-next-note">
+                <LightbulbIcon />
+                <p>
+                  Generation Motion Canvas và voice nguồn không bị sửa. Bản đồng
+                  bộ được lưu trong workspace riêng.
+                </p>
               </div>
-              <div>
-                <dt>Beat timing</dt>
-                <dd>
-                  {motion.scenes.reduce(
-                    (total, scene) =>
-                      total + (scene.timingEvents?.length ?? 0),
-                    0,
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt>Voice</dt>
-                <dd>{formatTime(voice.totalDurationSeconds)}</dd>
-              </div>
-              <div>
-                <dt>Contract</dt>
-                <dd>Timing v1</dd>
-              </div>
-            </dl>
-            <div className="outline-next-note">
-              <LightbulbIcon />
-              <p>
-                Generation Motion Canvas và voice nguồn không bị sửa. Bản đồng
-                bộ được lưu trong workspace riêng.
-              </p>
-            </div>
-          </aside>
+            </section>
+          </ResponsiveAside>
         </div>
       ) : (
         <>
@@ -495,25 +498,27 @@ export function AnimationSyncPage({projectId}: {projectId: string}) {
               </div>
             </section>
 
-            <aside className="sync-workspace-card">
-              <span className="preview-label">Workspace đã validate</span>
-              <code>{bundle.workspacePath}</code>
-              <dl>
-                <div>
-                  <dt>Motion Canvas</dt>
-                  <dd>{bundle.validation.motionCanvasVersion}</dd>
-                </div>
-                <div>
-                  <dt>Source hash</dt>
-                  <dd>{bundle.validation.sourceHash.slice(0, 10)}…</dd>
-                </div>
-              </dl>
-              {sync.serveCommand && (
-                <button type="button" onClick={() => void copyServeCommand()}>
-                  {copied ? 'Đã sao chép lệnh' : 'Sao chép lệnh preview'}
-                </button>
-              )}
-            </aside>
+            <ResponsiveAside label="Workspace đồng bộ">
+              <section className="sync-workspace-card">
+                <span className="preview-label">Workspace đã validate</span>
+                <code>{bundle.workspacePath}</code>
+                <dl>
+                  <div>
+                    <dt>Motion Canvas</dt>
+                    <dd>{bundle.validation.motionCanvasVersion}</dd>
+                  </div>
+                  <div>
+                    <dt>Source hash</dt>
+                    <dd>{bundle.validation.sourceHash.slice(0, 10)}…</dd>
+                  </div>
+                </dl>
+                {sync.serveCommand && (
+                  <button type="button" onClick={() => void copyServeCommand()}>
+                    {copied ? 'Đã sao chép lệnh' : 'Sao chép lệnh preview'}
+                  </button>
+                )}
+              </section>
+            </ResponsiveAside>
           </div>
 
           <details className="sync-timeline-details">

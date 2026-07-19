@@ -25,13 +25,84 @@
 }
 
 .voice-config-card {
+  position: relative;
+  display: block;
+  border-color: rgba(44, 79, 67, 0.2);
+  background: #fff;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 18px 54px rgba(27, 57, 47, 0.09);
+}
+
+.voice-config-card::before {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 1;
+  height: 3px;
+  content: "";
+  background: linear-gradient(90deg, var(--orange), #efaa7f 42%, #6f9b88);
+}
+
+.voice-config-heading {
+  min-height: 82px;
+  padding: 18px 24px 17px;
+  background:
+    radial-gradient(circle at 0 0, rgba(230, 120, 73, 0.09), transparent 35%),
+    linear-gradient(105deg, #fffaf6, #f6faf7);
+}
+
+.voice-config-heading-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 13px;
+}
+
+.voice-config-heading-copy > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.voice-config-heading-copy p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.voice-config-heading-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  border: 1px solid rgba(226, 111, 63, 0.2);
+  border-radius: 13px;
+  color: #c45e34;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 7px 18px rgba(180, 82, 42, 0.08);
+}
+
+.voice-config-heading-icon svg {
+  width: 19px;
+}
+
+.voice-config-body {
   display: grid;
   gap: 26px;
+  padding: 24px;
 }
 
 .voice-search {
   display: grid;
-  gap: 9px;
+  gap: 11px;
+  padding: 18px;
+  border: 1px solid #dce5df;
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(235, 244, 239, 0.82), rgba(255, 250, 246, 0.72)),
+    #f8faf7;
 }
 
 .voice-search > label,
@@ -53,6 +124,7 @@
 
 .voice-search input {
   min-width: 0;
+  min-height: 46px;
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 12px 14px;
@@ -432,12 +504,25 @@
   width: 100%;
 }
 
+.voice-player-error {
+  margin: 0;
+  color: #a54937;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
 .voice-play-section {
   width: fit-content;
   min-height: 34px;
   margin-bottom: 2px;
   padding: 7px 10px;
   font-size: 11px;
+}
+
+.voice-play-section[aria-pressed="true"] {
+  border-color: var(--green-700);
+  color: #fff;
+  background: var(--green-700);
 }
 
 .voice-review-section {
@@ -540,8 +625,7 @@
 }
 
 .voice-side .outline-side-card {
-  position: sticky;
-  top: 24px;
+  position: static;
 }
 
 .voice-side-heading {
@@ -582,6 +666,24 @@
 }
 
 @media (max-width: 760px) {
+  .voice-config-heading {
+    align-items: flex-start;
+    padding-inline: 17px;
+  }
+
+  .voice-config-heading .draft-status {
+    margin-left: 55px;
+  }
+
+  .voice-config-body {
+    gap: 21px;
+    padding: 17px;
+  }
+
+  .voice-search {
+    padding: 14px;
+  }
+
   .voice-choice-grid,
   .voice-settings,
   .voice-presets > div {

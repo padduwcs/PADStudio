@@ -2,6 +2,8 @@ import {
   type FormEvent,
   type KeyboardEvent,
   useCallback,
+  useEffect,
+  useRef,
   useState,
 } from 'react';
 import type {TopicProject} from '../shared/topic.ts';
@@ -17,8 +19,10 @@ import {
   LayersIcon,
   LightbulbIcon,
   LockIcon,
+  MenuIcon,
   SparkIcon,
   UserIcon,
+  XIcon,
 } from './icons.tsx';
 import {ProjectLibrary} from './ProjectLibrary.tsx';
 import {AnimationSyncPage} from './AnimationSyncPage.tsx';
@@ -113,18 +117,37 @@ function Brand() {
 
 function PipelineSidebar({
   activeStep,
+  open,
+  onClose,
   onOpenProjects,
 }: {
   activeStep: number;
+  open: boolean;
+  onClose: () => void;
   onOpenProjects: () => void;
 }) {
   return (
-    <aside className="pipeline-sidebar">
-      <Brand />
+    <aside
+      id="pipeline-navigation"
+      className={`pipeline-sidebar${open ? ' is-open' : ''}`}
+    >
+      <div className="sidebar-mobile-heading">
+        <Brand />
+        <button
+          type="button"
+          aria-label="Đóng quy trình sản xuất"
+          onClick={onClose}
+        >
+          <XIcon />
+        </button>
+      </div>
       <button
         className="projects-nav-button"
         type="button"
-        onClick={onOpenProjects}
+        onClick={() => {
+          onClose();
+          onOpenProjects();
+        }}
       >
         <FolderIcon />
         Project của bạn
@@ -162,14 +185,30 @@ function PipelineSidebar({
 
 function MobileHeader({
   activeStep,
+  sidebarOpen,
+  onToggleSidebar,
   onOpenProjects,
 }: {
   activeStep: number;
+  sidebarOpen: boolean;
+  onToggleSidebar: () => void;
   onOpenProjects: () => void;
 }) {
   return (
     <header className="mobile-header">
-      <Brand />
+      <div className="mobile-brand-group">
+        <button
+          className="mobile-sidebar-button"
+          type="button"
+          aria-label="Mở quy trình sản xuất"
+          aria-controls="pipeline-navigation"
+          aria-expanded={sidebarOpen}
+          onClick={onToggleSidebar}
+        >
+          <MenuIcon />
+        </button>
+        <Brand />
+      </div>
       <div className="mobile-progress">
         <button
           className="mobile-projects-button"
@@ -1232,6 +1271,7 @@ function OutlinePage({projectId}: {projectId: string}) {
 export default function App() {
   const route = useAppRoute();
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [newProjectKey, setNewProjectKey] = useState(0);
   const [projectReloadKey, setProjectReloadKey] = useState(0);
   const activeStep =
@@ -1248,9 +1288,46 @@ export default function App() {
         : 0;
   const activeProjectId =
     route.name === 'new-topic' ? undefined : route.projectId;
+  const routeIdentity =
+    route.name === 'new-topic'
+      ? `new-topic-${newProjectKey}`
+      : `${route.name}-${route.projectId}-${projectReloadKey}`;
+  const navigationRef = useRef({
+    activeStep,
+    routeIdentity,
+    transition: 'fade' as 'backward' | 'fade' | 'forward',
+  });
+  if (navigationRef.current.routeIdentity !== routeIdentity) {
+    navigationRef.current = {
+      activeStep,
+      routeIdentity,
+      transition:
+        activeStep > navigationRef.current.activeStep
+          ? 'forward'
+          : activeStep < navigationRef.current.activeStep
+            ? 'backward'
+            : 'fade',
+    };
+  }
+  const pageTransition = navigationRef.current.transition;
 
   const closeLibrary = useCallback(() => setLibraryOpen(false), []);
   const openLibrary = useCallback(() => setLibraryOpen(true), []);
+
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [routeIdentity]);
+
+  useEffect(() => {
+    if (!sidebarOpen) return;
+
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === 'Escape') setSidebarOpen(false);
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [sidebarOpen]);
 
   function handleCreateProject() {
     clearLocalTopicDraft();
@@ -1279,60 +1356,62 @@ export default function App() {
     <div className="app-shell">
       <PipelineSidebar
         activeStep={activeStep}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
         onOpenProjects={openLibrary}
       />
-      <MobileHeader activeStep={activeStep} onOpenProjects={openLibrary} />
+      <button
+        className={`sidebar-backdrop${sidebarOpen ? ' is-open' : ''}`}
+        type="button"
+        aria-label="Đóng quy trình sản xuất"
+        tabIndex={sidebarOpen ? 0 : -1}
+        onClick={() => setSidebarOpen(false)}
+      />
+      <MobileHeader
+        activeStep={activeStep}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((current) => !current)}
+        onOpenProjects={openLibrary}
+      />
 
       <main className="workspace">
-        {route.name === 'new-topic' && (
-          <TopicPage
-            key={`new-topic-${newProjectKey}`}
-            autosavePaused={libraryOpen}
-            onContinue={(project) =>
-              navigate(projectOutlinePath(project.id), true)
-            }
-          />
-        )}
-        {route.name === 'project-topic' && (
-          <TopicPage
-            key={`project-topic-${route.projectId}-${projectReloadKey}`}
-            projectId={route.projectId}
-            autosavePaused={libraryOpen}
-            onContinue={(project) =>
-              navigate(projectOutlinePath(project.id), true)
-            }
-          />
-        )}
-        {route.name === 'project-outline' && (
-          <OutlinePage
-            key={`project-outline-${route.projectId}-${projectReloadKey}`}
-            projectId={route.projectId}
-          />
-        )}
-        {route.name === 'project-voice-visual' && (
-          <VoiceVisualPage
-            key={`project-voice-visual-${route.projectId}-${projectReloadKey}`}
-            projectId={route.projectId}
-          />
-        )}
-        {route.name === 'project-motion-canvas' && (
-          <MotionCanvasPage
-            key={`project-motion-canvas-${route.projectId}-${projectReloadKey}`}
-            projectId={route.projectId}
-          />
-        )}
-        {route.name === 'project-voice' && (
-          <VoicePage
-            key={`project-voice-${route.projectId}-${projectReloadKey}`}
-            projectId={route.projectId}
-          />
-        )}
-        {route.name === 'project-sync' && (
-          <AnimationSyncPage
-            key={`project-sync-${route.projectId}-${projectReloadKey}`}
-            projectId={route.projectId}
-          />
-        )}
+        <div
+          className={`workspace-page is-${pageTransition}`}
+          key={routeIdentity}
+        >
+          {route.name === 'new-topic' && (
+            <TopicPage
+              autosavePaused={libraryOpen}
+              onContinue={(project) =>
+                navigate(projectOutlinePath(project.id), true)
+              }
+            />
+          )}
+          {route.name === 'project-topic' && (
+            <TopicPage
+              projectId={route.projectId}
+              autosavePaused={libraryOpen}
+              onContinue={(project) =>
+                navigate(projectOutlinePath(project.id), true)
+              }
+            />
+          )}
+          {route.name === 'project-outline' && (
+            <OutlinePage projectId={route.projectId} />
+          )}
+          {route.name === 'project-voice-visual' && (
+            <VoiceVisualPage projectId={route.projectId} />
+          )}
+          {route.name === 'project-motion-canvas' && (
+            <MotionCanvasPage projectId={route.projectId} />
+          )}
+          {route.name === 'project-voice' && (
+            <VoicePage projectId={route.projectId} />
+          )}
+          {route.name === 'project-sync' && (
+            <AnimationSyncPage projectId={route.projectId} />
+          )}
+        </div>
       </main>
 
       <ProjectLibrary

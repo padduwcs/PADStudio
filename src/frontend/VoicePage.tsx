@@ -1,4 +1,4 @@
-import {type FormEvent, useRef, useState} from 'react';
+import {type FormEvent, useEffect, useRef, useState} from 'react';
 import {
   narrationMetrics,
   type NarrationCalibration,
@@ -19,6 +19,11 @@ import {
   projectMotionCanvasPath,
   projectSyncPath,
 } from './router.ts';
+import {
+  isMediaPlaybackAbort,
+  playMediaSegment,
+} from './mediaPlayback.ts';
+import {ResponsiveAside} from './ResponsiveAside.tsx';
 import {useElevenLabsConnection} from './useElevenLabsConnection.ts';
 import {
   type VoiceDraftConfiguration,
@@ -49,8 +54,26 @@ export function VoicePage({projectId}: {projectId: string}) {
   const connection = useElevenLabsConnection();
   const [search, setSearch] = useState('');
   const [showAllVoices, setShowAllVoices] = useState(false);
+  const [sectionPlayback, setSectionPlayback] = useState<{
+    sectionIndex: number;
+    state: 'loading' | 'playing';
+  } | null>(null);
+  const [sectionPlaybackError, setSectionPlaybackError] = useState('');
   const masterAudioRef = useRef<HTMLAudioElement | null>(null);
-  const playbackEndRef = useRef<number | null>(null);
+  const playbackSegmentRef = useRef<{
+    sectionIndex: number;
+    startSeconds: number;
+    endSeconds: number;
+  } | null>(null);
+  const playbackAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(
+    () => () => {
+      playbackAbortRef.current?.abort();
+      masterAudioRef.current?.pause();
+    },
+    [],
+  );
 
   async function handleGenerate() {
     if (voice.generating || connection.checking) return;
@@ -72,21 +95,82 @@ export function VoicePage({projectId}: {projectId: string}) {
     void voice.searchVoices(search);
   }
 
-  function playSection(startSeconds: number, endSeconds: number) {
+  async function playSection(
+    sectionIndex: number,
+    startSeconds: number,
+    endSeconds: number,
+  ) {
     const audio = masterAudioRef.current;
     if (!audio) return;
-    playbackEndRef.current = endSeconds;
-    audio.currentTime = startSeconds;
-    void audio.play();
+
+    if (sectionPlayback?.sectionIndex === sectionIndex) {
+      playbackAbortRef.current?.abort();
+      playbackAbortRef.current = null;
+      playbackSegmentRef.current = null;
+      audio.pause();
+      setSectionPlayback(null);
+      return;
+    }
+
+    playbackAbortRef.current?.abort();
+    playbackSegmentRef.current = null;
+    audio.pause();
+
+    const controller = new AbortController();
+    playbackAbortRef.current = controller;
+    setSectionPlaybackError('');
+    setSectionPlayback({sectionIndex, state: 'loading'});
+
+    try {
+      const segment = await playMediaSegment(
+        audio,
+        startSeconds,
+        endSeconds,
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+
+      playbackSegmentRef.current = {sectionIndex, ...segment};
+      setSectionPlayback({sectionIndex, state: 'playing'});
+    } catch (error) {
+      if (isMediaPlaybackAbort(error)) return;
+      playbackSegmentRef.current = null;
+      setSectionPlayback(null);
+      setSectionPlaybackError(
+        error instanceof Error
+          ? error.message
+          : 'Không thể mở đúng đoạn audio của section.',
+      );
+    }
   }
 
   function handleMasterTimeUpdate() {
     const audio = masterAudioRef.current;
-    const endSeconds = playbackEndRef.current;
-    if (!audio || endSeconds === null) return;
-    if (audio.currentTime >= endSeconds - 0.03) {
+    const segment = playbackSegmentRef.current;
+    if (!audio || !segment) return;
+    if (audio.currentTime >= segment.endSeconds - 0.03) {
       audio.pause();
-      playbackEndRef.current = null;
+      playbackSegmentRef.current = null;
+      setSectionPlayback(null);
+    }
+  }
+
+  function clearSectionPlayback() {
+    if (!playbackSegmentRef.current) return;
+    playbackSegmentRef.current = null;
+    setSectionPlayback(null);
+  }
+
+  function handleMasterSeeking() {
+    const audio = masterAudioRef.current;
+    const segment = playbackSegmentRef.current;
+    if (!audio || !segment) return;
+
+    if (
+      audio.currentTime < segment.startSeconds - 0.05 ||
+      audio.currentTime > segment.endSeconds + 0.05
+    ) {
+      clearSectionPlayback();
     }
   }
 
@@ -235,18 +319,24 @@ export function VoicePage({projectId}: {projectId: string}) {
       <div className="voice-editor-grid">
         <div className="voice-main">
           <section className="outline-primary-card voice-config-card">
-            <div className="outline-card-heading">
-              <span className="preview-kicker">
-                <SparkIcon />
-                Cấu hình generation
-              </span>
+            <div className="outline-card-heading voice-config-heading">
+              <div className="voice-config-heading-copy">
+                <span className="voice-config-heading-icon">
+                  <SparkIcon />
+                </span>
+                <div>
+                  <span className="preview-kicker">Cấu hình generation</span>
+                  <p>Chọn giọng, model và sắc thái cho một master liền mạch.</p>
+                </div>
+              </div>
               <span className="draft-status">
                 <span />
                 Chỉ tiêu credit khi tạo
               </span>
             </div>
 
-            <form className="voice-search" onSubmit={handleSearch}>
+            <div className="voice-config-body">
+              <form className="voice-search" onSubmit={handleSearch}>
               <label htmlFor="voice-search">Tìm giọng đọc theo tên hoặc ID</label>
               <div>
                 <input
@@ -277,7 +367,7 @@ export function VoicePage({projectId}: {projectId: string}) {
                   Voice Library
                 </button>
               </div>
-            </form>
+              </form>
 
             {voice.catalog?.recentPresets.length ? (
               <div className="voice-presets">
@@ -604,6 +694,7 @@ export function VoicePage({projectId}: {projectId: string}) {
                   </>
                 )}
               </button>
+              </div>
             </div>
           </section>
 
@@ -651,17 +742,15 @@ export function VoicePage({projectId}: {projectId: string}) {
                     bundle.generation.generationId,
                   )}
                   onTimeUpdate={handleMasterTimeUpdate}
-                  onSeeked={() => {
-                    if (
-                      playbackEndRef.current !== null &&
-                      masterAudioRef.current &&
-                      masterAudioRef.current.currentTime >=
-                        playbackEndRef.current
-                    ) {
-                      playbackEndRef.current = null;
-                    }
-                  }}
+                  onSeeking={handleMasterSeeking}
+                  onPause={clearSectionPlayback}
+                  onEnded={clearSectionPlayback}
                 />
+                {sectionPlaybackError && (
+                  <p className="voice-player-error" role="alert">
+                    {sectionPlaybackError}
+                  </p>
+                )}
               </div>
 
               {bundle.sections.map((section, index) => (
@@ -686,14 +775,22 @@ export function VoicePage({projectId}: {projectId: string}) {
                     <button
                       className="secondary-button voice-play-section"
                       type="button"
+                      aria-pressed={
+                        sectionPlayback?.sectionIndex === index
+                      }
                       onClick={() =>
-                        playSection(
+                        void playSection(
+                          index,
                           section.startSeconds,
                           section.endSeconds,
                         )
                       }
                     >
-                      Nghe riêng section trên master
+                      {sectionPlayback?.sectionIndex === index
+                        ? sectionPlayback.state === 'loading'
+                          ? 'Đang mở đúng đoạn…'
+                          : 'Dừng nghe section'
+                        : 'Nghe riêng section trên master'}
                     </button>
                     <details
                       className="voice-beat-review"
@@ -732,7 +829,7 @@ export function VoicePage({projectId}: {projectId: string}) {
           )}
         </div>
 
-        <aside className="voice-side">
+        <ResponsiveAside className="voice-side" label="Tổng quan generation">
           <section className="outline-side-card">
             <div className="voice-side-heading">
               <span className="preview-label">Generation hiện tại</span>
@@ -799,7 +896,7 @@ export function VoicePage({projectId}: {projectId: string}) {
               </p>
             </div>
           </section>
-        </aside>
+        </ResponsiveAside>
       </div>
 
       {bundle && (

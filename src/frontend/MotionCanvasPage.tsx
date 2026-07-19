@@ -15,6 +15,7 @@ import {
   projectVoicePath,
   projectVoiceVisualPath,
 } from './router.ts';
+import {ResponsiveAside} from './ResponsiveAside.tsx';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useMotionCanvasDraft} from './useMotionCanvasDraft.ts';
 
@@ -246,30 +247,32 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
             </footer>
           </section>
 
-          <aside className="outline-side-card">
-            <span className="preview-label">Ràng buộc an toàn</span>
-            <ul className="voice-visual-checklist">
-              <li>
-                <CheckIcon />
-                Chỉ dùng package Motion Canvas
-              </li>
-              <li>
-                <CheckIcon />
-                Không mạng, filesystem hay dynamic import
-              </li>
-              <li>
-                <CheckIcon />
-                TypeScript phải biên dịch trước khi lưu
-              </li>
-            </ul>
-            <div className="outline-next-note">
-              <LightbulbIcon />
-              <p>
-                Scene của mỗi video được giữ riêng, chưa ép vào thư viện
-                component dùng chung.
-              </p>
-            </div>
-          </aside>
+          <ResponsiveAside label="Ràng buộc an toàn">
+            <section className="outline-side-card">
+              <span className="preview-label">Ràng buộc an toàn</span>
+              <ul className="voice-visual-checklist">
+                <li>
+                  <CheckIcon />
+                  Chỉ dùng package Motion Canvas
+                </li>
+                <li>
+                  <CheckIcon />
+                  Không mạng, filesystem hay dynamic import
+                </li>
+                <li>
+                  <CheckIcon />
+                  TypeScript phải biên dịch trước khi lưu
+                </li>
+              </ul>
+              <div className="outline-next-note">
+                <LightbulbIcon />
+                <p>
+                  Scene của mỗi video được giữ riêng, chưa ép vào thư viện
+                  component dùng chung.
+                </p>
+              </div>
+            </section>
+          </ResponsiveAside>
         </div>
       ) : (
         <>
@@ -474,7 +477,10 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
               )}
             </div>
 
-            <aside className="motion-canvas-side">
+            <ResponsiveAside
+              className="motion-canvas-side"
+              label="Tổng quan scene"
+            >
               <section className="outline-side-card">
                 <span className="preview-label">Tổng quan</span>
                 <dl>
@@ -517,7 +523,7 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                   </p>
                 </div>
               </section>
-            </aside>
+            </ResponsiveAside>
           </div>
 
           <footer className="outline-final-actions">

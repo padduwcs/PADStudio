@@ -1,6 +1,6 @@
 .sync-workspace {
-  width: 100%;
-  padding: 58px clamp(28px, 5vw, 76px) 72px;
+  width: min(1180px, 100%);
+  margin: 8px auto 0;
 }
 
 .sync-empty-grid,
@@ -649,23 +649,14 @@
   font-weight: 800;
 }
 
-@media (max-width: 940px) {
+@media (max-width: 1100px) {
   .sync-empty-grid,
   .sync-summary-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-
-  .sync-prerequisite-card,
-  .sync-workspace-card {
-    position: static;
-  }
 }
 
 @media (max-width: 680px) {
-  .sync-workspace {
-    padding: 38px 18px 56px;
-  }
-
   .sync-ready-card,
   .sync-overview-card {
     padding: 20px;

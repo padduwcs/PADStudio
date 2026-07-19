@@ -177,6 +177,99 @@ function sendApiError(
   sendJson(response, statusCode, {error} satisfies ApiErrorPayload);
 }
 
+interface ByteRange {
+  start: number;
+  end: number;
+}
+
+function parseByteRange(
+  rangeHeader: string,
+  contentLength: number,
+): ByteRange | null {
+  if (
+    contentLength <= 0 ||
+    !rangeHeader.startsWith('bytes=') ||
+    rangeHeader.includes(',')
+  ) {
+    return null;
+  }
+
+  const match = /^bytes=(\d*)-(\d*)$/u.exec(rangeHeader.trim());
+  if (!match) return null;
+
+  const [, rawStart = '', rawEnd = ''] = match;
+  if (!rawStart && !rawEnd) return null;
+
+  if (!rawStart) {
+    const suffixLength = Number(rawEnd);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return null;
+    return {
+      start: Math.max(0, contentLength - suffixLength),
+      end: contentLength - 1,
+    };
+  }
+
+  const start = Number(rawStart);
+  if (
+    !Number.isSafeInteger(start) ||
+    start < 0 ||
+    start >= contentLength
+  ) {
+    return null;
+  }
+
+  const requestedEnd = rawEnd ? Number(rawEnd) : contentLength - 1;
+  if (!Number.isSafeInteger(requestedEnd) || requestedEnd < start) return null;
+
+  return {
+    start,
+    end: Math.min(requestedEnd, contentLength - 1),
+  };
+}
+
+function sendMediaBuffer(
+  request: IncomingMessage,
+  response: ServerResponse,
+  buffer: Buffer,
+  contentType: string,
+  headers: Record<string, string>,
+) {
+  const sharedHeaders = {
+    'Content-Type': contentType,
+    'Accept-Ranges': 'bytes',
+    ...headers,
+  };
+  const rangeHeader = request.headers.range;
+
+  if (!rangeHeader) {
+    response.writeHead(200, {
+      ...sharedHeaders,
+      'Content-Length': String(buffer.byteLength),
+    });
+    response.end(buffer);
+    return;
+  }
+
+  const range = parseByteRange(rangeHeader, buffer.byteLength);
+  if (!range) {
+    response.writeHead(416, {
+      ...sharedHeaders,
+      'Content-Range': `bytes */${buffer.byteLength}`,
+      'Content-Length': '0',
+    });
+    response.end();
+    return;
+  }
+
+  const partialBuffer = buffer.subarray(range.start, range.end + 1);
+  response.writeHead(206, {
+    ...sharedHeaders,
+    'Content-Length': String(partialBuffer.byteLength),
+    'Content-Range': `bytes ${range.start}-${range.end}/${buffer.byteLength}`,
+  });
+  response.end(partialBuffer);
+}
+
 async function readJsonBody(request: IncomingMessage) {
   const chunks: Buffer[] = [];
   let receivedBytes = 0;
@@ -1902,13 +1995,16 @@ export function createPadStudioServer(options: AppOptions = {}) {
           currentProject.voiceBundle,
           voiceRoute.outlineSectionId,
         );
-        response.writeHead(200, {
-          'Content-Type': result.contentType,
-          'Content-Length': result.audio.byteLength,
-          'Cache-Control': 'private, max-age=31536000, immutable',
-          ETag: `"${currentProject.voiceBundle.generation.generationId}:${voiceRoute.outlineSectionId}"`,
-        });
-        response.end(result.audio);
+        sendMediaBuffer(
+          request,
+          response,
+          result.audio,
+          result.contentType,
+          {
+            'Cache-Control': 'private, max-age=31536000, immutable',
+            ETag: `"${currentProject.voiceBundle.generation.generationId}:${voiceRoute.outlineSectionId}"`,
+          },
+        );
         return;
       }
 
@@ -2209,13 +2305,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
           currentProject.id,
           bundle,
         );
-        response.writeHead(200, {
-          'Content-Type': 'audio/wav',
-          'Content-Length': audio.byteLength,
+        sendMediaBuffer(request, response, audio, 'audio/wav', {
           'Cache-Control': 'private, max-age=31536000, immutable',
           ETag: `"${bundle.generation.generationId}"`,
         });
-        response.end(audio);
         return;
       }
 

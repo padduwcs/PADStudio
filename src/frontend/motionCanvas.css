@@ -325,11 +325,10 @@
 }
 
 .motion-canvas-side .outline-side-card {
-  position: sticky;
-  top: 24px;
+  position: static;
 }
 
-@media (max-width: 920px) {
+@media (max-width: 1100px) {
   .motion-canvas-empty-grid,
   .motion-canvas-editor-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -340,7 +339,7 @@
   }
 }
 
-@media (max-width: 1080px) and (min-width: 921px) {
+@media (max-width: 1080px) {
   .motion-canvas-validation {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }

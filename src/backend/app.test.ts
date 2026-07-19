@@ -1129,9 +1129,34 @@ export default makeScene2D(function* (view) {
   );
   assert.equal(voiceAudioResponse.status, 200);
   assert.equal(voiceAudioResponse.headers.get('content-type'), 'audio/wav');
+  assert.equal(voiceAudioResponse.headers.get('accept-ranges'), 'bytes');
   assert.match(
     Buffer.from(await voiceAudioResponse.arrayBuffer()).toString(),
     /^RIFF-master/,
+  );
+
+  const voiceAudioRangeResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice/audio/${voiceGenerateBody.project.outline.sections[0].id}`,
+    {headers: {Range: 'bytes=5-10'}},
+  );
+  assert.equal(voiceAudioRangeResponse.status, 206);
+  assert.equal(
+    voiceAudioRangeResponse.headers.get('content-range'),
+    'bytes 5-10/17',
+  );
+  assert.equal(
+    Buffer.from(await voiceAudioRangeResponse.arrayBuffer()).toString(),
+    'master',
+  );
+
+  const invalidVoiceAudioRangeResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice/audio/${voiceGenerateBody.project.outline.sections[0].id}`,
+    {headers: {Range: 'bytes=99-120'}},
+  );
+  assert.equal(invalidVoiceAudioRangeResponse.status, 416);
+  assert.equal(
+    invalidVoiceAudioRangeResponse.headers.get('content-range'),
+    'bytes */17',
   );
 
   const staleVoiceAudioResponse = await fetch(
@@ -1234,9 +1259,24 @@ export default makeScene2D(function* (view) {
   );
   assert.equal(syncAudioResponse.status, 200);
   assert.equal(syncAudioResponse.headers.get('content-type'), 'audio/wav');
+  assert.equal(syncAudioResponse.headers.get('accept-ranges'), 'bytes');
   assert.match(
     Buffer.from(await syncAudioResponse.arrayBuffer()).toString(),
     /^RIFF/,
+  );
+
+  const syncAudioRangeResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/sync/audio?generation=${syncGenerationId}`,
+    {headers: {Range: 'bytes=-5'}},
+  );
+  assert.equal(syncAudioRangeResponse.status, 206);
+  assert.equal(
+    syncAudioRangeResponse.headers.get('content-range'),
+    'bytes 10-14/15',
+  );
+  assert.equal(
+    Buffer.from(await syncAudioRangeResponse.arrayBuffer()).toString(),
+    'audio',
   );
 
   const syncPreviewResponse = await fetch(
