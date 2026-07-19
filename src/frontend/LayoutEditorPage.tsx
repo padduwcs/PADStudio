@@ -11,6 +11,8 @@ import {
   LayoutEditorNodeSchema,
   LayoutNodePatchSchema,
   LayoutOverridesDocumentSchema,
+  layoutFontFamilyValues,
+  layoutFontWeightValues,
   type LayoutEditorManifest,
   type LayoutEditorNode,
   type LayoutNodePatch,
@@ -19,11 +21,13 @@ import {
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {
   ArrowLeftIcon,
+  ArrowRightIcon,
   CheckIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   EyeIcon,
   EyeOffIcon,
+  KeyboardIcon,
   LayersIcon,
   LockIcon,
   PaletteIcon,
@@ -33,6 +37,7 @@ import {
   TrashIcon,
   UndoIcon,
   UnlockIcon,
+  XIcon,
 } from './icons.tsx';
 import {resolveLayoutEditorManifest} from './layoutEditorState.ts';
 import {
@@ -48,6 +53,45 @@ const RUNTIME_READY_TIMEOUT_MS = 20_000;
 const RUNTIME_READY_POLL_MS = 1_000;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const GENERATED_EDITOR_NODE_PATTERN =
+  /\/[A-Za-z][A-Za-z0-9]*\[\d+\]$/;
+
+const LAYOUT_SHORTCUT_GROUPS = [
+  {
+    title: 'Chỉnh sửa',
+    shortcuts: [
+      ['Hoàn tác', 'Ctrl/Cmd', 'Z'],
+      ['Làm lại', 'Ctrl/Cmd', 'Shift', 'Z'],
+      ['Sao chép modifier', 'Ctrl/Cmd', 'C'],
+      ['Dán modifier', 'Ctrl/Cmd', 'V'],
+      ['Lưu ngay', 'Ctrl/Cmd', 'S'],
+    ],
+  },
+  {
+    title: 'Node đang chọn',
+    shortcuts: [
+      ['Di chuyển 1 px', '←', '↑', '↓', '→'],
+      ['Di chuyển 10 px', 'Shift', '← ↑ ↓ →'],
+      ['Ẩn node', 'Delete'],
+      ['Ẩn / hiện', 'H'],
+      ['Reset node', 'R'],
+      ['Đưa xuống / lên', '[', ']'],
+    ],
+  },
+  {
+    title: 'Điều hướng',
+    shortcuts: [
+      ['Phát / tạm dừng', 'Space', 'K'],
+      ['Lùi / tiến 5 giây', 'J', 'L'],
+      ['Lùi / tiến 1 giây', 'Alt', '← / →'],
+      ['Lùi / tiến 1 frame', ',', '.'],
+      ['Đầu / cuối video', 'Home', 'End'],
+      ['Bỏ chọn / đóng', 'Esc'],
+      ['Chọn nhanh scene', '1', '…', '9'],
+      ['Mở bảng phím tắt', '?'],
+    ],
+  },
+] as const;
 
 type NumericLayoutProperty =
   | 'x'
@@ -55,7 +99,8 @@ type NumericLayoutProperty =
   | 'scale'
   | 'rotation'
   | 'opacity'
-  | 'strokeWidth';
+  | 'strokeWidth'
+  | 'fontSize';
 
 interface RuntimeSelection {
   sceneId: string;
@@ -83,6 +128,13 @@ interface RuntimeState {
   sceneName: string;
   dirtyRevision: number;
   reviewed: boolean;
+  view?: {
+    original: boolean;
+    clean: boolean;
+    grid: boolean;
+    safeZone: boolean;
+    snap: boolean;
+  };
   history: {canUndo: boolean; canRedo: boolean};
 }
 
@@ -167,6 +219,23 @@ function patchSummary(patch: LayoutNodePatch) {
   return `${count} thay đổi`;
 }
 
+function editorFacingNodes(nodes: LayoutEditorNode[]) {
+  const byKey = new Map(nodes.map((node) => [node.key, node]));
+  return nodes.filter((node) => {
+    if (!GENERATED_EDITOR_NODE_PATTERN.test(node.key)) return true;
+    let parentKey = node.parentKey;
+    const visited = new Set<string>();
+    while (parentKey && !visited.has(parentKey)) {
+      visited.add(parentKey);
+      const parent = byKey.get(parentKey);
+      if (!parent) return true;
+      if (!GENERATED_EDITOR_NODE_PATTERN.test(parent.key)) return false;
+      parentKey = parent.parentKey;
+    }
+    return true;
+  });
+}
+
 interface LayoutNumberInputProps {
   value: number;
   min: number;
@@ -236,9 +305,61 @@ function LayoutNumberInput({
   );
 }
 
+interface LayoutTextEditorProps {
+  value: string;
+  disabled: boolean;
+  onCommit: (value: string) => void;
+}
+
+function LayoutTextEditor({
+  value,
+  disabled,
+  onCommit,
+}: LayoutTextEditorProps) {
+  const [draft, setDraft] = useState(value);
+
+  useEffect(() => setDraft(value), [value]);
+
+  function commit() {
+    if (draft !== value) onCommit(draft.slice(0, 500));
+  }
+
+  return (
+    <div className="layout-text-editor">
+      <textarea
+        rows={4}
+        maxLength={500}
+        value={draft}
+        disabled={disabled}
+        aria-label="Nội dung chữ"
+        onChange={(event) => setDraft(event.currentTarget.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+            event.preventDefault();
+            event.currentTarget.blur();
+          }
+        }}
+      />
+      <div>
+        <small>{draft.length}/500 · tự áp dụng khi rời ô</small>
+        <button
+          type="button"
+          disabled={disabled || draft === value}
+          onClick={commit}
+        >
+          Áp dụng
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function LayoutEditorPage({projectId}: {projectId: string}) {
   const layout = useLayoutEditor(projectId);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const sceneRailRef = useRef<HTMLDivElement | null>(null);
+  const shortcutCloseRef = useRef<HTMLButtonElement | null>(null);
   const documentRef = useRef<LayoutOverridesDocument | null>(null);
   const committedDocumentRef =
     useRef<LayoutOverridesDocument | null>(null);
@@ -253,6 +374,9 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
   const leavingPageRef = useRef(false);
   const lastRuntimeDirtyRevisionRef = useRef(0);
   const manifestStoredRef = useRef(false);
+  const manifestSaveRequiredRef = useRef(false);
+  const persistedManifestSignatureRef = useRef('');
+  const latestRuntimeManifestSignatureRef = useRef('');
   const runtimeFailedRef = useRef(false);
   const runtimeReadyRef = useRef(false);
   const automaticRecoveryCountRef = useRef(0);
@@ -272,15 +396,15 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
   const [runtimeReady, setRuntimeReady] = useState(false);
   const [frameReloadKey, setFrameReloadKey] = useState(0);
   const [manifestStored, setManifestStored] = useState(false);
+  const [manifestSaveRequired, setManifestSaveRequired] = useState(false);
   const [runtimeError, setRuntimeError] = useState('');
   const [dirtyRevision, setDirtyRevision] = useState(0);
   const [savedRevision, setSavedRevision] = useState(-1);
   const [playedRevision, setPlayedRevision] = useState(-1);
   const [reviewedRevision, setReviewedRevision] = useState(-1);
   const [search, setSearch] = useState('');
-  const [expandedScenes, setExpandedScenes] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [navigatorSceneId, setNavigatorSceneId] = useState('');
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [copiedPatch, setCopiedPatch] =
     useState<LayoutNodePatch | null>(null);
 
@@ -312,6 +436,13 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
       return;
     }
     loadedLayoutKeyRef.current = loadedLayoutKey;
+    const persistedManifestSignature = JSON.stringify(
+      layout.layoutState?.manifest ?? null,
+    );
+    persistedManifestSignatureRef.current = persistedManifestSignature;
+    latestRuntimeManifestSignatureRef.current = persistedManifestSignature;
+    manifestSaveRequiredRef.current = false;
+    setManifestSaveRequired(false);
     setManifest((currentManifest) =>
       resolveLayoutEditorManifest(
         layout.layoutState?.manifest ?? null,
@@ -433,12 +564,18 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     if (
       !currentDocument ||
       !manifestStoredRef.current ||
-      savedRevisionRef.current === dirtyRevisionRef.current
+      (!manifestSaveRequiredRef.current &&
+        savedRevisionRef.current === dirtyRevisionRef.current)
     ) {
-      return savedRevisionRef.current === dirtyRevisionRef.current;
+      return (
+        !manifestSaveRequiredRef.current &&
+        savedRevisionRef.current === dirtyRevisionRef.current
+      );
     }
 
     const revisionToSave = dirtyRevisionRef.current;
+    const manifestSignatureToSave =
+      latestRuntimeManifestSignatureRef.current;
     savingRevisionRef.current = revisionToSave;
     let saveSucceeded = false;
     const operation = (async () => {
@@ -449,6 +586,15 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
       saveSucceeded = true;
       savedRevisionRef.current = revisionToSave;
       setSavedRevision(revisionToSave);
+      if (
+        latestRuntimeManifestSignatureRef.current ===
+        manifestSignatureToSave
+      ) {
+        persistedManifestSignatureRef.current =
+          manifestSignatureToSave;
+        manifestSaveRequiredRef.current = false;
+        setManifestSaveRequired(false);
+      }
       return true;
     })();
     activeSavePromiseRef.current = operation;
@@ -467,8 +613,8 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
         saveSucceeded &&
         !leavingPageRef.current &&
         (saveWasQueued ||
-          dirtyRevisionRef.current !== savedRevisionRef.current) &&
-        savedRevisionRef.current !== dirtyRevisionRef.current
+          dirtyRevisionRef.current !== savedRevisionRef.current ||
+          manifestSaveRequiredRef.current)
       ) {
         queueSave(120);
       }
@@ -590,6 +736,21 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
         return;
       }
 
+      if (
+        message.type === 'shortcut' &&
+        typeof payload.action === 'string'
+      ) {
+        window.dispatchEvent(
+          new CustomEvent('pad-layout-shortcut', {
+            detail: {
+              action: payload.action,
+              shiftKey: payload.shiftKey === true,
+            },
+          }),
+        );
+        return;
+      }
+
       if (message.type === 'manifest') {
         const parsedManifest = LayoutEditorManifestSchema.safeParse(
           payload.manifest,
@@ -618,7 +779,20 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
           }
           manifestStoredRef.current = true;
           setManifestStored(true);
+          const runtimeManifestSignature = JSON.stringify(
+            parsedManifest.data,
+          );
+          latestRuntimeManifestSignatureRef.current =
+            runtimeManifestSignature;
           if (
+            runtimeManifestSignature !==
+            persistedManifestSignatureRef.current
+          ) {
+            manifestSaveRequiredRef.current = true;
+            setManifestSaveRequired(true);
+          }
+          if (
+            manifestSaveRequiredRef.current ||
             !projectRef.current?.layoutBundle ||
             savedRevisionRef.current !== dirtyRevisionRef.current
           ) {
@@ -805,15 +979,10 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
   ]);
 
   useEffect(() => {
-    const sceneId = runtimeState?.sceneId;
+    const sceneId = selection?.sceneId || runtimeState?.sceneId;
     if (!sceneId) return;
-    setExpandedScenes((current) => {
-      if (current.has(sceneId)) return current;
-      const next = new Set(current);
-      next.add(sceneId);
-      return next;
-    });
-  }, [runtimeState?.sceneId]);
+    setNavigatorSceneId(sceneId);
+  }, [runtimeState?.sceneId, selection?.sceneId]);
 
   const scenes = useMemo(() => {
     if (!sourceSync) return [];
@@ -824,7 +993,9 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
       sceneId: section.sceneId,
       filePath: section.filePath,
       label: `Scene ${String(index + 1).padStart(2, '0')}`,
-      nodes: manifestById.get(section.sceneId)?.nodes ?? [],
+      nodes: editorFacingNodes(
+        manifestById.get(section.sceneId)?.nodes ?? [],
+      ),
     }));
   }, [manifest, sourceSync]);
   const hasKnownNodes = scenes.some((scene) => scene.nodes.length > 0);
@@ -833,15 +1004,22 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     const query = search.trim().toLocaleLowerCase('vi');
     if (!query) return scenes;
     return scenes
-      .map((scene) => ({
-        ...scene,
-        nodes: scene.nodes.filter(
-          (node) =>
-            node.label.toLocaleLowerCase('vi').includes(query) ||
-            node.key.toLocaleLowerCase('vi').includes(query) ||
-            node.nodeType.toLocaleLowerCase('vi').includes(query),
-        ),
-      }))
+      .map((scene) => {
+        const sceneMatches =
+          scene.label.toLocaleLowerCase('vi').includes(query) ||
+          scene.filePath.toLocaleLowerCase('vi').includes(query);
+        return {
+          ...scene,
+          nodes: sceneMatches
+            ? scene.nodes
+            : scene.nodes.filter(
+                (node) =>
+                  node.label.toLocaleLowerCase('vi').includes(query) ||
+                  node.key.toLocaleLowerCase('vi').includes(query) ||
+                  node.nodeType.toLocaleLowerCase('vi').includes(query),
+              ),
+        };
+      })
       .filter(
         (scene) =>
           scene.nodes.length > 0 ||
@@ -849,6 +1027,31 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
           scene.filePath.toLocaleLowerCase('vi').includes(query),
       );
   }, [scenes, search]);
+  const activeScene =
+    visibleScenes.find((scene) => scene.sceneId === navigatorSceneId) ??
+    visibleScenes.find((scene) => scene.sceneId === selection?.sceneId) ??
+    visibleScenes.find((scene) => scene.sceneId === runtimeState?.sceneId) ??
+    visibleScenes[0] ??
+    null;
+  const activeSceneIndex = activeScene
+    ? scenes.findIndex((scene) => scene.sceneId === activeScene.sceneId)
+    : -1;
+
+  useEffect(() => {
+    if (!activeScene) return;
+    const activeButton = sceneRailRef.current?.querySelector<HTMLElement>(
+      `[data-scene-id="${activeScene.sceneId}"]`,
+    );
+    activeButton?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'nearest',
+      inline: 'nearest',
+    });
+  }, [activeScene?.sceneId]);
+
+  useEffect(() => {
+    if (shortcutsOpen) shortcutCloseRef.current?.focus();
+  }, [shortcutsOpen]);
 
   function canEdit(property: LayoutEditorNode['editableProperties'][number]) {
     return Boolean(
@@ -875,6 +1078,7 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
   }
 
   function selectNode(sceneId: string, nodeKey?: string) {
+    setNavigatorSceneId(sceneId);
     const pendingSelection = {
       sceneId,
       nodeKey: nodeKey ?? null,
@@ -885,6 +1089,13 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     }
     pendingSelectionRef.current = null;
     sendCommand('setSelected', pendingSelection);
+  }
+
+  function scrollSceneRail(direction: -1 | 1) {
+    sceneRailRef.current?.scrollBy({
+      left: direction * 220,
+      behavior: 'smooth',
+    });
   }
 
   function copySelectedPatch() {
@@ -937,6 +1148,229 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     automaticRecoveryCountRef.current = 0;
     restartRuntime();
   }
+
+  useEffect(() => {
+    function isTypingTarget(target: EventTarget | null) {
+      return (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      );
+    }
+
+    function runShortcut(action: string, shiftKey = false) {
+      const nudge = shiftKey ? 10 : 1;
+      switch (action) {
+        case 'undo':
+          if (!runtimeState?.history.canUndo) return false;
+          sendCommand('undo');
+          return true;
+        case 'redo':
+          if (!runtimeState?.history.canRedo) return false;
+          sendCommand('redo');
+          return true;
+        case 'copy':
+          if (!selection) return false;
+          copySelectedPatch();
+          return true;
+        case 'paste':
+          if (!selection || selection.editorLocked || !copiedPatch) {
+            return false;
+          }
+          pasteSelectedPatch();
+          return true;
+        case 'save':
+          void flushPendingSave();
+          return true;
+        case 'help':
+          setShortcutsOpen(true);
+          return true;
+        case 'escape':
+          if (shortcutsOpen) {
+            setShortcutsOpen(false);
+          } else if (selection) {
+            sendCommand('setSelected', {
+              sceneId: selection.sceneId,
+              nodeKey: null,
+            });
+          } else {
+            return false;
+          }
+          return true;
+        case 'toggle-play':
+          if (!runtimeReady) return false;
+          sendCommand('toggle');
+          return true;
+        case 'seek-back-five':
+          if (!runtimeReady) return false;
+          sendCommand('seekBy', {seconds: -5});
+          return true;
+        case 'seek-forward-five':
+          if (!runtimeReady) return false;
+          sendCommand('seekBy', {seconds: 5});
+          return true;
+        case 'seek-back-one':
+          if (!runtimeReady) return false;
+          sendCommand('seekBy', {seconds: -1});
+          return true;
+        case 'seek-forward-one':
+          if (!runtimeReady) return false;
+          sendCommand('seekBy', {seconds: 1});
+          return true;
+        case 'frame-back':
+          if (!runtimeReady) return false;
+          sendCommand('seekBy', {frames: -1});
+          return true;
+        case 'frame-forward':
+          if (!runtimeReady) return false;
+          sendCommand('seekBy', {frames: 1});
+          return true;
+        case 'seek-start':
+          if (!runtimeReady) return false;
+          sendCommand('seek', {frame: 0});
+          return true;
+        case 'seek-end':
+          if (!runtimeReady || !runtimeState) return false;
+          sendCommand('seek', {frame: runtimeState.duration});
+          return true;
+        case 'delete':
+          if (!canEdit('hidden')) return false;
+          sendPatch({hidden: true});
+          return true;
+        case 'toggle-hidden':
+          if (!selection || !canEdit('hidden')) return false;
+          sendPatch({hidden: !selection.patch.hidden});
+          return true;
+        case 'reset':
+          if (!selection || selection.editorLocked) return false;
+          sendCommand('resetSelected');
+          return true;
+        case 'layer-up':
+        case 'layer-down':
+          if (!selection || !canEdit('zIndexDelta')) return false;
+          sendPatch({
+            zIndexDelta:
+              (selection.patch.zIndexDelta ?? 0) +
+              (action === 'layer-up' ? 1 : -1),
+          });
+          return true;
+        case 'nudge-left':
+        case 'nudge-right':
+          if (!selection || !canEdit('x')) return false;
+          sendNumericPatch(
+            'x',
+            (selection.patch.x ?? 0) +
+              (action === 'nudge-right' ? nudge : -nudge),
+          );
+          return true;
+        case 'nudge-up':
+        case 'nudge-down':
+          if (!selection || !canEdit('y')) return false;
+          sendNumericPatch(
+            'y',
+            (selection.patch.y ?? 0) +
+              (action === 'nudge-down' ? nudge : -nudge),
+          );
+          return true;
+        default:
+          if (/^scene-[1-9]$/.test(action)) {
+            const index = Number(action.at(-1)) - 1;
+            const scene = scenes[index];
+            if (!scene) return false;
+            selectNode(scene.sceneId);
+            return true;
+          }
+          return false;
+      }
+    }
+
+    function handleRuntimeShortcut(event: Event) {
+      const detail = (
+        event as CustomEvent<{action?: string; shiftKey?: boolean}>
+      ).detail;
+      if (!detail?.action) return;
+      runShortcut(detail.action, detail.shiftKey === true);
+    }
+
+    function handleKeyboardShortcut(event: globalThis.KeyboardEvent) {
+      if (event.defaultPrevented || isTypingTarget(event.target)) return;
+      const modifier = event.ctrlKey || event.metaKey;
+      let action = '';
+      if (modifier && event.code === 'KeyZ') {
+        action = event.shiftKey ? 'redo' : 'undo';
+      } else if (modifier && event.code === 'KeyY') {
+        action = 'redo';
+      } else if (modifier && event.code === 'KeyC') {
+        action = 'copy';
+      } else if (modifier && event.code === 'KeyV') {
+        action = 'paste';
+      } else if (modifier && event.code === 'KeyS') {
+        action = 'save';
+      } else if (!modifier && event.key === '?') {
+        action = 'help';
+      } else if (!modifier && (event.key === 'Delete' || event.key === 'Backspace')) {
+        action = 'delete';
+      } else if (!modifier && event.code === 'Space') {
+        action = 'toggle-play';
+      } else if (!modifier && event.code === 'KeyJ') {
+        action = 'seek-back-five';
+      } else if (!modifier && event.code === 'KeyK') {
+        action = 'toggle-play';
+      } else if (!modifier && event.code === 'KeyL') {
+        action = 'seek-forward-five';
+      } else if (!modifier && event.code === 'Comma') {
+        action = 'frame-back';
+      } else if (!modifier && event.code === 'Period') {
+        action = 'frame-forward';
+      } else if (!modifier && event.code === 'Home') {
+        action = 'seek-start';
+      } else if (!modifier && event.code === 'End') {
+        action = 'seek-end';
+      } else if (!modifier && event.altKey && event.key === 'ArrowLeft') {
+        action = event.shiftKey ? 'seek-back-five' : 'seek-back-one';
+      } else if (!modifier && event.altKey && event.key === 'ArrowRight') {
+        action = event.shiftKey ? 'seek-forward-five' : 'seek-forward-one';
+      } else if (!modifier && event.key === 'Escape') {
+        action = 'escape';
+      } else if (!modifier && event.key === 'ArrowLeft') {
+        action = 'nudge-left';
+      } else if (!modifier && event.key === 'ArrowRight') {
+        action = 'nudge-right';
+      } else if (!modifier && event.key === 'ArrowUp') {
+        action = 'nudge-up';
+      } else if (!modifier && event.key === 'ArrowDown') {
+        action = 'nudge-down';
+      } else if (!modifier && event.code === 'BracketRight') {
+        action = 'layer-up';
+      } else if (!modifier && event.code === 'BracketLeft') {
+        action = 'layer-down';
+      } else if (!modifier && event.code === 'KeyH') {
+        action = 'toggle-hidden';
+      } else if (!modifier && event.code === 'KeyR') {
+        action = 'reset';
+      } else if (!modifier && /^Digit[1-9]$/.test(event.code)) {
+        action = `scene-${event.code.at(-1)}`;
+      }
+      if (action && runShortcut(action, event.shiftKey)) {
+        event.preventDefault();
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyboardShortcut);
+    window.addEventListener('pad-layout-shortcut', handleRuntimeShortcut);
+    return () => {
+      window.removeEventListener('keydown', handleKeyboardShortcut);
+      window.removeEventListener('pad-layout-shortcut', handleRuntimeShortcut);
+    };
+  }, [
+    copiedPatch,
+    runtimeReady,
+    runtimeState,
+    scenes,
+    selection,
+    shortcutsOpen,
+  ]);
 
   if (layout.loadState === 'loading') {
     return (
@@ -995,8 +1429,40 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     );
   }
 
+  const selectedText =
+    typeof selection?.patch.text === 'string'
+      ? selection.patch.text
+      : typeof selection?.base?.text === 'string'
+        ? selection.base.text
+        : '';
+  const rawFontFamily =
+    selection?.patch.fontFamily ?? selection?.base?.fontFamily;
+  const selectedFontFamily =
+    typeof rawFontFamily === 'string' &&
+    layoutFontFamilyValues.some((font) => font === rawFontFamily)
+      ? rawFontFamily
+      : '';
+  const selectedFontSize =
+    typeof selection?.patch.fontSize === 'number'
+      ? selection.patch.fontSize
+      : typeof selection?.base?.fontSize === 'number'
+        ? selection.base.fontSize
+        : 48;
+  const selectedFontWeight =
+    typeof selection?.patch.fontWeight === 'number'
+      ? selection.patch.fontWeight
+      : typeof selection?.base?.fontWeight === 'number'
+        ? selection.base.fontWeight
+        : 400;
+  const selectedFontStyle =
+    selection?.patch.fontStyle === 'italic' ||
+    selection?.base?.fontStyle === 'italic'
+      ? 'italic'
+      : 'normal';
+
   const isSaved =
     savedRevision === dirtyRevision &&
+    !manifestSaveRequired &&
     layout.saveState !== 'saving' &&
     Boolean(layout.project.layoutBundle);
   const approved =
@@ -1035,6 +1501,15 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
           </p>
         </div>
         <div className="layout-heading-status">
+          <button
+            className="layout-shortcut-trigger"
+            type="button"
+            onClick={() => setShortcutsOpen(true)}
+          >
+            <KeyboardIcon />
+            Phím tắt
+            <kbd>?</kbd>
+          </button>
           <span className={`draft-status${isSaved ? ' is-saved' : ''}`}>
             <span />
             {layout.saveState === 'saving'
@@ -1099,99 +1574,142 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
             <div>
               <span className="preview-kicker">
                 <LayersIcon />
-                Scene &amp; layer
+                Cấu trúc video
               </span>
               <strong>{document?.overrides.length ?? 0} modifier</strong>
             </div>
             <input
               type="search"
               value={search}
-              placeholder="Tìm node…"
-              aria-label="Tìm node"
+              placeholder="Tìm scene hoặc layer…"
+              aria-label="Tìm scene hoặc layer"
               onChange={(event) => setSearch(event.target.value)}
             />
           </header>
-          <div className="layout-scene-tree">
-            {visibleScenes.map((scene) => (
-              <details
-                key={scene.sceneId}
-                open={
-                  Boolean(search) ||
-                  expandedScenes.has(scene.sceneId)
-                }
-                onToggle={(event) => {
-                  if (search) return;
-                  const open = event.currentTarget.open;
-                  setExpandedScenes((current) => {
-                    const next = new Set(current);
-                    if (open) next.add(scene.sceneId);
-                    else next.delete(scene.sceneId);
-                    return next;
-                  });
-                }}
+          <div className="layout-scene-navigator">
+            <div className="layout-panel-label">
+              <span>Scene</span>
+              <small>
+                {activeSceneIndex >= 0 ? activeSceneIndex + 1 : 0}/{scenes.length}
+              </small>
+            </div>
+            <div className="layout-scene-rail-wrap">
+              <button
+                className="layout-rail-arrow is-previous"
+                type="button"
+                aria-label="Cuộn scene về trước"
+                onClick={() => scrollSceneRail(-1)}
               >
-                <summary
-                  onClick={(event) => {
-                    if (!(event.target instanceof HTMLButtonElement)) {
-                      selectNode(scene.sceneId);
-                    }
-                  }}
-                >
-                  <span>
-                    <strong>{scene.label}</strong>
-                    <small>{scene.nodes.length} node</small>
-                  </span>
-                  <code>{scene.filePath.split('/').at(-1)}</code>
-                </summary>
-                <div>
-                  {scene.nodes.length === 0 ? (
+                <ArrowLeftIcon />
+              </button>
+              <div
+                className="layout-scene-rail"
+                ref={sceneRailRef}
+                role="tablist"
+                aria-label="Chọn scene"
+              >
+                {visibleScenes.map((scene) => {
+                  const sceneIndex = scenes.findIndex(
+                    (item) => item.sceneId === scene.sceneId,
+                  );
+                  const active = activeScene?.sceneId === scene.sceneId;
+                  const modifierCount =
+                    document?.overrides.filter(
+                      (item) => item.sceneId === scene.sceneId,
+                    ).length ?? 0;
+                  return (
                     <button
-                      className="layout-empty-scene"
+                      className={`layout-scene-chip${active ? ' is-active' : ''}`}
                       type="button"
+                      role="tab"
+                      aria-selected={active}
+                      data-scene-id={scene.sceneId}
+                      key={scene.sceneId}
                       onClick={() => selectNode(scene.sceneId)}
                     >
-                      Mở scene để nhận diện node
+                      <span>{String(sceneIndex + 1).padStart(2, '0')}</span>
+                      <strong>{scene.label}</strong>
+                      {modifierCount > 0 && <i>{modifierCount}</i>}
                     </button>
-                  ) : (
-                    scene.nodes.map((node) => {
-                      const nodeOverride = document?.overrides.find(
-                        (item) =>
-                          item.sceneId === scene.sceneId &&
-                          item.nodeKey === node.key,
-                      );
-                      const selected =
-                        selection?.sceneId === scene.sceneId &&
-                        selection.nodeKey === node.key;
-                      return (
-                        <button
-                          className={`layout-node-row${
-                            selected ? ' is-selected' : ''
-                          }${nodeOverride?.patch.hidden ? ' is-hidden' : ''}`}
-                          type="button"
-                          key={node.key}
-                          title={node.key}
-                          aria-pressed={selected}
-                          onClick={() => selectNode(scene.sceneId, node.key)}
-                        >
-                          <span className="layout-node-type">
-                            {node.nodeType.slice(0, 2).toUpperCase()}
-                          </span>
-                          <span>
-                            <strong>{node.label}</strong>
-                            <small>{patchSummary(nodeOverride?.patch ?? {})}</small>
-                          </span>
-                          {node.identity === 'legacy' && (
-                            <i title="Node legacy được khóa theo fingerprint">
-                              L
-                            </i>
-                          )}
-                        </button>
-                      );
-                    })
-                  )}
+                  );
+                })}
+              </div>
+              <button
+                className="layout-rail-arrow is-next"
+                type="button"
+                aria-label="Cuộn scene tiếp theo"
+                onClick={() => scrollSceneRail(1)}
+              >
+                <ArrowRightIcon />
+              </button>
+            </div>
+          </div>
+          <div className="layout-layer-browser">
+            <div className="layout-panel-label">
+              <span>Layer</span>
+              <small>{activeScene?.nodes.length ?? 0} node</small>
+            </div>
+            <div className="layout-layer-list">
+              {!activeScene ? (
+                <div className="layout-list-empty">
+                  <strong>Không tìm thấy kết quả</strong>
+                  <span>Thử một từ khóa khác.</span>
                 </div>
-              </details>
-            ))}
+              ) : activeScene.nodes.length === 0 ? (
+                <button
+                  className="layout-empty-scene"
+                  type="button"
+                  onClick={() => selectNode(activeScene.sceneId)}
+                >
+                  <LayersIcon />
+                  <span>
+                    <strong>Mở scene để nhận diện layer</strong>
+                    <small>Node map sẽ xuất hiện tại đây.</small>
+                  </span>
+                </button>
+              ) : (
+                activeScene.nodes.map((node) => {
+                  const nodeOverride = document?.overrides.find(
+                    (item) =>
+                      item.sceneId === activeScene.sceneId &&
+                      item.nodeKey === node.key,
+                  );
+                  const selected =
+                    selection?.sceneId === activeScene.sceneId &&
+                    selection.nodeKey === node.key;
+                  return (
+                    <button
+                      className={`layout-node-row${
+                        selected ? ' is-selected' : ''
+                      }${nodeOverride?.patch.hidden ? ' is-hidden' : ''}`}
+                      type="button"
+                      key={node.key}
+                      title={node.key}
+                      aria-pressed={selected}
+                      onClick={() => selectNode(activeScene.sceneId, node.key)}
+                    >
+                      <span className="layout-node-type">
+                        {node.nodeType.slice(0, 2).toUpperCase()}
+                      </span>
+                      <span>
+                        <strong>{node.label}</strong>
+                        <small>{patchSummary(nodeOverride?.patch ?? {})}</small>
+                      </span>
+                      {(nodeOverride?.patch.hidden || node.identity === 'legacy') && (
+                        <span className="layout-node-state">
+                          {nodeOverride?.patch.hidden && (
+                            <EyeOffIcon aria-label="Node đang ẩn" />
+                          )}
+                          {node.identity === 'legacy' && (
+                            <i title="Node legacy được khóa theo fingerprint">L</i>
+                          )}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
           </div>
           <footer>
             <span className={manifestStored ? 'is-ready' : ''} />
@@ -1277,52 +1795,75 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
             )}
           </div>
           <div className="layout-command-bar">
-            <div>
+            <div className="layout-command-group">
               <button
+                ref={shortcutCloseRef}
                 type="button"
                 title="Hoàn tác (Ctrl+Z)"
+                aria-label="Hoàn tác"
                 disabled={!runtimeState?.history.canUndo}
                 onClick={() => sendCommand('undo')}
               >
                 <UndoIcon />
-                Hoàn tác
+                <kbd>Ctrl Z</kbd>
               </button>
               <button
                 type="button"
                 title="Làm lại (Ctrl+Shift+Z)"
+                aria-label="Làm lại"
                 disabled={!runtimeState?.history.canRedo}
                 onClick={() => sendCommand('redo')}
               >
                 <RedoIcon />
-                Làm lại
+                <kbd>Ctrl ⇧ Z</kbd>
               </button>
             </div>
-            <span>
-              {runtimeState
-                ? `${formatTime(runtimeState.frame, runtimeState.fps)} / ${formatTime(
-                    runtimeState.duration,
-                    runtimeState.fps,
-                  )}`
-                : runtimeError
-                  ? 'Player chưa kết nối'
-                  : 'Đang kết nối player…'}
-            </span>
-            <div>
+            <div className="layout-command-context">
+              <span className="layout-selection-dot" />
+              <span>
+                {selection ? selection.label : activeScene?.label ?? 'Chưa chọn layer'}
+              </span>
+              <code>
+                {runtimeState
+                  ? `${formatTime(runtimeState.frame, runtimeState.fps)} / ${formatTime(
+                      runtimeState.duration,
+                      runtimeState.fps,
+                    )}`
+                  : runtimeError
+                    ? 'Player chưa kết nối'
+                    : 'Đang kết nối…'}
+              </code>
+            </div>
+            <div className="layout-command-group is-secondary">
               <button
                 type="button"
+                title="Sao chép modifier (Ctrl+C)"
+                aria-label="Sao chép modifier"
                 disabled={!selection}
                 onClick={copySelectedPatch}
               >
-                Sao chép
+                Sao chép <kbd>Ctrl C</kbd>
               </button>
               <button
                 type="button"
+                title="Dán modifier (Ctrl+V)"
+                aria-label="Dán modifier"
                 disabled={
                   !selection || selection.editorLocked || !copiedPatch
                 }
                 onClick={pasteSelectedPatch}
               >
-                Dán chỉnh sửa
+                Dán <kbd>Ctrl V</kbd>
+              </button>
+              <button
+                className="layout-command-help"
+                type="button"
+                title="Xem toàn bộ phím tắt (?)"
+                aria-label="Xem toàn bộ phím tắt"
+                onClick={() => setShortcutsOpen(true)}
+              >
+                <KeyboardIcon />
+                <kbd>?</kbd>
               </button>
             </div>
           </div>
@@ -1417,6 +1958,129 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                   )}
                 </div>
               </section>
+
+              {selection.editableProperties.includes('text') && (
+                <section className="layout-property-section layout-typography-section">
+                  <h3>Nội dung &amp; kiểu chữ</h3>
+                  <LayoutTextEditor
+                    value={selectedText}
+                    disabled={!canEdit('text')}
+                    onCommit={(text) => sendPatch({text})}
+                  />
+
+                  <div className="layout-type-grid">
+                    <label className="layout-font-family-field">
+                      <span>Font chữ</span>
+                      <select
+                        value={selectedFontFamily}
+                        disabled={!canEdit('fontFamily')}
+                        onChange={(event) => {
+                          const fontFamily = event.currentTarget.value as
+                            | LayoutNodePatch['fontFamily']
+                            | '';
+                          if (fontFamily) sendPatch({fontFamily});
+                        }}
+                      >
+                        <option value="" disabled>
+                          Font từ source
+                        </option>
+                        {layoutFontFamilyValues.map((font) => (
+                          <option value={font} key={font} style={{fontFamily: font}}>
+                            {font.split(',')[0]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>Cỡ chữ</span>
+                      <LayoutNumberInput
+                        min={8}
+                        max={500}
+                        step={1}
+                        value={selectedFontSize}
+                        disabled={!canEdit('fontSize')}
+                        onCommit={(value) => sendNumericPatch('fontSize', value)}
+                      />
+                    </label>
+                    <label>
+                      <span>Độ đậm</span>
+                      <select
+                        value={selectedFontWeight}
+                        disabled={!canEdit('fontWeight')}
+                        onChange={(event) =>
+                          sendPatch({fontWeight: Number(event.currentTarget.value)})
+                        }
+                      >
+                        {layoutFontWeightValues.map((weight) => (
+                          <option value={weight} key={weight}>
+                            {weight}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="layout-text-style-group" aria-label="Kiểu chữ">
+                    <button
+                      type="button"
+                      className={selectedFontWeight >= 600 ? 'is-active' : ''}
+                      aria-pressed={selectedFontWeight >= 600}
+                      title="In đậm"
+                      disabled={!canEdit('fontWeight')}
+                      onClick={() =>
+                        sendPatch({fontWeight: selectedFontWeight >= 600 ? 400 : 700})
+                      }
+                    >
+                      <strong>B</strong>
+                      <span>Đậm</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={selectedFontStyle === 'italic' ? 'is-active' : ''}
+                      aria-pressed={selectedFontStyle === 'italic'}
+                      title="In nghiêng"
+                      disabled={!canEdit('fontStyle')}
+                      onClick={() =>
+                        sendPatch({
+                          fontStyle:
+                            selectedFontStyle === 'italic' ? 'normal' : 'italic',
+                        })
+                      }
+                    >
+                      <i>I</i>
+                      <span>Nghiêng</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={selection.patch.underline ? 'is-active' : ''}
+                      aria-pressed={selection.patch.underline === true}
+                      title="Gạch chân"
+                      disabled={!canEdit('underline')}
+                      onClick={() =>
+                        sendPatch({underline: !selection.patch.underline})
+                      }
+                    >
+                      <u>U</u>
+                      <span>Gạch chân</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={selection.patch.strikethrough ? 'is-active' : ''}
+                      aria-pressed={selection.patch.strikethrough === true}
+                      title="Gạch bỏ"
+                      disabled={!canEdit('strikethrough')}
+                      onClick={() =>
+                        sendPatch({
+                          strikethrough: !selection.patch.strikethrough,
+                        })
+                      }
+                    >
+                      <s>S</s>
+                      <span>Gạch bỏ</span>
+                    </button>
+                  </div>
+                </section>
+              )}
 
               <section className="layout-property-section">
                 <h3>
@@ -1580,6 +2244,61 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
           )}
         </aside>
       </section>
+
+      {shortcutsOpen && (
+        <div
+          className="layout-shortcut-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShortcutsOpen(false);
+          }}
+        >
+          <section
+            className="layout-shortcut-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="layout-shortcut-title"
+          >
+            <header>
+              <div>
+                <span>
+                  <KeyboardIcon />
+                </span>
+                <div>
+                  <small>Layout Editor</small>
+                  <h2 id="layout-shortcut-title">Phím tắt thao tác nhanh</h2>
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Đóng bảng phím tắt"
+                onClick={() => setShortcutsOpen(false)}
+              >
+                <XIcon />
+              </button>
+            </header>
+            <p>
+              Phím tắt hoạt động cả khi bạn đang thao tác trực tiếp trên canvas.
+              Các phím di chuyển chỉ áp dụng cho node đang chọn.
+            </p>
+            <div className="layout-shortcut-grid">
+              {LAYOUT_SHORTCUT_GROUPS.map((group) => (
+                <section key={group.title}>
+                  <h3>{group.title}</h3>
+                  {group.shortcuts.map(([label, ...keys]) => (
+                    <div className="layout-shortcut-row" key={label}>
+                      <span>{label}</span>
+                      <span>
+                        {keys.map((key) => <kbd key={key}>{key}</kbd>)}
+                      </span>
+                    </div>
+                  ))}
+                </section>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
 
       <section className="layout-review-bar">
         <div

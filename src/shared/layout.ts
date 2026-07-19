@@ -1,6 +1,32 @@
 import {z} from 'zod';
 
 export const layoutStatusValues = ['draft', 'approved'] as const;
+export const layoutFontFamilyValues = [
+  'Arial, sans-serif',
+  'Segoe UI, Arial, sans-serif',
+  'Verdana, Arial, sans-serif',
+  'Tahoma, Arial, sans-serif',
+  'Trebuchet MS, Arial, sans-serif',
+  'Georgia, Times New Roman, serif',
+  'Times New Roman, Times, serif',
+  'Courier New, Consolas, monospace',
+  'Cascadia Code, Consolas, monospace',
+  'Consolas, Courier New, monospace',
+  'Impact, Arial Black, sans-serif',
+  'Arial Black, Arial, sans-serif',
+] as const;
+export const layoutFontWeightValues = [
+  100,
+  200,
+  300,
+  400,
+  500,
+  600,
+  700,
+  800,
+  900,
+] as const;
+export const layoutFontStyleValues = ['normal', 'italic'] as const;
 export const layoutOverridePropertyValues = [
   'x',
   'y',
@@ -12,6 +38,13 @@ export const layoutOverridePropertyValues = [
   'stroke',
   'strokeWidth',
   'zIndexDelta',
+  'text',
+  'fontFamily',
+  'fontSize',
+  'fontWeight',
+  'fontStyle',
+  'underline',
+  'strikethrough',
 ] as const;
 export const layoutNodeIdentityValues = ['semantic', 'legacy'] as const;
 
@@ -48,6 +81,22 @@ export const LayoutNodePatchSchema = z
     stroke: HexColorSchema.nullable().optional(),
     strokeWidth: z.number().finite().min(0).max(200).optional(),
     zIndexDelta: z.number().int().min(-1_000).max(1_000).optional(),
+    text: z.string().max(500).optional(),
+    fontFamily: z.enum(layoutFontFamilyValues).optional(),
+    fontSize: z.number().finite().min(8).max(500).optional(),
+    fontWeight: z
+      .number()
+      .int()
+      .refine(
+        (value) => layoutFontWeightValues.includes(
+          value as (typeof layoutFontWeightValues)[number],
+        ),
+        'Font weight không được hỗ trợ.',
+      )
+      .optional(),
+    fontStyle: z.enum(layoutFontStyleValues).optional(),
+    underline: z.boolean().optional(),
+    strikethrough: z.boolean().optional(),
     editorLocked: z.boolean().optional(),
   })
   .strict()

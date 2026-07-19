@@ -16,12 +16,18 @@ import {
   fetchOptionalJson,
   readEditorContext,
 } from './protocol.js';
+import {
+  canonicalizeEditorNodes,
+  isGeneratedEditorNodeKey,
+  mergeEditorNodePolicy,
+  migrateInternalNodeOverrides,
+  resolveLiveEditorNodeTarget,
+} from './editor-targets.js';
 
 const NODE_KEY = /^[A-Za-z0-9][A-Za-z0-9._:/\[\]-]{0,159}$/;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256 = /^[a-f0-9]{64}$/;
-const AUTO_KEY = /\/[A-Za-z][A-Za-z0-9]*\[\d+\]$/;
 const MAX_MANIFEST_NODES = 500;
 const SNAP_STEP = 10;
 
@@ -121,8 +127,12 @@ function createUi(projectName) {
   );
 
   const transport = element('footer', 'layout-transport');
+  const rewind = actionButton('−5s', 'Lùi 5 giây (J)');
+  rewind.className = 'layout-skip';
   const play = actionButton('Phát', 'Phát hoặc tạm dừng (Space)');
   play.className = 'layout-play';
+  const forward = actionButton('+5s', 'Tiến 5 giây (L)');
+  forward.className = 'layout-skip';
   const currentTime = element('time', 'layout-time', '0:00.0');
   const timeline = element('div', 'layout-timeline');
   const seek = element('input', 'layout-seek');
@@ -136,7 +146,15 @@ function createUi(projectName) {
   timeline.append(sceneMarkers, seek);
   const durationTime = element('time', 'layout-time', '0:00.0');
   const mute = actionButton('Âm thanh');
-  transport.append(play, currentTime, timeline, durationTime, mute);
+  transport.append(
+    rewind,
+    play,
+    forward,
+    currentTime,
+    timeline,
+    durationTime,
+    mute,
+  );
 
   const errorPanel = element('section', 'layout-error');
   errorPanel.hidden = true;
@@ -163,7 +181,9 @@ function createUi(projectName) {
     originalBadge,
     cleanBadge,
     selectionPill,
+    rewind,
     play,
+    forward,
     currentTime,
     seek,
     sceneMarkers,
@@ -340,6 +360,60 @@ function drawOverlay(context, canvas, geometry, view) {
   context.restore();
 }
 
+function interpolatePoint(start, end, amount) {
+  return {
+    x: start.x + (end.x - start.x) * amount,
+    y: start.y + (end.y - start.y) * amount,
+  };
+}
+
+function drawTextDecorations(context, scene, document, sceneId) {
+  const overrides = (document.overrides ?? []).filter(
+    override =>
+      override.sceneId === sceneId &&
+      (override.patch?.underline || override.patch?.strikethrough),
+  );
+  if (overrides.length === 0) return;
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.globalCompositeOperation = 'source-over';
+  context.setLineDash([]);
+  for (const override of overrides) {
+    const node = scene.getNode?.(override.nodeKey);
+    if (!node || override.patch.hidden) continue;
+    const geometry = nodeGeometry(node);
+    if (!geometry?.corners || geometry.corners.length < 4) continue;
+    const [topLeft, topRight, bottomRight, bottomLeft] = geometry.corners;
+    const height =
+      (distance(topLeft, bottomLeft) + distance(topRight, bottomRight)) / 2;
+    const fill = signalSnapshot(node, 'fill');
+    const stroke = signalSnapshot(node, 'stroke');
+    context.strokeStyle =
+      typeof fill === 'string'
+        ? fill
+        : typeof stroke === 'string'
+          ? stroke
+          : '#ffffff';
+    context.lineWidth = Math.min(14, Math.max(2, height * 0.035));
+    context.lineCap = 'round';
+    context.globalAlpha =
+      typeof node.absoluteOpacity === 'function'
+        ? Math.min(1, Math.max(0, Number(node.absoluteOpacity())))
+        : 1;
+    const drawLine = amount => {
+      const start = interpolatePoint(topLeft, bottomLeft, amount);
+      const end = interpolatePoint(topRight, bottomRight, amount);
+      context.beginPath();
+      context.moveTo(start.x, start.y);
+      context.lineTo(end.x, end.y);
+      context.stroke();
+    };
+    if (override.patch.strikethrough) drawLine(0.52);
+    if (override.patch.underline) drawLine(0.88);
+  }
+  context.restore();
+}
+
 async function stableSceneId(name) {
   const hash = await sha256(`pad-studio-layout-scene:${name}`);
   const chars = hash.slice(0, 32).split('');
@@ -417,7 +491,9 @@ async function inspectManifestNodes(scene) {
         label: sceneNodeLabel(node),
         nodeType: (node.constructor?.name || 'Node').slice(0, 80),
         parentKey,
-        identity: AUTO_KEY.test(node.key) ? 'legacy' : 'semantic',
+        identity: isGeneratedEditorNodeKey(node.key)
+          ? 'legacy'
+          : 'semantic',
         editableProperties: editable,
         lockedProperties: [],
         lockReason: null,
@@ -503,6 +579,7 @@ async function startEditor(project) {
   let manifestReady = false;
   const manifestDirtyScenes = new Set();
   const manifestInspectedScenes = new Set();
+  const editorTargetsByScene = new Map();
   const subscribedScenes = new WeakSet();
   const history = [];
   const future = [];
@@ -593,6 +670,13 @@ async function startEditor(project) {
     const manifestNode = currentManifestNode(node.key);
     const override = currentOverride(node.key);
     const patch = override?.patch ?? {};
+    const liveEditableProperties = editableProperties(node);
+    const selectionEditableProperties = [
+      ...new Set([
+        ...(manifestNode?.editableProperties ?? []),
+        ...liveEditableProperties,
+      ]),
+    ];
     return {
       sceneId: info.sceneId,
       nodeKey: node.key,
@@ -603,8 +687,7 @@ async function startEditor(project) {
       nodeType: manifestNode?.nodeType ?? node.constructor?.name ?? 'Node',
       parentKey: manifestNode?.parentKey ?? node.parent?.()?.key ?? null,
       identity: manifestNode?.identity ?? 'legacy',
-      editableProperties:
-        manifestNode?.editableProperties ?? editableProperties(node),
+      editableProperties: selectionEditableProperties,
       lockedProperties: manifestNode?.lockedProperties ?? [],
       lockReason: manifestNode?.lockReason ?? null,
       editorLocked: patch.editorLocked === true,
@@ -618,6 +701,11 @@ async function startEditor(project) {
         stroke: signalSnapshot(node, 'stroke'),
         strokeWidth: signalSnapshot(node, 'lineWidth'),
         zIndex: signalSnapshot(node, 'zIndex'),
+        text: signalSnapshot(node, 'text'),
+        fontFamily: signalSnapshot(node, 'fontFamily'),
+        fontSize: signalSnapshot(node, 'fontSize'),
+        fontWeight: signalSnapshot(node, 'fontWeight'),
+        fontStyle: signalSnapshot(node, 'fontStyle'),
       },
       geometry: selectedGeometry,
     };
@@ -649,10 +737,16 @@ async function startEditor(project) {
 
   function refreshButtons() {
     const payload = selectionPayload();
+    const hiddenEditable = Boolean(
+      payload &&
+        !payload.editorLocked &&
+        payload.editableProperties.includes('hidden') &&
+        !payload.lockedProperties.includes('hidden'),
+    );
     ui.undo.disabled = history.length === 0;
     ui.redo.disabled = future.length === 0;
     ui.reset.disabled = !payload || payload.editorLocked;
-    ui.remove.disabled = !payload || payload.editorLocked;
+    ui.remove.disabled = !hiddenEditable;
     ui.original.setAttribute('aria-pressed', String(view.original));
     ui.clean.setAttribute('aria-pressed', String(view.clean));
     ui.grid.setAttribute('aria-pressed', String(view.grid));
@@ -784,11 +878,59 @@ async function startEditor(project) {
     );
   }
 
+  function normalizeKnownInternalOverrides() {
+    let nextDocument = overridesDocument;
+    for (const [sceneId, targetModel] of editorTargetsByScene) {
+      nextDocument = migrateInternalNodeOverrides(
+        nextDocument,
+        sceneId,
+        targetModel.aliases,
+        targetModel.nodes,
+      );
+    }
+    if (nextDocument === overridesDocument) return false;
+    return replaceDocument(nextDocument, {
+      record: false,
+      reason: 'normalize-internal-targets',
+    });
+  }
+
+  function nudgeSelection(axis, amount) {
+    if (!selected || !selectedCanEdit([axis])) return false;
+    const patch = currentOverride()?.patch ?? {};
+    const current = Number.isFinite(patch[axis]) ? patch[axis] : 0;
+    return patchSelection(
+      {[axis]: current + amount},
+      {reason: 'keyboard-nudge'},
+    );
+  }
+
+  function changeSelectionLayer(amount) {
+    if (!selected || !selectedCanEdit(['zIndexDelta'])) return false;
+    const patch = currentOverride()?.patch ?? {};
+    const current = Number.isFinite(patch.zIndexDelta)
+      ? patch.zIndexDelta
+      : 0;
+    return patchSelection(
+      {zIndexDelta: current + amount},
+      {reason: 'keyboard-layer'},
+    );
+  }
+
+  function resolveLiveEditorNode(scene, nodeKey) {
+    const requested =
+      typeof scene?.getNode === 'function' ? scene.getNode(nodeKey) : null;
+    if (!requested) return null;
+    const target = resolveLiveEditorNodeTarget(requested);
+    return target && NODE_KEY.test(String(target.key ?? ''))
+      ? target
+      : requested;
+  }
+
   function selectNode(nodeKey, notify = true) {
     const scene = player.playback.currentScene;
     const info = currentSceneInfo();
-    const node =
-      typeof scene?.getNode === 'function' ? scene.getNode(nodeKey) : null;
+    const node = resolveLiveEditorNode(scene, nodeKey);
     selected = node ? {sceneId: info.sceneId, nodeKey: node.key} : null;
     selectedGeometry = node ? nodeGeometry(node) : null;
     refreshButtons();
@@ -808,29 +950,24 @@ async function startEditor(project) {
     const info = sceneInfo(scene);
     if (!info.sceneId) return;
     const discoveredNodes = await inspectManifestNodes(scene);
+    const canonical = canonicalizeEditorNodes(discoveredNodes);
     const previousScene = manifest.scenes?.find(
       item => item.sceneId === info.sceneId,
     );
-    const nodesByKey = new Map(
+    const previousByKey = new Map(
       (previousScene?.nodes ?? []).map(node => [node.key, node]),
     );
-    for (const node of discoveredNodes) {
-      const previousNode = nodesByKey.get(node.key);
-      nodesByKey.set(
-        node.key,
-        previousNode
-          ? {
-              ...node,
-              editableProperties: previousNode.editableProperties,
-              lockedProperties: previousNode.lockedProperties,
-              lockReason: previousNode.lockReason,
-            }
-          : node,
-      );
-    }
-    const nodes = Array.from(nodesByKey.values())
+    const nodes = canonical.nodes
+      .map(node => {
+        const previousNode = previousByKey.get(node.key);
+        return mergeEditorNodePolicy(node, previousNode);
+      })
       .sort((left, right) => left.key.localeCompare(right.key))
       .slice(0, MAX_MANIFEST_NODES);
+    editorTargetsByScene.set(info.sceneId, {
+      aliases: canonical.aliases,
+      nodes,
+    });
     const nextScene = {
       sceneId: info.sceneId,
       filePath: info.filePath,
@@ -848,8 +985,16 @@ async function startEditor(project) {
       scenes.every(item =>
         manifestInspectedScenes.has(sceneInfo(item).sceneId),
       );
-    modifierIndex = buildModifierIndex(overridesDocument);
-    if (selected?.sceneId === info.sceneId) postSelection();
+    if (selected?.sceneId === info.sceneId) {
+      const canonicalKey = canonical.aliases.get(selected.nodeKey);
+      if (canonicalKey) {
+        const node = resolveLiveEditorNode(scene, canonicalKey);
+        selected = node
+          ? {sceneId: info.sceneId, nodeKey: node.key}
+          : null;
+        selectedGeometry = node ? nodeGeometry(node) : null;
+      }
+    }
     protocol.post('manifest', {
       status: 'discovered',
       sceneId: info.sceneId,
@@ -857,6 +1002,8 @@ async function startEditor(project) {
       complete: manifestReady,
       manifest: deepClone(manifest),
     });
+    const migrated = normalizeKnownInternalOverrides();
+    if (!migrated && selected?.sceneId === info.sceneId) postSelection();
     if (manifestReady) queueManifestPost();
     player.requestRender();
   }
@@ -1076,6 +1223,17 @@ async function startEditor(project) {
           : () => {};
         restoreCurrent = applyForRender(currentScene, true);
         await stage.render(currentScene, previousScene);
+        if (!view.original) {
+          const context2d = stage.finalBuffer.getContext('2d');
+          if (context2d) {
+            drawTextDecorations(
+              context2d,
+              currentScene,
+              overridesDocument,
+              sceneInfo(currentScene).sceneId,
+            );
+          }
+        }
         if (selected && !selectedGeometry) {
           const node = currentScene.getNode?.(selected.nodeKey);
           if (node) selectedGeometry = nodeGeometry(node);
@@ -1110,6 +1268,15 @@ async function startEditor(project) {
               'stroke',
               'strokeWidth',
               'zIndexDelta',
+            ],
+            typography: [
+              'text',
+              'fontFamily',
+              'fontSize',
+              'fontWeight',
+              'fontStyle',
+              'underline',
+              'strikethrough',
             ],
             history: true,
             cleanPreview: true,
@@ -1214,7 +1381,18 @@ async function startEditor(project) {
     }),
   );
 
+  function seekTo(frame) {
+    selectedGeometry = null;
+    player.requestSeek(Math.min(duration, Math.max(0, Number(frame) || 0)));
+  }
+
+  function seekBySeconds(seconds) {
+    seekTo(currentFrame + seconds * player.status.fps);
+  }
+
   ui.play.addEventListener('click', () => player.togglePlayback());
+  ui.rewind.addEventListener('click', () => seekBySeconds(-5));
+  ui.forward.addEventListener('click', () => seekBySeconds(5));
   ui.seek.addEventListener('input', () => {
     selectedGeometry = null;
     player.requestSeek(Number(ui.seek.value));
@@ -1453,6 +1631,7 @@ async function startEditor(project) {
         dirty: false,
         reason: 'load-document',
       });
+      normalizeKnownInternalOverrides();
       if (payload.view) setViewPatch(payload.view);
     } else if (type === 'play') {
       player.togglePlayback(true);
@@ -1461,7 +1640,13 @@ async function startEditor(project) {
     } else if (type === 'toggle') {
       player.togglePlayback();
     } else if (type === 'seek') {
-      player.requestSeek(Number(payload.frame ?? payload));
+      seekTo(payload.frame ?? payload);
+    } else if (type === 'seekBy') {
+      if (Number.isFinite(Number(payload.frames))) {
+        seekTo(currentFrame + Number(payload.frames));
+      } else {
+        seekBySeconds(Number(payload.seconds ?? payload));
+      }
     } else if (type === 'mute') {
       const desired = Boolean(payload.muted);
       if (desired !== player.onStateChanged.current.muted) {
@@ -1561,7 +1746,9 @@ async function startEditor(project) {
     }
     if (
       event.target instanceof HTMLInputElement ||
-      event.target instanceof HTMLSelectElement
+      event.target instanceof HTMLSelectElement ||
+      event.target instanceof HTMLTextAreaElement ||
+      event.target?.isContentEditable
     ) {
       return;
     }
@@ -1573,6 +1760,45 @@ async function startEditor(project) {
     } else if (command && event.code === 'KeyY') {
       event.preventDefault();
       redo();
+    } else if (command && event.code === 'KeyC') {
+      event.preventDefault();
+      protocol.post('shortcut', {action: 'copy'});
+    } else if (command && event.code === 'KeyV') {
+      event.preventDefault();
+      protocol.post('shortcut', {action: 'paste'});
+    } else if (command && event.code === 'KeyS') {
+      event.preventDefault();
+      protocol.post('shortcut', {action: 'save'});
+    } else if (!command && event.key === '?') {
+      event.preventDefault();
+      protocol.post('shortcut', {action: 'help'});
+    } else if (!command && event.code === 'KeyJ') {
+      event.preventDefault();
+      seekBySeconds(-5);
+    } else if (!command && event.code === 'KeyK') {
+      event.preventDefault();
+      player.togglePlayback();
+    } else if (!command && event.code === 'KeyL') {
+      event.preventDefault();
+      seekBySeconds(5);
+    } else if (!command && event.code === 'Comma') {
+      event.preventDefault();
+      player.requestPreviousFrame();
+    } else if (!command && event.code === 'Period') {
+      event.preventDefault();
+      player.requestNextFrame();
+    } else if (!command && event.code === 'Home') {
+      event.preventDefault();
+      seekTo(0);
+    } else if (!command && event.code === 'End') {
+      event.preventDefault();
+      seekTo(duration);
+    } else if (!command && event.altKey && event.code === 'ArrowLeft') {
+      event.preventDefault();
+      seekBySeconds(event.shiftKey ? -5 : -1);
+    } else if (!command && event.altKey && event.code === 'ArrowRight') {
+      event.preventDefault();
+      seekBySeconds(event.shiftKey ? 5 : 1);
     } else if (event.code === 'Space') {
       event.preventDefault();
       player.togglePlayback();
@@ -1580,11 +1806,52 @@ async function startEditor(project) {
       event.preventDefault();
       patchSelection({hidden: true}, {reason: 'hide-selected'});
     } else if (event.code === 'Escape') {
+      event.preventDefault();
       selectNode(null);
+    } else if (!command && event.code === 'KeyH') {
+      event.preventDefault();
+      patchSelection(
+        {hidden: !currentOverride()?.patch.hidden},
+        {reason: 'toggle-hidden'},
+      );
+    } else if (!command && event.code === 'KeyR') {
+      event.preventDefault();
+      resetSelection();
+    } else if (!command && event.code === 'BracketRight') {
+      event.preventDefault();
+      changeSelectionLayer(1);
+    } else if (!command && event.code === 'BracketLeft') {
+      event.preventDefault();
+      changeSelectionLayer(-1);
     } else if (event.code === 'ArrowLeft') {
-      player.requestPreviousFrame();
+      event.preventDefault();
+      if (!nudgeSelection('x', event.shiftKey ? -10 : -1)) {
+        player.requestPreviousFrame();
+      }
     } else if (event.code === 'ArrowRight') {
-      player.requestNextFrame();
+      event.preventDefault();
+      if (!nudgeSelection('x', event.shiftKey ? 10 : 1)) {
+        player.requestNextFrame();
+      }
+    } else if (event.code === 'ArrowUp') {
+      if (selected) {
+        event.preventDefault();
+        nudgeSelection('y', event.shiftKey ? -10 : -1);
+      }
+    } else if (event.code === 'ArrowDown') {
+      if (selected) {
+        event.preventDefault();
+        nudgeSelection('y', event.shiftKey ? 10 : 1);
+      }
+    } else if (!command && /^Digit[1-9]$/.test(event.code)) {
+      const scene = scenes[Number(event.code.at(-1)) - 1];
+      if (scene) {
+        event.preventDefault();
+        selected = null;
+        selectedGeometry = null;
+        postSelection();
+        player.requestSeek(scene.firstFrame);
+      }
     }
   });
 

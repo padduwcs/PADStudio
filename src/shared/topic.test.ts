@@ -403,6 +403,13 @@ test('layout override and manifest schemas enforce stable targets and locks', ()
         stroke: null,
         strokeWidth: 3,
         zIndexDelta: 2,
+        text: 'Tiêu đề đã chỉnh',
+        fontFamily: 'Georgia, Times New Roman, serif',
+        fontSize: 72,
+        fontWeight: 700,
+        fontStyle: 'italic',
+        underline: true,
+        strikethrough: true,
       },
     },
   ];
@@ -436,6 +443,13 @@ test('layout override and manifest schemas enforce stable targets and locks', ()
     LayoutOverridesDocumentSchema.safeParse({
       ...document,
       overrides: [{...overrides[0], patch: {fill: 'rgb(1, 2, 3)'}}],
+    }).success,
+    false,
+  );
+  assert.equal(
+    LayoutOverridesDocumentSchema.safeParse({
+      ...document,
+      overrides: [{...overrides[0], patch: {fontFamily: 'url(evil-font)'}}],
     }).success,
     false,
   );

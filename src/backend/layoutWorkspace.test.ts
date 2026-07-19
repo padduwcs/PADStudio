@@ -909,6 +909,76 @@ test('Layout preview khóa generation/session và nhận manifest trực tiếp 
     fixture.syncBundle.sections.map((section) => section.sceneId),
   );
 
+  const semanticParent = fixture.manifest.scenes[0]!.nodes[0]!;
+  const generatedNode = {
+    ...semanticParent,
+    key: 'runtime/TxtLeaf[1]',
+    fingerprint: 'f'.repeat(64),
+    label: 'TxtLeaf: internal text',
+    nodeType: 'TxtLeaf',
+    parentKey: semanticParent.key,
+    identity: 'legacy' as const,
+  };
+  const manifestWithGeneratedNode: LayoutEditorManifest = {
+    ...fixture.manifest,
+    scenes: fixture.manifest.scenes.map((scene, sceneIndex) => ({
+      ...scene,
+      nodes:
+        sceneIndex === 0
+          ? [...scene.nodes, generatedNode]
+          : scene.nodes,
+    })),
+  };
+  const generatedCapture = await fetch(
+    new URL('/__pad_layout_manifest', preview.url),
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        sessionNonce: preview.sessionNonce,
+        generationId: preview.generationId,
+        sourceSyncGenerationId: preview.sourceSyncGenerationId,
+        manifest: manifestWithGeneratedNode,
+      }),
+    },
+  );
+  assert.equal(generatedCapture.status, 200, await generatedCapture.text());
+  assert.equal(
+    previewService
+      .getManifest(
+        fixture.projectId,
+        preview.sessionNonce,
+        preview.sourceSyncGenerationId,
+      )
+      .scenes[0]!.nodes.some((node) => node.key === generatedNode.key),
+    true,
+  );
+  const canonicalCapture = await fetch(
+    new URL('/__pad_layout_manifest', preview.url),
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        sessionNonce: preview.sessionNonce,
+        generationId: preview.generationId,
+        sourceSyncGenerationId: preview.sourceSyncGenerationId,
+        manifest: fixture.manifest,
+      }),
+    },
+  );
+  assert.equal(canonicalCapture.status, 200, await canonicalCapture.text());
+  assert.equal(
+    previewService
+      .getManifest(
+        fixture.projectId,
+        preview.sessionNonce,
+        preview.sourceSyncGenerationId,
+      )
+      .scenes[0]!.nodes.some((node) => node.key === generatedNode.key),
+    false,
+    'Generated runtime child phải được bỏ khi semantic parent còn nguyên.',
+  );
+
   const changedPolicyManifest: LayoutEditorManifest = {
     ...fixture.manifest,
     scenes: fixture.manifest.scenes.map((scene, sceneIndex) => ({

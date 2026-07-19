@@ -3,6 +3,23 @@ const MAX_SCALE = 20;
 const MAX_ROTATION = 3_600;
 const MAX_Z_INDEX = 1_000;
 const MAX_STROKE_WIDTH = 200;
+const MAX_TEXT_LENGTH = 500;
+const FONT_FAMILIES = new Set([
+  'Arial, sans-serif',
+  'Segoe UI, Arial, sans-serif',
+  'Verdana, Arial, sans-serif',
+  'Tahoma, Arial, sans-serif',
+  'Trebuchet MS, Arial, sans-serif',
+  'Georgia, Times New Roman, serif',
+  'Times New Roman, Times, serif',
+  'Courier New, Consolas, monospace',
+  'Cascadia Code, Consolas, monospace',
+  'Consolas, Courier New, monospace',
+  'Impact, Arial Black, sans-serif',
+  'Arial Black, Arial, sans-serif',
+]);
+const FONT_WEIGHTS = new Set([100, 200, 300, 400, 500, 600, 700, 800, 900]);
+const FONT_STYLES = new Set(['normal', 'italic']);
 
 const HEX_COLOR = /^#[a-fA-F0-9]{6}(?:[a-fA-F0-9]{2})?$/;
 
@@ -53,6 +70,27 @@ export function normalizePatch(value = {}) {
       finite(value.zIndexDelta, 0, -MAX_Z_INDEX, MAX_Z_INDEX),
     );
   }
+  if (typeof value.text === 'string') {
+    result.text = value.text.slice(0, MAX_TEXT_LENGTH);
+  }
+  if (FONT_FAMILIES.has(value.fontFamily)) {
+    result.fontFamily = value.fontFamily;
+  }
+  if (value.fontSize !== undefined) {
+    result.fontSize = finite(value.fontSize, 48, 8, 500);
+  }
+  if (FONT_WEIGHTS.has(value.fontWeight)) {
+    result.fontWeight = value.fontWeight;
+  }
+  if (FONT_STYLES.has(value.fontStyle)) {
+    result.fontStyle = value.fontStyle;
+  }
+  if (value.underline !== undefined) {
+    result.underline = value.underline === true;
+  }
+  if (value.strikethrough !== undefined) {
+    result.strikethrough = value.strikethrough === true;
+  }
   if (value.editorLocked !== undefined) {
     result.editorLocked = value.editorLocked === true;
   }
@@ -68,6 +106,8 @@ function removeIdentityValues(patch) {
   if (result.opacity === 1) delete result.opacity;
   if (result.hidden === false) delete result.hidden;
   if (result.zIndexDelta === 0) delete result.zIndexDelta;
+  if (result.underline === false) delete result.underline;
+  if (result.strikethrough === false) delete result.strikethrough;
   if (result.editorLocked === false) delete result.editorLocked;
   return result;
 }
@@ -244,6 +284,21 @@ export function applyOverride(node, override, options = {}) {
         restorers,
       );
     }
+    if (patch.text !== undefined) {
+      setSignal(node, 'text', patch.text, restorers);
+    }
+    if (patch.fontFamily !== undefined) {
+      setSignal(node, 'fontFamily', patch.fontFamily, restorers);
+    }
+    if (patch.fontSize !== undefined) {
+      setSignal(node, 'fontSize', patch.fontSize, restorers);
+    }
+    if (patch.fontWeight !== undefined) {
+      setSignal(node, 'fontWeight', patch.fontWeight, restorers);
+    }
+    if (patch.fontStyle !== undefined) {
+      setSignal(node, 'fontStyle', patch.fontStyle, restorers);
+    }
     if (patch.fill !== undefined) {
       setSignal(node, 'fill', patch.fill, restorers);
     }
@@ -380,5 +435,16 @@ export function editableProperties(node) {
   if (typeof node?.fill === 'function') properties.push('fill');
   if (typeof node?.stroke === 'function') properties.push('stroke');
   if (typeof node?.lineWidth === 'function') properties.push('strokeWidth');
+  if (typeof node?.text === 'function') {
+    properties.push(
+      'text',
+      'fontFamily',
+      'fontSize',
+      'fontWeight',
+      'fontStyle',
+      'underline',
+      'strikethrough',
+    );
+  }
   return properties;
 }

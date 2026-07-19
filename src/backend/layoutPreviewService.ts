@@ -1,7 +1,7 @@
 import {createHash, randomBytes, timingSafeEqual} from 'node:crypto';
 import {createRequire} from 'node:module';
 import type {IncomingMessage, ServerResponse} from 'node:http';
-import {mkdir, rm} from 'node:fs/promises';
+import {mkdir, readFile, rm} from 'node:fs/promises';
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {fileURLToPath, pathToFileURL} from 'node:url';
@@ -22,6 +22,17 @@ const MANIFEST_CAPTURE_PATH = '/__pad_layout_manifest';
 const OVERRIDES_PATH = '/__pad_layout_overrides';
 const EDITOR_MANIFEST_PATH = '/__pad_layout_editor_manifest';
 const MAXIMUM_MANIFEST_BYTES = 512 * 1024;
+const GENERATED_RUNTIME_NODE_KEY =
+  /\/[A-Za-z][A-Za-z0-9]*\[\d+\]$/;
+const TEXT_CAPABILITY_PROPERTIES = new Set([
+  'text',
+  'fontFamily',
+  'fontSize',
+  'fontWeight',
+  'fontStyle',
+  'underline',
+  'strikethrough',
+]);
 
 interface PreviewRuntimeServer {
   resolvedUrls: {local: string[]; network: string[]} | null;
@@ -335,6 +346,23 @@ function normalizeManifest(
   };
 }
 
+function isTextCapabilityUpgrade(
+  previousNode: LayoutEditorManifest['scenes'][number]['nodes'][number],
+  nextNode: LayoutEditorManifest['scenes'][number]['nodes'][number],
+) {
+  if (previousNode.nodeType !== 'Txt' || nextNode.nodeType !== 'Txt') {
+    return false;
+  }
+  const previous = new Set(previousNode.editableProperties);
+  const next = new Set(nextNode.editableProperties);
+  if ([...previous].some((property) => !next.has(property))) return false;
+  const added = [...next].filter((property) => !previous.has(property));
+  return (
+    added.length > 0 &&
+    added.every((property) => TEXT_CAPABILITY_PROPERTIES.has(property))
+  );
+}
+
 function mergeManifest(
   existing: LayoutEditorManifest | null,
   incoming: LayoutEditorManifest,
@@ -347,22 +375,50 @@ function mergeManifest(
     ...normalizedIncoming,
     scenes: normalizedIncoming.scenes.map((scene, sceneIndex) => {
       const previousScene = normalizedExisting.scenes[sceneIndex]!;
+      const previousNodes = new Map(
+        previousScene.nodes.map((node) => [node.key, node]),
+      );
       const incomingNodes = new Map(
         scene.nodes.map((node) => [node.key, node]),
       );
       for (const previousNode of previousScene.nodes) {
         const nextNode = incomingNodes.get(previousNode.key);
         if (!nextNode) {
+          let ancestorKey = previousNode.parentKey;
+          const visited = new Set<string>();
+          let canonicalAncestorFound = false;
+          while (ancestorKey && !visited.has(ancestorKey)) {
+            visited.add(ancestorKey);
+            const incomingAncestor = incomingNodes.get(ancestorKey);
+            if (
+              incomingAncestor &&
+              incomingAncestor.identity === 'semantic' &&
+              !GENERATED_RUNTIME_NODE_KEY.test(incomingAncestor.key)
+            ) {
+              canonicalAncestorFound = true;
+              break;
+            }
+            ancestorKey = previousNodes.get(ancestorKey)?.parentKey ?? null;
+          }
+          if (
+            GENERATED_RUNTIME_NODE_KEY.test(previousNode.key) &&
+            canonicalAncestorFound
+          ) {
+            continue;
+          }
           incomingNodes.set(previousNode.key, previousNode);
           continue;
         }
+        const editablePropertiesChanged =
+          JSON.stringify(nextNode.editableProperties) !==
+          JSON.stringify(previousNode.editableProperties);
         if (
           nextNode.fingerprint !== previousNode.fingerprint ||
           nextNode.nodeType !== previousNode.nodeType ||
           nextNode.parentKey !== previousNode.parentKey ||
           nextNode.identity !== previousNode.identity ||
-          JSON.stringify(nextNode.editableProperties) !==
-            JSON.stringify(previousNode.editableProperties) ||
+          (editablePropertiesChanged &&
+            !isTextCapabilityUpgrade(previousNode, nextNode)) ||
           JSON.stringify(nextNode.lockedProperties) !==
             JSON.stringify(previousNode.lockedProperties) ||
           nextNode.lockReason !== previousNode.lockReason
@@ -558,6 +614,15 @@ export function createLayoutPreviewService(
     'layout-editor',
     'main.js',
   );
+  const layoutEditorDirectory = path.dirname(layoutEditorEntry);
+  const layoutEditorAssets = [
+    'editor-targets.js',
+    'editor.html',
+    'main.js',
+    'modifier-model.js',
+    'protocol.js',
+    'style.css',
+  ].map((fileName) => path.join(layoutEditorDirectory, fileName));
   const temporaryRoot = path.join(repositoryRoot, 'tmp', 'layout-previews');
   const maximumActivePreviews = Math.max(
     1,
@@ -567,6 +632,23 @@ export function createLayoutPreviewService(
   const projectStartOperations = new Map<string, Promise<void>>();
   let runtimePromise: Promise<PreviewRuntime> | null = null;
   let closed = false;
+
+  async function currentLayoutEditorHash() {
+    const assets = await Promise.all(
+      layoutEditorAssets.map(async (filePath) => ({
+        fileName: path.basename(filePath),
+        content: await readFile(filePath),
+      })),
+    );
+    const hash = createHash('sha256');
+    for (const asset of assets) {
+      hash.update(asset.fileName);
+      hash.update('\0');
+      hash.update(asset.content);
+      hash.update('\0');
+    }
+    return hash.digest('hex');
+  }
 
   async function withProjectStartLock<T>(
     projectId: string,
@@ -922,6 +1004,7 @@ export function createLayoutPreviewService(
         const identity = canonicalHash({
           projectId,
           generationId,
+          layoutEditorHash: await currentLayoutEditorHash(),
           sourceSyncGenerationId:
             animationSyncBundle.generation.generationId,
           sourceSyncContentRevision:

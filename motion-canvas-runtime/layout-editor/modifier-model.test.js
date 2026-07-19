@@ -144,3 +144,52 @@ test('hidden is delete semantics and editor lock does not disable rendering', ()
   restore();
   assert.equal(node.opacity(), 0.75);
 });
+
+test('text typography modifiers are normalized, applied, and restored', () => {
+  const base = normalizeDocument(null, {
+    generationId: 'sync-generation',
+    contentRevision: 3,
+    sourceHash: 'source-hash',
+  });
+  const patched = patchDocument(
+    base,
+    'scene-id',
+    'scene/title',
+    'title-fingerprint',
+    {
+      text: 'Tiêu đề mới',
+      fontFamily: 'Georgia, Times New Roman, serif',
+      fontSize: 72,
+      fontWeight: 700,
+      fontStyle: 'italic',
+      underline: true,
+      strikethrough: true,
+    },
+  );
+  const override = getOverride(
+    buildModifierIndex(patched),
+    'scene-id',
+    'scene/title',
+  );
+  const node = {
+    text: signal('Tiêu đề cũ'),
+    fontFamily: signal('Arial'),
+    fontSize: signal(48),
+    fontWeight: signal(400),
+    fontStyle: signal('normal'),
+  };
+
+  const restore = applyOverride(node, override);
+  assert.equal(node.text(), 'Tiêu đề mới');
+  assert.equal(node.fontFamily(), 'Georgia, Times New Roman, serif');
+  assert.equal(node.fontSize(), 72);
+  assert.equal(node.fontWeight(), 700);
+  assert.equal(node.fontStyle(), 'italic');
+
+  restore();
+  assert.equal(node.text(), 'Tiêu đề cũ');
+  assert.equal(node.fontFamily(), 'Arial');
+  assert.equal(node.fontSize(), 48);
+  assert.equal(node.fontWeight(), 400);
+  assert.equal(node.fontStyle(), 'normal');
+});

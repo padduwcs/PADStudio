@@ -223,3 +223,12 @@ export function ChevronDownIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function KeyboardIcon(props: IconProps) {
+  return (
+    <svg {...iconDefaults} {...props}>
+      <rect x="3" y="6" width="18" height="12" rx="2.5" />
+      <path d="M7 10h.01M10.5 10h.01M14 10h.01M17.5 10h.01M7 13.5h.01M10.5 13.5h.01M14 13.5h3.5M7 16h7" />
+    </svg>
+  );
+}

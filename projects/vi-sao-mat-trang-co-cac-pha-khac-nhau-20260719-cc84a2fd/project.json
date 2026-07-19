@@ -1,6 +1,6 @@
 {
   "id": "vi-sao-mat-trang-co-cac-pha-khac-nhau-20260719-cc84a2fd",
-  "revision": 42,
+  "revision": 183,
   "creationId": "e7a7b7b9-1ea1-4068-b9b4-68e3d0f5453b",
   "status": "draft",
   "topicInput": {
@@ -135,7 +135,7 @@
     }
   },
   "createdAt": "2026-07-19T04:02:52.106Z",
-  "updatedAt": "2026-07-19T05:05:06.367Z",
+  "updatedAt": "2026-07-19T08:19:51.092Z",
   "motionCanvasBundle": {
     "status": "approved",
     "contentRevision": 1,
@@ -393,12 +393,12 @@
   "version": 9,
   "currentStep": "layout",
   "layoutBundle": {
-    "status": "approved",
-    "contentRevision": 29,
+    "status": "draft",
+    "contentRevision": 169,
     "sourceAnimationSyncContentRevision": 1,
     "sourceAnimationSyncGenerationId": "fcbe48ef-6462-4bf3-867e-1341fa27b287",
     "sourceAnimationSyncSourceHash": "838457a9e112e010af4d894c7a355022edd692ef55709404cadfa11fa26cac12",
-    "workspacePath": "layout/generations/9701f3e8-bd31-494d-825f-d7718cc3430d",
+    "workspacePath": "layout/generations/d6c74760-34c0-488f-a5e5-ca352b5dfcd4",
     "sourceWorkspacePath": "sync/generations/fcbe48ef-6462-4bf3-867e-1341fa27b287",
     "projectFile": "src/project.ts",
     "audioFile": "audio/narration.wav",
@@ -410,29 +410,29 @@
       {
         "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
         "filePath": "src/scenes/01-moon-half-always-lit.tsx",
-        "editableNodeCount": 43,
-        "overrideCount": 2
+        "editableNodeCount": 40,
+        "overrideCount": 14
       },
       {
         "sceneId": "6e46613e-f2b9-481b-b03f-4e821129d49c",
         "filePath": "src/scenes/02-gocnhintaochuoipha.tsx",
-        "editableNodeCount": 39,
-        "overrideCount": 0
+        "editableNodeCount": 37,
+        "overrideCount": 9
       }
     ],
     "validation": {
-      "validatedAt": "2026-07-19T05:04:35.022Z",
-      "sourceHash": "c697b85d7d9997ca14f51f4deabddf1bdb8536d8850f630eb7fd16753bf5745e",
-      "overridesHash": "405aa0e212639377a46ae4b4bdc5aa0e7259710428307d827253d32ab27d03c2",
-      "manifestHash": "6a7d4153dcddadd8105e8742160cc37e352bbd460318eb76bf308a5bfe2dd65e",
+      "validatedAt": "2026-07-19T08:19:51.051Z",
+      "sourceHash": "a5c06e0cadb02995ddf0ef8e042dfaa8ae6a4315095926a91b38fdf4226e50c5",
+      "overridesHash": "4453f8af49cbd240340f52447f3f029073d0753906b13bbf7f82b83e661d2328",
+      "manifestHash": "c66d5055126f7130de6b7ce1d711fadda63150dc16ef5c245d55f5b627447b78",
       "motionCanvasVersion": "3.17.2",
       "audioDurationSeconds": 87.04
     },
     "generation": {
-      "generationId": "9701f3e8-bd31-494d-825f-d7718cc3430d",
+      "generationId": "d6c74760-34c0-488f-a5e5-ca352b5dfcd4",
       "provider": "local",
       "tool": "layout-editor",
-      "generatedAt": "2026-07-19T05:04:35.022Z"
+      "generatedAt": "2026-07-19T08:19:51.051Z"
     }
   }
 }

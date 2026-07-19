@@ -1,0 +1,193 @@
+{
+  "version": 1,
+  "sourceAnimationSyncGenerationId": "fcbe48ef-6462-4bf3-867e-1341fa27b287",
+  "sourceAnimationSyncContentRevision": 1,
+  "sourceAnimationSyncSourceHash": "838457a9e112e010af4d894c7a355022edd692ef55709404cadfa11fa26cac12",
+  "overrides": [
+    {
+      "sceneId": "6e46613e-f2b9-481b-b03f-4e821129d49c",
+      "nodeKey": "eclipse-distinction-label",
+      "nodeFingerprint": "6bfc5e0359d4c9addf98a878b10c21655aa732c61aa50f5f2c043ed33a3dc202",
+      "patch": {
+        "y": -150
+      }
+    },
+    {
+      "sceneId": "6e46613e-f2b9-481b-b03f-4e821129d49c",
+      "nodeKey": "full-phase-marker",
+      "nodeFingerprint": "864c291a41e5c0bbd8337a65cd8c270816daa39bacbdbe517b0df4a35cdf7c5a",
+      "patch": {
+        "x": -200,
+        "y": -10,
+        "scale": 3.6,
+        "hidden": true,
+        "fill": "#252B35",
+        "stroke": "#252B35",
+        "zIndexDelta": 4
+      }
+    },
+    {
+      "sceneId": "6e46613e-f2b9-481b-b03f-4e821129d49c",
+      "nodeKey": "gibbous-phase-marker",
+      "nodeFingerprint": "9d71aa424fcfe5d374ce62db91cc84dbe66f51e378b092fe2e597c7842af0b56",
+      "patch": {
+        "x": -130,
+        "y": -960,
+        "scale": 20,
+        "hidden": true
+      }
+    },
+    {
+      "sceneId": "6e46613e-f2b9-481b-b03f-4e821129d49c",
+      "nodeKey": "quarter-phase-marker",
+      "nodeFingerprint": "d6318e2fcd45c2ed31bbb374ee52505887c77b7390f9712ba6e5de5972b2e393",
+      "patch": {
+        "x": -70,
+        "y": 10,
+        "scale": 14.35,
+        "hidden": true
+      }
+    },
+    {
+      "sceneId": "6e46613e-f2b9-481b-b03f-4e821129d49c",
+      "nodeKey": "view-angle-label",
+      "nodeFingerprint": "56722eb85a74ed075cbe8f90b8605faf82afcdfe156ce6eed4a3d85fb408b50f",
+      "patch": {
+        "x": -50,
+        "y": -220,
+        "scale": 1.65,
+        "hidden": true
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "half-meter-disk",
+      "nodeFingerprint": "809bfe5bbdc9671803c1387254f48b13f3b534c575a3790cd4ff507196768844",
+      "patch": {
+        "x": -50,
+        "y": 70,
+        "scale": 1.05
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "half-meter-label",
+      "nodeFingerprint": "4582b2dc4555bc69881256899925e273ada8f5cc498a6565eb03cadf3a881825",
+      "patch": {
+        "x": 10,
+        "y": -40,
+        "scale": 2.35
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "illumination-title",
+      "nodeFingerprint": "a78c4e3356d5ae5edffcf8a04a8bcbf2c61f494d0ff135bff87b1bcf520fdcca",
+      "patch": {
+        "x": 30,
+        "y": 140,
+        "scale": 1.25,
+        "fill": "#FF6B35",
+        "zIndexDelta": 1
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "light-ray-lower",
+      "nodeFingerprint": "30e4597c2285b6cfa890188e153860ba14e845b183c96072078d0d01aa216381",
+      "patch": {
+        "x": 20,
+        "y": -100
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "light-ray-upper",
+      "nodeFingerprint": "7b7159e165e4bc9135b826e8f0a8a8b3bfc6f0f5f280ffd71e8a381906b890d8",
+      "patch": {
+        "x": 10,
+        "y": 100
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "moon-east-disk",
+      "nodeFingerprint": "ccd9a1e9f662ba83858ec95865ced457ab621805e0cb1016d8da57149443ebac",
+      "patch": {
+        "x": -90
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "moon-north-disk",
+      "nodeFingerprint": "fe06b8e24cedceced0c11ec924083d8854fc050170affbbeebd053419f4c5473",
+      "patch": {
+        "x": -50,
+        "y": 80
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "moon-south-disk",
+      "nodeFingerprint": "bc2ceaca9c132eec5266cca09da44860c0928ad04f8b982bea08948d72c85a71",
+      "patch": {
+        "x": -40,
+        "y": -80
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "moon-west-disk",
+      "nodeFingerprint": "7dab9e386b0830aea63df88b432bab20feed0df1e14319b7c05d3697201db2cb",
+      "patch": {
+        "x": 90
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "orbit-path",
+      "nodeFingerprint": "d7523b261a40c59bcd05202d069e3fd7171ba5d50de88672ecf4561ed778e6d0",
+      "patch": {
+        "scale": 0.7
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "solar-source-core",
+      "nodeFingerprint": "ada231e841eabdf07982847a2031d50be3376f92103f96c0f108d915f1532c4d",
+      "patch": {
+        "x": 91,
+        "y": 10,
+        "zIndexDelta": 1
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "solar-source-glow",
+      "nodeFingerprint": "3cec55f572434622b462680ffc8d2e9ddbdace2261de6084d6049dba6ecb99ad",
+      "patch": {
+        "x": 92,
+        "y": 10
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "terminator-guide-line",
+      "nodeFingerprint": "294c5171e2b68244e78a114ffcefde36edd3716609740d98d7f76f420086d651",
+      "patch": {
+        "x": 10,
+        "y": 13,
+        "scale": 0.8
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "travel-moon-disk",
+      "nodeFingerprint": "f3e99380835fc167da2673894b4529d2c6f35191c24305c78369d690df587060",
+      "patch": {
+        "x": -80,
+        "scale": 0.45
+      }
+    }
+  ]
+}

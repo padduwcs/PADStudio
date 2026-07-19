@@ -346,7 +346,12 @@ input:focus-visible {
 
 .layout-transport {
   display: grid;
-  grid-template-columns: auto auto minmax(90px, 1fr) auto auto;
+  grid-template-columns: auto auto auto auto minmax(90px, 1fr) auto auto;
+}
+
+.layout-skip {
+  min-width: 48px;
+  font-variant-numeric: tabular-nums;
 }
 
 .layout-play {
@@ -413,6 +418,38 @@ input:focus-visible {
   max-height: 100vh;
 }
 
+@media (max-width: 900px) {
+  .layout-toolbar {
+    overflow: visible;
+  }
+
+  .layout-brand,
+  .layout-toolbar-group:first-child button,
+  .layout-toolbar-group:last-child button:nth-of-type(3),
+  .layout-toolbar-group:last-child button:nth-of-type(4),
+  .layout-toolbar-group:last-child button:nth-of-type(5),
+  .layout-status {
+    display: none;
+  }
+
+  .layout-toolbar-group:first-child {
+    flex: 1 1 auto;
+  }
+
+  .layout-scene-select {
+    width: 100%;
+    min-width: 112px;
+    max-width: 210px;
+  }
+
+  .layout-toolbar button,
+  .layout-scene-select {
+    min-height: 32px;
+    padding-inline: 8px;
+    font-size: 0.64rem;
+  }
+}
+
 @media (max-width: 760px) {
   .layout-shell {
     padding: 7px;
@@ -420,16 +457,16 @@ input:focus-visible {
 
   .layout-brand strong,
   .layout-status,
-  .layout-toolbar-group:last-child button:not(:last-child),
   .layout-time:last-of-type {
     display: none;
   }
 
   .layout-transport {
-    grid-template-columns: auto minmax(80px, 1fr) auto auto;
+    grid-template-columns: auto minmax(80px, 1fr) auto;
   }
 
-  .layout-time:first-of-type {
+  .layout-time:first-of-type,
+  .layout-skip {
     display: none;
   }
 }
