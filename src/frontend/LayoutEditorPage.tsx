@@ -42,6 +42,7 @@ import {
 import {resolveLayoutEditorManifest} from './layoutEditorState.ts';
 import {
   navigate,
+  projectRenderPath,
   projectSyncPath,
   registerNavigationGuard,
 } from './router.ts';
@@ -2373,8 +2374,18 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
           <button
             className="submit-button"
             type="button"
-            disabled={approved || !canApprove}
-            onClick={() => void layout.approve()}
+            disabled={!approved && !canApprove}
+            onClick={() => {
+              if (approved) {
+                navigate(projectRenderPath(projectId));
+                return;
+              }
+              void layout.approve().then(updatedProject => {
+                if (updatedProject) {
+                  navigate(projectRenderPath(projectId));
+                }
+              });
+            }}
           >
             {layout.approving ? (
               <>
@@ -2383,8 +2394,8 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
               </>
             ) : approved ? (
               <>
-                <CheckIcon />
-                Layout đã chốt
+                Tiếp tục render
+                <ArrowRightIcon />
               </>
             ) : (
               <>

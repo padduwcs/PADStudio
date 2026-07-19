@@ -1,6 +1,6 @@
 {
   "id": "vi-sao-mat-trang-co-cac-pha-khac-nhau-20260719-cc84a2fd",
-  "revision": 183,
+  "revision": 187,
   "creationId": "e7a7b7b9-1ea1-4068-b9b4-68e3d0f5453b",
   "status": "draft",
   "topicInput": {
@@ -135,7 +135,7 @@
     }
   },
   "createdAt": "2026-07-19T04:02:52.106Z",
-  "updatedAt": "2026-07-19T08:19:51.092Z",
+  "updatedAt": "2026-07-19T10:28:52.978Z",
   "motionCanvasBundle": {
     "status": "approved",
     "contentRevision": 1,
@@ -390,15 +390,13 @@
       "generatedAt": "2026-07-19T04:10:20.505Z"
     }
   },
-  "version": 9,
-  "currentStep": "layout",
   "layoutBundle": {
-    "status": "draft",
-    "contentRevision": 169,
+    "status": "approved",
+    "contentRevision": 170,
     "sourceAnimationSyncContentRevision": 1,
     "sourceAnimationSyncGenerationId": "fcbe48ef-6462-4bf3-867e-1341fa27b287",
     "sourceAnimationSyncSourceHash": "838457a9e112e010af4d894c7a355022edd692ef55709404cadfa11fa26cac12",
-    "workspacePath": "layout/generations/d6c74760-34c0-488f-a5e5-ca352b5dfcd4",
+    "workspacePath": "layout/generations/43300b12-3d1a-4e07-918b-41f7b731a5e0",
     "sourceWorkspacePath": "sync/generations/fcbe48ef-6462-4bf3-867e-1341fa27b287",
     "projectFile": "src/project.ts",
     "audioFile": "audio/narration.wav",
@@ -421,7 +419,7 @@
       }
     ],
     "validation": {
-      "validatedAt": "2026-07-19T08:19:51.051Z",
+      "validatedAt": "2026-07-19T10:02:41.616Z",
       "sourceHash": "a5c06e0cadb02995ddf0ef8e042dfaa8ae6a4315095926a91b38fdf4226e50c5",
       "overridesHash": "4453f8af49cbd240340f52447f3f029073d0753906b13bbf7f82b83e661d2328",
       "manifestHash": "c66d5055126f7130de6b7ce1d711fadda63150dc16ef5c245d55f5b627447b78",
@@ -429,10 +427,47 @@
       "audioDurationSeconds": 87.04
     },
     "generation": {
-      "generationId": "d6c74760-34c0-488f-a5e5-ca352b5dfcd4",
+      "generationId": "43300b12-3d1a-4e07-918b-41f7b731a5e0",
       "provider": "local",
       "tool": "layout-editor",
-      "generatedAt": "2026-07-19T08:19:51.051Z"
+      "generatedAt": "2026-07-19T10:02:41.616Z"
+    }
+  },
+  "version": 10,
+  "currentStep": "render",
+  "renderBundle": {
+    "status": "completed",
+    "contentRevision": 2,
+    "sourceLayoutContentRevision": 170,
+    "sourceLayoutGenerationId": "43300b12-3d1a-4e07-918b-41f7b731a5e0",
+    "sourceLayoutSourceHash": "a5c06e0cadb02995ddf0ef8e042dfaa8ae6a4315095926a91b38fdf4226e50c5",
+    "workspacePath": "renders/generations/f02a38ea-8a20-4c6c-a120-a47c769f6f7e",
+    "videoFile": "video.mp4",
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "durationSeconds": 87.04,
+    "fileSizeBytes": 3681963,
+    "encoding": {
+      "container": "mp4",
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "pixelFormat": "yuv420p",
+      "crf": 18,
+      "preset": "medium"
+    },
+    "validation": {
+      "validatedAt": "2026-07-19T10:28:52.811Z",
+      "sourceHash": "de41f552dbd8a7b66720e50e3b57153629f0db7ce877e328d5196a298108d31c",
+      "videoHash": "2979d5659a557d4b33482174010e95d668aa227f06efa9263424e9f0ed3b38c7",
+      "renderedFrameCount": 2611,
+      "probedDurationSeconds": 87.04
+    },
+    "generation": {
+      "generationId": "f02a38ea-8a20-4c6c-a120-a47c769f6f7e",
+      "provider": "local",
+      "tool": "motion-canvas-ffmpeg",
+      "generatedAt": "2026-07-19T10:28:52.811Z"
     }
   }
 }

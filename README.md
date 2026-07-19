@@ -18,8 +18,8 @@ Nhập chủ đề
 ```
 
 Người dùng có thể chỉnh vị trí, kích thước và thuộc tính hiển thị trực tiếp trên giao
-diện; timing đã đồng bộ được giữ chỉ đọc trong Layout Editor MVP. Những scene và
-component tốt có thể được lưu lại làm tài nguyên tham khảo cho các video sau.
+diện; timing đã đồng bộ được giữ chỉ đọc trong Layout Editor. Bản Layout đã chốt được
+dựng thành MP4 H.264/AAC, kiểm tra lại bằng FFprobe và lưu bất biến theo generation.
 
 ## Trạng thái
 
@@ -87,6 +87,9 @@ Vertical slice đầu tiên đã có thể chạy:
   generation trước khi backend nhận commit hoặc cho phép chốt. Sync manifest v1/v2 đều
   được re-hash; artifact lịch sử không còn khớp hash phải Đồng bộ và chốt lại trước khi
   mở Layout.
+- Render trực tiếp từng frame Motion Canvas vào FFmpeg, ghép với master narration và
+  xuất MP4 dọc 1080×1920, 30 fps, H.264/AAC. Output được hash, kiểm tra codec, kích
+  thước và thời lượng trước khi ghi vào `projects/<project-id>/renders/generations/`.
 - Hiển thị lượng token của lần sinh gần nhất để người dùng theo dõi.
 - Liệt kê, mở lại, chỉnh sửa và xóa project cục bộ.
 - Giao diện responsive cho desktop và mobile.
@@ -103,8 +106,8 @@ version control nội dung từng video. Chỉ thư mục render sinh ra tại
 
 Mỗi project có hai chỉ số độc lập:
 
-- `version` là phiên bản cấu trúc file; dữ liệu v1 đến v8 được đọc và nâng cấp
-  lên cấu trúc v9 hiện tại ở lần ghi tiếp theo. Voice/sync section-based của v7
+- `version` là phiên bản cấu trúc file; dữ liệu v1 đến v9 được đọc và nâng cấp
+  lên cấu trúc v10 hiện tại ở lần ghi tiếp theo. Voice/sync section-based của v7
   được chủ động vô hiệu hóa để tạo lại bằng master narration, không giả vờ
   migrate audio cũ thành audio liên tục.
 - `revision` tăng sau mỗi thay đổi nội dung và được dùng với `If-Match` để
@@ -215,7 +218,9 @@ Project cũ vẫn mở được, nhưng generation Motion Canvas chưa có
 
 ## Chạy ở môi trường phát triển
 
-Yêu cầu Node.js 24.12 trở lên, Codex CLI và FFmpeg có trong `PATH`.
+Yêu cầu Node.js 24.12 trở lên, Codex CLI, FFmpeg/FFprobe và Chrome hoặc Edge.
+Final render tự tìm Chrome/Edge ở các vị trí cài đặt phổ biến; có thể đặt
+`PAD_RENDER_BROWSER_PATH` nếu browser nằm ở vị trí khác.
 Nếu FFmpeg không nằm trong `PATH`, cấu hình đường dẫn executable bằng
 `FFMPEG_PATH` trong `.env`.
 
@@ -226,10 +231,12 @@ npm run dev
 
 Frontend chạy tại `http://127.0.0.1:5173`, backend chạy tại
 `http://127.0.0.1:4174`. Cả hai cổng đều chạy ở chế độ strict: nếu cổng đang bị
-chiếm, lệnh dev báo lỗi rõ ràng thay vì âm thầm đổi port. Khi một tiến trình con
-thoát hoặc nhận `Ctrl+C`, dev runner chờ dừng toàn bộ cây backend/frontend; backend
-cũng đóng các keep-alive connection còn giữ cổng. Chỉ đặt `PORT` khi chủ động
-muốn chạy một instance khác.
+chiếm, lệnh dev báo lỗi rõ ràng thay vì âm thầm đổi port. Backend và frontend chỉ
+được tạo trong thời gian `npm run dev` đang chạy. Nhấn `Ctrl+C` hoặc đóng terminal
+sẽ dừng cả hai; supervisor và từng tiến trình con cùng theo dõi lẫn nhau để không
+để lại tiến trình nền giữ cổng nếu một lớp bị đóng bất thường. Backend vẫn tự khởi
+động lại khi mã trong `src/backend` hoặc `src/shared` thay đổi. Chỉ đặt `PORT` và
+`PAD_FRONTEND_PORT` khi chủ động muốn chạy một instance khác.
 
 ### Kết nối ElevenLabs
 

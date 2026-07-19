@@ -24,6 +24,10 @@ import type {
   VoiceVisualPlanContent,
 } from '../shared/topic.ts';
 import type {
+  FinalRenderJobStatus,
+  GenerateFinalRender,
+} from '../shared/render.ts';
+import type {
   ApproveLayout,
   CommitLayout,
   LayoutBundle,
@@ -598,6 +602,55 @@ export async function getLayoutFiles(projectId: string) {
     );
   }
   return payload;
+}
+
+export async function generateFinalRender(
+  projectId: string,
+  request: GenerateFinalRender,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/render/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function getFinalRenderStatus(
+  projectId: string,
+  generationId?: string,
+) {
+  const query = generationId
+    ? `?generationId=${encodeURIComponent(generationId)}`
+    : '';
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/render/status${query}`,
+    {cache: 'no-store'},
+  );
+  const payload = await readPayload<{
+    status: FinalRenderJobStatus | null;
+  }>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('status' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi trạng thái final render không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.status;
+}
+
+export function finalRenderVideoUrl(projectId: string) {
+  return `/api/projects/${encodeURIComponent(projectId)}/render/video`;
 }
 
 export function voiceAudioUrl(

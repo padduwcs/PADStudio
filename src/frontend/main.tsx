@@ -7,6 +7,7 @@ import './motionCanvas.css';
 import './voice.css';
 import './sync.css';
 import './layout.css';
+import './render.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

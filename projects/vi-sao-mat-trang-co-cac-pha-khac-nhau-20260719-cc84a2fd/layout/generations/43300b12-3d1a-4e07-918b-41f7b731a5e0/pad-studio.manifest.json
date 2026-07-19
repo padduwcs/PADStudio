@@ -1,0 +1,37 @@
+{
+  "version": 2,
+  "generationId": "43300b12-3d1a-4e07-918b-41f7b731a5e0",
+  "baseGenerationId": "d6c74760-34c0-488f-a5e5-ca352b5dfcd4",
+  "requestHash": "1db4031f8d1426e80358c1647632a8d2e222d12f4f9914d7c6d6e3591e5fbea4",
+  "sourceHash": "a5c06e0cadb02995ddf0ef8e042dfaa8ae6a4315095926a91b38fdf4226e50c5",
+  "overridesHash": "4453f8af49cbd240340f52447f3f029073d0753906b13bbf7f82b83e661d2328",
+  "manifestHash": "c66d5055126f7130de6b7ce1d711fadda63150dc16ef5c245d55f5b627447b78",
+  "sourceAnimationSyncGenerationId": "fcbe48ef-6462-4bf3-867e-1341fa27b287",
+  "sourceAnimationSyncContentRevision": 1,
+  "sourceAnimationSyncSourceHash": "838457a9e112e010af4d894c7a355022edd692ef55709404cadfa11fa26cac12",
+  "sourceWorkspaceHash": "838457a9e112e010af4d894c7a355022edd692ef55709404cadfa11fa26cac12",
+  "sourceWorkspacePath": "sync/generations/fcbe48ef-6462-4bf3-867e-1341fa27b287",
+  "projectFile": "src/project.ts",
+  "audioFile": "audio/narration.wav",
+  "overridesFile": "overrides.json",
+  "manifestFile": "editor-manifest.json",
+  "overrideContractVersion": 1,
+  "totalDurationSeconds": 87.04,
+  "motionCanvasVersion": "3.17.2",
+  "audioDurationSeconds": 87.04,
+  "scenes": [
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "filePath": "src/scenes/01-moon-half-always-lit.tsx",
+      "editableNodeCount": 40,
+      "overrideCount": 14
+    },
+    {
+      "sceneId": "6e46613e-f2b9-481b-b03f-4e821129d49c",
+      "filePath": "src/scenes/02-gocnhintaochuoipha.tsx",
+      "editableNodeCount": 37,
+      "overrideCount": 9
+    }
+  ],
+  "validatedAt": "2026-07-19T10:02:41.616Z"
+}

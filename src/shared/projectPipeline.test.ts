@@ -4,6 +4,11 @@ import {
   animationSyncIsStale,
   animationSyncMatchesSourcesStructure,
   animationSyncPrerequisitesAreReady,
+  finalRenderIsCurrent,
+  finalRenderIsReady,
+  finalRenderIsStale,
+  finalRenderMatchesLayout,
+  finalRenderPrerequisitesAreReady,
   layoutIsCurrent,
   layoutIsReady,
   layoutIsStale,
@@ -627,4 +632,44 @@ test('layout predicates lock drafts and approvals to the exact current sync sour
       scenario.name,
     );
   }
+});
+
+test('final render stays locked to the exact approved Layout generation', () => {
+  const project = createReadyProject();
+  Object.assign(project.layoutBundle!, {
+    generation: {
+      generationId: '70000000-0000-4000-8000-000000000001',
+    },
+    validation: {sourceHash: 'c'.repeat(64)},
+  });
+  project.renderBundle = {
+    status: 'completed',
+    contentRevision: 9,
+    sourceLayoutContentRevision: 8,
+    sourceLayoutGenerationId:
+      '70000000-0000-4000-8000-000000000001',
+    sourceLayoutSourceHash: 'c'.repeat(64),
+    durationSeconds: 20,
+    fps: 30,
+  } as TopicProject['renderBundle'];
+
+  assert.equal(
+    finalRenderMatchesLayout(project.renderBundle!, project.layoutBundle!),
+    true,
+  );
+  assert.deepEqual(
+    [
+      finalRenderPrerequisitesAreReady(project),
+      finalRenderIsCurrent(project),
+      finalRenderIsReady(project),
+      finalRenderIsStale(project),
+    ],
+    [true, true, true, false],
+  );
+
+  project.layoutBundle!.validation.sourceHash = 'd'.repeat(64);
+  assert.deepEqual(
+    [finalRenderIsCurrent(project), finalRenderIsReady(project), finalRenderIsStale(project)],
+    [false, false, true],
+  );
 });

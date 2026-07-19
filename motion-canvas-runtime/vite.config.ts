@@ -20,6 +20,9 @@ const previewEditor = fileURLToPath(
 const layoutEditor = fileURLToPath(
   new URL('./layout-editor/main.js', import.meta.url),
 ).replaceAll('\\', '/');
+const renderEditor = fileURLToPath(
+  new URL('./render/editor.js', import.meta.url),
+).replaceAll('\\', '/');
 
 if (!project || !output) {
   throw new Error(
@@ -34,8 +37,10 @@ export default {
       output,
       ...(process.env.PAD_MOTION_PREVIEW_ONLY === 'true'
         ? {
-            editor:
-              process.env.PAD_MOTION_LAYOUT_EDITOR === 'true'
+          editor:
+              process.env.PAD_MOTION_RENDER_FINAL === 'true'
+                ? renderEditor
+                : process.env.PAD_MOTION_LAYOUT_EDITOR === 'true'
                 ? layoutEditor
                 : previewEditor,
           }

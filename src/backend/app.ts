@@ -1,12 +1,18 @@
 import {createReadStream} from 'node:fs';
 import {readFile, stat} from 'node:fs/promises';
-import {createServer, type IncomingMessage, type ServerResponse} from 'node:http';
+import {
+  createServer,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from 'node:http';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
   ApproveLayoutSchema,
   CommitLayoutSchema,
   CreateTopicProjectSchema,
+  GenerateFinalRenderSchema,
   GenerateAnimationSyncSchema,
   GenerateMotionCanvasSchema,
   GenerateTeachingOutlineSchema,
@@ -17,6 +23,7 @@ import {
   VoiceVisualPlanContentSchema,
   type ApiErrorPayload,
   type AnimationSyncBundle,
+  type FinalRenderBundle,
   type LayoutBundle,
   type MotionCanvasBundle,
   type TeachingOutline,
@@ -28,6 +35,8 @@ import {
 import type {ElevenLabsUsagePreset} from '../shared/elevenLabs.ts';
 import {LayoutBundleSchema} from '../shared/layout.ts';
 import {
+  finalRenderIsReady,
+  finalRenderPrerequisitesAreReady,
   layoutMatchesAnimationSync,
   layoutPrerequisitesAreReady,
   motionCanvasMatchesOutline,
@@ -56,6 +65,11 @@ import {
   type LayoutWorkspace,
   type PreparedLayoutWorkspace,
 } from './layoutWorkspace.ts';
+import {
+  createFinalRenderService,
+  FinalRenderError,
+  type FinalRenderService,
+} from './finalRenderService.ts';
 import {
   CodexConnectionError,
   createCodexConnectionService,
@@ -158,6 +172,7 @@ interface AppOptions {
   animationSyncPreviewService?: AnimationSyncPreviewService;
   layoutWorkspace?: LayoutWorkspace;
   layoutPreviewService?: LayoutPreviewService;
+  finalRenderService?: FinalRenderService;
   logger?: Pick<Console, 'error' | 'info'>;
 }
 
@@ -287,6 +302,56 @@ function sendMediaBuffer(
     'Content-Range': `bytes ${range.start}-${range.end}/${buffer.byteLength}`,
   });
   response.end(partialBuffer);
+}
+
+function sendMediaFile(
+  request: IncomingMessage,
+  response: ServerResponse,
+  filePath: string,
+  contentLength: number,
+  contentType: string,
+  headers: Record<string, string>,
+) {
+  const sharedHeaders = {
+    'Content-Type': contentType,
+    'Accept-Ranges': 'bytes',
+    ...headers,
+  };
+  const rangeHeader = request.headers.range;
+  if (!rangeHeader) {
+    response.writeHead(200, {
+      ...sharedHeaders,
+      'Content-Length': String(contentLength),
+    });
+    if (request.method === 'HEAD') response.end();
+    else {
+      const stream = createReadStream(filePath);
+      stream.on('error', error => response.destroy(error));
+      stream.pipe(response);
+    }
+    return;
+  }
+  const range = parseByteRange(rangeHeader, contentLength);
+  if (!range) {
+    response.writeHead(416, {
+      ...sharedHeaders,
+      'Content-Range': `bytes */${contentLength}`,
+      'Content-Length': '0',
+    });
+    response.end();
+    return;
+  }
+  response.writeHead(206, {
+    ...sharedHeaders,
+    'Content-Length': String(range.end - range.start + 1),
+    'Content-Range': `bytes ${range.start}-${range.end}/${contentLength}`,
+  });
+  if (request.method === 'HEAD') response.end();
+  else {
+    const stream = createReadStream(filePath, range);
+    stream.on('error', error => response.destroy(error));
+    stream.pipe(response);
+  }
 }
 
 async function readJsonBody(request: IncomingMessage) {
@@ -566,6 +631,24 @@ function getProjectLayoutRoute(pathname: string) {
   };
 }
 
+function getProjectRenderRoute(pathname: string) {
+  const match =
+    /^\/api\/projects\/([^/]+)\/render(?:\/(generate|status|video))?$/.exec(
+      pathname,
+    );
+  if (!match?.[1]) return null;
+  const projectId = decodeProjectId(match[1]);
+  if (!projectId) return null;
+  return {
+    projectId,
+    action: (match[2] ?? 'read') as
+      | 'generate'
+      | 'status'
+      | 'video'
+      | 'read',
+  };
+}
+
 function outlineContent(outline: TeachingOutline) {
   return {
     brief: outline.brief,
@@ -797,6 +880,12 @@ async function serveFrontend(
   }
 }
 
+const serverCleanupTasks = new WeakMap<Server, () => Promise<void>>();
+
+export function closePadStudioServerServices(server: Server): Promise<void> {
+  return serverCleanupTasks.get(server)?.() ?? Promise.resolve();
+}
+
 export function createPadStudioServer(options: AppOptions = {}) {
   const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
   const projectsDirectory =
@@ -857,6 +946,9 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const layoutPreviewService =
     options.layoutPreviewService ??
     createLayoutPreviewService(projectsDirectory);
+  const finalRenderService =
+    options.finalRenderService ??
+    createFinalRenderService(projectsDirectory, {layoutWorkspace, logger: options.logger});
   const logger = options.logger ?? console;
   type GenerationCacheEntry<Result> = {
     fingerprint: string;
@@ -2876,6 +2968,146 @@ export function createPadStudioServer(options: AppOptions = {}) {
         return;
       }
 
+      const renderRoute = getProjectRenderRoute(requestUrl.pathname);
+
+      if (
+        renderRoute?.action === 'generate' &&
+        request.method === 'POST'
+      ) {
+        const expectedRevision = readExpectedRevision(request);
+        const body = await readJsonBody(request);
+        const parsedRequest = GenerateFinalRenderSchema.safeParse(body);
+        if (!parsedRequest.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Yêu cầu render video cuối chưa hợp lệ.',
+            fields: validationFields(parsedRequest.error.issues),
+          });
+          return;
+        }
+        const currentProject = await repository.getProject(
+          renderRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        const generationId = parsedRequest.data.generationId;
+        const existingRender = currentProject.renderBundle;
+        if (
+          existingRender?.generation.generationId === generationId &&
+          finalRenderIsReady(currentProject)
+        ) {
+          sendProject(response, 200, currentProject);
+          return;
+        }
+        if (currentProject.revision !== expectedRevision) {
+          throw new ProjectConflictError(currentProject);
+        }
+        const sync = currentProject.animationSyncBundle;
+        const layout = currentProject.layoutBundle;
+        if (
+          !sync ||
+          !layout ||
+          !finalRenderPrerequisitesAreReady(currentProject)
+        ) {
+          throw new RequestBodyError(
+            409,
+            'FINAL_RENDER_PREREQUISITES_NOT_APPROVED',
+            'Hãy duyệt Layout hiện hành trước khi render video cuối.',
+          );
+        }
+        const renderBundle: FinalRenderBundle =
+          await finalRenderService.render(
+            currentProject.id,
+            generationId,
+            (existingRender?.contentRevision ?? 0) + 1,
+            sync,
+            layout,
+          );
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {renderBundle, currentStep: 'render'},
+          expectedRevision,
+        );
+        if (!updatedProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        sendProject(response, 200, updatedProject);
+        return;
+      }
+
+      if (
+        renderRoute?.action === 'status' &&
+        request.method === 'GET'
+      ) {
+        const currentProject = await repository.getProject(
+          renderRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        const generationId =
+          requestUrl.searchParams.get('generationId') ?? undefined;
+        const status = finalRenderService.getStatus(
+          currentProject.id,
+          generationId,
+        );
+        sendJson(response, 200, {status});
+        return;
+      }
+
+      if (
+        renderRoute?.action === 'video' &&
+        (request.method === 'GET' || request.method === 'HEAD')
+      ) {
+        const currentProject = await repository.getProject(
+          renderRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        if (!currentProject.renderBundle || !finalRenderIsReady(currentProject)) {
+          throw new RequestBodyError(
+            409,
+            'FINAL_RENDER_NOT_READY',
+            'Video cuối chưa sẵn sàng hoặc đã cũ so với Layout hiện hành.',
+          );
+        }
+        const video = await finalRenderService.resolveVideo(
+          currentProject.id,
+          currentProject.renderBundle,
+        );
+        sendMediaFile(
+          request,
+          response,
+          video.filePath,
+          video.size,
+          'video/mp4',
+          {
+            'Cache-Control': 'private, no-cache',
+            'Content-Disposition': `inline; filename="${currentProject.id}.mp4"`,
+            ETag: `"${currentProject.renderBundle.validation.videoHash}"`,
+          },
+        );
+        return;
+      }
+
       const projectId = getProjectId(requestUrl.pathname);
 
       if (projectId && request.method === 'GET') {
@@ -3149,6 +3381,32 @@ export function createPadStudioServer(options: AppOptions = {}) {
         return;
       }
 
+      if (error instanceof FinalRenderError) {
+        const conflictCodes = new Set([
+          'FINAL_RENDER_SOURCE_INVALID',
+          'FINAL_RENDER_GENERATION_CONFLICT',
+          'FINAL_RENDER_FRAME_COUNT_MISMATCH',
+          'FINAL_RENDER_DURATION_MISMATCH',
+        ]);
+        const validationCodes = new Set([
+          'FINAL_RENDER_INVALID',
+          'FINAL_RENDER_FRAME_TOO_LARGE',
+          'FINAL_RENDER_FRAME_SEQUENCE_INVALID',
+        ]);
+        sendApiError(
+          response,
+          error.code === 'FINAL_RENDER_VIDEO_MISSING'
+            ? 404
+            : conflictCodes.has(error.code)
+              ? 409
+              : validationCodes.has(error.code)
+                ? 422
+                : 503,
+          {code: error.code, message: error.message},
+        );
+        return;
+      }
+
       logger.error(error);
       sendApiError(response, 500, {
         code: 'INTERNAL_ERROR',
@@ -3157,17 +3415,26 @@ export function createPadStudioServer(options: AppOptions = {}) {
     }
   });
 
-  server.on('close', () => {
-    codexConnection.close();
-    void animationSyncPreviewService.close().catch((error) => {
-      logger.error(error);
-    });
-    void layoutPreviewService.close().catch((error) => {
-      logger.error(error);
-    });
+  let cleanupPromise: Promise<void> | null = null;
+  const closeServices = () => {
+    if (cleanupPromise) return cleanupPromise;
+    const tasks: Array<Promise<unknown>> = [
+      Promise.resolve().then(() => codexConnection.close()),
+      Promise.resolve().then(() => animationSyncPreviewService.close()),
+      Promise.resolve().then(() => layoutPreviewService.close()),
+      Promise.resolve().then(() => finalRenderService.close()),
+    ];
     if (options.codexConnection && sharedCodexClient) {
-      sharedCodexClient.close();
+      tasks.push(Promise.resolve().then(() => sharedCodexClient.close()));
     }
-  });
+    cleanupPromise = Promise.allSettled(tasks).then((results) => {
+      for (const result of results) {
+        if (result.status === 'rejected') logger.error(result.reason);
+      }
+    });
+    return cleanupPromise;
+  };
+  serverCleanupTasks.set(server, closeServices);
+  server.on('close', () => void closeServices());
   return server;
 }

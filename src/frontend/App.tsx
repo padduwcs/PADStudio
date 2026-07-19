@@ -27,6 +27,7 @@ import {
 import {ProjectLibrary} from './ProjectLibrary.tsx';
 import {AnimationSyncPage} from './AnimationSyncPage.tsx';
 import {LayoutEditorPage} from './LayoutEditorPage.tsx';
+import {FinalRenderPage} from './FinalRenderPage.tsx';
 import {MotionCanvasPage} from './MotionCanvasPage.tsx';
 import {VoicePage} from './VoicePage.tsx';
 import {
@@ -1277,7 +1278,9 @@ export default function App() {
   const [newProjectKey, setNewProjectKey] = useState(0);
   const [projectReloadKey, setProjectReloadKey] = useState(0);
   const activeStep =
-    route.name === 'project-layout'
+    route.name === 'project-render'
+      ? 7
+      : route.name === 'project-layout'
       ? 6
       : route.name === 'project-sync'
       ? 5
@@ -1419,6 +1422,9 @@ export default function App() {
           )}
           {route.name === 'project-layout' && (
             <LayoutEditorPage projectId={route.projectId} />
+          )}
+          {route.name === 'project-render' && (
+            <FinalRenderPage projectId={route.projectId} />
           )}
         </div>
       </main>

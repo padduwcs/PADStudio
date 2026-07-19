@@ -339,7 +339,7 @@ test('parseTopicProject không âm thầm bỏ field lạ', () => {
   );
 });
 
-test('parseTopicProject migrates v8 to v9 without widening the historical step enum', () => {
+test('parseTopicProject migrates v8 and v9 without widening historical step enums', () => {
   const now = new Date().toISOString();
   const versionEight = {
     id: 'version-eight-project',
@@ -363,21 +363,33 @@ test('parseTopicProject migrates v8 to v9 without widening the historical step e
   };
 
   const migrated = parseTopicProject(versionEight);
-  assert.equal(migrated.version, 9);
+  assert.equal(migrated.version, currentProjectVersion);
   assert.equal(migrated.currentStep, 'sync');
   assert.equal(migrated.revision, 14);
   assert.equal(migrated.layoutBundle, null);
+  assert.equal(migrated.renderBundle, null);
 
   assert.equal(ProjectStepSchema.safeParse('layout').success, true);
   assert.equal(
     TopicProjectSchema.safeParse({
       ...versionEight,
-      version: 9,
+      version: currentProjectVersion,
       currentStep: 'layout',
       layoutBundle: null,
+      renderBundle: null,
     }).success,
     true,
   );
+  const migratedVersionNine = parseTopicProject({
+    ...versionEight,
+    version: 9,
+    currentStep: 'layout',
+    layoutBundle: null,
+  });
+  assert.equal(migratedVersionNine.version, currentProjectVersion);
+  assert.equal(migratedVersionNine.currentStep, 'layout');
+  assert.equal(migratedVersionNine.renderBundle, null);
+  assert.equal(ProjectStepSchema.safeParse('render').success, true);
   assert.throws(() =>
     parseTopicProject({...versionEight, currentStep: 'layout'}),
   );

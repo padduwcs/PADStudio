@@ -23,7 +23,10 @@ import type {
 } from '../shared/layout.ts';
 import type {AnimationSyncWorkspace} from './animationSyncWorkspace.ts';
 import type {AnimationSyncPreviewService} from './animationSyncPreviewService.ts';
-import {createPadStudioServer} from './app.ts';
+import {
+  closePadStudioServerServices,
+  createPadStudioServer,
+} from './app.ts';
 import type {CodexConnectionService} from './codexConnection.ts';
 import type {ElevenLabsConnectionService} from './elevenLabsConnection.ts';
 import type {ElevenLabsVoiceService} from './elevenLabsVoiceService.ts';
@@ -36,6 +39,7 @@ import {
 import type {LayoutWorkspace} from './layoutWorkspace.ts';
 import type {VoiceVisualGenerator} from './voiceVisualGenerator.ts';
 import type {VoiceWorkspace} from './voiceWorkspace.ts';
+import type {FinalRenderService} from './finalRenderService.ts';
 
 const topicInput = {
   topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
@@ -69,6 +73,7 @@ async function startTestApp(
     animationSyncPreviewService?: AnimationSyncPreviewService;
     layoutWorkspace?: LayoutWorkspace;
     layoutPreviewService?: LayoutPreviewService;
+    finalRenderService?: FinalRenderService;
   } = {},
 ) {
   const projectsDirectory = await mkdtemp(
@@ -87,6 +92,7 @@ async function startTestApp(
     animationSyncPreviewService: options.animationSyncPreviewService,
     layoutWorkspace: options.layoutWorkspace,
     layoutPreviewService: options.layoutPreviewService,
+    finalRenderService: options.finalRenderService,
     logger: {info() {}, error() {}},
   });
 
@@ -94,6 +100,7 @@ async function startTestApp(
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
     });
+    await closePadStudioServerServices(server);
     await rm(projectsDirectory, {recursive: true, force: true});
   });
 
@@ -120,6 +127,54 @@ async function createProject(
   assert.equal(response.status, 201);
   return {project: body.project, request};
 }
+
+test('backend cleanup chờ final render dừng xong và có tính idempotent', async () => {
+  const projectsDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-cleanup-test-'),
+  );
+  let closeStarted = false;
+  let releaseClose!: () => void;
+  const finalRenderService: FinalRenderService = {
+    async render() {
+      throw new Error('Không dùng trong test cleanup.');
+    },
+    getStatus() {
+      return null;
+    },
+    async resolveVideo() {
+      throw new Error('Không dùng trong test cleanup.');
+    },
+    async close() {
+      closeStarted = true;
+      await new Promise<void>((resolve) => {
+        releaseClose = resolve;
+      });
+    },
+  };
+  const server = createPadStudioServer({
+    projectsDirectory,
+    finalRenderService,
+    logger: {info() {}, error() {}},
+  });
+
+  const firstCleanup = closePadStudioServerServices(server);
+  const secondCleanup = closePadStudioServerServices(server);
+  assert.strictEqual(firstCleanup, secondCleanup);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(closeStarted, true);
+
+  let cleanupFinished = false;
+  void firstCleanup.then(() => {
+    cleanupFinished = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(cleanupFinished, false);
+
+  releaseClose();
+  await firstCleanup;
+  assert.equal(cleanupFinished, true);
+  await rm(projectsDirectory, {recursive: true, force: true});
+});
 
 function updateProject(
   baseUrl: string,
@@ -534,7 +589,7 @@ test('API tạo, chỉnh sửa và chốt mạch giảng an toàn', async (conte
   assert.equal(outdatedApproveBody.error.code, 'OUTLINE_OUTDATED');
 });
 
-test('API chạy pipeline voice–visual đến Layout Editor an toàn', async (context) => {
+test('API chạy pipeline voice–visual đến final render an toàn', async (context) => {
   const outlineGenerator: OutlineGenerator = {
     async generate() {
       return {
@@ -1098,6 +1153,85 @@ export default makeScene2D(function* (view) {
     },
     async close() {},
   };
+  const renderOutputDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-render-test-'),
+  );
+  const renderVideoPath = path.join(renderOutputDirectory, 'video.mp4');
+  const renderVideo = Buffer.from('mock-final-video');
+  await writeFile(renderVideoPath, renderVideo);
+  context.after(() =>
+    rm(renderOutputDirectory, {recursive: true, force: true}),
+  );
+  let finalRenderCalls = 0;
+  let finalRenderStatus: ReturnType<FinalRenderService['getStatus']> = null;
+  const finalRenderService: FinalRenderService = {
+    async render(
+      _projectId,
+      generationId,
+      contentRevision,
+      _syncBundle,
+      layoutBundle,
+    ) {
+      finalRenderCalls += 1;
+      const now = new Date().toISOString();
+      const totalFrames =
+        Math.ceil(layoutBundle.totalDurationSeconds * 30) + 1;
+      finalRenderStatus = {
+        generationId,
+        state: 'completed',
+        progress: 1,
+        renderedFrames: totalFrames,
+        totalFrames,
+        startedAt: now,
+        updatedAt: now,
+        message: 'Video cuối đã sẵn sàng.',
+        errorCode: null,
+      };
+      return {
+        status: 'completed',
+        contentRevision,
+        sourceLayoutContentRevision: layoutBundle.contentRevision,
+        sourceLayoutGenerationId:
+          layoutBundle.generation.generationId,
+        sourceLayoutSourceHash: layoutBundle.validation.sourceHash,
+        workspacePath: `renders/generations/${generationId}`,
+        videoFile: 'video.mp4',
+        width: 1080,
+        height: 1920,
+        fps: 30,
+        durationSeconds: layoutBundle.totalDurationSeconds,
+        fileSizeBytes: renderVideo.length,
+        encoding: {
+          container: 'mp4',
+          videoCodec: 'h264',
+          audioCodec: 'aac',
+          pixelFormat: 'yuv420p',
+          crf: 18,
+          preset: 'medium',
+        },
+        validation: {
+          validatedAt: now,
+          sourceHash: '1'.repeat(64),
+          videoHash: createHash('sha256').update(renderVideo).digest('hex'),
+          renderedFrameCount: totalFrames,
+          probedDurationSeconds: layoutBundle.totalDurationSeconds,
+        },
+        generation: {
+          generationId,
+          provider: 'local',
+          tool: 'motion-canvas-ffmpeg',
+          generatedAt: now,
+        },
+      };
+    },
+    getStatus() {
+      return finalRenderStatus;
+    },
+    async resolveVideo() {
+      return {filePath: renderVideoPath, size: renderVideo.length};
+    },
+    async close() {},
+  };
   const {baseUrl} = await startTestApp(context, {
     outlineGenerator,
     voiceVisualGenerator,
@@ -1108,6 +1242,7 @@ export default makeScene2D(function* (view) {
     animationSyncPreviewService,
     layoutWorkspace,
     layoutPreviewService,
+    finalRenderService,
   });
   const {project} = await createProject(baseUrl);
 
@@ -1760,6 +1895,67 @@ export default makeScene2D(function* (view) {
     14,
   );
 
+  const finalRenderGenerationId = randomUUID();
+  const finalRenderResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/render/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"14"',
+      },
+      body: JSON.stringify({generationId: finalRenderGenerationId}),
+    },
+  );
+  const finalRenderBody = await finalRenderResponse.json();
+  assert.equal(finalRenderResponse.status, 200);
+  assert.equal(finalRenderBody.project.revision, 15);
+  assert.equal(finalRenderBody.project.currentStep, 'render');
+  assert.equal(
+    finalRenderBody.project.renderBundle.generation.generationId,
+    finalRenderGenerationId,
+  );
+  assert.equal(finalRenderCalls, 1);
+
+  const finalRenderStatusResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/render/status?generationId=${finalRenderGenerationId}`,
+  );
+  const finalRenderStatusBody = await finalRenderStatusResponse.json();
+  assert.equal(finalRenderStatusResponse.status, 200);
+  assert.equal(finalRenderStatusBody.status.state, 'completed');
+
+  const finalVideoRangeResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/render/video`,
+    {headers: {Range: 'bytes=5-9'}},
+  );
+  assert.equal(finalVideoRangeResponse.status, 206);
+  assert.equal(
+    finalVideoRangeResponse.headers.get('content-range'),
+    `bytes 5-9/${renderVideo.length}`,
+  );
+  assert.equal(
+    Buffer.from(await finalVideoRangeResponse.arrayBuffer()).toString(),
+    'final',
+  );
+
+  const repeatedFinalRenderResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/render/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"14"',
+      },
+      body: JSON.stringify({generationId: finalRenderGenerationId}),
+    },
+  );
+  assert.equal(repeatedFinalRenderResponse.status, 200);
+  assert.equal(
+    (await repeatedFinalRenderResponse.json()).project.revision,
+    15,
+  );
+  assert.equal(finalRenderCalls, 1);
+
   const approvedPlan = syncApproveBody.project.voiceVisualPlan;
   const visualOnlyUpdateResponse = await fetch(
     `${baseUrl}/api/projects/${project.id}/voice-visual`,
@@ -1767,7 +1963,7 @@ export default makeScene2D(function* (view) {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'If-Match': '"14"',
+        'If-Match': '"15"',
       },
       body: JSON.stringify({
         voiceDirection: approvedPlan.voiceDirection,
@@ -1797,7 +1993,7 @@ export default makeScene2D(function* (view) {
   );
   const visualOnlyUpdateBody = await visualOnlyUpdateResponse.json();
   assert.equal(visualOnlyUpdateResponse.status, 200);
-  assert.equal(visualOnlyUpdateBody.project.revision, 15);
+  assert.equal(visualOnlyUpdateBody.project.revision, 16);
   assert.equal(visualOnlyUpdateBody.project.voiceBundle.status, 'approved');
   assert.equal(
     visualOnlyUpdateBody.project.voiceVisualPlan.narrationRevision,
@@ -1812,6 +2008,7 @@ export default makeScene2D(function* (view) {
     'draft',
   );
   assert.equal(visualOnlyUpdateBody.project.layoutBundle.status, 'draft');
+  assert.equal(visualOnlyUpdateBody.project.renderBundle, null);
 
   const visualPlan = visualOnlyUpdateBody.project.voiceVisualPlan;
   const voiceTextUpdateResponse = await fetch(
@@ -1820,7 +2017,7 @@ export default makeScene2D(function* (view) {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'If-Match': '"15"',
+        'If-Match': '"16"',
       },
       body: JSON.stringify({
         voiceDirection: visualPlan.voiceDirection,
@@ -1849,7 +2046,7 @@ export default makeScene2D(function* (view) {
   );
   const voiceTextUpdateBody = await voiceTextUpdateResponse.json();
   assert.equal(voiceTextUpdateResponse.status, 200);
-  assert.equal(voiceTextUpdateBody.project.revision, 16);
+  assert.equal(voiceTextUpdateBody.project.revision, 17);
   assert.equal(voiceTextUpdateBody.project.voiceBundle.status, 'draft');
   assert.equal(
     voiceTextUpdateBody.project.voiceVisualPlan.narrationRevision,
@@ -1868,7 +2065,7 @@ export default makeScene2D(function* (view) {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'If-Match': '"16"',
+        'If-Match': '"17"',
       },
       body: JSON.stringify({
         brief: outline.brief,
@@ -1899,7 +2096,7 @@ export default makeScene2D(function* (view) {
     `${baseUrl}/api/projects/${project.id}/voice-visual/approve`,
     {
       method: 'POST',
-      headers: {'If-Match': '"17"'},
+      headers: {'If-Match': '"18"'},
     },
   );
   const outdatedApproveBody = await outdatedApproveResponse.json();
@@ -1913,7 +2110,7 @@ export default makeScene2D(function* (view) {
     `${baseUrl}/api/projects/${project.id}/motion-canvas/approve`,
     {
       method: 'POST',
-      headers: {'If-Match': '"17"'},
+      headers: {'If-Match': '"18"'},
     },
   );
   const outdatedMotionApproveBody =

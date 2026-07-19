@@ -37,6 +37,10 @@ test('parseRoute đọc route project hợp lệ', () => {
     name: 'project-layout',
     projectId: 'du-an-01',
   });
+  assert.deepEqual(parseRoute('/projects/du-an-01/render'), {
+    name: 'project-render',
+    projectId: 'du-an-01',
+  });
 });
 
 test('parseRoute không crash với URL encoding hỏng', () => {
@@ -73,6 +77,10 @@ test('projectStepPath ánh xạ tập trung các bước đã hỗ trợ', () =>
   assert.equal(
     projectStepPath('du an', 'layout'),
     '/projects/du%20an/layout',
+  );
+  assert.equal(
+    projectStepPath('du an', 'render'),
+    '/projects/du%20an/render',
   );
 });
 

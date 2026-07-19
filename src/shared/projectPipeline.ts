@@ -1,5 +1,6 @@
 import type {
   AnimationSyncBundle,
+  FinalRenderBundle,
   LayoutBundle,
   MotionCanvasBundle,
   TeachingOutline,
@@ -306,4 +307,59 @@ export function layoutIsReady(project: TopicProject): boolean {
 
 export function layoutIsStale(project: TopicProject): boolean {
   return Boolean(project.layoutBundle && !layoutIsCurrent(project));
+}
+
+export function finalRenderPrerequisitesAreReady(
+  project: TopicProject,
+): boolean {
+  return layoutIsReady(project);
+}
+
+export function finalRenderMatchesLayout(
+  bundle: Pick<
+    FinalRenderBundle,
+    | 'sourceLayoutContentRevision'
+    | 'sourceLayoutGenerationId'
+    | 'sourceLayoutSourceHash'
+    | 'durationSeconds'
+    | 'fps'
+  >,
+  layout: Pick<
+    LayoutBundle,
+    | 'contentRevision'
+    | 'totalDurationSeconds'
+    | 'generation'
+    | 'validation'
+  >,
+): boolean {
+  return (
+    bundle.sourceLayoutContentRevision === layout.contentRevision &&
+    bundle.sourceLayoutGenerationId === layout.generation.generationId &&
+    bundle.sourceLayoutSourceHash === layout.validation.sourceHash &&
+    Math.abs(bundle.durationSeconds - layout.totalDurationSeconds) <
+      Math.max(TIMING_TOLERANCE_SECONDS, 2 / bundle.fps)
+  );
+}
+
+export function finalRenderIsCurrent(project: TopicProject): boolean {
+  const bundle = project.renderBundle;
+  const layout = project.layoutBundle;
+
+  return Boolean(
+    bundle &&
+      layout &&
+      finalRenderPrerequisitesAreReady(project) &&
+      finalRenderMatchesLayout(bundle, layout),
+  );
+}
+
+export function finalRenderIsReady(project: TopicProject): boolean {
+  return Boolean(
+    project.renderBundle?.status === 'completed' &&
+      finalRenderIsCurrent(project),
+  );
+}
+
+export function finalRenderIsStale(project: TopicProject): boolean {
+  return Boolean(project.renderBundle && !finalRenderIsCurrent(project));
 }

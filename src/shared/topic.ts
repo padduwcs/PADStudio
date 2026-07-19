@@ -1,8 +1,10 @@
 import {z} from 'zod';
 import {DEFAULT_NARRATION_CALIBRATION} from './narrationTiming.ts';
 import {LayoutBundleSchema} from './layout.ts';
+import {FinalRenderBundleSchema} from './render.ts';
 
 export * from './layout.ts';
+export * from './render.ts';
 
 export const audienceValues = ['beginner', 'familiar'] as const;
 export const durationValues = ['concise', 'standard', 'deep'] as const;
@@ -14,17 +16,19 @@ const projectStepV8Values = [
   'voice',
   'sync',
 ] as const;
-export const projectStepValues = [...projectStepV8Values, 'layout'] as const;
+const projectStepV9Values = [...projectStepV8Values, 'layout'] as const;
+export const projectStepValues = [...projectStepV9Values, 'render'] as const;
 export const projectStatusValues = ['draft'] as const;
 export const outlineStatusValues = ['draft', 'approved'] as const;
 export const voiceVisualStatusValues = ['draft', 'approved'] as const;
 export const motionCanvasStatusValues = ['draft', 'approved'] as const;
 export const voiceStatusValues = ['draft', 'approved'] as const;
 export const animationSyncStatusValues = ['draft', 'approved'] as const;
-export const currentProjectVersion = 9 as const;
+export const currentProjectVersion = 10 as const;
 
 export const ProjectStepSchema = z.enum(projectStepValues);
 const ProjectStepV8Schema = z.enum(projectStepV8Values);
+const ProjectStepV9Schema = z.enum(projectStepV9Values);
 export type ProjectStep = z.infer<typeof ProjectStepSchema>;
 export const ProjectStatusSchema = z.enum(projectStatusValues);
 export const CreationIdSchema = z.string().uuid();
@@ -746,15 +750,24 @@ const topicProjectV8Schema = topicProjectV7Schema
   })
   .strict();
 
-export const TopicProjectSchema = topicProjectV8Schema
+const topicProjectV9Schema = topicProjectV8Schema
   .omit({
     version: true,
     currentStep: true,
   })
   .extend({
+    version: z.literal(9),
+    currentStep: ProjectStepV9Schema,
+    layoutBundle: LayoutBundleSchema.nullable(),
+  })
+  .strict();
+
+export const TopicProjectSchema = topicProjectV9Schema
+  .omit({version: true, currentStep: true})
+  .extend({
     version: z.literal(currentProjectVersion),
     currentStep: ProjectStepSchema,
-    layoutBundle: LayoutBundleSchema.nullable(),
+    renderBundle: FinalRenderBundleSchema.nullable(),
   })
   .strict();
 
@@ -764,12 +777,22 @@ export function parseTopicProject(value: unknown): TopicProject {
   const currentProject = TopicProjectSchema.safeParse(value);
   if (currentProject.success) return currentProject.data;
 
+  const versionNineProject = topicProjectV9Schema.safeParse(value);
+  if (versionNineProject.success) {
+    return {
+      ...versionNineProject.data,
+      version: currentProjectVersion,
+      renderBundle: null,
+    };
+  }
+
   const versionEightProject = topicProjectV8Schema.safeParse(value);
   if (versionEightProject.success) {
     return {
       ...versionEightProject.data,
       version: currentProjectVersion,
       layoutBundle: null,
+      renderBundle: null,
     };
   }
 
@@ -785,6 +808,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       voiceBundle: null,
       animationSyncBundle: null,
       layoutBundle: null,
+      renderBundle: null,
     };
   }
 
@@ -796,6 +820,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       voiceBundle: null,
       animationSyncBundle: null,
       layoutBundle: null,
+      renderBundle: null,
     };
   }
 
@@ -807,6 +832,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       voiceBundle: null,
       animationSyncBundle: null,
       layoutBundle: null,
+      renderBundle: null,
     };
   }
 
@@ -819,6 +845,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       voiceBundle: null,
       animationSyncBundle: null,
       layoutBundle: null,
+      renderBundle: null,
     };
   }
 
@@ -832,6 +859,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       voiceBundle: null,
       animationSyncBundle: null,
       layoutBundle: null,
+      renderBundle: null,
     };
   }
 
@@ -846,6 +874,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       voiceBundle: null,
       animationSyncBundle: null,
       layoutBundle: null,
+      renderBundle: null,
     };
   }
 
@@ -862,6 +891,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       voiceBundle: null,
       animationSyncBundle: null,
       layoutBundle: null,
+      renderBundle: null,
     };
   }
 

@@ -44,7 +44,6 @@ Nhập chủ đề
 → Đồng bộ animation theo voice
 → Người dùng chỉnh bằng Layout Editor
 → Render video cuối
-→ Lưu tài nguyên tốt vào kho tham khảo
 ```
 
 Quy trình có thể được điều chỉnh trong quá trình phát triển, nhưng cần giữ các điểm review trước những bước tốn chi phí hoặc khó sửa.
@@ -166,10 +165,6 @@ Code scene đã sinh nằm trong
 `projects/<project-id>/motion-canvas/generations/<generation-id>/`, tách khỏi
 code của Studio nhưng vẫn thuộc project và được quản lý cùng metadata video.
 
-Những scene, component, animation pattern hoặc asset đã hoạt động tốt sẽ được lưu vào kho tham khảo. Khi làm video mới, chúng được sao chép và điều chỉnh theo ngữ cảnh thay vì mặc định trở thành dependency dùng chung.
-
-Chỉ nên chuẩn hóa thành thành phần dùng chung khi pattern đã được kiểm chứng qua nhiều video và ranh giới tái sử dụng thực sự rõ ràng.
-
 ## Layout Editor
 
 Layout Editor là bước 07, chỉ mở từ một generation Sync đã chốt và còn hiện hành.
@@ -180,9 +175,9 @@ undo/redo, copy/paste modifier, snap, grid, safe-zone, so sánh bản gốc và 
 Timing/beat marker chỉ đọc trong MVP vì thay timing sau Sync có thể phá vỡ narration.
 
 Thay đổi không được ghi ngược vào source Sync. Runtime áp modifier tạm thời trước khi
-render/hit-test rồi khôi phục raw signal trong `finally`. Adapter modifier được tách riêng
-để bước render cuối có thể tái sử dụng, nhưng wiring render cuối chưa thuộc MVP Layout
-Editor hiện tại. Backend lưu mỗi lần tự lưu thành overlay bất biến tại
+render/hit-test rồi khôi phục raw signal trong `finally`. Bước render cuối tái sử dụng
+đúng adapter modifier và node fingerprint đã được Layout Editor xác minh. Backend lưu
+mỗi lần tự lưu thành overlay bất biến tại
 `projects/<project-id>/layout/generations/<generation-id>/`, gồm `overrides.json`,
 `editor-manifest.json` và manifest kiểm tra toàn vẹn. Overlay tham chiếu workspace Sync
 nguồn thay vì sao chép scene hoặc audio.
@@ -205,6 +200,21 @@ revision hiện tại.
 
 Editor bổ sung cho code chứ không thay thế logic scene. Codex vẫn sinh và sửa cấu trúc,
 animation hoặc nội dung phức tạp; Layout Editor xử lý các tinh chỉnh trực quan an toàn.
+
+## Final render
+
+Final render là bước 08 và chỉ nhận Layout hiện hành đã chốt cùng bản Sync nguồn đã chốt.
+Backend xác minh lại toàn bộ hash của workspace, sao chép nguồn sang workspace tạm
+copy-on-write rồi chạy Motion Canvas trong Chrome/Edge headless. Từng frame PNG được
+stream tuần tự vào FFmpeg qua `image2pipe`; hệ thống không ghi hàng nghìn frame tạm.
+Master narration được ghép làm audio AAC, còn hình được mã hóa H.264 `yuv420p`, CRF 18,
+30 fps ở khung dọc 1080×1920 với metadata fast-start.
+
+Sau khi dựng, FFprobe phải xác nhận codec, pixel format, kích thước và thời lượng. Video
+được hash trước khi manifest và `video.mp4` được đổi tên nguyên tử vào
+`projects/<project-id>/renders/generations/<generation-id>/`. Các generation không ghi
+đè nhau; thay đổi Layout làm render cũ mất tính hiện hành. API hỗ trợ trạng thái theo
+frame, HTTP Range để phát trong trình duyệt và tải MP4 mà không nạp cả file vào RAM.
 
 ## Vai trò của các thành phần
 
