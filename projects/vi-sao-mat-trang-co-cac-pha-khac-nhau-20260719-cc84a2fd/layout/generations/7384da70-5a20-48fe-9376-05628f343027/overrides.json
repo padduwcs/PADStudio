@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "sourceAnimationSyncGenerationId": "fcbe48ef-6462-4bf3-867e-1341fa27b287",
+  "sourceAnimationSyncContentRevision": 1,
+  "sourceAnimationSyncSourceHash": "838457a9e112e010af4d894c7a355022edd692ef55709404cadfa11fa26cac12",
+  "overrides": [
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "01-moon-half-always-lit/TxtLeaf[1]",
+      "nodeFingerprint": "c8c4d87caefaea8dee99d5e26f006bfa8357889403a12ec5d446bb3b49d1890b",
+      "patch": {
+        "x": 40,
+        "fill": "#FF6B35",
+        "zIndexDelta": 1
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "solar-source-core",
+      "nodeFingerprint": "ada231e841eabdf07982847a2031d50be3376f92103f96c0f108d915f1532c4d",
+      "patch": {
+        "zIndexDelta": 6
+      }
+    }
+  ]
+}

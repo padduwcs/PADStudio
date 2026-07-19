@@ -4,9 +4,11 @@ import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import type {AnimationSyncBundle} from '../shared/topic.ts';
+import {copyPreviewWorkspace} from './previewWorkspaceCopy.ts';
 
 interface PreviewRuntimeServer {
   resolvedUrls: {local: string[]; network: string[]} | null;
+  httpServer?: {listening: boolean} | null;
   listen(): Promise<PreviewRuntimeServer>;
   close(): Promise<void>;
   transformRequest(url: string): Promise<unknown>;
@@ -207,17 +209,34 @@ export function createAnimationSyncPreviewService(
     bundle: AnimationSyncBundle,
     entry: ActivePreview,
   ) {
-    const {projectDirectory, projectFile, workspaceDirectory} =
+    const {projectFile, workspaceDirectory} =
       resolveWorkspace(projectId, bundle);
+    const projectRelativePath = path.relative(
+      workspaceDirectory,
+      projectFile,
+    );
+    const previewWorkspaceDirectory = path.join(
+      entry.cacheDirectory,
+      'workspace',
+    );
+    const previewProjectFile = path.join(
+      previewWorkspaceDirectory,
+      projectRelativePath,
+    );
     const runtime = await loadRuntime();
+    await rm(entry.cacheDirectory, {recursive: true, force: true});
     await mkdir(entry.cacheDirectory, {recursive: true});
 
     let server: PreviewRuntimeServer | null = null;
     try {
+      await copyPreviewWorkspace(
+        workspaceDirectory,
+        previewWorkspaceDirectory,
+      );
       server = await runtime.createServer({
         configFile: false,
-        root: workspaceDirectory,
-        cacheDir: entry.cacheDirectory,
+        root: previewWorkspaceDirectory,
+        cacheDir: path.join(entry.cacheDirectory, 'vite-cache'),
         logLevel: 'error',
         appType: 'custom',
         optimizeDeps: {
@@ -250,8 +269,8 @@ export function createAnimationSyncPreviewService(
           },
         },
         plugins: runtime.motionCanvas({
-          project: projectFile.replaceAll('\\', '/'),
-          output: path.join(projectDirectory, 'renders', 'sync-preview'),
+          project: previewProjectFile.replaceAll('\\', '/'),
+          output: path.join(entry.cacheDirectory, 'render-output'),
           editor: previewEditorEntry.replaceAll('\\', '/'),
           bufferedAssets: false,
         }),
@@ -261,7 +280,7 @@ export function createAnimationSyncPreviewService(
           strictPort: false,
           hmr: false,
           fs: {
-            allow: [repositoryRoot, workspaceDirectory],
+            allow: [repositoryRoot, previewWorkspaceDirectory],
           },
         },
       });
@@ -272,7 +291,7 @@ export function createAnimationSyncPreviewService(
         moduleUrl(previewEditorEntry),
       );
       const transformedProject = await server.transformRequest(
-        moduleUrl(projectFile, '?project'),
+        moduleUrl(previewProjectFile, '?project'),
       );
       if (!transformedEditor || !transformedProject) {
         throw new AnimationSyncPreviewError(
@@ -302,6 +321,12 @@ export function createAnimationSyncPreviewService(
         await closeRuntimeServer(server).catch(() => undefined);
       }
       entry.server = null;
+      if (isInside(temporaryRoot, entry.cacheDirectory)) {
+        await rm(entry.cacheDirectory, {
+          recursive: true,
+          force: true,
+        }).catch(() => undefined);
+      }
       if (error instanceof AnimationSyncPreviewError) throw error;
       throw new AnimationSyncPreviewError(
         'ANIMATION_SYNC_PREVIEW_START_FAILED',
@@ -322,17 +347,43 @@ export function createAnimationSyncPreviewService(
       const existing = previews.get(projectId);
       if (existing?.generationId === bundle.generation.generationId) {
         existing.lastAccessedAt = Date.now();
-        return existing.promise;
+        try {
+          const preview = await existing.promise;
+          if (
+            previews.get(projectId) === existing &&
+            existing.server &&
+            existing.server.httpServer?.listening !== false
+          ) {
+            return preview;
+          }
+        } catch (error) {
+          if (previews.get(projectId) === existing) {
+            previews.delete(projectId);
+          }
+          await closePreview(existing);
+          throw error;
+        }
+        if (previews.get(projectId) === existing) {
+          previews.delete(projectId);
+        }
+        await closePreview(existing);
       }
-      if (existing) {
+      if (existing && previews.get(projectId) === existing) {
         previews.delete(projectId);
         await closePreview(existing);
       }
 
       const cacheDirectory = path.join(
         temporaryRoot,
+        projectId,
         bundle.generation.generationId,
       );
+      if (!isInside(temporaryRoot, cacheDirectory)) {
+        throw new AnimationSyncPreviewError(
+          'ANIMATION_SYNC_PREVIEW_INVALID',
+          'Generation ID của bản nháp đồng bộ không hợp lệ.',
+        );
+      }
       const entry: ActivePreview = {
         generationId: bundle.generation.generationId,
         lastAccessedAt: Date.now(),

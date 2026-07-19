@@ -17,7 +17,7 @@ import {
   runCodexStructuredGeneration,
 } from './codexStructuredGeneration.ts';
 
-export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v3';
+export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v4';
 export const MOTION_CANVAS_VERSION = '3.17.2';
 export const MOTION_CANVAS_WIDTH = 1080;
 export const MOTION_CANVAS_HEIGHT = 1920;
@@ -183,8 +183,9 @@ function buildPrompt(
     'Import makeScene2D, Rect, Circle, Line, Txt, Layout và các visual node chỉ từ @motion-canvas/2d.',
     'Import all, chain, sequence, createRef, createSignal, tween, waitFor, waitUntil, useDuration và easing chỉ từ @motion-canvas/core.',
     'Dùng đúng tên export createRef, createSignal và easeInOutCubic; không import ref, signal hoặc easing.',
-    'Không dùng JSX.Element hoặc namespace JSX trong type annotation. JSX key nếu có phải là string.',
-    'Mỗi vị trí JSX key sinh từ mảng phải có prefix chuỗi tĩnh, mô tả và khác các vị trí key khác, ví dụ key={`box-${index}`}; không dùng key={String(index)}.',
+    'Không dùng JSX.Element hoặc namespace JSX trong type annotation.',
+    'Mọi visual JSX node phải có key là string literal tường minh, duy nhất trong scene và mô tả đúng vai trò ổn định của node, kể cả node có ref. Dùng lowercase kebab-case gồm ít nhất hai từ, ví dụ key="search-range" hoặc key="pivot-marker".',
+    'Không dùng index, thứ tự, nội dung hiển thị, vị trí hiện tại, UUID, random, biểu thức hoặc biến để tạo key. Không sinh visual JSX node bằng map/loop; hãy khai báo tường minh để Layout Editor giữ được identity ổn định.',
     'Không dùng scaleX/scaleY; dùng scale([x, y], duration) hoặc width/height với duration.',
     'Không yield* view.add/node.add. Mọi giá trị truyền vào all/chain hoặc yield* phải là animation generator, thường là signal(value, duration).',
     'Txt.text phải là string; chuyển số bằng String(value).',
@@ -216,8 +217,9 @@ function buildRepairPrompt(
     'Giữ nguyên đúng waitUntil(startEvent) và useDuration(endEvent) của từng beat trong context; không thêm waitUntil(endEvent), vì đây sẽ là đăng ký event trùng.',
     'Ngay sau useDuration, lưu beatEndTime = useThread().time() + beatDuration; sau visual, gọi yield* waitFor(Math.max(0, beatEndTime - useThread().time())) để beat luôn kết thúc đúng mốc dù visual ngắn hơn.',
     'Tên export phải dùng chính xác: createRef, createSignal, easeInOutCubic; không import ref, signal hoặc easing.',
-    'Không dùng JSX.Element, scaleX/scaleY, JSX key dạng number, hoặc yield* một node/setter không có duration.',
-    'Mỗi JSX key sinh từ mảng phải có prefix chuỗi tĩnh riêng và không trùng prefix của vị trí key khác; không dùng key={String(index)}.',
+    'Không dùng JSX.Element, scaleX/scaleY, hoặc yield* một node/setter không có duration.',
+    'Giữ hoặc bổ sung key string literal lowercase kebab-case có ít nhất hai từ cho mọi visual JSX node, kể cả node có ref; key phải duy nhất trong scene và mô tả vai trò ổn định của node.',
+    'Không tạo key từ index, thứ tự, nội dung, vị trí, UUID, random, biểu thức hoặc biến. Không sinh visual JSX node bằng map/loop.',
     'Giá trị flex dùng kebab-case như space-between, space-around hoặc space-evenly; không dùng spaceBetween.',
     JSON.stringify({
       context: generationPayload(request, sectionIndex),
@@ -286,7 +288,9 @@ export function validateMotionCanvasSceneSource(source: string) {
     ['Bun', 'runtime API'],
   ]);
   const declaredIdentifiers = new Set<string>();
-  const jsxKeyPrefixes = new Set<string>();
+  const semanticLayoutKeys = new Set<string>();
+  const motion2dImports = new Set<string>();
+  const motion2dNamespaces = new Set<string>();
   let hasDefaultSceneExport = false;
 
   function collectBindingName(name: ts.BindingName) {
@@ -347,6 +351,95 @@ export function validateMotionCanvasSceneSource(source: string) {
     }
   }
 
+  function staticJsxKey(attribute: ts.JsxAttribute) {
+    const initializer = attribute.initializer;
+    if (!initializer) return null;
+    if (ts.isStringLiteral(initializer)) return initializer.text;
+    if (
+      ts.isJsxExpression(initializer) &&
+      initializer.expression &&
+      (ts.isStringLiteral(initializer.expression) ||
+        ts.isNoSubstitutionTemplateLiteral(initializer.expression))
+    ) {
+      return initializer.expression.text;
+    }
+    return null;
+  }
+
+  function validateSemanticLayoutKey(
+    node: ts.JsxOpeningElement | ts.JsxSelfClosingElement,
+  ) {
+    const tagName = node.tagName.getText(sourceFile);
+    if (!/^[A-Z]/.test(tagName)) return;
+    let ancestor: ts.Node | undefined = node.parent;
+    while (ancestor && ancestor !== sourceFile) {
+      if (
+        ts.isForStatement(ancestor) ||
+        ts.isForInStatement(ancestor) ||
+        ts.isForOfStatement(ancestor) ||
+        ts.isWhileStatement(ancestor) ||
+        ts.isDoStatement(ancestor)
+      ) {
+        throw new MotionCanvasGenerationError(
+          'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+          `Visual JSX node <${tagName}> phải được khai báo tường minh, không sinh trong map/loop.`,
+        );
+      }
+      if (
+        ts.isFunctionExpression(ancestor) ||
+        ts.isArrowFunction(ancestor) ||
+        ts.isFunctionDeclaration(ancestor)
+      ) {
+        const parent = ancestor.parent;
+        const isSceneFactory =
+          ts.isCallExpression(parent) &&
+          parent.arguments.includes(ancestor as ts.Expression) &&
+          ts.isIdentifier(parent.expression) &&
+          parent.expression.text === 'makeScene2D';
+        if (!isSceneFactory) {
+          throw new MotionCanvasGenerationError(
+            'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+            `Visual JSX node <${tagName}> phải được khai báo trực tiếp trong scene, không sinh qua callback/helper lặp.`,
+          );
+        }
+        break;
+      }
+      ancestor = ancestor.parent;
+    }
+
+    const keyAttribute = node.attributes.properties.find(
+      (attribute): attribute is ts.JsxAttribute =>
+        ts.isJsxAttribute(attribute) &&
+        ts.isIdentifier(attribute.name) &&
+        attribute.name.text === 'key',
+    );
+    const key = keyAttribute ? staticJsxKey(keyAttribute) : null;
+    const semanticKeyPattern =
+      /^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/;
+    const hasRandomLikeSegment =
+      key?.split('-').some((segment) => /^[a-f0-9]{8,}$/i.test(segment)) ??
+      false;
+
+    if (
+      !key ||
+      key.length > 80 ||
+      !semanticKeyPattern.test(key) ||
+      hasRandomLikeSegment
+    ) {
+      throw new MotionCanvasGenerationError(
+        'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+        `Visual JSX node <${tagName}> phải có key string literal lowercase kebab-case mô tả vai trò ổn định; không dùng index, UUID, random hoặc biểu thức.`,
+      );
+    }
+    if (semanticLayoutKeys.has(key)) {
+      throw new MotionCanvasGenerationError(
+        'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+        `Layout key “${key}” bị trùng trong cùng scene Motion Canvas.`,
+      );
+    }
+    semanticLayoutKeys.add(key);
+  }
+
   function visit(node: ts.Node) {
     if (
       (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
@@ -354,6 +447,19 @@ export function validateMotionCanvasSceneSource(source: string) {
       ts.isStringLiteral(node.moduleSpecifier)
     ) {
       assertAllowedModule(node.moduleSpecifier.text);
+      if (
+        ts.isImportDeclaration(node) &&
+        node.moduleSpecifier.text === '@motion-canvas/2d'
+      ) {
+        const bindings = node.importClause?.namedBindings;
+        if (bindings && ts.isNamedImports(bindings)) {
+          for (const element of bindings.elements) {
+            motion2dImports.add(element.name.text);
+          }
+        } else if (bindings && ts.isNamespaceImport(bindings)) {
+          motion2dNamespaces.add(bindings.name.text);
+        }
+      }
     }
 
     if (ts.isImportEqualsDeclaration(node)) {
@@ -364,24 +470,10 @@ export function validateMotionCanvasSceneSource(source: string) {
     }
 
     if (
-      ts.isJsxAttribute(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === 'key'
+      ts.isJsxOpeningElement(node) ||
+      ts.isJsxSelfClosingElement(node)
     ) {
-      const initializer = node.initializer;
-      const initializerSource = initializer?.getText(sourceFile) ?? '';
-      const prefix = initializer && ts.isStringLiteral(initializer)
-        ? initializer.text
-        : /['"`]([^'"`${}]*[A-Za-z][^'"`${}]*)/.exec(
-            initializerSource,
-          )?.[1] ?? '';
-      if (!prefix || jsxKeyPrefixes.has(prefix)) {
-        throw new MotionCanvasGenerationError(
-          'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
-          'JSX key sinh từ mảng phải có prefix chuỗi tĩnh riêng, không chỉ dùng index và không trùng vị trí khác.',
-        );
-      }
-      jsxKeyPrefixes.add(prefix);
+      validateSemanticLayoutKey(node);
     }
 
     if (
@@ -392,6 +484,21 @@ export function validateMotionCanvasSceneSource(source: string) {
         'CODEX_MOTION_CANVAS_UNSAFE_SOURCE',
         'Scene Motion Canvas dùng dynamic import ngoài phạm vi cho phép.',
       );
+    }
+
+    if (ts.isNewExpression(node)) {
+      const constructsMotion2dNode =
+        (ts.isIdentifier(node.expression) &&
+          motion2dImports.has(node.expression.text)) ||
+        (ts.isPropertyAccessExpression(node.expression) &&
+          ts.isIdentifier(node.expression.expression) &&
+          motion2dNamespaces.has(node.expression.expression.text));
+      if (constructsMotion2dNode) {
+        throw new MotionCanvasGenerationError(
+          'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+          'Visual Motion Canvas phải được khai báo bằng JSX tường minh với semantic key; không dùng new để tạo node.',
+        );
+      }
     }
 
     if (
@@ -747,7 +854,7 @@ export function createCodexMotionCanvasGenerator(
           baseInstructions:
             'Bạn sinh đúng một scene Motion Canvas cho PAD Studio. Không dùng công cụ hoặc đọc tệp. Chỉ trả JSON đúng schema.',
           developerInstructions:
-            'Mã phải gọn, tự chứa, dễ chỉnh tiếp và đồng bộ chính xác với từng beat voice–visual. Ưu tiên visual logic hơn hiệu ứng.',
+            'Mã phải gọn, tự chứa, dễ chỉnh tiếp và đồng bộ chính xác với từng beat voice–visual. Mọi visual JSX node phải có semantic key tường minh, ổn định cho Layout Editor. Ưu tiên visual logic hơn hiệu ứng.',
           model: scenePolicy.model,
           reasoningEffort: scenePolicy.reasoningEffort,
         });
@@ -849,7 +956,7 @@ export function createCodexMotionCanvasGenerator(
         baseInstructions:
           'Bạn sửa đúng một scene Motion Canvas theo compiler diagnostics. Không dùng công cụ hoặc đọc tệp. Chỉ trả JSON đúng schema.',
         developerInstructions:
-          'Giữ nguyên mục tiêu giảng giải và timing; sửa tối thiểu để source dùng đúng API Motion Canvas và biên dịch.',
+          'Giữ nguyên mục tiêu giảng giải và timing; sửa tối thiểu để source dùng đúng API Motion Canvas, biên dịch và có semantic key tường minh, ổn định cho mọi visual JSX node.',
         model: scenePolicy.model,
         reasoningEffort: scenePolicy.reasoningEffort,
       });

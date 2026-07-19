@@ -20,7 +20,7 @@ const sceneSource = `import {makeScene2D, Rect} from '@motion-canvas/2d';
 import {waitFor} from '@motion-canvas/core';
 
 export default makeScene2D(function* (view) {
-  view.add(<Rect width={640} height={120} radius={24} fill={'#dbe9e2'} />);
+  view.add(<Rect key="main-visual-card" width={640} height={120} radius={24} fill={'#dbe9e2'} />);
   yield* waitFor(12);
 });
 `;
@@ -30,7 +30,7 @@ function timedSceneSource(beatIds: string[]) {
 import {useDuration, useThread, waitFor, waitUntil} from '@motion-canvas/core';
 
 export default makeScene2D(function* (view) {
-  view.add(<Rect width={640} height={120} radius={24} fill={'#dbe9e2'} />);
+  view.add(<Rect key="main-visual-card" width={640} height={120} radius={24} fill={'#dbe9e2'} />);
 ${beatIds
   .map(
     (beatId, index) => `  yield* waitUntil('beat:${beatId}:start');
@@ -512,24 +512,117 @@ test('Motion Canvas source policy phân tích code thay vì nội dung text', ()
   );
 });
 
-test('Motion Canvas source policy yêu cầu JSX key có prefix riêng', () => {
+test('Motion Canvas source policy yêu cầu semantic key tường minh cho mọi visual node', () => {
   assert.throws(
     () =>
       validateMotionCanvasSceneSource(
         sceneSource.replace(
-          '<Rect width={640}',
-          '<Rect key={String(0)} width={640}',
+          ' key="main-visual-card"',
+          '',
         ),
       ),
     (error) =>
       error instanceof MotionCanvasGenerationError &&
       error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
   );
+  assert.throws(
+    () =>
+      validateMotionCanvasSceneSource(
+        sceneSource.replace(
+          'key="main-visual-card"',
+          "key={'visual-card-' + String(0)}",
+        ),
+      ),
+    (error) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+  );
+  assert.throws(
+    () =>
+      validateMotionCanvasSceneSource(
+        sceneSource.replace(
+          'key="main-visual-card"',
+          'key="visual-card-1"',
+        ),
+      ),
+    (error) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+  );
+  assert.doesNotThrow(() => validateMotionCanvasSceneSource(sceneSource));
+});
+
+test('Motion Canvas source policy yêu cầu layout key duy nhất trong scene', () => {
+  assert.throws(
+    () =>
+      validateMotionCanvasSceneSource(
+        sceneSource.replace(
+          '  yield* waitFor(12);',
+          `  view.add(
+    <Rect key="main-visual-card" width={320} height={80} />,
+  );
+  yield* waitFor(12);`,
+        ),
+      ),
+    (error) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+  );
+});
+
+test('Motion Canvas source policy chặn node sinh qua callback, loop hoặc constructor', () => {
+  const visualLine =
+    '  view.add(<Rect key="main-visual-card" width={640} height={120} radius={24} fill={\'#dbe9e2\'} />);';
+  const invalidSources = [
+    sceneSource.replace(
+      visualLine,
+      '  [1, 2].map(() => <Rect key="mapped-visual-card" width={640} height={120} />);',
+    ),
+    sceneSource.replace(
+      visualLine,
+      `  for (let index = 0; index < 2; index += 1) {
+    view.add(<Rect key="looped-visual-card" width={640} height={120} />);
+  }`,
+    ),
+    sceneSource.replace(
+      visualLine,
+      '  view.add(new Rect({width: 640, height: 120}));',
+    ),
+  ];
+
+  for (const source of invalidSources) {
+    assert.throws(
+      () => validateMotionCanvasSceneSource(source),
+      (error) =>
+        error instanceof MotionCanvasGenerationError &&
+        error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+    );
+  }
+});
+
+test('Motion Canvas source policy kiểm tra key của node lồng và node có ref', () => {
+  const nestedSource = sceneSource
+    .replace(
+      "import {makeScene2D, Rect} from '@motion-canvas/2d';",
+      "import {makeScene2D, Rect, Txt} from '@motion-canvas/2d';",
+    )
+    .replace(
+      '<Rect key="main-visual-card" width={640} height={120} radius={24} fill={\'#dbe9e2\'} />',
+      `<Rect key="main-visual-card" width={640} height={120}>
+      <Txt text="Demo" />
+    </Rect>`,
+    );
+  assert.throws(
+    () => validateMotionCanvasSceneSource(nestedSource),
+    (error) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+  );
   assert.doesNotThrow(() =>
     validateMotionCanvasSceneSource(
-      sceneSource.replace(
-        '<Rect width={640}',
-        "<Rect key={'card-' + String(0)} width={640}",
+      nestedSource.replace(
+        '<Txt text="Demo" />',
+        '<Txt key="card-title-label" ref={() => undefined} text="Demo" />',
       ),
     ),
   );

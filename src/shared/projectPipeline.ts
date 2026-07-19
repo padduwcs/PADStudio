@@ -1,5 +1,6 @@
 import type {
   AnimationSyncBundle,
+  LayoutBundle,
   MotionCanvasBundle,
   TeachingOutline,
   TopicProject,
@@ -230,4 +231,79 @@ export function animationSyncIsStale(project: TopicProject): boolean {
       !animationSyncPrerequisitesAreReady(project) ||
       !animationSyncMatchesSourcesStructure(bundle, motion, voice),
   );
+}
+
+export function layoutPrerequisitesAreReady(project: TopicProject): boolean {
+  const sync = project.animationSyncBundle;
+  const motion = project.motionCanvasBundle;
+  const voice = project.voiceBundle;
+
+  return Boolean(
+    sync &&
+      motion &&
+      voice &&
+      sync.status === 'approved' &&
+      animationSyncPrerequisitesAreReady(project) &&
+      animationSyncMatchesSourcesStructure(sync, motion, voice),
+  );
+}
+
+export function layoutMatchesAnimationSync(
+  bundle: Pick<
+    LayoutBundle,
+    | 'sourceAnimationSyncContentRevision'
+    | 'sourceAnimationSyncGenerationId'
+    | 'sourceAnimationSyncSourceHash'
+    | 'sourceWorkspacePath'
+    | 'totalDurationSeconds'
+    | 'scenes'
+  >,
+  sync: Pick<
+    AnimationSyncBundle,
+    | 'contentRevision'
+    | 'totalDurationSeconds'
+    | 'sections'
+    | 'validation'
+    | 'generation'
+    | 'workspacePath'
+  >,
+): boolean {
+  return (
+    bundle.sourceAnimationSyncContentRevision === sync.contentRevision &&
+    bundle.sourceAnimationSyncGenerationId ===
+      sync.generation.generationId &&
+    bundle.sourceAnimationSyncSourceHash === sync.validation.sourceHash &&
+    bundle.sourceWorkspacePath === sync.workspacePath &&
+    Math.abs(bundle.totalDurationSeconds - sync.totalDurationSeconds) <
+      TIMING_TOLERANCE_SECONDS &&
+    bundle.scenes.length === sync.sections.length &&
+    bundle.scenes.every(
+      (scene, index) =>
+        scene.sceneId === sync.sections[index]?.sceneId &&
+        scene.filePath === sync.sections[index]?.filePath,
+    )
+  );
+}
+
+export function layoutIsCurrent(project: TopicProject): boolean {
+  const bundle = project.layoutBundle;
+  const sync = project.animationSyncBundle;
+
+  return Boolean(
+    bundle &&
+      sync &&
+      layoutPrerequisitesAreReady(project) &&
+      layoutMatchesAnimationSync(bundle, sync),
+  );
+}
+
+export function layoutIsReady(project: TopicProject): boolean {
+  return Boolean(
+    project.layoutBundle?.status === 'approved' &&
+      layoutIsCurrent(project),
+  );
+}
+
+export function layoutIsStale(project: TopicProject): boolean {
+  return Boolean(project.layoutBundle && !layoutIsCurrent(project));
 }

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="dark" />
+    <link rel="stylesheet" href="{{style}}" />
+    <title>PAD Studio · Layout Editor</title>
+  </head>
+  <body>
+    <main id="root" aria-live="polite"></main>
+    <script>
+      (() => {
+        const params = new URLSearchParams(window.location.search);
+        const context = {
+          generationId: params.get('generation') ?? '',
+          sessionId: params.get('session') ?? '',
+          parentOrigin: params.get('parentOrigin'),
+        };
+        const report = (value) => {
+          const message =
+            value instanceof Error
+              ? value.message
+              : typeof value === 'string'
+                ? value
+                : 'Không thể khởi động Layout Editor.';
+          const root = document.querySelector('#root');
+          if (root && !root.hasChildNodes()) {
+            const panel = document.createElement('section');
+            panel.className = 'layout-bootstrap-error';
+            const title = document.createElement('strong');
+            title.textContent = 'Không thể tải Layout Editor';
+            const detail = document.createElement('p');
+            detail.textContent = message;
+            panel.append(title, detail);
+            root.replaceChildren(panel);
+          }
+          if (window.parent === window || !context.parentOrigin) return;
+          try {
+            const targetOrigin = new URL(context.parentOrigin).origin;
+            window.parent.postMessage(
+              {
+                source: 'pad-studio-layout-editor',
+                version: 1,
+                generationId: context.generationId,
+                sessionId: context.sessionId,
+                type: 'error',
+                payload: {message, phase: 'bootstrap'},
+              },
+              targetOrigin,
+            );
+          } catch {
+            // Never fall back to a wildcard origin.
+          }
+        };
+        window.addEventListener('error', event =>
+          report(event.error ?? event.message),
+        );
+        window.addEventListener('unhandledrejection', event =>
+          report(event.reason),
+        );
+      })();
+    </script>
+    <script type="module" src="{{source}}"></script>
+  </body>
+</html>

@@ -4,6 +4,11 @@ import {
   animationSyncIsStale,
   animationSyncMatchesSourcesStructure,
   animationSyncPrerequisitesAreReady,
+  layoutIsCurrent,
+  layoutIsReady,
+  layoutIsStale,
+  layoutMatchesAnimationSync,
+  layoutPrerequisitesAreReady,
   motionCanvasIsReady,
   motionCanvasIsStale,
   outlineIsCurrent,
@@ -151,11 +156,31 @@ function createReadyProject(): TopicProject {
       sections: voiceSections,
     },
     animationSyncBundle: {
-      status: 'draft',
+      status: 'approved',
       contentRevision: 7,
       sourceMotionCanvasContentRevision: 5,
       sourceVoiceContentRevision: 6,
+      totalDurationSeconds: 20,
       sections: syncSections,
+      validation: {
+        sourceHash: 'a'.repeat(64),
+      },
+      generation: {
+        generationId: '60000000-0000-4000-8000-000000000001',
+      },
+    },
+    layoutBundle: {
+      status: 'approved',
+      contentRevision: 8,
+      sourceAnimationSyncContentRevision: 7,
+      sourceAnimationSyncGenerationId:
+        '60000000-0000-4000-8000-000000000001',
+      sourceAnimationSyncSourceHash: 'a'.repeat(64),
+      totalDurationSeconds: 20,
+      scenes: syncSections.map((section) => ({
+        sceneId: section.sceneId,
+        filePath: section.filePath,
+      })),
     },
   } as unknown as TopicProject;
 }
@@ -476,6 +501,127 @@ test('sync predicates compare every revision, section, event and voice time', ()
       [
         animationSyncPrerequisitesAreReady(project),
         animationSyncIsStale(project),
+      ],
+      scenario.expected,
+      scenario.name,
+    );
+  }
+});
+
+test('layout predicates lock drafts and approvals to the exact current sync source', () => {
+  const base = createReadyProject();
+  assert.equal(
+    layoutMatchesAnimationSync(
+      base.layoutBundle!,
+      base.animationSyncBundle!,
+    ),
+    true,
+  );
+
+  const cases: Array<{
+    name: string;
+    mutate?: (project: TopicProject) => void;
+    expected: [
+      prerequisites: boolean,
+      current: boolean,
+      ready: boolean,
+      stale: boolean,
+    ];
+  }> = [
+    {
+      name: 'approved layout matches the approved sync source',
+      expected: [true, true, true, false],
+    },
+    {
+      name: 'current draft remains editable without being stale',
+      mutate: (project) => {
+        project.layoutBundle!.status = 'draft';
+      },
+      expected: [true, true, false, false],
+    },
+    {
+      name: 'sync still needs approval',
+      mutate: (project) => {
+        project.animationSyncBundle!.status = 'draft';
+      },
+      expected: [false, false, false, true],
+    },
+    {
+      name: 'layout points at an old sync revision',
+      mutate: (project) => {
+        project.layoutBundle!.sourceAnimationSyncContentRevision -= 1;
+      },
+      expected: [true, false, false, true],
+    },
+    {
+      name: 'layout points at another sync generation',
+      mutate: (project) => {
+        project.layoutBundle!.sourceAnimationSyncGenerationId =
+          '60000000-0000-4000-8000-000000000002';
+      },
+      expected: [true, false, false, true],
+    },
+    {
+      name: 'sync workspace hash changed',
+      mutate: (project) => {
+        project.animationSyncBundle!.validation.sourceHash = 'b'.repeat(64);
+      },
+      expected: [true, false, false, true],
+    },
+    {
+      name: 'sync workspace path changed',
+      mutate: (project) => {
+        project.animationSyncBundle!.workspacePath =
+          'sync/generations/60000000-0000-4000-8000-000000000002';
+      },
+      expected: [true, false, false, true],
+    },
+    {
+      name: 'scene mapping changed',
+      mutate: (project) => {
+        project.layoutBundle!.scenes.reverse();
+      },
+      expected: [true, false, false, true],
+    },
+    {
+      name: 'sub-millisecond duration rounding remains current',
+      mutate: (project) => {
+        project.layoutBundle!.totalDurationSeconds += 0.0009;
+      },
+      expected: [true, true, true, false],
+    },
+    {
+      name: 'material duration mismatch is stale',
+      mutate: (project) => {
+        project.layoutBundle!.totalDurationSeconds += 0.01;
+      },
+      expected: [true, false, false, true],
+    },
+    {
+      name: 'layout is absent while sync inputs remain usable',
+      mutate: (project) => {
+        project.layoutBundle = null;
+      },
+      expected: [true, false, false, false],
+    },
+    {
+      name: 'upstream voice is no longer approved',
+      mutate: (project) => {
+        project.voiceBundle!.status = 'draft';
+      },
+      expected: [false, false, false, true],
+    },
+  ];
+
+  for (const scenario of cases) {
+    const project = createReadyProject();
+    scenario.mutate?.(project);
+    assert.deepEqual(
+      [
+        layoutPrerequisitesAreReady(project),
+        layoutIsCurrent(project),
+        layoutIsReady(project),
+        layoutIsStale(project),
       ],
       scenario.expected,
       scenario.name,

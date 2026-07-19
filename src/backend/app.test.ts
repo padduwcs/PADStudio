@@ -16,6 +16,11 @@ import type {
   TopicProject,
 } from '../shared/topic.ts';
 import {currentProjectVersion} from '../shared/topic.ts';
+import type {
+  LayoutBundle,
+  LayoutEditorManifest,
+  LayoutOverridesDocument,
+} from '../shared/layout.ts';
 import type {AnimationSyncWorkspace} from './animationSyncWorkspace.ts';
 import type {AnimationSyncPreviewService} from './animationSyncPreviewService.ts';
 import {createPadStudioServer} from './app.ts';
@@ -24,6 +29,11 @@ import type {ElevenLabsConnectionService} from './elevenLabsConnection.ts';
 import type {ElevenLabsVoiceService} from './elevenLabsVoiceService.ts';
 import type {OutlineGenerator} from './outlineGenerator.ts';
 import type {MotionCanvasGenerator} from './motionCanvasGenerator.ts';
+import {
+  LayoutPreviewError,
+  type LayoutPreviewService,
+} from './layoutPreviewService.ts';
+import type {LayoutWorkspace} from './layoutWorkspace.ts';
 import type {VoiceVisualGenerator} from './voiceVisualGenerator.ts';
 import type {VoiceWorkspace} from './voiceWorkspace.ts';
 
@@ -57,6 +67,8 @@ async function startTestApp(
     voiceWorkspace?: VoiceWorkspace;
     animationSyncWorkspace?: AnimationSyncWorkspace;
     animationSyncPreviewService?: AnimationSyncPreviewService;
+    layoutWorkspace?: LayoutWorkspace;
+    layoutPreviewService?: LayoutPreviewService;
   } = {},
 ) {
   const projectsDirectory = await mkdtemp(
@@ -73,6 +85,8 @@ async function startTestApp(
     voiceWorkspace: options.voiceWorkspace,
     animationSyncWorkspace: options.animationSyncWorkspace,
     animationSyncPreviewService: options.animationSyncPreviewService,
+    layoutWorkspace: options.layoutWorkspace,
+    layoutPreviewService: options.layoutPreviewService,
     logger: {info() {}, error() {}},
   });
 
@@ -520,7 +534,7 @@ test('API tạo, chỉnh sửa và chốt mạch giảng an toàn', async (conte
   assert.equal(outdatedApproveBody.error.code, 'OUTLINE_OUTDATED');
 });
 
-test('API tạo, chỉnh sửa và chốt kế hoạch voice–visual an toàn', async (context) => {
+test('API chạy pipeline voice–visual đến Layout Editor an toàn', async (context) => {
   const outlineGenerator: OutlineGenerator = {
     async generate() {
       return {
@@ -886,6 +900,204 @@ export default makeScene2D(function* (view) {
     },
     async close() {},
   };
+  let layoutWorkspaceCalls = 0;
+  let layoutExpectedSourceHash = '';
+  let layoutPreviewCalls = 0;
+  let layoutParentOrigin = '';
+  const layoutSessionNonce = 'l'.repeat(43);
+  let activeLayoutManifest: LayoutEditorManifest | null = null;
+  let storedLayoutOverrides: LayoutOverridesDocument | null = null;
+  const layoutWorkspace: LayoutWorkspace = {
+    async prepare(
+      _projectId,
+      generationId,
+      syncBundle,
+      overrides,
+      editorManifest,
+      _baseGenerationId,
+      expectedSourceWorkspaceHash,
+    ) {
+      layoutWorkspaceCalls += 1;
+      layoutExpectedSourceHash = expectedSourceWorkspaceHash ?? '';
+      activeLayoutManifest = structuredClone(editorManifest);
+      storedLayoutOverrides = {
+        version: 1,
+        sourceAnimationSyncGenerationId:
+          syncBundle.generation.generationId,
+        sourceAnimationSyncContentRevision:
+          syncBundle.contentRevision,
+        sourceAnimationSyncSourceHash:
+          syncBundle.validation.sourceHash,
+        overrides: structuredClone(overrides),
+      };
+      const overrideCountByScene = new Map<string, number>();
+      for (const override of overrides) {
+        overrideCountByScene.set(
+          override.sceneId,
+          (overrideCountByScene.get(override.sceneId) ?? 0) + 1,
+        );
+      }
+      return {
+        workspacePath: `layout/generations/${generationId}`,
+        sourceWorkspacePath:
+          syncBundle.workspacePath as `sync/generations/${string}`,
+        projectFile: 'src/project.ts',
+        audioFile: 'audio/narration.wav',
+        overridesFile: 'overrides.json',
+        manifestFile: 'editor-manifest.json',
+        overrideContractVersion: 1,
+        totalDurationSeconds: syncBundle.totalDurationSeconds,
+        scenes: editorManifest.scenes.map((scene) => ({
+          sceneId: scene.sceneId,
+          filePath: scene.filePath,
+          editableNodeCount: scene.nodes.length,
+          overrideCount:
+            overrideCountByScene.get(scene.sceneId) ?? 0,
+        })),
+        validation: {
+          validatedAt: new Date().toISOString(),
+          sourceHash: 'd'.repeat(64),
+          overridesHash: 'e'.repeat(64),
+          manifestHash: 'f'.repeat(64),
+          motionCanvasVersion:
+            syncBundle.validation.motionCanvasVersion,
+          audioDurationSeconds:
+            syncBundle.validation.audioDurationSeconds,
+        },
+      };
+    },
+    async readFiles(_projectId, bundle) {
+      return [
+        {
+          path: bundle.overridesFile,
+          source: JSON.stringify(storedLayoutOverrides),
+        },
+        {
+          path: bundle.manifestFile,
+          source: JSON.stringify(activeLayoutManifest),
+        },
+        {
+          path: 'pad-studio.manifest.json',
+          source: JSON.stringify({
+            generationId: bundle.generation.generationId,
+          }),
+        },
+      ];
+    },
+    async readOverrides() {
+      assert.ok(storedLayoutOverrides);
+      return structuredClone(storedLayoutOverrides);
+    },
+    async readEditorManifest() {
+      assert.ok(activeLayoutManifest);
+      return structuredClone(activeLayoutManifest);
+    },
+    async verify(_projectId, syncBundle, bundle) {
+      assert.ok(storedLayoutOverrides);
+      return {
+        projectDirectory: 'project',
+        sourceWorkspaceDirectory: syncBundle.workspacePath,
+        projectFile: syncBundle.projectFile,
+        sourceWorkspaceHash: syncBundle.validation.sourceHash,
+        layoutWorkspaceDirectory: bundle?.workspacePath ?? null,
+        overrides: structuredClone(storedLayoutOverrides),
+        editorManifest: activeLayoutManifest
+          ? structuredClone(activeLayoutManifest)
+          : null,
+      };
+    },
+  };
+  const layoutPreviewService: LayoutPreviewService = {
+    async start(_projectId, syncBundle, layoutBundle, options) {
+      layoutPreviewCalls += 1;
+      layoutParentOrigin = options.parentOrigin;
+      assert.match(options.parentOrigin, /^http:\/\/127\.0\.0\.1:/);
+      activeLayoutManifest = {
+        version: 1,
+        sourceAnimationSyncGenerationId:
+          syncBundle.generation.generationId,
+        sourceAnimationSyncContentRevision:
+          syncBundle.contentRevision,
+        sourceAnimationSyncSourceHash:
+          syncBundle.validation.sourceHash,
+        scenes: syncBundle.sections.map((section, index) => ({
+          sceneId: section.sceneId,
+          filePath: section.filePath,
+          nodes: [
+            {
+              key: `semantic-node-${index + 1}`,
+              fingerprint: createHash('sha256')
+                .update(section.sceneId)
+                .digest('hex'),
+              label: `Node ${index + 1}`,
+              nodeType: 'Rect',
+              parentKey: null,
+              identity: 'semantic',
+              editableProperties: [
+                'x',
+                'y',
+                'scale',
+                'opacity',
+                'hidden',
+                'fill',
+              ],
+              lockedProperties: [],
+              lockReason: null,
+            },
+          ],
+        })),
+      };
+      return {
+        generationId:
+          layoutBundle?.generation.generationId ??
+          syncBundle.generation.generationId,
+        sourceSyncGenerationId:
+          syncBundle.generation.generationId,
+        sessionNonce: layoutSessionNonce,
+        url:
+          `http://127.0.0.1:9001/?generation=` +
+          (layoutBundle?.generation.generationId ??
+            syncBundle.generation.generationId),
+      };
+    },
+    getManifest(_projectId, sessionNonce, sourceSyncGenerationId) {
+      if (
+        sessionNonce !== layoutSessionNonce ||
+        sourceSyncGenerationId !==
+          activeLayoutManifest?.sourceAnimationSyncGenerationId
+      ) {
+        throw new LayoutPreviewError(
+          'LAYOUT_PREVIEW_SESSION_MISMATCH',
+          'Preview session không hợp lệ.',
+        );
+      }
+      if (!activeLayoutManifest) {
+        throw new LayoutPreviewError(
+          'LAYOUT_PREVIEW_MANIFEST_UNAVAILABLE',
+          'Manifest chưa sẵn sàng.',
+        );
+      }
+      return structuredClone(activeLayoutManifest);
+    },
+    getSourceWorkspaceHash(
+      _projectId,
+      sessionNonce,
+      sourceSyncGenerationId,
+    ) {
+      if (
+        sessionNonce !== layoutSessionNonce ||
+        sourceSyncGenerationId !==
+          activeLayoutManifest?.sourceAnimationSyncGenerationId
+      ) {
+        throw new LayoutPreviewError(
+          'LAYOUT_PREVIEW_SESSION_MISMATCH',
+          'Preview session không hợp lệ.',
+        );
+      }
+      return '9'.repeat(64);
+    },
+    async close() {},
+  };
   const {baseUrl} = await startTestApp(context, {
     outlineGenerator,
     voiceVisualGenerator,
@@ -894,6 +1106,8 @@ export default makeScene2D(function* (view) {
     voiceWorkspace,
     animationSyncWorkspace,
     animationSyncPreviewService,
+    layoutWorkspace,
+    layoutPreviewService,
   });
   const {project} = await createProject(baseUrl);
 
@@ -1031,7 +1245,11 @@ export default makeScene2D(function* (view) {
     },
   );
   const motionGenerateBody = await motionGenerateResponse.json();
-  assert.equal(motionGenerateResponse.status, 200);
+  assert.equal(
+    motionGenerateResponse.status,
+    200,
+    JSON.stringify(motionGenerateBody),
+  );
   assert.equal(motionGenerateBody.project.revision, 7);
   assert.equal(
     motionGenerateBody.project.motionCanvasBundle.status,
@@ -1305,6 +1523,242 @@ export default makeScene2D(function* (view) {
     syncApproveBody.project.animationSyncBundle.status,
     'approved',
   );
+  assert.equal(syncApproveBody.project.currentStep, 'layout');
+
+  const initialLayoutStateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/layout`,
+  );
+  const initialLayoutState = await initialLayoutStateResponse.json();
+  assert.equal(initialLayoutStateResponse.status, 200);
+  assert.equal(initialLayoutState.bundle, null);
+  assert.deepEqual(initialLayoutState.overrides.overrides, []);
+  assert.equal(initialLayoutState.manifest, null);
+
+  const invalidLayoutOriginResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/layout/preview?generation=${syncGenerationId}`,
+    {
+      headers: {
+        'X-Pad-Parent-Origin': 'https://example.com',
+      },
+    },
+  );
+  const invalidLayoutOriginBody =
+    await invalidLayoutOriginResponse.json();
+  assert.equal(invalidLayoutOriginResponse.status, 400);
+  assert.equal(
+    invalidLayoutOriginBody.error.code,
+    'LAYOUT_PREVIEW_PARENT_ORIGIN_INVALID',
+  );
+  assert.equal(layoutPreviewCalls, 0);
+
+  const layoutPreviewResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/layout/preview?generation=${syncGenerationId}`,
+    {
+      headers: {
+        'X-Pad-Parent-Origin': 'http://127.0.0.1:5173',
+      },
+    },
+  );
+  const layoutPreviewBody = await layoutPreviewResponse.json();
+  assert.equal(layoutPreviewResponse.status, 200);
+  assert.equal(
+    layoutPreviewBody.preview.sourceSyncGenerationId,
+    syncGenerationId,
+  );
+  assert.equal(
+    layoutPreviewBody.preview.sessionNonce,
+    layoutSessionNonce,
+  );
+  assert.equal(layoutParentOrigin, 'http://127.0.0.1:5173');
+  assert.equal(layoutPreviewCalls, 1);
+  const previewManifest =
+    activeLayoutManifest as LayoutEditorManifest | null;
+  assert.ok(previewManifest);
+
+  const firstLayoutNode = previewManifest.scenes[0]!.nodes[0]!;
+  const layoutGenerationId = randomUUID();
+  const layoutOverrides = [
+    {
+      sceneId: previewManifest.scenes[0]!.sceneId,
+      nodeKey: firstLayoutNode.key,
+      nodeFingerprint: firstLayoutNode.fingerprint,
+      patch: {
+        x: 36,
+        scale: 1.1,
+        fill: '#ABCDEF',
+        hidden: false,
+      },
+    },
+  ];
+  const layoutCommitRequest = {
+    generationId: layoutGenerationId,
+    baseGenerationId: null,
+    sourceAnimationSyncGenerationId: syncGenerationId,
+    sessionNonce: layoutSessionNonce,
+    overrides: layoutOverrides,
+  };
+  const outdatedLayoutSourceResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/layout/commit`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"12"',
+      },
+      body: JSON.stringify({
+        ...layoutCommitRequest,
+        generationId: randomUUID(),
+        sourceAnimationSyncGenerationId: randomUUID(),
+      }),
+    },
+  );
+  assert.equal(outdatedLayoutSourceResponse.status, 409);
+  assert.equal(
+    (await outdatedLayoutSourceResponse.json()).error.code,
+    'LAYOUT_SOURCE_OUTDATED',
+  );
+
+  const invalidLayoutBaseResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/layout/commit`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"12"',
+      },
+      body: JSON.stringify({
+        ...layoutCommitRequest,
+        generationId: randomUUID(),
+        baseGenerationId: randomUUID(),
+      }),
+    },
+  );
+  assert.equal(invalidLayoutBaseResponse.status, 409);
+  assert.equal(
+    (await invalidLayoutBaseResponse.json()).error.code,
+    'LAYOUT_BASE_GENERATION_CONFLICT',
+  );
+
+  const invalidLayoutSessionResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/layout/commit`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"12"',
+      },
+      body: JSON.stringify({
+        ...layoutCommitRequest,
+        generationId: randomUUID(),
+        sessionNonce: 's'.repeat(43),
+      }),
+    },
+  );
+  assert.equal(invalidLayoutSessionResponse.status, 409);
+  assert.equal(
+    (await invalidLayoutSessionResponse.json()).error.code,
+    'LAYOUT_PREVIEW_SESSION_MISMATCH',
+  );
+  assert.equal(layoutWorkspaceCalls, 0);
+
+  const layoutCommitResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/layout/commit`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"12"',
+      },
+      body: JSON.stringify(layoutCommitRequest),
+    },
+  );
+  const layoutCommitBody = await layoutCommitResponse.json();
+  assert.equal(layoutCommitResponse.status, 200);
+  assert.equal(layoutCommitBody.project.revision, 13);
+  assert.equal(layoutCommitBody.project.layoutBundle.status, 'draft');
+  assert.equal(
+    layoutCommitBody.project.layoutBundle.generation.generationId,
+    layoutGenerationId,
+  );
+  assert.equal(layoutWorkspaceCalls, 1);
+  assert.equal(layoutExpectedSourceHash, '9'.repeat(64));
+
+  const repeatedLayoutCommitResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/layout/commit`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"12"',
+      },
+      body: JSON.stringify(layoutCommitRequest),
+    },
+  );
+  assert.equal(repeatedLayoutCommitResponse.status, 200);
+  assert.equal(
+    (await repeatedLayoutCommitResponse.json()).project.revision,
+    13,
+  );
+  assert.equal(layoutWorkspaceCalls, 1);
+
+  const layoutStateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/layout`,
+  );
+  const layoutState = await layoutStateResponse.json();
+  assert.equal(layoutStateResponse.status, 200);
+  assert.equal(
+    layoutState.bundle.generation.generationId,
+    layoutGenerationId,
+  );
+  assert.deepEqual(layoutState.overrides.overrides, layoutOverrides);
+  assert.equal(layoutState.manifest.scenes.length, 2);
+
+  const layoutFilesResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/layout/files`,
+  );
+  const layoutFilesBody = await layoutFilesResponse.json();
+  assert.equal(layoutFilesResponse.status, 200);
+  assert.deepEqual(
+    layoutFilesBody.files.map((file: {path: string}) => file.path),
+    [
+      'overrides.json',
+      'editor-manifest.json',
+      'pad-studio.manifest.json',
+    ],
+  );
+
+  const layoutApproveResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/layout/approve`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"13"',
+      },
+      body: JSON.stringify({generationId: layoutGenerationId}),
+    },
+  );
+  const layoutApproveBody = await layoutApproveResponse.json();
+  assert.equal(layoutApproveResponse.status, 200);
+  assert.equal(layoutApproveBody.project.revision, 14);
+  assert.equal(layoutApproveBody.project.layoutBundle.status, 'approved');
+
+  const repeatedLayoutApproveResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/layout/approve`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"13"',
+      },
+      body: JSON.stringify({generationId: layoutGenerationId}),
+    },
+  );
+  assert.equal(repeatedLayoutApproveResponse.status, 200);
+  assert.equal(
+    (await repeatedLayoutApproveResponse.json()).project.revision,
+    14,
+  );
 
   const approvedPlan = syncApproveBody.project.voiceVisualPlan;
   const visualOnlyUpdateResponse = await fetch(
@@ -1313,7 +1767,7 @@ export default makeScene2D(function* (view) {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'If-Match': '"12"',
+        'If-Match': '"14"',
       },
       body: JSON.stringify({
         voiceDirection: approvedPlan.voiceDirection,
@@ -1343,7 +1797,7 @@ export default makeScene2D(function* (view) {
   );
   const visualOnlyUpdateBody = await visualOnlyUpdateResponse.json();
   assert.equal(visualOnlyUpdateResponse.status, 200);
-  assert.equal(visualOnlyUpdateBody.project.revision, 13);
+  assert.equal(visualOnlyUpdateBody.project.revision, 15);
   assert.equal(visualOnlyUpdateBody.project.voiceBundle.status, 'approved');
   assert.equal(
     visualOnlyUpdateBody.project.voiceVisualPlan.narrationRevision,
@@ -1357,6 +1811,7 @@ export default makeScene2D(function* (view) {
     visualOnlyUpdateBody.project.animationSyncBundle.status,
     'draft',
   );
+  assert.equal(visualOnlyUpdateBody.project.layoutBundle.status, 'draft');
 
   const visualPlan = visualOnlyUpdateBody.project.voiceVisualPlan;
   const voiceTextUpdateResponse = await fetch(
@@ -1365,7 +1820,7 @@ export default makeScene2D(function* (view) {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'If-Match': '"13"',
+        'If-Match': '"15"',
       },
       body: JSON.stringify({
         voiceDirection: visualPlan.voiceDirection,
@@ -1394,7 +1849,7 @@ export default makeScene2D(function* (view) {
   );
   const voiceTextUpdateBody = await voiceTextUpdateResponse.json();
   assert.equal(voiceTextUpdateResponse.status, 200);
-  assert.equal(voiceTextUpdateBody.project.revision, 14);
+  assert.equal(voiceTextUpdateBody.project.revision, 16);
   assert.equal(voiceTextUpdateBody.project.voiceBundle.status, 'draft');
   assert.equal(
     voiceTextUpdateBody.project.voiceVisualPlan.narrationRevision,
@@ -1413,7 +1868,7 @@ export default makeScene2D(function* (view) {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'If-Match': '"14"',
+        'If-Match': '"16"',
       },
       body: JSON.stringify({
         brief: outline.brief,
@@ -1444,7 +1899,7 @@ export default makeScene2D(function* (view) {
     `${baseUrl}/api/projects/${project.id}/voice-visual/approve`,
     {
       method: 'POST',
-      headers: {'If-Match': '"15"'},
+      headers: {'If-Match': '"17"'},
     },
   );
   const outdatedApproveBody = await outdatedApproveResponse.json();
@@ -1458,7 +1913,7 @@ export default makeScene2D(function* (view) {
     `${baseUrl}/api/projects/${project.id}/motion-canvas/approve`,
     {
       method: 'POST',
-      headers: {'If-Match': '"15"'},
+      headers: {'If-Match': '"17"'},
     },
   );
   const outdatedMotionApproveBody =

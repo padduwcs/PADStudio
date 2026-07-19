@@ -1,5 +1,94 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import type {ProjectStep} from '../shared/topic.ts';
+
+type NavigationGuard = () => boolean | Promise<boolean>;
+
+const navigationGuards = new Set<NavigationGuard>();
+const HISTORY_INDEX_KEY = '__padStudioHistoryIndex';
+let navigationRequestRevision = 0;
+let bypassNextPopStateGuard = false;
+let currentHistoryIndex: number | null = null;
+
+function readHistoryIndex(value: unknown) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value)
+  ) {
+    return null;
+  }
+  const index = (value as Record<string, unknown>)[HISTORY_INDEX_KEY];
+  return typeof index === 'number' &&
+    Number.isSafeInteger(index) &&
+    index >= 0
+    ? index
+    : null;
+}
+
+function historyStateWithIndex(index: number) {
+  const current = window.history.state;
+  return {
+    ...(current &&
+    typeof current === 'object' &&
+    !Array.isArray(current)
+      ? current
+      : {}),
+    [HISTORY_INDEX_KEY]: index,
+  };
+}
+
+function ensureCurrentHistoryIndex() {
+  if (currentHistoryIndex !== null) return currentHistoryIndex;
+  const stored = readHistoryIndex(window.history.state);
+  currentHistoryIndex = stored ?? 0;
+  if (stored === null) {
+    window.history.replaceState(
+      historyStateWithIndex(currentHistoryIndex),
+      '',
+    );
+  }
+  return currentHistoryIndex;
+}
+
+async function navigationGuardsAllow() {
+  for (const guard of [...navigationGuards]) {
+    try {
+      if (!(await guard())) return false;
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
+function commitNavigation(pathname: string, replace: boolean) {
+  navigationRequestRevision++;
+  const currentIndex = ensureCurrentHistoryIndex();
+  const nextIndex = replace ? currentIndex : currentIndex + 1;
+  const state = historyStateWithIndex(nextIndex);
+  if (replace) window.history.replaceState(state, '', pathname);
+  else window.history.pushState(state, '', pathname);
+  currentHistoryIndex = nextIndex;
+  bypassNextPopStateGuard = true;
+  window.dispatchEvent(new PopStateEvent('popstate'));
+  bypassNextPopStateGuard = false;
+}
+
+function requestGuardedNavigation(pathname: string, replace: boolean) {
+  const requestRevision = ++navigationRequestRevision;
+  void navigationGuardsAllow().then((allowed) => {
+    if (allowed && requestRevision === navigationRequestRevision) {
+      commitNavigation(pathname, replace);
+    }
+  });
+}
+
+export function registerNavigationGuard(guard: NavigationGuard) {
+  navigationGuards.add(guard);
+  return () => {
+    navigationGuards.delete(guard);
+  };
+}
 
 export type AppRoute =
   | {name: 'new-topic'}
@@ -8,7 +97,8 @@ export type AppRoute =
   | {name: 'project-voice-visual'; projectId: string}
   | {name: 'project-motion-canvas'; projectId: string}
   | {name: 'project-voice'; projectId: string}
-  | {name: 'project-sync'; projectId: string};
+  | {name: 'project-sync'; projectId: string}
+  | {name: 'project-layout'; projectId: string};
 
 function decodeProjectId(value: string) {
   try {
@@ -79,14 +169,29 @@ export function parseRoute(pathname: string): AppRoute {
     return {name: 'project-sync', projectId};
   }
 
+  const layoutMatch = /^\/projects\/([^/]+)\/layout\/?$/.exec(pathname);
+  if (layoutMatch?.[1]) {
+    const projectId = decodeProjectId(layoutMatch[1]);
+    if (!projectId) return {name: 'new-topic'};
+    return {name: 'project-layout', projectId};
+  }
+
   return {name: 'new-topic'};
 }
 
 export function navigate(pathname: string, replace = false) {
-  if (replace) window.history.replaceState(null, '', pathname);
-  else window.history.pushState(null, '', pathname);
+  if (navigationGuards.size > 0) {
+    requestGuardedNavigation(pathname, replace);
+    return;
+  }
+  commitNavigation(pathname, replace);
+}
 
-  window.dispatchEvent(new PopStateEvent('popstate'));
+export function navigateDiscardingPendingChanges(
+  pathname: string,
+  replace = false,
+) {
+  commitNavigation(pathname, replace);
 }
 
 export function projectTopicPath(projectId: string) {
@@ -113,6 +218,10 @@ export function projectSyncPath(projectId: string) {
   return `/projects/${encodeURIComponent(projectId)}/sync`;
 }
 
+export function projectLayoutPath(projectId: string) {
+  return `/projects/${encodeURIComponent(projectId)}/layout`;
+}
+
 const projectStepPaths = {
   topic: projectTopicPath,
   outline: projectOutlinePath,
@@ -120,6 +229,7 @@ const projectStepPaths = {
   motionCanvas: projectMotionCanvasPath,
   voice: projectVoicePath,
   sync: projectSyncPath,
+  layout: projectLayoutPath,
 } satisfies Record<ProjectStep, (projectId: string) => string>;
 
 export function projectStepPath(projectId: string, step: ProjectStep) {
@@ -127,12 +237,102 @@ export function projectStepPath(projectId: string, step: ProjectStep) {
 }
 
 export function useAppRoute() {
+  const initialHistoryIndex = ensureCurrentHistoryIndex();
   const [route, setRoute] = useState<AppRoute>(() =>
     parseRoute(window.location.pathname),
   );
+  const currentPathRef = useRef(window.location.pathname);
+  const currentIndexRef = useRef(initialHistoryIndex);
 
   useEffect(() => {
-    const updateRoute = () => setRoute(parseRoute(window.location.pathname));
+    let pendingPopNavigation: {
+      targetPath: string;
+      targetIndex: number;
+      delta: number;
+      requestRevision: number;
+      allowed: Promise<boolean>;
+      phase: 'restoring' | 'navigating';
+    } | null = null;
+
+    const publishRoute = (pathname: string, historyIndex: number) => {
+      currentPathRef.current = pathname;
+      currentIndexRef.current = historyIndex;
+      currentHistoryIndex = historyIndex;
+      setRoute(parseRoute(pathname));
+    };
+
+    const updateRoute = (event: PopStateEvent) => {
+      const requestedPath = window.location.pathname;
+      const requestedIndex =
+        readHistoryIndex(event.state) ??
+        readHistoryIndex(window.history.state);
+      if (bypassNextPopStateGuard) {
+        bypassNextPopStateGuard = false;
+        publishRoute(
+          requestedPath,
+          requestedIndex ?? ensureCurrentHistoryIndex(),
+        );
+        return;
+      }
+      if (pendingPopNavigation) {
+        const pending = pendingPopNavigation;
+        if (
+          pending.phase === 'restoring' &&
+          requestedIndex === currentIndexRef.current
+        ) {
+          void pending.allowed.then((allowed) => {
+            if (
+              pendingPopNavigation !== pending ||
+              pending.requestRevision !== navigationRequestRevision
+            ) {
+              if (pendingPopNavigation === pending) {
+                pendingPopNavigation = null;
+              }
+              return;
+            }
+            if (!allowed) {
+              pendingPopNavigation = null;
+              return;
+            }
+            pending.phase = 'navigating';
+            window.history.go(pending.delta);
+          });
+          return;
+        }
+        if (
+          pending.phase === 'navigating' &&
+          requestedIndex === pending.targetIndex
+        ) {
+          pendingPopNavigation = null;
+          publishRoute(pending.targetPath, pending.targetIndex);
+          return;
+        }
+        pendingPopNavigation = null;
+      }
+      if (
+        navigationGuards.size > 0 &&
+        requestedPath !== currentPathRef.current &&
+        requestedIndex !== null &&
+        requestedIndex !== currentIndexRef.current
+      ) {
+        const delta = requestedIndex - currentIndexRef.current;
+        const requestRevision = ++navigationRequestRevision;
+        pendingPopNavigation = {
+          targetPath: requestedPath,
+          targetIndex: requestedIndex,
+          delta,
+          requestRevision,
+          allowed: navigationGuardsAllow(),
+          phase: 'restoring',
+        };
+        window.history.go(-delta);
+        return;
+      }
+      publishRoute(
+        requestedPath,
+        requestedIndex ?? currentIndexRef.current,
+      );
+    };
     window.addEventListener('popstate', updateRoute);
     return () => window.removeEventListener('popstate', updateRoute);
   }, []);

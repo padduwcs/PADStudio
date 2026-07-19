@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {parseRoute, projectStepPath} from './router.ts';
+import {
+  navigate,
+  navigateDiscardingPendingChanges,
+  parseRoute,
+  projectStepPath,
+  registerNavigationGuard,
+} from './router.ts';
 
 test('parseRoute đọc route project hợp lệ', () => {
   assert.deepEqual(parseRoute('/projects/du-an-01/topic'), {
@@ -25,6 +31,10 @@ test('parseRoute đọc route project hợp lệ', () => {
   });
   assert.deepEqual(parseRoute('/projects/du-an-01/sync'), {
     name: 'project-sync',
+    projectId: 'du-an-01',
+  });
+  assert.deepEqual(parseRoute('/projects/du-an-01/layout'), {
+    name: 'project-layout',
     projectId: 'du-an-01',
   });
 });
@@ -60,4 +70,91 @@ test('projectStepPath ánh xạ tập trung các bước đã hỗ trợ', () =>
     projectStepPath('du an', 'sync'),
     '/projects/du%20an/sync',
   );
+  assert.equal(
+    projectStepPath('du an', 'layout'),
+    '/projects/du%20an/layout',
+  );
+});
+
+test('navigate chờ navigation guard và không rời trang khi lưu thất bại', async () => {
+  const windowDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    'window',
+  );
+  const popStateDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    'PopStateEvent',
+  );
+  const navigations: Array<{path: string; replace: boolean}> = [];
+  let historyState: unknown = null;
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: {
+      history: {
+        get state() {
+          return historyState;
+        },
+        pushState: (state: unknown, _title: string, path?: string) => {
+          historyState = state;
+          if (path !== undefined) {
+            navigations.push({path, replace: false});
+          }
+        },
+        replaceState: (state: unknown, _title: string, path?: string) => {
+          historyState = state;
+          if (path !== undefined) {
+            navigations.push({path, replace: true});
+          }
+        },
+      },
+      dispatchEvent: () => true,
+    },
+  });
+  Object.defineProperty(globalThis, 'PopStateEvent', {
+    configurable: true,
+    value: class {
+      readonly type: string;
+
+      constructor(type: string) {
+        this.type = type;
+      }
+    },
+  });
+
+  let unregister = registerNavigationGuard(() => false);
+  try {
+    navigate('/blocked');
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(navigations, []);
+
+    navigateDiscardingPendingChanges('/deleted');
+    assert.deepEqual(navigations, [
+      {path: '/deleted', replace: false},
+    ]);
+    navigations.length = 0;
+
+    unregister();
+    unregister = registerNavigationGuard(async () => true);
+    navigate('/saved');
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(navigations, [
+      {path: '/saved', replace: false},
+    ]);
+  } finally {
+    unregister();
+    if (windowDescriptor) {
+      Object.defineProperty(globalThis, 'window', windowDescriptor);
+    } else {
+      delete (globalThis as {window?: unknown}).window;
+    }
+    if (popStateDescriptor) {
+      Object.defineProperty(
+        globalThis,
+        'PopStateEvent',
+        popStateDescriptor,
+      );
+    } else {
+      delete (globalThis as {PopStateEvent?: unknown}).PopStateEvent;
+    }
+  }
 });

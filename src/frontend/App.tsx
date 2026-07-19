@@ -26,10 +26,12 @@ import {
 } from './icons.tsx';
 import {ProjectLibrary} from './ProjectLibrary.tsx';
 import {AnimationSyncPage} from './AnimationSyncPage.tsx';
+import {LayoutEditorPage} from './LayoutEditorPage.tsx';
 import {MotionCanvasPage} from './MotionCanvasPage.tsx';
 import {VoicePage} from './VoicePage.tsx';
 import {
   navigate,
+  navigateDiscardingPendingChanges,
   projectOutlinePath,
   projectStepPath,
   projectTopicPath,
@@ -1275,7 +1277,9 @@ export default function App() {
   const [newProjectKey, setNewProjectKey] = useState(0);
   const [projectReloadKey, setProjectReloadKey] = useState(0);
   const activeStep =
-    route.name === 'project-sync'
+    route.name === 'project-layout'
+      ? 6
+      : route.name === 'project-sync'
       ? 5
       : route.name === 'project-voice'
       ? 4
@@ -1349,7 +1353,9 @@ export default function App() {
   }
 
   function handleDeleted(projectId: string) {
-    if (activeProjectId === projectId) navigate('/');
+    if (activeProjectId === projectId) {
+      navigateDiscardingPendingChanges('/', true);
+    }
   }
 
   return (
@@ -1410,6 +1416,9 @@ export default function App() {
           )}
           {route.name === 'project-sync' && (
             <AnimationSyncPage projectId={route.projectId} />
+          )}
+          {route.name === 'project-layout' && (
+            <LayoutEditorPage projectId={route.projectId} />
           )}
         </div>
       </main>

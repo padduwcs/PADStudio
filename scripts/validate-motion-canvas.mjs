@@ -1,9 +1,16 @@
 import {randomUUID} from 'node:crypto';
 import {execFile} from 'node:child_process';
-import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
+import {copyPreviewWorkspace} from '../src/backend/previewWorkspaceCopy.ts';
 import {promisify} from 'node:util';
 import {createAnimationSyncWorkspace} from '../src/backend/animationSyncWorkspace.ts';
 import {createMotionCanvasWorkspace} from '../src/backend/motionCanvasWorkspace.ts';
@@ -77,10 +84,28 @@ try {
           : 'Project chưa có workspace Motion Canvas.',
       );
     }
-    workspaceDirectory = path.resolve(
+    const sourceWorkspaceDirectory = path.resolve(
       projectDirectory,
       bundle.workspacePath,
     );
+    if (stage === 'sync') {
+      // Motion Canvas owns and rewrites *.meta while loading a project.
+      // Validate a depth-compatible copy so an immutable Sync generation
+      // never changes merely because it was inspected.
+      workspaceDirectory = path.join(
+        validationDirectory,
+        'sync',
+        'generations',
+        path.basename(sourceWorkspaceDirectory),
+      );
+      await mkdir(path.dirname(workspaceDirectory), {recursive: true});
+      await copyPreviewWorkspace(
+        sourceWorkspaceDirectory,
+        workspaceDirectory,
+      );
+    } else {
+      workspaceDirectory = sourceWorkspaceDirectory;
+    }
     projectFile = path.join(workspaceDirectory, bundle.projectFile);
     scenes = motionBundle.scenes;
   } else {

@@ -1,8 +1,14 @@
 import {spawn} from 'node:child_process';
-import {readFile} from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {copyPreviewWorkspace} from '../src/backend/previewWorkspaceCopy.ts';
 import {parseTopicProject} from '../src/shared/topic.ts';
 
 const rootDirectory = path.resolve(
@@ -18,6 +24,56 @@ const stage =
   stageArgumentIndex >= 0
     ? process.argv[stageArgumentIndex + 1]
     : 'motion';
+const temporaryRoot = path.join(rootDirectory, 'tmp');
+
+function isInside(root, candidate) {
+  const resolvedRoot = path.resolve(root);
+  const resolvedCandidate = path.resolve(candidate);
+  return (
+    resolvedCandidate === resolvedRoot ||
+    resolvedCandidate.startsWith(`${resolvedRoot}${path.sep}`)
+  );
+}
+
+async function createSyncPreviewCopy(sourceDirectory) {
+  await mkdir(temporaryRoot, {recursive: true});
+  const temporaryDirectory = await mkdtemp(
+    path.join(temporaryRoot, 'sync-serve-'),
+  );
+  // Keep the same directory depth as projects/<id>/sync/generations/<id>.
+  // The generated tsconfig uses portable ../../../../../node_modules paths.
+  const workspaceDirectory = path.join(
+    temporaryDirectory,
+    'sync',
+    'generations',
+    path.basename(sourceDirectory),
+  );
+  try {
+    await mkdir(path.dirname(workspaceDirectory), {recursive: true});
+    await copyPreviewWorkspace(sourceDirectory, workspaceDirectory);
+    return {temporaryDirectory, workspaceDirectory};
+  } catch (error) {
+    if (isInside(temporaryRoot, temporaryDirectory)) {
+      await rm(temporaryDirectory, {
+        recursive: true,
+        force: true,
+      }).catch(() => undefined);
+    }
+    throw error;
+  }
+}
+
+async function removeSyncPreviewCopy(temporaryDirectory) {
+  if (
+    temporaryDirectory &&
+    isInside(temporaryRoot, temporaryDirectory)
+  ) {
+    await rm(temporaryDirectory, {
+      recursive: true,
+      force: true,
+    });
+  }
+}
 
 if (
   command !== 'serve' ||
@@ -51,14 +107,20 @@ if (
     );
     process.exitCode = 1;
   } else {
-    const workspaceDirectory = path.resolve(
+    const sourceWorkspaceDirectory = path.resolve(
       projectDirectory,
       bundle.workspacePath,
     );
-    const projectFile = path.resolve(
-      workspaceDirectory,
-      bundle.projectFile,
-    );
+    let temporaryDirectory = null;
+    let workspaceDirectory = sourceWorkspaceDirectory;
+    if (stage === 'sync') {
+      const previewCopy = await createSyncPreviewCopy(
+        sourceWorkspaceDirectory,
+      );
+      temporaryDirectory = previewCopy.temporaryDirectory;
+      workspaceDirectory = previewCopy.workspaceDirectory;
+    }
+    const projectFile = path.resolve(workspaceDirectory, bundle.projectFile);
     const outputDirectory = path.join(
       projectDirectory,
       'renders',
@@ -77,29 +139,42 @@ if (
       'motion-canvas-runtime',
       'vite.config.ts',
     );
-    const child = spawn(
-      process.execPath,
-      [viteCli, '--config', viteConfig],
-      {
-        cwd: workspaceDirectory,
-        stdio: 'inherit',
-        windowsHide: true,
-        env: {
-          ...process.env,
-          PAD_MOTION_PROJECT_FILE: projectFile,
-          PAD_MOTION_OUTPUT_DIRECTORY: outputDirectory,
+    try {
+      const child = spawn(
+        process.execPath,
+        [viteCli, '--config', viteConfig],
+        {
+          cwd: workspaceDirectory,
+          stdio: 'inherit',
+          windowsHide: true,
+          env: {
+            ...process.env,
+            PAD_MOTION_PROJECT_FILE: projectFile,
+            PAD_MOTION_OUTPUT_DIRECTORY: outputDirectory,
+          },
         },
-      },
-    );
+      );
 
-    const stop = (signal) => {
-      if (!child.killed) child.kill(signal);
-    };
+      const stop = (signal) => {
+        if (!child.killed) child.kill(signal);
+      };
+      const stopOnInterrupt = () => stop('SIGINT');
+      const stopOnTermination = () => stop('SIGTERM');
 
-    process.on('SIGINT', () => stop('SIGINT'));
-    process.on('SIGTERM', () => stop('SIGTERM'));
-    child.on('exit', (code) => {
-      process.exitCode = code ?? 1;
-    });
+      process.on('SIGINT', stopOnInterrupt);
+      process.on('SIGTERM', stopOnTermination);
+      try {
+        const code = await new Promise((resolve, reject) => {
+          child.once('error', reject);
+          child.once('exit', (exitCode) => resolve(exitCode));
+        });
+        process.exitCode = code ?? 1;
+      } finally {
+        process.off('SIGINT', stopOnInterrupt);
+        process.off('SIGTERM', stopOnTermination);
+      }
+    } finally {
+      await removeSyncPreviewCopy(temporaryDirectory);
+    }
   }
 }

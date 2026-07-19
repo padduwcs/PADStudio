@@ -1,10 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  ApproveLayoutSchema,
+  CommitLayoutSchema,
   CreateTopicProjectSchema,
   currentProjectVersion,
+  LayoutBundleSchema,
+  LayoutEditorManifestSchema,
+  LayoutOverridesDocumentSchema,
   parseTopicProject,
+  ProjectStepSchema,
   TopicInputSchema,
+  TopicProjectSchema,
   UpdateProjectSchema,
 } from './topic.ts';
 
@@ -87,6 +94,7 @@ test('UpdateProjectSchema chỉ cho phép dữ liệu của trang topic', () => 
     'motionCanvasBundle',
     'voiceBundle',
     'animationSyncBundle',
+    'layoutBundle',
   ]) {
     assert.equal(
       UpdateProjectSchema.safeParse({
@@ -120,6 +128,7 @@ test('parseTopicProject nâng project v1 lên model hiện tại', () => {
   assert.equal(project.outline, null);
   assert.equal(project.voiceVisualPlan, null);
   assert.equal(project.motionCanvasBundle, null);
+  assert.equal(project.layoutBundle, null);
 });
 
 test('parseTopicProject nâng project v2 và giữ revision hiện tại', () => {
@@ -145,6 +154,7 @@ test('parseTopicProject nâng project v2 và giữ revision hiện tại', () =>
   assert.equal(project.outline, null);
   assert.equal(project.voiceVisualPlan, null);
   assert.equal(project.motionCanvasBundle, null);
+  assert.equal(project.layoutBundle, null);
 });
 
 test('parseTopicProject nâng project v3 và giữ outline hiện tại', () => {
@@ -170,6 +180,7 @@ test('parseTopicProject nâng project v3 và giữ outline hiện tại', () => 
   assert.equal(project.revision, 4);
   assert.equal(project.voiceVisualPlan, null);
   assert.equal(project.motionCanvasBundle, null);
+  assert.equal(project.layoutBundle, null);
 });
 
 test('parseTopicProject nâng project v4 và giữ kế hoạch voice–visual', () => {
@@ -195,6 +206,7 @@ test('parseTopicProject nâng project v4 và giữ kế hoạch voice–visual',
   assert.equal(project.version, currentProjectVersion);
   assert.equal(project.revision, 5);
   assert.equal(project.motionCanvasBundle, null);
+  assert.equal(project.layoutBundle, null);
 });
 
 test('parseTopicProject nâng project v6 và bổ sung workspace đồng bộ', () => {
@@ -223,6 +235,7 @@ test('parseTopicProject nâng project v6 và bổ sung workspace đồng bộ', 
   assert.equal(project.revision, 10);
   assert.equal(project.currentStep, 'voice');
   assert.equal(project.animationSyncBundle, null);
+  assert.equal(project.layoutBundle, null);
 });
 
 test('parseTopicProject nâng v7, bổ sung timing profile và buộc tạo lại voice section-based', () => {
@@ -299,6 +312,7 @@ test('parseTopicProject nâng v7, bổ sung timing profile và buộc tạo lạ
   );
   assert.equal(project.voiceBundle, null);
   assert.equal(project.animationSyncBundle, null);
+  assert.equal(project.layoutBundle, null);
 });
 
 test('parseTopicProject không âm thầm bỏ field lạ', () => {
@@ -322,5 +336,292 @@ test('parseTopicProject không âm thầm bỏ field lạ', () => {
       updatedAt: now,
       futureField: true,
     }),
+  );
+});
+
+test('parseTopicProject migrates v8 to v9 without widening the historical step enum', () => {
+  const now = new Date().toISOString();
+  const versionEight = {
+    id: 'version-eight-project',
+    version: 8,
+    revision: 14,
+    creationId: null,
+    status: 'draft',
+    currentStep: 'sync',
+    topicInput: {
+      topic: 'Explain a stable cache eviction policy',
+      audience: 'familiar',
+      duration: 'standard',
+    },
+    outline: null,
+    voiceVisualPlan: null,
+    motionCanvasBundle: null,
+    voiceBundle: null,
+    animationSyncBundle: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const migrated = parseTopicProject(versionEight);
+  assert.equal(migrated.version, 9);
+  assert.equal(migrated.currentStep, 'sync');
+  assert.equal(migrated.revision, 14);
+  assert.equal(migrated.layoutBundle, null);
+
+  assert.equal(ProjectStepSchema.safeParse('layout').success, true);
+  assert.equal(
+    TopicProjectSchema.safeParse({
+      ...versionEight,
+      version: 9,
+      currentStep: 'layout',
+      layoutBundle: null,
+    }).success,
+    true,
+  );
+  assert.throws(() =>
+    parseTopicProject({...versionEight, currentStep: 'layout'}),
+  );
+});
+
+test('layout override and manifest schemas enforce stable targets and locks', () => {
+  const syncGenerationId = '60000000-0000-4000-8000-000000000001';
+  const sourceHash = 'a'.repeat(64);
+  const nodeFingerprint = 'b'.repeat(64);
+  const overrides = [
+    {
+      sceneId: '30000000-0000-4000-8000-000000000001',
+      nodeKey: 'CacheScene/Rect[1]',
+      nodeFingerprint,
+      patch: {
+        x: 48,
+        y: -24,
+        scale: 1.1,
+        rotation: 12,
+        opacity: 0.85,
+        hidden: false,
+        fill: '#12AB34',
+        stroke: null,
+        strokeWidth: 3,
+        zIndexDelta: 2,
+      },
+    },
+  ];
+  const document = {
+    version: 1,
+    sourceAnimationSyncGenerationId: syncGenerationId,
+    sourceAnimationSyncContentRevision: 7,
+    sourceAnimationSyncSourceHash: sourceHash,
+    overrides,
+  };
+
+  assert.equal(
+    LayoutOverridesDocumentSchema.safeParse(document).success,
+    true,
+  );
+  assert.equal(
+    LayoutOverridesDocumentSchema.safeParse({
+      ...document,
+      overrides: [...overrides, structuredClone(overrides[0])],
+    }).success,
+    false,
+  );
+  assert.equal(
+    LayoutOverridesDocumentSchema.safeParse({
+      ...document,
+      overrides: [{...overrides[0], patch: {}}],
+    }).success,
+    false,
+  );
+  assert.equal(
+    LayoutOverridesDocumentSchema.safeParse({
+      ...document,
+      overrides: [{...overrides[0], patch: {fill: 'rgb(1, 2, 3)'}}],
+    }).success,
+    false,
+  );
+  assert.equal(
+    LayoutOverridesDocumentSchema.safeParse({
+      ...document,
+      overrides: [
+        {
+          ...overrides[0],
+          nodeKey: 'cache-card-lock-only',
+          patch: {editorLocked: true},
+        },
+      ],
+    }).success,
+    true,
+  );
+
+  const manifest = {
+    version: 1,
+    sourceAnimationSyncGenerationId: syncGenerationId,
+    sourceAnimationSyncContentRevision: 7,
+    sourceAnimationSyncSourceHash: sourceHash,
+    scenes: [
+      {
+        sceneId: '30000000-0000-4000-8000-000000000001',
+        filePath: 'src/scenes/cache-hit.tsx',
+        nodes: [
+          {
+            key: 'CacheScene/Rect[1]',
+            fingerprint: nodeFingerprint,
+            label: 'Cache card',
+            nodeType: 'Rect',
+            parentKey: null,
+            identity: 'legacy',
+            editableProperties: [
+              'x',
+              'y',
+              'scale',
+              'hidden',
+              'fill',
+              'zIndexDelta',
+            ],
+            lockedProperties: ['zIndexDelta'],
+            lockReason: 'Preserve the teaching layer order.',
+          },
+        ],
+      },
+      {
+        sceneId: '30000000-0000-4000-8000-000000000002',
+        filePath: 'src/scenes/cache-miss.tsx',
+        nodes: [],
+      },
+    ],
+  };
+
+  assert.equal(LayoutEditorManifestSchema.safeParse(manifest).success, true);
+  assert.equal(
+    LayoutEditorManifestSchema.safeParse({
+      ...manifest,
+      scenes: [
+        {
+          ...manifest.scenes[0],
+          nodes: [
+            {
+              ...manifest.scenes[0]!.nodes[0],
+              editableProperties: ['x'],
+              lockedProperties: ['fill'],
+            },
+          ],
+        },
+        manifest.scenes[1],
+      ],
+    }).success,
+    false,
+  );
+  assert.equal(
+    LayoutEditorManifestSchema.safeParse({
+      ...manifest,
+      unexpected: true,
+    }).success,
+    false,
+  );
+});
+
+test('layout bundle and commands lock every write to a sync generation', () => {
+  const now = new Date().toISOString();
+  const syncGenerationId = '60000000-0000-4000-8000-000000000001';
+  const layoutGenerationId = '70000000-0000-4000-8000-000000000001';
+  const sceneIds = [
+    '30000000-0000-4000-8000-000000000001',
+    '30000000-0000-4000-8000-000000000002',
+  ];
+  const bundle = {
+    status: 'draft',
+    contentRevision: 1,
+    sourceAnimationSyncContentRevision: 7,
+    sourceAnimationSyncGenerationId: syncGenerationId,
+    sourceAnimationSyncSourceHash: 'a'.repeat(64),
+    workspacePath: `layout/generations/${layoutGenerationId}`,
+    sourceWorkspacePath: `sync/generations/${syncGenerationId}`,
+    projectFile: 'src/project.ts',
+    audioFile: 'audio/narration.wav',
+    overridesFile: 'overrides.json',
+    manifestFile: 'editor-manifest.json',
+    overrideContractVersion: 1,
+    totalDurationSeconds: 20,
+    scenes: sceneIds.map((sceneId, index) => ({
+      sceneId,
+      filePath: `src/scenes/scene-${index + 1}.tsx`,
+      editableNodeCount: 4,
+      overrideCount: index,
+    })),
+    validation: {
+      validatedAt: now,
+      sourceHash: 'c'.repeat(64),
+      overridesHash: 'd'.repeat(64),
+      manifestHash: 'e'.repeat(64),
+      motionCanvasVersion: '3.17.2',
+      audioDurationSeconds: 20.02,
+    },
+    generation: {
+      generationId: layoutGenerationId,
+      provider: 'local',
+      tool: 'layout-editor',
+      generatedAt: now,
+    },
+  };
+
+  assert.equal(LayoutBundleSchema.safeParse(bundle).success, true);
+  assert.equal(
+    LayoutBundleSchema.safeParse({
+      ...bundle,
+      workspacePath:
+        'layout/generations/70000000-0000-4000-8000-000000000002',
+    }).success,
+    false,
+  );
+  assert.equal(
+    LayoutBundleSchema.safeParse({
+      ...bundle,
+      sourceWorkspacePath:
+        'sync/generations/60000000-0000-4000-8000-000000000002',
+    }).success,
+    false,
+  );
+  assert.equal(
+    LayoutBundleSchema.safeParse({
+      ...bundle,
+      validation: {...bundle.validation, audioDurationSeconds: 20.05},
+    }).success,
+    false,
+  );
+
+  const command = {
+    generationId: layoutGenerationId,
+    baseGenerationId: null,
+    sourceAnimationSyncGenerationId: syncGenerationId,
+    sessionNonce: 'n'.repeat(32),
+    overrides: [
+      {
+        sceneId: sceneIds[0],
+        nodeKey: 'cache-card',
+        nodeFingerprint: 'f'.repeat(64),
+        patch: {hidden: true},
+      },
+    ],
+  };
+  assert.equal(CommitLayoutSchema.safeParse(command).success, true);
+  assert.equal(
+    CommitLayoutSchema.safeParse({...command, sessionNonce: 'short'}).success,
+    false,
+  );
+  assert.equal(
+    CommitLayoutSchema.safeParse({...command, extra: true}).success,
+    false,
+  );
+  assert.equal(
+    ApproveLayoutSchema.safeParse({generationId: layoutGenerationId})
+      .success,
+    true,
+  );
+  assert.equal(
+    ApproveLayoutSchema.safeParse({
+      generationId: layoutGenerationId,
+      status: 'approved',
+    }).success,
+    false,
   );
 });

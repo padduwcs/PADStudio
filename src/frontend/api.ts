@@ -23,6 +23,13 @@ import type {
   UpdateProject,
   VoiceVisualPlanContent,
 } from '../shared/topic.ts';
+import type {
+  ApproveLayout,
+  CommitLayout,
+  LayoutBundle,
+  LayoutEditorManifest,
+  LayoutOverridesDocument,
+} from '../shared/layout.ts';
 
 export class ApiRequestError extends Error {
   constructor(
@@ -470,6 +477,127 @@ export function animationSyncAudioUrl(
   generationId: string,
 ) {
   return `/api/projects/${encodeURIComponent(projectId)}/sync/audio?generation=${encodeURIComponent(generationId)}`;
+}
+
+export interface LayoutStatePayload {
+  bundle: LayoutBundle | null;
+  overrides: LayoutOverridesDocument;
+  manifest: LayoutEditorManifest | null;
+}
+
+export async function getLayoutState(projectId: string) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/layout`,
+  );
+  const payload = await readPayload<LayoutStatePayload>(response);
+  assertSuccessful(response, payload);
+  if (
+    !payload ||
+    !('overrides' in payload) ||
+    !('bundle' in payload) ||
+    !('manifest' in payload)
+  ) {
+    throw new ApiRequestError(
+      'Phản hồi dữ liệu Layout Editor không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload;
+}
+
+export async function getLayoutPreview(
+  projectId: string,
+  generationId: string,
+) {
+  const parentOrigin =
+    typeof window === 'undefined' ? '' : window.location.origin;
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/layout/preview?generation=${encodeURIComponent(generationId)}`,
+    parentOrigin
+      ? {headers: {'X-Pad-Parent-Origin': parentOrigin}}
+      : undefined,
+  );
+  const payload = await readPayload<{
+    preview: {
+      generationId: string;
+      sourceSyncGenerationId: string;
+      sessionNonce: string;
+      url: string;
+    };
+  }>(response);
+  assertSuccessful(response, payload);
+  if (
+    !payload ||
+    !('preview' in payload) ||
+    typeof payload.preview?.url !== 'string' ||
+    typeof payload.preview?.sessionNonce !== 'string'
+  ) {
+    throw new ApiRequestError(
+      'Phản hồi preview Layout Editor không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.preview;
+}
+
+export async function commitLayout(
+  projectId: string,
+  request: CommitLayout,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/layout/commit`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function approveLayout(
+  projectId: string,
+  request: ApproveLayout,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/layout/approve`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function getLayoutFiles(projectId: string) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/layout/files`,
+  );
+  const payload = await readPayload<{
+    bundle: LayoutBundle;
+    files: Array<{path: string; source: string}>;
+  }>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('files' in payload) || !('bundle' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi workspace Layout Editor không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload;
 }
 
 export function voiceAudioUrl(

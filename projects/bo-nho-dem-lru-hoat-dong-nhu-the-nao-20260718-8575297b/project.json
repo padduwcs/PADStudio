@@ -1,6 +1,6 @@
 {
   "id": "bo-nho-dem-lru-hoat-dong-nhu-the-nao-20260718-8575297b",
-  "revision": 11,
+  "revision": 17,
   "creationId": "8e5677c4-6866-49b1-92f8-6f8861a436d0",
   "status": "draft",
   "topicInput": {
@@ -214,7 +214,7 @@
     }
   },
   "createdAt": "2026-07-18T21:32:41.495Z",
-  "updatedAt": "2026-07-18T21:47:41.292Z",
+  "updatedAt": "2026-07-19T04:29:53.543Z",
   "motionCanvasBundle": {
     "status": "approved",
     "contentRevision": 1,
@@ -349,8 +349,6 @@
       }
     }
   },
-  "currentStep": "sync",
-  "version": 8,
   "voiceBundle": {
     "status": "approved",
     "contentRevision": 1,
@@ -524,10 +522,10 @@
   },
   "animationSyncBundle": {
     "status": "approved",
-    "contentRevision": 1,
+    "contentRevision": 4,
     "sourceMotionCanvasContentRevision": 1,
     "sourceVoiceContentRevision": 1,
-    "workspacePath": "sync/generations/a40006e2-ca08-4ee9-ba28-0a926ded28d6",
+    "workspacePath": "sync/generations/5f9866f4-1bfd-4f5d-a144-1a357c79d21e",
     "projectFile": "src/project.ts",
     "audioFile": "audio/narration.wav",
     "totalDurationSeconds": 92.08,
@@ -673,16 +671,19 @@
       }
     ],
     "validation": {
-      "validatedAt": "2026-07-18T21:41:42.067Z",
+      "validatedAt": "2026-07-19T04:29:52.627Z",
       "sourceHash": "f80224c9eeb552d57ce14fd70967788362517c9d6d01e79608a7eb97b9fcf212",
       "motionCanvasVersion": "3.17.2",
       "audioDurationSeconds": 92.08
     },
     "generation": {
-      "generationId": "a40006e2-ca08-4ee9-ba28-0a926ded28d6",
+      "generationId": "5f9866f4-1bfd-4f5d-a144-1a357c79d21e",
       "provider": "local",
       "tool": "ffmpeg",
-      "generatedAt": "2026-07-18T21:41:42.068Z"
+      "generatedAt": "2026-07-19T04:29:52.628Z"
     }
-  }
+  },
+  "version": 9,
+  "currentStep": "layout",
+  "layoutBundle": null
 }

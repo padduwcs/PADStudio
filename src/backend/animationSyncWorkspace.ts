@@ -245,8 +245,56 @@ function normalizeSceneTimingSource(
     end: number;
     replacement: string;
   }> = [];
+  const semanticKeyPattern =
+    /^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/;
+  const semanticKeyCounts = new Map<string, number>();
   let keySite = 0;
   let sceneBody: ts.Block | null = null;
+
+  function staticSemanticKey(attribute: ts.JsxAttribute) {
+    const initializer = attribute.initializer;
+    let value: string | null = null;
+    if (initializer && ts.isStringLiteral(initializer)) {
+      value = initializer.text;
+    } else if (
+      initializer &&
+      ts.isJsxExpression(initializer) &&
+      initializer.expression &&
+      (ts.isStringLiteral(initializer.expression) ||
+        ts.isNoSubstitutionTemplateLiteral(initializer.expression))
+    ) {
+      value = initializer.expression.text;
+    }
+    if (
+      !value ||
+      value.length > 80 ||
+      !semanticKeyPattern.test(value) ||
+      value
+        .split('-')
+        .some((segment) => /^[a-f0-9]{8,}$/i.test(segment))
+    ) {
+      return null;
+    }
+    return value;
+  }
+
+  function collectSemanticKeys(node: ts.Node) {
+    if (
+      ts.isJsxAttribute(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === 'key'
+    ) {
+      const key = staticSemanticKey(node);
+      if (key) {
+        semanticKeyCounts.set(
+          key,
+          (semanticKeyCounts.get(key) ?? 0) + 1,
+        );
+      }
+    }
+    ts.forEachChild(node, collectSemanticKeys);
+  }
+  collectSemanticKeys(sourceFile);
 
   function eventName(
     node: ts.Node,
@@ -321,6 +369,14 @@ function normalizeSceneTimingSource(
       node.name.text === 'key'
     ) {
       keySite += 1;
+      const semanticKey = staticSemanticKey(node);
+      if (
+        semanticKey &&
+        semanticKeyCounts.get(semanticKey) === 1
+      ) {
+        ts.forEachChild(node, visit);
+        return;
+      }
       const prefix = `pad-sync-${keySite}-`;
       if (node.initializer && ts.isStringLiteral(node.initializer)) {
         sourceEdits.push({
@@ -964,7 +1020,7 @@ export function createAnimationSyncWorkspace(
           path.join(stagingDirectory, 'pad-studio.manifest.json'),
           `${JSON.stringify(
             {
-              version: 1,
+              version: 2,
               generationId,
               motionCanvasVersion: MOTION_CANVAS_VERSION,
               sourceHash: hash,

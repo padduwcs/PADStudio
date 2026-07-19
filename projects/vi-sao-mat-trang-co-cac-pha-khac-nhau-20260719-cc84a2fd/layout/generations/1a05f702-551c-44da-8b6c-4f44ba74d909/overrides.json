@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "sourceAnimationSyncGenerationId": "fcbe48ef-6462-4bf3-867e-1341fa27b287",
+  "sourceAnimationSyncContentRevision": 1,
+  "sourceAnimationSyncSourceHash": "838457a9e112e010af4d894c7a355022edd692ef55709404cadfa11fa26cac12",
+  "overrides": [
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "01-moon-half-always-lit/TxtLeaf[1]",
+      "nodeFingerprint": "c8c4d87caefaea8dee99d5e26f006bfa8357889403a12ec5d446bb3b49d1890b",
+      "patch": {
+        "x": 40,
+        "fill": "#FF6B35",
+        "zIndexDelta": 1
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "01-moon-half-always-lit/TxtLeaf[2]",
+      "nodeFingerprint": "6c5407fe48352939ed4ed57cf787828772e315ba86222dd79af00f92a2bec772",
+      "patch": {
+        "x": -350,
+        "y": 60,
+        "scale": 9.1,
+        "rotation": -45
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "half-meter-disk",
+      "nodeFingerprint": "809bfe5bbdc9671803c1387254f48b13f3b534c575a3790cd4ff507196768844",
+      "patch": {
+        "x": -220,
+        "y": -20
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "half-meter-lit-half",
+      "nodeFingerprint": "c4ff9c0bd86c29c59f963ca2c3cc527b6ecc752d13e6d31347739d7a29c0777a",
+      "patch": {
+        "x": -100,
+        "y": -30
+      }
+    },
+    {
+      "sceneId": "f89f53d3-0de3-48ce-b825-1f12e3048597",
+      "nodeKey": "solar-source-core",
+      "nodeFingerprint": "ada231e841eabdf07982847a2031d50be3376f92103f96c0f108d915f1532c4d",
+      "patch": {
+        "zIndexDelta": 7
+      }
+    }
+  ]
+}

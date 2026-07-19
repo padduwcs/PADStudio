@@ -13,12 +13,13 @@ Nhập chủ đề
 → Sinh và review scene Motion Canvas
 → Sinh voice
 → Đồng bộ animation
-→ Render bản nháp
 → Chỉnh sửa bằng Layout Editor
 → Render video cuối
 ```
 
-Người dùng có thể chỉnh vị trí, kích thước, thuộc tính và timing của các thành phần trực tiếp trên giao diện. Những scene và component tốt có thể được lưu lại làm tài nguyên tham khảo cho các video sau.
+Người dùng có thể chỉnh vị trí, kích thước và thuộc tính hiển thị trực tiếp trên giao
+diện; timing đã đồng bộ được giữ chỉ đọc trong Layout Editor MVP. Những scene và
+component tốt có thể được lưu lại làm tài nguyên tham khảo cho các video sau.
 
 ## Trạng thái
 
@@ -74,6 +75,18 @@ Vertical slice đầu tiên đã có thể chạy:
 - Lưu mỗi lần đồng bộ vào
   `projects/<project-id>/sync/generations/<generation-id>/`; thay đổi scene hoặc
   voice nguồn tự động làm bản đồng bộ trở thành bản nháp cũ.
+- Chạy Sync preview, Layout preview, `sync:serve` và validator Sync trên bản sao tạm
+  copy-on-write; Motion Canvas có thể cập nhật `.meta` trong session nhưng không thể
+  làm sai hash generation nguồn đã chốt.
+- Chỉnh trực tiếp node Motion Canvas trong Layout Editor bằng kéo, scale, xoay, opacity,
+  fill/stroke, thứ tự layer, khóa và thao tác delete có thể khôi phục. Editor có undo/redo,
+  copy/paste modifier, grid, snap, safe-zone, so sánh bản gốc và preview sạch.
+- Tự lưu modifier vào overlay bất biến tại
+  `projects/<project-id>/layout/generations/<generation-id>/`, không sao chép hoặc sửa
+  source/audio của bản Sync. Manifest node, fingerprint và source hash được khóa theo đúng
+  generation trước khi backend nhận commit hoặc cho phép chốt. Sync manifest v1/v2 đều
+  được re-hash; artifact lịch sử không còn khớp hash phải Đồng bộ và chốt lại trước khi
+  mở Layout.
 - Hiển thị lượng token của lần sinh gần nhất để người dùng theo dõi.
 - Liệt kê, mở lại, chỉnh sửa và xóa project cục bộ.
 - Giao diện responsive cho desktop và mobile.
@@ -90,8 +103,8 @@ version control nội dung từng video. Chỉ thư mục render sinh ra tại
 
 Mỗi project có hai chỉ số độc lập:
 
-- `version` là phiên bản cấu trúc file; dữ liệu v1 đến v7 được đọc và nâng cấp
-  lên cấu trúc v8 hiện tại ở lần ghi tiếp theo. Voice/sync section-based của v7
+- `version` là phiên bản cấu trúc file; dữ liệu v1 đến v8 được đọc và nâng cấp
+  lên cấu trúc v9 hiện tại ở lần ghi tiếp theo. Voice/sync section-based của v7
   được chủ động vô hiệu hóa để tạo lại bằng master narration, không giả vờ
   migrate audio cũ thành audio liên tục.
 - `revision` tăng sau mỗi thay đổi nội dung và được dùng với `If-Match` để
@@ -158,10 +171,12 @@ Mỗi beat đăng ký mốc đầu bằng `waitUntil(start)` và mốc cuối b�
 `useDuration(end)` đúng một lần. Không gọi thêm `waitUntil(end)`, vì API này cũng
 đăng ký time-event và sẽ tạo duplicate event trong Motion Canvas. Sau visual,
 scene dùng `waitFor` với phần thời gian còn lại tới `beatEndTime`, để playhead
-luôn chạm đúng mốc end kể cả animation ngắn hơn beat. Generator từ chối JSX key
-chỉ dựa vào index; workspace sync vẫn chuẩn hóa key, duplicate `waitUntil(end)`
-và phần bù cuối beat của những generation timing v1 đời đầu khi sao chép, nên
-không sửa source bất biến và không buộc tạo lại voice.
+luôn chạm đúng mốc end kể cả animation ngắn hơn beat. Generator bắt buộc mọi
+visual node có semantic key tường minh, duy nhất; đồng thời từ chối node sinh qua
+map/loop hoặc constructor `new`. Workspace Sync giữ nguyên semantic key hợp lệ và
+chỉ thêm prefix ổn định cho key legacy/dynamic, đồng thời chuẩn hóa duplicate
+`waitUntil(end)` và phần bù cuối beat của những generation timing v1 đời đầu khi
+sao chép. Source bất biến không bị sửa và voice không phải tạo lại.
 
 Voice là nhánh downstream độc lập với code Motion Canvas: đổi lời đọc làm voice
 và scene trở thành cũ, nhưng chỉ chỉnh animation không buộc tạo lại audio.

@@ -42,7 +42,6 @@ Nhập chủ đề
 → Người dùng review scene
 → ElevenLabs tạo voice
 → Đồng bộ animation theo voice
-→ Render bản nháp
 → Người dùng chỉnh bằng Layout Editor
 → Render video cuối
 → Lưu tài nguyên tốt vào kho tham khảo
@@ -129,10 +128,12 @@ lượng bằng `useDuration`.
 Trong source, mốc start được đăng ký bởi `waitUntil(start)` và mốc end bởi
 `useDuration(end)`; không đăng ký lại end bằng `waitUntil`. Scene lưu
 `beatEndTime` và chờ phần thời gian còn lại sau visual, bảo đảm duration runtime
-khớp narration trong sai số một frame. JSX key sinh từ mảng phải có prefix tĩnh
-riêng. Khi đồng bộ generation timing v1 đời đầu, workspace sync chuẩn hóa các lỗi
-tương thích này trên bản sao để player không gặp duplicate event/node key hoặc
-kết thúc beat sớm, còn source Motion Canvas gốc vẫn bất biến.
+khớp narration trong sai số một frame. Visual node phải được khai báo JSX tường
+minh với semantic key duy nhất; generator từ chối map/loop và constructor tạo node.
+Workspace Sync giữ nguyên semantic key hợp lệ, chỉ prefix key legacy/dynamic. Với
+generation timing v1 đời đầu, Sync tiếp tục chuẩn hóa lỗi tương thích trên bản sao
+để player không gặp duplicate event/node key hoặc kết thúc beat sớm, còn source
+Motion Canvas gốc vẫn bất biến.
 
 Mỗi generation đồng bộ được lưu bất biến tại
 `projects/<project-id>/sync/generations/<generation-id>/`. Workspace chứa bản
@@ -147,8 +148,10 @@ timeline làm đại diện cho trải nghiệm video. Backend dựng một Moti
 player chỉ-đọc, cục bộ và tạm thời cho đúng generation; UI nhúng player này để
 play/pause, tua, mute và xem toàn màn hình. Timeline section/beat vẫn còn nhưng
 được thu gọn dưới dạng dữ liệu chẩn đoán. Nút chốt chỉ mở sau khi đúng iframe,
-origin và generation báo render sẵn sàng, rồi người dùng thực sự bấm phát. Player
-không có editor plugin nên không thể ghi ngược vào workspace bất biến.
+origin và generation báo render sẵn sàng, rồi người dùng thực sự bấm phát. Motion Canvas
+có thể tự chuẩn hóa file `.meta` khi nạp project, nên preview backend, lệnh `sync:serve`
+và validator stage Sync luôn chạy trên bản sao tạm copy-on-write. Vite cache và output
+preview cũng nằm trong session tạm; generation nguồn không bị ghi ngược chỉ vì được xem.
 
 Bundle đồng bộ lưu revision của cả hai nguồn cùng mapping section/scene/beat.
 Nếu scene, event hoặc timing voice thay đổi, bundle tự trở thành draft cũ và
@@ -169,14 +172,39 @@ Chỉ nên chuẩn hóa thành thành phần dùng chung khi pattern đã đư�
 
 ## Layout Editor
 
-Layout Editor cho phép người dùng chỉnh trực tiếp những phần thường cần tinh chỉnh sau khi scene được sinh:
+Layout Editor là bước 07, chỉ mở từ một generation Sync đã chốt và còn hiện hành.
+Người dùng chỉnh trực tiếp node Motion Canvas bằng kéo vị trí, scale, xoay, opacity,
+fill/stroke, độ dày viền, thứ tự layer, khóa thao tác và ẩn/khôi phục. Delete trong MVP
+là modifier `hidden`, không xóa JSX nên luôn có thể undo hoặc reset. Editor còn có
+undo/redo, copy/paste modifier, snap, grid, safe-zone, so sánh bản gốc và preview sạch.
+Timing/beat marker chỉ đọc trong MVP vì thay timing sau Sync có thể phá vỡ narration.
 
-- Vị trí và kích thước.
-- Thuộc tính hiển thị.
-- Bố cục các đối tượng.
-- Timing và các mốc đồng bộ.
+Thay đổi không được ghi ngược vào source Sync. Runtime áp modifier tạm thời trước khi
+render/hit-test rồi khôi phục raw signal trong `finally`. Adapter modifier được tách riêng
+để bước render cuối có thể tái sử dụng, nhưng wiring render cuối chưa thuộc MVP Layout
+Editor hiện tại. Backend lưu mỗi lần tự lưu thành overlay bất biến tại
+`projects/<project-id>/layout/generations/<generation-id>/`, gồm `overrides.json`,
+`editor-manifest.json` và manifest kiểm tra toàn vẹn. Overlay tham chiếu workspace Sync
+nguồn thay vì sao chép scene hoặc audio.
 
-Editor bổ sung cho code chứ không thay thế hoàn toàn code. Codex vẫn hỗ trợ sinh và sửa logic scene; người dùng dùng editor để thực hiện các điều chỉnh trực quan và timing một cách nhanh chóng.
+Manifest node được runtime phát hiện trong đúng preview session, giới hạn kích thước và
+khóa bằng scene ID, node key, fingerprint, Sync generation/content revision/source hash.
+Preview, commit và approve dùng chung một verifier artifact: re-hash toàn bộ source Sync,
+khóa symlink và đối chiếu strict manifest/hash của overlay trước khi sử dụng.
+Sync preview và Layout preview đều sao chép workspace đã verify sang session tạm, từ chối
+symlink/junction rồi chỉ cho Motion Canvas thao tác trên bản sao. Cách này giữ cả source,
+audio và metadata timing của generation gốc thực sự bất biến trong lúc review/chỉnh sửa.
+Sync manifest v1 và v2 đều được re-hash ngay khi mở và trước mọi lần preview/chốt.
+Generation lịch sử có source không còn khớp hash đã chốt sẽ bị từ chối và phải
+Đồng bộ lại trước khi vào Layout.
+Node semantic có key rõ ràng là đường dài; generation cũ dùng auto-key chỉ được áp modifier
+trong đúng source generation/fingerprint và không tự carry-forward. Commit yêu cầu
+`If-Match`, base generation, source generation và session nonce; chốt chỉ mở sau khi
+runtime sẵn sàng, manifest đã lưu, modifier đã validate và người dùng đã phát/review đúng
+revision hiện tại.
+
+Editor bổ sung cho code chứ không thay thế logic scene. Codex vẫn sinh và sửa cấu trúc,
+animation hoặc nội dung phức tạp; Layout Editor xử lý các tinh chỉnh trực quan an toàn.
 
 ## Vai trò của các thành phần
 

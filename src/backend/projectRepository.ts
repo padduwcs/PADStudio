@@ -16,6 +16,7 @@ import {
   type ProjectListIssueCode,
   type TopicProject,
 } from '../shared/topic.ts';
+import {layoutMatchesAnimationSync} from '../shared/projectPipeline.ts';
 import {
   animationSyncMatchesSources,
   voiceMatchesPlan,
@@ -61,6 +62,7 @@ type ProjectRepositoryUpdate = {
   motionCanvasBundle?: NonNullable<TopicProject['motionCanvasBundle']>;
   voiceBundle?: NonNullable<TopicProject['voiceBundle']>;
   animationSyncBundle?: NonNullable<TopicProject['animationSyncBundle']>;
+  layoutBundle?: NonNullable<TopicProject['layoutBundle']>;
 };
 
 function isValidProjectId(projectId: string) {
@@ -296,7 +298,10 @@ export function createFileProjectRepository(
           JSON.stringify(project.voiceBundle)) &&
       (update.animationSyncBundle === undefined ||
         JSON.stringify(update.animationSyncBundle) ===
-          JSON.stringify(project.animationSyncBundle))
+          JSON.stringify(project.animationSyncBundle)) &&
+      (update.layoutBundle === undefined ||
+        JSON.stringify(update.layoutBundle) ===
+          JSON.stringify(project.layoutBundle))
     );
   }
 
@@ -376,6 +381,26 @@ export function createFileProjectRepository(
     const animationSyncChanged =
       JSON.stringify(nextAnimationSyncBundle) !==
       JSON.stringify(currentProject.animationSyncBundle);
+    const layoutSourceChanged = Boolean(
+      currentProject.layoutBundle &&
+        (!nextAnimationSyncBundle ||
+          nextAnimationSyncBundle.status !== 'approved' ||
+          !layoutMatchesAnimationSync(
+            currentProject.layoutBundle,
+            nextAnimationSyncBundle,
+          )),
+    );
+    const nextLayoutBundle =
+      update.layoutBundle ??
+      (layoutSourceChanged && currentProject.layoutBundle
+        ? {
+            ...currentProject.layoutBundle,
+            status: 'draft' as const,
+          }
+        : currentProject.layoutBundle);
+    const layoutChanged =
+      JSON.stringify(nextLayoutBundle) !==
+      JSON.stringify(currentProject.layoutBundle);
     const nextCurrentStep =
       update.currentStep ??
       (topicChanged
@@ -390,6 +415,8 @@ export function createFileProjectRepository(
                   ? 'voice'
                   : animationSyncChanged
                     ? 'sync'
+                    : layoutChanged
+                      ? 'layout'
                     : currentProject.currentStep);
     const project: TopicProject = {
       ...currentProject,
@@ -400,6 +427,7 @@ export function createFileProjectRepository(
       motionCanvasBundle: nextMotionCanvasBundle,
       voiceBundle: nextVoiceBundle,
       animationSyncBundle: nextAnimationSyncBundle,
+      layoutBundle: nextLayoutBundle,
       revision: currentProject.revision + 1,
       updatedAt: new Date().toISOString(),
     };
@@ -450,6 +478,7 @@ export function createFileProjectRepository(
           motionCanvasBundle: null,
           voiceBundle: null,
           animationSyncBundle: null,
+          layoutBundle: null,
           createdAt: now,
           updatedAt: now,
         };

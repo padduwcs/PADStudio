@@ -6,6 +6,7 @@ import './voiceVisual.css';
 import './motionCanvas.css';
 import './voice.css';
 import './sync.css';
+import './layout.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

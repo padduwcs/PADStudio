@@ -21,6 +21,7 @@ import {
   createAnimationSyncWorkspace,
 } from './animationSyncWorkspace.ts';
 import {createAnimationSyncPreviewService} from './animationSyncPreviewService.ts';
+import {animationSyncWorkspaceSourceHash} from './layoutWorkspace.ts';
 
 function wavSilence(durationSeconds: number, sampleRate = 16_000) {
   const samples = Math.round(durationSeconds * sampleRate);
@@ -42,13 +43,16 @@ function wavSilence(durationSeconds: number, sampleRate = 16_000) {
   return buffer;
 }
 
-function sceneSource(beatId: string) {
+function sceneSource(
+  beatId: string,
+  keySource = '{String(0)}',
+) {
   return `import {makeScene2D, Rect} from '@motion-canvas/2d';
 import {createRef, useDuration, waitUntil} from '@motion-canvas/core';
 
 export default makeScene2D(function* (view) {
   const card = createRef<Rect>();
-  view.add(<Rect key={String(0)} ref={card} width={120} height={120} fill={'#dbe9e2'} />);
+  view.add(<Rect key=${keySource} ref={card} width={120} height={120} fill={'#dbe9e2'} />);
   yield* waitUntil('beat:${beatId}:start');
   const beatDuration = useDuration('beat:${beatId}:end');
   yield* card().width(720, beatDuration);
@@ -101,7 +105,14 @@ test('Animation sync tạo track WAV và time-event theo voice thật', async (c
       scene.filePath,
     );
     await mkdir(path.dirname(destination), {recursive: true});
-    await writeFile(destination, sceneSource(beatIds[index]!), 'utf8');
+    await writeFile(
+      destination,
+      sceneSource(
+        beatIds[index]!,
+        index === 1 ? '"semantic-layout-card"' : undefined,
+      ),
+      'utf8',
+    );
   }
 
   let voiceOffset = 0;
@@ -255,6 +266,12 @@ test('Animation sync tạo track WAV và time-event theo voice thật', async (c
   );
   assert.match(firstSceneSource, /padSyncWaitFor\(Math\.max\(0,/);
   assert.match(firstSceneSource, /key=\{\('pad-sync-1-'/);
+  const secondSceneSource = await readFile(
+    path.join(workspaceDirectory, scenes[1]!.filePath),
+    'utf8',
+  );
+  assert.match(secondSceneSource, /key="semantic-layout-card"/);
+  assert.doesNotMatch(secondSceneSource, /pad-sync-\d+-semantic-layout-card/);
   const firstSceneMeta = JSON.parse(
     await readFile(
       path.join(
@@ -299,6 +316,11 @@ test('Animation sync tạo track WAV và time-event theo voice thật', async (c
     }).success,
     false,
   );
+  const immutableSourceHash = await animationSyncWorkspaceSourceHash(
+    workspaceDirectory,
+    syncBundle,
+  );
+  assert.equal(immutableSourceHash, syncBundle.validation.sourceHash);
 
   const previewService = createAnimationSyncPreviewService(
     projectsDirectory,
@@ -324,6 +346,14 @@ test('Animation sync tạo track WAV và time-event theo voice thật', async (c
   } finally {
     await previewService.close();
   }
+  assert.equal(
+    await animationSyncWorkspaceSourceHash(
+      workspaceDirectory,
+      syncBundle,
+    ),
+    immutableSourceHash,
+    'Sync preview không được thay đổi generation nguồn đã khóa.',
+  );
 
   const files = await workspace.readFiles(projectId, syncBundle);
   assert.deepEqual(

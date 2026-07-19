@@ -1,9 +1,12 @@
 import {z} from 'zod';
 import {DEFAULT_NARRATION_CALIBRATION} from './narrationTiming.ts';
+import {LayoutBundleSchema} from './layout.ts';
+
+export * from './layout.ts';
 
 export const audienceValues = ['beginner', 'familiar'] as const;
 export const durationValues = ['concise', 'standard', 'deep'] as const;
-export const projectStepValues = [
+const projectStepV8Values = [
   'topic',
   'outline',
   'voiceVisual',
@@ -11,15 +14,17 @@ export const projectStepValues = [
   'voice',
   'sync',
 ] as const;
+export const projectStepValues = [...projectStepV8Values, 'layout'] as const;
 export const projectStatusValues = ['draft'] as const;
 export const outlineStatusValues = ['draft', 'approved'] as const;
 export const voiceVisualStatusValues = ['draft', 'approved'] as const;
 export const motionCanvasStatusValues = ['draft', 'approved'] as const;
 export const voiceStatusValues = ['draft', 'approved'] as const;
 export const animationSyncStatusValues = ['draft', 'approved'] as const;
-export const currentProjectVersion = 8 as const;
+export const currentProjectVersion = 9 as const;
 
 export const ProjectStepSchema = z.enum(projectStepValues);
+const ProjectStepV8Schema = z.enum(projectStepV8Values);
 export type ProjectStep = z.infer<typeof ProjectStepSchema>;
 export const ProjectStatusSchema = z.enum(projectStatusValues);
 export const CreationIdSchema = z.string().uuid();
@@ -617,6 +622,8 @@ export const AnimationSyncBundleSchema = z
   .strict()
   .refine(
     (value) =>
+      value.workspacePath ===
+        `sync/generations/${value.generation.generationId}` &&
       Math.abs(
         value.totalDurationSeconds -
           value.sections.reduce(
@@ -641,7 +648,7 @@ const topicProjectV1Schema = z
     id: z.string(),
     version: z.literal(1),
     status: ProjectStatusSchema,
-    currentStep: ProjectStepSchema,
+    currentStep: ProjectStepV8Schema,
     topicInput: TopicInputSchema,
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
@@ -655,7 +662,7 @@ const topicProjectV2Schema = z
     revision: z.number().int().positive(),
     creationId: CreationIdSchema.nullable(),
     status: ProjectStatusSchema,
-    currentStep: ProjectStepSchema,
+    currentStep: ProjectStepV8Schema,
     topicInput: TopicInputSchema,
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
@@ -721,21 +728,33 @@ const topicProjectV7Schema = topicProjectV6Schema
   .omit({version: true, currentStep: true})
   .extend({
     version: z.literal(7),
-    currentStep: ProjectStepSchema,
+    currentStep: ProjectStepV8Schema,
     animationSyncBundle: AnimationSyncBundleSchema.nullable(),
   })
   .strict();
 
-export const TopicProjectSchema = topicProjectV7Schema
+const topicProjectV8Schema = topicProjectV7Schema
   .omit({
     version: true,
     voiceBundle: true,
     animationSyncBundle: true,
   })
   .extend({
-    version: z.literal(currentProjectVersion),
+    version: z.literal(8),
     voiceBundle: VoiceBundleSchema.nullable(),
     animationSyncBundle: AnimationSyncBundleSchema.nullable(),
+  })
+  .strict();
+
+export const TopicProjectSchema = topicProjectV8Schema
+  .omit({
+    version: true,
+    currentStep: true,
+  })
+  .extend({
+    version: z.literal(currentProjectVersion),
+    currentStep: ProjectStepSchema,
+    layoutBundle: LayoutBundleSchema.nullable(),
   })
   .strict();
 
@@ -744,6 +763,15 @@ export type TopicProject = z.infer<typeof TopicProjectSchema>;
 export function parseTopicProject(value: unknown): TopicProject {
   const currentProject = TopicProjectSchema.safeParse(value);
   if (currentProject.success) return currentProject.data;
+
+  const versionEightProject = topicProjectV8Schema.safeParse(value);
+  if (versionEightProject.success) {
+    return {
+      ...versionEightProject.data,
+      version: currentProjectVersion,
+      layoutBundle: null,
+    };
+  }
 
   const versionSevenProject = topicProjectV7Schema.safeParse(value);
   if (versionSevenProject.success) {
@@ -756,6 +784,7 @@ export function parseTopicProject(value: unknown): TopicProject {
           : versionSevenProject.data.currentStep,
       voiceBundle: null,
       animationSyncBundle: null,
+      layoutBundle: null,
     };
   }
 
@@ -766,6 +795,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       version: currentProjectVersion,
       voiceBundle: null,
       animationSyncBundle: null,
+      layoutBundle: null,
     };
   }
 
@@ -776,6 +806,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       version: currentProjectVersion,
       voiceBundle: null,
       animationSyncBundle: null,
+      layoutBundle: null,
     };
   }
 
@@ -787,6 +818,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       motionCanvasBundle: null,
       voiceBundle: null,
       animationSyncBundle: null,
+      layoutBundle: null,
     };
   }
 
@@ -799,6 +831,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       motionCanvasBundle: null,
       voiceBundle: null,
       animationSyncBundle: null,
+      layoutBundle: null,
     };
   }
 
@@ -812,6 +845,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       motionCanvasBundle: null,
       voiceBundle: null,
       animationSyncBundle: null,
+      layoutBundle: null,
     };
   }
 
@@ -827,6 +861,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       motionCanvasBundle: null,
       voiceBundle: null,
       animationSyncBundle: null,
+      layoutBundle: null,
     };
   }
 

@@ -132,3 +132,94 @@ export function ArrowLeftIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function UndoIcon(props: IconProps) {
+  return (
+    <svg {...iconDefaults} {...props}>
+      <path d="M9 7 4.5 11 9 15" />
+      <path d="M5 11h7.5a6 6 0 0 1 6 6" />
+    </svg>
+  );
+}
+
+export function RedoIcon(props: IconProps) {
+  return (
+    <svg {...iconDefaults} {...props}>
+      <path d="m15 7 4.5 4-4.5 4" />
+      <path d="M19 11h-7.5a6 6 0 0 0-6 6" />
+    </svg>
+  );
+}
+
+export function EyeIcon(props: IconProps) {
+  return (
+    <svg {...iconDefaults} {...props}>
+      <path d="M3.5 12s3-5 8.5-5 8.5 5 8.5 5-3 5-8.5 5-8.5-5-8.5-5Z" />
+      <circle cx="12" cy="12" r="2.2" />
+    </svg>
+  );
+}
+
+export function EyeOffIcon(props: IconProps) {
+  return (
+    <svg {...iconDefaults} {...props}>
+      <path d="m4 4 16 16" />
+      <path d="M9.4 7.5A8.8 8.8 0 0 1 12 7c5.5 0 8.5 5 8.5 5a12 12 0 0 1-2.1 2.7M14.7 16.6c-.8.3-1.7.4-2.7.4-5.5 0-8.5-5-8.5-5a12.6 12.6 0 0 1 2.3-2.9" />
+    </svg>
+  );
+}
+
+export function RotateIcon(props: IconProps) {
+  return (
+    <svg {...iconDefaults} {...props}>
+      <path d="M19 8V4l-2 2a8 8 0 1 0 2.1 8" />
+      <path d="M19 4h-4" />
+    </svg>
+  );
+}
+
+export function PaletteIcon(props: IconProps) {
+  return (
+    <svg {...iconDefaults} {...props}>
+      <path d="M12 3a9 9 0 0 0 0 18h1.2a2 2 0 0 0 1.7-3c-.5-.8.1-1.8 1-1.8H18a3 3 0 0 0 3-3C21 7.6 17 3 12 3Z" />
+      <circle cx="7.5" cy="11" r=".8" fill="currentColor" stroke="none" />
+      <circle cx="10" cy="7.5" r=".8" fill="currentColor" stroke="none" />
+      <circle cx="14" cy="7.2" r=".8" fill="currentColor" stroke="none" />
+      <circle cx="17" cy="10" r=".8" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function ResetIcon(props: IconProps) {
+  return (
+    <svg {...iconDefaults} {...props}>
+      <path d="M4 7v5h5" />
+      <path d="M5.5 11A7.5 7.5 0 1 1 7 17.5" />
+    </svg>
+  );
+}
+
+export function UnlockIcon(props: IconProps) {
+  return (
+    <svg {...iconDefaults} {...props}>
+      <rect x="5" y="10" width="14" height="10" rx="2" />
+      <path d="M8.5 10V7.5a3.5 3.5 0 0 1 6.8-1.2" />
+    </svg>
+  );
+}
+
+export function ChevronUpIcon(props: IconProps) {
+  return (
+    <svg {...iconDefaults} {...props}>
+      <path d="m7 14 5-5 5 5" />
+    </svg>
+  );
+}
+
+export function ChevronDownIcon(props: IconProps) {
+  return (
+    <svg {...iconDefaults} {...props}>
+      <path d="m7 10 5 5 5-5" />
+    </svg>
+  );
+}

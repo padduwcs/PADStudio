@@ -2,6 +2,7 @@ import {useEffect, useRef, useState} from 'react';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {
   ArrowLeftIcon,
+  ArrowRightIcon,
   CheckIcon,
   ClockIcon,
   LayersIcon,
@@ -11,6 +12,7 @@ import {
 import {animationSyncAudioUrl} from './api.ts';
 import {
   navigate,
+  projectLayoutPath,
   projectMotionCanvasPath,
   projectVoicePath,
 } from './router.ts';
@@ -611,16 +613,22 @@ export function AnimationSyncPage({projectId}: {projectId: string}) {
                 className="submit-button"
                 type="button"
                 disabled={
-                  approved ||
                   sync.approving ||
                   sync.generating ||
                   sync.stale ||
                   sync.conflict ||
-                  !previewReady ||
-                  !previewPlayed ||
-                  Boolean(playerError)
+                  (!approved &&
+                    (!previewReady ||
+                      !previewPlayed ||
+                      Boolean(playerError)))
                 }
-                onClick={() => void sync.approve()}
+                onClick={() => {
+                  if (approved) {
+                    navigate(projectLayoutPath(project.id));
+                  } else {
+                    void sync.approve();
+                  }
+                }}
               >
                 {sync.approving ? (
                   <>
@@ -629,8 +637,8 @@ export function AnimationSyncPage({projectId}: {projectId: string}) {
                   </>
                 ) : approved ? (
                   <>
-                    <CheckIcon />
-                    Đã chốt đồng bộ
+                    Mở Layout Editor
+                    <ArrowRightIcon />
                   </>
                 ) : (
                   <>

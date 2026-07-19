@@ -4,6 +4,8 @@ import {createServer, type IncomingMessage, type ServerResponse} from 'node:http
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
+  ApproveLayoutSchema,
+  CommitLayoutSchema,
   CreateTopicProjectSchema,
   GenerateAnimationSyncSchema,
   GenerateMotionCanvasSchema,
@@ -15,6 +17,7 @@ import {
   VoiceVisualPlanContentSchema,
   type ApiErrorPayload,
   type AnimationSyncBundle,
+  type LayoutBundle,
   type MotionCanvasBundle,
   type TeachingOutline,
   type TopicProject,
@@ -23,7 +26,10 @@ import {
   type VoiceVisualPlanContent,
 } from '../shared/topic.ts';
 import type {ElevenLabsUsagePreset} from '../shared/elevenLabs.ts';
+import {LayoutBundleSchema} from '../shared/layout.ts';
 import {
+  layoutMatchesAnimationSync,
+  layoutPrerequisitesAreReady,
   motionCanvasMatchesOutline,
   sameValue,
   voiceVisualMatchesOutline,
@@ -39,6 +45,17 @@ import {
   createAnimationSyncPreviewService,
   type AnimationSyncPreviewService,
 } from './animationSyncPreviewService.ts';
+import {
+  createLayoutPreviewService,
+  LayoutPreviewError,
+  type LayoutPreviewService,
+} from './layoutPreviewService.ts';
+import {
+  createLayoutWorkspace,
+  LayoutWorkspaceError,
+  type LayoutWorkspace,
+  type PreparedLayoutWorkspace,
+} from './layoutWorkspace.ts';
 import {
   CodexConnectionError,
   createCodexConnectionService,
@@ -139,6 +156,8 @@ interface AppOptions {
   voiceWorkspace?: VoiceWorkspace;
   animationSyncWorkspace?: AnimationSyncWorkspace;
   animationSyncPreviewService?: AnimationSyncPreviewService;
+  layoutWorkspace?: LayoutWorkspace;
+  layoutPreviewService?: LayoutPreviewService;
   logger?: Pick<Console, 'error' | 'info'>;
 }
 
@@ -349,6 +368,53 @@ function readExpectedRevision(request: IncomingMessage) {
   return revision;
 }
 
+function requestParentOrigin(request: IncomingMessage) {
+  const declaredOriginHeader =
+    request.headers['x-pad-parent-origin'];
+  const declaredOriginValue = Array.isArray(declaredOriginHeader)
+    ? declaredOriginHeader[0]
+    : declaredOriginHeader;
+  const originHeader = request.headers.origin;
+  const originValue = Array.isArray(originHeader)
+    ? originHeader[0]
+    : originHeader;
+  const fallbackHost = request.headers.host;
+  const candidate =
+    declaredOriginValue?.trim() ||
+    originValue?.trim() ||
+    (fallbackHost ? `http://${fallbackHost}` : 'http://127.0.0.1');
+
+  try {
+    const url = new URL(candidate);
+    const hostname = url.hostname.toLowerCase();
+    const loopback =
+      hostname === 'localhost' ||
+      hostname.endsWith('.localhost') ||
+      hostname === '::1' ||
+      hostname.startsWith('127.');
+    const sameRequestHost =
+      typeof fallbackHost === 'string' &&
+      url.host.toLowerCase() === fallbackHost.toLowerCase();
+    if (
+      (url.protocol !== 'http:' && url.protocol !== 'https:') ||
+      url.username ||
+      url.password ||
+      url.origin.length > 240 ||
+      url.origin !== candidate ||
+      (!loopback && !sameRequestHost)
+    ) {
+      throw new Error('Invalid parent origin');
+    }
+    return url.origin;
+  } catch {
+    throw new RequestBodyError(
+      400,
+      'LAYOUT_PREVIEW_PARENT_ORIGIN_INVALID',
+      'Origin của Layout Editor không hợp lệ.',
+    );
+  }
+}
+
 function validationFields(
   issues: Array<{path: PropertyKey[]; message: string}>,
 ) {
@@ -475,6 +541,26 @@ function getProjectAnimationSyncRoute(pathname: string) {
       | 'approve'
       | 'files'
       | 'audio'
+      | 'preview'
+      | 'read',
+  };
+}
+
+function getProjectLayoutRoute(pathname: string) {
+  const match =
+    /^\/api\/projects\/([^/]+)\/layout(?:\/(commit|approve|files|preview))?$/.exec(
+      pathname,
+    );
+  if (!match?.[1]) return null;
+  const projectId = decodeProjectId(match[1]);
+  if (!projectId) return null;
+
+  return {
+    projectId,
+    action: (match[2] ?? 'read') as
+      | 'commit'
+      | 'approve'
+      | 'files'
       | 'preview'
       | 'read',
   };
@@ -766,6 +852,11 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const animationSyncPreviewService =
     options.animationSyncPreviewService ??
     createAnimationSyncPreviewService(projectsDirectory);
+  const layoutWorkspace =
+    options.layoutWorkspace ?? createLayoutWorkspace(projectsDirectory);
+  const layoutPreviewService =
+    options.layoutPreviewService ??
+    createLayoutPreviewService(projectsDirectory);
   const logger = options.logger ?? console;
   type GenerationCacheEntry<Result> = {
     fingerprint: string;
@@ -800,6 +891,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const animationSyncGenerations = new Map<
     string,
     GenerationCacheEntry<PreparedAnimationSyncWorkspace>
+  >();
+  const layoutGenerations = new Map<
+    string,
+    GenerationCacheEntry<PreparedLayoutWorkspace>
   >();
 
   function generateOnce<Result>(
@@ -2351,7 +2446,422 @@ export function createPadStudioServer(options: AppOptions = {}) {
           currentProject.id,
           {
             animationSyncBundle: {...bundle, status: 'approved'},
-            currentStep: 'sync',
+            currentStep: 'layout',
+          },
+          expectedRevision,
+        );
+        if (!updatedProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        sendProject(response, 200, updatedProject);
+        return;
+      }
+
+      const layoutRoute = getProjectLayoutRoute(requestUrl.pathname);
+
+      if (
+        layoutRoute?.action === 'read' &&
+        request.method === 'GET'
+      ) {
+        const currentProject = await repository.getProject(
+          layoutRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        const sync = currentProject.animationSyncBundle;
+        if (!sync || !layoutPrerequisitesAreReady(currentProject)) {
+          throw new RequestBodyError(
+            409,
+            'LAYOUT_PREREQUISITES_NOT_APPROVED',
+            'Hãy chốt bản đồng bộ hiện hành trước khi mở Layout Editor.',
+          );
+        }
+
+        const bundle = currentProject.layoutBundle;
+        const bundleIsCurrent = Boolean(
+          bundle && layoutMatchesAnimationSync(bundle, sync),
+        );
+        const overrides =
+          bundle && bundleIsCurrent
+            ? await layoutWorkspace.readOverrides(
+                currentProject.id,
+                bundle,
+              )
+            : {
+                version: 1 as const,
+                sourceAnimationSyncGenerationId:
+                  sync.generation.generationId,
+                sourceAnimationSyncContentRevision:
+                  sync.contentRevision,
+                sourceAnimationSyncSourceHash:
+                  sync.validation.sourceHash,
+                overrides: [],
+              };
+        const manifest =
+          bundle && bundleIsCurrent
+            ? await layoutWorkspace.readEditorManifest(
+                currentProject.id,
+                bundle,
+              )
+            : null;
+        sendJson(response, 200, {bundle, overrides, manifest});
+        return;
+      }
+
+      if (
+        layoutRoute?.action === 'preview' &&
+        request.method === 'GET'
+      ) {
+        const currentProject = await repository.getProject(
+          layoutRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        const sync = currentProject.animationSyncBundle;
+        if (!sync || !layoutPrerequisitesAreReady(currentProject)) {
+          throw new RequestBodyError(
+            409,
+            'LAYOUT_PREREQUISITES_NOT_APPROVED',
+            'Hãy chốt bản đồng bộ hiện hành trước khi mở Layout Editor.',
+          );
+        }
+        const requestedGeneration =
+          requestUrl.searchParams.get('generation');
+        if (!requestedGeneration) {
+          throw new RequestBodyError(
+            400,
+            'LAYOUT_SOURCE_GENERATION_REQUIRED',
+            'Cần chỉ rõ generation đồng bộ nguồn của Layout Editor.',
+          );
+        }
+        if (requestedGeneration !== sync.generation.generationId) {
+          throw new RequestBodyError(
+            404,
+            'LAYOUT_SOURCE_GENERATION_NOT_FOUND',
+            'Generation đồng bộ được yêu cầu không còn là bản hiện hành.',
+          );
+        }
+        const currentLayout =
+          currentProject.layoutBundle &&
+          layoutMatchesAnimationSync(
+            currentProject.layoutBundle,
+            sync,
+          )
+            ? currentProject.layoutBundle
+            : null;
+        const preview = await layoutPreviewService.start(
+          currentProject.id,
+          sync,
+          currentLayout,
+          {parentOrigin: requestParentOrigin(request)},
+        );
+        sendJson(response, 200, {preview});
+        return;
+      }
+
+      if (
+        layoutRoute?.action === 'commit' &&
+        request.method === 'POST'
+      ) {
+        const expectedRevision = readExpectedRevision(request);
+        const body = await readJsonBody(request);
+        const parsedRequest = CommitLayoutSchema.safeParse(body);
+        if (!parsedRequest.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Danh sách chỉnh sửa Layout chưa hợp lệ.',
+            fields: validationFields(parsedRequest.error.issues),
+          });
+          return;
+        }
+        const requestData = parsedRequest.data;
+        const generationId = requestData.generationId.toLowerCase();
+        const currentProject = await repository.getProject(
+          layoutRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        const normalizedOverrides = [...requestData.overrides].sort(
+          (left, right) =>
+            left.sceneId.localeCompare(right.sceneId) ||
+            left.nodeKey.localeCompare(right.nodeKey),
+        );
+        const currentLayout = currentProject.layoutBundle;
+        if (
+          currentLayout?.generation.generationId === generationId
+        ) {
+          const stored = await layoutWorkspace.readOverrides(
+            currentProject.id,
+            currentLayout,
+          );
+          if (
+            currentLayout.sourceAnimationSyncGenerationId !==
+              requestData.sourceAnimationSyncGenerationId ||
+            !sameValue(stored.overrides, normalizedOverrides)
+          ) {
+            throw new RequestBodyError(
+              409,
+              'GENERATION_ID_REUSED',
+              'Generation ID đã được dùng với một Layout khác.',
+            );
+          }
+          sendProject(response, 200, currentProject);
+          return;
+        }
+        if (currentProject.revision !== expectedRevision) {
+          throw new ProjectConflictError(currentProject);
+        }
+        const sync = currentProject.animationSyncBundle;
+        if (!sync || !layoutPrerequisitesAreReady(currentProject)) {
+          throw new RequestBodyError(
+            409,
+            'LAYOUT_PREREQUISITES_NOT_APPROVED',
+            'Hãy chốt bản đồng bộ hiện hành trước khi lưu Layout.',
+          );
+        }
+        if (
+          requestData.sourceAnimationSyncGenerationId !==
+          sync.generation.generationId
+        ) {
+          throw new RequestBodyError(
+            409,
+            'LAYOUT_SOURCE_OUTDATED',
+            'Bản đồng bộ nguồn đã thay đổi. Hãy tải lại Layout Editor.',
+          );
+        }
+        if (
+          requestData.baseGenerationId !==
+          (currentLayout?.generation.generationId ?? null)
+        ) {
+          throw new RequestBodyError(
+            409,
+            'LAYOUT_BASE_GENERATION_CONFLICT',
+            'Layout nền đã thay đổi. Hãy tải lại trước khi lưu.',
+          );
+        }
+
+        const editorManifest = layoutPreviewService.getManifest(
+          currentProject.id,
+          requestData.sessionNonce,
+          sync.generation.generationId,
+        );
+        const sourceWorkspaceHash =
+          layoutPreviewService.getSourceWorkspaceHash(
+            currentProject.id,
+            requestData.sessionNonce,
+            sync.generation.generationId,
+          );
+        const generationKey = `${currentProject.id}:${generationId}`;
+        const fingerprint = JSON.stringify({
+          sourceAnimationSyncGenerationId:
+            sync.generation.generationId,
+          sourceAnimationSyncContentRevision: sync.contentRevision,
+          sourceAnimationSyncSourceHash: sync.validation.sourceHash,
+          sourceWorkspaceHash,
+          baseGenerationId: requestData.baseGenerationId,
+          overrides: normalizedOverrides,
+          editorManifest,
+        });
+        const generation = await generateOnce(
+          layoutGenerations,
+          generationKey,
+          fingerprint,
+          () =>
+            layoutWorkspace.prepare(
+              currentProject.id,
+              generationId,
+              sync,
+              normalizedOverrides,
+              editorManifest,
+              requestData.baseGenerationId,
+              sourceWorkspaceHash,
+            ),
+        );
+        const prepared = generation.result;
+        const layoutBundleValue: LayoutBundle = {
+          status: 'draft',
+          contentRevision:
+            (currentLayout?.contentRevision ?? 0) + 1,
+          sourceAnimationSyncContentRevision: sync.contentRevision,
+          sourceAnimationSyncGenerationId:
+            sync.generation.generationId,
+          sourceAnimationSyncSourceHash: sync.validation.sourceHash,
+          workspacePath: prepared.workspacePath,
+          sourceWorkspacePath: prepared.sourceWorkspacePath,
+          projectFile: prepared.projectFile,
+          audioFile: prepared.audioFile,
+          overridesFile: prepared.overridesFile,
+          manifestFile: prepared.manifestFile,
+          overrideContractVersion:
+            prepared.overrideContractVersion,
+          totalDurationSeconds: prepared.totalDurationSeconds,
+          scenes: prepared.scenes,
+          validation: prepared.validation,
+          generation: {
+            generationId,
+            provider: 'local',
+            tool: 'layout-editor',
+            generatedAt: prepared.validation.validatedAt,
+          },
+        };
+        const parsedLayoutBundle =
+          LayoutBundleSchema.safeParse(layoutBundleValue);
+        if (!parsedLayoutBundle.success) {
+          throw new LayoutWorkspaceError(
+            'LAYOUT_WORKSPACE_INTEGRITY_FAILED',
+            'Layout workspace đã chuẩn bị không tạo được bundle hợp lệ.',
+            {cause: parsedLayoutBundle.error},
+          );
+        }
+        const layoutBundle = parsedLayoutBundle.data;
+        await layoutWorkspace.verify(
+          currentProject.id,
+          sync,
+          layoutBundle,
+        );
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {layoutBundle, currentStep: 'layout'},
+          expectedRevision,
+        );
+        if (!updatedProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        sendProject(response, 200, updatedProject);
+        return;
+      }
+
+      if (
+        layoutRoute?.action === 'files' &&
+        request.method === 'GET'
+      ) {
+        const currentProject = await repository.getProject(
+          layoutRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        if (!currentProject.layoutBundle) {
+          throw new RequestBodyError(
+            409,
+            'LAYOUT_NOT_READY',
+            'Project chưa có Layout workspace.',
+          );
+        }
+        const files = await layoutWorkspace.readFiles(
+          currentProject.id,
+          currentProject.layoutBundle,
+        );
+        sendJson(response, 200, {
+          bundle: currentProject.layoutBundle,
+          files,
+        });
+        return;
+      }
+
+      if (
+        layoutRoute?.action === 'approve' &&
+        request.method === 'POST'
+      ) {
+        const expectedRevision = readExpectedRevision(request);
+        const body = await readJsonBody(request);
+        const parsedRequest = ApproveLayoutSchema.safeParse(body);
+        if (!parsedRequest.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Yêu cầu chốt Layout chưa hợp lệ.',
+            fields: validationFields(parsedRequest.error.issues),
+          });
+          return;
+        }
+        const currentProject = await repository.getProject(
+          layoutRoute.projectId,
+        );
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        const requestedGenerationId =
+          parsedRequest.data.generationId.toLowerCase();
+        const sync = currentProject.animationSyncBundle;
+        const bundle = currentProject.layoutBundle;
+        const alreadyApproved =
+          currentProject.revision > expectedRevision &&
+          currentProject.currentStep === 'layout' &&
+          bundle?.status === 'approved' &&
+          bundle.generation.generationId === requestedGenerationId;
+        if (
+          currentProject.revision !== expectedRevision &&
+          !alreadyApproved
+        ) {
+          throw new ProjectConflictError(currentProject);
+        }
+        if (
+          !sync ||
+          !bundle ||
+          !layoutPrerequisitesAreReady(currentProject) ||
+          !layoutMatchesAnimationSync(bundle, sync)
+        ) {
+          throw new RequestBodyError(
+            409,
+            'LAYOUT_OUTDATED',
+            'Layout chưa có hoặc không còn khớp bản đồng bộ hiện hành.',
+          );
+        }
+        if (
+          requestedGenerationId !==
+          bundle.generation.generationId
+        ) {
+          throw new RequestBodyError(
+            409,
+            'LAYOUT_GENERATION_OUTDATED',
+            'Layout generation cần chốt không còn là bản hiện hành.',
+          );
+        }
+        await layoutWorkspace.verify(
+          currentProject.id,
+          sync,
+          bundle,
+        );
+        if (alreadyApproved) {
+          sendProject(response, 200, currentProject);
+          return;
+        }
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {
+            layoutBundle: {...bundle, status: 'approved'},
+            currentStep: 'layout',
           },
           expectedRevision,
         );
@@ -2578,6 +3088,67 @@ export function createPadStudioServer(options: AppOptions = {}) {
         return;
       }
 
+      if (error instanceof LayoutWorkspaceError) {
+        const conflictCodes = new Set([
+          'LAYOUT_WORKSPACE_CONFLICT',
+          'LAYOUT_SOURCE_NOT_APPROVED',
+          'LAYOUT_SOURCE_MANIFEST_MISMATCH',
+          'LAYOUT_MANIFEST_SOURCE_MISMATCH',
+          'LAYOUT_OVERRIDE_TARGET_MISMATCH',
+          'LAYOUT_OVERRIDE_PROPERTY_LOCKED',
+        ]);
+        const validationCodes = new Set([
+          'LAYOUT_WORKSPACE_INVALID',
+          'LAYOUT_SOURCE_INVALID',
+          'LAYOUT_MANIFEST_INVALID',
+          'LAYOUT_OVERRIDES_INVALID',
+        ]);
+        sendApiError(
+          response,
+          conflictCodes.has(error.code)
+            ? 409
+            : validationCodes.has(error.code)
+              ? 422
+              : 500,
+          {
+            code: error.code,
+            message: error.message,
+          },
+        );
+        return;
+      }
+
+      if (error instanceof LayoutPreviewError) {
+        const conflictCodes = new Set([
+          'LAYOUT_PREVIEW_SOURCE_NOT_APPROVED',
+          'LAYOUT_PREVIEW_SOURCE_MISMATCH',
+          'LAYOUT_PREVIEW_LAYOUT_STALE',
+          'LAYOUT_PREVIEW_SESSION_MISMATCH',
+          'LAYOUT_PREVIEW_MANIFEST_UNAVAILABLE',
+          'LAYOUT_PREVIEW_MANIFEST_CHANGED',
+          'LAYOUT_PREVIEW_MANIFEST_SOURCE_MISMATCH',
+        ]);
+        const validationCodes = new Set([
+          'LAYOUT_PREVIEW_INVALID',
+          'LAYOUT_PREVIEW_PARENT_ORIGIN_INVALID',
+          'LAYOUT_PREVIEW_MANIFEST_INVALID',
+          'LAYOUT_PREVIEW_MANIFEST_TOO_LARGE',
+        ]);
+        sendApiError(
+          response,
+          conflictCodes.has(error.code)
+            ? 409
+            : validationCodes.has(error.code)
+              ? 422
+              : 503,
+          {
+            code: error.code,
+            message: error.message,
+          },
+        );
+        return;
+      }
+
       logger.error(error);
       sendApiError(response, 500, {
         code: 'INTERNAL_ERROR',
@@ -2589,6 +3160,9 @@ export function createPadStudioServer(options: AppOptions = {}) {
   server.on('close', () => {
     codexConnection.close();
     void animationSyncPreviewService.close().catch((error) => {
+      logger.error(error);
+    });
+    void layoutPreviewService.close().catch((error) => {
       logger.error(error);
     });
     if (options.codexConnection && sharedCodexClient) {

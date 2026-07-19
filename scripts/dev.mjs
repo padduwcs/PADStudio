@@ -55,11 +55,19 @@ const childEnvironment = {
   PAD_BACKEND_URL: backendUrl,
 };
 const children = [
-  spawn(process.execPath, ['--watch', 'src/backend/server.ts'], {
-    cwd: projectDirectory,
-    env: childEnvironment,
-    stdio: 'inherit',
-  }),
+  spawn(
+    process.execPath,
+    [
+      '--watch-path=src/backend',
+      '--watch-path=src/shared',
+      'src/backend/server.ts',
+    ],
+    {
+      cwd: projectDirectory,
+      env: childEnvironment,
+      stdio: 'inherit',
+    },
+  ),
   spawn(process.execPath, ['node_modules/vite/bin/vite.js'], {
     cwd: projectDirectory,
     env: childEnvironment,
