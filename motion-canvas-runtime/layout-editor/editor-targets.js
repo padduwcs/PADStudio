@@ -1,7 +1,17 @@
 const GENERATED_NODE_KEY = /\/[A-Za-z][A-Za-z0-9]*\[\d+\]$/;
+const INTERNAL_TEXT_LEAF_KEY = /\/TxtLeaf\[\d+\]$/;
 
 export function isGeneratedEditorNodeKey(key) {
   return GENERATED_NODE_KEY.test(String(key ?? ''));
+}
+
+export function isInternalEditorNode(node) {
+  if (!node) return false;
+  return (
+    node.nodeType === 'TxtLeaf' ||
+    node.constructor?.name === 'TxtLeaf' ||
+    INTERNAL_TEXT_LEAF_KEY.test(String(node.key ?? ''))
+  );
 }
 
 export function resolveLiveEditorNodeTarget(requested) {
@@ -10,7 +20,7 @@ export function resolveLiveEditorNodeTarget(requested) {
   const visited = new Set();
   while (
     current &&
-    isGeneratedEditorNodeKey(current.key) &&
+    isInternalEditorNode(current) &&
     !visited.has(current.key)
   ) {
     visited.add(current.key);
@@ -29,7 +39,7 @@ export function resolveCanonicalEditorNodeKey(nodes, nodeKey) {
   const visited = new Set();
   while (
     current &&
-    isGeneratedEditorNodeKey(current.key) &&
+    isInternalEditorNode(current) &&
     current.parentKey &&
     !visited.has(current.key)
   ) {
@@ -38,9 +48,7 @@ export function resolveCanonicalEditorNodeKey(nodes, nodeKey) {
     if (!parent) break;
     current = parent;
   }
-  return current && !isGeneratedEditorNodeKey(current.key)
-    ? current.key
-    : nodeKey;
+  return current && !isInternalEditorNode(current) ? current.key : nodeKey;
 }
 
 export function canonicalizeEditorNodes(nodes) {

@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   canonicalizeEditorNodes,
   isGeneratedEditorNodeKey,
+  isInternalEditorNode,
   mergeEditorNodePolicy,
   migrateInternalNodeOverrides,
   resolveCanonicalEditorNodeKey,
@@ -46,6 +47,47 @@ test('canvas hit-test đưa node runtime nội bộ về semantic parent', () =>
   const internalNode = {key: leaf.key, parent: () => semanticNode};
   assert.equal(resolveLiveEditorNodeTarget(internalNode), semanticNode);
   assert.equal(resolveLiveEditorNodeTarget(semanticNode), semanticNode);
+});
+
+test('canvas hit-test dừng ở Txt legacy thay vì leo lên container', () => {
+  const container = {
+    key: 'scene/Rect[1]',
+    constructor: {name: 'Rect'},
+    parent: () => null,
+  };
+  const legacyText = {
+    key: 'scene/Txt[1]',
+    constructor: {name: 'Txt'},
+    parent: () => container,
+  };
+  const internalLeaf = {
+    key: 'scene/TxtLeaf[1]',
+    constructor: {name: 'TxtLeaf'},
+    parent: () => legacyText,
+  };
+
+  assert.equal(isGeneratedEditorNodeKey(legacyText.key), true);
+  assert.equal(isInternalEditorNode(legacyText), false);
+  assert.equal(isInternalEditorNode(internalLeaf), true);
+  assert.equal(resolveLiveEditorNodeTarget(internalLeaf), legacyText);
+});
+
+test('manifest gộp TxtLeaf vào Txt legacy có thể chỉnh', () => {
+  const legacyText = {
+    ...text,
+    key: 'scene/Txt[1]',
+    nodeType: 'Txt',
+    parentKey: 'scene/Rect[1]',
+    identity: 'legacy',
+  };
+  const internalLeaf = {
+    ...leaf,
+    parentKey: legacyText.key,
+  };
+  const canonical = canonicalizeEditorNodes([internalLeaf, legacyText]);
+
+  assert.deepEqual(canonical.nodes, [legacyText]);
+  assert.equal(canonical.aliases.get(internalLeaf.key), legacyText.key);
 });
 
 test('canonical target giữ legacy node khi không có semantic ancestor', () => {

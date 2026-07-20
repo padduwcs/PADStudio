@@ -49,6 +49,27 @@
   gap: 20px;
 }
 
+/* The visual workbench needs the full page width.  Its siblings still keep
+   the compact summary/sidebar layout used by the rest of this step. */
+.motion-canvas-editor-grid .motion-canvas-main {
+  display: contents;
+}
+
+.motion-canvas-editor-grid .motion-canvas-summary,
+.motion-canvas-editor-grid .motion-canvas-scenes,
+.motion-canvas-editor-grid .outline-ai-revision {
+  grid-column: 1;
+}
+
+.motion-canvas-editor-grid .motion-design-workbench {
+  grid-column: 1 / -1;
+}
+
+.motion-canvas-editor-grid .motion-canvas-side {
+  grid-column: 2;
+  grid-row: 3 / span 2;
+}
+
 .motion-canvas-summary,
 .motion-canvas-scene,
 .motion-design-card {
@@ -60,6 +81,28 @@
 
 .motion-design-card {
   overflow: hidden;
+}
+
+.motion-design-workbench {
+  overflow: visible;
+}
+
+.motion-design-workbench > header {
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 18px 18px 0 0;
+}
+
+.motion-design-workbench .motion-design-shell {
+  border-radius: 0 0 22px 22px;
+}
+
+.motion-design-workbench .motion-design-frame {
+  min-height: 0;
+}
+
+.motion-design-scene-list .layout-scene-rail {
+  padding-inline: 1px;
 }
 
 .motion-design-card > header {
@@ -417,6 +460,15 @@
 
   .motion-canvas-side .outline-side-card {
     position: static;
+  }
+
+  .motion-canvas-editor-grid .motion-canvas-summary,
+  .motion-canvas-editor-grid .motion-canvas-scenes,
+  .motion-canvas-editor-grid .outline-ai-revision,
+  .motion-canvas-editor-grid .motion-design-workbench,
+  .motion-canvas-editor-grid .motion-canvas-side {
+    grid-column: 1;
+    grid-row: auto;
   }
 }
 

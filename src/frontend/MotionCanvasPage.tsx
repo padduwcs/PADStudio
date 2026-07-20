@@ -571,6 +571,7 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                   motionCanvas.approving ||
                   motionCanvas.generating ||
                   motionCanvas.designSaveState === 'saving' ||
+                  motionCanvas.designSaveState === 'error' ||
                   motionCanvas.stale ||
                   motionCanvas.conflict
                 }
