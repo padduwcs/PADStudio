@@ -52,6 +52,7 @@ class FakeCodexClient implements CodexAppServerClient {
   private threadCount = 0;
   private turnCount = 0;
   private readonly failFirstTurn: boolean;
+  private readonly invalidFirstTurn: boolean;
   private readonly models: Array<Record<string, unknown>>;
 
   constructor(
@@ -79,9 +80,11 @@ class FakeCodexClient implements CodexAppServerClient {
         defaultReasoningEffort: 'medium',
       },
     ],
+    invalidFirstTurn = false,
   ) {
     this.failFirstTurn = failFirstTurn;
     this.models = models;
+    this.invalidFirstTurn = invalidFirstTurn;
   }
 
   async request(method: string, params?: unknown) {
@@ -129,7 +132,13 @@ class FakeCodexClient implements CodexAppServerClient {
                 phase: 'final_answer',
                 text: JSON.stringify({
                   name: `Scene ${turnNumber}`,
-                  source: timedSceneSource(beatIds),
+                  source:
+                    this.invalidFirstTurn && turnNumber === 1
+                      ? timedSceneSource(beatIds).replace(
+                          'view.add(<Rect',
+                          'view.add(<Rect broken={',
+                        )
+                      : timedSceneSource(beatIds),
                 }),
               },
             },
@@ -374,6 +383,55 @@ test('Motion Canvas generator ánh xạ scene theo đúng voice–visual', async
   );
 });
 
+test('Motion Canvas generator tự sửa source TSX lỗi trước khi trả generation', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-source-repair-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const client = new FakeCodexClient(false, undefined, true);
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+  });
+
+  const result = await generator.generate(createGenerationRequest());
+
+  assert.equal(result.scenes.length, 2);
+  assert.ok(result.scenes.every((scene) => scene.source.includes('makeScene2D')));
+  assert.equal(
+    client.calls.filter((call) => call.method === 'turn/start').length,
+    3,
+  );
+});
+
+test('Motion Canvas generator có fallback cục bộ sau khi compiler repair vẫn thất bại', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-motion-fallback-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const generator = createCodexMotionCanvasGenerator(
+    new FakeCodexClient(),
+    {runtimeDirectory},
+  );
+  const request = createGenerationRequest();
+  const generated = await generator.generate(request);
+  assert.ok(generator.recover);
+
+  const recovered = generator.recover(
+    request,
+    generated,
+    `${generated.scenes[0]!.filePath}(12,3): error TS9999`,
+  );
+  assert.match(recovered.model, /local-safe-fallback/);
+  assert.match(recovered.scenes[0]!.source, /safe fallback|concept-card/i);
+  validateMotionCanvasSceneSource(recovered.scenes[0]!.source);
+  validateMotionCanvasTimingContract(
+    recovered.scenes[0]!.source,
+    request.voiceVisualPlan.sections[0]!.beats,
+  );
+  assert.equal(recovered.scenes[1]!.source, generated.scenes[1]!.source);
+});
+
 test('Motion Canvas generator theo capability của model thay vì tên model', async (context) => {
   const runtimeDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-studio-motion-model-policy-'),
@@ -419,7 +477,7 @@ test('Motion Canvas generator theo capability của model thay vì tên model', 
   );
 });
 
-test('Motion Canvas generator không gửi effort ngoài capability model', async (context) => {
+test('Motion Canvas generator từ chối effort ngoài capability model', async (context) => {
   const runtimeDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-studio-motion-effort-policy-'),
   );
@@ -441,15 +499,15 @@ test('Motion Canvas generator không gửi effort ngoài capability model', asyn
     reasoningEffort: 'high',
   });
 
-  await generator.generate(createGenerationRequest());
-
-  assert.ok(
-    client.calls
-      .filter((call) => call.method === 'turn/start')
-      .every(
-        (call) =>
-          (call.params as {effort?: string}).effort === 'low',
-      ),
+  await assert.rejects(
+    generator.generate(createGenerationRequest()),
+    (error) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_REASONING_UNSUPPORTED',
+  );
+  assert.equal(
+    client.calls.filter((call) => call.method === 'turn/start').length,
+    0,
   );
 });
 

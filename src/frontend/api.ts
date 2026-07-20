@@ -1,10 +1,12 @@
 import type {
   CodexConnectionStatus,
   CodexLoginStart,
+  CodexModelSummary,
 } from '../shared/codex.ts';
 import type {
   ElevenLabsCatalog,
   ElevenLabsConnectionStatus,
+  ElevenLabsCredentialStatus,
   ElevenLabsSharedVoiceSearch,
 } from '../shared/elevenLabs.ts';
 import type {
@@ -26,10 +28,12 @@ import type {
 import type {
   FinalRenderJobStatus,
   GenerateFinalRender,
+  WatermarkAssetSummary,
 } from '../shared/render.ts';
 import type {
   ApproveLayout,
   CommitLayout,
+  CommitVisualDesign,
   LayoutBundle,
   LayoutEditorManifest,
   LayoutOverridesDocument,
@@ -305,6 +309,62 @@ export async function getMotionCanvasFiles(projectId: string) {
     );
   }
   return payload;
+}
+
+export async function getMotionCanvasPreview(
+  projectId: string,
+  generationId: string,
+) {
+  const parentOrigin =
+    typeof window === 'undefined' ? '' : window.location.origin;
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/preview?generation=${encodeURIComponent(generationId)}`,
+    parentOrigin
+      ? {headers: {'X-Pad-Parent-Origin': parentOrigin}}
+      : undefined,
+  );
+  const payload = await readPayload<{
+    preview: {
+      generationId: string;
+      sourceMotionCanvasGenerationId: string;
+      sessionNonce: string;
+      url: string;
+    };
+  }>(response);
+  assertSuccessful(response, payload);
+  if (
+    !payload ||
+    !('preview' in payload) ||
+    typeof payload.preview.url !== 'string' ||
+    typeof payload.preview.sessionNonce !== 'string'
+  ) {
+    throw new ApiRequestError(
+      'Phản hồi preview Motion Canvas không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.preview;
+}
+
+export async function commitVisualDesign(
+  projectId: string,
+  request: CommitVisualDesign,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/design`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
 }
 
 export async function approveMotionCanvas(
@@ -625,6 +685,41 @@ export async function generateFinalRender(
   return getProjectPayload(payload);
 }
 
+export async function uploadWatermarkImage(projectId: string, file: File) {
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), 30_000);
+  try {
+    const response = await fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/render/watermark`,
+      {
+        method: 'POST',
+        headers: {'Content-Type': file.type || 'application/octet-stream'},
+        body: file,
+        signal: controller.signal,
+      },
+    );
+    const payload = await readPayload<{asset: WatermarkAssetSummary}>(response);
+    assertSuccessful(response, payload);
+    if (!payload || !('asset' in payload)) {
+      throw new ApiRequestError(
+        'Phản hồi tải ảnh watermark không hợp lệ.',
+        'INVALID_RESPONSE',
+      );
+    }
+    return payload.asset;
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new ApiRequestError(
+        'Tải ảnh watermark quá 30 giây nên đã được dừng an toàn. Hãy thử lại.',
+        'REQUEST_TIMEOUT',
+      );
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeout);
+  }
+}
+
 export async function getFinalRenderStatus(
   projectId: string,
   generationId?: string,
@@ -708,6 +803,46 @@ export async function startCodexLogin() {
   return payload.login;
 }
 
+export async function loginCodexWithApiKey(apiKey: string) {
+  const response = await fetch('/api/integrations/codex/api-key', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({apiKey}),
+  });
+  const payload = await readPayload<{status: CodexConnectionStatus}>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('status' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi đăng nhập Codex bằng API key không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.status;
+}
+
+export async function logoutCodex() {
+  const response = await fetch('/api/integrations/codex/logout', {
+    method: 'POST',
+  });
+  const payload = await readPayload<{status: string}>(response);
+  assertSuccessful(response, payload);
+}
+
+export async function getCodexModels() {
+  const response = await fetch('/api/integrations/codex/models', {
+    cache: 'no-store',
+  });
+  const payload = await readPayload<{models: CodexModelSummary[]}>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('models' in payload) || !Array.isArray(payload.models)) {
+    throw new ApiRequestError(
+      'Phản hồi danh sách model Codex không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.models;
+}
+
 export async function verifyElevenLabsConnection() {
   const response = await fetch('/api/integrations/elevenlabs/status');
   const payload = await readPayload<{
@@ -723,4 +858,58 @@ export async function verifyElevenLabsConnection() {
   }
 
   return payload.status;
+}
+
+export async function getElevenLabsCredentialStatus() {
+  const response = await fetch('/api/integrations/elevenlabs/credential', {
+    cache: 'no-store',
+  });
+  const payload = await readPayload<{
+    credential: ElevenLabsCredentialStatus;
+  }>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('credential' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi cấu hình ElevenLabs không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.credential;
+}
+
+export async function saveElevenLabsApiKey(apiKey: string) {
+  const response = await fetch('/api/integrations/elevenlabs/credential', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({apiKey}),
+  });
+  const payload = await readPayload<{
+    status: ElevenLabsConnectionStatus;
+    credential: ElevenLabsCredentialStatus;
+  }>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('status' in payload) || !('credential' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi lưu ElevenLabs API key không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload;
+}
+
+export async function removeElevenLabsApiKey() {
+  const response = await fetch('/api/integrations/elevenlabs/credential', {
+    method: 'DELETE',
+  });
+  const payload = await readPayload<{
+    credential: ElevenLabsCredentialStatus;
+  }>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('credential' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi xóa ElevenLabs API key không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.credential;
 }

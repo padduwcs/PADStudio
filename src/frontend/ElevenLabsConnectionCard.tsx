@@ -1,3 +1,4 @@
+import {useState} from 'react';
 import type {useElevenLabsConnection} from './useElevenLabsConnection.ts';
 import {CheckIcon, LockIcon, SparkIcon} from './icons.tsx';
 
@@ -26,9 +27,26 @@ export function ElevenLabsConnectionCard({
 }: {
   connection: ElevenLabsConnectionController;
 }) {
-  const {status, checking, verify} = connection;
+  const {
+    status,
+    credential,
+    error,
+    checking,
+    verify,
+    saveApiKey,
+    removeApiKey,
+  } = connection;
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [apiKey, setApiKey] = useState('');
   const connectedStatus =
     status?.state === 'connected' ? status : null;
+
+  function toggleApiKeyForm() {
+    setShowApiKey((visible) => {
+      if (visible) setApiKey('');
+      return !visible;
+    });
+  }
 
   return (
     <section
@@ -71,16 +89,26 @@ export function ElevenLabsConnectionCard({
                   )}`
                 : ''}
             </small>
+            <small>
+              {credential?.source === 'secure-store'
+                ? credential.persistence === 'os-protected'
+                  ? 'API key được mã hóa bằng tài khoản Windows hiện tại.'
+                  : 'API key chỉ được giữ trong phiên backend hiện tại.'
+                : credential?.source === 'environment'
+                  ? 'Đang dùng API key từ biến môi trường.'
+                  : ''}
+            </small>
           </>
         ) : status?.state === 'not_configured' ? (
           <>
             <strong>Chưa cấu hình ElevenLabs API key</strong>
             <p>
-              Thêm <code>ELEVENLABS_API_KEY</code> vào file <code>.env</code>{' '}
-              ở thư mục repo rồi khởi động lại PAD Studio.
+              Dán API key ngay tại đây; PAD Studio sẽ xác minh bằng subscription
+              và catalog thật trước khi lưu.
             </p>
             <small>
-              Key chỉ được đọc ở backend và không được trả về trình duyệt.
+              Key không được lưu trong project hoặc trình duyệt và không bao giờ
+              được API trả ngược lại.
             </small>
             <a href={apiKeysUrl} target="_blank" rel="noreferrer">
               Tạo API key trên ElevenLabs
@@ -94,9 +122,9 @@ export function ElevenLabsConnectionCard({
                 : 'Chưa thể kết nối ElevenLabs'}
             </strong>
             <p>
-              {status && status.state !== 'connected'
+              {error || (status && status.state !== 'connected'
                 ? status.message
-                : 'PAD Studio đang gọi subscription và model catalog thật.'}
+                : 'PAD Studio đang gọi subscription và model catalog thật.')}
             </p>
             <small>
               Key nên có quyền đọc subscription và dùng Text to Speech.
@@ -109,14 +137,72 @@ export function ElevenLabsConnectionCard({
       </div>
 
       <div className="codex-connection-actions">
+        <button type="button" disabled={checking} onClick={() => void verify()}>
+          {checking ? 'Đang kiểm tra…' : 'Kiểm tra lại'}
+        </button>
         <button
           type="button"
           disabled={checking}
-          onClick={() => void verify()}
+          onClick={toggleApiKeyForm}
         >
-          {checking ? 'Đang kiểm tra…' : 'Kiểm tra lại'}
+          {connectedStatus ? 'Thay API key' : 'Nhập API key'}
         </button>
+        {connectedStatus && credential?.source === 'secure-store' && (
+          <button
+            type="button"
+            disabled={checking}
+            onClick={() => {
+              setShowApiKey(false);
+              setApiKey('');
+              void removeApiKey();
+            }}
+          >
+            Xóa key đã lưu
+          </button>
+        )}
       </div>
+      {showApiKey && (
+        <form
+          className="codex-api-key-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void saveApiKey(apiKey).then((connected) => {
+              if (!connected) return;
+              setApiKey('');
+              setShowApiKey(false);
+            });
+          }}
+        >
+          <label>
+            <span>ElevenLabs API key</span>
+            <input
+              type="password"
+              autoComplete="new-password"
+              spellCheck={false}
+              value={apiKey}
+              onChange={(event) => setApiKey(event.target.value)}
+              placeholder="Dán API key một lần"
+            />
+          </label>
+          <button type="submit" disabled={checking || !apiKey.trim()}>
+            {checking
+              ? 'Đang xác minh…'
+              : connectedStatus
+                ? 'Xác minh và thay key'
+                : 'Xác minh thật và lưu an toàn'}
+          </button>
+          {error && (
+            <small className="credential-form-error" role="alert">
+              {error} Key đang dùng vẫn được giữ nguyên.
+            </small>
+          )}
+          <small>
+            Chỉ lưu sau khi ElevenLabs chấp nhận key và trả về subscription cùng
+            model TTS hợp lệ. Khi thay key thất bại, PAD Studio không ghi đè key
+            hiện tại.
+          </small>
+        </form>
+      )}
     </section>
   );
 }

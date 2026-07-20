@@ -132,6 +132,7 @@ test('Codex outline generator nhận kết quả từ item stream khi turn khôn
   });
 
   const result = await generator.generate({
+    reasoningEffort: 'high',
     topicInput: {
       topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
       learningGoal: 'Hiểu trực giác chia đôi.',
@@ -169,8 +170,10 @@ test('Codex outline generator nhận kết quả từ item stream khi turn khôn
     input?: Array<{text?: string}>;
     outputSchema?: unknown;
     summary?: unknown;
+    effort?: unknown;
   };
   assert.ok(turnParams.outputSchema);
   assert.equal(turnParams.summary, 'none');
+  assert.equal(turnParams.effort, 'high');
   assert.equal(turnParams.input?.[0]?.text?.includes('currentOutline'), false);
 });

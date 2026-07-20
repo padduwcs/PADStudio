@@ -14,6 +14,7 @@ temp/
 
 # Environment variables and secrets
 .env
+.pad-studio/
 .env.*
 !.env.example
 
@@ -24,12 +25,16 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Generated video output
-projects/**/renders/
+# Local runtime data
+# Projects contain generated source, audio, alignments, uploaded watermarks,
+# previews and final renders. Keep them on the user's machine, not in Git.
+/projects/
+
+# Interrupted generation jobs may leave staging directories behind.
+**/.staging-*/
 
 # Editor and operating system files
 .idea/
 .vscode/
 .DS_Store
 Thumbs.db
-

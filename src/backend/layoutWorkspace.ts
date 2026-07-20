@@ -389,7 +389,7 @@ function normalizeOverrides(overrides: LayoutNodeOverride[]) {
 
 function normalizeEditorManifest(
   manifest: LayoutEditorManifest,
-  sections: AnimationSyncBundle['sections'],
+  sections: Array<{sceneId: string; filePath: string}>,
 ): LayoutEditorManifest {
   const scenes = new Map(
     manifest.scenes.map((scene) => [scene.sceneId, scene]),
@@ -440,8 +440,13 @@ function assertNoParentCycles(manifest: LayoutEditorManifest) {
   }
 }
 
-function validateDocuments(
-  syncBundle: AnimationSyncBundle,
+export function validateLayoutDocuments(
+  syncBundle: {
+    contentRevision: number;
+    generation: {generationId: string};
+    validation: {sourceHash: string};
+    sections: Array<{sceneId: string; filePath: string}>;
+  },
   overrides: LayoutNodeOverride[],
   editorManifest: LayoutEditorManifest,
 ) {
@@ -1067,7 +1072,7 @@ export function createLayoutWorkspace(
           'Source Sync đã thay đổi sau khi mở Layout preview.',
         );
       }
-      const documents = validateDocuments(
+      const documents = validateLayoutDocuments(
         animationSyncBundle,
         overrides,
         editorManifest,

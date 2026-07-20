@@ -1,3 +1,8 @@
+import {useEffect, useState} from 'react';
+import type {
+  RenderWatermark,
+  WatermarkPosition,
+} from '../shared/render.ts';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {
   ArrowLeftIcon,
@@ -6,7 +11,11 @@ import {
   LayersIcon,
   SparkIcon,
 } from './icons.tsx';
-import {finalRenderVideoUrl} from './api.ts';
+import {
+  ApiRequestError,
+  finalRenderVideoUrl,
+  uploadWatermarkImage,
+} from './api.ts';
 import {navigate, projectLayoutPath} from './router.ts';
 import {useFinalRender} from './useFinalRender.ts';
 
@@ -33,6 +42,29 @@ const stateLabels = {
 
 export function FinalRenderPage({projectId}: {projectId: string}) {
   const render = useFinalRender(projectId);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [watermark, setWatermark] = useState<RenderWatermark>({type: 'none'});
+  const [watermarkUploading, setWatermarkUploading] = useState(false);
+  const [watermarkUploadError, setWatermarkUploadError] = useState('');
+  const [watermarkFileName, setWatermarkFileName] = useState('');
+
+  useEffect(() => {
+    const bundle = render.project?.renderBundle;
+    if (!bundle) return;
+    setPlaybackRate(bundle.playbackRate);
+    setWatermark(bundle.watermark);
+  }, [render.project?.renderBundle?.generation.generationId]);
+
+  useEffect(() => {
+    if (!watermarkUploading) return;
+    const timeout = window.setTimeout(() => {
+      setWatermarkUploading(false);
+      setWatermarkUploadError(
+        'Phiên tải ảnh không phản hồi nên đã được mở khóa. Hãy chọn ảnh và thử lại.',
+      );
+    }, 35_000);
+    return () => window.clearTimeout(timeout);
+  }, [watermarkUploading]);
 
   if (render.loadState === 'loading') {
     return (
@@ -75,6 +107,20 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
     ? `${finalRenderVideoUrl(project.id)}?v=${bundle.validation.videoHash.slice(0, 12)}`
     : '';
   const progress = Math.round((status?.progress ?? 0) * 100);
+  const estimatedDuration = layout.totalDurationSeconds / playbackRate;
+  const watermarkValid =
+    watermark.type === 'none' ||
+    (watermark.type === 'text' ? Boolean(watermark.text.trim()) : Boolean(watermark.assetId));
+  const renderBlockedReason = render.conflict
+    ? 'Project đã thay đổi ở một phiên khác. Hãy bấm “Kiểm tra lại” trước khi render.'
+    : watermarkUploading
+      ? 'Đang tải và kiểm tra ảnh watermark…'
+      : watermark.type === 'image' && !watermark.assetId
+        ? 'Hãy tải ảnh watermark thành công, hoặc chọn “Không dùng”.'
+        : watermark.type === 'text' && !watermark.text.trim()
+          ? 'Hãy nhập nội dung watermark, hoặc chọn “Không dùng”.'
+          : '';
+  const startRender = () => render.render({playbackRate, watermark});
 
   return (
     <div className="render-workspace">
@@ -100,11 +146,188 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
         </div>
         <div>
           <ClockIcon />
-          <span><small>Thời lượng</small><strong>{formatTime(layout.totalDurationSeconds)}</strong></span>
+          <span><small>Ước tính sau tốc độ</small><strong>{formatTime(estimatedDuration)}</strong></span>
         </div>
         <div>
           <SparkIcon />
           <span><small>Đầu ra</small><strong>MP4 · H.264 · 30 fps</strong></span>
+        </div>
+      </section>
+
+      <section className="render-options-card" aria-label="Tùy chọn render">
+        <div className="render-option-heading">
+          <div>
+            <span className="preview-kicker">Tùy chọn bản xuất</span>
+            <h2>Tốc độ và watermark</h2>
+          </div>
+          <span>{playbackRate.toLocaleString('vi-VN', {maximumFractionDigits: 2})}× · khoảng {formatTime(estimatedDuration)}</span>
+        </div>
+
+        <div className="render-speed-control">
+          <label htmlFor="render-speed">Tốc độ video cuối</label>
+          <input
+            id="render-speed"
+            type="range"
+            min="0.25"
+            max="4"
+            step="0.05"
+            value={playbackRate}
+            disabled={render.rendering}
+            onChange={event => setPlaybackRate(Number(event.target.value))}
+          />
+          <input
+            className="render-speed-number"
+            type="number"
+            min="0.25"
+            max="4"
+            step="0.05"
+            value={playbackRate}
+            disabled={render.rendering}
+            aria-label="Tốc độ video"
+            onChange={event => {
+              const value = Number(event.target.value);
+              if (Number.isFinite(value)) setPlaybackRate(Math.min(4, Math.max(0.25, value)));
+            }}
+          />
+          <small>Nguồn chuẩn {formatTime(layout.totalDurationSeconds)}; giọng được đổi tốc độ nhưng giữ cao độ.</small>
+        </div>
+
+        <div className="watermark-controls">
+          <span className="render-control-label">Watermark</span>
+          <div className="watermark-mode-tabs">
+            {(['none', 'text', 'image'] as const).map(type => (
+              <button
+                type="button"
+                key={type}
+                className={watermark.type === type ? 'is-selected' : ''}
+                disabled={render.rendering}
+                onClick={() => {
+                  setWatermarkUploadError('');
+                  setWatermarkFileName('');
+                  setWatermark(
+                    type === 'none'
+                      ? {type: 'none'}
+                      : type === 'text'
+                        ? {type: 'text', text: '', opacity: 0.3, position: 'bottom-right', fontSize: 44, color: '#ffffff'}
+                        : {type: 'image', assetId: '', opacity: 0.3, position: 'bottom-right', widthPercent: 22},
+                  );
+                }}
+              >
+                {type === 'none' ? 'Không dùng' : type === 'text' ? 'Chèn chữ' : 'Tải ảnh'}
+              </button>
+            ))}
+          </div>
+
+          {watermark.type !== 'none' && (
+            <div className="watermark-detail-grid">
+              {watermark.type === 'text' ? (
+                <>
+                  <label className="watermark-wide-field">
+                    <span>Nội dung</span>
+                    <input
+                      type="text"
+                      maxLength={120}
+                      value={watermark.text}
+                      disabled={render.rendering}
+                      placeholder="Tên kênh hoặc thương hiệu"
+                      onChange={event => setWatermark({...watermark, text: event.target.value})}
+                    />
+                  </label>
+                  <label>
+                    <span>Cỡ chữ</span>
+                    <input
+                      type="number"
+                      min={16}
+                      max={200}
+                      value={watermark.fontSize}
+                      disabled={render.rendering}
+                      onChange={event => setWatermark({...watermark, fontSize: Math.min(200, Math.max(16, Number(event.target.value) || 16))})}
+                    />
+                  </label>
+                  <label>
+                    <span>Màu chữ</span>
+                    <input
+                      type="color"
+                      value={watermark.color}
+                      disabled={render.rendering}
+                      onChange={event => setWatermark({...watermark, color: event.target.value})}
+                    />
+                  </label>
+                </>
+              ) : (
+                <label className="watermark-wide-field watermark-file-field">
+                  <span>Ảnh PNG, JPEG hoặc WebP · tối đa 5 MB</span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    disabled={render.rendering || watermarkUploading}
+                    onChange={event => {
+                      const file = event.target.files?.[0];
+                      if (!file) return;
+                      event.currentTarget.value = '';
+                      setWatermarkUploading(true);
+                      setWatermarkUploadError('');
+                      void uploadWatermarkImage(project.id, file)
+                        .then(asset => {
+                          setWatermark(current => current.type === 'image'
+                            ? {...current, assetId: asset.assetId}
+                            : current);
+                          setWatermarkFileName(file.name);
+                        })
+                        .catch(error => setWatermarkUploadError(
+                          error instanceof ApiRequestError
+                            ? error.message
+                            : 'Không thể tải ảnh watermark.',
+                        ))
+                        .finally(() => setWatermarkUploading(false));
+                    }}
+                  />
+                  <small>{watermarkUploading ? 'Đang kiểm tra và lưu ảnh…' : watermarkFileName || (watermark.assetId ? 'Ảnh watermark đã sẵn sàng.' : 'Chưa chọn ảnh.')}</small>
+                </label>
+              )}
+              <label>
+                <span>Vị trí</span>
+                <select
+                  value={watermark.position}
+                  disabled={render.rendering}
+                  onChange={event => setWatermark({...watermark, position: event.target.value as WatermarkPosition})}
+                >
+                  <option value="top-left">Trên trái</option>
+                  <option value="top-right">Trên phải</option>
+                  <option value="bottom-left">Dưới trái</option>
+                  <option value="bottom-right">Dưới phải</option>
+                  <option value="center">Chính giữa</option>
+                </select>
+              </label>
+              <label>
+                <span>Độ mờ · {Math.round(watermark.opacity * 100)}%</span>
+                <input
+                  type="range"
+                  min="0.05"
+                  max="1"
+                  step="0.05"
+                  value={watermark.opacity}
+                  disabled={render.rendering}
+                  onChange={event => setWatermark({...watermark, opacity: Number(event.target.value)})}
+                />
+              </label>
+              {watermark.type === 'image' && (
+                <label>
+                  <span>Chiều rộng · {Math.round(watermark.widthPercent)}%</span>
+                  <input
+                    type="range"
+                    min="5"
+                    max="80"
+                    step="1"
+                    value={watermark.widthPercent}
+                    disabled={render.rendering}
+                    onChange={event => setWatermark({...watermark, widthPercent: Number(event.target.value)})}
+                  />
+                </label>
+              )}
+            </div>
+          )}
+          {watermarkUploadError && <small className="watermark-upload-error">{watermarkUploadError}</small>}
         </div>
       </section>
 
@@ -158,8 +381,8 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
             <button
               className="secondary-button"
               type="button"
-              disabled={render.rendering}
-              onClick={() => void render.render()}
+              onClick={() => void startRender()}
+              disabled={render.rendering || !watermarkValid || watermarkUploading}
             >
               Render lại
             </button>
@@ -178,15 +401,24 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
               Render dùng chính master narration và Layout generation đã duyệt.
               Video được lưu riêng theo generation nên không ghi đè bản cũ.
             </p>
-            <button
-              className="submit-button"
-              type="button"
-              disabled={render.conflict}
-              onClick={() => void render.render()}
-            >
-              <SparkIcon />
-              Render video cuối
-            </button>
+            <div className="render-submit-stack">
+              <button
+                className={`submit-button${watermarkUploading ? ' is-busy' : ''}`}
+                type="button"
+                disabled={Boolean(renderBlockedReason) || !watermarkValid}
+                aria-busy={watermarkUploading}
+                aria-describedby={renderBlockedReason ? 'render-blocked-reason' : undefined}
+                onClick={() => void startRender()}
+              >
+                {watermarkUploading ? <span className="spinner" /> : <SparkIcon />}
+                {watermarkUploading ? 'Đang tải watermark…' : 'Render video cuối'}
+              </button>
+              {renderBlockedReason && (
+                <small id="render-blocked-reason" className="render-blocked-reason">
+                  {renderBlockedReason}
+                </small>
+              )}
+            </div>
           </div>
         </section>
       ) : null}

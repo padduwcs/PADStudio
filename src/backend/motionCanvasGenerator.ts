@@ -13,7 +13,7 @@ import type {
 import type {CodexAppServerClient} from './codexConnection.ts';
 import {
   CodexStructuredGenerationError,
-  DEFAULT_CODEX_GENERATION_TIMEOUT_MS,
+  codexGenerationTimeoutMs,
   runCodexStructuredGeneration,
 } from './codexStructuredGeneration.ts';
 
@@ -22,7 +22,8 @@ export const MOTION_CANVAS_VERSION = '3.17.2';
 export const MOTION_CANVAS_WIDTH = 1080;
 export const MOTION_CANVAS_HEIGHT = 1920;
 export const MOTION_CANVAS_FPS = 30;
-const DEFAULT_SCENE_TIMEOUT_MS = 5 * 60 * 1000;
+const DEFAULT_SCENE_TIMEOUT_MS = 15 * 60 * 1000;
+const MAX_SOURCE_REPAIR_ATTEMPTS = 2;
 
 const generatedMotionCanvasSceneSchema = z
   .object({
@@ -65,6 +66,8 @@ export interface MotionCanvasSourceScene extends MotionCanvasScene {
 
 export interface MotionCanvasGenerationRequest {
   generationId: string;
+  model?: string;
+  reasoningEffort?: string;
   topicInput: TopicInput;
   outline: TeachingOutline;
   voiceVisualPlan: VoiceVisualPlan;
@@ -87,6 +90,11 @@ export interface MotionCanvasGenerator {
     generated: MotionCanvasGenerationResult,
     compilerDiagnostics: string,
   ): Promise<MotionCanvasGenerationResult>;
+  recover?(
+    request: MotionCanvasGenerationRequest,
+    generated: MotionCanvasGenerationResult,
+    compilerDiagnostics: string,
+  ): MotionCanvasGenerationResult;
   discardGeneration?(generationId: string): void;
 }
 
@@ -652,6 +660,89 @@ interface GeneratedSceneResult {
   usage: CodexTokenUsage | null;
 }
 
+function fallbackSceneSource(
+  request: MotionCanvasGenerationRequest,
+  sectionIndex: number,
+) {
+  const outlineSection = request.outline.sections[sectionIndex]!;
+  const beats = request.voiceVisualPlan.sections[sectionIndex]!.beats;
+  const colors = ['#51B68E', '#ED8F67', '#71A7E8', '#D8B85A'];
+  const beatBlocks = beats.map((beat, beatIndex) => {
+    const number = beatIndex + 1;
+    const description = beat.visualDescription.replace(/\s+/g, ' ').trim().slice(0, 110);
+    const progress = Math.round(((beatIndex + 1) / beats.length) * 760);
+    const color = colors[beatIndex % colors.length]!;
+    return `  yield* waitUntil('beat:${beat.id}:start');
+  const beatDuration${number} = useDuration('beat:${beat.id}:end');
+  const beatEndTime${number} = useThread().time() + beatDuration${number};
+  const transition${number} = Math.min(0.45, Math.max(0.05, beatDuration${number} * 0.18));
+  yield* all(
+    conceptLabel().text(${JSON.stringify(description)}, transition${number}),
+    conceptCard().fill('${color}', transition${number}),
+    progressFill().width(${progress}, transition${number}),
+  );
+  yield* waitFor(Math.max(0, beatEndTime${number} - useThread().time()));`;
+  });
+  return `import {makeScene2D, Rect, Txt} from '@motion-canvas/2d';
+import {all, createRef, useDuration, useThread, waitFor, waitUntil} from '@motion-canvas/core';
+
+export default makeScene2D(function* (view) {
+  const conceptCard = createRef<Rect>();
+  const conceptLabel = createRef<Txt>();
+  const progressFill = createRef<Rect>();
+
+  view.add(
+    <Rect key="scene-background" width={1080} height={1920} fill={'#10231D'}>
+      <Txt
+        key="scene-heading"
+        text={${JSON.stringify(outlineSection.title.slice(0, 80))}}
+        y={-650}
+        width={880}
+        fill={'#F3F7F4'}
+        fontSize={66}
+        fontWeight={700}
+        textAlign={'center'}
+      />
+      <Rect
+        key="concept-card"
+        ref={conceptCard}
+        width={860}
+        height={520}
+        radius={52}
+        fill={'#51B68E'}
+        padding={64}
+      >
+        <Txt
+          key="concept-label"
+          ref={conceptLabel}
+          text={'Đang chuẩn bị visual…'}
+          width={730}
+          fill={'#10231D'}
+          fontSize={48}
+          fontWeight={650}
+          textAlign={'center'}
+        />
+      </Rect>
+      <Rect key="progress-track" y={650} width={760} height={18} radius={9} fill={'#365149'}>
+        <Rect
+          key="progress-fill"
+          ref={progressFill}
+          width={0}
+          height={18}
+          radius={9}
+          fill={'#F3F7F4'}
+          offsetX={-1}
+          x={-380}
+        />
+      </Rect>
+    </Rect>,
+  );
+
+${beatBlocks.join('\n\n')}
+});
+`;
+}
+
 function aggregateUsage(results: GeneratedSceneResult[]) {
   if (results.some((result) => result.usage === null)) return null;
 
@@ -710,11 +801,40 @@ function sceneGenerationError(
             {cause: error},
           );
 
+  if (mappedError.message.startsWith(`Scene ${sectionIndex + 1} “`)) {
+    return mappedError;
+  }
+
   return new MotionCanvasGenerationError(
     mappedError.code,
     `Scene ${sectionIndex + 1} “${sectionTitle}”: ${mappedError.message}`,
     {cause: mappedError},
   );
+}
+
+function repairDiagnostics(error: unknown) {
+  if (!(error instanceof Error)) return 'Scene không vượt qua validation.';
+  const lines = [error.message];
+  if (error instanceof MotionCanvasGenerationError && Array.isArray(error.cause)) {
+    for (const value of error.cause.slice(0, 20)) {
+      const diagnostic = value as ts.Diagnostic;
+      const message = ts.flattenDiagnosticMessageText(
+        diagnostic.messageText,
+        '\n',
+      );
+      if (diagnostic.file && diagnostic.start !== undefined) {
+        const location = diagnostic.file.getLineAndCharacterOfPosition(
+          diagnostic.start,
+        );
+        lines.push(
+          `generated-scene.tsx(${location.line + 1},${location.character + 1}): ${message}`,
+        );
+      } else {
+        lines.push(message);
+      }
+    }
+  }
+  return [...new Set(lines)].join('\n').slice(0, 12_000);
 }
 
 export function createCodexMotionCanvasGenerator(
@@ -731,9 +851,7 @@ export function createCodexMotionCanvasGenerator(
     options.runtimeDirectory ??
       path.join(os.tmpdir(), 'pad-studio-ai-runtime'),
   );
-  const timeoutMs =
-    options.timeoutMs ??
-    Math.max(DEFAULT_CODEX_GENERATION_TIMEOUT_MS, DEFAULT_SCENE_TIMEOUT_MS);
+  const configuredTimeoutMs = options.timeoutMs;
   const concurrency = Math.max(
     1,
     Math.min(4, Math.floor(options.concurrency ?? 4)),
@@ -745,49 +863,61 @@ export function createCodexMotionCanvasGenerator(
       promise: Promise<GeneratedSceneResult>;
     }
   >();
-  let selectedPolicyPromise: Promise<{
+  const selectedPolicyPromises = new Map<string, Promise<{
     model?: string;
     reasoningEffort?: string;
-  }> | null = null;
+  }>>();
 
-  function resolveScenePolicy() {
-    if (selectedPolicyPromise) return selectedPolicyPromise;
+  function resolveScenePolicy(
+    requestedModel?: string,
+    requestedReasoningEffort?: string,
+  ) {
+    const configuredModel = requestedModel ?? options.model;
+    const configuredReasoningEffort =
+      requestedReasoningEffort ?? options.reasoningEffort;
+    const cacheKey = `${configuredModel ?? '__default__'}:${configuredReasoningEffort ?? '__default__'}`;
+    const existing = selectedPolicyPromises.get(cacheKey);
+    if (existing) return existing;
 
-    selectedPolicyPromise = client
-      .request('model/list', {limit: 20, includeHidden: false})
+    const policyPromise = client
+      .request('model/list', {limit: 100, includeHidden: false})
       .then((response) => {
         const parsed = modelListSchema.safeParse(response);
         if (!parsed.success) {
           return {
-            ...(options.model ? {model: options.model} : {}),
-            ...(options.reasoningEffort
-              ? {reasoningEffort: options.reasoningEffort}
+            ...(configuredModel ? {model: configuredModel} : {}),
+            ...(configuredReasoningEffort
+              ? {reasoningEffort: configuredReasoningEffort}
               : {}),
           };
         }
 
-        const selected = options.model
+        const selected = configuredModel
           ? parsed.data.data.find(
               (model) =>
-                model.model === options.model || model.id === options.model,
+                model.model === configuredModel || model.id === configuredModel,
             )
-          : parsed.data.data.find((model) => model.isDefault);
+          : parsed.data.data.find((model) => model.isDefault) ??
+            parsed.data.data[0];
+        if (configuredModel && !selected) {
+          throw new MotionCanvasGenerationError(
+            'CODEX_MOTION_CANVAS_MODEL_UNSUPPORTED',
+            'Model đã chọn không còn khả dụng trong Codex catalog. Hãy chọn lại model.',
+          );
+        }
         const modelName =
-          options.model ?? selected?.model ?? selected?.id;
+          configuredModel ?? selected?.model ?? selected?.id;
         const supportedEfforts =
           selected?.supportedReasoningEfforts?.map(
             (effort) => effort.reasoningEffort,
           ) ?? [];
-        let reasoningEffort = options.reasoningEffort;
+        let reasoningEffort = configuredReasoningEffort;
 
-        if (reasoningEffort && supportedEfforts.length > 0) {
-          if (!supportedEfforts.includes(reasoningEffort)) {
-            reasoningEffort =
-              selected?.defaultReasoningEffort &&
-              supportedEfforts.includes(selected.defaultReasoningEffort)
-                ? selected.defaultReasoningEffort
-                : undefined;
-          }
+        if (reasoningEffort && !supportedEfforts.includes(reasoningEffort)) {
+          throw new MotionCanvasGenerationError(
+            'CODEX_MOTION_CANVAS_REASONING_UNSUPPORTED',
+            'Mức suy luận đã chọn không còn được model này hỗ trợ. Hãy chọn lại mức suy luận.',
+          );
         } else if (!reasoningEffort && supportedEfforts.length > 0) {
           reasoningEffort = supportedEfforts.includes('medium')
             ? 'medium'
@@ -804,13 +934,17 @@ export function createCodexMotionCanvasGenerator(
           ...(reasoningEffort ? {reasoningEffort} : {}),
         };
       })
-      .catch(() => ({
-        ...(options.model ? {model: options.model} : {}),
-        ...(options.reasoningEffort
-          ? {reasoningEffort: options.reasoningEffort}
-          : {}),
-      }));
-    return selectedPolicyPromise;
+      .catch((error) => {
+        if (error instanceof MotionCanvasGenerationError) throw error;
+        return {
+          ...(configuredModel ? {model: configuredModel} : {}),
+          ...(configuredReasoningEffort
+            ? {reasoningEffort: configuredReasoningEffort}
+            : {}),
+        };
+      });
+    selectedPolicyPromises.set(cacheKey, policyPromise);
+    return policyPromise;
   }
 
   function discardGeneration(generationId: string) {
@@ -827,9 +961,11 @@ export function createCodexMotionCanvasGenerator(
     const outlineSection = request.outline.sections[sectionIndex]!;
     const voiceVisualSection =
       request.voiceVisualPlan.sections[sectionIndex]!;
-    const fingerprint = JSON.stringify(
-      generationPayload(request, sectionIndex),
-    );
+    const fingerprint = JSON.stringify({
+      payload: generationPayload(request, sectionIndex),
+      model: request.model,
+      reasoningEffort: request.reasoningEffort,
+    });
     const cacheKey = `${request.generationId}:${outlineSection.id}`;
     const existing = sceneGenerations.get(cacheKey);
     if (existing) {
@@ -844,11 +980,19 @@ export function createCodexMotionCanvasGenerator(
 
     const promise = (async (): Promise<GeneratedSceneResult> => {
       try {
-        const scenePolicy = await resolveScenePolicy();
+        const scenePolicy = await resolveScenePolicy(
+          request.model,
+          request.reasoningEffort,
+        );
         const generated = await runCodexStructuredGeneration({
           client,
           runtimeDirectory,
-          timeoutMs,
+          timeoutMs:
+            configuredTimeoutMs ??
+            codexGenerationTimeoutMs(
+              scenePolicy.reasoningEffort,
+              DEFAULT_SCENE_TIMEOUT_MS,
+            ),
           outputSchema: outputJsonSchema,
           prompt: buildPrompt(request, sectionIndex),
           baseInstructions:
@@ -880,14 +1024,9 @@ export function createCodexMotionCanvasGenerator(
           );
         }
 
-        validateMotionCanvasSceneSource(parsed.data.source);
-        validateMotionCanvasTimingContract(
-          parsed.data.source,
-          voiceVisualSection.beats,
-        );
         const slug =
           toSlug(parsed.data.name) || `scene-${sectionIndex + 1}`;
-        return {
+        const initialResult: GeneratedSceneResult = {
           scene: {
             id: randomUUID(),
             outlineSectionId: outlineSection.id,
@@ -908,6 +1047,31 @@ export function createCodexMotionCanvasGenerator(
           model: generated.model,
           usage: generated.usage,
         };
+        try {
+          validateMotionCanvasSceneSource(initialResult.scene.source);
+          validateMotionCanvasTimingContract(
+            initialResult.scene.source,
+            voiceVisualSection.beats,
+          );
+          return initialResult;
+        } catch (validationError) {
+          if (!(validationError instanceof MotionCanvasGenerationError)) {
+            throw validationError;
+          }
+          const repaired = await repairScene(
+            request,
+            initialResult.scene,
+            sectionIndex,
+            repairDiagnostics(validationError),
+          );
+          return {
+            ...repaired,
+            model: [...new Set([initialResult.model, repaired.model])]
+              .join(', ')
+              .slice(0, 160),
+            usage: addUsage(initialResult.usage, [repaired]),
+          };
+        }
       } catch (error) {
         throw sceneGenerationError(
           error,
@@ -941,68 +1105,107 @@ export function createCodexMotionCanvasGenerator(
   ): Promise<GeneratedSceneResult> {
     const outlineSection = request.outline.sections[sectionIndex]!;
     try {
-      const scenePolicy = await resolveScenePolicy();
-      const repaired = await runCodexStructuredGeneration({
-        client,
-        runtimeDirectory,
-        timeoutMs,
-        outputSchema: outputJsonSchema,
-        prompt: buildRepairPrompt(
-          request,
-          sectionIndex,
-          generatedScene,
-          compilerDiagnostics,
-        ),
-        baseInstructions:
-          'Bạn sửa đúng một scene Motion Canvas theo compiler diagnostics. Không dùng công cụ hoặc đọc tệp. Chỉ trả JSON đúng schema.',
-        developerInstructions:
-          'Giữ nguyên mục tiêu giảng giải và timing; sửa tối thiểu để source dùng đúng API Motion Canvas, biên dịch và có semantic key tường minh, ổn định cho mọi visual JSX node.',
-        model: scenePolicy.model,
-        reasoningEffort: scenePolicy.reasoningEffort,
-      });
-
-      let responseJson: unknown;
-      try {
-        responseJson = JSON.parse(repaired.responseText);
-      } catch (error) {
-        throw new MotionCanvasGenerationError(
-          'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
-          'Codex trả về scene sửa lỗi không đúng định dạng.',
-          {cause: error},
-        );
-      }
-      const parsed =
-        generatedMotionCanvasSceneSchema.safeParse(responseJson);
-      if (!parsed.success) {
-        throw new MotionCanvasGenerationError(
-          'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
-          'Codex trả về scene sửa lỗi chưa đúng cấu trúc.',
-          {cause: parsed.error},
-        );
-      }
-      validateMotionCanvasSceneSource(parsed.data.source);
-      validateMotionCanvasTimingContract(
-        parsed.data.source,
-        request.voiceVisualPlan.sections[sectionIndex]!.beats,
+      const scenePolicy = await resolveScenePolicy(
+        request.model,
+        request.reasoningEffort,
       );
+      let currentScene = generatedScene;
+      let diagnostics = compilerDiagnostics;
+      const repairs: GeneratedSceneResult[] = [];
+      for (let attempt = 0; attempt < MAX_SOURCE_REPAIR_ATTEMPTS; attempt += 1) {
+        const repaired = await runCodexStructuredGeneration({
+          client,
+          runtimeDirectory,
+          timeoutMs:
+            configuredTimeoutMs ??
+            codexGenerationTimeoutMs(
+              scenePolicy.reasoningEffort,
+              DEFAULT_SCENE_TIMEOUT_MS,
+            ),
+          outputSchema: outputJsonSchema,
+          prompt: buildRepairPrompt(
+            request,
+            sectionIndex,
+            currentScene,
+            diagnostics,
+          ),
+          baseInstructions:
+            'Bạn sửa đúng một scene Motion Canvas theo compiler diagnostics. Không dùng công cụ hoặc đọc tệp. Chỉ trả JSON đúng schema.',
+          developerInstructions:
+            'Giữ nguyên mục tiêu giảng giải và timing; sửa tối thiểu để source dùng đúng API Motion Canvas, biên dịch và có semantic key tường minh, ổn định cho mọi visual JSX node.',
+          model: scenePolicy.model,
+          reasoningEffort: scenePolicy.reasoningEffort,
+        });
 
-      const result: GeneratedSceneResult = {
-        scene: {
-          ...generatedScene,
-          name: parsed.data.name,
-          source: `${parsed.data.source.trim()}\n`,
-        },
-        model: repaired.model,
-        usage: repaired.usage,
-      };
-      const cacheKey = `${request.generationId}:${outlineSection.id}`;
-      sceneGenerations.set(cacheKey, {
-        fingerprint: JSON.stringify(
-          generationPayload(request, sectionIndex),
-        ),
-        promise: Promise.resolve(result),
-      });
-      return result;
+        let responseJson: unknown;
+        try {
+          responseJson = JSON.parse(repaired.responseText);
+        } catch (error) {
+          throw new MotionCanvasGenerationError(
+            'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+            'Codex trả về scene sửa lỗi không đúng định dạng.',
+            {cause: error},
+          );
+        }
+        const parsed =
+          generatedMotionCanvasSceneSchema.safeParse(responseJson);
+        if (!parsed.success) {
+          throw new MotionCanvasGenerationError(
+            'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+            'Codex trả về scene sửa lỗi chưa đúng cấu trúc.',
+            {cause: parsed.error},
+          );
+        }
+
+        const candidate: GeneratedSceneResult = {
+          scene: {
+            ...currentScene,
+            name: parsed.data.name,
+            source: `${parsed.data.source.trim()}\n`,
+          },
+          model: repaired.model,
+          usage: repaired.usage,
+        };
+        repairs.push(candidate);
+        try {
+          validateMotionCanvasSceneSource(candidate.scene.source);
+          validateMotionCanvasTimingContract(
+            candidate.scene.source,
+            request.voiceVisualPlan.sections[sectionIndex]!.beats,
+          );
+          const result: GeneratedSceneResult = {
+            ...candidate,
+            model: [...new Set(repairs.map((item) => item.model))]
+              .join(', ')
+              .slice(0, 160),
+            usage: aggregateUsage(repairs),
+          };
+          const cacheKey = `${request.generationId}:${outlineSection.id}`;
+          sceneGenerations.set(cacheKey, {
+            fingerprint: JSON.stringify({
+              payload: generationPayload(request, sectionIndex),
+              model: request.model,
+              reasoningEffort: request.reasoningEffort,
+            }),
+            promise: Promise.resolve(result),
+          });
+          return result;
+        } catch (validationError) {
+          if (
+            !(validationError instanceof MotionCanvasGenerationError) ||
+            attempt + 1 >= MAX_SOURCE_REPAIR_ATTEMPTS
+          ) {
+            throw validationError;
+          }
+          currentScene = candidate.scene;
+          diagnostics = repairDiagnostics(validationError);
+        }
+      }
+
+      throw new MotionCanvasGenerationError(
+        'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+        'Codex chưa sửa được scene sau các lượt tự khắc phục.',
+      );
     } catch (error) {
       throw sceneGenerationError(
         error,
@@ -1127,6 +1330,32 @@ export function createCodexMotionCanvasGenerator(
         scenes: repairedScenes,
         model: models.join(', ').slice(0, 160),
         usage: addUsage(generated.usage, repairs),
+      };
+    },
+    recover(request, generated, compilerDiagnostics) {
+      const normalizedDiagnostics = compilerDiagnostics.replaceAll('\\', '/');
+      const fallbackScenes = generated.scenes.map((scene, sectionIndex) => {
+        if (
+          normalizedDiagnostics &&
+          normalizedDiagnostics.includes('src/scenes/') &&
+          !normalizedDiagnostics.includes(scene.filePath)
+        ) return scene;
+        const fallback = {
+          ...scene,
+          name: `${scene.name} · safe fallback`.slice(0, 120),
+          source: fallbackSceneSource(request, sectionIndex),
+        };
+        validateMotionCanvasSceneSource(fallback.source);
+        validateMotionCanvasTimingContract(
+          fallback.source,
+          request.voiceVisualPlan.sections[sectionIndex]!.beats,
+        );
+        return fallback;
+      });
+      return {
+        scenes: fallbackScenes,
+        model: `${generated.model}, local-safe-fallback`.slice(0, 160),
+        usage: generated.usage,
       };
     },
     discardGeneration,

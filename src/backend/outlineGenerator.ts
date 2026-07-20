@@ -15,7 +15,7 @@ import {
 import type {CodexAppServerClient} from './codexConnection.ts';
 import {
   CodexStructuredGenerationError,
-  DEFAULT_CODEX_GENERATION_TIMEOUT_MS,
+  codexGenerationTimeoutMs,
   runCodexStructuredGeneration,
 } from './codexStructuredGeneration.ts';
 
@@ -58,6 +58,8 @@ const durationInstructions: Record<TopicInput['duration'], string> = {
 
 export interface OutlineGenerationRequest {
   topicInput: TopicInput;
+  model?: string;
+  reasoningEffort?: string;
   guidance?: string;
   currentOutline?: TeachingOutline;
 }
@@ -197,8 +199,7 @@ export function createCodexOutlineGenerator(
     options.runtimeDirectory ??
       path.join(os.tmpdir(), 'pad-studio-ai-runtime'),
   );
-  const timeoutMs =
-    options.timeoutMs ?? DEFAULT_CODEX_GENERATION_TIMEOUT_MS;
+  const configuredTimeoutMs = options.timeoutMs;
 
   return {
     async generate(request) {
@@ -206,13 +207,17 @@ export function createCodexOutlineGenerator(
         const generated = await runCodexStructuredGeneration({
           client,
           runtimeDirectory,
-          timeoutMs,
+          timeoutMs:
+            configuredTimeoutMs ??
+            codexGenerationTimeoutMs(request.reasoningEffort),
           outputSchema: outputJsonSchema,
           prompt: buildPrompt(request),
           baseInstructions:
             'Bạn lập mạch giảng cho PAD Studio. Không dùng công cụ hoặc đọc tệp. Chỉ trả JSON đúng schema.',
           developerInstructions:
             'Ưu tiên bản chất, trực giác và thứ tự dễ hiểu. AI chỉ đề xuất; người dùng sẽ review.',
+          model: request.model,
+          reasoningEffort: request.reasoningEffort,
         });
 
         let responseJson: unknown;

@@ -20,8 +20,10 @@ import {promisify} from 'node:util';
 import {execFile} from 'node:child_process';
 import {
   FinalRenderBundleSchema,
+  finalRenderTimingToleranceSeconds,
   type FinalRenderBundle,
   type FinalRenderJobStatus,
+  type RenderWatermark,
 } from '../shared/render.ts';
 import type {
   AnimationSyncBundle,
@@ -33,6 +35,10 @@ import {
   type LayoutWorkspace,
 } from './layoutWorkspace.ts';
 import {copyPreviewWorkspace} from './previewWorkspaceCopy.ts';
+import {
+  createWatermarkAssetStore,
+  type WatermarkAssetStore,
+} from './watermarkAssetStore.ts';
 
 const execFileAsync = promisify(execFile);
 const FPS = 30;
@@ -71,7 +77,10 @@ export function inspectRenderFrameTiming(
   );
   const encodedDurationSeconds = renderedFrameCount / fps;
   const differenceSeconds = encodedDurationSeconds - targetDurationSeconds;
-  const toleranceSeconds = Math.max(0.08, 2 / fps);
+  const toleranceSeconds = finalRenderTimingToleranceSeconds(
+    fps,
+    targetDurationSeconds,
+  );
   return {
     estimatedFrameCount,
     encodedDurationSeconds,
@@ -187,6 +196,11 @@ interface RenderBridge {
   editorManifest: Awaited<
     ReturnType<LayoutWorkspace['readEditorManifest']>
   >;
+  watermark: RenderWatermark;
+  watermarkImage: {
+    value: Buffer;
+    contentType: 'image/png' | 'image/jpeg' | 'image/webp';
+  } | null;
   writeFrame(frame: number, body: Buffer): Promise<void>;
   complete(): void;
   fail(message: string): void;
@@ -208,6 +222,7 @@ export interface FinalRenderService {
     contentRevision: number,
     syncBundle: AnimationSyncBundle,
     layoutBundle: LayoutBundle,
+    options?: FinalRenderOptions,
   ): Promise<FinalRenderBundle>;
   getStatus(
     projectId: string,
@@ -218,6 +233,11 @@ export interface FinalRenderService {
     bundle: FinalRenderBundle,
   ): Promise<{filePath: string; size: number}>;
   close(): Promise<void>;
+}
+
+export interface FinalRenderOptions {
+  playbackRate: number;
+  watermark: RenderWatermark;
 }
 
 export class FinalRenderError extends Error {
@@ -420,6 +440,21 @@ function moduleUrl(filePath: string, query = '') {
   return `/@fs/${filePath.replaceAll('\\', '/')}${query}`;
 }
 
+export function audioTempoFilter(playbackRate: number) {
+  const filters: number[] = [];
+  let remaining = playbackRate;
+  while (remaining < 0.5 - 1e-9) {
+    filters.push(0.5);
+    remaining /= 0.5;
+  }
+  while (remaining > 2 + 1e-9) {
+    filters.push(2);
+    remaining /= 2;
+  }
+  filters.push(remaining);
+  return filters.map(value => `atempo=${value.toFixed(6)}`).join(',');
+}
+
 export function createFinalRenderService(
   projectsDirectory: string,
   options: {
@@ -427,11 +462,14 @@ export function createFinalRenderService(
     browserPath?: string;
     ffmpegPath?: string;
     ffprobePath?: string;
+    watermarkAssetStore?: WatermarkAssetStore;
     logger?: Pick<Console, 'error' | 'info'>;
   } = {},
 ): FinalRenderService {
   const artifactWorkspace =
     options.layoutWorkspace ?? createLayoutWorkspace(projectsDirectory);
+  const watermarkAssets =
+    options.watermarkAssetStore ?? createWatermarkAssetStore(projectsDirectory);
   const repositoryRoot = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     '../..',
@@ -559,7 +597,22 @@ export function createFinalRenderService(
                 height: HEIGHT,
                 overrides: bridge.overrides,
                 editorManifest: bridge.editorManifest,
+                watermark: bridge.watermark,
               });
+              return;
+            }
+            if (url.pathname === '/__pad-render/watermark') {
+              if (request.method !== 'GET' || !bridge.watermarkImage) {
+                sendJson(response, 404, {error: {code: 'WATERMARK_NOT_FOUND'}});
+                return;
+              }
+              response.writeHead(200, {
+                'Content-Type': bridge.watermarkImage.contentType,
+                'Content-Length': String(bridge.watermarkImage.value.length),
+                'Cache-Control': 'no-store',
+                'X-Content-Type-Options': 'nosniff',
+              });
+              response.end(bridge.watermarkImage.value);
               return;
             }
             if (url.pathname === '/__pad-render/frame') {
@@ -670,6 +723,7 @@ export function createFinalRenderService(
     contentRevision: number,
     syncBundle: AnimationSyncBundle,
     layoutBundle: LayoutBundle,
+    renderOptions: FinalRenderOptions,
   ) {
     if (closed) {
       throw new FinalRenderError('FINAL_RENDER_CLOSED', 'Bộ dựng video đang đóng.');
@@ -706,6 +760,30 @@ export function createFinalRenderService(
         'Layout chưa có editor manifest đã xác minh.',
       );
     }
+    const playbackRate = renderOptions.playbackRate;
+    if (!Number.isFinite(playbackRate) || playbackRate < 0.25 || playbackRate > 4) {
+      throw new FinalRenderError(
+        'FINAL_RENDER_INVALID',
+        'Tốc độ video cần nằm trong khoảng 0,25× đến 4×.',
+      );
+    }
+    const targetDurationSeconds = layoutBundle.totalDurationSeconds / playbackRate;
+    const sourceTimingToleranceSeconds = finalRenderTimingToleranceSeconds(
+      FPS,
+      layoutBundle.totalDurationSeconds,
+    );
+    const outputPaddingSeconds =
+      sourceTimingToleranceSeconds / playbackRate + 2 / FPS;
+    const watermarkImage =
+      renderOptions.watermark.type === 'image'
+        ? await watermarkAssets.read(
+            projectId,
+            renderOptions.watermark.assetId,
+          ).then(asset => ({
+            value: asset.value,
+            contentType: asset.summary.contentType,
+          }))
+        : null;
     const requestHash = sha256(
       JSON.stringify(
         canonicalValue({
@@ -714,6 +792,9 @@ export function createFinalRenderService(
           sourceLayoutSourceHash: layoutBundle.validation.sourceHash,
           sourceWorkspaceHash: verified.sourceWorkspaceHash,
           durationSeconds: layoutBundle.totalDurationSeconds,
+          playbackRate,
+          targetDurationSeconds,
+          watermark: renderOptions.watermark,
           width: WIDTH,
           height: HEIGHT,
           fps: FPS,
@@ -846,15 +927,19 @@ export function createFinalRenderService(
           '-pix_fmt',
           'yuv420p',
           '-vf',
-          `tpad=stop_mode=clone:stop_duration=${(2 / FPS).toFixed(6)}`,
+          `setpts=PTS/${playbackRate.toFixed(6)},tpad=stop_mode=clone:stop_duration=${outputPaddingSeconds.toFixed(6)}`,
+          '-r',
+          String(FPS),
           '-c:a',
           'aac',
+          '-af',
+          audioTempoFilter(playbackRate),
           '-b:a',
           '192k',
           '-ar',
           '48000',
           '-t',
-          layoutBundle.totalDurationSeconds.toFixed(6),
+          targetDurationSeconds.toFixed(6),
           '-movflags',
           '+faststart',
           outputVideo,
@@ -893,6 +978,8 @@ export function createFinalRenderService(
         durationSeconds: layoutBundle.totalDurationSeconds,
         overrides: verified.overrides,
         editorManifest: verified.editorManifest,
+        watermark: renderOptions.watermark,
+        watermarkImage,
         async writeFrame(frame, body) {
           if (frame !== framesReceived) {
             throw new FinalRenderError(
@@ -1057,7 +1144,7 @@ export function createFinalRenderService(
       if (!renderedFrameTiming.matches) {
         throw new FinalRenderError(
           'FINAL_RENDER_FRAME_COUNT_MISMATCH',
-          `Motion Canvas xuất ${framesReceived} frame (${renderedFrameTiming.encodedDurationSeconds.toFixed(3)} giây), không phủ đủ thời lượng Layout ${layoutBundle.totalDurationSeconds.toFixed(3)} giây.`,
+          `Motion Canvas xuất ${framesReceived} frame (${renderedFrameTiming.encodedDurationSeconds.toFixed(3)} giây), lệch ${Math.abs(renderedFrameTiming.differenceSeconds).toFixed(3)} giây so với Layout ${layoutBundle.totalDurationSeconds.toFixed(3)} giây và vượt dung sai ${renderedFrameTiming.toleranceSeconds.toFixed(3)} giây.`,
         );
       }
       updateStatus(projectId, generationId, {
@@ -1071,9 +1158,11 @@ export function createFinalRenderService(
       await ffmpegExit;
       ffmpeg = null;
       const probe = await probeVideo(ffprobePath, outputVideo);
+      const outputTimingToleranceSeconds =
+        finalRenderTimingToleranceSeconds(FPS, targetDurationSeconds);
       if (
-        Math.abs(probe.durationSeconds - layoutBundle.totalDurationSeconds) >
-        renderedFrameTiming.toleranceSeconds
+        Math.abs(probe.durationSeconds - targetDurationSeconds) >
+        outputTimingToleranceSeconds
       ) {
         throw new FinalRenderError(
           'FINAL_RENDER_DURATION_MISMATCH',
@@ -1093,7 +1182,10 @@ export function createFinalRenderService(
         width: WIDTH,
         height: HEIGHT,
         fps: FPS,
-        durationSeconds: layoutBundle.totalDurationSeconds,
+        playbackRate,
+        sourceDurationSeconds: layoutBundle.totalDurationSeconds,
+        watermark: renderOptions.watermark,
+        durationSeconds: targetDurationSeconds,
         fileSizeBytes: videoStat.size,
         encoding: {
           container: 'mp4',
@@ -1169,7 +1261,14 @@ export function createFinalRenderService(
   }
 
   return {
-    render(projectId, generationId, contentRevision, syncBundle, layoutBundle) {
+    render(
+      projectId,
+      generationId,
+      contentRevision,
+      syncBundle,
+      layoutBundle,
+      renderOptions = {playbackRate: 1, watermark: {type: 'none'}},
+    ) {
       assertProjectId(projectId);
       assertGenerationId(generationId);
       const key = jobKey(projectId, generationId);
@@ -1200,6 +1299,7 @@ export function createFinalRenderService(
             contentRevision,
             syncBundle,
             layoutBundle,
+            renderOptions,
           ),
         )
         .catch(error => {

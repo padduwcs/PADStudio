@@ -102,17 +102,31 @@ function resetAt(value: number | null | undefined) {
 export function createElevenLabsConnectionService(
   options: {
     apiKey?: string | null;
+    apiKeyProvider?: () => Promise<string | null> | string | null;
     fetch?: typeof globalThis.fetch;
     timeoutMs?: number;
   } = {},
 ): ElevenLabsConnectionService {
-  const apiKey = (options.apiKey ?? process.env.ELEVENLABS_API_KEY ?? '').trim();
   const fetchRequest = options.fetch ?? globalThis.fetch;
   const timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 
   return {
     async verifyConnection() {
       const checkedAt = new Date().toISOString();
+      let apiKey = '';
+      try {
+        apiKey = (
+          options.apiKeyProvider
+            ? await options.apiKeyProvider()
+            : options.apiKey ?? process.env.ELEVENLABS_API_KEY ?? ''
+        )?.trim() ?? '';
+      } catch {
+        return failedStatus(
+          'error',
+          'Không thể mở khóa API key ElevenLabs đã lưu trên máy này.',
+          checkedAt,
+        );
+      }
 
       if (!apiKey) {
         return failedStatus(

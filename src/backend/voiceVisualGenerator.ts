@@ -18,7 +18,7 @@ import {
 import type {CodexAppServerClient} from './codexConnection.ts';
 import {
   CodexStructuredGenerationError,
-  DEFAULT_CODEX_GENERATION_TIMEOUT_MS,
+  codexGenerationTimeoutMs,
   runCodexStructuredGeneration,
 } from './codexStructuredGeneration.ts';
 
@@ -59,6 +59,8 @@ const outputJsonSchema = z.toJSONSchema(generatedVoiceVisualSchema, {
 export interface VoiceVisualGenerationRequest {
   topicInput: TopicInput;
   outline: TeachingOutline;
+  model?: string;
+  reasoningEffort?: string;
   timingCalibration?: VoiceVisualPlanContent['timingCalibration'];
   guidance?: string;
   currentPlan?: VoiceVisualPlan;
@@ -191,8 +193,7 @@ export function createCodexVoiceVisualGenerator(
     options.runtimeDirectory ??
       path.join(os.tmpdir(), 'pad-studio-ai-runtime'),
   );
-  const timeoutMs =
-    options.timeoutMs ?? DEFAULT_CODEX_GENERATION_TIMEOUT_MS;
+  const configuredTimeoutMs = options.timeoutMs;
 
   return {
     async generate(request) {
@@ -200,13 +201,17 @@ export function createCodexVoiceVisualGenerator(
         const generated = await runCodexStructuredGeneration({
           client,
           runtimeDirectory,
-          timeoutMs,
+          timeoutMs:
+            configuredTimeoutMs ??
+            codexGenerationTimeoutMs(request.reasoningEffort),
           outputSchema: outputJsonSchema,
           prompt: buildPrompt(request),
           baseInstructions:
             'Bạn lập kế hoạch voice–visual cho PAD Studio. Không dùng công cụ hoặc đọc tệp. Chỉ trả JSON đúng schema.',
           developerInstructions:
             'Ưu tiên sự rõ ràng, chính xác và đồng bộ voice với visual. Không dùng caption để gánh nội dung chính. AI chỉ đề xuất; người dùng sẽ review.',
+          model: request.model,
+          reasoningEffort: request.reasoningEffort,
         });
 
         let responseJson: unknown;

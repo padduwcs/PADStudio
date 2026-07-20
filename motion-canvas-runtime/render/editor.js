@@ -105,6 +105,68 @@ function drawTextDecorations(context, scene, document, sceneId) {
   context.restore();
 }
 
+function watermarkOrigin(position, canvasWidth, canvasHeight, width, height) {
+  const margin = Math.max(24, Math.min(canvasWidth, canvasHeight) * 0.035);
+  const left = position.endsWith('right')
+    ? canvasWidth - margin - width
+    : position === 'center'
+      ? (canvasWidth - width) / 2
+      : margin;
+  const top = position.startsWith('bottom')
+    ? canvasHeight - margin - height
+    : position === 'center'
+      ? (canvasHeight - height) / 2
+      : margin;
+  return {left, top};
+}
+
+function drawWatermark(context, watermark, bitmap) {
+  if (!watermark || watermark.type === 'none') return;
+  const width = context.canvas.width;
+  const height = context.canvas.height;
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.globalCompositeOperation = 'source-over';
+  context.globalAlpha = watermark.opacity;
+  if (watermark.type === 'image' && bitmap) {
+    const drawWidth = width * (watermark.widthPercent / 100);
+    const drawHeight = drawWidth * (bitmap.height / bitmap.width);
+    const origin = watermarkOrigin(
+      watermark.position,
+      width,
+      height,
+      drawWidth,
+      drawHeight,
+    );
+    context.drawImage(bitmap, origin.left, origin.top, drawWidth, drawHeight);
+  } else if (watermark.type === 'text') {
+    context.font = `700 ${watermark.fontSize}px Inter, Arial, sans-serif`;
+    context.textBaseline = 'top';
+    const measuredWidth = Math.min(
+      context.measureText(watermark.text).width,
+      width * 0.8,
+    );
+    const measuredHeight = watermark.fontSize * 1.25;
+    const origin = watermarkOrigin(
+      watermark.position,
+      width,
+      height,
+      measuredWidth,
+      measuredHeight,
+    );
+    context.fillStyle = watermark.color;
+    context.shadowColor = 'rgba(0, 0, 0, 0.55)';
+    context.shadowBlur = Math.max(3, watermark.fontSize * 0.08);
+    context.fillText(
+      watermark.text,
+      origin.left,
+      origin.top,
+      width * 0.8,
+    );
+  }
+  context.restore();
+}
+
 async function postJson(url, value) {
   const response = await fetch(url, {
     method: 'POST',
@@ -181,6 +243,15 @@ async function start(project) {
   );
   if (!response.ok) throw new Error('Không thể đọc cấu hình final render.');
   const config = await response.json();
+  let watermarkBitmap = null;
+  if (config.watermark?.type === 'image') {
+    const imageResponse = await fetch(
+      `/__pad-render/watermark?token=${encodeURIComponent(token)}`,
+      {cache: 'no-store'},
+    );
+    if (!imageResponse.ok) throw new Error('Không thể đọc ảnh watermark đã chọn.');
+    watermarkBitmap = await createImageBitmap(await imageResponse.blob());
+  }
 
   project.meta.rendering.exporter.exporters.push(PadStreamingExporter);
   const renderer = new Renderer(project);
@@ -203,6 +274,7 @@ async function start(project) {
       const context = renderer.stage.finalBuffer.getContext('2d');
       if (context) {
         drawTextDecorations(context, currentScene, current.document, current.sceneId);
+        drawWatermark(context, config.watermark, watermarkBitmap);
       }
     } finally {
       restoreCurrent();

@@ -18,6 +18,7 @@ import {
 import {ResponsiveAside} from './ResponsiveAside.tsx';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useMotionCanvasDraft} from './useMotionCanvasDraft.ts';
+import {MotionDesignEditor} from './MotionDesignEditor.tsx';
 
 function formatTime(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -30,12 +31,20 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
   const [copied, setCopied] = useState(false);
 
   async function handleGenerate(forcedGuidance?: string) {
-    if (motionCanvas.generating || codexConnection.checking) return;
+    if (
+      motionCanvas.generating ||
+      codexConnection.checking ||
+      !codexConnection.generationReady
+    ) return;
     const connectionStatus = await codexConnection.verify();
     if (connectionStatus?.state !== 'connected') return;
+    const selection = codexConnection.getGenerationSelection();
+    if (!selection) return;
 
     const generatedProject = await motionCanvas.generate(
       forcedGuidance ?? guidance,
+      selection.model,
+      selection.reasoningEffort,
     );
     if (generatedProject) setGuidance('');
   }
@@ -129,7 +138,11 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
       </header>
 
       <div className="outline-codex motion-canvas-connection">
-        <CodexConnectionCard connection={codexConnection} />
+        <CodexConnectionCard
+          connection={codexConnection}
+          task="motionCanvas"
+          workUnits={outline.sections.length}
+        />
       </div>
 
       {motionCanvas.conflict && (
@@ -154,7 +167,7 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
             disabled={
               motionCanvas.generating ||
               codexConnection.checking ||
-              !codexConnection.connected
+              !codexConnection.generationReady
             }
             onClick={() => void handleGenerate('')}
           >
@@ -228,7 +241,7 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                 disabled={
                   motionCanvas.generating ||
                   codexConnection.checking ||
-                  !codexConnection.connected
+                  !codexConnection.generationReady
                 }
                 onClick={() => void handleGenerate('')}
               >
@@ -297,7 +310,7 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
 
                 <div className="motion-canvas-command">
                   <div>
-                    <span>Mở editor Motion Canvas từ thư mục repo</span>
+                    <span>Tùy chọn developer · không cần để xem/chỉnh trên UI</span>
                     <code>{motionCanvas.serveCommand}</code>
                   </div>
                   <button type="button" onClick={() => void copyServeCommand()}>
@@ -336,6 +349,8 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                   </div>
                 </dl>
               </section>
+
+              <MotionDesignEditor motionCanvas={motionCanvas} />
 
               <div className="motion-canvas-scenes">
                 {bundle.scenes.map((scene, index) => {
@@ -455,7 +470,7 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                       motionCanvas.generating ||
                       motionCanvas.conflict ||
                       codexConnection.checking ||
-                      !codexConnection.connected
+                      !codexConnection.generationReady
                     }
                     onClick={() => void handleGenerate()}
                   >
@@ -512,6 +527,12 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                       Input {usage.inputTokens.toLocaleString('vi-VN')} ·
                       Output {usage.outputTokens.toLocaleString('vi-VN')}
                     </small>
+                    <small>
+                      {bundle.generation.model}
+                      {bundle.generation.reasoningEffort
+                        ? ` · reasoning ${bundle.generation.reasoningEffort}`
+                        : ''}
+                    </small>
                   </div>
                 )}
 
@@ -549,6 +570,7 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                 disabled={
                   motionCanvas.approving ||
                   motionCanvas.generating ||
+                  motionCanvas.designSaveState === 'saving' ||
                   motionCanvas.stale ||
                   motionCanvas.conflict
                 }

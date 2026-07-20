@@ -124,6 +124,57 @@ test('startChatGptLogin chỉ chấp nhận URL HTTPS từ app-server', async ()
   );
 });
 
+test('Codex API key login và logout do app-server quản lý', async () => {
+  const client = new FakeCodexClient((method, params) => {
+    if (method === 'account/login/start') {
+      assert.deepEqual(params, {type: 'apiKey', apiKey: 'sk-test'});
+      return {type: 'apiKey'};
+    }
+    if (method === 'account/logout') return {};
+    throw new Error(`Unexpected method: ${method}`);
+  });
+  const service = createCodexConnectionService(client);
+
+  await service.loginWithApiKey('  sk-test  ');
+  await service.logout();
+  assert.deepEqual(
+    client.calls.map((call) => call.method),
+    ['account/login/start', 'account/logout'],
+  );
+});
+
+test('Codex model catalog giữ capability do app-server công bố', async () => {
+  const client = new FakeCodexClient(() => ({
+    data: [
+      {
+        id: 'model-id',
+        model: 'model-name',
+        displayName: 'Model Name',
+        description: 'Chất lượng cao',
+        isDefault: true,
+        supportedReasoningEfforts: [
+          {reasoningEffort: 'medium'},
+          {reasoningEffort: 'high'},
+        ],
+        defaultReasoningEffort: 'medium',
+      },
+    ],
+  }));
+  const service = createCodexConnectionService(client);
+
+  assert.deepEqual(await service.listModels(), [
+    {
+      id: 'model-id',
+      model: 'model-name',
+      displayName: 'Model Name',
+      description: 'Chất lượng cao',
+      isDefault: true,
+      supportedReasoningEfforts: ['medium', 'high'],
+      defaultReasoningEffort: 'medium',
+    },
+  ]);
+});
+
 test('close đóng app-server client', () => {
   const client = new FakeCodexClient(() => null);
   const service = createCodexConnectionService(client);

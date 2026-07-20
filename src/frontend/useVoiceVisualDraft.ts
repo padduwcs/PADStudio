@@ -19,6 +19,7 @@ import {
   getProject,
   updateVoiceVisualPlan,
 } from './api.ts';
+import {recordCodexWaitSample} from './codexWaitEstimate.ts';
 import {ProjectOperationQueue} from './projectOperationQueue.ts';
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -345,8 +346,13 @@ export function useVoiceVisualDraft(projectId: string) {
     }));
   }
 
-  async function generate(guidance: string) {
+  async function generate(
+    guidance: string,
+    model?: string,
+    reasoningEffort?: string,
+  ) {
     if (generating || saveState === 'conflict') return null;
+    const startedAt = Date.now();
     setGenerating(true);
     setActionError('');
 
@@ -375,6 +381,8 @@ export function useVoiceVisualDraft(projectId: string) {
           const fingerprint = JSON.stringify({
             projectId,
             revision: currentProject.revision,
+            model,
+            reasoningEffort,
             guidance: normalizedGuidance,
           });
           const previousRequest = generationRequestRef.current;
@@ -386,7 +394,12 @@ export function useVoiceVisualDraft(projectId: string) {
 
           return generateVoiceVisualPlan(
             projectId,
-            {generationId, guidance: normalizedGuidance},
+            {
+              generationId,
+              model: model || undefined,
+              reasoningEffort: reasoningEffort || undefined,
+              guidance: normalizedGuidance,
+            },
             currentProject.revision,
           );
         },
@@ -398,6 +411,19 @@ export function useVoiceVisualDraft(projectId: string) {
       setDraftState(content);
       setSaveState('saved');
       generationRequestRef.current = null;
+      if (reasoningEffort) {
+        recordCodexWaitSample({
+          model:
+            updatedProject.voiceVisualPlan?.generation.requestedModel ??
+            model ??
+            updatedProject.voiceVisualPlan?.generation.model ??
+            'default',
+          reasoningEffort,
+          task: 'voiceVisual',
+          workUnits: updatedProject.outline?.sections.length ?? 1,
+          elapsedMs: Date.now() - startedAt,
+        });
+      }
       return updatedProject;
     } catch (error) {
       if (error instanceof VoiceVisualOperationCancelledError) return null;

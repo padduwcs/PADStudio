@@ -8,11 +8,18 @@ import {
 import {createElevenLabsConnectionService} from '../src/backend/elevenLabsConnection.ts';
 import {createElevenLabsVoiceService} from '../src/backend/elevenLabsVoiceService.ts';
 import {createCodexOutlineGenerator} from '../src/backend/outlineGenerator.ts';
+import {createDefaultCredentialStore} from '../src/backend/credentialStore.ts';
 
 const envFile = fileURLToPath(new URL('../.env', import.meta.url));
+const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 if (existsSync(envFile)) loadEnvFile(envFile);
+const credentialStore = createDefaultCredentialStore(repositoryRoot);
+const elevenLabsApiKey = async () =>
+  (await credentialStore.get('elevenlabs')) ?? process.env.ELEVENLABS_API_KEY;
 
-const allowCredits = process.argv.includes('--allow-credits');
+const allowCodex = process.argv.includes('--allow-codex');
+const allowElevenLabs = process.argv.includes('--allow-elevenlabs');
+const ambiguousCreditsFlag = process.argv.includes('--allow-credits');
 const helpRequested =
   process.argv.includes('--help') || process.argv.includes('-h');
 
@@ -21,14 +28,21 @@ if (helpRequested) {
 
 Usage:
   npm run smoke:live
-  npm run smoke:live -- --allow-credits
+  npm run smoke:live -- --allow-codex
+  npm run smoke:live -- --allow-elevenlabs
 
-Without --allow-credits, the script only verifies Codex and ElevenLabs.
-With --allow-credits, it also runs one concise outline through the production
-Codex path and creates one short ElevenLabs TTS sample. Codex token usage varies
-with the current default model. Credentials and generated audio are never
-printed or written to the repository.`);
+Without an allow flag, the script only verifies Codex and ElevenLabs.
+--allow-codex runs one concise outline through the production Codex path.
+--allow-elevenlabs creates one short ElevenLabs TTS sample. These flags are
+separate so a Codex smoke test can never spend ElevenLabs credits accidentally.
+Credentials and generated audio are never printed or written to the repository.`);
   process.exit(0);
+}
+
+if (ambiguousCreditsFlag) {
+  throw new Error(
+    'The ambiguous --allow-credits flag is no longer supported. Use --allow-codex or --allow-elevenlabs explicitly.',
+  );
 }
 
 function assertConnected(name, status) {
@@ -79,7 +93,9 @@ const codexConnection = createCodexConnectionService(codexClient);
 try {
   const [codexStatus, elevenLabsStatus] = await Promise.all([
     codexConnection.verifyConnection(),
-    createElevenLabsConnectionService().verifyConnection(),
+    createElevenLabsConnectionService({
+      apiKeyProvider: elevenLabsApiKey,
+    }).verifyConnection(),
   ]);
   assertConnected('Codex', codexStatus);
   assertConnected('ElevenLabs', elevenLabsStatus);
@@ -97,17 +113,18 @@ try {
       `${elevenLabsStatus.subscription.characterLimit} characters)`,
   );
 
-  if (!allowCredits) {
+  if (!allowCodex && !allowElevenLabs) {
     console.info(
-      'Billable generation skipped. Pass --allow-credits to test Codex output and ElevenLabs TTS.',
+      'Billable generation skipped. Use an explicit allow flag to test generation.',
     );
-    process.exitCode = 0;
-  } else {
+  }
+
+  if (allowCodex) {
     const outline = await createCodexOutlineGenerator(codexClient).generate({
       topicInput: {
         topic: 'Ngăn xếp hoạt động như thế nào',
         learningGoal: 'Hiểu trực giác vào sau ra trước.',
-        videoDirection: 'Một phép thử integration rất ngắn.',
+        videoDirection: 'Một phép thử integration thật ngắn.',
         audience: 'beginner',
         duration: 'concise',
       },
@@ -119,8 +136,12 @@ try {
       `Codex structured generation: OK (${outline.model}, ` +
         `${outline.usage?.totalTokens ?? 'unknown'} tokens)`,
     );
+  }
 
-    const voiceService = createElevenLabsVoiceService();
+  if (allowElevenLabs) {
+    const voiceService = createElevenLabsVoiceService({
+      apiKeyProvider: elevenLabsApiKey,
+    });
     const catalog = await voiceService.getCatalog('');
     const {voice, model} = selectVoiceAndModel(catalog);
     const settings = {

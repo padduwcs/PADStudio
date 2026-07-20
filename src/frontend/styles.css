@@ -849,6 +849,11 @@ textarea.has-error,
   display: block;
 }
 
+.codex-connection-content .connection-inline-error {
+  color: #a13f32;
+  font-weight: 700;
+}
+
 .codex-connection-content strong {
   color: var(--ink);
   font-size: 13.5px;
@@ -897,6 +902,125 @@ textarea.has-error,
   font-size: 10.5px;
   font-weight: 750;
   cursor: pointer;
+}
+
+.codex-connection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.codex-model-picker {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.codex-model-picker span,
+.codex-api-key-form label > span {
+  color: #62766f;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.codex-model-picker select,
+.codex-api-key-form input {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid #cad5cf;
+  border-radius: 8px;
+  color: var(--ink);
+  background: white;
+  font: inherit;
+  font-size: 11.5px;
+}
+
+.codex-wait-estimate {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-top: 9px;
+  padding: 8px 9px;
+  border: 1px solid #d9e4de;
+  border-radius: 9px;
+  color: #536a61;
+  background: #f6faf8;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.codex-wait-estimate.is-slow {
+  border-color: #ead8a6;
+  color: #725b20;
+  background: #fffaf0;
+}
+
+.codex-wait-estimate > svg {
+  flex: 0 0 auto;
+  width: 15px;
+  margin-top: 1px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.codex-wait-estimate strong {
+  display: inline;
+  color: inherit;
+  font-size: inherit;
+}
+
+.codex-wait-estimate small {
+  margin-top: 2px;
+  color: inherit;
+  opacity: 0.8;
+}
+
+.codex-api-key-form {
+  display: grid;
+  grid-column: 2 / -1;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: end;
+  gap: 8px 10px;
+  padding-top: 2px;
+}
+
+.codex-api-key-form label {
+  display: grid;
+  gap: 5px;
+}
+
+.codex-api-key-form button {
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid var(--green-800);
+  border-radius: 8px;
+  color: white;
+  background: var(--green-800);
+  font-size: 10.5px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.codex-api-key-form button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.codex-api-key-form small {
+  grid-column: 1 / -1;
+  color: #788a83;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.codex-api-key-form .credential-form-error {
+  color: #a13f32;
+  font-weight: 700;
 }
 
 .codex-connection-actions button:hover:not(:disabled) {
@@ -1063,8 +1187,12 @@ textarea.has-error,
 }
 
 .submit-button:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.75;
+}
+
+.submit-button.is-busy:disabled {
+  cursor: wait;
 }
 
 .submit-button svg {
@@ -2535,6 +2663,11 @@ kbd {
 
   .codex-connection-actions {
     grid-column: 2;
+    justify-content: flex-start;
+  }
+
+  .codex-api-key-form {
+    grid-column: 1 / -1;
   }
 }
 
@@ -2553,6 +2686,14 @@ kbd {
   }
 
   .codex-connection-actions button {
+    width: 100%;
+  }
+
+  .codex-api-key-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .codex-api-key-form button {
     width: 100%;
   }
 }

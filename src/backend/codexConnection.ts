@@ -9,6 +9,7 @@ import {z} from 'zod';
 import type {
   CodexConnectionStatus,
   CodexLoginStart,
+  CodexModelSummary,
 } from '../shared/codex.ts';
 
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -51,6 +52,18 @@ const modelListResponseSchema = z
         z
           .object({
             id: z.string().min(1),
+            model: z.string().min(1).optional(),
+            displayName: z.string().min(1).optional(),
+            description: z.string().optional(),
+            isDefault: z.boolean().optional(),
+            supportedReasoningEfforts: z
+              .array(
+                z
+                  .object({reasoningEffort: z.string().min(1)})
+                  .passthrough(),
+              )
+              .optional(),
+            defaultReasoningEffort: z.string().nullable().optional(),
           })
           .passthrough(),
       )
@@ -64,6 +77,10 @@ const loginResponseSchema = z
     loginId: z.string().min(1),
     authUrl: z.string().url(),
   })
+  .passthrough();
+
+const apiKeyLoginResponseSchema = z
+  .object({type: z.literal('apiKey')})
   .passthrough();
 
 type PendingRequest = {
@@ -88,6 +105,9 @@ export interface CodexAppServerClient {
 export interface CodexConnectionService {
   verifyConnection(): Promise<CodexConnectionStatus>;
   startChatGptLogin(): Promise<CodexLoginStart>;
+  loginWithApiKey(apiKey: string): Promise<void>;
+  logout(): Promise<void>;
+  listModels(): Promise<CodexModelSummary[]>;
   close(): void;
 }
 
@@ -523,6 +543,72 @@ export function createCodexConnectionService(
         throw new CodexConnectionError(
           'CODEX_LOGIN_START_FAILED',
           'Không thể bắt đầu đăng nhập Codex.',
+          {cause: error},
+        );
+      }
+    },
+
+    async loginWithApiKey(apiKey) {
+      const normalized = apiKey.trim();
+      if (!normalized) {
+        throw new CodexConnectionError(
+          'CODEX_API_KEY_REQUIRED',
+          'OpenAI API key không được để trống.',
+        );
+      }
+      try {
+        apiKeyLoginResponseSchema.parse(
+          await client.request('account/login/start', {
+            type: 'apiKey',
+            apiKey: normalized,
+          }),
+        );
+      } catch (error) {
+        if (error instanceof CodexConnectionError) throw error;
+        throw new CodexConnectionError(
+          'CODEX_API_KEY_LOGIN_FAILED',
+          'Codex không chấp nhận OpenAI API key hoặc chưa thể xác minh kết nối.',
+          {cause: error},
+        );
+      }
+    },
+
+    async logout() {
+      try {
+        await client.request('account/logout');
+      } catch (error) {
+        throw new CodexConnectionError(
+          'CODEX_LOGOUT_FAILED',
+          'Không thể đăng xuất Codex lúc này.',
+          {cause: error},
+        );
+      }
+    },
+
+    async listModels() {
+      try {
+        const response = modelListResponseSchema.parse(
+          await client.request('model/list', {
+            limit: 100,
+            includeHidden: false,
+          }),
+        );
+        return response.data.map((item) => ({
+          id: item.id,
+          model: item.model ?? item.id,
+          displayName: item.displayName ?? item.model ?? item.id,
+          description: item.description ?? '',
+          isDefault: item.isDefault ?? false,
+          supportedReasoningEfforts:
+            item.supportedReasoningEfforts?.map(
+              (effort) => effort.reasoningEffort,
+            ) ?? [],
+          defaultReasoningEffort: item.defaultReasoningEffort ?? null,
+        }));
+      } catch (error) {
+        throw new CodexConnectionError(
+          'CODEX_MODEL_LIST_FAILED',
+          'Không thể đọc danh sách model khả dụng từ Codex.',
           {cause: error},
         );
       }

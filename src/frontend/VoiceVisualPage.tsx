@@ -31,12 +31,20 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
   const [guidance, setGuidance] = useState('');
 
   async function handleGenerate(forcedGuidance?: string) {
-    if (plan.generating || codexConnection.checking) return;
+    if (
+      plan.generating ||
+      codexConnection.checking ||
+      !codexConnection.generationReady
+    ) return;
     const connectionStatus = await codexConnection.verify();
     if (connectionStatus?.state !== 'connected') return;
+    const selection = codexConnection.getGenerationSelection();
+    if (!selection) return;
 
     const generatedProject = await plan.generate(
       forcedGuidance ?? guidance,
+      selection.model,
+      selection.reasoningEffort,
     );
     if (generatedProject) setGuidance('');
   }
@@ -143,7 +151,11 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
       </header>
 
       <div className="outline-codex">
-        <CodexConnectionCard connection={codexConnection} />
+        <CodexConnectionCard
+          connection={codexConnection}
+          task="voiceVisual"
+          workUnits={outline.sections.length}
+        />
       </div>
 
       {plan.saveState === 'conflict' && (
@@ -167,7 +179,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
             disabled={
               plan.generating ||
               codexConnection.checking ||
-              !codexConnection.connected
+              !codexConnection.generationReady
             }
             onClick={() => void handleGenerate('')}
           >
@@ -235,7 +247,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                 disabled={
                   plan.generating ||
                   codexConnection.checking ||
-                  !codexConnection.connected
+                  !codexConnection.generationReady
                 }
                 onClick={() => void handleGenerate('')}
               >
@@ -581,7 +593,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                       plan.generating ||
                       plan.saveState === 'conflict' ||
                       codexConnection.checking ||
-                      !codexConnection.connected
+                      !codexConnection.generationReady
                     }
                     onClick={() => void handleGenerate()}
                   >
@@ -649,6 +661,12 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                     <small>
                       Input {usage.inputTokens.toLocaleString('vi-VN')} ·
                       Output {usage.outputTokens.toLocaleString('vi-VN')}
+                    </small>
+                    <small>
+                      {project.voiceVisualPlan?.generation.model}
+                      {project.voiceVisualPlan?.generation.reasoningEffort
+                        ? ` · reasoning ${project.voiceVisualPlan.generation.reasoningEffort}`
+                        : ''}
                     </small>
                   </div>
                 )}

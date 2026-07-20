@@ -297,17 +297,27 @@ async function errorForResponse(response: Response) {
 export function createElevenLabsVoiceService(
   options: {
     apiKey?: string | null;
+    apiKeyProvider?: () => Promise<string | null> | string | null;
     fetch?: typeof globalThis.fetch;
     timeoutMs?: number;
+    generationTimeoutMs?: number;
     retryDelaysMs?: number[];
   } = {},
 ): ElevenLabsVoiceService {
-  const apiKey = (options.apiKey ?? process.env.ELEVENLABS_API_KEY ?? '').trim();
   const fetchRequest = options.fetch ?? globalThis.fetch;
   const timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  const generationTimeoutMs = Math.max(
+    timeoutMs,
+    options.generationTimeoutMs ?? 3 * 60 * 1000,
+  );
   const retryDelaysMs = options.retryDelaysMs ?? [350, 900, 1_800];
 
-  function assertConfigured() {
+  async function configuredApiKey() {
+    const apiKey = (
+      options.apiKeyProvider
+        ? await options.apiKeyProvider()
+        : options.apiKey ?? process.env.ELEVENLABS_API_KEY ?? ''
+    )?.trim() ?? '';
     if (!apiKey) {
       throw new ElevenLabsVoiceError(
         'ELEVENLABS_NOT_CONFIGURED',
@@ -315,17 +325,21 @@ export function createElevenLabsVoiceService(
         503,
       );
     }
+    return apiKey;
   }
 
   async function request(
     pathname: string,
     init: RequestInit = {},
     retry = true,
+    requestTimeoutMs = timeoutMs,
+    costlyRequest = false,
   ) {
-    assertConfigured();
+    const apiKey = await configuredApiKey();
+    const safeToRetry = retry && (!init.method || init.method === 'GET');
     for (let attempt = 0; ; attempt += 1) {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
       try {
         const response = await fetchRequest(
           `${ELEVENLABS_API_ORIGIN}${pathname}`,
@@ -340,7 +354,7 @@ export function createElevenLabsVoiceService(
           },
         );
         const canRetry =
-          retry &&
+          safeToRetry &&
           attempt < retryDelaysMs.length &&
           (response.status === 429 || response.status >= 500);
         if (canRetry) {
@@ -350,15 +364,19 @@ export function createElevenLabsVoiceService(
         }
         return response;
       } catch (error) {
-        if (attempt < retryDelaysMs.length && retry) {
+        if (attempt < retryDelaysMs.length && safeToRetry) {
           await delay(retryDelaysMs[attempt]);
           continue;
         }
         throw new ElevenLabsVoiceError(
-          'ELEVENLABS_UNAVAILABLE',
-          error instanceof Error && error.name === 'AbortError'
-            ? 'ElevenLabs không phản hồi trong thời hạn cho phép.'
-            : 'Không thể kết nối tới dịch vụ ElevenLabs.',
+          costlyRequest
+            ? 'ELEVENLABS_TTS_RESULT_UNKNOWN'
+            : 'ELEVENLABS_UNAVAILABLE',
+          costlyRequest
+            ? 'Không nhận được phản hồi cuối từ ElevenLabs. PAD Studio không tự gửi lại để tránh tạo voice và tính phí hai lần. Hãy kiểm tra History trước khi thử lại.'
+            : error instanceof Error && error.name === 'AbortError'
+              ? 'ElevenLabs không phản hồi trong thời hạn cho phép.'
+              : 'Không thể kết nối tới dịch vụ ElevenLabs.',
           503,
           {cause: error},
         );
@@ -620,6 +638,9 @@ export function createElevenLabsVoiceService(
               : {}),
           }),
         },
+        false,
+        generationTimeoutMs,
+        true,
       );
       if (!response.ok) throw await errorForResponse(response);
       const parsed = timestampResponseSchema.safeParse(await response.json());

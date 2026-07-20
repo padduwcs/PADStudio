@@ -391,13 +391,14 @@ function TopicPage({
 
     const connectionStatus = await codexConnection.verify();
     if (connectionStatus?.state !== 'connected') return;
+    if (!codexConnection.getGenerationSelection()) return;
 
     await submit();
   }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!codexConnection.connected) return;
+    if (!codexConnection.generationReady) return;
     await continueWithVerifiedCodex();
   }
 
@@ -407,7 +408,7 @@ function TopicPage({
       if (
         submitState !== 'submitting' &&
         saveState !== 'conflict' &&
-        codexConnection.connected
+        codexConnection.generationReady
       ) {
         void continueWithVerifiedCodex();
       }
@@ -668,7 +669,7 @@ function TopicPage({
                     submitState === 'submitting' ||
                     saveState === 'conflict' ||
                     codexConnection.checking ||
-                    !codexConnection.connected
+                    !codexConnection.generationReady
                   }
                 >
                   {submitState === 'submitting' ? (
@@ -703,11 +704,21 @@ function OutlinePage({projectId}: {projectId: string}) {
   const [guidance, setGuidance] = useState('');
 
   async function handleGenerate() {
-    if (outline.generating || codexConnection.checking) return;
+    if (
+      outline.generating ||
+      codexConnection.checking ||
+      !codexConnection.generationReady
+    ) return;
     const connectionStatus = await codexConnection.verify();
     if (connectionStatus?.state !== 'connected') return;
+    const selection = codexConnection.getGenerationSelection();
+    if (!selection) return;
 
-    const generatedProject = await outline.generate(guidance);
+    const generatedProject = await outline.generate(
+      guidance,
+      selection.model,
+      selection.reasoningEffort,
+    );
     if (generatedProject) setGuidance('');
   }
 
@@ -769,7 +780,7 @@ function OutlinePage({projectId}: {projectId: string}) {
       </header>
 
       <div className="outline-codex">
-        <CodexConnectionCard connection={codexConnection} />
+        <CodexConnectionCard connection={codexConnection} task="outline" />
       </div>
 
       {outline.saveState === 'conflict' && (
@@ -849,7 +860,7 @@ function OutlinePage({projectId}: {projectId: string}) {
                 disabled={
                   outline.generating ||
                   codexConnection.checking ||
-                  !codexConnection.connected
+                  !codexConnection.generationReady
                 }
                 onClick={() => void handleGenerate()}
               >
@@ -1134,7 +1145,7 @@ function OutlinePage({projectId}: {projectId: string}) {
                     outline.generating ||
                     outline.saveState === 'conflict' ||
                     codexConnection.checking ||
-                    !codexConnection.connected
+                    !codexConnection.generationReady
                   }
                   onClick={() => void handleGenerate()}
                 >
@@ -1201,6 +1212,12 @@ function OutlinePage({projectId}: {projectId: string}) {
                     <small>
                       Input {usage.inputTokens.toLocaleString('vi-VN')} · Output{' '}
                       {usage.outputTokens.toLocaleString('vi-VN')}
+                    </small>
+                    <small>
+                      {project.outline?.generation.model}
+                      {project.outline?.generation.reasoningEffort
+                        ? ` · reasoning ${project.outline.generation.reasoningEffort}`
+                        : ''}
                     </small>
                   </div>
                 )}

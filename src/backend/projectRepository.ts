@@ -19,6 +19,7 @@ import {
 import {
   finalRenderMatchesLayout,
   layoutMatchesAnimationSync,
+  visualDesignMatchesMotion,
 } from '../shared/projectPipeline.ts';
 import {
   animationSyncMatchesSources,
@@ -63,6 +64,7 @@ type ProjectRepositoryUpdate = {
   outline?: NonNullable<TopicProject['outline']>;
   voiceVisualPlan?: NonNullable<TopicProject['voiceVisualPlan']>;
   motionCanvasBundle?: NonNullable<TopicProject['motionCanvasBundle']>;
+  visualDesignBundle?: TopicProject['visualDesignBundle'];
   voiceBundle?: NonNullable<TopicProject['voiceBundle']>;
   animationSyncBundle?: NonNullable<TopicProject['animationSyncBundle']>;
   layoutBundle?: NonNullable<TopicProject['layoutBundle']>;
@@ -297,6 +299,9 @@ export function createFileProjectRepository(
       (update.motionCanvasBundle === undefined ||
         JSON.stringify(update.motionCanvasBundle) ===
           JSON.stringify(project.motionCanvasBundle)) &&
+      (update.visualDesignBundle === undefined ||
+        JSON.stringify(update.visualDesignBundle) ===
+          JSON.stringify(project.visualDesignBundle)) &&
       (update.voiceBundle === undefined ||
         JSON.stringify(update.voiceBundle) ===
           JSON.stringify(project.voiceBundle)) &&
@@ -348,6 +353,17 @@ export function createFileProjectRepository(
     const motionCanvasChanged =
       JSON.stringify(nextMotionCanvasBundle) !==
       JSON.stringify(currentProject.motionCanvasBundle);
+    const nextVisualDesignBundle =
+      update.visualDesignBundle !== undefined
+        ? update.visualDesignBundle
+        : currentProject.visualDesignBundle &&
+            nextMotionCanvasBundle &&
+            visualDesignMatchesMotion(
+              currentProject.visualDesignBundle,
+              nextMotionCanvasBundle,
+            )
+          ? currentProject.visualDesignBundle
+          : null;
     const voiceSourceChanged = Boolean(
       currentProject.voiceBundle &&
         (!nextVoiceVisualPlan ||
@@ -449,6 +465,7 @@ export function createFileProjectRepository(
       outline: nextOutline,
       voiceVisualPlan: nextVoiceVisualPlan,
       motionCanvasBundle: nextMotionCanvasBundle,
+      visualDesignBundle: nextVisualDesignBundle,
       voiceBundle: nextVoiceBundle,
       animationSyncBundle: nextAnimationSyncBundle,
       layoutBundle: nextLayoutBundle,
@@ -501,6 +518,7 @@ export function createFileProjectRepository(
           outline: null,
           voiceVisualPlan: null,
           motionCanvasBundle: null,
+          visualDesignBundle: null,
           voiceBundle: null,
           animationSyncBundle: null,
           layoutBundle: null,

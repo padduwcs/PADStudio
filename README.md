@@ -10,11 +10,11 @@
 Nhập chủ đề
 → Tạo và review mạch giảng
 → Tạo và review kế hoạch voice–visual
-→ Sinh và review scene Motion Canvas
+→ Sinh, tự xem trước và chỉnh scene Motion Canvas
 → Sinh voice
 → Đồng bộ animation
 → Chỉnh sửa bằng Layout Editor
-→ Render video cuối
+→ Chọn tốc độ/watermark và render video cuối
 ```
 
 Người dùng có thể chỉnh vị trí, kích thước và thuộc tính hiển thị trực tiếp trên giao
@@ -41,7 +41,11 @@ Vertical slice đầu tiên đã có thể chạy:
 - Chỉnh sửa, sắp xếp beat, tạo lại theo góp ý và chốt kế hoạch trước khi sinh
   scene hoặc gọi dịch vụ tạo voice.
 - Sinh một scene Motion Canvas cho từng section đã chốt, kiểm tra quyền import
-  và biên dịch TypeScript trước khi nhận kết quả.
+  và biên dịch TypeScript trước khi nhận kết quả. Scene lỗi được sửa có định hướng
+  tối đa hai lần; nếu Codex vẫn trả TSX hỏng, PAD Studio dựng scene an toàn tại chỗ
+  cho riêng section đó thay vì bỏ dở toàn bộ generation.
+- Tự khởi động preview ngay trên UI sau khi sinh scene và cho chỉnh visual trước
+  khi tạo voice. Các modifier này tiếp tục được đưa vào Layout Editor sau sync.
 - Xem source, tạo lại theo góp ý và chốt bộ scene trước khi sang bước tiếp theo.
 - Scene mới dùng time-event ổn định theo từng beat
   (`beat:<beat-id>:start/end`) và có metadata timing dự kiến, để bước đồng bộ
@@ -88,8 +92,11 @@ Vertical slice đầu tiên đã có thể chạy:
   được re-hash; artifact lịch sử không còn khớp hash phải Đồng bộ và chốt lại trước khi
   mở Layout.
 - Render trực tiếp từng frame Motion Canvas vào FFmpeg, ghép với master narration và
-  xuất MP4 dọc 1080×1920, 30 fps, H.264/AAC. Output được hash, kiểm tra codec, kích
-  thước và thời lượng trước khi ghi vào `projects/<project-id>/renders/generations/`.
+  xuất MP4 dọc 1080×1920, 30 fps, H.264/AAC. Trước khi render có thể chọn tốc độ
+  0,25×–4×, xem trước thời lượng dự kiến và thêm watermark chữ/PNG/JPEG/WebP với
+  opacity, vị trí, kích thước tùy chỉnh. Audio đổi tốc độ nhưng giữ cao độ.
+  Output được hash, kiểm tra codec, kích thước và thời lượng trước khi ghi vào
+  `projects/<project-id>/renders/generations/`.
 - Hiển thị lượng token của lần sinh gần nhất để người dùng theo dõi.
 - Liệt kê, mở lại, chỉnh sửa và xóa project cục bộ.
 - Giao diện responsive cho desktop và mobile.
@@ -100,14 +107,16 @@ Thời lượng định hướng hiện dùng ba mức:
 - Tiêu chuẩn: 3–5 phút.
 - Chuyên sâu: 6–8 phút.
 
-Project metadata và artifact generation được giữ cạnh project để có thể
-version control nội dung từng video. Chỉ thư mục render sinh ra tại
-`projects/**/renders/` bị ignore.
+Project metadata và toàn bộ artifact generation được giữ trong
+`projects/<project-id>/` trên máy người dùng. Đây là dữ liệu runtime có thể rất
+lớn (source sinh tự động, audio, alignment, watermark, preview và video cuối),
+vì vậy toàn bộ `projects/` bị ignore và không được đưa vào Git. Hãy sao lưu hoặc
+di chuyển project cần lưu trữ bằng cơ chế riêng, không dùng repository mã nguồn.
 
 Mỗi project có hai chỉ số độc lập:
 
-- `version` là phiên bản cấu trúc file; dữ liệu v1 đến v9 được đọc và nâng cấp
-  lên cấu trúc v10 hiện tại ở lần ghi tiếp theo. Voice/sync section-based của v7
+- `version` là phiên bản cấu trúc file; dữ liệu v1 đến v10 được đọc và nâng cấp
+  lên cấu trúc v11 hiện tại ở lần ghi tiếp theo. Voice/sync section-based của v7
   được chủ động vô hiệu hóa để tạo lại bằng master narration, không giả vờ
   migrate audio cũ thành audio liên tục.
 - `revision` tăng sau mỗi thay đổi nội dung và được dùng với `If-Match` để
@@ -121,10 +130,15 @@ hoặc phiên bản chưa hỗ trợ được báo trong thư viện thay vì b�
 PAD Studio kết nối tới `codex app-server` qua stdio. Trạng thái “đã kết nối”
 chỉ được trả về sau khi Codex làm mới phiên đăng nhập, đọc được rate limit và
 model catalog từ dịch vụ; việc chỉ tìm thấy file credential cục bộ là chưa đủ.
-Credential tiếp tục do Codex CLI quản lý và không được đọc hoặc trả về frontend.
-Codex CLI tự lưu và làm mới credential nên tải lại PAD Studio không yêu cầu đăng
-nhập lại. Frontend chỉ cache loại tài khoản và gói dịch vụ (không cache token
-hoặc email) để nhận diện phiên cũ trong lúc xác minh nền. Cache này chỉ bị xóa
+Credential tiếp tục do Codex app-server quản lý và không được đọc hoặc trả về
+frontend. Người dùng có thể đăng nhập ChatGPT trên trình duyệt hoặc nhập Codex
+API key hoàn toàn từ card kết nối trong UI; không cần đăng nhập trước ở terminal.
+App-server tự lưu và làm mới credential nên tải lại PAD Studio không yêu cầu đăng
+nhập lại. UI lấy model catalog thật từ app-server và cho chọn model cùng mức suy
+luận dùng cho các lần sinh tiếp theo. Danh sách effort phụ thuộc capability của
+từng model; lựa chọn được nhớ riêng theo model và tự trở về mặc định nếu catalog
+không còn hỗ trợ mức cũ. Frontend chỉ cache loại tài khoản, gói dịch vụ, model và
+effort đã chọn (không cache token hoặc email) để nhận diện phiên cũ trong lúc xác minh nền. Cache này chỉ bị xóa
 khi Codex trả về trạng thái đã đăng xuất; lỗi mạng hoặc lỗi CLI chỉ yêu cầu kiểm
 tra lại.
 
@@ -151,13 +165,16 @@ Scene Motion Canvas chỉ được sinh từ mạch giảng và kế hoạch voi
 qua structured output có schema riêng. Source bị giới hạn trong các package
 Motion Canvas, không được dùng network, filesystem hoặc runtime API ngoài phạm
 vi. Mỗi section được sinh bằng một Codex turn riêng và chạy song song có giới
-hạn. Pipeline dùng model mặc định do Codex catalog công bố, chọn reasoning
-`medium` cho lượt dựng đầy đủ và tự lùi về capability/default hợp lệ nếu catalog
-hoặc model thay đổi; không hard-code một họ model cụ thể. Scene đã sinh thành công
+hạn. Pipeline dùng model/effort người dùng chọn từ Codex catalog; khi chưa chọn
+thì dùng mặc định do model công bố và không hard-code một họ model cụ thể. Nếu
+capability thay đổi trước lúc chạy, backend từ chối rõ ràng để người dùng chọn
+lại thay vì âm thầm hạ mức reasoning. Scene đã sinh thành công
 được cache theo `generationId`, kể cả khi một scene timeout hoặc vòng sửa chưa
 hoàn tất; retry chỉ chạy lại scene lỗi. Lỗi TypeScript
 được gửi về một vòng sửa có định hướng cho đúng file lỗi, tối đa hai lần, thay
-vì sinh lại toàn bộ video. Mỗi generation chỉ được lưu tại
+vì sinh lại toàn bộ video. Nếu hai vòng vẫn không biên dịch, một fallback local
+giữ đúng time-event của beat được dùng cho section lỗi mà không tốn thêm token.
+Mỗi generation chỉ được lưu tại
 `projects/<project-id>/motion-canvas/generations/<generation-id>/`; project chỉ
 giữ metadata và con trỏ đến generation hiện hành sau khi toàn bộ scene biên dịch
 thành công. Khi dữ liệu upstream đổi, bộ
@@ -257,7 +274,15 @@ Library có thể vẫn xuất hiện trong tài khoản/catalog rồi bị từ
 `paid_plan_required` khi tạo audio. PAD Studio đánh dấu trước các voice này và
 chuyển lỗi 402 thành thông báo cần nâng gói, thay vì báo chung là mất kết nối.
 
-Sau đó tạo file `.env` từ file mẫu:
+Khuyến nghị nhập key ngay trên card ElevenLabs trong UI. Backend gọi thật
+subscription và model catalog trước khi lưu; nếu xác minh thất bại thì key cũ
+vẫn được giữ nguyên. Trên Windows, key được mã hóa bằng DPAPI theo tài khoản hiện
+tại và lưu ngoài project ở `.pad-studio/credentials.json`; frontend không bao giờ
+nhận lại giá trị key. Người dùng có thể nhập hoặc thay key ngay cả khi đang kết
+nối; key mới chỉ thay thế sau khi xác minh live thành công. Xóa key đã lưu trên
+UI sẽ quay về dùng biến môi trường nếu có.
+
+File `.env` vẫn được hỗ trợ như một cấu hình dự phòng cho môi trường phát triển:
 
 ```bash
 cp .env.example .env
@@ -313,7 +338,8 @@ projects/<project-id>/voice/generations/<generation-id>/
 └── manifest.json
 ```
 
-Sau khi đã sinh scene cho một project, mở Motion Canvas editor bằng:
+Sau khi sinh scene, preview/editor tự mở ngay trong bước Motion Canvas trên UI.
+Lệnh sau chỉ còn là công cụ dành cho việc chẩn đoán sâu của lập trình viên:
 
 ```bash
 npm run motion:serve -- --project <project-id>
@@ -343,11 +369,15 @@ npm run validate:motion -- --project <project-id> --stage sync
 npm run validate:sync -- --browser "<đường-dẫn-tới-chrome-hoặc-chromium>"
 ```
 
-Mặc định bước Motion Canvas dùng model mặc định trong Codex catalog và reasoning
-`medium`. Deployment có thể yêu cầu model hoặc effort cụ thể bằng
+Mặc định các bước AI dùng model và reasoning mặc định trong Codex catalog; người
+dùng có thể đổi cả hai ngay trên card Codex và lựa chọn được truyền vào từng
+request. Card hiển thị khoảng thời gian tham khảo theo loại tác vụ, effort và số
+batch scene; sau mỗi lần thành công, khoảng này tự hiệu chỉnh bằng lịch sử cục bộ
+trên máy. Effort cao có timeout lớn hơn để không hủy sớm: từ 10 phút ở `low` tới
+60 phút ở `ultra`. Deployment có thể yêu cầu model hoặc effort cụ thể bằng
 `PAD_MOTION_CANVAS_MODEL` và `PAD_MOTION_CANVAS_REASONING_EFFORT`; generator sẽ
-đối chiếu capability trước khi gửi request, nên không truyền effort mà model
-không hỗ trợ.
+đối chiếu capability trước khi gửi request. `PAD_CODEX_GENERATION_TIMEOUT_MS`
+chủ động thay thế cơ chế timeout thích ứng khi deployment cần một hard guard.
 
 ## Kiểm tra và chạy production
 
@@ -368,14 +398,16 @@ phép kiểm tra đó cho workspace thật.
 npm run smoke:live
 ```
 
-Chỉ khi chủ động chấp nhận tiêu quota, chạy thêm cờ sau. Script tạo một outline
-ngắn qua đúng production path và một câu TTS ngắn trong bộ nhớ; lượng token
-Codex phụ thuộc model mặc định hiện hành và có thể lên tới vài nghìn. Script
-không ghi credential hay audio thử vào repository:
+Chỉ khi chủ động chấp nhận tiêu token Codex, chạy cờ riêng sau. Script tạo một
+outline ngắn qua đúng production path và không gọi ElevenLabs:
 
 ```bash
-npm run smoke:live -- --allow-credits
+npm run smoke:live -- --allow-codex
 ```
+
+Phép thử TTS được tách thành `--allow-elevenlabs` để không thể vô tình tiêu credit
+khi chỉ kiểm tra Codex. Không dùng cờ này nếu tài khoản ElevenLabs đã hết hạn mức.
+Script không ghi credential hay audio thử vào repository.
 
 ## CI và chính sách lưu media
 
@@ -386,21 +418,17 @@ smoke-test sync player bằng Chrome headless và xác nhận các bước kiể
 làm bẩn worktree. CI dùng workspace/audio tổng hợp, không gọi Codex hoặc
 ElevenLabs và không tiêu token hay credit.
 
-Các file audio `.wav`, `.mp3`, `.pcm` và `.opus` mới phải được lưu bằng Git
-LFS. Cài Git LFS một lần trên máy phát triển trước khi stage generation có
-audio:
+Thư mục `projects/` là dữ liệu runtime cục bộ và không được stage. Kiểm tra chính
+sách repository trước khi commit bằng:
 
 ```bash
-git lfs install
-git add projects/<project-id>/
 node scripts/check-media-policy.mjs
 ```
 
-Mười file audio đã có từ trước vẫn là Git blob thông thường và được khai báo
-ngoại lệ theo đúng đường dẫn trong `.gitattributes`. Cách làm forward-only này
-không renormalize binary hiện tại và không rewrite lịch sử. Nếu cần chuyển phần
-legacy sang LFS, hãy thực hiện trong một thay đổi migration riêng sau khi đã
-thống nhất tác động tới clone hiện có và quota LFS.
+Script sẽ báo lỗi nếu artifact trong `projects/` bị track trở lại. Quy tắc Git
+LFS cho `.wav`, `.mp3`, `.pcm` và `.opus` vẫn được giữ như một hàng rào an toàn
+cho media nào được chủ động đặt ngoài thư mục runtime và thực sự cần version
+control.
 
 Sau khi build, backend phục vụ cả API và frontend tại
 `http://127.0.0.1:4174`.

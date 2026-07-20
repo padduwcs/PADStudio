@@ -16,6 +16,7 @@ import {
   getProject,
   updateTeachingOutline,
 } from './api.ts';
+import {recordCodexWaitSample} from './codexWaitEstimate.ts';
 import {ProjectOperationQueue} from './projectOperationQueue.ts';
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -310,8 +311,13 @@ export function useOutlineDraft(projectId: string) {
     });
   }
 
-  async function generate(guidance: string) {
+  async function generate(
+    guidance: string,
+    model?: string,
+    reasoningEffort?: string,
+  ) {
     if (generating || saveState === 'conflict') return null;
+    const startedAt = Date.now();
     setGenerating(true);
     setActionError('');
 
@@ -329,6 +335,8 @@ export function useOutlineDraft(projectId: string) {
           const fingerprint = JSON.stringify({
             projectId,
             revision: currentProject.revision,
+            model,
+            reasoningEffort,
             guidance: normalizedGuidance,
           });
           const previousRequest = generationRequestRef.current;
@@ -342,6 +350,8 @@ export function useOutlineDraft(projectId: string) {
             projectId,
             {
               generationId,
+              model: model || undefined,
+              reasoningEffort: reasoningEffort || undefined,
               guidance: normalizedGuidance,
             },
             currentProject.revision,
@@ -355,6 +365,18 @@ export function useOutlineDraft(projectId: string) {
       setDraftState(content);
       setSaveState('saved');
       generationRequestRef.current = null;
+      if (reasoningEffort) {
+        recordCodexWaitSample({
+          model:
+            updatedProject.outline?.generation.requestedModel ??
+            model ??
+            updatedProject.outline?.generation.model ??
+            'default',
+          reasoningEffort,
+          task: 'outline',
+          elapsedMs: Date.now() - startedAt,
+        });
+      }
       return updatedProject;
     } catch (error) {
       if (error instanceof OutlineOperationCancelledError) return null;

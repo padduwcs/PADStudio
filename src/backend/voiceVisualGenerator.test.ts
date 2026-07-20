@@ -120,6 +120,7 @@ test('Codex voice–visual generator ánh xạ kết quả vào đúng section o
   };
 
   const result = await generator.generate({
+    reasoningEffort: 'xhigh',
     topicInput: sourceInput,
     outline: {
       brief: {
@@ -176,8 +177,10 @@ test('Codex voice–visual generator ánh xạ kết quả vào đúng section o
   const turnParams = turnCall?.params as {
     input?: Array<{text?: string}>;
     outputSchema?: unknown;
+    effort?: unknown;
   };
   assert.ok(turnParams.outputSchema);
+  assert.equal(turnParams.effort, 'xhigh');
   assert.equal(
     turnParams.input?.[0]?.text?.includes('currentPlan'),
     false,

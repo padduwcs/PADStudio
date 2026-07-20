@@ -9,6 +9,7 @@ import type {
   VoiceVisualPlan,
   VoiceVisualPlanContent,
 } from './topic.ts';
+import {finalRenderTimingToleranceSeconds} from './render.ts';
 
 const TIMING_TOLERANCE_SECONDS = 0.001;
 
@@ -101,6 +102,18 @@ export function motionCanvasIsStale(project: TopicProject): boolean {
       !voiceVisualIsReady(project) ||
       bundle.sourceVoiceVisualContentRevision !== plan.contentRevision ||
       !motionCanvasMatchesOutline(bundle, outline),
+  );
+}
+
+export function visualDesignMatchesMotion(
+  design: NonNullable<TopicProject['visualDesignBundle']>,
+  motion: NonNullable<TopicProject['motionCanvasBundle']>,
+) {
+  return (
+    design.sourceMotionCanvasGenerationId ===
+      motion.generation.generationId &&
+    design.sourceMotionCanvasContentRevision === motion.contentRevision &&
+    design.sourceMotionCanvasSourceHash === motion.validation.sourceHash
   );
 }
 
@@ -322,6 +335,8 @@ export function finalRenderMatchesLayout(
     | 'sourceLayoutGenerationId'
     | 'sourceLayoutSourceHash'
     | 'durationSeconds'
+    | 'sourceDurationSeconds'
+    | 'playbackRate'
     | 'fps'
   >,
   layout: Pick<
@@ -336,8 +351,15 @@ export function finalRenderMatchesLayout(
     bundle.sourceLayoutContentRevision === layout.contentRevision &&
     bundle.sourceLayoutGenerationId === layout.generation.generationId &&
     bundle.sourceLayoutSourceHash === layout.validation.sourceHash &&
-    Math.abs(bundle.durationSeconds - layout.totalDurationSeconds) <
-      Math.max(TIMING_TOLERANCE_SECONDS, 2 / bundle.fps)
+    Math.abs(
+      (bundle.sourceDurationSeconds ??
+        bundle.durationSeconds * (bundle.playbackRate ?? 1)) -
+        layout.totalDurationSeconds,
+    ) <
+      finalRenderTimingToleranceSeconds(
+        bundle.fps,
+        bundle.durationSeconds,
+      )
   );
 }
 

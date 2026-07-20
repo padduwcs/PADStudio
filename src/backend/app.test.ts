@@ -40,6 +40,7 @@ import type {LayoutWorkspace} from './layoutWorkspace.ts';
 import type {VoiceVisualGenerator} from './voiceVisualGenerator.ts';
 import type {VoiceWorkspace} from './voiceWorkspace.ts';
 import type {FinalRenderService} from './finalRenderService.ts';
+import type {CredentialStore} from './credentialStore.ts';
 
 const topicInput = {
   topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
@@ -65,6 +66,10 @@ async function startTestApp(
     codexConnection?: CodexConnectionService;
     elevenLabsConnection?: ElevenLabsConnectionService;
     elevenLabsVoiceService?: ElevenLabsVoiceService;
+    credentialStore?: CredentialStore;
+    elevenLabsConnectionFactory?: (
+      apiKey: string,
+    ) => ElevenLabsConnectionService;
     outlineGenerator?: OutlineGenerator;
     voiceVisualGenerator?: VoiceVisualGenerator;
     motionCanvasGenerator?: MotionCanvasGenerator;
@@ -84,6 +89,8 @@ async function startTestApp(
     codexConnection: options.codexConnection,
     elevenLabsConnection: options.elevenLabsConnection,
     elevenLabsVoiceService: options.elevenLabsVoiceService,
+    credentialStore: options.credentialStore,
+    elevenLabsConnectionFactory: options.elevenLabsConnectionFactory,
     outlineGenerator: options.outlineGenerator,
     voiceVisualGenerator: options.voiceVisualGenerator,
     motionCanvasGenerator: options.motionCanvasGenerator,
@@ -213,6 +220,23 @@ test('API Codex trả trạng thái xác minh thật và URL đăng nhập', asy
         authUrl: 'https://auth.openai.com/codex',
       };
     },
+    async loginWithApiKey(apiKey) {
+      assert.equal(apiKey, 'sk-test');
+    },
+    async logout() {},
+    async listModels() {
+      return [
+        {
+          id: 'model-id',
+          model: 'model-name',
+          displayName: 'Model Name',
+          description: '',
+          isDefault: true,
+          supportedReasoningEfforts: ['medium', 'high'],
+          defaultReasoningEffort: 'medium',
+        },
+      ];
+    },
     close() {},
   };
   const {baseUrl} = await startTestApp(context, {codexConnection});
@@ -232,6 +256,29 @@ test('API Codex trả trạng thái xác minh thật và URL đăng nhập', asy
   const loginBody = await loginResponse.json();
   assert.equal(loginResponse.status, 200);
   assert.equal(loginBody.login.loginId, 'login-123');
+
+  const apiKeyResponse = await fetch(
+    `${baseUrl}/api/integrations/codex/api-key`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({apiKey: 'sk-test'}),
+    },
+  );
+  assert.equal(apiKeyResponse.status, 200);
+
+  const modelsResponse = await fetch(
+    `${baseUrl}/api/integrations/codex/models`,
+  );
+  const modelsBody = await modelsResponse.json();
+  assert.equal(modelsResponse.status, 200);
+  assert.equal(modelsBody.models[0].model, 'model-name');
+
+  const logoutResponse = await fetch(
+    `${baseUrl}/api/integrations/codex/logout`,
+    {method: 'POST'},
+  );
+  assert.equal(logoutResponse.status, 200);
 });
 
 test('API ElevenLabs trả trạng thái từ phép xác minh live', async (context) => {
@@ -270,6 +317,105 @@ test('API ElevenLabs trả trạng thái từ phép xác minh live', async (cont
   assert.equal(body.status.subscription.tier, 'free');
   assert.equal(body.status.capabilities.supportsVietnamese, true);
   assert.equal(verifyCalls, 1);
+});
+
+test('API ElevenLabs chỉ lưu key sau xác minh live và không bao giờ trả lại key', async (context) => {
+  let saved: string | null = null;
+  const credentialStore: CredentialStore = {
+    persistence: 'os-protected',
+    async get() {
+      return saved;
+    },
+    async set(_name, value) {
+      saved = value;
+    },
+    async delete() {
+      saved = null;
+    },
+  };
+  const connected = {
+    state: 'connected' as const,
+    subscription: {
+      tier: 'free',
+      status: 'free',
+      characterCount: 10_000,
+      characterLimit: 10_000,
+      nextResetAt: null,
+    },
+    capabilities: {textToSpeechModels: 2, supportsVietnamese: true},
+    verifiedAt: new Date().toISOString(),
+  };
+  const {baseUrl} = await startTestApp(context, {
+    credentialStore,
+    elevenLabsConnectionFactory(apiKey) {
+      return {
+        async verifyConnection() {
+          return apiKey === 'valid-key' || apiKey === 'replacement-key'
+            ? connected
+            : {
+                state: 'disconnected' as const,
+                message: 'Key bị từ chối.',
+                checkedAt: new Date().toISOString(),
+              };
+        },
+      };
+    },
+  });
+
+  const rejected = await fetch(
+    `${baseUrl}/api/integrations/elevenlabs/credential`,
+    {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({apiKey: 'bad-key'}),
+    },
+  );
+  assert.equal(rejected.status, 422);
+  assert.equal(saved, null);
+
+  const accepted = await fetch(
+    `${baseUrl}/api/integrations/elevenlabs/credential`,
+    {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({apiKey: 'valid-key'}),
+    },
+  );
+  const acceptedText = await accepted.text();
+  assert.equal(accepted.status, 200);
+  assert.equal(saved, 'valid-key');
+  assert.doesNotMatch(acceptedText, /valid-key/);
+  assert.match(acceptedText, /secure-store/);
+
+  const rejectedReplacement = await fetch(
+    `${baseUrl}/api/integrations/elevenlabs/credential`,
+    {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({apiKey: 'bad-replacement'}),
+    },
+  );
+  assert.equal(rejectedReplacement.status, 422);
+  assert.equal(saved, 'valid-key');
+
+  const acceptedReplacement = await fetch(
+    `${baseUrl}/api/integrations/elevenlabs/credential`,
+    {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({apiKey: 'replacement-key'}),
+    },
+  );
+  assert.equal(acceptedReplacement.status, 200);
+  assert.equal(saved, 'replacement-key');
+  assert.doesNotMatch(await acceptedReplacement.text(), /replacement-key/);
+
+  const removed = await fetch(
+    `${baseUrl}/api/integrations/elevenlabs/credential`,
+    {method: 'DELETE'},
+  );
+  assert.equal(removed.status, 200);
+  assert.equal(saved, null);
 });
 
 test('API tạo, cập nhật và xóa project với revision', async (context) => {
@@ -445,8 +591,10 @@ test('generic project PUT không thể ghi artifact hoặc vượt review gate',
 test('API tạo, chỉnh sửa và chốt mạch giảng an toàn', async (context) => {
   let generationCalls = 0;
   const outlineGenerator: OutlineGenerator = {
-    async generate() {
+    async generate(request) {
       generationCalls += 1;
+      assert.equal(request.model, 'model-name');
+      assert.equal(request.reasoningEffort, 'high');
       return {
         content: {
           brief: {
@@ -498,7 +646,11 @@ test('API tạo, chỉnh sửa và chốt mạch giảng an toàn', async (conte
         'Content-Type': 'application/json',
         'If-Match': `"${project.revision}"`,
       },
-      body: JSON.stringify({generationId}),
+      body: JSON.stringify({
+        generationId,
+        model: 'model-name',
+        reasoningEffort: 'high',
+      }),
     },
   );
   const generateBody = await generateResponse.json();
@@ -520,12 +672,36 @@ test('API tạo, chỉnh sửa và chốt mạch giảng an toàn', async (conte
         'Content-Type': 'application/json',
         'If-Match': `"${project.revision}"`,
       },
-      body: JSON.stringify({generationId}),
+      body: JSON.stringify({
+        generationId,
+        model: 'model-name',
+        reasoningEffort: 'high',
+      }),
     },
   );
   const repeatedBody = await repeatedResponse.json();
   assert.equal(repeatedResponse.status, 200);
   assert.equal(repeatedBody.project.revision, 2);
+  assert.equal(generationCalls, 1);
+
+  const reusedWithDifferentReasoning = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${project.revision}"`,
+      },
+      body: JSON.stringify({
+        generationId,
+        model: 'model-name',
+        reasoningEffort: 'low',
+      }),
+    },
+  );
+  const reusedBody = await reusedWithDifferentReasoning.json();
+  assert.equal(reusedWithDifferentReasoning.status, 409);
+  assert.equal(reusedBody.error.code, 'GENERATION_ID_REUSED');
   assert.equal(generationCalls, 1);
 
   const generatedOutline = generateBody.project.outline;
@@ -1115,6 +1291,42 @@ export default makeScene2D(function* (view) {
             syncBundle.generation.generationId),
       };
     },
+    async startMotion(_projectId, motionBundle, options) {
+      layoutPreviewCalls += 1;
+      layoutParentOrigin = options.parentOrigin;
+      activeLayoutManifest = {
+        version: 1,
+        sourceAnimationSyncGenerationId:
+          motionBundle.generation.generationId,
+        sourceAnimationSyncContentRevision: motionBundle.contentRevision,
+        sourceAnimationSyncSourceHash: motionBundle.validation.sourceHash,
+        scenes: motionBundle.scenes.map((scene, index) => ({
+          sceneId: scene.id,
+          filePath: scene.filePath,
+          nodes: [
+            {
+              key: `semantic-node-${index + 1}`,
+              fingerprint: createHash('sha256')
+                .update(scene.id)
+                .digest('hex'),
+              label: `Node ${index + 1}`,
+              nodeType: 'Rect',
+              parentKey: null,
+              identity: 'semantic',
+              editableProperties: ['x', 'y', 'scale', 'opacity', 'hidden', 'fill'],
+              lockedProperties: [],
+              lockReason: null,
+            },
+          ],
+        })),
+      };
+      return {
+        generationId: motionBundle.generation.generationId,
+        sourceSyncGenerationId: motionBundle.generation.generationId,
+        sessionNonce: layoutSessionNonce,
+        url: `http://127.0.0.1:9001/?generation=${motionBundle.generation.generationId}`,
+      };
+    },
     getManifest(_projectId, sessionNonce, sourceSyncGenerationId) {
       if (
         sessionNonce !== layoutSessionNonce ||
@@ -1163,6 +1375,7 @@ export default makeScene2D(function* (view) {
     rm(renderOutputDirectory, {recursive: true, force: true}),
   );
   let finalRenderCalls = 0;
+  let finalRenderOptions: Parameters<FinalRenderService['render']>[5];
   let finalRenderStatus: ReturnType<FinalRenderService['getStatus']> = null;
   const finalRenderService: FinalRenderService = {
     async render(
@@ -1171,8 +1384,10 @@ export default makeScene2D(function* (view) {
       contentRevision,
       _syncBundle,
       layoutBundle,
+      options,
     ) {
       finalRenderCalls += 1;
+      finalRenderOptions = options;
       const now = new Date().toISOString();
       const totalFrames =
         Math.ceil(layoutBundle.totalDurationSeconds * 30) + 1;
@@ -1199,7 +1414,12 @@ export default makeScene2D(function* (view) {
         width: 1080,
         height: 1920,
         fps: 30,
-        durationSeconds: layoutBundle.totalDurationSeconds,
+        playbackRate: options?.playbackRate ?? 1,
+        sourceDurationSeconds: layoutBundle.totalDurationSeconds,
+        watermark: options?.watermark ?? {type: 'none'},
+        durationSeconds:
+          layoutBundle.totalDurationSeconds /
+          (options?.playbackRate ?? 1),
         fileSizeBytes: renderVideo.length,
         encoding: {
           container: 'mp4',
@@ -1214,7 +1434,9 @@ export default makeScene2D(function* (view) {
           sourceHash: '1'.repeat(64),
           videoHash: createHash('sha256').update(renderVideo).digest('hex'),
           renderedFrameCount: totalFrames,
-          probedDurationSeconds: layoutBundle.totalDurationSeconds,
+          probedDurationSeconds:
+            layoutBundle.totalDurationSeconds /
+            (options?.playbackRate ?? 1),
         },
         generation: {
           generationId,
@@ -1895,6 +2117,31 @@ export default makeScene2D(function* (view) {
     14,
   );
 
+  const watermarkImage = Buffer.concat([
+    Buffer.from('89504e470d0a1a0a', 'hex'),
+    Buffer.alloc(32, 9),
+  ]);
+  const watermarkUploadResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/render/watermark`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'image/png'},
+      body: watermarkImage,
+    },
+  );
+  const watermarkUploadBody = await watermarkUploadResponse.json();
+  assert.equal(watermarkUploadResponse.status, 201);
+  assert.equal(watermarkUploadBody.asset.contentType, 'image/png');
+  const renderOptions = {
+    playbackRate: 1.25,
+    watermark: {
+      type: 'image' as const,
+      assetId: watermarkUploadBody.asset.assetId as string,
+      opacity: 0.3,
+      position: 'bottom-right' as const,
+      widthPercent: 22,
+    },
+  };
   const finalRenderGenerationId = randomUUID();
   const finalRenderResponse = await fetch(
     `${baseUrl}/api/projects/${project.id}/render/generate`,
@@ -1904,7 +2151,10 @@ export default makeScene2D(function* (view) {
         'Content-Type': 'application/json',
         'If-Match': '"14"',
       },
-      body: JSON.stringify({generationId: finalRenderGenerationId}),
+      body: JSON.stringify({
+        generationId: finalRenderGenerationId,
+        ...renderOptions,
+      }),
     },
   );
   const finalRenderBody = await finalRenderResponse.json();
@@ -1916,6 +2166,11 @@ export default makeScene2D(function* (view) {
     finalRenderGenerationId,
   );
   assert.equal(finalRenderCalls, 1);
+  assert.deepEqual(finalRenderOptions, renderOptions);
+  assert.equal(
+    finalRenderBody.project.renderBundle.durationSeconds,
+    finalRenderBody.project.layoutBundle.totalDurationSeconds / 1.25,
+  );
 
   const finalRenderStatusResponse = await fetch(
     `${baseUrl}/api/projects/${project.id}/render/status?generationId=${finalRenderGenerationId}`,
@@ -1946,7 +2201,10 @@ export default makeScene2D(function* (view) {
         'Content-Type': 'application/json',
         'If-Match': '"14"',
       },
-      body: JSON.stringify({generationId: finalRenderGenerationId}),
+      body: JSON.stringify({
+        generationId: finalRenderGenerationId,
+        ...renderOptions,
+      }),
     },
   );
   assert.equal(repeatedFinalRenderResponse.status, 200);
@@ -1956,6 +2214,51 @@ export default makeScene2D(function* (view) {
   );
   assert.equal(finalRenderCalls, 1);
 
+  const motionPreviewResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/preview?generation=${motionGenerateBody.project.motionCanvasBundle.generation.generationId}`,
+    {headers: {'X-Pad-Parent-Origin': 'http://127.0.0.1:5173'}},
+  );
+  const motionPreviewBody = await motionPreviewResponse.json();
+  assert.equal(motionPreviewResponse.status, 200);
+  assert.equal(
+    motionPreviewBody.preview.sourceMotionCanvasGenerationId,
+    motionGenerateBody.project.motionCanvasBundle.generation.generationId,
+  );
+  const motionDesignManifest = activeLayoutManifest!;
+  const motionDesignNode = motionDesignManifest.scenes[0]!.nodes[0]!;
+  const motionDesignOverrides = [
+    {
+      sceneId: motionDesignManifest.scenes[0]!.sceneId,
+      nodeKey: motionDesignNode.key,
+      nodeFingerprint: motionDesignNode.fingerprint,
+      patch: {x: 28, opacity: 0.92},
+    },
+  ];
+  const motionDesignResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/design`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"15"',
+      },
+      body: JSON.stringify({
+        sourceMotionCanvasGenerationId:
+          motionGenerateBody.project.motionCanvasBundle.generation.generationId,
+        sessionNonce: layoutSessionNonce,
+        overrides: motionDesignOverrides,
+      }),
+    },
+  );
+  const motionDesignBody = await motionDesignResponse.json();
+  assert.equal(motionDesignResponse.status, 200);
+  assert.equal(motionDesignBody.project.revision, 16);
+  assert.deepEqual(
+    motionDesignBody.project.visualDesignBundle.overrides,
+    motionDesignOverrides,
+  );
+  assert.ok(motionDesignBody.project.renderBundle);
+
   const approvedPlan = syncApproveBody.project.voiceVisualPlan;
   const visualOnlyUpdateResponse = await fetch(
     `${baseUrl}/api/projects/${project.id}/voice-visual`,
@@ -1963,7 +2266,7 @@ export default makeScene2D(function* (view) {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'If-Match': '"15"',
+        'If-Match': '"16"',
       },
       body: JSON.stringify({
         voiceDirection: approvedPlan.voiceDirection,
@@ -1993,7 +2296,7 @@ export default makeScene2D(function* (view) {
   );
   const visualOnlyUpdateBody = await visualOnlyUpdateResponse.json();
   assert.equal(visualOnlyUpdateResponse.status, 200);
-  assert.equal(visualOnlyUpdateBody.project.revision, 16);
+  assert.equal(visualOnlyUpdateBody.project.revision, 17);
   assert.equal(visualOnlyUpdateBody.project.voiceBundle.status, 'approved');
   assert.equal(
     visualOnlyUpdateBody.project.voiceVisualPlan.narrationRevision,
@@ -2017,7 +2320,7 @@ export default makeScene2D(function* (view) {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'If-Match': '"16"',
+        'If-Match': '"17"',
       },
       body: JSON.stringify({
         voiceDirection: visualPlan.voiceDirection,
@@ -2046,7 +2349,7 @@ export default makeScene2D(function* (view) {
   );
   const voiceTextUpdateBody = await voiceTextUpdateResponse.json();
   assert.equal(voiceTextUpdateResponse.status, 200);
-  assert.equal(voiceTextUpdateBody.project.revision, 17);
+  assert.equal(voiceTextUpdateBody.project.revision, 18);
   assert.equal(voiceTextUpdateBody.project.voiceBundle.status, 'draft');
   assert.equal(
     voiceTextUpdateBody.project.voiceVisualPlan.narrationRevision,
@@ -2065,7 +2368,7 @@ export default makeScene2D(function* (view) {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
-        'If-Match': '"17"',
+        'If-Match': '"18"',
       },
       body: JSON.stringify({
         brief: outline.brief,
@@ -2096,7 +2399,7 @@ export default makeScene2D(function* (view) {
     `${baseUrl}/api/projects/${project.id}/voice-visual/approve`,
     {
       method: 'POST',
-      headers: {'If-Match': '"18"'},
+      headers: {'If-Match': '"19"'},
     },
   );
   const outdatedApproveBody = await outdatedApproveResponse.json();
@@ -2110,7 +2413,7 @@ export default makeScene2D(function* (view) {
     `${baseUrl}/api/projects/${project.id}/motion-canvas/approve`,
     {
       method: 'POST',
-      headers: {'If-Match': '"18"'},
+      headers: {'If-Match': '"19"'},
     },
   );
   const outdatedMotionApproveBody =

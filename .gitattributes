@@ -1,18 +1,6 @@
-# Store newly tracked audio as Git LFS objects. The exact legacy exceptions
-# below intentionally remain regular Git blobs until a dedicated migration.
+# Safety net for audio intentionally tracked outside the ignored runtime
+# projects directory.
 *.wav filter=lfs diff=lfs merge=lfs -text
 *.mp3 filter=lfs diff=lfs merge=lfs -text
 *.pcm filter=lfs diff=lfs merge=lfs -text
 *.opus filter=lfs diff=lfs merge=lfs -text
-
-# Legacy audio already committed before the forward-only LFS policy.
-/projects/bo-nho-dem-lru-hoat-dong-nhu-the-nao-20260718-8575297b/sync/generations/a40006e2-ca08-4ee9-ba28-0a926ded28d6/audio/narration.wav -filter -diff -merge -text
-/projects/bo-nho-dem-lru-hoat-dong-nhu-the-nao-20260718-8575297b/voice/generations/a0f4c878-da39-4e87-a324-265c1d6b45db/audio/narration.wav -filter -diff -merge -text
-/projects/bo-nho-dem-lru-hoat-dong-nhu-the-nao-20260718-8575297b/voice/generations/a0f4c878-da39-4e87-a324-265c1d6b45db/chunks/audio/01.mp3 -filter -diff -merge -text
-/projects/de-quy-20260718-88b2276f/sync/generations/ac342c74-c1ae-4ce8-8ede-5da39cca3084/audio/narration.wav -filter -diff -merge -text
-/projects/de-quy-20260718-88b2276f/sync/generations/c8fa3d3f-5e30-4ea2-81e7-07c0407e146e/audio/narration.wav -filter -diff -merge -text
-/projects/de-quy-20260718-88b2276f/voice/generations/83babbb8-0a86-434f-aa81-7d8447640fc9/audio/01-66f5a6b2-2047-4966-b846-21fc276101b9.mp3 -filter -diff -merge -text
-/projects/de-quy-20260718-88b2276f/voice/generations/83babbb8-0a86-434f-aa81-7d8447640fc9/audio/02-7f3f1c64-ac1b-41b1-aad4-efa01bc68400.mp3 -filter -diff -merge -text
-/projects/de-quy-20260718-88b2276f/voice/generations/83babbb8-0a86-434f-aa81-7d8447640fc9/audio/03-803fea6e-8021-4767-895c-7bc3ba621824.mp3 -filter -diff -merge -text
-/projects/de-quy-20260718-88b2276f/voice/generations/83babbb8-0a86-434f-aa81-7d8447640fc9/audio/04-0848969e-51df-4563-bae9-e76349342003.mp3 -filter -diff -merge -text
-/projects/de-quy-20260718-88b2276f/voice/generations/83babbb8-0a86-434f-aa81-7d8447640fc9/audio/05-a2d66544-ccb4-478b-aaad-b15a337e9c7b.mp3 -filter -diff -merge -text

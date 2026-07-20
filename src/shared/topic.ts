@@ -1,6 +1,9 @@
 import {z} from 'zod';
 import {DEFAULT_NARRATION_CALIBRATION} from './narrationTiming.ts';
-import {LayoutBundleSchema} from './layout.ts';
+import {
+  LayoutBundleSchema,
+  VisualDesignBundleSchema,
+} from './layout.ts';
 import {FinalRenderBundleSchema} from './render.ts';
 
 export * from './layout.ts';
@@ -24,7 +27,7 @@ export const voiceVisualStatusValues = ['draft', 'approved'] as const;
 export const motionCanvasStatusValues = ['draft', 'approved'] as const;
 export const voiceStatusValues = ['draft', 'approved'] as const;
 export const animationSyncStatusValues = ['draft', 'approved'] as const;
-export const currentProjectVersion = 10 as const;
+export const currentProjectVersion = 11 as const;
 
 export const ProjectStepSchema = z.enum(projectStepValues);
 const ProjectStepV8Schema = z.enum(projectStepV8Values);
@@ -137,6 +140,11 @@ export const CodexTokenUsageSchema = z
 
 export type CodexTokenUsage = z.infer<typeof CodexTokenUsageSchema>;
 
+export const CodexReasoningEffortSchema = z
+  .string()
+  .trim()
+  .regex(/^[a-z][a-z0-9_-]{0,39}$/);
+
 export const TeachingOutlineSchema = TeachingOutlineContentSchema.extend({
   status: z.enum(outlineStatusValues),
   contentRevision: z.number().int().positive(),
@@ -146,6 +154,8 @@ export const TeachingOutlineSchema = TeachingOutlineContentSchema.extend({
       generationId: CreationIdSchema,
       provider: z.literal('codex'),
       model: z.string().min(1).max(160),
+      requestedModel: z.string().min(1).max(160).optional(),
+      reasoningEffort: CodexReasoningEffortSchema.optional(),
       promptVersion: z.string().min(1).max(40),
       generatedAt: z.string().datetime(),
       usage: CodexTokenUsageSchema.nullable(),
@@ -251,6 +261,8 @@ export const VoiceVisualPlanSchema = VoiceVisualPlanContentSchema.extend({
       generationId: CreationIdSchema,
       provider: z.literal('codex'),
       model: z.string().min(1).max(160),
+      requestedModel: z.string().min(1).max(160).optional(),
+      reasoningEffort: CodexReasoningEffortSchema.optional(),
       promptVersion: z.string().min(1).max(40),
       generatedAt: z.string().datetime(),
       usage: CodexTokenUsageSchema.nullable(),
@@ -327,6 +339,8 @@ export const MotionCanvasBundleSchema = z
         generationId: CreationIdSchema,
         provider: z.literal('codex'),
         model: z.string().min(1).max(160),
+        requestedModel: z.string().min(1).max(160).optional(),
+        reasoningEffort: CodexReasoningEffortSchema.optional(),
         promptVersion: z.string().min(1).max(40),
         generatedAt: z.string().datetime(),
         usage: CodexTokenUsageSchema.nullable(),
@@ -762,12 +776,20 @@ const topicProjectV9Schema = topicProjectV8Schema
   })
   .strict();
 
-export const TopicProjectSchema = topicProjectV9Schema
+const topicProjectV10Schema = topicProjectV9Schema
   .omit({version: true, currentStep: true})
   .extend({
-    version: z.literal(currentProjectVersion),
+    version: z.literal(10),
     currentStep: ProjectStepSchema,
     renderBundle: FinalRenderBundleSchema.nullable(),
+  })
+  .strict();
+
+export const TopicProjectSchema = topicProjectV10Schema
+  .omit({version: true})
+  .extend({
+    version: z.literal(currentProjectVersion),
+    visualDesignBundle: VisualDesignBundleSchema.nullable(),
   })
   .strict();
 
@@ -777,12 +799,22 @@ export function parseTopicProject(value: unknown): TopicProject {
   const currentProject = TopicProjectSchema.safeParse(value);
   if (currentProject.success) return currentProject.data;
 
+  const versionTenProject = topicProjectV10Schema.safeParse(value);
+  if (versionTenProject.success) {
+    return {
+      ...versionTenProject.data,
+      version: currentProjectVersion,
+      visualDesignBundle: null,
+    };
+  }
+
   const versionNineProject = topicProjectV9Schema.safeParse(value);
   if (versionNineProject.success) {
     return {
       ...versionNineProject.data,
       version: currentProjectVersion,
       renderBundle: null,
+      visualDesignBundle: null,
     };
   }
 
@@ -793,6 +825,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       version: currentProjectVersion,
       layoutBundle: null,
       renderBundle: null,
+      visualDesignBundle: null,
     };
   }
 
@@ -809,6 +842,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       animationSyncBundle: null,
       layoutBundle: null,
       renderBundle: null,
+      visualDesignBundle: null,
     };
   }
 
@@ -821,6 +855,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       animationSyncBundle: null,
       layoutBundle: null,
       renderBundle: null,
+      visualDesignBundle: null,
     };
   }
 
@@ -833,6 +868,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       animationSyncBundle: null,
       layoutBundle: null,
       renderBundle: null,
+      visualDesignBundle: null,
     };
   }
 
@@ -846,6 +882,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       animationSyncBundle: null,
       layoutBundle: null,
       renderBundle: null,
+      visualDesignBundle: null,
     };
   }
 
@@ -860,6 +897,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       animationSyncBundle: null,
       layoutBundle: null,
       renderBundle: null,
+      visualDesignBundle: null,
     };
   }
 
@@ -875,6 +913,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       animationSyncBundle: null,
       layoutBundle: null,
       renderBundle: null,
+      visualDesignBundle: null,
     };
   }
 
@@ -892,6 +931,7 @@ export function parseTopicProject(value: unknown): TopicProject {
       animationSyncBundle: null,
       layoutBundle: null,
       renderBundle: null,
+      visualDesignBundle: null,
     };
   }
 
@@ -926,6 +966,8 @@ export type UpdateProject = z.infer<typeof UpdateProjectSchema>;
 export const GenerateTeachingOutlineSchema = z
   .object({
     generationId: CreationIdSchema,
+    model: z.string().trim().min(1).max(160).optional(),
+    reasoningEffort: CodexReasoningEffortSchema.optional(),
     guidance: z
       .string()
       .trim()
@@ -941,6 +983,8 @@ export type GenerateTeachingOutline = z.infer<
 export const GenerateVoiceVisualPlanSchema = z
   .object({
     generationId: CreationIdSchema,
+    model: z.string().trim().min(1).max(160).optional(),
+    reasoningEffort: CodexReasoningEffortSchema.optional(),
     guidance: z
       .string()
       .trim()
@@ -956,6 +1000,8 @@ export type GenerateVoiceVisualPlan = z.infer<
 export const GenerateMotionCanvasSchema = z
   .object({
     generationId: CreationIdSchema,
+    model: z.string().trim().min(1).max(160).optional(),
+    reasoningEffort: CodexReasoningEffortSchema.optional(),
     guidance: z
       .string()
       .trim()

@@ -5,6 +5,7 @@ import {
   CommitLayoutSchema,
   CreateTopicProjectSchema,
   currentProjectVersion,
+  GenerateMotionCanvasSchema,
   LayoutBundleSchema,
   LayoutEditorManifestSchema,
   LayoutOverridesDocumentSchema,
@@ -61,6 +62,25 @@ test('CreateTopicProjectSchema chỉ khởi tạo project ở bước outline', 
     CreateTopicProjectSchema.safeParse({
       ...request,
       currentStep: 'sync',
+    }).success,
+    false,
+  );
+});
+
+test('Codex generation chỉ nhận reasoning effort dạng capability identifier', () => {
+  const generationId = '00000000-0000-4000-8000-000000000009';
+  assert.equal(
+    GenerateMotionCanvasSchema.safeParse({
+      generationId,
+      model: 'gpt-model',
+      reasoningEffort: 'xhigh',
+    }).success,
+    true,
+  );
+  assert.equal(
+    GenerateMotionCanvasSchema.safeParse({
+      generationId,
+      reasoningEffort: 'HIGH<script>',
     }).success,
     false,
   );
@@ -368,6 +388,7 @@ test('parseTopicProject migrates v8 and v9 without widening historical step enum
   assert.equal(migrated.revision, 14);
   assert.equal(migrated.layoutBundle, null);
   assert.equal(migrated.renderBundle, null);
+  assert.equal(migrated.visualDesignBundle, null);
 
   assert.equal(ProjectStepSchema.safeParse('layout').success, true);
   assert.equal(
@@ -377,6 +398,7 @@ test('parseTopicProject migrates v8 and v9 without widening historical step enum
       currentStep: 'layout',
       layoutBundle: null,
       renderBundle: null,
+      visualDesignBundle: null,
     }).success,
     true,
   );
@@ -388,6 +410,7 @@ test('parseTopicProject migrates v8 and v9 without widening historical step enum
   });
   assert.equal(migratedVersionNine.version, currentProjectVersion);
   assert.equal(migratedVersionNine.currentStep, 'layout');
+  assert.equal(migratedVersionNine.visualDesignBundle, null);
   assert.equal(migratedVersionNine.renderBundle, null);
   assert.equal(ProjectStepSchema.safeParse('render').success, true);
   assert.throws(() =>

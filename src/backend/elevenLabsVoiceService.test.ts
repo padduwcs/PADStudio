@@ -128,6 +128,76 @@ test('ElevenLabs TTS with timestamps gửi cấu hình đầy đủ và đọc r
   assert.equal(result.alignment.characters.join(''), text);
 });
 
+test('ElevenLabs không tự retry POST TTS tốn phí khi phản hồi mơ hồ', async () => {
+  let calls = 0;
+  const service = createElevenLabsVoiceService({
+    apiKey: 'test-key',
+    retryDelaysMs: [0, 0, 0],
+    fetch: async () => {
+      calls += 1;
+      return jsonResponse({detail: 'rate limited'}, {status: 429});
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.generateSection({
+        voiceId: voice.voice_id,
+        modelId: model.model_id,
+        outputFormat: 'mp3_44100_128',
+        text: 'Không được tạo hai lần.',
+        settings: {
+          stability: 0.5,
+          similarityBoost: 0.75,
+          style: 0,
+          useSpeakerBoost: true,
+          speed: 1,
+        },
+        seed: null,
+      }),
+    (error) =>
+      error instanceof ElevenLabsVoiceError &&
+      error.code === 'ELEVENLABS_RATE_LIMITED',
+  );
+  assert.equal(calls, 1);
+});
+
+test('ElevenLabs đánh dấu kết quả TTS không rõ thay vì khuyến khích retry mù', async () => {
+  let calls = 0;
+  const service = createElevenLabsVoiceService({
+    apiKey: 'test-key',
+    retryDelaysMs: [0, 0],
+    generationTimeoutMs: 5,
+    fetch: async () => {
+      calls += 1;
+      throw new TypeError('socket closed after upload');
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      service.generateSection({
+        voiceId: voice.voice_id,
+        modelId: model.model_id,
+        outputFormat: 'mp3_44100_128',
+        text: 'Kết quả có thể đã được tạo.',
+        settings: {
+          stability: 0.5,
+          similarityBoost: 0.75,
+          style: 0,
+          useSpeakerBoost: true,
+          speed: 1,
+        },
+        seed: null,
+      }),
+    (error) =>
+      error instanceof ElevenLabsVoiceError &&
+      error.code === 'ELEVENLABS_TTS_RESULT_UNKNOWN' &&
+      /không tự gửi lại/.test(error.message),
+  );
+  assert.equal(calls, 1);
+});
+
 test('Eleven v3 bỏ capability không hỗ trợ và không gửi Request Stitching', async () => {
   const text = 'Đệ quy cần điểm dừng.';
   let sentBody: Record<string, unknown> = {};

@@ -949,7 +949,14 @@ async function startEditor(project) {
   async function ensureSceneManifest(scene) {
     const info = sceneInfo(scene);
     if (!info.sceneId) return;
-    const discoveredNodes = await inspectManifestNodes(scene);
+    // Signal getters in generated scenes may depend on Motion Canvas' active
+    // scene context. Manifest discovery runs after recalculation, so explicitly
+    // restore that context while taking the synchronous node snapshots.
+    const discoveredNodes = await (
+      typeof scene?.execute === 'function'
+        ? scene.execute(() => inspectManifestNodes(scene))
+        : inspectManifestNodes(scene)
+    );
     const canonical = canonicalizeEditorNodes(discoveredNodes);
     const previousScene = manifest.scenes?.find(
       item => item.sceneId === info.sceneId,

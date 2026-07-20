@@ -24,3 +24,13 @@ export interface CodexLoginStart {
   loginId: string;
   authUrl: string;
 }
+
+export interface CodexModelSummary {
+  id: string;
+  model: string;
+  displayName: string;
+  description: string;
+  isDefault: boolean;
+  supportedReasoningEfforts: string[];
+  defaultReasoningEffort: string | null;
+}

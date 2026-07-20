@@ -54,6 +54,8 @@ export function useVoiceDraft(projectId: string) {
     fingerprint: string;
     generationId: string;
   } | null>(null);
+  const generatingRef = useRef(false);
+  const approvingRef = useRef(false);
 
   const applyCatalogDefaults = useCallback(
     (nextCatalog: ElevenLabsCatalog, currentProject: TopicProject) => {
@@ -268,7 +270,8 @@ export function useVoiceDraft(projectId: string) {
   const stale = project ? voiceIsStale(project) : false;
 
   async function generate() {
-    if (!project || !configuration || generating || conflict) return null;
+    if (!project || !configuration || generatingRef.current || conflict) return null;
+    generatingRef.current = true;
     setGenerating(true);
     setActionError('');
     try {
@@ -308,12 +311,14 @@ export function useVoiceDraft(projectId: string) {
       );
       return null;
     } finally {
+      generatingRef.current = false;
       setGenerating(false);
     }
   }
 
   async function approve() {
-    if (!project || approving || conflict) return null;
+    if (!project || approvingRef.current || conflict) return null;
+    approvingRef.current = true;
     setApproving(true);
     setActionError('');
     try {
@@ -330,6 +335,7 @@ export function useVoiceDraft(projectId: string) {
       );
       return null;
     } finally {
+      approvingRef.current = false;
       setApproving(false);
     }
   }

@@ -8,6 +8,7 @@ import {
 } from 'node:http';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {z} from 'zod';
 import {
   ApproveLayoutSchema,
   CommitLayoutSchema,
@@ -33,7 +34,10 @@ import {
   type VoiceVisualPlanContent,
 } from '../shared/topic.ts';
 import type {ElevenLabsUsagePreset} from '../shared/elevenLabs.ts';
-import {LayoutBundleSchema} from '../shared/layout.ts';
+import {
+  CommitVisualDesignSchema,
+  LayoutBundleSchema,
+} from '../shared/layout.ts';
 import {
   finalRenderIsReady,
   finalRenderPrerequisitesAreReady,
@@ -41,6 +45,7 @@ import {
   layoutPrerequisitesAreReady,
   motionCanvasMatchesOutline,
   sameValue,
+  visualDesignMatchesMotion,
   voiceVisualMatchesOutline,
 } from '../shared/projectPipeline.ts';
 import {
@@ -64,6 +69,7 @@ import {
   LayoutWorkspaceError,
   type LayoutWorkspace,
   type PreparedLayoutWorkspace,
+  validateLayoutDocuments,
 } from './layoutWorkspace.ts';
 import {
   createFinalRenderService,
@@ -138,11 +144,27 @@ import {
   type VoiceWorkspace,
 } from './voiceWorkspace.ts';
 import {plannedBeatDurationSeconds} from '../shared/narrationTiming.ts';
+import {
+  createDefaultCredentialStore,
+  type CredentialStore,
+} from './credentialStore.ts';
+import {
+  createWatermarkAssetStore,
+  WatermarkAssetError,
+  type WatermarkAssetStore,
+} from './watermarkAssetStore.ts';
 
 // A valid voice–visual plan can contain up to 80 narration/visual beats.
 // Keep a bounded request size, but leave enough room for the strict schema's
 // maximum UTF-8 payload instead of rejecting valid content before validation.
 const MAX_JSON_BODY_SIZE = 1024 * 1024;
+const MAX_WATERMARK_IMAGE_SIZE = 5 * 1024 * 1024;
+const CodexApiKeyLoginSchema = z
+  .object({apiKey: z.string().trim().min(1).max(512)})
+  .strict();
+const ElevenLabsApiKeySchema = z
+  .object({apiKey: z.string().trim().min(1).max(512)})
+  .strict();
 
 const contentTypes: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
@@ -163,6 +185,10 @@ interface AppOptions {
   codexConnection?: CodexConnectionService;
   elevenLabsConnection?: ElevenLabsConnectionService;
   elevenLabsVoiceService?: ElevenLabsVoiceService;
+  credentialStore?: CredentialStore;
+  elevenLabsConnectionFactory?: (
+    apiKey: string,
+  ) => ElevenLabsConnectionService;
   outlineGenerator?: OutlineGenerator;
   voiceVisualGenerator?: VoiceVisualGenerator;
   motionCanvasGenerator?: MotionCanvasGenerator;
@@ -173,6 +199,7 @@ interface AppOptions {
   layoutWorkspace?: LayoutWorkspace;
   layoutPreviewService?: LayoutPreviewService;
   finalRenderService?: FinalRenderService;
+  watermarkAssetStore?: WatermarkAssetStore;
   logger?: Pick<Console, 'error' | 'info'>;
 }
 
@@ -201,6 +228,28 @@ function sendProject(
     {project},
     {ETag: `"${project.revision}"`},
   );
+}
+
+function assertSameCodexGenerationSelection(
+  generation: {
+    model: string;
+    requestedModel?: string;
+    reasoningEffort?: string;
+  },
+  requested: {model?: string; reasoningEffort?: string},
+) {
+  if (
+    (requested.model &&
+      requested.model !== (generation.requestedModel ?? generation.model)) ||
+    (requested.reasoningEffort &&
+      requested.reasoningEffort !== generation.reasoningEffort)
+  ) {
+    throw new RequestBodyError(
+      409,
+      'GENERATION_ID_REUSED',
+      'Generation ID đã được dùng với model hoặc mức suy luận khác.',
+    );
+  }
 }
 
 function sendApiError(
@@ -384,6 +433,24 @@ async function readJsonBody(request: IncomingMessage) {
   }
 }
 
+async function readBinaryBody(request: IncomingMessage, maximumBytes: number) {
+  const chunks: Buffer[] = [];
+  let receivedBytes = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    receivedBytes += buffer.byteLength;
+    if (receivedBytes > maximumBytes) {
+      throw new RequestBodyError(
+        413,
+        'PAYLOAD_TOO_LARGE',
+        'Ảnh watermark vượt quá giới hạn 5 MB.',
+      );
+    }
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks, receivedBytes);
+}
+
 class RequestBodyError extends Error {
   readonly statusCode: number;
   readonly code: string;
@@ -546,7 +613,7 @@ function getProjectVoiceVisualRoute(pathname: string) {
 
 function getProjectMotionCanvasRoute(pathname: string) {
   const match =
-    /^\/api\/projects\/([^/]+)\/motion-canvas(?:\/(generate|approve|files))?$/.exec(
+    /^\/api\/projects\/([^/]+)\/motion-canvas(?:\/(generate|approve|files|preview|design))?$/.exec(
       pathname,
     );
   if (!match?.[1]) return null;
@@ -633,7 +700,7 @@ function getProjectLayoutRoute(pathname: string) {
 
 function getProjectRenderRoute(pathname: string) {
   const match =
-    /^\/api\/projects\/([^/]+)\/render(?:\/(generate|status|video))?$/.exec(
+    /^\/api\/projects\/([^/]+)\/render(?:\/(generate|status|video|watermark))?$/.exec(
       pathname,
     );
   if (!match?.[1]) return null;
@@ -645,6 +712,7 @@ function getProjectRenderRoute(pathname: string) {
       | 'generate'
       | 'status'
       | 'video'
+      | 'watermark'
       | 'read',
   };
 }
@@ -895,6 +963,13 @@ export function createPadStudioServer(options: AppOptions = {}) {
     path.resolve(moduleDirectory, '../../dist/frontend');
   const repository =
     options.repository ?? createFileProjectRepository(projectsDirectory);
+  const credentialStore =
+    options.credentialStore ??
+    createDefaultCredentialStore(path.resolve(projectsDirectory, '..'));
+  async function storedElevenLabsApiKey() {
+    const stored = await credentialStore.get('elevenlabs');
+    return stored ?? process.env.ELEVENLABS_API_KEY?.trim() ?? null;
+  }
   const sharedCodexClient: CodexAppServerClient | null =
     !options.codexConnection ||
     !options.outlineGenerator ||
@@ -907,10 +982,13 @@ export function createPadStudioServer(options: AppOptions = {}) {
     createCodexConnectionService(sharedCodexClient!);
   const elevenLabsConnection =
     options.elevenLabsConnection ??
-    createElevenLabsConnectionService();
+    createElevenLabsConnectionService({apiKeyProvider: storedElevenLabsApiKey});
   const elevenLabsVoiceService =
     options.elevenLabsVoiceService ??
-    createElevenLabsVoiceService();
+    createElevenLabsVoiceService({apiKeyProvider: storedElevenLabsApiKey});
+  const elevenLabsConnectionFactory =
+    options.elevenLabsConnectionFactory ??
+    ((apiKey: string) => createElevenLabsConnectionService({apiKey}));
   const outlineGenerator =
     options.outlineGenerator ??
     createCodexOutlineGenerator(sharedCodexClient!);
@@ -946,9 +1024,16 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const layoutPreviewService =
     options.layoutPreviewService ??
     createLayoutPreviewService(projectsDirectory);
+  const watermarkAssetStore =
+    options.watermarkAssetStore ??
+    createWatermarkAssetStore(projectsDirectory);
   const finalRenderService =
     options.finalRenderService ??
-    createFinalRenderService(projectsDirectory, {layoutWorkspace, logger: options.logger});
+    createFinalRenderService(projectsDirectory, {
+      layoutWorkspace,
+      watermarkAssetStore,
+      logger: options.logger,
+    });
   const logger = options.logger ?? console;
   type GenerationCacheEntry<Result> = {
     fingerprint: string;
@@ -994,6 +1079,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
     key: string,
     fingerprint: string,
     operation: () => Promise<Result>,
+    retainFailure: (error: unknown) => boolean = () => false,
   ) {
     const existing = generations.get(key);
     if (existing) {
@@ -1012,7 +1098,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
       generatedAt: new Date().toISOString(),
     }));
     generations.set(key, {fingerprint, promise});
-    void promise.catch(() => {
+    void promise.catch((error) => {
+      if (retainFailure(error)) return;
       if (generations.get(key)?.promise === promise) {
         generations.delete(key);
       }
@@ -1054,11 +1141,132 @@ export function createPadStudioServer(options: AppOptions = {}) {
       }
 
       if (
+        requestUrl.pathname === '/api/integrations/codex/api-key' &&
+        request.method === 'POST'
+      ) {
+        const body = await readJsonBody(request);
+        const parsed = CodexApiKeyLoginSchema.safeParse(body);
+        if (!parsed.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'OpenAI API key chưa hợp lệ.',
+            fields: validationFields(parsed.error.issues),
+          });
+          return;
+        }
+        await codexConnection.loginWithApiKey(parsed.data.apiKey);
+        const status = await codexConnection.verifyConnection();
+        if (status.state !== 'connected') {
+          throw new CodexConnectionError(
+            'CODEX_API_KEY_VERIFICATION_FAILED',
+            status.message,
+          );
+        }
+        response.setHeader('Cache-Control', 'no-store');
+        sendJson(response, 200, {status});
+        return;
+      }
+
+      if (
+        requestUrl.pathname === '/api/integrations/codex/logout' &&
+        request.method === 'POST'
+      ) {
+        await codexConnection.logout();
+        response.setHeader('Cache-Control', 'no-store');
+        sendJson(response, 200, {status: 'disconnected'});
+        return;
+      }
+
+      if (
+        requestUrl.pathname === '/api/integrations/codex/models' &&
+        request.method === 'GET'
+      ) {
+        const models = await codexConnection.listModels();
+        response.setHeader('Cache-Control', 'no-store');
+        sendJson(response, 200, {models});
+        return;
+      }
+
+      if (
         requestUrl.pathname === '/api/integrations/elevenlabs/status' &&
         request.method === 'GET'
       ) {
         const status = await elevenLabsConnection.verifyConnection();
         sendJson(response, 200, {status});
+        return;
+      }
+
+      if (
+        requestUrl.pathname === '/api/integrations/elevenlabs/credential' &&
+        request.method === 'GET'
+      ) {
+        const stored = Boolean(await credentialStore.get('elevenlabs'));
+        sendJson(response, 200, {
+          credential: {
+            configured: stored || Boolean(process.env.ELEVENLABS_API_KEY?.trim()),
+            source: stored
+              ? 'secure-store'
+              : process.env.ELEVENLABS_API_KEY?.trim()
+                ? 'environment'
+                : 'none',
+            persistence: credentialStore.persistence,
+          },
+        });
+        return;
+      }
+
+      if (
+        requestUrl.pathname === '/api/integrations/elevenlabs/credential' &&
+        request.method === 'PUT'
+      ) {
+        const body = await readJsonBody(request);
+        const parsed = ElevenLabsApiKeySchema.safeParse(body);
+        if (!parsed.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'ElevenLabs API key chưa hợp lệ.',
+            fields: validationFields(parsed.error.issues),
+          });
+          return;
+        }
+        const status = await elevenLabsConnectionFactory(
+          parsed.data.apiKey,
+        ).verifyConnection();
+        if (status.state !== 'connected') {
+          sendApiError(response, 422, {
+            code: 'ELEVENLABS_API_KEY_VERIFICATION_FAILED',
+            message: status.message,
+          });
+          return;
+        }
+        await credentialStore.set('elevenlabs', parsed.data.apiKey);
+        response.setHeader('Cache-Control', 'no-store');
+        sendJson(response, 200, {
+          status,
+          credential: {
+            configured: true,
+            source: 'secure-store',
+            persistence: credentialStore.persistence,
+          },
+        });
+        return;
+      }
+
+      if (
+        requestUrl.pathname === '/api/integrations/elevenlabs/credential' &&
+        request.method === 'DELETE'
+      ) {
+        await credentialStore.delete('elevenlabs');
+        response.setHeader('Cache-Control', 'no-store');
+        sendJson(response, 200, {
+          credential: {
+            configured: Boolean(process.env.ELEVENLABS_API_KEY?.trim()),
+            source: process.env.ELEVENLABS_API_KEY?.trim()
+              ? 'environment'
+              : 'none',
+            persistence: credentialStore.persistence,
+          },
+        });
         return;
       }
 
@@ -1143,6 +1351,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
           currentProject.outline?.generation.generationId ===
           parsedRequest.data.generationId
         ) {
+          assertSameCodexGenerationSelection(
+            currentProject.outline.generation,
+            parsedRequest.data,
+          );
           sendProject(response, 200, currentProject);
           return;
         }
@@ -1154,6 +1366,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
         const generationKey = `${currentProject.id}:${parsedRequest.data.generationId}`;
         const fingerprint = JSON.stringify({
           topicInput: currentProject.topicInput,
+          model: parsedRequest.data.model,
+          reasoningEffort: parsedRequest.data.reasoningEffort,
           guidance: parsedRequest.data.guidance,
           currentOutline: parsedRequest.data.guidance
             ? currentProject.outline
@@ -1166,6 +1380,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
           () =>
             outlineGenerator.generate({
               topicInput: currentProject.topicInput,
+              model: parsedRequest.data.model,
+              reasoningEffort: parsedRequest.data.reasoningEffort,
               guidance: parsedRequest.data.guidance,
               currentOutline: currentProject.outline ?? undefined,
             }),
@@ -1180,6 +1396,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
             generationId: parsedRequest.data.generationId,
             provider: 'codex',
             model: generation.result.model,
+            requestedModel: parsedRequest.data.model,
+            reasoningEffort: parsedRequest.data.reasoningEffort,
             promptVersion: OUTLINE_PROMPT_VERSION,
             generatedAt: generation.generatedAt,
             usage: generation.result.usage,
@@ -1363,6 +1581,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
           currentProject.voiceVisualPlan?.generation.generationId ===
           parsedRequest.data.generationId
         ) {
+          assertSameCodexGenerationSelection(
+            currentProject.voiceVisualPlan.generation,
+            parsedRequest.data,
+          );
           sendProject(response, 200, currentProject);
           return;
         }
@@ -1418,6 +1640,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
           (await preferredNarrationCalibration(repository));
         const fingerprint = JSON.stringify({
           topicInput: currentProject.topicInput,
+          model: parsedRequest.data.model,
+          reasoningEffort: parsedRequest.data.reasoningEffort,
           outline: outlineContent(outline),
           outlineContentRevision: outline.contentRevision,
           guidance: parsedRequest.data.guidance,
@@ -1434,6 +1658,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
             voiceVisualGenerator.generate({
               topicInput: currentProject.topicInput,
               outline,
+              model: parsedRequest.data.model,
+              reasoningEffort: parsedRequest.data.reasoningEffort,
               timingCalibration,
               guidance: parsedRequest.data.guidance,
               currentPlan,
@@ -1456,6 +1682,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
             generationId: parsedRequest.data.generationId,
             provider: 'codex',
             model: generation.result.model,
+            requestedModel: parsedRequest.data.model,
+            reasoningEffort: parsedRequest.data.reasoningEffort,
             promptVersion: VOICE_VISUAL_PROMPT_VERSION,
             generatedAt: generation.generatedAt,
             usage: generation.result.usage,
@@ -1676,6 +1904,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
           currentProject.motionCanvasBundle?.generation.generationId ===
           generationId
         ) {
+          assertSameCodexGenerationSelection(
+            currentProject.motionCanvasBundle.generation,
+            parsedRequest.data,
+          );
           sendProject(response, 200, currentProject);
           return;
         }
@@ -1741,6 +1973,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
           outlineContentRevision: outline.contentRevision,
           voiceVisual: voiceVisualContent(voiceVisualPlan),
           voiceVisualContentRevision: voiceVisualPlan.contentRevision,
+          model: parsedRequest.data.model,
+          reasoningEffort: parsedRequest.data.reasoningEffort,
           guidance: parsedRequest.data.guidance,
           currentScenes,
         });
@@ -1751,6 +1985,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
           async () => {
             const generationRequest = {
               generationId,
+              model: parsedRequest.data.model,
+              reasoningEffort: parsedRequest.data.reasoningEffort,
               topicInput: currentProject.topicInput,
               outline,
               voiceVisualPlan,
@@ -1761,6 +1997,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
               await motionCanvasGenerator.generate(generationRequest);
             let prepared: PreparedMotionCanvasWorkspace | null = null;
             let repairAttempts = 0;
+            let fallbackAttempted = false;
             while (!prepared) {
               try {
                 prepared = await motionCanvasWorkspace.prepare(
@@ -1778,6 +2015,21 @@ export function createPadStudioServer(options: AppOptions = {}) {
                 ) {
                   repairAttempts += 1;
                   generated = await motionCanvasGenerator.repair(
+                    generationRequest,
+                    generated,
+                    error.details,
+                  );
+                  continue;
+                }
+                if (
+                  error instanceof MotionCanvasWorkspaceError &&
+                  error.code === 'MOTION_CANVAS_VALIDATION_FAILED' &&
+                  error.details &&
+                  motionCanvasGenerator.recover &&
+                  !fallbackAttempted
+                ) {
+                  fallbackAttempted = true;
+                  generated = motionCanvasGenerator.recover(
                     generationRequest,
                     generated,
                     error.details,
@@ -1813,6 +2065,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
             generationId,
             provider: 'codex',
             model: generation.result.generated.model,
+            requestedModel: parsedRequest.data.model,
+            reasoningEffort: parsedRequest.data.reasoningEffort,
             promptVersion: MOTION_CANVAS_PROMPT_VERSION,
             generatedAt: generation.generatedAt,
             usage: generation.result.generated.usage,
@@ -1868,6 +2122,141 @@ export function createPadStudioServer(options: AppOptions = {}) {
           files,
           serveCommand: `npm run motion:serve -- --project ${currentProject.id}`,
         });
+        return;
+      }
+
+      if (
+        motionCanvasRoute?.action === 'preview' &&
+        request.method === 'GET'
+      ) {
+        const currentProject = await repository.getProject(
+          motionCanvasRoute.projectId,
+        );
+        const motion = currentProject?.motionCanvasBundle;
+        if (!currentProject || !motion) {
+          throw new RequestBodyError(
+            409,
+            'MOTION_CANVAS_NOT_READY',
+            'Project chưa có scene Motion Canvas để xem trước.',
+          );
+        }
+        const requestedGeneration = requestUrl.searchParams.get('generation');
+        if (
+          requestedGeneration &&
+          requestedGeneration !== motion.generation.generationId
+        ) {
+          throw new RequestBodyError(
+            409,
+            'MOTION_CANVAS_PREVIEW_OUTDATED',
+            'Scene Motion Canvas đã có generation mới hơn.',
+          );
+        }
+        const currentDesign =
+          currentProject.visualDesignBundle &&
+          visualDesignMatchesMotion(currentProject.visualDesignBundle, motion)
+            ? currentProject.visualDesignBundle
+            : null;
+        const preview = await layoutPreviewService.startMotion(
+          currentProject.id,
+          motion,
+          {
+            parentOrigin: requestParentOrigin(request),
+            initialOverrides: currentDesign?.overrides ?? [],
+          },
+        );
+        sendJson(response, 200, {
+          preview: {
+            ...preview,
+            sourceMotionCanvasGenerationId: preview.sourceSyncGenerationId,
+          },
+        });
+        return;
+      }
+
+      if (
+        motionCanvasRoute?.action === 'design' &&
+        request.method === 'PUT'
+      ) {
+        const expectedRevision = readExpectedRevision(request);
+        const body = await readJsonBody(request);
+        const parsedRequest = CommitVisualDesignSchema.safeParse(body);
+        if (!parsedRequest.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Chỉnh sửa visual scene chưa hợp lệ.',
+            fields: validationFields(parsedRequest.error.issues),
+          });
+          return;
+        }
+        const currentProject = await repository.getProject(
+          motionCanvasRoute.projectId,
+        );
+        const motion = currentProject?.motionCanvasBundle;
+        if (!currentProject || !motion) {
+          throw new RequestBodyError(
+            409,
+            'MOTION_CANVAS_NOT_READY',
+            'Project chưa có scene Motion Canvas để chỉnh sửa.',
+          );
+        }
+        if (currentProject.revision !== expectedRevision) {
+          throw new ProjectConflictError(currentProject);
+        }
+        if (
+          motion.generation.generationId !==
+            parsedRequest.data.sourceMotionCanvasGenerationId
+        ) {
+          throw new RequestBodyError(
+            409,
+            'MOTION_CANVAS_PREVIEW_OUTDATED',
+            'Scene Motion Canvas đã thay đổi. Hãy tải lại editor.',
+          );
+        }
+        const manifest = layoutPreviewService.getManifest(
+          currentProject.id,
+          parsedRequest.data.sessionNonce,
+          motion.generation.generationId,
+        );
+        const documents = validateLayoutDocuments(
+          {
+            contentRevision: motion.contentRevision,
+            generation: {generationId: motion.generation.generationId},
+            validation: {sourceHash: motion.validation.sourceHash},
+            sections: motion.scenes.map((scene) => ({
+              sceneId: scene.id,
+              filePath: scene.filePath,
+            })),
+          },
+          parsedRequest.data.overrides,
+          manifest,
+        );
+        const previousDesign = currentProject.visualDesignBundle;
+        const sameSource = Boolean(
+          previousDesign && visualDesignMatchesMotion(previousDesign, motion),
+        );
+        const visualDesignBundle = {
+          contentRevision: sameSource
+            ? previousDesign!.contentRevision + 1
+            : 1,
+          sourceMotionCanvasGenerationId: motion.generation.generationId,
+          sourceMotionCanvasContentRevision: motion.contentRevision,
+          sourceMotionCanvasSourceHash: motion.validation.sourceHash,
+          overrides: documents.overridesDocument.overrides,
+          updatedAt: new Date().toISOString(),
+        };
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {visualDesignBundle},
+          expectedRevision,
+        );
+        if (!updatedProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        sendProject(response, 200, updatedProject);
         return;
       }
 
@@ -2083,6 +2472,9 @@ export function createPadStudioServer(options: AppOptions = {}) {
                 JSON.stringify(chunkRequest),
                 () =>
                   elevenLabsVoiceService.generateSection(chunkRequest),
+                (error) =>
+                  error instanceof ElevenLabsVoiceError &&
+                  error.code === 'ELEVENLABS_TTS_RESULT_UNKNOWN',
               );
               if (chunkGeneration.result.requestId) {
                 previousRequestIds.push(chunkGeneration.result.requestId);
@@ -2596,7 +2988,15 @@ export function createPadStudioServer(options: AppOptions = {}) {
                   sync.contentRevision,
                 sourceAnimationSyncSourceHash:
                   sync.validation.sourceHash,
-                overrides: [],
+                overrides:
+                  currentProject.motionCanvasBundle &&
+                  currentProject.visualDesignBundle &&
+                  visualDesignMatchesMotion(
+                    currentProject.visualDesignBundle,
+                    currentProject.motionCanvasBundle,
+                  )
+                    ? currentProject.visualDesignBundle.overrides
+                    : [],
               };
         const manifest =
           bundle && bundleIsCurrent
@@ -2659,7 +3059,19 @@ export function createPadStudioServer(options: AppOptions = {}) {
           currentProject.id,
           sync,
           currentLayout,
-          {parentOrigin: requestParentOrigin(request)},
+          {
+            parentOrigin: requestParentOrigin(request),
+            initialOverrides:
+              !currentLayout &&
+              currentProject.motionCanvasBundle &&
+              currentProject.visualDesignBundle &&
+              visualDesignMatchesMotion(
+                currentProject.visualDesignBundle,
+                currentProject.motionCanvasBundle,
+              )
+                ? currentProject.visualDesignBundle.overrides
+                : [],
+          },
         );
         sendJson(response, 200, {preview});
         return;
@@ -2971,6 +3383,25 @@ export function createPadStudioServer(options: AppOptions = {}) {
       const renderRoute = getProjectRenderRoute(requestUrl.pathname);
 
       if (
+        renderRoute?.action === 'watermark' &&
+        request.method === 'POST'
+      ) {
+        const currentProject = await repository.getProject(renderRoute.projectId);
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        const value = await readBinaryBody(request, MAX_WATERMARK_IMAGE_SIZE);
+        const asset = await watermarkAssetStore.save(currentProject.id, value);
+        response.setHeader('Cache-Control', 'no-store');
+        sendJson(response, 201, {asset});
+        return;
+      }
+
+      if (
         renderRoute?.action === 'generate' &&
         request.method === 'POST'
       ) {
@@ -3001,6 +3432,16 @@ export function createPadStudioServer(options: AppOptions = {}) {
           existingRender?.generation.generationId === generationId &&
           finalRenderIsReady(currentProject)
         ) {
+          if (
+            existingRender.playbackRate !== parsedRequest.data.playbackRate ||
+            !sameValue(existingRender.watermark, parsedRequest.data.watermark)
+          ) {
+            throw new RequestBodyError(
+              409,
+              'GENERATION_ID_REUSED',
+              'Render generation ID đã được dùng với tốc độ hoặc watermark khác.',
+            );
+          }
           sendProject(response, 200, currentProject);
           return;
         }
@@ -3027,6 +3468,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
             (existingRender?.contentRevision ?? 0) + 1,
             sync,
             layout,
+            {
+              playbackRate: parsedRequest.data.playbackRate,
+              watermark: parsedRequest.data.watermark,
+            },
           );
         const updatedProject = await repository.updateProject(
           currentProject.id,
@@ -3377,6 +3822,15 @@ export function createPadStudioServer(options: AppOptions = {}) {
             code: error.code,
             message: error.message,
           },
+        );
+        return;
+      }
+
+      if (error instanceof WatermarkAssetError) {
+        sendApiError(
+          response,
+          error.code === 'WATERMARK_ASSET_NOT_FOUND' ? 404 : 422,
+          {code: error.code, message: error.message},
         );
         return;
       }

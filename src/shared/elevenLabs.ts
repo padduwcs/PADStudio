@@ -29,6 +29,12 @@ export type ElevenLabsConnectionStatus =
       checkedAt: string;
     };
 
+export interface ElevenLabsCredentialStatus {
+  configured: boolean;
+  source: 'secure-store' | 'environment' | 'none';
+  persistence: 'os-protected' | 'session';
+}
+
 export interface ElevenLabsVoiceSummary {
   voiceId: string;
   name: string;

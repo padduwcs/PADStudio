@@ -118,7 +118,7 @@ export const LayoutNodeOverrideSchema = z
 
 export type LayoutNodeOverride = z.infer<typeof LayoutNodeOverrideSchema>;
 
-const LayoutOverridesArraySchema = z
+export const LayoutOverridesArraySchema = z
   .array(LayoutNodeOverrideSchema)
   .max(2_000)
   .superRefine((overrides, context) => {
@@ -148,6 +148,33 @@ export const LayoutOverridesDocumentSchema = z
 
 export type LayoutOverridesDocument = z.infer<
   typeof LayoutOverridesDocumentSchema
+>;
+
+export const VisualDesignBundleSchema = z
+  .object({
+    contentRevision: z.number().int().positive(),
+    sourceMotionCanvasGenerationId: CreationIdSchema,
+    sourceMotionCanvasContentRevision: z.number().int().positive(),
+    sourceMotionCanvasSourceHash: Sha256Schema,
+    overrides: LayoutOverridesArraySchema,
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
+
+export type VisualDesignBundle = z.infer<
+  typeof VisualDesignBundleSchema
+>;
+
+export const CommitVisualDesignSchema = z
+  .object({
+    sourceMotionCanvasGenerationId: CreationIdSchema,
+    sessionNonce: z.string().min(32).max(128),
+    overrides: LayoutOverridesArraySchema,
+  })
+  .strict();
+
+export type CommitVisualDesign = z.infer<
+  typeof CommitVisualDesignSchema
 >;
 
 export const LayoutEditorNodeSchema = z

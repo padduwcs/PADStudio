@@ -2,8 +2,10 @@ import {createHash, randomUUID} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {
   cp,
+  lstat,
   mkdir,
   readFile,
+  realpath,
   rename,
   rm,
   stat,
@@ -13,6 +15,7 @@ import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {promisify} from 'node:util';
 import {fileURLToPath} from 'node:url';
+import {z} from 'zod';
 import {
   MotionCanvasSceneSchema,
   type MotionCanvasBundle,
@@ -56,7 +59,24 @@ export interface MotionCanvasWorkspace {
     projectId: string,
     bundle: MotionCanvasBundle,
   ): Promise<Array<Pick<MotionCanvasSourceScene, 'name' | 'source'>>>;
+  verify(
+    projectId: string,
+    bundle: MotionCanvasBundle,
+  ): Promise<{
+    projectDirectory: string;
+    workspaceDirectory: string;
+    projectFile: string;
+    sourceHash: string;
+  }>;
 }
+
+const StoredMotionCanvasManifestSchema = z
+  .object({
+    generationId: z.string().uuid(),
+    motionCanvasVersion: z.string().trim().min(1).max(40),
+    sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .passthrough();
 
 export class MotionCanvasWorkspaceError extends Error {
   readonly code: string;
@@ -522,6 +542,98 @@ declare type Callback = (...args: any[]) => void;
           source: await readWorkspaceFile(directory, scene.filePath),
         })),
       );
+    },
+
+    async verify(projectId, bundle) {
+      const projectRoot = projectDirectory(projectId);
+      const directory = resolveBundleDirectory(projectId, bundle);
+      let realProjectRoot: string;
+      let realDirectory: string;
+      try {
+        [realProjectRoot, realDirectory] = await Promise.all([
+          realpath(projectRoot),
+          realpath(directory),
+        ]);
+      } catch (error) {
+        throw new MotionCanvasWorkspaceError(
+          'MOTION_CANVAS_WORKSPACE_READ_FAILED',
+          'Không thể xác minh workspace Motion Canvas.',
+          {cause: error},
+        );
+      }
+      if (!isInside(realProjectRoot, realDirectory)) {
+        throw new MotionCanvasWorkspaceError(
+          'MOTION_CANVAS_WORKSPACE_INVALID',
+          'Workspace Motion Canvas đi qua liên kết không an toàn.',
+        );
+      }
+      const paths = [
+        bundle.projectFile,
+        'src/project.meta',
+        'src/motion-canvas.d.ts',
+        'tsconfig.json',
+        ...bundle.scenes.flatMap((scene) => [
+          scene.filePath,
+          scene.filePath.replace(/\.tsx$/, '.meta'),
+        ]),
+      ];
+      const files = await Promise.all(
+        paths.map(async (relativePath) => {
+          const candidate = path.resolve(directory, relativePath);
+          if (!isInside(directory, candidate)) {
+            throw new MotionCanvasWorkspaceError(
+              'MOTION_CANVAS_WORKSPACE_INVALID',
+              'Workspace Motion Canvas chứa đường dẫn file không an toàn.',
+            );
+          }
+          const [realCandidate, entry] = await Promise.all([
+            realpath(candidate),
+            lstat(candidate),
+          ]);
+          if (
+            !isInside(realDirectory, realCandidate) ||
+            entry.isSymbolicLink() ||
+            !entry.isFile()
+          ) {
+            throw new MotionCanvasWorkspaceError(
+              'MOTION_CANVAS_WORKSPACE_INVALID',
+              `File Motion Canvas “${relativePath}” không an toàn.`,
+            );
+          }
+          return {
+            path: relativePath,
+            source: await readFile(realCandidate, 'utf8'),
+          };
+        }),
+      );
+      const computedHash = sourceHash(files);
+      const manifest = await readFile(
+        path.join(realDirectory, 'pad-studio.manifest.json'),
+        'utf8',
+      )
+        .then((source) => StoredMotionCanvasManifestSchema.safeParse(
+          JSON.parse(source) as unknown,
+        ))
+        .catch(() => ({success: false as const, error: undefined}));
+      if (
+        !manifest.success ||
+        manifest.data.generationId !== bundle.generation.generationId ||
+        manifest.data.motionCanvasVersion !==
+          bundle.validation.motionCanvasVersion ||
+        manifest.data.sourceHash !== bundle.validation.sourceHash ||
+        computedHash !== bundle.validation.sourceHash
+      ) {
+        throw new MotionCanvasWorkspaceError(
+          'MOTION_CANVAS_WORKSPACE_INVALID',
+          'Workspace Motion Canvas không còn khớp artifact đã xác minh.',
+        );
+      }
+      return {
+        projectDirectory: realProjectRoot,
+        workspaceDirectory: realDirectory,
+        projectFile: path.join(realDirectory, bundle.projectFile),
+        sourceHash: computedHash,
+      };
     },
   };
 }

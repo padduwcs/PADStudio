@@ -11,12 +11,16 @@ import {
   type LayoutEditorManifest,
   type LayoutOverridesDocument,
 } from '../shared/layout.ts';
-import type {AnimationSyncBundle} from '../shared/topic.ts';
+import type {
+  AnimationSyncBundle,
+  MotionCanvasBundle,
+} from '../shared/topic.ts';
 import {
   createLayoutWorkspace,
   LayoutWorkspaceError,
 } from './layoutWorkspace.ts';
 import {copyPreviewWorkspace} from './previewWorkspaceCopy.ts';
+import {createMotionCanvasWorkspace} from './motionCanvasWorkspace.ts';
 
 const MANIFEST_CAPTURE_PATH = '/__pad_layout_manifest';
 const OVERRIDES_PATH = '/__pad_layout_overrides';
@@ -89,7 +93,18 @@ export interface LayoutPreviewService {
     projectId: string,
     animationSyncBundle: AnimationSyncBundle,
     layoutBundle: LayoutBundle | null,
-    options: {parentOrigin: string},
+    options: {
+      parentOrigin: string;
+      initialOverrides?: LayoutOverridesDocument['overrides'];
+    },
+  ): Promise<LayoutPreview>;
+  startMotion(
+    projectId: string,
+    motionCanvasBundle: MotionCanvasBundle,
+    options: {
+      parentOrigin: string;
+      initialOverrides?: LayoutOverridesDocument['overrides'];
+    },
   ): Promise<LayoutPreview>;
   getManifest(
     projectId: string,
@@ -589,6 +604,7 @@ export function createLayoutPreviewService(
   } = {},
 ): LayoutPreviewService {
   const artifactWorkspace = createLayoutWorkspace(projectsDirectory);
+  const motionWorkspace = createMotionCanvasWorkspace(projectsDirectory);
   const repositoryRoot = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     '../..',
@@ -751,6 +767,32 @@ export function createLayoutPreviewService(
         {cause: error},
       );
     }
+  }
+
+  async function resolveMotionSource(
+    projectId: string,
+    motionBundle: MotionCanvasBundle,
+    initialOverrides: LayoutOverridesDocument['overrides'] = [],
+  ) {
+    assertProjectId(projectId);
+    const verified = await motionWorkspace.verify(projectId, motionBundle);
+    return {
+      projectDirectory: verified.projectDirectory,
+      workspaceDirectory: verified.workspaceDirectory,
+      projectFile: verified.projectFile,
+      sourceWorkspaceHash: verified.sourceHash,
+      layoutWorkspaceDirectory: null,
+      generationId: motionBundle.generation.generationId,
+      overrides: {
+        version: 1 as const,
+        sourceAnimationSyncGenerationId:
+          motionBundle.generation.generationId,
+        sourceAnimationSyncContentRevision: motionBundle.contentRevision,
+        sourceAnimationSyncSourceHash: motionBundle.validation.sourceHash,
+        overrides: initialOverrides,
+      },
+      manifest: null,
+    };
   }
 
   async function closePreview(entry: ActivePreview) {
@@ -984,6 +1026,21 @@ export function createLayoutPreviewService(
             animationSyncBundle,
             layoutBundle,
           );
+          if (!layoutBundle && startOptions.initialOverrides) {
+            resolvedSource = {
+              ...resolvedSource,
+              overrides: {
+                version: 1,
+                sourceAnimationSyncGenerationId:
+                  animationSyncBundle.generation.generationId,
+                sourceAnimationSyncContentRevision:
+                  animationSyncBundle.contentRevision,
+                sourceAnimationSyncSourceHash:
+                  animationSyncBundle.validation.sourceHash,
+                overrides: startOptions.initialOverrides,
+              },
+            };
+          }
         } catch (error) {
           const invalidated = previews.get(projectId);
           if (invalidated) {
@@ -1016,6 +1073,10 @@ export function createLayoutPreviewService(
             layoutBundle?.validation.overridesHash ?? null,
           layoutManifestHash:
             layoutBundle?.validation.manifestHash ?? null,
+          initialOverrides:
+            !layoutBundle && startOptions.initialOverrides
+              ? canonicalHash(startOptions.initialOverrides)
+              : null,
           parentOrigin,
         });
         const existing = previews.get(projectId);
@@ -1106,6 +1167,126 @@ export function createLayoutPreviewService(
           if (previews.get(projectId) === entry) {
             previews.delete(projectId);
           }
+          throw error;
+        });
+        previews.set(projectId, entry);
+        await trimPreviews(projectId);
+        const preview = await entry.promise;
+        if (previews.get(projectId) !== entry) {
+          throw new LayoutPreviewError(
+            'LAYOUT_PREVIEW_SUPERSEDED',
+            'Layout preview đã được thay bằng một session mới.',
+          );
+        }
+        return preview;
+      });
+    },
+
+    async startMotion(projectId, motionCanvasBundle, startOptions) {
+      assertProjectId(projectId);
+      return withProjectStartLock(projectId, async () => {
+        if (closed) {
+          throw new LayoutPreviewError(
+            'LAYOUT_PREVIEW_CLOSED',
+            'Layout preview runtime đã dừng.',
+          );
+        }
+        const parentOrigin = normalizeParentOrigin(startOptions.parentOrigin);
+        let resolvedSource: Awaited<ReturnType<typeof resolveMotionSource>>;
+        try {
+          resolvedSource = await resolveMotionSource(
+            projectId,
+            motionCanvasBundle,
+            startOptions.initialOverrides,
+          );
+        } catch (error) {
+          const invalidated = previews.get(projectId);
+          if (invalidated) {
+            previews.delete(projectId);
+            await closePreview(invalidated);
+          }
+          if (error instanceof LayoutPreviewError) throw error;
+          throw new LayoutPreviewError(
+            'LAYOUT_PREVIEW_SOURCE_INVALID',
+            'Workspace Motion Canvas không còn hợp lệ để chỉnh bố cục.',
+            {cause: error},
+          );
+        }
+        const generationId = motionCanvasBundle.generation.generationId;
+        const identity = canonicalHash({
+          projectId,
+          sourceKind: 'motion-canvas',
+          generationId,
+          layoutEditorHash: await currentLayoutEditorHash(),
+          sourceSyncGenerationId: generationId,
+          sourceSyncContentRevision: motionCanvasBundle.contentRevision,
+          sourceSyncSourceHash: motionCanvasBundle.validation.sourceHash,
+          sourceWorkspaceHash: resolvedSource.sourceWorkspaceHash,
+          initialOverrides: canonicalHash(
+            startOptions.initialOverrides ?? [],
+          ),
+          parentOrigin,
+        });
+        const existing = previews.get(projectId);
+        if (existing?.identity === identity) {
+          try {
+            existing.lastAccessedAt = Date.now();
+            const preview = await existing.promise;
+            if (
+              previews.get(projectId) === existing &&
+              existing.server &&
+              existing.server.httpServer?.listening !== false
+            ) {
+              return preview;
+            }
+          } catch (error) {
+            if (previews.get(projectId) === existing) {
+              previews.delete(projectId);
+            }
+            await closePreview(existing);
+            throw error;
+          }
+          if (previews.get(projectId) === existing) previews.delete(projectId);
+          await closePreview(existing);
+        }
+        if (existing && previews.get(projectId) === existing) {
+          previews.delete(projectId);
+          await closePreview(existing);
+        }
+
+        const sessionNonce = randomBytes(32).toString('base64url');
+        const cacheDirectory = path.join(temporaryRoot, identity.slice(0, 32));
+        const entry: ActivePreview = {
+          identity,
+          generationId,
+          sourceSyncGenerationId: generationId,
+          sourceSyncContentRevision: motionCanvasBundle.contentRevision,
+          sourceSyncSourceHash: motionCanvasBundle.validation.sourceHash,
+          sourceWorkspaceHash: resolvedSource.sourceWorkspaceHash,
+          parentOrigin,
+          sessionNonce,
+          lastAccessedAt: Date.now(),
+          cacheDirectory,
+          promise: Promise.resolve(null as never),
+          server: null,
+          overrides: resolvedSource.overrides,
+          manifestSeed: {
+            version: 1,
+            sourceAnimationSyncGenerationId: generationId,
+            sourceAnimationSyncContentRevision:
+              motionCanvasBundle.contentRevision,
+            sourceAnimationSyncSourceHash:
+              motionCanvasBundle.validation.sourceHash,
+            scenes: motionCanvasBundle.scenes.map((scene) => ({
+              sceneId: scene.id,
+              filePath: scene.filePath,
+              nodes: [],
+            })),
+          },
+          manifest: null,
+        };
+        entry.promise = createPreview(resolvedSource, entry).catch((error) => {
+          if (previews.get(projectId) === entry) previews.delete(projectId);
           throw error;
         });
         previews.set(projectId, entry);
