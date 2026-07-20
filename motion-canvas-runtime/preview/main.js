@@ -1,4 +1,5 @@
 import {Player, Stage} from '@motion-canvas/core';
+import {applySceneOverrides} from '../layout-editor/modifier-model.js';
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -29,9 +30,27 @@ function previewMessage(type, details = {}) {
   );
 }
 
-export function editor(project) {
+async function startPreview(project) {
   const root = document.querySelector('#root');
   if (!root) throw new Error('Không tìm thấy preview root.');
+
+  const overridesUrl = new URLSearchParams(window.location.search).get(
+    'overrides',
+  );
+  let visualDesign = {sections: [], overrides: []};
+  if (overridesUrl) {
+    const response = await fetch(overridesUrl, {cache: 'no-store'});
+    if (!response.ok) {
+      throw new Error('Không thể tải các chỉnh sửa scene của bản đồng bộ.');
+    }
+    const value = await response.json();
+    if (value && typeof value === 'object') {
+      visualDesign = {
+        sections: Array.isArray(value.sections) ? value.sections : [],
+        overrides: Array.isArray(value.overrides) ? value.overrides : [],
+      };
+    }
+  }
 
   const shell = element('section', 'preview-shell');
   const heading = element('header', 'preview-heading');
@@ -119,6 +138,16 @@ export function editor(project) {
   let ready = false;
   let disposed = false;
   const disposers = [];
+  const sceneIds = new WeakMap();
+
+  disposers.push(
+    player.playback.onScenesRecalculated.subscribe(scenes => {
+      scenes.forEach((scene, index) => {
+        const source = visualDesign.sections[index];
+        if (source?.sceneId) sceneIds.set(scene, source.sceneId);
+      });
+    }),
+  );
 
   function reportError(payload) {
     if (payload?.level !== 'error') return;
@@ -136,10 +165,25 @@ export function editor(project) {
   disposers.push(project.logger.onLogged.subscribe(reportError));
   disposers.push(
     player.onRender.subscribe(async () => {
-      await stage.render(
-        player.playback.currentScene,
-        player.playback.previousScene,
-      );
+      const currentScene = player.playback.currentScene;
+      const previousScene = player.playback.previousScene;
+      const restorePrevious = previousScene
+        ? applySceneOverrides(previousScene, visualDesign, {
+            sceneId: sceneIds.get(previousScene) ?? previousScene.name,
+          })
+        : () => {};
+      const restoreCurrent = applySceneOverrides(currentScene, visualDesign, {
+        sceneId: sceneIds.get(currentScene) ?? currentScene.name,
+      });
+      try {
+        await stage.render(currentScene, previousScene);
+      } finally {
+        try {
+          restoreCurrent();
+        } finally {
+          restorePrevious();
+        }
+      }
       if (!ready) {
         ready = true;
         loading.hidden = true;
@@ -231,6 +275,16 @@ export function editor(project) {
       if (!disposed) player.activate();
     })
     .catch((error) => project.logger.error(error));
+}
+
+export function editor(project) {
+  void startPreview(project).catch(error => {
+    const root = document.querySelector('#root');
+    if (root) {
+      root.textContent = error instanceof Error ? error.message : String(error);
+    }
+    project.logger.error(error);
+  });
 }
 
 export function index() {

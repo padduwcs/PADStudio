@@ -327,7 +327,19 @@ test('Animation sync tạo track WAV và time-event theo voice thật', async (c
     {maximumActivePreviews: 1},
   );
   try {
-    const preview = await previewService.start(projectId, syncBundle);
+    const previewOverrides = [
+      {
+        sceneId: syncBundle.sections[0]!.sceneId,
+        nodeKey: 'Scene/Card',
+        nodeFingerprint: 'f'.repeat(64),
+        patch: {x: 24, opacity: 0.91},
+      },
+    ];
+    const preview = await previewService.start(
+      projectId,
+      syncBundle,
+      previewOverrides,
+    );
     assert.equal(preview.generationId, syncGenerationId);
     const previewResponse = await fetch(preview.url);
     const previewHtml = await previewResponse.text();
@@ -339,8 +351,22 @@ test('Animation sync tạo track WAV và time-event theo voice thật', async (c
     const editorModule = await editorModuleResponse.text();
     assert.equal(editorModuleResponse.status, 200, editorModule);
     assert.match(editorModule, /\?project/);
+    const overridesUrl = new URL(preview.url).searchParams.get('overrides');
+    assert.ok(overridesUrl);
+    const visualDesignResponse = await fetch(
+      new URL(overridesUrl, preview.url),
+    );
+    const visualDesign = await visualDesignResponse.json();
+    assert.equal(visualDesignResponse.status, 200);
+    assert.deepEqual(visualDesign.overrides, previewOverrides);
     assert.equal(
-      (await previewService.start(projectId, syncBundle)).url,
+      (
+        await previewService.start(
+          projectId,
+          syncBundle,
+          previewOverrides,
+        )
+      ).url,
       preview.url,
     );
   } finally {

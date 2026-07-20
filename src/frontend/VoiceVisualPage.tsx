@@ -195,6 +195,17 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
         </div>
       )}
 
+      {draft && plan.validationErrors.length > 0 && (
+        <div className="outline-alert draft-validation-alert" role="status">
+          <strong>Cần bổ sung trước khi chốt:</strong>
+          <ul>
+            {plan.validationErrors.map(message => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {!draft ? (
         <div className="voice-visual-empty-grid">
           <section className="outline-primary-card">
@@ -705,7 +716,8 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
               <span>
                 {approved
                   ? 'Kế hoạch voice–visual đã được chốt'
-                  : 'Review kỹ trước khi sinh scene và voice'}
+                  : plan.validationErrors[0] ??
+                    'Review kỹ trước khi sinh scene và voice'}
               </span>
               <button
                 className="submit-button"
@@ -713,7 +725,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                 disabled={
                   plan.approving ||
                   plan.generating ||
-                  (!approved && (plan.stale || !plan.valid)) ||
+                  (!approved && plan.stale) ||
                   plan.saveState === 'conflict'
                 }
                 onClick={() =>

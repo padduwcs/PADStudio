@@ -1935,6 +1935,17 @@ export default makeScene2D(function* (view) {
 
   const firstLayoutNode = previewManifest.scenes[0]!.nodes[0]!;
   const layoutGenerationId = randomUUID();
+  const renderOptions = {
+    playbackRate: 1.25,
+    watermark: {
+      type: 'text' as const,
+      text: 'PAD Studio',
+      opacity: 0.31,
+      position: 'bottom-right' as const,
+      fontSize: 44,
+      color: '#ffffff',
+    },
+  };
   const layoutOverrides = [
     {
       sceneId: previewManifest.scenes[0]!.sceneId,
@@ -1954,6 +1965,7 @@ export default makeScene2D(function* (view) {
     sourceAnimationSyncGenerationId: syncGenerationId,
     sessionNonce: layoutSessionNonce,
     overrides: layoutOverrides,
+    renderSettings: renderOptions,
   };
   const outdatedLayoutSourceResponse = await fetch(
     `${baseUrl}/api/projects/${project.id}/layout/commit`,
@@ -2040,6 +2052,10 @@ export default makeScene2D(function* (view) {
   );
   assert.equal(layoutWorkspaceCalls, 1);
   assert.equal(layoutExpectedSourceHash, '9'.repeat(64));
+  assert.deepEqual(
+    layoutCommitBody.project.layoutBundle.renderSettings,
+    renderOptions,
+  );
 
   const repeatedLayoutCommitResponse = await fetch(
     `${baseUrl}/api/projects/${project.id}/layout/commit`,
@@ -2118,6 +2134,27 @@ export default makeScene2D(function* (view) {
     14,
   );
 
+  const mismatchedRenderSettingsResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/render/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"14"',
+      },
+      body: JSON.stringify({
+        generationId: randomUUID(),
+        playbackRate: 1,
+        watermark: {type: 'none'},
+      }),
+    },
+  );
+  assert.equal(mismatchedRenderSettingsResponse.status, 409);
+  assert.equal(
+    (await mismatchedRenderSettingsResponse.json()).error.code,
+    'FINAL_RENDER_SETTINGS_OUTDATED',
+  );
+
   const watermarkImage = Buffer.concat([
     Buffer.from('89504e470d0a1a0a', 'hex'),
     Buffer.alloc(32, 9),
@@ -2133,16 +2170,15 @@ export default makeScene2D(function* (view) {
   const watermarkUploadBody = await watermarkUploadResponse.json();
   assert.equal(watermarkUploadResponse.status, 201);
   assert.equal(watermarkUploadBody.asset.contentType, 'image/png');
-  const renderOptions = {
-    playbackRate: 1.25,
-    watermark: {
-      type: 'image' as const,
-      assetId: watermarkUploadBody.asset.assetId as string,
-      opacity: 0.3,
-      position: 'bottom-right' as const,
-      widthPercent: 22,
-    },
-  };
+  const watermarkReadResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/render/watermark?asset=${watermarkUploadBody.asset.assetId}`,
+  );
+  assert.equal(watermarkReadResponse.status, 200);
+  assert.equal(watermarkReadResponse.headers.get('content-type'), 'image/png');
+  assert.deepEqual(
+    Buffer.from(await watermarkReadResponse.arrayBuffer()),
+    watermarkImage,
+  );
   const finalRenderGenerationId = randomUUID();
   const finalRenderResponse = await fetch(
     `${baseUrl}/api/projects/${project.id}/render/generate`,
@@ -2258,7 +2294,12 @@ export default makeScene2D(function* (view) {
     motionDesignBody.project.visualDesignBundle.overrides,
     motionDesignOverrides,
   );
-  assert.ok(motionDesignBody.project.renderBundle);
+  assert.equal(
+    motionDesignBody.project.animationSyncBundle.status,
+    'draft',
+  );
+  assert.equal(motionDesignBody.project.layoutBundle.status, 'draft');
+  assert.equal(motionDesignBody.project.renderBundle, null);
 
   const approvedPlan = syncApproveBody.project.voiceVisualPlan;
   const visualOnlyUpdateResponse = await fetch(

@@ -31,6 +31,39 @@ export type VoiceVisualSaveState =
   | 'error'
   | 'conflict';
 
+function voiceVisualValidationErrors(
+  draft: VoiceVisualPlanContent | null,
+) {
+  if (!draft) return [];
+  const parsed = VoiceVisualPlanContentSchema.safeParse(draft);
+  if (parsed.success) return [];
+  return [...new Set(parsed.error.issues.map(issue => {
+    const [group, sectionIndex, beats, beatIndex, field] = issue.path;
+    if (
+      group === 'sections' &&
+      typeof sectionIndex === 'number' &&
+      beats === 'beats' &&
+      typeof beatIndex === 'number'
+    ) {
+      const labels: Record<string, string> = {
+        voiceover: 'Lời thuyết minh',
+        visualDescription: 'Mô tả visual',
+        animationDescription: 'Chuyển động',
+        visualHoldSeconds: 'Giữ hình',
+        durationSeconds: 'Thời lượng',
+      };
+      return `Ý ${sectionIndex + 1} · Beat ${beatIndex + 1} · ${labels[String(field)] ?? 'Thông tin'}: ${issue.message}`;
+    }
+    if (group === 'voiceDirection') {
+      return `Giọng kể: ${issue.message}`;
+    }
+    if (group === 'visualDirection') {
+      return `Ngôn ngữ hình ảnh: ${issue.message}`;
+    }
+    return issue.message;
+  }))];
+}
+
 function getPlanContent(
   project: TopicProject,
 ): VoiceVisualPlanContent | null {
@@ -498,11 +531,18 @@ export function useVoiceVisualDraft(projectId: string) {
 
   const stale = project ? voiceVisualIsStale(project) : false;
   const ready = project ? outlineIsReady(project) : false;
-  const valid = Boolean(
+  const validationErrors = voiceVisualValidationErrors(draft);
+  if (
     draft &&
-      project?.outline &&
-      VoiceVisualPlanContentSchema.safeParse(draft).success &&
-      voiceVisualMatchesOutline(draft, project.outline),
+    project?.outline &&
+    !voiceVisualMatchesOutline(draft, project.outline)
+  ) {
+    validationErrors.push(
+      'Các ý trong kế hoạch không còn khớp mạch giảng hiện tại.',
+    );
+  }
+  const valid = Boolean(
+    draft && project?.outline && validationErrors.length === 0,
   );
 
   return {
@@ -517,6 +557,7 @@ export function useVoiceVisualDraft(projectId: string) {
     stale,
     ready,
     valid,
+    validationErrors,
     updateDirection,
     updateBeat,
     addBeat,

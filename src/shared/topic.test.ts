@@ -648,7 +648,14 @@ test('layout bundle and commands lock every write to a sync generation', () => {
     },
   };
 
-  assert.equal(LayoutBundleSchema.safeParse(bundle).success, true);
+  const parsedBundle = LayoutBundleSchema.safeParse(bundle);
+  assert.equal(parsedBundle.success, true);
+  if (parsedBundle.success) {
+    assert.deepEqual(parsedBundle.data.renderSettings, {
+      playbackRate: 1,
+      watermark: {type: 'none'},
+    });
+  }
   assert.equal(
     LayoutBundleSchema.safeParse({
       ...bundle,
@@ -688,6 +695,23 @@ test('layout bundle and commands lock every write to a sync generation', () => {
     ],
   };
   assert.equal(CommitLayoutSchema.safeParse(command).success, true);
+  assert.equal(
+    CommitLayoutSchema.safeParse({
+      ...command,
+      renderSettings: {
+        playbackRate: 1.03,
+        watermark: {
+          type: 'text',
+          text: 'PAD Studio',
+          opacity: 0.31,
+          position: 'bottom-right',
+          fontSize: 44,
+          color: '#ffffff',
+        },
+      },
+    }).success,
+    true,
+  );
   assert.equal(
     CommitLayoutSchema.safeParse({...command, sessionNonce: 'short'}).success,
     false,

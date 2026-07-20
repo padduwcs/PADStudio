@@ -2755,12 +2755,22 @@ export function createPadStudioServer(options: AppOptions = {}) {
         }
 
         const generationKey = `${currentProject.id}:${generationId}`;
+        const visualDesign =
+          currentProject.visualDesignBundle &&
+          visualDesignMatchesMotion(
+            currentProject.visualDesignBundle,
+            motion,
+          )
+            ? currentProject.visualDesignBundle
+            : null;
         const fingerprint = JSON.stringify({
           motionContentRevision: motion.contentRevision,
           motionSourceHash: motion.validation.sourceHash,
           voiceContentRevision: voice.contentRevision,
           voiceGenerationId: voice.generation.generationId,
           voiceSections: voice.sections,
+          visualDesignContentRevision: visualDesign?.contentRevision ?? null,
+          visualDesignOverrides: visualDesign?.overrides ?? [],
         });
         const generation = await generateOnce(
           animationSyncGenerations,
@@ -2781,6 +2791,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
             (currentProject.animationSyncBundle?.contentRevision ?? 0) + 1,
           sourceMotionCanvasContentRevision: motion.contentRevision,
           sourceVoiceContentRevision: voice.contentRevision,
+          sourceVisualDesignContentRevision:
+            visualDesign?.contentRevision ?? null,
           workspacePath: prepared.workspacePath,
           projectFile: prepared.projectFile,
           audioFile: prepared.audioFile,
@@ -2844,9 +2856,33 @@ export function createPadStudioServer(options: AppOptions = {}) {
             'Generation bản nháp được yêu cầu không còn là bản hiện tại.',
           );
         }
+        const previewMotion = currentProject.motionCanvasBundle;
+        const previewVoice = currentProject.voiceBundle;
+        if (
+          !previewMotion ||
+          !previewVoice ||
+          !animationSyncMatchesSources(
+            bundle,
+            previewMotion,
+            previewVoice,
+            currentProject.visualDesignBundle,
+          )
+        ) {
+          throw new RequestBodyError(
+            409,
+            'ANIMATION_SYNC_OUTDATED',
+            'Scene, visual design hoặc voice đã thay đổi. Hãy đồng bộ lại trước khi mở preview.',
+          );
+        }
+        const syncVisualDesign = currentProject.visualDesignBundle;
         const preview = await animationSyncPreviewService.start(
           currentProject.id,
           bundle,
+          syncVisualDesign &&
+          syncVisualDesign.contentRevision ===
+            bundle.sourceVisualDesignContentRevision
+            ? syncVisualDesign.overrides
+            : [],
         );
         response.setHeader('Cache-Control', 'no-store');
         sendJson(response, 200, {preview});
@@ -2958,7 +2994,12 @@ export function createPadStudioServer(options: AppOptions = {}) {
           !voice ||
           voice.status !== 'approved' ||
           !bundle ||
-          !animationSyncMatchesSources(bundle, motion, voice)
+          !animationSyncMatchesSources(
+            bundle,
+            motion,
+            voice,
+            currentProject.visualDesignBundle,
+          )
         ) {
           throw new RequestBodyError(
             409,
@@ -3160,7 +3201,11 @@ export function createPadStudioServer(options: AppOptions = {}) {
           if (
             currentLayout.sourceAnimationSyncGenerationId !==
               requestData.sourceAnimationSyncGenerationId ||
-            !sameValue(stored.overrides, normalizedOverrides)
+            !sameValue(stored.overrides, normalizedOverrides) ||
+            !sameValue(
+              currentLayout.renderSettings,
+              requestData.renderSettings,
+            )
           ) {
             throw new RequestBodyError(
               409,
@@ -3223,6 +3268,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
           sourceWorkspaceHash,
           baseGenerationId: requestData.baseGenerationId,
           overrides: normalizedOverrides,
+          renderSettings: requestData.renderSettings,
           editorManifest,
         });
         const generation = await generateOnce(
@@ -3257,6 +3303,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
           manifestFile: prepared.manifestFile,
           overrideContractVersion:
             prepared.overrideContractVersion,
+          renderSettings: requestData.renderSettings,
           totalDurationSeconds: prepared.totalDurationSeconds,
           scenes: prepared.scenes,
           validation: prepared.validation,
@@ -3424,6 +3471,36 @@ export function createPadStudioServer(options: AppOptions = {}) {
 
       if (
         renderRoute?.action === 'watermark' &&
+        request.method === 'GET'
+      ) {
+        const currentProject = await repository.getProject(renderRoute.projectId);
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        const assetId = requestUrl.searchParams.get('asset') ?? '';
+        const asset = await watermarkAssetStore.read(
+          currentProject.id,
+          assetId,
+        );
+        sendMediaBuffer(
+          request,
+          response,
+          asset.value,
+          asset.summary.contentType,
+          {
+            'Cache-Control': 'private, max-age=31536000, immutable',
+            ETag: `"${asset.summary.assetId}"`,
+          },
+        );
+        return;
+      }
+
+      if (
+        renderRoute?.action === 'watermark' &&
         request.method === 'POST'
       ) {
         const currentProject = await repository.getProject(renderRoute.projectId);
@@ -3499,6 +3576,20 @@ export function createPadStudioServer(options: AppOptions = {}) {
             409,
             'FINAL_RENDER_PREREQUISITES_NOT_APPROVED',
             'Hãy duyệt Layout hiện hành trước khi render video cuối.',
+          );
+        }
+        if (
+          layout.renderSettings.playbackRate !==
+            parsedRequest.data.playbackRate ||
+          !sameValue(
+            layout.renderSettings.watermark,
+            parsedRequest.data.watermark,
+          )
+        ) {
+          throw new RequestBodyError(
+            409,
+            'FINAL_RENDER_SETTINGS_OUTDATED',
+            'Tốc độ hoặc watermark không khớp Layout đã chốt. Hãy xem trước và lưu lại trong Layout Editor.',
           );
         }
         const renderBundle: FinalRenderBundle =

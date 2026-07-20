@@ -82,6 +82,109 @@
   color: var(--ink-soft);
 }
 
+.layout-output-settings {
+  display: grid;
+  gap: 14px;
+  margin: 0 0 18px;
+  padding: 16px 18px;
+  border: 1px solid #d8ddd8;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.layout-output-settings > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.layout-output-settings > header > div {
+  display: grid;
+  gap: 4px;
+}
+
+.layout-output-settings > header small {
+  color: var(--ink-soft);
+}
+
+.layout-output-control {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) 82px auto;
+  gap: 9px;
+  align-items: center;
+}
+
+.layout-output-control > input[type="number"] {
+  min-width: 0;
+}
+
+.layout-watermark-settings {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(130px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.layout-watermark-settings > label {
+  display: grid;
+  gap: 5px;
+  color: var(--ink-soft);
+  font-size: 0.74rem;
+}
+
+.layout-watermark-settings .is-wide {
+  grid-column: span 2;
+}
+
+.layout-watermark-settings input,
+.layout-watermark-settings select,
+.layout-output-control input[type="number"] {
+  min-height: 38px;
+  padding: 7px 9px;
+  border: 1px solid #cfd7d2;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.layout-watermark-settings input[type="color"] {
+  width: 100%;
+  padding: 4px;
+}
+
+.layout-output-control.is-opacity {
+  grid-template-columns: auto minmax(80px, 1fr) 72px auto;
+}
+
+.layout-watermark-upload small {
+  min-height: 1em;
+}
+
+@media (max-width: 900px) {
+  .layout-output-settings > header {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .layout-watermark-settings {
+    grid-template-columns: repeat(2, minmax(130px, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .layout-watermark-settings,
+  .layout-output-control,
+  .layout-output-control.is-opacity {
+    grid-template-columns: minmax(0, 1fr) 72px auto;
+  }
+
+  .layout-output-control > label,
+  .layout-watermark-settings > label,
+  .layout-watermark-settings .is-wide {
+    grid-column: 1 / -1;
+  }
+}
+
 .layout-editor-shell {
   display: grid;
   min-height: 650px;

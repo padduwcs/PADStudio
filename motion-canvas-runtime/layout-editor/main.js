@@ -602,9 +602,11 @@ async function startEditor(project) {
   stage.finalBuffer.classList.add('layout-stage-canvas', 'is-selectable');
   const overlay = document.createElement('canvas');
   overlay.className = 'layout-overlay';
+  const watermarkLayer = element('div', 'layout-watermark-preview');
+  watermarkLayer.hidden = true;
   const overlayContext = overlay.getContext('2d');
   if (!overlayContext) throw new Error('Không thể tạo canvas overlay.');
-  ui.canvasStack.append(stage.finalBuffer, overlay);
+  ui.canvasStack.append(stage.finalBuffer, overlay, watermarkLayer);
   ui.stageHost.append(ui.canvasStack);
 
   const player = new Player(
@@ -619,6 +621,39 @@ async function startEditor(project) {
     },
     0,
   );
+
+  function setRenderSettings(payload = {}) {
+    const renderSettings = payload.renderSettings ?? payload;
+    const playbackRate = Math.min(
+      4,
+      Math.max(0.25, Number(renderSettings.playbackRate) || 1),
+    );
+    player.setSpeed(playbackRate);
+
+    const watermark = renderSettings.watermark;
+    watermarkLayer.replaceChildren();
+    watermarkLayer.hidden = !watermark || watermark.type === 'none';
+    watermarkLayer.dataset.position = watermark?.position ?? 'bottom-right';
+    if (watermarkLayer.hidden) return;
+    watermarkLayer.style.opacity = String(
+      Math.min(1, Math.max(0.05, Number(watermark.opacity) || 0.3)),
+    );
+    if (watermark.type === 'text') {
+      const text = element('span', 'layout-watermark-text', watermark.text ?? '');
+      text.style.color = /^#[0-9a-f]{6}$/i.test(watermark.color ?? '')
+        ? watermark.color
+        : '#ffffff';
+      const fontSize = Math.min(200, Math.max(16, Number(watermark.fontSize) || 44));
+      text.style.setProperty('--watermark-font-cqw', String(fontSize / 10.8));
+      watermarkLayer.append(text);
+    } else if (watermark.type === 'image' && payload.imageUrl) {
+      const image = element('img', 'layout-watermark-image');
+      image.alt = 'Watermark preview';
+      image.src = payload.imageUrl;
+      image.style.width = `${Math.min(80, Math.max(5, Number(watermark.widthPercent) || 22))}%`;
+      watermarkLayer.append(image);
+    }
+  }
   for (const plugin of project.plugins) plugin.player?.(player);
   player.deactivate();
 
@@ -1710,6 +1745,8 @@ async function startEditor(project) {
       });
       normalizeKnownInternalOverrides();
       if (payload.view) setViewPatch(payload.view);
+    } else if (type === 'set-render-settings' || type === 'setRenderSettings') {
+      setRenderSettings(payload);
     } else if (type === 'play') {
       player.togglePlayback(true);
     } else if (type === 'pause') {

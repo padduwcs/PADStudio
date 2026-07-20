@@ -1,9 +1,11 @@
 import {createRequire} from 'node:module';
-import {mkdir, rm} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
+import {mkdir, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import type {AnimationSyncBundle} from '../shared/topic.ts';
+import type {LayoutNodeOverride} from '../shared/layout.ts';
 import {copyPreviewWorkspace} from './previewWorkspaceCopy.ts';
 
 interface PreviewRuntimeServer {
@@ -21,6 +23,7 @@ interface PreviewRuntime {
 
 interface ActivePreview {
   generationId: string;
+  overridesSignature: string;
   lastAccessedAt: number;
   cacheDirectory: string;
   promise: Promise<AnimationSyncPreview>;
@@ -36,6 +39,7 @@ export interface AnimationSyncPreviewService {
   start(
     projectId: string,
     bundle: AnimationSyncBundle,
+    overrides?: LayoutNodeOverride[],
   ): Promise<AnimationSyncPreview>;
   close(): Promise<void>;
 }
@@ -207,6 +211,7 @@ export function createAnimationSyncPreviewService(
   async function createPreview(
     projectId: string,
     bundle: AnimationSyncBundle,
+    overrides: LayoutNodeOverride[],
     entry: ActivePreview,
   ) {
     const {projectFile, workspaceDirectory} =
@@ -223,6 +228,10 @@ export function createAnimationSyncPreviewService(
       previewWorkspaceDirectory,
       projectRelativePath,
     );
+    const visualDesignFile = path.join(
+      previewWorkspaceDirectory,
+      'visual-design.json',
+    );
     const runtime = await loadRuntime();
     await rm(entry.cacheDirectory, {recursive: true, force: true});
     await mkdir(entry.cacheDirectory, {recursive: true});
@@ -232,6 +241,18 @@ export function createAnimationSyncPreviewService(
       await copyPreviewWorkspace(
         workspaceDirectory,
         previewWorkspaceDirectory,
+      );
+      await writeFile(
+        visualDesignFile,
+        `${JSON.stringify({
+          version: 1,
+          sections: bundle.sections.map(section => ({
+            sceneId: section.sceneId,
+            filePath: section.filePath,
+          })),
+          overrides,
+        })}\n`,
+        'utf8',
       );
       server = await runtime.createServer({
         configFile: false,
@@ -312,6 +333,7 @@ export function createAnimationSyncPreviewService(
         'generation',
         bundle.generation.generationId,
       );
+      url.searchParams.set('overrides', moduleUrl(visualDesignFile));
       return {
         generationId: bundle.generation.generationId,
         url: url.toString(),
@@ -337,15 +359,21 @@ export function createAnimationSyncPreviewService(
   }
 
   return {
-    async start(projectId, bundle) {
+    async start(projectId, bundle, overrides = []) {
       if (closed) {
         throw new AnimationSyncPreviewError(
           'ANIMATION_SYNC_PREVIEW_CLOSED',
           'Preview runtime đã dừng.',
         );
       }
+      const overridesSignature = createHash('sha256')
+        .update(JSON.stringify(overrides))
+        .digest('hex');
       const existing = previews.get(projectId);
-      if (existing?.generationId === bundle.generation.generationId) {
+      if (
+        existing?.generationId === bundle.generation.generationId &&
+        existing.overridesSignature === overridesSignature
+      ) {
         existing.lastAccessedAt = Date.now();
         try {
           const preview = await existing.promise;
@@ -376,7 +404,7 @@ export function createAnimationSyncPreviewService(
       const cacheDirectory = path.join(
         temporaryRoot,
         projectId,
-        bundle.generation.generationId,
+        `${bundle.generation.generationId}-${overridesSignature.slice(0, 12)}`,
       );
       if (!isInside(temporaryRoot, cacheDirectory)) {
         throw new AnimationSyncPreviewError(
@@ -386,12 +414,18 @@ export function createAnimationSyncPreviewService(
       }
       const entry: ActivePreview = {
         generationId: bundle.generation.generationId,
+        overridesSignature,
         lastAccessedAt: Date.now(),
         cacheDirectory,
         promise: Promise.resolve(null as never),
         server: null,
       };
-      entry.promise = createPreview(projectId, bundle, entry).catch(
+      entry.promise = createPreview(
+        projectId,
+        bundle,
+        overrides,
+        entry,
+      ).catch(
         (error) => {
           if (previews.get(projectId) === entry) {
             previews.delete(projectId);

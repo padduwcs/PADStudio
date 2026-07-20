@@ -28,6 +28,31 @@ export type OutlineSaveState =
   | 'error'
   | 'conflict';
 
+function outlineValidationErrors(draft: TeachingOutlineContent | null) {
+  if (!draft) return [];
+  const parsed = TeachingOutlineContentSchema.safeParse(draft);
+  if (parsed.success) return [];
+  return [...new Set(parsed.error.issues.map(issue => {
+    const [group, index, field] = issue.path;
+    if (group === 'sections' && typeof index === 'number') {
+      const labels: Record<string, string> = {
+        title: 'Tên ý',
+        goal: 'Mục tiêu',
+        content: 'Nội dung',
+        estimatedSeconds: 'Thời lượng',
+      };
+      return `Ý ${index + 1} · ${labels[String(field)] ?? 'Thông tin'}: ${issue.message}`;
+    }
+    if (group === 'brief') {
+      return `Tóm tắt yêu cầu: ${issue.message}`;
+    }
+    if (group === 'centralMessage') {
+      return `Thông điệp trung tâm: ${issue.message}`;
+    }
+    return issue.message;
+  }))];
+}
+
 function getOutlineContent(project: TopicProject): TeachingOutlineContent | null {
   if (!project.outline) return null;
   return {
@@ -438,9 +463,8 @@ export function useOutlineDraft(projectId: string) {
   }
 
   const stale = project ? outlineIsStale(project) : false;
-  const valid = Boolean(
-    draft && TeachingOutlineContentSchema.safeParse(draft).success,
-  );
+  const validationErrors = outlineValidationErrors(draft);
+  const valid = Boolean(draft && validationErrors.length === 0);
 
   return {
     project,
@@ -453,6 +477,7 @@ export function useOutlineDraft(projectId: string) {
     approving,
     stale,
     valid,
+    validationErrors,
     updateBriefSummary,
     updateAssumption,
     addAssumption,

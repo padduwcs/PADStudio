@@ -891,6 +891,7 @@ export function MotionDesignEditor({
                 <label className="layout-range-field">
                   <span>Opacity <strong>{Math.round((selection.patch.opacity ?? 1) * 100)}%</strong></span>
                   <input type="range" min={0} max={1} step={0.01} value={selection.patch.opacity ?? 1} disabled={!canEdit('opacity')} onChange={(event) => sendNumericPatch('opacity', Number(event.currentTarget.value))} />
+                  <NumberInput value={selection.patch.opacity ?? 1} min={0} max={1} step={0.01} disabled={!canEdit('opacity')} onCommit={(value) => sendNumericPatch('opacity', value)} />
                 </label>
                 {selection.editableProperties.includes('fill') && (
                   <div className="layout-color-field">

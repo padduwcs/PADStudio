@@ -1,5 +1,22 @@
 import {z} from 'zod';
 import {pipelineSafetyLimits} from './pipelineLimits.ts';
+import {RenderWatermarkSchema} from './render.ts';
+
+export const LayoutRenderSettingsSchema = z
+  .object({
+    playbackRate: z.number().finite().min(0.25).max(4).default(1),
+    watermark: RenderWatermarkSchema.default({type: 'none'}),
+  })
+  .strict();
+
+export type LayoutRenderSettings = z.infer<
+  typeof LayoutRenderSettingsSchema
+>;
+
+export const defaultLayoutRenderSettings: LayoutRenderSettings = {
+  playbackRate: 1,
+  watermark: {type: 'none'},
+};
 
 export const layoutStatusValues = ['draft', 'approved'] as const;
 export const layoutFontFamilyValues = [
@@ -341,6 +358,9 @@ export const LayoutBundleSchema = z
     overridesFile: z.literal('overrides.json'),
     manifestFile: z.literal('editor-manifest.json'),
     overrideContractVersion: z.literal(1),
+    renderSettings: LayoutRenderSettingsSchema.default(
+      defaultLayoutRenderSettings,
+    ),
     totalDurationSeconds: z.number().positive(),
     scenes: z
       .array(LayoutSceneSummarySchema)
@@ -435,6 +455,9 @@ export const CommitLayoutSchema = z
       .max(128)
       .regex(/^[A-Za-z0-9_-]+$/),
     overrides: LayoutOverridesArraySchema,
+    renderSettings: LayoutRenderSettingsSchema.default(
+      defaultLayoutRenderSettings,
+    ),
   })
   .strict();
 

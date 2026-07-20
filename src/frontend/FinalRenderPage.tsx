@@ -49,11 +49,11 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
   const [watermarkFileName, setWatermarkFileName] = useState('');
 
   useEffect(() => {
-    const bundle = render.project?.renderBundle;
-    if (!bundle) return;
-    setPlaybackRate(bundle.playbackRate);
-    setWatermark(bundle.watermark);
-  }, [render.project?.renderBundle?.generation.generationId]);
+    const settings = render.project?.layoutBundle?.renderSettings;
+    if (!settings) return;
+    setPlaybackRate(settings.playbackRate);
+    setWatermark(settings.watermark);
+  }, [render.project?.layoutBundle?.generation.generationId]);
 
   useEffect(() => {
     if (!watermarkUploading) return;
@@ -120,7 +120,11 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
         : watermark.type === 'text' && !watermark.text.trim()
           ? 'Hãy nhập nội dung watermark, hoặc chọn “Không dùng”.'
           : '';
-  const startRender = () => render.render({playbackRate, watermark});
+  const startRender = () =>
+    render.render({
+      playbackRate: layout.renderSettings.playbackRate,
+      watermark: layout.renderSettings.watermark,
+    });
 
   return (
     <div className="render-workspace">
@@ -163,6 +167,18 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
           <span>{playbackRate.toLocaleString('vi-VN', {maximumFractionDigits: 2})}× · khoảng {formatTime(estimatedDuration)}</span>
         </div>
 
+        <div className="render-layout-source-note">
+          Tùy chọn này đã được xem trước và chốt cùng Layout. Muốn thay đổi,
+          hãy quay lại Layout Editor.
+          <button
+            type="button"
+            onClick={() => navigate(projectLayoutPath(project.id))}
+          >
+            Mở Layout Editor
+          </button>
+        </div>
+
+        <fieldset className="render-approved-settings" disabled>
         <div className="render-speed-control">
           <label htmlFor="render-speed">Tốc độ video cuối</label>
           <input
@@ -170,7 +186,7 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
             type="range"
             min="0.25"
             max="4"
-            step="0.05"
+            step="0.01"
             value={playbackRate}
             disabled={render.rendering}
             onChange={event => setPlaybackRate(Number(event.target.value))}
@@ -180,7 +196,7 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
             type="number"
             min="0.25"
             max="4"
-            step="0.05"
+            step="0.01"
             value={playbackRate}
             disabled={render.rendering}
             aria-label="Tốc độ video"
@@ -305,7 +321,7 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
                   type="range"
                   min="0.05"
                   max="1"
-                  step="0.05"
+                  step="0.01"
                   value={watermark.opacity}
                   disabled={render.rendering}
                   onChange={event => setWatermark({...watermark, opacity: Number(event.target.value)})}
@@ -318,7 +334,7 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
                     type="range"
                     min="5"
                     max="80"
-                    step="1"
+                    step="0.5"
                     value={watermark.widthPercent}
                     disabled={render.rendering}
                     onChange={event => setWatermark({...watermark, widthPercent: Number(event.target.value)})}
@@ -329,6 +345,7 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
           )}
           {watermarkUploadError && <small className="watermark-upload-error">{watermarkUploadError}</small>}
         </div>
+        </fieldset>
       </section>
 
       {render.rendering && status && (

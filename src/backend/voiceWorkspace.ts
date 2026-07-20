@@ -187,10 +187,16 @@ function ffmpegArguments(
       chunk.filePath,
     );
   }
-  const filters = chunks.map(
-    (chunk, index) =>
-      `[${index}:a]atrim=duration=${chunk.durationSeconds.toFixed(6)},asetpts=PTS-STARTPTS,aresample=${OUTPUT_SAMPLE_RATE},aformat=sample_fmts=s16:channel_layouts=stereo[a${index}]`,
-  );
+  const filters = chunks.map((chunk, index) => {
+    // Intermediate continuity groups must end at their alignment boundary so
+    // the following group's timestamps remain exact. The final group is left
+    // untrimmed because ElevenLabs can return a valid release/breath after the
+    // last character timestamp. Trimming it used to cut the narration ending.
+    const trim = index === chunks.length - 1
+      ? ''
+      : `atrim=duration=${chunk.durationSeconds.toFixed(6)},`;
+    return `[${index}:a]${trim}asetpts=PTS-STARTPTS,aresample=${OUTPUT_SAMPLE_RATE},aformat=sample_fmts=s16:channel_layouts=stereo[a${index}]`;
+  });
   if (chunks.length === 1) {
     filters.push('[a0]anull[outa]');
   } else {
@@ -214,6 +220,50 @@ function ffmpegArguments(
     destination,
   );
   return args;
+}
+
+function ffprobeExecutable(ffmpegPath: string, configured?: string) {
+  if (configured) return configured;
+  if (!path.dirname(ffmpegPath) || path.dirname(ffmpegPath) === '.') {
+    return process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe';
+  }
+  return path.join(
+    path.dirname(ffmpegPath),
+    `ffprobe${path.extname(ffmpegPath)}`,
+  );
+}
+
+async function probeAudioDuration(ffprobePath: string, audioPath: string) {
+  try {
+    const {stdout} = await execFileAsync(
+      ffprobePath,
+      [
+        '-v',
+        'error',
+        '-show_entries',
+        'format=duration',
+        '-of',
+        'default=noprint_wrappers=1:nokey=1',
+        audioPath,
+      ],
+      {
+        encoding: 'utf8',
+        maxBuffer: 1024 * 1024,
+        windowsHide: true,
+      },
+    );
+    const durationSeconds = Number(stdout.trim());
+    if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+      throw new Error('FFprobe returned an invalid audio duration.');
+    }
+    return durationSeconds;
+  } catch (error) {
+    throw new VoiceWorkspaceError(
+      'VOICE_MASTER_AUDIO_PROBE_FAILED',
+      'Không thể kiểm tra thời lượng thực của master narration.',
+      {cause: error},
+    );
+  }
 }
 
 async function commitWorkspace(stagingDirectory: string, finalDirectory: string) {
@@ -389,10 +439,14 @@ function preparedSections(
 
 export function createVoiceWorkspace(
   projectsDirectory: string,
-  options: {ffmpegPath?: string} = {},
+  options: {ffmpegPath?: string; ffprobePath?: string} = {},
 ): VoiceWorkspace {
   const resolvedProjectsDirectory = path.resolve(projectsDirectory);
   const ffmpegPath = options.ffmpegPath ?? process.env.FFMPEG_PATH ?? 'ffmpeg';
+  const ffprobePath = ffprobeExecutable(
+    ffmpegPath,
+    options.ffprobePath ?? process.env.FFPROBE_PATH,
+  );
 
   function projectDirectory(projectId: string) {
     assertProjectId(projectId);
@@ -531,10 +585,21 @@ export function createVoiceWorkspace(
           );
         }
 
+        const masterDurationSeconds = await probeAudioDuration(
+          ffprobePath,
+          masterAudioFile,
+        );
+        if (masterDurationSeconds + 0.01 < combined.durationSeconds) {
+          throw new VoiceWorkspaceError(
+            'VOICE_MASTER_AUDIO_INVALID',
+            'Master narration ngắn hơn alignment do ElevenLabs trả về.',
+          );
+        }
+
         const sections = preparedSections(
           narration,
           combined.alignment,
-          combined.durationSeconds,
+          masterDurationSeconds,
         );
         const characterCost = narration.chunks.reduce(
           (total, chunk) => total + chunk.generated.characterCost,
@@ -545,7 +610,7 @@ export function createVoiceWorkspace(
           .filter((requestId): requestId is string => requestId !== null);
         const calibration = calibrationFromActualNarration(
           narration.text,
-          combined.durationSeconds,
+          masterDurationSeconds,
         );
         if (!calibration) {
           throw new VoiceWorkspaceError(
@@ -559,7 +624,7 @@ export function createVoiceWorkspace(
           sourceTextHash: createHash('sha256')
             .update(narration.text)
             .digest('hex'),
-          durationSeconds: combined.durationSeconds,
+          durationSeconds: masterDurationSeconds,
           characterCost,
           strategy:
             narration.chunks.length === 1
@@ -608,7 +673,7 @@ export function createVoiceWorkspace(
           workspacePath,
           track,
           sections,
-          totalDurationSeconds: combined.durationSeconds,
+          totalDurationSeconds: masterDurationSeconds,
           characterCost,
           requestIds,
         };

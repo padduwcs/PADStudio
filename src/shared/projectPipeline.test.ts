@@ -181,6 +181,10 @@ function createReadyProject(): TopicProject {
       sourceAnimationSyncGenerationId:
         '60000000-0000-4000-8000-000000000001',
       sourceAnimationSyncSourceHash: 'a'.repeat(64),
+      renderSettings: {
+        playbackRate: 1,
+        watermark: {type: 'none'},
+      },
       totalDurationSeconds: 20,
       scenes: syncSections.map((section) => ({
         sceneId: section.sceneId,
@@ -431,6 +435,25 @@ test('sync predicates compare every revision, section, event and voice time', ()
     true,
   );
 
+  const designed = createReadyProject();
+  designed.visualDesignBundle = {
+    contentRevision: 9,
+    sourceMotionCanvasGenerationId:
+      '50000000-0000-4000-8000-000000000001',
+    sourceMotionCanvasContentRevision: 5,
+    sourceMotionCanvasSourceHash: 'c'.repeat(64),
+    overrides: [],
+    updatedAt: new Date(0).toISOString(),
+  };
+  designed.animationSyncBundle!.sourceVisualDesignContentRevision = 9;
+  assert.equal(animationSyncIsStale(designed), false);
+  designed.visualDesignBundle.contentRevision += 1;
+  assert.equal(
+    animationSyncIsStale(designed),
+    true,
+    'editing visual design after Sync invalidates the downstream source',
+  );
+
   const cases: Array<{
     name: string;
     mutate?: (project: TopicProject) => void;
@@ -649,6 +672,8 @@ test('final render stays locked to the exact approved Layout generation', () => 
     sourceLayoutGenerationId:
       '70000000-0000-4000-8000-000000000001',
     sourceLayoutSourceHash: 'c'.repeat(64),
+    playbackRate: 1,
+    watermark: {type: 'none'},
     durationSeconds: 20,
     fps: 30,
   } as TopicProject['renderBundle'];
@@ -666,6 +691,13 @@ test('final render stays locked to the exact approved Layout generation', () => 
     ],
     [true, true, true, false],
   );
+
+  project.layoutBundle!.renderSettings.playbackRate = 1.01;
+  assert.deepEqual(
+    [finalRenderIsCurrent(project), finalRenderIsReady(project), finalRenderIsStale(project)],
+    [false, false, true],
+  );
+  project.layoutBundle!.renderSettings.playbackRate = 1;
 
   project.layoutBundle!.validation.sourceHash = 'd'.repeat(64);
   assert.deepEqual(

@@ -11,13 +11,17 @@ import {
   LayoutEditorNodeSchema,
   LayoutNodePatchSchema,
   LayoutOverridesDocumentSchema,
+  LayoutRenderSettingsSchema,
+  defaultLayoutRenderSettings,
   layoutFontFamilyValues,
   layoutFontWeightValues,
   type LayoutEditorManifest,
   type LayoutEditorNode,
   type LayoutNodePatch,
   type LayoutOverridesDocument,
+  type LayoutRenderSettings,
 } from '../shared/layout.ts';
+import type {RenderWatermark, WatermarkPosition} from '../shared/render.ts';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {
   ArrowLeftIcon,
@@ -55,6 +59,11 @@ import {
 } from './router.ts';
 import {useLayoutEditor} from './useLayoutEditor.ts';
 import {useEditorFocusMode} from './useEditorFocusMode.ts';
+import {
+  ApiRequestError,
+  uploadWatermarkImage,
+  watermarkAssetUrl,
+} from './api.ts';
 
 const PROTOCOL_SOURCE = 'pad-studio-layout-editor';
 const PROTOCOL_VERSION = 1;
@@ -382,6 +391,10 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
   const savedRevisionRef = useRef(-1);
   const savingRevisionRef = useRef<number | null>(null);
   const savePendingAfterCurrentRef = useRef(false);
+  const renderSettingsRef = useRef<LayoutRenderSettings>(
+    defaultLayoutRenderSettings,
+  );
+  const renderSettingsDirtyRef = useRef(false);
   const leavingPageRef = useRef(false);
   const lastRuntimeDirtyRevisionRef = useRef(0);
   const manifestStoredRef = useRef(false);
@@ -420,6 +433,11 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [copiedPatch, setCopiedPatch] =
     useState<LayoutNodePatch | null>(null);
+  const [renderSettings, setRenderSettings] =
+    useState<LayoutRenderSettings>(defaultLayoutRenderSettings);
+  const [renderSettingsDirty, setRenderSettingsDirty] = useState(false);
+  const [watermarkUploading, setWatermarkUploading] = useState(false);
+  const [watermarkUploadError, setWatermarkUploadError] = useState('');
 
   projectRef.current = layout.project;
   saveRef.current = layout.save;
@@ -485,6 +503,12 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     setDirtyRevision(0);
     lastRuntimeDirtyRevisionRef.current = 0;
     const bundle = layout.layoutState?.bundle;
+    const initialRenderSettings =
+      bundle?.renderSettings ?? defaultLayoutRenderSettings;
+    renderSettingsRef.current = initialRenderSettings;
+    renderSettingsDirtyRef.current = false;
+    setRenderSettings(initialRenderSettings);
+    setRenderSettingsDirty(false);
     const initialSaved =
       bundle &&
       bundle.sourceAnimationSyncGenerationId ===
@@ -509,6 +533,7 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     function preventUnsavedUnload(event: BeforeUnloadEvent) {
       if (
         activeSavePromiseRef.current ||
+        renderSettingsDirtyRef.current ||
         (dirtyRevisionRef.current > 0 &&
           savedRevisionRef.current !== dirtyRevisionRef.current)
       ) {
@@ -525,12 +550,16 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
       }
       if (
         manifestStoredRef.current &&
-        savedRevisionRef.current !== dirtyRevisionRef.current
+        (savedRevisionRef.current !== dirtyRevisionRef.current ||
+          renderSettingsDirtyRef.current)
       ) {
         const saveLatest = () => {
           const latestDocument = committedDocumentRef.current;
           return latestDocument
-            ? saveRef.current(latestDocument.overrides)
+            ? saveRef.current(
+                latestDocument.overrides,
+                renderSettingsRef.current,
+              )
             : Promise.resolve(null);
         };
         if (
@@ -569,6 +598,38 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     );
   }
 
+  function renderSettingsPayload(settings: LayoutRenderSettings) {
+    return {
+      renderSettings: settings,
+      imageUrl:
+        settings.watermark.type === 'image' &&
+        settings.watermark.assetId
+          ? new URL(
+              watermarkAssetUrl(projectId, settings.watermark.assetId),
+              window.location.origin,
+            ).toString()
+          : '',
+    };
+  }
+
+  function updateRenderSettings(next: LayoutRenderSettings) {
+    renderSettingsRef.current = next;
+    renderSettingsDirtyRef.current = true;
+    setRenderSettings(next);
+    setRenderSettingsDirty(true);
+    setPlayedRevision(-1);
+    setReviewedRevision(-1);
+    layout.clearActionError();
+    sendCommand('setRenderSettings', renderSettingsPayload(next));
+    if (LayoutRenderSettingsSchema.safeParse(next).success) {
+      queueSave();
+    }
+  }
+
+  function updateWatermark(watermark: RenderWatermark) {
+    updateRenderSettings({...renderSettingsRef.current, watermark});
+  }
+
   async function saveCurrentDocument(): Promise<boolean> {
     if (activeSavePromiseRef.current) {
       savePendingAfterCurrentRef.current = true;
@@ -576,13 +637,22 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     }
     const currentDocument = committedDocumentRef.current;
     if (
+      !LayoutRenderSettingsSchema.safeParse(
+        renderSettingsRef.current,
+      ).success
+    ) {
+      return false;
+    }
+    if (
       !currentDocument ||
       !manifestStoredRef.current ||
       (!manifestSaveRequiredRef.current &&
+        !renderSettingsDirtyRef.current &&
         savedRevisionRef.current === dirtyRevisionRef.current)
     ) {
       return (
         !manifestSaveRequiredRef.current &&
+        !renderSettingsDirtyRef.current &&
         savedRevisionRef.current === dirtyRevisionRef.current
       );
     }
@@ -590,16 +660,28 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     const revisionToSave = dirtyRevisionRef.current;
     const manifestSignatureToSave =
       latestRuntimeManifestSignatureRef.current;
+    const renderSettingsToSave = renderSettingsRef.current;
+    const renderSettingsSignatureToSave = JSON.stringify(
+      renderSettingsToSave,
+    );
     savingRevisionRef.current = revisionToSave;
     let saveSucceeded = false;
     const operation = (async () => {
       const updatedProject = await saveRef.current(
         currentDocument.overrides,
+        renderSettingsToSave,
       );
       if (!updatedProject) return false;
       saveSucceeded = true;
       savedRevisionRef.current = revisionToSave;
       setSavedRevision(revisionToSave);
+      if (
+        JSON.stringify(renderSettingsRef.current) ===
+        renderSettingsSignatureToSave
+      ) {
+        renderSettingsDirtyRef.current = false;
+        setRenderSettingsDirty(false);
+      }
       if (
         latestRuntimeManifestSignatureRef.current ===
         manifestSignatureToSave
@@ -628,6 +710,7 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
         !leavingPageRef.current &&
         (saveWasQueued ||
           dirtyRevisionRef.current !== savedRevisionRef.current ||
+          renderSettingsDirtyRef.current ||
           manifestSaveRequiredRef.current)
       ) {
         queueSave(120);
@@ -658,15 +741,24 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
       window.clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-    if (savedRevisionRef.current !== dirtyRevisionRef.current) {
+    if (
+      savedRevisionRef.current !== dirtyRevisionRef.current ||
+      renderSettingsDirtyRef.current
+    ) {
       await saveCurrentDocument();
     }
-    return savedRevisionRef.current === dirtyRevisionRef.current;
+    return (
+      savedRevisionRef.current === dirtyRevisionRef.current &&
+      !renderSettingsDirtyRef.current
+    );
   }
 
   async function navigateAfterSaving(path: string) {
     const saved = await flushPendingSave();
-    if (saved || dirtyRevisionRef.current === 0) {
+    if (
+      saved ||
+      (dirtyRevisionRef.current === 0 && !renderSettingsDirtyRef.current)
+    ) {
       navigate(path);
     }
   }
@@ -674,10 +766,11 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
   useEffect(() => {
     const hasUnsavedChanges =
       activeSavePromiseRef.current !== null ||
+      renderSettingsDirty ||
       (dirtyRevision > 0 && savedRevision !== dirtyRevision);
     if (!hasUnsavedChanges) return;
     return registerNavigationGuard(flushPendingSave);
-  }, [dirtyRevision, savedRevision, layout.saveState]);
+  }, [dirtyRevision, renderSettingsDirty, savedRevision, layout.saveState]);
 
   useLayoutEffect(() => {
     const activeSourceGenerationId =
@@ -725,6 +818,10 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
         sendCommand('loadDocument', {
           document: committedDocumentRef.current,
         });
+        sendCommand(
+          'setRenderSettings',
+          renderSettingsPayload(renderSettingsRef.current),
+        );
         const pendingSelection = pendingSelectionRef.current;
         if (pendingSelection) {
           pendingSelectionRef.current = null;
@@ -1490,9 +1587,13 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     selection?.base?.fontStyle === 'italic'
       ? 'italic'
       : 'normal';
+  const watermark = renderSettings.watermark;
+  const renderSettingsValid =
+    LayoutRenderSettingsSchema.safeParse(renderSettings).success;
 
   const isSaved =
     savedRevision === dirtyRevision &&
+    !renderSettingsDirty &&
     !manifestSaveRequired &&
     layout.saveState !== 'saving' &&
     Boolean(layout.project.layoutBundle);
@@ -1598,6 +1699,245 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
           </button>
         </div>
       )}
+
+      <section className="layout-output-settings" aria-label="Tốc độ và watermark">
+        <header>
+          <div>
+            <span className="preview-kicker">Xem trước bản xuất</span>
+            <strong>Tốc độ và watermark</strong>
+          </div>
+          <small>
+            Các lựa chọn này được lưu cùng Layout và áp dụng trực tiếp khi render.
+          </small>
+        </header>
+        <div className="layout-output-control">
+          <label htmlFor="layout-playback-rate">Tốc độ</label>
+          <input
+            id="layout-playback-rate"
+            type="range"
+            min={0.25}
+            max={4}
+            step={0.01}
+            value={renderSettings.playbackRate}
+            onChange={event =>
+              updateRenderSettings({
+                ...renderSettingsRef.current,
+                playbackRate: Number(event.currentTarget.value),
+              })
+            }
+          />
+          <LayoutNumberInput
+            value={renderSettings.playbackRate}
+            min={0.25}
+            max={4}
+            step={0.01}
+            disabled={false}
+            onCommit={playbackRate =>
+              updateRenderSettings({
+                ...renderSettingsRef.current,
+                playbackRate,
+              })
+            }
+          />
+          <span>×</span>
+        </div>
+        <div className="layout-watermark-settings">
+          <label>
+            <span>Watermark</span>
+            <select
+              value={watermark.type}
+              onChange={event => {
+                const type = event.currentTarget.value;
+                setWatermarkUploadError('');
+                updateWatermark(
+                  type === 'text'
+                    ? {
+                        type: 'text',
+                        text: '',
+                        opacity: 0.3,
+                        position: 'bottom-right',
+                        fontSize: 44,
+                        color: '#ffffff',
+                      }
+                    : type === 'image'
+                      ? {
+                          type: 'image',
+                          assetId: '',
+                          opacity: 0.3,
+                          position: 'bottom-right',
+                          widthPercent: 22,
+                        }
+                      : {type: 'none'},
+                );
+              }}
+            >
+              <option value="none">Không dùng</option>
+              <option value="text">Chèn chữ</option>
+              <option value="image">Ảnh</option>
+            </select>
+          </label>
+          {watermark.type === 'text' && (
+            <>
+              <label className="is-wide">
+                <span>Nội dung</span>
+                <input
+                  type="text"
+                  maxLength={120}
+                  value={watermark.text}
+                  placeholder="Tên kênh hoặc thương hiệu"
+                  onChange={event =>
+                    updateWatermark({
+                      ...watermark,
+                      text: event.currentTarget.value,
+                    })
+                  }
+                />
+              </label>
+              <label>
+                <span>Cỡ chữ</span>
+                <LayoutNumberInput
+                  value={watermark.fontSize}
+                  min={16}
+                  max={200}
+                  step={1}
+                  disabled={false}
+                  onCommit={fontSize =>
+                    updateWatermark({...watermark, fontSize})
+                  }
+                />
+              </label>
+              <label>
+                <span>Màu</span>
+                <input
+                  type="color"
+                  value={watermark.color}
+                  onChange={event =>
+                    updateWatermark({
+                      ...watermark,
+                      color: event.currentTarget.value,
+                    })
+                  }
+                />
+              </label>
+            </>
+          )}
+          {watermark.type === 'image' && (
+            <label className="is-wide layout-watermark-upload">
+              <span>Ảnh PNG, JPEG hoặc WebP</span>
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                disabled={watermarkUploading}
+                onChange={event => {
+                  const file = event.currentTarget.files?.[0];
+                  if (!file) return;
+                  event.currentTarget.value = '';
+                  setWatermarkUploading(true);
+                  setWatermarkUploadError('');
+                  void uploadWatermarkImage(projectId, file)
+                    .then(asset => {
+                      const current = renderSettingsRef.current.watermark;
+                      if (current.type === 'image') {
+                        updateWatermark({...current, assetId: asset.assetId});
+                      }
+                    })
+                    .catch(error =>
+                      setWatermarkUploadError(
+                        error instanceof ApiRequestError
+                          ? error.message
+                          : 'Không thể tải ảnh watermark.',
+                      ),
+                    )
+                    .finally(() => setWatermarkUploading(false));
+                }}
+              />
+              <small>
+                {watermarkUploading
+                  ? 'Đang tải và kiểm tra ảnh…'
+                  : watermark.assetId
+                    ? 'Ảnh đã sẵn sàng trong preview.'
+                    : 'Chưa chọn ảnh.'}
+              </small>
+            </label>
+          )}
+          {watermark.type !== 'none' && (
+            <>
+              <label>
+                <span>Vị trí</span>
+                <select
+                  value={watermark.position}
+                  onChange={event =>
+                    updateWatermark({
+                      ...watermark,
+                      position: event.currentTarget.value as WatermarkPosition,
+                    })
+                  }
+                >
+                  <option value="top-left">Trên trái</option>
+                  <option value="top-right">Trên phải</option>
+                  <option value="bottom-left">Dưới trái</option>
+                  <option value="bottom-right">Dưới phải</option>
+                  <option value="center">Chính giữa</option>
+                </select>
+              </label>
+              <div className="layout-output-control is-opacity">
+                <label htmlFor="layout-watermark-opacity">Opacity</label>
+                <input
+                  id="layout-watermark-opacity"
+                  type="range"
+                  min={0.05}
+                  max={1}
+                  step={0.01}
+                  value={watermark.opacity}
+                  onChange={event =>
+                    updateWatermark({
+                      ...watermark,
+                      opacity: Number(event.currentTarget.value),
+                    })
+                  }
+                />
+                <LayoutNumberInput
+                  value={watermark.opacity * 100}
+                  min={5}
+                  max={100}
+                  step={1}
+                  disabled={false}
+                  onCommit={opacity =>
+                    updateWatermark({
+                      ...watermark,
+                      opacity: opacity / 100,
+                    })
+                  }
+                />
+                <span>%</span>
+              </div>
+            </>
+          )}
+          {watermark.type === 'image' && (
+            <label>
+              <span>Chiều rộng (%)</span>
+              <LayoutNumberInput
+                value={watermark.widthPercent}
+                min={5}
+                max={80}
+                step={0.5}
+                disabled={false}
+                onCommit={widthPercent =>
+                  updateWatermark({...watermark, widthPercent})
+                }
+              />
+            </label>
+          )}
+        </div>
+        {watermarkUploadError && (
+          <small className="watermark-upload-error">{watermarkUploadError}</small>
+        )}
+        {!renderSettingsValid && !watermarkUploadError && (
+          <small className="watermark-upload-error">
+            Hoàn thiện nội dung hoặc tải ảnh watermark trước khi lưu và chốt Layout.
+          </small>
+        )}
+      </section>
 
       <section
         className={`layout-editor-shell${focusMode ? ' is-editor-focus' : ''}`}
@@ -2194,6 +2534,16 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                         'opacity',
                         Number(event.currentTarget.value),
                       )
+                    }
+                  />
+                  <LayoutNumberInput
+                    value={selection.patch.opacity ?? 1}
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    disabled={!canEdit('opacity')}
+                    onCommit={(value) =>
+                      sendNumericPatch('opacity', value)
                     }
                   />
                 </label>

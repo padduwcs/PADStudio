@@ -344,6 +344,10 @@ function layoutBundle(
     audioFile: prepared.audioFile,
     overridesFile: prepared.overridesFile,
     manifestFile: prepared.manifestFile,
+    renderSettings: {
+      playbackRate: 1,
+      watermark: {type: 'none'},
+    },
     overrideContractVersion: prepared.overrideContractVersion,
     totalDurationSeconds: prepared.totalDurationSeconds,
     scenes: prepared.scenes,

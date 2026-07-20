@@ -1,5 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
 import type {
+  LayoutRenderSettings,
   LayoutNodeOverride,
   LayoutOverridesDocument,
 } from '../shared/layout.ts';
@@ -177,6 +178,7 @@ export function useLayoutEditor(projectId: string) {
 
   async function save(
     overrides: LayoutNodeOverride[],
+    renderSettings: LayoutRenderSettings,
     sessionNonce = previewSessionNonce,
   ) {
     const session = sessionRef.current;
@@ -211,6 +213,7 @@ export function useLayoutEditor(projectId: string) {
             sourceGenerationId: sync.generation.generationId,
             baseGenerationId: currentBundle?.generation.generationId ?? null,
             overrides,
+            renderSettings,
           });
           const previousRequest = commitRequestRef.current;
           const generationId =
@@ -229,6 +232,7 @@ export function useLayoutEditor(projectId: string) {
                 sync.generation.generationId,
               sessionNonce,
               overrides,
+              renderSettings,
             },
             currentProject.revision,
           );

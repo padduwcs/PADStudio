@@ -682,7 +682,7 @@ function TopicPage({
                           max={
                             pipelineSafetyLimits.maximumCustomDurationMinutes
                           }
-                          step="0.5"
+                          step="0.1"
                           value={
                             Number.isFinite(form.targetDurationMinutes)
                               ? form.targetDurationMinutes
@@ -898,6 +898,17 @@ function OutlinePage({projectId}: {projectId: string}) {
       {outline.actionError && (
         <div className="outline-alert is-error" role="alert">
           {outline.actionError}
+        </div>
+      )}
+
+      {draft && outline.validationErrors.length > 0 && (
+        <div className="outline-alert draft-validation-alert" role="status">
+          <strong>Cần bổ sung trước khi chốt:</strong>
+          <ul>
+            {outline.validationErrors.map(message => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -1356,7 +1367,8 @@ function OutlinePage({projectId}: {projectId: string}) {
               <span>
                 {approved
                   ? 'Mạch giảng đã sẵn sàng cho bước tiếp theo'
-                  : 'Review kỹ trước khi chuyển sang voice–visual'}
+                  : outline.validationErrors[0] ??
+                    'Review kỹ trước khi chuyển sang voice–visual'}
               </span>
               <button
                 className="submit-button"
@@ -1364,7 +1376,7 @@ function OutlinePage({projectId}: {projectId: string}) {
                 disabled={
                   outline.approving ||
                   outline.generating ||
-                  (!approved && (outline.stale || !outline.valid)) ||
+                  (!approved && outline.stale) ||
                   outline.saveState === 'conflict'
                 }
                 onClick={() =>

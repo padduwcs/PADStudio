@@ -15,7 +15,7 @@ function rawPcm(durationSeconds: number, sampleRate = 44_100) {
   return Buffer.alloc(Math.ceil(durationSeconds * sampleRate) * 2);
 }
 
-function narrationFixture(): GeneratedVoiceNarration {
+function narrationFixture(audioTailSeconds = 0): GeneratedVoiceNarration {
   const firstText = 'Xin chào.';
   const secondText = 'Bắt đầu nhé.';
   const text = `${firstText}\n\n${secondText}`;
@@ -58,7 +58,7 @@ function narrationFixture(): GeneratedVoiceNarration {
         textStartIndex: 0,
         textEndIndex: characters.length,
         generated: {
-          audio: rawPcm(durationSeconds),
+          audio: rawPcm(durationSeconds + audioTailSeconds),
           alignment: {
             characters,
             characterStartTimesSeconds: characters.map(
@@ -174,4 +174,32 @@ test('Voice workspace lưu master narration, alignment global và timing section
       error instanceof VoiceWorkspaceError &&
       error.code === 'VOICE_ALIGNMENT_INVALID',
   );
+});
+
+test('Voice workspace keeps audio after the final character timestamp', async (context) => {
+  const projectsDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-voice-tail-'),
+  );
+  context.after(() =>
+    rm(projectsDirectory, {recursive: true, force: true}),
+  );
+  const narration = narrationFixture(0.8);
+  const alignmentDuration =
+    narration.chunks[0]!.generated.alignment.characterEndTimesSeconds.at(-1)!;
+  const prepared = await createVoiceWorkspace(projectsDirectory).prepare(
+    'voice-tail-test',
+    randomUUID(),
+    narration,
+  );
+
+  assert.ok(prepared.totalDurationSeconds > alignmentDuration + 0.75);
+  assert.equal(
+    prepared.sections.at(-1)?.endSeconds,
+    prepared.totalDurationSeconds,
+  );
+  assert.equal(
+    prepared.sections.at(-1)?.beats.at(-1)?.endSeconds,
+    prepared.sections.at(-1)?.durationSeconds,
+  );
+  assert.equal(prepared.track.durationSeconds, prepared.totalDurationSeconds);
 });

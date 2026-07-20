@@ -719,6 +719,15 @@ export const AnimationSyncBundleSchema = z
     contentRevision: z.number().int().positive(),
     sourceMotionCanvasContentRevision: z.number().int().positive(),
     sourceVoiceContentRevision: z.number().int().positive(),
+    // Optional for backward-compatible parsing of projects created before
+    // visual design became an explicit Sync source. New generations always
+    // write either the exact revision or null.
+    sourceVisualDesignContentRevision: z
+      .number()
+      .int()
+      .positive()
+      .nullable()
+      .optional(),
     workspacePath: z
       .string()
       .regex(
@@ -912,25 +921,84 @@ export const TopicProjectSchema = topicProjectV11Schema
 
 export type TopicProject = z.infer<typeof TopicProjectSchema>;
 
+function inheritRenderSettings(
+  project: TopicProject,
+): TopicProject {
+  if (!project.layoutBundle || !project.renderBundle) return project;
+  return {
+    ...project,
+    layoutBundle: {
+      ...project.layoutBundle,
+      renderSettings: {
+        playbackRate: project.renderBundle.playbackRate,
+        watermark: project.renderBundle.watermark,
+      },
+    },
+  };
+}
+
+function bindLegacyVisualDesignSource(
+  project: TopicProject,
+): TopicProject {
+  const sync = project.animationSyncBundle;
+  if (!sync || sync.sourceVisualDesignContentRevision !== undefined) {
+    return project;
+  }
+  const design = project.visualDesignBundle;
+  const motion = project.motionCanvasBundle;
+  const designMatchesMotion = Boolean(
+    design &&
+    motion &&
+    design.sourceMotionCanvasGenerationId ===
+      motion.generation.generationId &&
+    design.sourceMotionCanvasContentRevision === motion.contentRevision &&
+    design.sourceMotionCanvasSourceHash === motion.validation.sourceHash,
+  );
+  return {
+    ...project,
+    animationSyncBundle: {
+      ...sync,
+      status: design ? 'draft' : sync.status,
+      sourceVisualDesignContentRevision: designMatchesMotion
+        ? design!.contentRevision
+        : null,
+    },
+  };
+}
+
 export function parseTopicProject(value: unknown): TopicProject {
   const currentProject = TopicProjectSchema.safeParse(value);
-  if (currentProject.success) return currentProject.data;
+  if (currentProject.success) {
+    const rawLayout =
+      value && typeof value === 'object' && 'layoutBundle' in value
+        ? value.layoutBundle
+        : null;
+    const explicitlyStored = Boolean(
+      rawLayout &&
+      typeof rawLayout === 'object' &&
+      'renderSettings' in rawLayout,
+    );
+    const withRenderSettings = explicitlyStored
+      ? currentProject.data
+      : inheritRenderSettings(currentProject.data);
+    return bindLegacyVisualDesignSource(withRenderSettings);
+  }
 
   const versionElevenProject = topicProjectV11Schema.safeParse(value);
   if (versionElevenProject.success) {
-    return {
+    return bindLegacyVisualDesignSource(inheritRenderSettings({
       ...versionElevenProject.data,
       version: currentProjectVersion,
-    };
+    }));
   }
 
   const versionTenProject = topicProjectV10Schema.safeParse(value);
   if (versionTenProject.success) {
-    return {
+    return bindLegacyVisualDesignSource(inheritRenderSettings({
       ...versionTenProject.data,
       version: currentProjectVersion,
       visualDesignBundle: null,
-    };
+    }));
   }
 
   const versionNineProject = topicProjectV9Schema.safeParse(value);

@@ -2018,6 +2018,19 @@ kbd {
   background: #fff7f5;
 }
 
+.draft-validation-alert {
+  align-items: flex-start;
+}
+
+.draft-validation-alert ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.draft-validation-alert li + li {
+  margin-top: 0.25rem;
+}
+
 .outline-alert button {
   flex: 0 0 auto;
   padding: 6px 9px;

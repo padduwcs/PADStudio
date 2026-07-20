@@ -181,6 +181,7 @@ export function animationSyncMatchesSourcesStructure(
     AnimationSyncBundle,
     | 'sourceMotionCanvasContentRevision'
     | 'sourceVoiceContentRevision'
+    | 'sourceVisualDesignContentRevision'
     | 'sections'
   >,
   motion: Pick<
@@ -188,11 +189,19 @@ export function animationSyncMatchesSourcesStructure(
     'contentRevision' | 'timingContractVersion' | 'scenes'
   >,
   voice: Pick<VoiceBundle, 'contentRevision' | 'sections'>,
+  visualDesign: Pick<
+    NonNullable<TopicProject['visualDesignBundle']>,
+    'contentRevision'
+  > | null = null,
 ): boolean {
   return (
     motion.timingContractVersion === 1 &&
     bundle.sourceMotionCanvasContentRevision === motion.contentRevision &&
     bundle.sourceVoiceContentRevision === voice.contentRevision &&
+    (visualDesign
+      ? bundle.sourceVisualDesignContentRevision ===
+        visualDesign.contentRevision
+      : bundle.sourceVisualDesignContentRevision == null) &&
     bundle.sections.length === motion.scenes.length &&
     bundle.sections.length === voice.sections.length &&
     bundle.sections.every((section, sectionIndex) => {
@@ -243,7 +252,12 @@ export function animationSyncIsStale(project: TopicProject): boolean {
     !motion ||
       !voice ||
       !animationSyncPrerequisitesAreReady(project) ||
-      !animationSyncMatchesSourcesStructure(bundle, motion, voice),
+      !animationSyncMatchesSourcesStructure(
+        bundle,
+        motion,
+        voice,
+        project.visualDesignBundle,
+      ),
   );
 }
 
@@ -258,7 +272,12 @@ export function layoutPrerequisitesAreReady(project: TopicProject): boolean {
       voice &&
       sync.status === 'approved' &&
       animationSyncPrerequisitesAreReady(project) &&
-      animationSyncMatchesSourcesStructure(sync, motion, voice),
+      animationSyncMatchesSourcesStructure(
+        sync,
+        motion,
+        voice,
+        project.visualDesignBundle,
+      ),
   );
 }
 
@@ -337,6 +356,7 @@ export function finalRenderMatchesLayout(
     | 'durationSeconds'
     | 'sourceDurationSeconds'
     | 'playbackRate'
+    | 'watermark'
     | 'fps'
   >,
   layout: Pick<
@@ -345,12 +365,15 @@ export function finalRenderMatchesLayout(
     | 'totalDurationSeconds'
     | 'generation'
     | 'validation'
+    | 'renderSettings'
   >,
 ): boolean {
   return (
     bundle.sourceLayoutContentRevision === layout.contentRevision &&
     bundle.sourceLayoutGenerationId === layout.generation.generationId &&
     bundle.sourceLayoutSourceHash === layout.validation.sourceHash &&
+    bundle.playbackRate === layout.renderSettings.playbackRate &&
+    sameValue(bundle.watermark, layout.renderSettings.watermark) &&
     Math.abs(
       (bundle.sourceDurationSeconds ??
         bundle.durationSeconds * (bundle.playbackRate ?? 1)) -

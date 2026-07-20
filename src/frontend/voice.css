@@ -431,6 +431,21 @@
   accent-color: var(--orange);
 }
 
+.voice-range-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 76px;
+  gap: 10px;
+  align-items: center;
+}
+
+.voice-range-controls .voice-range-number {
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
 .voice-generation-summary {
   display: flex;
   justify-content: space-between;

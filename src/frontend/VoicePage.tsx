@@ -1,4 +1,10 @@
-import {type FormEvent, useEffect, useRef, useState} from 'react';
+import {
+  type FormEvent,
+  type KeyboardEvent,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   narrationMetrics,
   type NarrationCalibration,
@@ -40,6 +46,63 @@ function settingLabel(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function VoiceNumberInput({
+  value,
+  min,
+  max,
+  step,
+  disabled,
+  label,
+  onCommit,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  disabled: boolean;
+  label: string;
+  onCommit: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => setDraft(String(value)), [value]);
+
+  function commit() {
+    const parsed = Number(draft);
+    if (!draft.trim() || !Number.isFinite(parsed)) {
+      setDraft(String(value));
+      return;
+    }
+    const normalized = Math.min(max, Math.max(min, parsed));
+    setDraft(String(normalized));
+    if (normalized !== value) onCommit(normalized);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter') event.currentTarget.blur();
+    if (event.key === 'Escape') {
+      setDraft(String(value));
+      event.currentTarget.blur();
+    }
+  }
+
+  return (
+    <input
+      className="voice-range-number"
+      type="number"
+      min={min}
+      max={max}
+      step={step}
+      value={draft}
+      disabled={disabled}
+      aria-label={`${label} nhập thủ công`}
+      onChange={event => setDraft(event.currentTarget.value)}
+      onBlur={commit}
+      onKeyDown={handleKeyDown}
+    />
+  );
 }
 
 function sameVoiceConfiguration(
@@ -623,26 +686,48 @@ export function VoicePage({projectId}: {projectId: string}) {
                         )}
                       </strong>
                     </span>
-                    <input
-                      type="range"
-                      min={min}
-                      max={max}
-                      step={step}
-                      value={voice.configuration!.settings[field]}
-                      disabled={
-                        field === 'style' &&
-                        !voice.selectedModel?.canUseStyle
-                      }
-                      onChange={(event) =>
-                        voice.updateConfiguration((current) => ({
-                          ...current,
-                          settings: {
-                            ...current.settings,
-                            [field]: Number(event.target.value),
-                          },
-                        }))
-                      }
-                    />
+                    <span className="voice-range-controls">
+                      <input
+                        type="range"
+                        min={min}
+                        max={max}
+                        step={step}
+                        value={voice.configuration!.settings[field]}
+                        disabled={
+                          field === 'style' &&
+                          !voice.selectedModel?.canUseStyle
+                        }
+                        onChange={(event) =>
+                          voice.updateConfiguration((current) => ({
+                            ...current,
+                            settings: {
+                              ...current.settings,
+                              [field]: Number(event.target.value),
+                            },
+                          }))
+                        }
+                      />
+                      <VoiceNumberInput
+                        value={voice.configuration!.settings[field]}
+                        disabled={
+                          field === 'style' &&
+                          !voice.selectedModel?.canUseStyle
+                        }
+                        min={min}
+                        max={max}
+                        step={step}
+                        label={label}
+                        onCommit={value =>
+                          voice.updateConfiguration(current => ({
+                            ...current,
+                            settings: {
+                              ...current.settings,
+                              [field]: value,
+                            },
+                          }))
+                        }
+                      />
+                    </span>
                   </label>
                 ))}
               </div>

@@ -720,6 +720,10 @@ export async function uploadWatermarkImage(projectId: string, file: File) {
   }
 }
 
+export function watermarkAssetUrl(projectId: string, assetId: string) {
+  return `/api/projects/${encodeURIComponent(projectId)}/render/watermark?asset=${encodeURIComponent(assetId)}`;
+}
+
 export async function getFinalRenderStatus(
   projectId: string,
   generationId?: string,

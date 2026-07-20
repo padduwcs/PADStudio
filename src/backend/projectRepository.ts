@@ -391,6 +391,7 @@ export function createFileProjectRepository(
             currentProject.animationSyncBundle,
             nextMotionCanvasBundle,
             nextVoiceBundle,
+            nextVisualDesignBundle,
           )),
     );
     const nextAnimationSyncBundle =
