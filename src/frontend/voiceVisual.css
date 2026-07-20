@@ -1,6 +1,15 @@
 .voice-visual-workspace {
+  min-width: 0;
   width: min(1180px, 100%);
   margin: 18px auto 0;
+}
+
+.voice-visual-empty-grid > *,
+.voice-visual-editor-grid > *,
+.voice-visual-main > *,
+.voice-visual-section-header > *,
+.voice-visual-beat-fields > * {
+  min-width: 0;
 }
 
 .voice-visual-empty-grid,
@@ -278,6 +287,12 @@
 }
 
 @media (max-width: 640px) {
+  .voice-visual-empty-state {
+    align-items: flex-start;
+    margin: 2px 16px 18px;
+    padding: 17px;
+  }
+
   .voice-visual-directions {
     padding: 19px 16px;
   }
@@ -300,6 +315,11 @@
     padding: 18px 16px;
   }
 
+  .voice-visual-section,
+  .voice-visual-directions {
+    border-radius: 15px;
+  }
+
   .voice-visual-section-duration {
     grid-column: 2;
     width: fit-content;
@@ -316,5 +336,16 @@
 
   .voice-visual-beat > header .outline-section-controls {
     align-self: flex-end;
+  }
+
+  .voice-visual-beat-fields {
+    gap: 13px;
+    padding: 14px;
+  }
+
+  .voice-visual-add-beat {
+    width: calc(100% - 24px);
+    min-height: 42px;
+    margin: 0 12px 12px;
   }
 }

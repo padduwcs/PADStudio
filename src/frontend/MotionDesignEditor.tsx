@@ -22,8 +22,10 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   EyeOffIcon,
+  ExpandIcon,
   LayersIcon,
   LockIcon,
+  MinimizeIcon,
   PaletteIcon,
   RedoIcon,
   ResetIcon,
@@ -33,6 +35,12 @@ import {
   UnlockIcon,
 } from './icons.tsx';
 import type {useMotionCanvasDraft} from './useMotionCanvasDraft.ts';
+import {useEditorFocusMode} from './useEditorFocusMode.ts';
+import {
+  parseRuntimeNodeVisibility,
+  timelineVisibleEditorNodes,
+  type RuntimeNodeVisibility,
+} from './layoutEditorState.ts';
 
 const PROTOCOL_SOURCE = 'pad-studio-layout-editor';
 const PROTOCOL_VERSION = 1;
@@ -267,6 +275,8 @@ export function MotionDesignEditor({
 }: {
   motionCanvas: MotionCanvasController;
 }) {
+  const {editorRef, focusMode, toggleFocusMode} =
+    useEditorFocusMode<HTMLElement>();
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const manifestStoredRef = useRef(false);
   const pendingOverridesRef = useRef<LayoutOverridesDocument['overrides'] | null>(null);
@@ -278,6 +288,8 @@ export function MotionDesignEditor({
   const [document, setDocument] = useState<LayoutOverridesDocument | null>(null);
   const [selection, setSelection] = useState<RuntimeSelection | null>(null);
   const [runtimeState, setRuntimeState] = useState<RuntimeState | null>(null);
+  const [runtimeVisibility, setRuntimeVisibility] =
+    useState<RuntimeNodeVisibility | null>(null);
   const [activeSceneId, setActiveSceneId] = useState('');
   const [search, setSearch] = useState('');
   const [copiedPatch, setCopiedPatch] = useState<LayoutNodePatch | null>(null);
@@ -324,6 +336,7 @@ export function MotionDesignEditor({
     setDocument(null);
     setSelection(null);
     setRuntimeState(null);
+    setRuntimeVisibility(null);
     setActiveSceneId('');
   }, [sessionNonce]);
 
@@ -389,6 +402,11 @@ export function MotionDesignEditor({
           setRuntimeState(payload);
           setActiveSceneId(payload.sceneId);
         }
+        return;
+      }
+      if (message.type === 'visibility') {
+        const visibility = parseRuntimeNodeVisibility(payload);
+        if (visibility) setRuntimeVisibility(visibility);
         return;
       }
       if (message.type === 'manifest') {
@@ -486,6 +504,16 @@ export function MotionDesignEditor({
     scenes.find((scene) => scene.sceneId === runtimeState?.sceneId) ??
     scenes[0] ??
     null;
+  const activeSceneNodes = activeScene
+    ? timelineVisibleEditorNodes(
+        activeScene.nodes,
+        activeScene.sceneId,
+        runtimeVisibility,
+      )
+    : [];
+  const timelineHiddenNodeCount = activeScene
+    ? activeScene.nodes.length - activeSceneNodes.length
+    : 0;
 
   function selectNode(sceneId: string, nodeKey?: string) {
     setActiveSceneId(sceneId);
@@ -585,7 +613,14 @@ export function MotionDesignEditor({
         </span>
       </header>
 
-      <section className="layout-editor-shell motion-design-shell">
+      <section
+        className={`layout-editor-shell motion-design-shell${focusMode ? ' is-editor-focus' : ''}`}
+        ref={editorRef}
+        role={focusMode ? 'dialog' : undefined}
+        aria-modal={focusMode || undefined}
+        aria-label={focusMode ? 'Visual editor toàn màn hình' : undefined}
+        tabIndex={focusMode ? -1 : undefined}
+      >
         <aside className="layout-tree-panel" aria-label="Danh sách scene và layer">
           <header>
             <div>
@@ -627,11 +662,21 @@ export function MotionDesignEditor({
           </div>
           <div className="layout-layer-browser">
             <div className="layout-panel-label">
-              <span>Layer</span><small>{activeScene?.nodes.length ?? 0} node</small>
+              <span>Layer</span>
+              <small>
+                {timelineHiddenNodeCount > 0
+                  ? `${activeSceneNodes.length}/${activeScene?.nodes.length ?? 0} đang hiện`
+                  : `${activeSceneNodes.length} node`}
+              </small>
             </div>
             <div className="layout-layer-list">
               {!activeScene ? (
                 <div className="layout-list-empty"><strong>Không có scene</strong></div>
+              ) : timelineHiddenNodeCount > 0 && activeSceneNodes.length === 0 ? (
+                <div className="layout-list-empty is-timeline-empty">
+                  <strong>Chưa có layer nào xuất hiện</strong>
+                  <span>Di chuyển playhead đến lúc hình bắt đầu hiện.</span>
+                </div>
               ) : activeScene.nodes.length === 0 ? (
                 <button className="layout-empty-scene" type="button" onClick={() => selectNode(activeScene.sceneId)}>
                   <LayersIcon />
@@ -640,7 +685,7 @@ export function MotionDesignEditor({
                     <small>{search ? 'Thử từ khóa khác.' : 'Node map sẽ xuất hiện tại đây.'}</small>
                   </span>
                 </button>
-              ) : activeScene.nodes.map((node) => {
+              ) : activeSceneNodes.map((node) => {
                 const nodeOverride = document?.overrides.find(
                   (item) => item.sceneId === activeScene.sceneId && item.nodeKey === node.key,
                 );
@@ -725,8 +770,41 @@ export function MotionDesignEditor({
               </code>
             </div>
             <div className="layout-command-group is-secondary">
+              {focusMode && (
+                <span
+                  className={`layout-focus-save-state${
+                    motionCanvas.designSaveState === 'saved'
+                      ? ' is-saved'
+                      : motionCanvas.designSaveState === 'error'
+                        ? ' is-error'
+                        : ''
+                  }`}
+                  role="status"
+                >
+                  <i />
+                  {motionCanvas.designSaveState === 'saving'
+                    ? 'Đang lưu…'
+                    : motionCanvas.designSaveState === 'error'
+                      ? 'Lưu lỗi'
+                      : motionCanvas.designSaveState === 'saved'
+                        ? 'Đã lưu'
+                        : 'Bản nháp'}
+                </span>
+              )}
               <button type="button" disabled={!selection} onClick={copySelectedPatch}>Sao chép</button>
               <button type="button" disabled={!selection || selection.editorLocked || !copiedPatch} onClick={pasteSelectedPatch}>Dán</button>
+              <button
+                className={`layout-command-focus${focusMode ? ' is-active' : ''}`}
+                type="button"
+                title={focusMode ? 'Thoát chế độ toàn màn hình (Esc)' : 'Chỉ hiển thị editor và video'}
+                aria-label={focusMode ? 'Thoát chế độ toàn màn hình' : 'Mở editor toàn màn hình'}
+                aria-pressed={focusMode}
+                onClick={() => void toggleFocusMode()}
+              >
+                {focusMode ? <MinimizeIcon /> : <ExpandIcon />}
+                <span>{focusMode ? 'Thu nhỏ' : 'Toàn màn hình'}</span>
+                {focusMode && <kbd>Esc</kbd>}
+              </button>
             </div>
           </div>
         </div>

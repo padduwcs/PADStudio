@@ -1127,6 +1127,7 @@
 
 /* Fixed workspace redesign: each panel owns its scrolling area. */
 .layout-workspace {
+  min-width: 0;
   width: min(1580px, 100%);
 }
 
@@ -1471,6 +1472,19 @@
   font-size: 0.58rem;
 }
 
+.layout-list-empty.is-timeline-empty {
+  min-height: 150px;
+  margin: 4px;
+  padding: 18px;
+  border: 1px dashed rgba(237, 154, 117, 0.2);
+  border-radius: 11px;
+  background: rgba(237, 154, 117, 0.035);
+}
+
+.layout-list-empty.is-timeline-empty strong {
+  color: rgba(255, 255, 255, 0.72);
+}
+
 .layout-tree-panel > footer {
   min-height: 34px;
   padding: 8px 11px;
@@ -1563,6 +1577,41 @@
 
 .layout-command-help {
   padding-inline: 8px !important;
+}
+
+.layout-command-focus.is-active {
+  border-color: rgba(237, 154, 117, 0.48);
+  color: #fff;
+  background: rgba(237, 154, 117, 0.16);
+}
+
+.layout-focus-save-state {
+  display: inline-flex;
+  min-height: 35px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 7px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.57rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.layout-focus-save-state i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ed9a75;
+  box-shadow: 0 0 0 3px rgba(237, 154, 117, 0.08);
+}
+
+.layout-focus-save-state.is-saved i {
+  background: #72c99c;
+  box-shadow: 0 0 0 3px rgba(114, 201, 156, 0.08);
+}
+
+.layout-focus-save-state.is-error {
+  color: #ffb7a0;
 }
 
 .layout-inspector {
@@ -1821,7 +1870,7 @@
 
   .layout-editor-shell {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 390px 650px auto;
+    grid-template-rows: minmax(330px, 42dvh) minmax(500px, 72dvh) auto;
   }
 
   .layout-tree-panel {
@@ -1858,7 +1907,10 @@
   }
 
   .layout-editor-shell {
-    grid-template-rows: 390px 590px auto;
+    grid-template-rows: minmax(320px, 42dvh) minmax(480px, 70dvh) auto;
+    gap: 7px;
+    padding: 7px;
+    border-radius: 17px;
   }
 
   .layout-preview-frame,
@@ -1871,7 +1923,7 @@
     justify-items: stretch;
   }
 
-  .layout-command-bar .layout-command-group.is-secondary > button:not(.layout-command-help),
+  .layout-command-bar .layout-command-group.is-secondary > button:not(.layout-command-help):not(.layout-command-focus),
   .layout-command-bar button kbd,
   .layout-command-context > span:nth-child(2) {
     display: none;
@@ -1900,6 +1952,134 @@
     max-height: calc(100dvh - 20px);
     padding: 17px;
     border-radius: 20px;
+  }
+
+  .layout-tree-panel,
+  .layout-inspector,
+  .layout-preview-frame,
+  .layout-command-bar {
+    border-radius: 11px;
+  }
+
+  .layout-color-field button,
+  .layout-layer-actions button,
+  .layout-visibility-button,
+  .layout-inspector > footer button {
+    min-height: 40px;
+  }
+}
+
+body.has-editor-focus {
+  overflow: hidden;
+}
+
+body.has-editor-focus .pipeline-sidebar,
+body.has-editor-focus .mobile-header,
+body.has-editor-focus .sidebar-backdrop,
+body.has-editor-focus .context-panel-toggle,
+body.has-editor-focus .context-panel-backdrop,
+body.has-editor-focus .responsive-aside {
+  display: none !important;
+}
+
+body.has-editor-focus .workspace {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  background: #081812;
+}
+
+body.has-editor-focus .workspace-page {
+  position: static;
+  animation: none !important;
+}
+
+.layout-editor-shell.is-editor-focus {
+  position: fixed;
+  z-index: 2000;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  min-height: 0;
+  grid-template-columns: minmax(210px, 246px) minmax(420px, 1fr) minmax(250px, 292px);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 8px;
+  overflow: hidden;
+  padding: 8px;
+  border: 0;
+  border-radius: 0;
+  background:
+    radial-gradient(circle at 50% 0, rgba(57, 103, 87, 0.24), transparent 42%),
+    #081812;
+  box-shadow: none;
+}
+
+.layout-editor-shell.is-editor-focus:focus-visible {
+  outline: none;
+}
+
+.is-editor-focus .layout-tree-panel,
+.is-editor-focus .layout-inspector,
+.is-editor-focus .layout-preview-frame,
+.is-editor-focus .layout-command-bar {
+  border-radius: 11px;
+}
+
+.is-editor-focus .layout-preview-column,
+.is-editor-focus .layout-tree-panel,
+.is-editor-focus .layout-inspector {
+  min-height: 0;
+}
+
+@media (max-width: 1120px) {
+  .layout-editor-shell.is-editor-focus {
+    grid-template-columns: minmax(190px, 230px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(220px, 34dvh);
+  }
+
+  .is-editor-focus .layout-tree-panel,
+  .is-editor-focus .layout-preview-column {
+    grid-row: 1;
+  }
+
+  .is-editor-focus .layout-inspector {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: grid;
+    grid-template-columns: minmax(200px, 0.8fr) repeat(3, minmax(170px, 1fr));
+    overflow: auto;
+  }
+}
+
+@media (max-width: 700px) {
+  .layout-editor-shell.is-editor-focus {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(360px, 62dvh) minmax(260px, 38dvh) auto;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 6px;
+  }
+
+  .is-editor-focus .layout-preview-column {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .is-editor-focus .layout-tree-panel {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .is-editor-focus .layout-inspector {
+    grid-column: 1;
+    grid-row: 3;
+    grid-template-columns: minmax(0, 1fr);
+    overflow: visible;
+  }
+
+  .layout-command-focus span {
+    display: none;
   }
 }
 

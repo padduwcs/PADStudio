@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import type {useCodexConnection} from './useCodexConnection.ts';
-import {CheckIcon, LockIcon, SparkIcon} from './icons.tsx';
+import {CheckIcon, ClockIcon, LockIcon, SparkIcon} from './icons.tsx';
 import {
   estimateCodexWait,
   formatCodexWaitEstimate,
@@ -42,7 +42,6 @@ function formatVerifiedAt(value: string) {
   return new Intl.DateTimeFormat('vi-VN', {
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
   }).format(new Date(value));
 }
 
@@ -76,8 +75,7 @@ export function CodexConnectionCard({
   } = connection;
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKey, setApiKey] = useState('');
-  const connectedStatus =
-    status?.state === 'connected' ? status : null;
+  const connectedStatus = status?.state === 'connected' ? status : null;
   const statusMessage =
     status && status.state !== 'connected' ? status.message : '';
   const cachedAccountLabel =
@@ -86,9 +84,17 @@ export function CodexConnectionCard({
           planLabels[cachedAccount.account.planType] ??
           cachedAccount.account.planType
         }`
-        : cachedAccount
+      : cachedAccount
         ? 'OpenAI API key'
         : '';
+  const connectedAccountLabel = connectedStatus
+    ? connectedStatus.account.type === 'chatgpt'
+      ? `${connectedStatus.account.email || 'Tài khoản ChatGPT'} · ${
+          planLabels[connectedStatus.account.planType] ??
+          connectedStatus.account.planType
+        }`
+      : 'Đang dùng OpenAI API key'
+    : '';
   const waitEstimate =
     selectedModel && selectedReasoningEffort
       ? estimateCodexWait({
@@ -100,9 +106,39 @@ export function CodexConnectionCard({
       : null;
   const slowReasoning =
     Boolean(selectedReasoningEffort) &&
-    !['none', 'minimal', 'low', 'medium'].includes(
-      selectedReasoningEffort,
-    );
+    !['none', 'minimal', 'low', 'medium'].includes(selectedReasoningEffort);
+
+  const headline = connectedStatus
+    ? 'Codex đã sẵn sàng'
+    : loginPending
+      ? 'Đang chờ đăng nhập'
+      : cachedAccount
+        ? checking
+          ? 'Đang khôi phục phiên'
+          : 'Phiên Codex đã được lưu'
+        : checking && !status
+          ? 'Đang kiểm tra Codex'
+          : status?.state === 'disconnected'
+            ? 'Kết nối Codex'
+            : 'Cần kiểm tra lại kết nối';
+  const statusLabel = connectedStatus
+    ? 'Đã kết nối'
+    : loginPending || checking
+      ? 'Đang xử lý'
+      : status?.state === 'disconnected'
+        ? 'Chưa kết nối'
+        : 'Gián đoạn';
+  const description = connectedStatus
+    ? connectedAccountLabel
+    : loginPending
+      ? 'Hoàn tất xác thực trong trang Codex vừa mở. PAD Studio sẽ tự nhận kết nối.'
+      : cachedAccount
+        ? `${cachedAccountLabel}${
+            error || statusMessage ? ` · ${error || statusMessage}` : ''
+          }`
+        : error ||
+          statusMessage ||
+          'Đăng nhập bằng ChatGPT hoặc dùng API key để bắt đầu.';
 
   function toggleApiKeyForm() {
     setShowApiKey((visible) => {
@@ -113,40 +149,113 @@ export function CodexConnectionCard({
 
   return (
     <section
-      className={`codex-connection-card${
+      className={`codex-connection-card codex-service-card${
         connectedStatus ? ' is-connected' : ''
-      }`}
+      }${loginPending || checking ? ' is-busy' : ''}`}
       aria-live="polite"
     >
-      <span className="codex-connection-icon" aria-hidden="true">
-        {connectedStatus ? <CheckIcon /> : <SparkIcon />}
-      </span>
-
-      <div className="codex-connection-content">
-        <span className="codex-connection-label">
-          <LockIcon />
-          Kết nối thực với Codex
+      <div className="codex-service-summary">
+        <span className="codex-connection-icon" aria-hidden="true">
+          {connectedStatus ? <CheckIcon /> : <SparkIcon />}
         </span>
 
-        {connectedStatus ? (
-          <>
-            <strong>Codex đã sẵn sàng</strong>
-            <p>
-              {connectedStatus.account.type === 'chatgpt'
-                ? connectedStatus.account.email || 'Tài khoản ChatGPT'
-                : 'OpenAI API key'}
-              {connectedStatus.account.type === 'chatgpt' &&
-                ` · ${
-                  planLabels[connectedStatus.account.planType] ??
-                  connectedStatus.account.planType
-                }`}
-            </p>
-            <small>
-              Đã làm mới phiên và kiểm tra dịch vụ lúc{' '}
-              {formatVerifiedAt(connectedStatus.verifiedAt)}
-            </small>
+        <div className="codex-service-identity">
+          <span className="codex-connection-label">
+            <LockIcon />
+            OpenAI Codex
+          </span>
+          <div className="codex-service-title">
+            <strong>{headline}</strong>
+            <span
+              className={`codex-status-pill${
+                connectedStatus
+                  ? ' is-positive'
+                  : loginPending || checking
+                    ? ' is-progress'
+                    : ' is-neutral'
+              }`}
+            >
+              <span aria-hidden="true" />
+              {statusLabel}
+            </span>
+          </div>
+          <p>
+            {description}
+            {loginPending && login && (
+              <>
+                {' '}
+                <a href={login.authUrl} target="_blank" rel="noreferrer">
+                  Mở lại trang đăng nhập
+                </a>
+              </>
+            )}
+          </p>
+        </div>
+
+        <div className="codex-connection-actions">
+          {connectedStatus ? (
+            <>
+              <button
+                type="button"
+                disabled={checking}
+                onClick={() => void verify()}
+              >
+                {checking ? 'Đang kiểm tra…' : 'Kiểm tra'}
+              </button>
+              <button
+                className="codex-logout-button"
+                type="button"
+                disabled={checking}
+                onClick={() => void logout()}
+              >
+                Đăng xuất
+              </button>
+            </>
+          ) : loginPending ? (
+            <span className="codex-polling">
+              <span className="spinner dark" />
+              Đang xác minh
+            </span>
+          ) : status?.state === 'disconnected' ? (
+            <>
+              <button
+                className="codex-login-button"
+                type="button"
+                disabled={checking}
+                onClick={() => {
+                  setShowApiKey(false);
+                  setApiKey('');
+                  void beginLogin();
+                }}
+              >
+                {checking ? 'Đang chuẩn bị…' : 'Đăng nhập ChatGPT'}
+              </button>
+              <button
+                type="button"
+                disabled={checking}
+                aria-expanded={showApiKey}
+                onClick={toggleApiKeyForm}
+              >
+                {showApiKey ? 'Đóng' : 'Dùng API key'}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled={checking}
+              onClick={() => void verify()}
+            >
+              {checking ? 'Đang kiểm tra…' : 'Kiểm tra lại'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {connectedStatus && (
+        <div className="codex-config-panel">
+          <div className="codex-config-controls">
             <label className="codex-model-picker">
-              <span>Model dùng để sinh nội dung</span>
+              <span>Model</span>
               <select
                 value={selectedModel}
                 disabled={modelsLoading || models.length === 0}
@@ -154,7 +263,8 @@ export function CodexConnectionCard({
               >
                 {models.map((model) => (
                   <option value={model.model} key={model.id}>
-                    {model.displayName}{model.isDefault ? ' · mặc định' : ''}
+                    {model.displayName}
+                    {model.isDefault ? ' · mặc định' : ''}
                   </option>
                 ))}
               </select>
@@ -185,129 +295,45 @@ export function CodexConnectionCard({
                 )}
               </select>
             </label>
-            {modelsLoading && (
-              <small>Đang cập nhật model và capability reasoning từ Codex…</small>
-            )}
-            {error && (
-              <small className="connection-inline-error" role="alert">
-                {error} Việc sinh nội dung được khóa cho tới khi catalog sẵn sàng.
-              </small>
-            )}
+
             {waitEstimate && (
-              <div className={`codex-wait-estimate${slowReasoning ? ' is-slow' : ''}`}>
-                <ClockEstimateIcon />
+              <div
+                className={`codex-wait-estimate${
+                  slowReasoning ? ' is-slow' : ''
+                }`}
+              >
+                <ClockIcon />
                 <span>
-                  Ước tính tạo {taskLabels[task]}:{' '}
+                  <small>Ước tính tạo {taskLabels[task]}</small>
                   <strong>{formatCodexWaitEstimate(waitEstimate)}</strong>
                   <small>
                     {waitEstimate.basis === 'observed'
-                      ? `Dựa trên ${waitEstimate.sampleCount} lần thành công gần nhất trên máy này.`
-                      : 'Khoảng tham khảo ban đầu; sẽ tự hiệu chỉnh sau các lần sinh thành công.'}
-                    {slowReasoning
-                      ? ' Mức suy luận cao có thể chờ lâu và dùng nhiều token hơn.'
-                      : ''}
+                      ? `Từ ${waitEstimate.sampleCount} lần gần nhất`
+                      : 'Ước tính ban đầu'}
+                    {slowReasoning ? ' · dùng nhiều token hơn' : ''}
                   </small>
                 </span>
               </div>
             )}
-          </>
-        ) : loginPending ? (
-          <>
-            <strong>Đang chờ bạn hoàn tất đăng nhập</strong>
-            <p>
-              Hoàn thành bước xác thực trong trang Codex vừa mở. PAD Studio
-              đang kiểm tra kết nối tự động.
-            </p>
-            {login && (
-              <a href={login.authUrl} target="_blank" rel="noreferrer">
-                Mở lại trang đăng nhập
-              </a>
-            )}
-          </>
-        ) : cachedAccount ? (
-          <>
-            <strong>
-              {checking
-                ? 'Đang khôi phục phiên Codex đã lưu…'
-                : 'Phiên Codex vẫn được giữ'}
-            </strong>
-            <p>
-              {cachedAccountLabel}
-              {(error || statusMessage) && ` · ${error || statusMessage}`}
-            </p>
-            <small>
-              PAD Studio chỉ yêu cầu đăng nhập lại khi Codex xác nhận phiên đã
-              đăng xuất.
-            </small>
-          </>
-        ) : (
-          <>
-            <strong>
-              {checking && !status
-                ? 'Đang kiểm tra Codex…'
-                : status?.state === 'disconnected'
-                  ? 'Phiên Codex đã đăng xuất'
-                  : 'Chưa thể xác minh kết nối Codex'}
-            </strong>
-            <p>
-              {error ||
-                statusMessage ||
-                'PAD Studio sẽ xác minh phiên bằng một request thực tới dịch vụ OpenAI.'}
-            </p>
-          </>
-        )}
-      </div>
+          </div>
 
-      <div className="codex-connection-actions">
-        {connectedStatus ? (
-          <>
-            <button
-              type="button"
-              disabled={checking}
-              onClick={() => void verify()}
-            >
-              {checking ? 'Đang kiểm tra…' : 'Kiểm tra lại'}
-            </button>
-            <button type="button" disabled={checking} onClick={() => void logout()}>
-              Đăng xuất
-            </button>
-          </>
-        ) : loginPending ? (
-          <span className="codex-polling">
-            <span className="spinner dark" />
-            Đang xác minh…
-          </span>
-        ) : status?.state === 'disconnected' ? (
-          <>
-            <button
-              className="codex-login-button"
-              type="button"
-              disabled={checking}
-              onClick={() => {
-                setShowApiKey(false);
-                setApiKey('');
-                void beginLogin();
-              }}
-            >
-              {checking ? 'Đang chuẩn bị…' : 'Đăng nhập ChatGPT'}
-            </button>
-            <button type="button" disabled={checking} onClick={toggleApiKeyForm}>
-              Dùng API key
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            disabled={checking}
-            onClick={() => void verify()}
-          >
-            {checking ? 'Đang kiểm tra…' : 'Kiểm tra lại'}
-          </button>
-        )}
-      </div>
+          <div className="codex-config-meta">
+            <span>
+              Xác minh lúc {formatVerifiedAt(connectedStatus.verifiedAt)}
+            </span>
+            {modelsLoading && <span>Đang cập nhật model…</span>}
+            {error && (
+              <span className="connection-inline-error" role="alert">
+                {error} Việc sinh nội dung tạm khóa đến khi model sẵn sàng.
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       {showApiKey && !connectedStatus && !loginPending && (
         <form
-          className="codex-api-key-form"
+          className="codex-api-key-form codex-api-key-panel"
           onSubmit={(event) => {
             event.preventDefault();
             void useApiKey(apiKey).then((connected) => {
@@ -325,24 +351,19 @@ export function CodexConnectionCard({
               spellCheck={false}
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
-              placeholder="Dán API key một lần"
+              placeholder="Dán API key"
+              autoFocus
             />
           </label>
           <button type="submit" disabled={checking || !apiKey.trim()}>
-            Xác minh và lưu bằng Codex
+            {checking ? 'Đang xác minh…' : 'Xác minh và kết nối'}
           </button>
-          <small>PAD Studio chuyển key một lần cho Codex app-server và không lưu key trong project hay trình duyệt.</small>
+          <small>
+            Key chỉ được chuyển tới Codex app-server, không lưu trong project
+            hoặc trình duyệt.
+          </small>
         </form>
       )}
     </section>
-  );
-}
-
-function ClockEstimateIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="8.5" />
-      <path d="M12 7.5v5l3.25 2" />
-    </svg>
   );
 }

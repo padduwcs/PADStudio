@@ -31,6 +31,94 @@ export function resolveLiveEditorNodeTarget(requested) {
   return current ?? requested;
 }
 
+export function isEditorNodeTimelineVisible(node, epsilon = 0.0001) {
+  if (!node) return false;
+  try {
+    const opacity =
+      typeof node.absoluteOpacity === 'function'
+        ? Number(node.absoluteOpacity())
+        : typeof node.opacity === 'function'
+          ? Number(node.opacity())
+          : null;
+    if (opacity === null || !Number.isFinite(opacity)) return true;
+    return opacity > epsilon;
+  } catch {
+    // If a custom node cannot expose its live opacity, keep it available
+    // instead of incorrectly locking the user out of the editor.
+    return true;
+  }
+}
+
+export function editorGeometryContainsPoint(geometry, point) {
+  const corners = geometry?.corners;
+  if (
+    !Array.isArray(corners) ||
+    corners.length < 3 ||
+    !Number.isFinite(point?.x) ||
+    !Number.isFinite(point?.y)
+  ) {
+    return false;
+  }
+  let inside = false;
+  for (let index = 0, previous = corners.length - 1; index < corners.length; previous = index++) {
+    const currentPoint = corners[index];
+    const previousPoint = corners[previous];
+    if (
+      !Number.isFinite(currentPoint?.x) ||
+      !Number.isFinite(currentPoint?.y) ||
+      !Number.isFinite(previousPoint?.x) ||
+      !Number.isFinite(previousPoint?.y)
+    ) {
+      return false;
+    }
+    const intersects =
+      currentPoint.y > point.y !== previousPoint.y > point.y &&
+      point.x <
+        ((previousPoint.x - currentPoint.x) *
+          (point.y - currentPoint.y)) /
+          (previousPoint.y - currentPoint.y) +
+          currentPoint.x;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function editorGeometryArea(geometry) {
+  const corners = geometry?.corners;
+  if (!Array.isArray(corners) || corners.length < 3) return Infinity;
+  let twiceArea = 0;
+  for (let index = 0; index < corners.length; index++) {
+    const current = corners[index];
+    const next = corners[(index + 1) % corners.length];
+    twiceArea += current.x * next.y - next.x * current.y;
+  }
+  const area = Math.abs(twiceArea) / 2;
+  return Number.isFinite(area) && area > 0 ? area : Infinity;
+}
+
+export function chooseEditorNodeHitTarget(candidates, point) {
+  return (
+    candidates
+      .map((candidate, index) => ({
+        candidate,
+        index,
+        area: editorGeometryArea(candidate.geometry),
+        textPriority: /^Txt(?:Leaf)?$/.test(String(candidate.nodeType ?? ''))
+          ? 0
+          : 1,
+      }))
+      .filter(item =>
+        editorGeometryContainsPoint(item.candidate.geometry, point),
+      )
+      .sort(
+        (left, right) =>
+          left.textPriority - right.textPriority ||
+          left.area - right.area ||
+          right.index - left.index,
+      )[0]?.candidate ?? null
+  );
+}
+
 export function resolveCanonicalEditorNodeKey(nodes, nodeKey) {
   const byKey = new Map(nodes.map(node => [node.key, node]));
   const original = byKey.get(nodeKey);

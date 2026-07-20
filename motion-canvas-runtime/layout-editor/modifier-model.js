@@ -242,6 +242,53 @@ function vectorComponents(value) {
   return {x: value?.x ?? 0, y: value?.y ?? 0};
 }
 
+function installLayoutPositionOffset(node, x, y, restorers) {
+  // Flex descendants ignore their raw position signal and instead render from
+  // Layout.computedPosition(). Offset the resolved local matrix so the node can
+  // move independently without removing it from the flex flow or reflowing its
+  // siblings.
+  if (
+    typeof node?.isLayoutRoot !== 'function' ||
+    node.isLayoutRoot() !== false ||
+    typeof node.localToParent !== 'function'
+  ) {
+    return false;
+  }
+  const originalDescriptor = Object.getOwnPropertyDescriptor(
+    node,
+    'localToParent',
+  );
+  const originalLocalToParent = node.localToParent;
+  try {
+    Object.defineProperty(node, 'localToParent', {
+      configurable: true,
+      writable: true,
+      value(...args) {
+        const matrix = originalLocalToParent.apply(this, args);
+        const translated = new matrix.constructor(matrix);
+        translated.e = Number(matrix.e) + x;
+        translated.f = Number(matrix.f) + y;
+        return translated;
+      },
+    });
+    // Computed transforms cache localToWorld all the way down the subtree.
+    // Explicit invalidation makes the temporary matrix visible to geometry,
+    // hit-testing, and rendering even when no visual signal changed.
+    originalLocalToParent.context?.markDirty?.();
+  } catch {
+    return false;
+  }
+  restorers.push(() => {
+    if (originalDescriptor) {
+      Object.defineProperty(node, 'localToParent', originalDescriptor);
+    } else {
+      delete node.localToParent;
+    }
+    originalLocalToParent.context?.markDirty?.();
+  });
+  return true;
+}
+
 export function applyOverride(node, override, options = {}) {
   if (!node || !override) return () => {};
   const patch = override.patch ?? override;
@@ -251,13 +298,23 @@ export function applyOverride(node, override, options = {}) {
       (patch.x !== undefined || patch.y !== undefined) &&
       typeof node.position === 'function'
     ) {
-      const base = vectorComponents(node.position());
-      setSignal(
+      const x = patch.x ?? 0;
+      const y = patch.y ?? 0;
+      const layoutManaged = installLayoutPositionOffset(
         node,
-        'position',
-        [base.x + (patch.x ?? 0), base.y + (patch.y ?? 0)],
+        x,
+        y,
         restorers,
       );
+      if (!layoutManaged) {
+        const base = vectorComponents(node.position());
+        setSignal(
+          node,
+          'position',
+          [base.x + x, base.y + y],
+          restorers,
+        );
+      }
     }
     if (patch.scale !== undefined && typeof node.scale === 'function') {
       const base = vectorComponents(node.scale());

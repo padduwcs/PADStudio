@@ -232,3 +232,21 @@ export function KeyboardIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function ExpandIcon(props: IconProps) {
+  return (
+    <svg {...iconDefaults} {...props}>
+      <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />
+      <path d="m3 8 5-5M21 8l-5-5M3 16l5 5M21 16l-5 5" />
+    </svg>
+  );
+}
+
+export function MinimizeIcon(props: IconProps) {
+  return (
+    <svg {...iconDefaults} {...props}>
+      <path d="M8 8H3M8 8V3M16 8h5M16 8V3M8 16H3M8 16v5M16 16h5M16 16v5" />
+      <path d="M8 8 3 3M16 8l5-5M8 16l-5 5M16 16l5 5" />
+    </svg>
+  );
+}

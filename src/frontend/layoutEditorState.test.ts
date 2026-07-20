@@ -5,7 +5,11 @@ import type {
   LayoutEditorManifest,
   LayoutOverridesDocument,
 } from '../shared/layout.ts';
-import {resolveLayoutEditorManifest} from './layoutEditorState.ts';
+import {
+  parseRuntimeNodeVisibility,
+  resolveLayoutEditorManifest,
+  timelineVisibleEditorNodes,
+} from './layoutEditorState.ts';
 
 function sourceFixture(sourceHash = 'a'.repeat(64)) {
   const generationId = randomUUID();
@@ -47,6 +51,42 @@ test('Layout ưu tiên manifest đã lưu và xóa manifest của Sync source c�
   );
   assert.equal(
     resolveLayoutEditorManifest(null, current.manifest, next.document),
+    null,
+  );
+});
+
+test('Layout chỉ hiện node có opacity timeline lớn hơn 0 ở scene hiện tại', () => {
+  const nodes = [{key: 'title'}, {key: 'card'}, {key: 'accent'}];
+  const visibility = parseRuntimeNodeVisibility({
+    sceneId: 'scene-01',
+    visibleNodeKeys: ['title', 'accent'],
+    hiddenNodeCount: 1,
+  });
+  assert.deepEqual(
+    timelineVisibleEditorNodes(nodes, 'scene-01', visibility),
+    [{key: 'title'}, {key: 'accent'}],
+  );
+  assert.equal(
+    timelineVisibleEditorNodes(nodes, 'scene-02', visibility),
+    nodes,
+  );
+});
+
+test('Layout từ chối visibility runtime sai cấu trúc', () => {
+  assert.equal(
+    parseRuntimeNodeVisibility({
+      sceneId: '',
+      visibleNodeKeys: ['title'],
+      hiddenNodeCount: 0,
+    }),
+    null,
+  );
+  assert.equal(
+    parseRuntimeNodeVisibility({
+      sceneId: 'scene-01',
+      visibleNodeKeys: ['title', 2],
+      hiddenNodeCount: 1,
+    }),
     null,
   );
 });

@@ -27,9 +27,11 @@ import {
   ChevronUpIcon,
   EyeIcon,
   EyeOffIcon,
+  ExpandIcon,
   KeyboardIcon,
   LayersIcon,
   LockIcon,
+  MinimizeIcon,
   PaletteIcon,
   RedoIcon,
   ResetIcon,
@@ -39,7 +41,12 @@ import {
   UnlockIcon,
   XIcon,
 } from './icons.tsx';
-import {resolveLayoutEditorManifest} from './layoutEditorState.ts';
+import {
+  parseRuntimeNodeVisibility,
+  resolveLayoutEditorManifest,
+  timelineVisibleEditorNodes,
+  type RuntimeNodeVisibility,
+} from './layoutEditorState.ts';
 import {
   navigate,
   projectRenderPath,
@@ -47,6 +54,7 @@ import {
   registerNavigationGuard,
 } from './router.ts';
 import {useLayoutEditor} from './useLayoutEditor.ts';
+import {useEditorFocusMode} from './useEditorFocusMode.ts';
 
 const PROTOCOL_SOURCE = 'pad-studio-layout-editor';
 const PROTOCOL_VERSION = 1;
@@ -358,6 +366,8 @@ function LayoutTextEditor({
 
 export function LayoutEditorPage({projectId}: {projectId: string}) {
   const layout = useLayoutEditor(projectId);
+  const {editorRef, focusMode, toggleFocusMode} =
+    useEditorFocusMode<HTMLElement>();
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const sceneRailRef = useRef<HTMLDivElement | null>(null);
   const shortcutCloseRef = useRef<HTMLButtonElement | null>(null);
@@ -394,6 +404,8 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     useState<RuntimeSelection | null>(null);
   const [runtimeState, setRuntimeState] =
     useState<RuntimeState | null>(null);
+  const [runtimeVisibility, setRuntimeVisibility] =
+    useState<RuntimeNodeVisibility | null>(null);
   const [runtimeReady, setRuntimeReady] = useState(false);
   const [frameReloadKey, setFrameReloadKey] = useState(0);
   const [manifestStored, setManifestStored] = useState(false);
@@ -486,6 +498,7 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     savedRevisionRef.current = initialSaved;
     setSavedRevision(initialSaved);
     setSelection(null);
+    setRuntimeVisibility(null);
     pendingSelectionRef.current = null;
     setPlayedRevision(-1);
     setReviewedRevision(-1);
@@ -737,6 +750,12 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
         return;
       }
 
+      if (message.type === 'visibility') {
+        const visibility = parseRuntimeNodeVisibility(payload);
+        if (visibility) setRuntimeVisibility(visibility);
+        return;
+      }
+
       if (
         message.type === 'shortcut' &&
         typeof payload.action === 'string'
@@ -930,6 +949,7 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     setRuntimeError('');
     setSelection(null);
     setRuntimeState(null);
+    setRuntimeVisibility(null);
     lastRuntimeDirtyRevisionRef.current = 0;
     setPlayedRevision(-1);
     setReviewedRevision(-1);
@@ -1037,6 +1057,16 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
   const activeSceneIndex = activeScene
     ? scenes.findIndex((scene) => scene.sceneId === activeScene.sceneId)
     : -1;
+  const activeSceneNodes = activeScene
+    ? timelineVisibleEditorNodes(
+        activeScene.nodes,
+        activeScene.sceneId,
+        runtimeVisibility,
+      )
+    : [];
+  const timelineHiddenNodeCount = activeScene
+    ? activeScene.nodes.length - activeSceneNodes.length
+    : 0;
 
   useEffect(() => {
     if (!activeScene) return;
@@ -1569,7 +1599,14 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
         </div>
       )}
 
-      <section className="layout-editor-shell">
+      <section
+        className={`layout-editor-shell${focusMode ? ' is-editor-focus' : ''}`}
+        ref={editorRef}
+        role={focusMode ? 'dialog' : undefined}
+        aria-modal={focusMode || undefined}
+        aria-label={focusMode ? 'Layout Editor toàn màn hình' : undefined}
+        tabIndex={focusMode ? -1 : undefined}
+      >
         <aside className="layout-tree-panel" aria-label="Danh sách scene và node">
           <header>
             <div>
@@ -1648,13 +1685,22 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
           <div className="layout-layer-browser">
             <div className="layout-panel-label">
               <span>Layer</span>
-              <small>{activeScene?.nodes.length ?? 0} node</small>
+              <small>
+                {timelineHiddenNodeCount > 0
+                  ? `${activeSceneNodes.length}/${activeScene?.nodes.length ?? 0} đang hiện`
+                  : `${activeSceneNodes.length} node`}
+              </small>
             </div>
             <div className="layout-layer-list">
               {!activeScene ? (
                 <div className="layout-list-empty">
                   <strong>Không tìm thấy kết quả</strong>
                   <span>Thử một từ khóa khác.</span>
+                </div>
+              ) : timelineHiddenNodeCount > 0 && activeSceneNodes.length === 0 ? (
+                <div className="layout-list-empty is-timeline-empty">
+                  <strong>Chưa có layer nào xuất hiện</strong>
+                  <span>Di chuyển playhead đến lúc hình bắt đầu hiện.</span>
                 </div>
               ) : activeScene.nodes.length === 0 ? (
                 <button
@@ -1669,7 +1715,7 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                   </span>
                 </button>
               ) : (
-                activeScene.nodes.map((node) => {
+                activeSceneNodes.map((node) => {
                   const nodeOverride = document?.overrides.find(
                     (item) =>
                       item.sceneId === activeScene.sceneId &&
@@ -1836,6 +1882,27 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
               </code>
             </div>
             <div className="layout-command-group is-secondary">
+              {focusMode && (
+                <span
+                  className={`layout-focus-save-state${
+                    isSaved
+                      ? ' is-saved'
+                      : layout.saveState === 'error'
+                        ? ' is-error'
+                        : ''
+                  }`}
+                  role="status"
+                >
+                  <i />
+                  {layout.saveState === 'saving'
+                    ? 'Đang lưu…'
+                    : layout.saveState === 'error'
+                      ? 'Lưu lỗi'
+                      : isSaved
+                        ? 'Đã lưu'
+                        : 'Chưa lưu'}
+                </span>
+              )}
               <button
                 type="button"
                 title="Sao chép modifier (Ctrl+C)"
@@ -1865,6 +1932,26 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
               >
                 <KeyboardIcon />
                 <kbd>?</kbd>
+              </button>
+              <button
+                className={`layout-command-focus${focusMode ? ' is-active' : ''}`}
+                type="button"
+                title={
+                  focusMode
+                    ? 'Thoát chế độ toàn màn hình (Esc)'
+                    : 'Chỉ hiển thị editor và video'
+                }
+                aria-label={
+                  focusMode
+                    ? 'Thoát chế độ toàn màn hình'
+                    : 'Mở editor toàn màn hình'
+                }
+                aria-pressed={focusMode}
+                onClick={() => void toggleFocusMode()}
+              >
+                {focusMode ? <MinimizeIcon /> : <ExpandIcon />}
+                <span>{focusMode ? 'Thu nhỏ' : 'Toàn màn hình'}</span>
+                {focusMode && <kbd>Esc</kbd>}
               </button>
             </div>
           </div>

@@ -1,7 +1,8 @@
 .render-workspace {
+  min-width: 0;
   width: min(1120px, 100%);
   margin: 0 auto;
-  padding: 46px 48px 42px;
+  padding: 8px 0 42px;
 }
 
 .render-heading {
@@ -10,7 +11,7 @@
 
 .render-summary {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin: 30px 0 18px;
 }
@@ -382,7 +383,8 @@
 
 .render-player-shell {
   display: grid;
-  min-height: 420px;
+  min-height: 0;
+  aspect-ratio: 16 / 9;
   place-items: center;
   overflow: hidden;
   border-radius: 18px;
@@ -445,19 +447,42 @@
 }
 
 @media (max-width: 760px) {
-  .render-workspace {padding: 28px 18px 30px;}
+  .render-workspace {padding: 0 0 30px;}
   .render-summary {grid-template-columns: 1fr;}
   .render-ready-card {grid-template-columns: 1fr; gap: 26px; padding: 24px;}
   .render-progress-card, .render-result-card {padding: 22px;}
   .render-progress-meta, .render-final-actions {align-items: flex-start; flex-direction: column;}
   .render-error {grid-template-columns: 1fr;}
   .render-error button {margin-left: 0;}
-  .render-player-shell {min-height: 320px;}
-  .render-player-shell video {height: min(68vh, 580px);}
+  .render-player-shell {min-height: 0; border-radius: 14px;}
+  .render-player-shell video {width: 100%; height: auto; max-height: min(68vh, 580px);}
   .render-option-heading {align-items: flex-start; flex-direction: column;}
   .render-speed-control {grid-template-columns: 1fr 78px;}
   .render-speed-control label {grid-column: 1 / -1;}
   .render-speed-control small {grid-column: 1 / -1;}
   .watermark-detail-grid {grid-template-columns: 1fr;}
   .watermark-wide-field {grid-column: auto;}
+}
+
+@media (max-width: 420px) {
+  .render-ready-card,
+  .render-progress-card,
+  .render-result-card,
+  .render-options-card {
+    padding: 18px;
+    border-radius: 15px;
+  }
+
+  .render-summary > div {
+    padding: 13px 14px;
+  }
+
+  .watermark-mode-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .watermark-mode-tabs button {
+    width: 100%;
+  }
 }

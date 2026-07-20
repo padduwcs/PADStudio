@@ -135,6 +135,42 @@ test('applyOverride restores raw animated signals in finally-compatible order', 
   assert.equal(node.lineWidth(), 2);
 });
 
+test('applyOverride translates layout-managed nodes after flex computation', () => {
+  class Matrix {
+    constructor(value = {}) {
+      this.e = value.e ?? 0;
+      this.f = value.f ?? 0;
+    }
+  }
+  const position = signal({x: 0, y: 0});
+  const originalLocalToParent = function () {
+    return new Matrix({e: 240, f: 360});
+  };
+  let dirtyCount = 0;
+  originalLocalToParent.context = {
+    markDirty() {
+      dirtyCount++;
+    },
+  };
+  const node = {
+    position,
+    isLayoutRoot: () => false,
+    localToParent: originalLocalToParent,
+  };
+
+  const restore = applyOverride(node, {patch: {x: 80, y: -30}});
+
+  assert.deepEqual(node.localToParent(), new Matrix({e: 320, f: 330}));
+  assert.deepEqual(node.position(), {x: 0, y: 0});
+  assert.equal(dirtyCount, 1);
+
+  restore();
+
+  assert.equal(node.localToParent, originalLocalToParent);
+  assert.deepEqual(node.position(), {x: 0, y: 0});
+  assert.equal(dirtyCount, 2);
+});
+
 test('hidden is delete semantics and editor lock does not disable rendering', () => {
   const node = {opacity: signal(0.75)};
   const restore = applyOverride(node, {

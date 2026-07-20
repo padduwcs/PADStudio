@@ -39,6 +39,11 @@ export function AdaptiveHeading({
 
       if (!availableWidth || !preferredSize) return;
 
+      // Narrow layouts read better with a deliberate natural wrap. Trying to
+      // force a single line here can also leave a heading clipped for one
+      // frame while a responsive panel or the mobile viewport is resizing.
+      if (availableWidth < 560) return;
+
       heading.style.whiteSpace = 'nowrap';
       heading.style.fontSize = `${preferredSize}px`;
 

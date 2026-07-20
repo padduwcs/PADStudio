@@ -1,6 +1,15 @@
 .motion-canvas-workspace {
+  min-width: 0;
   width: min(1180px, 100%);
   margin: 8px auto 0;
+}
+
+.motion-canvas-empty-grid > *,
+.motion-canvas-editor-grid > *,
+.motion-canvas-main > *,
+.motion-canvas-scene > *,
+.motion-design-workbench > * {
+  min-width: 0;
 }
 
 .motion-canvas-empty-grid,
@@ -419,6 +428,8 @@
 }
 
 .motion-canvas-scene details {
+  min-width: 0;
+  max-width: 100%;
   padding: 0 16px 16px;
 }
 
@@ -431,6 +442,8 @@
 }
 
 .motion-canvas-scene pre {
+  width: 100%;
+  max-width: 100%;
   max-height: 480px;
   overflow: auto;
   margin: 0;
@@ -492,8 +505,8 @@
 
   .motion-design-frame,
   .motion-design-frame iframe {
-    min-height: 620px;
-    height: 620px;
+    min-height: clamp(500px, 76dvh, 620px);
+    height: clamp(500px, 76dvh, 620px);
   }
 
   .motion-canvas-command button {
@@ -523,6 +536,21 @@
   .motion-canvas-file-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .motion-canvas-file-row code {
+    width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .motion-canvas-scene details {
+    padding: 0 12px 12px;
+  }
+
+  .motion-canvas-scene pre {
+    padding: 13px;
+    font-size: 10px;
   }
 
   .motion-canvas-timeline {

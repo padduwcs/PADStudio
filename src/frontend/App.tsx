@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import type {TopicProject} from '../shared/topic.ts';
+import type {ProjectStep, TopicProject} from '../shared/topic.ts';
 import {targetNarrationTokenCount} from '../shared/narrationTiming.ts';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
@@ -48,15 +48,18 @@ import {useCodexConnection} from './useCodexConnection.ts';
 import {useOutlineDraft} from './useOutlineDraft.ts';
 import {VoiceVisualPage} from './VoiceVisualPage.tsx';
 
-const pipelineSteps = [
-  'Nhập chủ đề',
-  'Mạch giảng',
-  'Voice — visual',
-  'Sinh scene Motion Canvas',
-  'Tạo voice ElevenLabs',
-  'Đồng bộ',
-  'Layout Editor',
-  'Render cuối',
+const pipelineSteps: ReadonlyArray<{
+  id: ProjectStep;
+  label: string;
+}> = [
+  {id: 'topic', label: 'Nhập chủ đề'},
+  {id: 'outline', label: 'Mạch giảng'},
+  {id: 'voiceVisual', label: 'Voice — visual'},
+  {id: 'motionCanvas', label: 'Sinh scene Motion Canvas'},
+  {id: 'voice', label: 'Tạo voice ElevenLabs'},
+  {id: 'sync', label: 'Đồng bộ'},
+  {id: 'layout', label: 'Layout Editor'},
+  {id: 'render', label: 'Render cuối'},
 ];
 
 const topicSuggestions = [
@@ -120,14 +123,18 @@ function Brand() {
 
 function PipelineSidebar({
   activeStep,
+  hasProject,
   open,
   onClose,
   onOpenProjects,
+  onSelectStep,
 }: {
   activeStep: number;
+  hasProject: boolean;
   open: boolean;
   onClose: () => void;
   onOpenProjects: () => void;
+  onSelectStep: (step: ProjectStep) => void;
 }) {
   return (
     <aside
@@ -163,23 +170,47 @@ function PipelineSidebar({
 
       <nav aria-label="Các bước sản xuất video">
         <ol className="pipeline-list">
-          {pipelineSteps.map((step, index) => (
+          {pipelineSteps.map((step, index) => {
+            const unavailable = !hasProject && step.id !== 'topic';
+            return (
             <li
               className={index === activeStep ? 'is-active' : ''}
-              aria-current={index === activeStep ? 'step' : undefined}
-              key={step}
+              key={step.id}
             >
-              <span className="step-index">{String(index + 1).padStart(2, '0')}</span>
-              <span className="step-name">{step}</span>
+              <button
+                className="pipeline-step-button"
+                type="button"
+                aria-current={index === activeStep ? 'step' : undefined}
+                disabled={unavailable}
+                title={
+                  unavailable
+                    ? 'Hãy lưu chủ đề để mở các bước còn lại.'
+                    : `Mở ${step.label}`
+                }
+                onClick={() => {
+                  if (index === activeStep) {
+                    onClose();
+                    return;
+                  }
+                  onSelectStep(step.id);
+                }}
+              >
+                <span className="step-index">
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+                <span className="step-name">{step.label}</span>
+              </button>
             </li>
-          ))}
+            );
+          })}
         </ol>
       </nav>
 
       <div className="sidebar-note">
         <LightbulbIcon />
         <p>
-          Mỗi bước quan trọng đều chờ bạn review trước khi tiếp tục.
+          Chọn bất kỳ bước nào để mở trực tiếp. Bước chưa đủ dữ liệu sẽ hiển
+          thị điều kiện cần hoàn tất.
         </p>
       </div>
     </aside>
@@ -1382,9 +1413,14 @@ export default function App() {
     <div className="app-shell">
       <PipelineSidebar
         activeStep={activeStep}
+        hasProject={Boolean(activeProjectId)}
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         onOpenProjects={openLibrary}
+        onSelectStep={(step) => {
+          if (!activeProjectId) return;
+          navigate(projectStepPath(activeProjectId, step));
+        }}
       />
       <button
         className={`sidebar-backdrop${sidebarOpen ? ' is-open' : ''}`}

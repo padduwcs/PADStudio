@@ -696,6 +696,12 @@
     display: grid;
   }
 
+  .voice-search > div > button,
+  .voice-generation-summary > button {
+    width: 100%;
+    min-height: 42px;
+  }
+
   .voice-generation-summary .submit-button {
     width: 100%;
   }
@@ -712,5 +718,31 @@
 
   .voice-review-section {
     padding-inline: 16px;
+  }
+
+  .voice-config-card,
+  .voice-search {
+    border-radius: 15px;
+  }
+}
+
+@media (max-width: 420px) {
+  .voice-config-heading {
+    display: grid;
+    gap: 10px;
+  }
+
+  .voice-config-heading .draft-status {
+    margin-left: 55px;
+  }
+
+  .voice-config-heading-icon {
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
+  }
+
+  .voice-config-body {
+    padding: 14px;
   }
 }

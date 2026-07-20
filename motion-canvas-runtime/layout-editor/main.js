@@ -18,6 +18,9 @@ import {
 } from './protocol.js';
 import {
   canonicalizeEditorNodes,
+  chooseEditorNodeHitTarget,
+  editorGeometryContainsPoint,
+  isEditorNodeTimelineVisible,
   isGeneratedEditorNodeKey,
   mergeEditorNodePolicy,
   migrateInternalNodeOverrides,
@@ -577,6 +580,7 @@ async function startEditor(project) {
   let sceneInfoByRuntimeName = new Map();
   let manifestPostQueued = false;
   let manifestReady = false;
+  let lastVisibilitySignature = '';
   const manifestDirtyScenes = new Set();
   const manifestInspectedScenes = new Set();
   const editorTargetsByScene = new Map();
@@ -927,16 +931,75 @@ async function startEditor(project) {
       : requested;
   }
 
+  function inspectEditorNodeAt(scene, point) {
+    return withApplied(scene, () => {
+      const inspectedKey = scene.inspectPosition?.(point.x, point.y);
+      const fallback = resolveLiveEditorNode(scene, inspectedKey);
+      const info = sceneInfo(scene);
+      const targets = editorTargetsByScene.get(info.sceneId)?.nodes ?? [];
+      const candidate = chooseEditorNodeHitTarget(
+        targets.flatMap(target => {
+          const node = resolveLiveEditorNode(scene, target.key);
+          if (!node || !isEditorNodeTimelineVisible(node)) return [];
+          const geometry = nodeGeometry(node);
+          return geometry
+            ? [{...target, key: node.key, geometry}]
+            : [];
+        }),
+        point,
+      );
+      return candidate?.key ?? fallback?.key ?? null;
+    });
+  }
+
   function selectNode(nodeKey, notify = true) {
     const scene = player.playback.currentScene;
     const info = currentSceneInfo();
-    const node = resolveLiveEditorNode(scene, nodeKey);
+    const requested = resolveLiveEditorNode(scene, nodeKey);
+    const node =
+      requested && isEditorNodeTimelineVisible(requested)
+        ? requested
+        : null;
     selected = node ? {sceneId: info.sceneId, nodeKey: node.key} : null;
     selectedGeometry = node ? nodeGeometry(node) : null;
     refreshButtons();
     player.requestRender();
     if (notify) postSelection();
     return Boolean(node);
+  }
+
+  function timelineVisibility(scene) {
+    const info = sceneInfo(scene);
+    const targets = editorTargetsByScene.get(info.sceneId)?.nodes;
+    if (!Array.isArray(targets) || targets.length === 0) return null;
+    const visibleNodeKeys = targets
+      .filter(target => {
+        const node = resolveLiveEditorNode(scene, target.key);
+        return node && isEditorNodeTimelineVisible(node);
+      })
+      .map(target => target.key);
+    return {
+      sceneId: info.sceneId,
+      visibleNodeKeys,
+      hiddenNodeCount: Math.max(0, targets.length - visibleNodeKeys.length),
+    };
+  }
+
+  function postTimelineVisibility(scene) {
+    const payload = timelineVisibility(scene);
+    if (!payload) return;
+    const signature = `${payload.sceneId}\u0000${payload.visibleNodeKeys.join('\u0000')}`;
+    if (signature === lastVisibilitySignature) return;
+    lastVisibilitySignature = signature;
+    if (
+      selected?.sceneId === payload.sceneId &&
+      !payload.visibleNodeKeys.includes(selected.nodeKey)
+    ) {
+      selected = null;
+      selectedGeometry = null;
+      postSelection();
+    }
+    protocol.post('visibility', payload);
   }
 
   function setViewPatch(patch) {
@@ -1224,6 +1287,7 @@ async function startEditor(project) {
       let restoreCurrent = () => {};
       let restorePrevious = () => {};
       selectedGeometry = null;
+      postTimelineVisibility(currentScene);
       try {
         restorePrevious = previousScene
           ? applyForRender(previousScene, false)
@@ -1466,10 +1530,16 @@ async function startEditor(project) {
     const scene = player.playback.currentScene;
     const point = canvasPoint(event, stage.finalBuffer);
     let mode = handleAt(point);
+    if (
+      !mode &&
+      selectedGeometry &&
+      selectedCanEdit(['x', 'y']) &&
+      editorGeometryContainsPoint(selectedGeometry, point)
+    ) {
+      mode = 'translate';
+    }
     if (!mode) {
-      const key = withApplied(scene, () =>
-        scene.inspectPosition?.(point.x, point.y),
-      );
+      const key = inspectEditorNodeAt(scene, point);
       if (!key) {
         selectNode(null);
         return;

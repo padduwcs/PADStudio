@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   canonicalizeEditorNodes,
+  chooseEditorNodeHitTarget,
+  editorGeometryContainsPoint,
+  isEditorNodeTimelineVisible,
   isGeneratedEditorNodeKey,
   isInternalEditorNode,
   mergeEditorNodePolicy,
@@ -70,6 +73,92 @@ test('canvas hit-test dừng ở Txt legacy thay vì leo lên container', () => 
   assert.equal(isInternalEditorNode(legacyText), false);
   assert.equal(isInternalEditorNode(internalLeaf), true);
   assert.equal(resolveLiveEditorNodeTarget(internalLeaf), legacyText);
+});
+
+test('timeline chỉ cho tương tác node đã bắt đầu hiện', () => {
+  assert.equal(
+    isEditorNodeTimelineVisible({absoluteOpacity: () => 0}),
+    false,
+  );
+  assert.equal(
+    isEditorNodeTimelineVisible({absoluteOpacity: () => 0.00001}),
+    false,
+  );
+  assert.equal(
+    isEditorNodeTimelineVisible({absoluteOpacity: () => 0.02}),
+    true,
+  );
+  assert.equal(
+    isEditorNodeTimelineVisible({opacity: () => 0}),
+    false,
+  );
+  assert.equal(
+    isEditorNodeTimelineVisible({opacity: () => 1}),
+    true,
+  );
+});
+
+test('node opacity tùy biến lỗi vẫn được giữ để tránh khóa nhầm', () => {
+  assert.equal(
+    isEditorNodeTimelineVisible({
+      absoluteOpacity: () => {
+        throw new Error('signal unavailable');
+      },
+    }),
+    true,
+  );
+  assert.equal(isEditorNodeTimelineVisible({}), true);
+});
+
+test('khung đang chọn nhận thao tác kéo khi con trỏ nằm bên trong', () => {
+  const geometry = {
+    corners: [
+      {x: 10, y: 10},
+      {x: 90, y: 10},
+      {x: 90, y: 50},
+      {x: 10, y: 50},
+    ],
+  };
+  assert.equal(editorGeometryContainsPoint(geometry, {x: 50, y: 30}), true);
+  assert.equal(editorGeometryContainsPoint(geometry, {x: 5, y: 30}), false);
+});
+
+test('canvas ưu tiên text và node nhỏ thay vì container phủ bên ngoài', () => {
+  const geometry = (left, top, right, bottom) => ({
+    corners: [
+      {x: left, y: top},
+      {x: right, y: top},
+      {x: right, y: bottom},
+      {x: left, y: bottom},
+    ],
+  });
+  const container = {
+    key: 'comparison-stage',
+    nodeType: 'Layout',
+    geometry: geometry(0, 0, 500, 900),
+  };
+  const card = {
+    key: 'secret-card',
+    nodeType: 'Rect',
+    geometry: geometry(100, 100, 400, 500),
+  };
+  const text = {
+    key: 'secret-symbol',
+    nodeType: 'Txt',
+    geometry: geometry(220, 250, 300, 320),
+  };
+  assert.equal(
+    chooseEditorNodeHitTarget([container, text, card], {x: 260, y: 280}),
+    text,
+  );
+  assert.equal(
+    chooseEditorNodeHitTarget([container, card], {x: 150, y: 150}),
+    card,
+  );
+  assert.equal(
+    chooseEditorNodeHitTarget([container, card], {x: 700, y: 700}),
+    null,
+  );
 });
 
 test('manifest gộp TxtLeaf vào Txt legacy có thể chỉnh', () => {
