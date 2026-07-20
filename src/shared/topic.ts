@@ -1,6 +1,10 @@
 import {z} from 'zod';
 import {DEFAULT_NARRATION_CALIBRATION} from './narrationTiming.ts';
 import {
+  hasSafeTotalBeatCount,
+  pipelineSafetyLimits,
+} from './pipelineLimits.ts';
+import {
   LayoutBundleSchema,
   VisualDesignBundleSchema,
 } from './layout.ts';
@@ -10,7 +14,12 @@ export * from './layout.ts';
 export * from './render.ts';
 
 export const audienceValues = ['beginner', 'familiar'] as const;
-export const durationValues = ['concise', 'standard', 'deep'] as const;
+export const durationValues = [
+  'concise',
+  'standard',
+  'deep',
+  'custom',
+] as const;
 const projectStepV8Values = [
   'topic',
   'outline',
@@ -27,7 +36,7 @@ export const voiceVisualStatusValues = ['draft', 'approved'] as const;
 export const motionCanvasStatusValues = ['draft', 'approved'] as const;
 export const voiceStatusValues = ['draft', 'approved'] as const;
 export const animationSyncStatusValues = ['draft', 'approved'] as const;
-export const currentProjectVersion = 11 as const;
+export const currentProjectVersion = 12 as const;
 
 export const ProjectStepSchema = z.enum(projectStepValues);
 const ProjectStepV8Schema = z.enum(projectStepV8Values);
@@ -55,8 +64,32 @@ export const TopicInputSchema = z
       .optional(),
     audience: z.enum(audienceValues),
     duration: z.enum(durationValues),
+    targetDurationMinutes: z
+      .number()
+      .finite()
+      .min(
+        pipelineSafetyLimits.minimumCustomDurationMinutes,
+        'Thời lượng tùy chỉnh cần ít nhất 0,5 phút.',
+      )
+      .max(
+        pipelineSafetyLimits.maximumCustomDurationMinutes,
+        'Thời lượng tùy chỉnh vượt quá cầu chì an toàn 180 phút.',
+      )
+      .optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.duration === 'custom' &&
+      value.targetDurationMinutes === undefined
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Hãy nhập thời lượng dự kiến cho video.',
+        path: ['targetDurationMinutes'],
+      });
+    }
+  });
 
 export type TopicInput = z.infer<typeof TopicInputSchema>;
 
@@ -96,12 +129,18 @@ export const TeachingOutlineSectionSchema = z
       .string()
       .trim()
       .min(12, 'Nội dung của ý cần rõ hơn.')
-      .max(900, 'Nội dung của ý nên ngắn hơn 900 ký tự.'),
+      .max(4000, 'Nội dung của ý vượt quá cầu chì an toàn 4000 ký tự.'),
     estimatedSeconds: z
       .number()
       .int()
-      .min(10, 'Mỗi ý cần ít nhất 10 giây.')
-      .max(240, 'Mỗi ý không nên dài quá 240 giây.'),
+      .min(
+        pipelineSafetyLimits.minimumSectionDurationSeconds,
+        'Mỗi ý cần ít nhất 10 giây.',
+      )
+      .max(
+        pipelineSafetyLimits.maximumSectionDurationSeconds,
+        'Thời lượng một ý vượt quá cầu chì an toàn.',
+      ),
   })
   .strict();
 
@@ -119,8 +158,14 @@ export const TeachingOutlineContentSchema = z
       .max(400, 'Thông điệp trung tâm nên ngắn hơn 400 ký tự.'),
     sections: z
       .array(TeachingOutlineSectionSchema)
-      .min(2, 'Mạch giảng cần ít nhất 2 ý.')
-      .max(10, 'Mạch giảng không nên có quá 10 ý.'),
+      .min(
+        pipelineSafetyLimits.minimumSections,
+        'Mạch giảng cần ít nhất một ý.',
+      )
+      .max(
+        pipelineSafetyLimits.maximumSections,
+        'Số ý vượt quá cầu chì an toàn của một project.',
+      ),
   })
   .strict();
 
@@ -172,28 +217,37 @@ export const VoiceVisualBeatSchema = z
       .string()
       .trim()
       .min(12, 'Lời thuyết minh của beat cần rõ hơn.')
-      .max(1000, 'Lời thuyết minh của beat nên ngắn hơn 1000 ký tự.'),
+      .max(4000, 'Lời thuyết minh của beat vượt quá 4000 ký tự.'),
     visualDescription: z
       .string()
       .trim()
       .min(12, 'Mô tả visual của beat cần rõ hơn.')
-      .max(700, 'Mô tả visual của beat nên ngắn hơn 700 ký tự.'),
+      .max(2000, 'Mô tả visual của beat vượt quá 2000 ký tự.'),
     animationDescription: z
       .string()
       .trim()
       .min(8, 'Mô tả chuyển động của beat cần rõ hơn.')
-      .max(500, 'Mô tả chuyển động của beat nên ngắn hơn 500 ký tự.'),
+      .max(2000, 'Mô tả chuyển động của beat vượt quá 2000 ký tự.'),
     visualHoldSeconds: z
       .number()
       .int()
       .min(0, 'Thời gian giữ hình không thể âm.')
-      .max(30, 'Mỗi beat chỉ nên giữ hình thêm tối đa 30 giây.')
+      .max(
+        pipelineSafetyLimits.maximumVisualHoldSeconds,
+        'Thời gian giữ hình vượt quá cầu chì an toàn.',
+      )
       .default(0),
     durationSeconds: z
       .number()
       .int()
-      .min(4, 'Mỗi beat cần ít nhất 4 giây.')
-      .max(90, 'Mỗi beat không nên dài quá 90 giây.'),
+      .min(
+        pipelineSafetyLimits.minimumBeatDurationSeconds,
+        'Mỗi beat cần ít nhất 4 giây.',
+      )
+      .max(
+        pipelineSafetyLimits.maximumBeatDurationSeconds,
+        'Thời lượng một beat vượt quá cầu chì an toàn.',
+      ),
   })
   .strict();
 
@@ -204,8 +258,14 @@ export const VoiceVisualSectionSchema = z
     outlineSectionId: z.string().uuid(),
     beats: z
       .array(VoiceVisualBeatSchema)
-      .min(1, 'Mỗi ý trong mạch giảng cần ít nhất một beat.')
-      .max(8, 'Mỗi ý không nên có quá 8 beat.'),
+      .min(
+        pipelineSafetyLimits.minimumBeatsPerSection,
+        'Mỗi ý trong mạch giảng cần ít nhất một beat.',
+      )
+      .max(
+        pipelineSafetyLimits.maximumBeatsPerSection,
+        'Số beat của một ý vượt quá cầu chì an toàn.',
+      ),
   })
   .strict();
 
@@ -242,10 +302,20 @@ export const VoiceVisualPlanContentSchema = z
       }),
     sections: z
       .array(VoiceVisualSectionSchema)
-      .min(2, 'Kế hoạch cần bao phủ ít nhất 2 ý.')
-      .max(10, 'Kế hoạch không nên có quá 10 ý.'),
+      .min(
+        pipelineSafetyLimits.minimumSections,
+        'Kế hoạch cần bao phủ ít nhất một ý.',
+      )
+      .max(
+        pipelineSafetyLimits.maximumSections,
+        'Số ý vượt quá cầu chì an toàn của một project.',
+      ),
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) => hasSafeTotalBeatCount(value.sections),
+    `Tổng số beat vượt quá cầu chì an toàn ${pipelineSafetyLimits.maximumTotalBeats}.`,
+  );
 
 export type VoiceVisualPlanContent = z.infer<
   typeof VoiceVisualPlanContentSchema
@@ -287,7 +357,11 @@ export const MotionCanvasSceneSchema = z
         /^src\/scenes\/[a-z0-9][a-z0-9-]{0,80}\.tsx$/,
         'Đường dẫn scene Motion Canvas không hợp lệ.',
       ),
-    durationSeconds: z.number().int().min(4).max(360),
+    durationSeconds: z
+      .number()
+      .int()
+      .min(pipelineSafetyLimits.minimumBeatDurationSeconds)
+      .max(pipelineSafetyLimits.maximumSectionDurationSeconds),
     timingEvents: z
       .array(
         z
@@ -295,12 +369,16 @@ export const MotionCanvasSceneSchema = z
             beatId: z.string().uuid(),
             startEvent: z.string().regex(/^beat:[0-9a-f-]{36}:start$/),
             endEvent: z.string().regex(/^beat:[0-9a-f-]{36}:end$/),
-            plannedDurationSeconds: z.number().int().min(4).max(90),
+            plannedDurationSeconds: z
+              .number()
+              .int()
+              .min(pipelineSafetyLimits.minimumBeatDurationSeconds)
+              .max(pipelineSafetyLimits.maximumBeatDurationSeconds),
           })
           .strict(),
       )
-      .min(1)
-      .max(8)
+      .min(pipelineSafetyLimits.minimumBeatsPerSection)
+      .max(pipelineSafetyLimits.maximumBeatsPerSection)
       .optional(),
   })
   .strict();
@@ -325,8 +403,14 @@ export const MotionCanvasBundleSchema = z
     timingContractVersion: z.literal(1).optional(),
     scenes: z
       .array(MotionCanvasSceneSchema)
-      .min(2, 'Cần ít nhất 2 scene Motion Canvas.')
-      .max(10, 'Không nên có quá 10 scene Motion Canvas.'),
+      .min(
+        pipelineSafetyLimits.minimumSections,
+        'Cần ít nhất một scene Motion Canvas.',
+      )
+      .max(
+        pipelineSafetyLimits.maximumSections,
+        'Số scene vượt quá cầu chì an toàn của một project.',
+      ),
     validation: z
       .object({
         validatedAt: z.string().datetime(),
@@ -422,7 +506,10 @@ const LegacyVoiceSectionAudioSchema = z
     characterCost: z.number().int().nonnegative(),
     requestId: z.string().trim().min(1).max(200).nullable(),
     sourceTextHash: z.string().regex(/^[a-f0-9]{64}$/),
-    beats: z.array(VoiceBeatTimingSchema).min(1).max(8),
+    beats: z
+      .array(VoiceBeatTimingSchema)
+      .min(pipelineSafetyLimits.minimumBeatsPerSection)
+      .max(pipelineSafetyLimits.maximumBeatsPerSection),
   })
   .strict();
 
@@ -438,7 +525,10 @@ const LegacyVoiceBundleSchema = z
         'Đường dẫn workspace voice không hợp lệ.',
       ),
     configuration: VoiceConfigurationSchema,
-    sections: z.array(LegacyVoiceSectionAudioSchema).min(2).max(10),
+    sections: z
+      .array(LegacyVoiceSectionAudioSchema)
+      .min(pipelineSafetyLimits.minimumSections)
+      .max(pipelineSafetyLimits.maximumSections),
     totalDurationSeconds: z.number().positive(),
     generation: z
       .object({
@@ -460,7 +550,11 @@ export const VoiceNarrationTrackSchema = z
     durationSeconds: z.number().positive(),
     characterCost: z.number().int().nonnegative(),
     strategy: z.enum(['single-request', 'continuity-groups']),
-    chunkCount: z.number().int().min(1).max(40),
+    chunkCount: z
+      .number()
+      .int()
+      .min(1)
+      .max(pipelineSafetyLimits.maximumVoiceChunks),
     calibration: z
       .object({
         whitespaceTokenCount: z.number().int().positive(),
@@ -481,7 +575,10 @@ export const VoiceSectionAudioSchema = z
     endSeconds: z.number().positive(),
     durationSeconds: z.number().positive(),
     sourceTextHash: z.string().regex(/^[a-f0-9]{64}$/),
-    beats: z.array(VoiceBeatTimingSchema).min(1).max(8),
+    beats: z
+      .array(VoiceBeatTimingSchema)
+      .min(pipelineSafetyLimits.minimumBeatsPerSection)
+      .max(pipelineSafetyLimits.maximumBeatsPerSection),
   })
   .strict()
   .refine(
@@ -509,7 +606,10 @@ export const VoiceBundleSchema = z
       ),
     configuration: VoiceConfigurationSchema,
     track: VoiceNarrationTrackSchema,
-    sections: z.array(VoiceSectionAudioSchema).min(2).max(10),
+    sections: z
+      .array(VoiceSectionAudioSchema)
+      .min(pipelineSafetyLimits.minimumSections)
+      .max(pipelineSafetyLimits.maximumSections),
     totalDurationSeconds: z.number().positive(),
     generation: z
       .object({
@@ -517,7 +617,9 @@ export const VoiceBundleSchema = z
         provider: z.literal('elevenlabs'),
         generatedAt: z.string().datetime(),
         characterCost: z.number().int().nonnegative(),
-        requestIds: z.array(z.string().trim().min(1).max(200)).max(40),
+        requestIds: z
+          .array(z.string().trim().min(1).max(200))
+          .max(pipelineSafetyLimits.maximumVoiceChunks),
       })
       .strict(),
   })
@@ -544,7 +646,11 @@ export const AnimationSyncBeatSchema = z
     beatId: z.string().uuid(),
     startEvent: z.string().regex(/^beat:[0-9a-f-]{36}:start$/),
     endEvent: z.string().regex(/^beat:[0-9a-f-]{36}:end$/),
-    plannedDurationSeconds: z.number().int().min(4).max(90),
+    plannedDurationSeconds: z
+      .number()
+      .int()
+      .min(pipelineSafetyLimits.minimumBeatDurationSeconds)
+      .max(pipelineSafetyLimits.maximumBeatDurationSeconds),
     voiceStartSeconds: z.number().nonnegative(),
     voiceEndSeconds: z.number().positive(),
     synchronizedDurationSeconds: z.number().positive(),
@@ -570,7 +676,10 @@ export const AnimationSyncSectionSchema = z
     plannedDurationSeconds: z.number().positive(),
     synchronizedDurationSeconds: z.number().positive(),
     driftSeconds: z.number().finite(),
-    beats: z.array(AnimationSyncBeatSchema).min(1).max(8),
+    beats: z
+      .array(AnimationSyncBeatSchema)
+      .min(pipelineSafetyLimits.minimumBeatsPerSection)
+      .max(pipelineSafetyLimits.maximumBeatsPerSection),
   })
   .strict()
   .refine(
@@ -619,7 +728,10 @@ export const AnimationSyncBundleSchema = z
     projectFile: z.literal('src/project.ts'),
     audioFile: z.literal('audio/narration.wav'),
     totalDurationSeconds: z.number().positive(),
-    sections: z.array(AnimationSyncSectionSchema).min(2).max(10),
+    sections: z
+      .array(AnimationSyncSectionSchema)
+      .min(pipelineSafetyLimits.minimumSections)
+      .max(pipelineSafetyLimits.maximumSections),
     validation: z
       .object({
         validatedAt: z.string().datetime(),
@@ -785,12 +897,17 @@ const topicProjectV10Schema = topicProjectV9Schema
   })
   .strict();
 
-export const TopicProjectSchema = topicProjectV10Schema
+const topicProjectV11Schema = topicProjectV10Schema
   .omit({version: true})
   .extend({
-    version: z.literal(currentProjectVersion),
+    version: z.literal(11),
     visualDesignBundle: VisualDesignBundleSchema.nullable(),
   })
+  .strict();
+
+export const TopicProjectSchema = topicProjectV11Schema
+  .omit({version: true})
+  .extend({version: z.literal(currentProjectVersion)})
   .strict();
 
 export type TopicProject = z.infer<typeof TopicProjectSchema>;
@@ -798,6 +915,14 @@ export type TopicProject = z.infer<typeof TopicProjectSchema>;
 export function parseTopicProject(value: unknown): TopicProject {
   const currentProject = TopicProjectSchema.safeParse(value);
   if (currentProject.success) return currentProject.data;
+
+  const versionElevenProject = topicProjectV11Schema.safeParse(value);
+  if (versionElevenProject.success) {
+    return {
+      ...versionElevenProject.data,
+      version: currentProjectVersion,
+    };
+  }
 
   const versionTenProject = topicProjectV10Schema.safeParse(value);
   if (versionTenProject.success) {
@@ -971,7 +1096,7 @@ export const GenerateTeachingOutlineSchema = z
     guidance: z
       .string()
       .trim()
-      .max(600, 'Góp ý cho AI nên ngắn hơn 600 ký tự.')
+      .max(4000, 'Góp ý cho AI vượt quá 4000 ký tự.')
       .optional(),
   })
   .strict();
@@ -988,7 +1113,7 @@ export const GenerateVoiceVisualPlanSchema = z
     guidance: z
       .string()
       .trim()
-      .max(600, 'Góp ý cho AI nên ngắn hơn 600 ký tự.')
+      .max(4000, 'Góp ý cho AI vượt quá 4000 ký tự.')
       .optional(),
   })
   .strict();
@@ -1005,7 +1130,7 @@ export const GenerateMotionCanvasSchema = z
     guidance: z
       .string()
       .trim()
-      .max(600, 'Góp ý cho scene nên ngắn hơn 600 ký tự.')
+      .max(4000, 'Góp ý cho scene vượt quá 4000 ký tự.')
       .optional(),
   })
   .strict();

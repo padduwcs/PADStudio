@@ -11,7 +11,10 @@ function configuredGenerationTimeoutMs() {
   if (!raw) return null;
   const configured = Number(raw);
   if (!Number.isFinite(configured)) return null;
-  return Math.max(60_000, Math.min(60 * 60 * 1000, Math.floor(configured)));
+  return Math.max(
+    60_000,
+    Math.min(3 * 60 * 60 * 1000, Math.floor(configured)),
+  );
 }
 
 const configuredTimeoutMs = configuredGenerationTimeoutMs();
@@ -20,17 +23,17 @@ const configuredTimeoutMs = configuredGenerationTimeoutMs();
 // for structured TSX. Keep a finite guard, but do not interrupt a healthy turn
 // after the old three-minute window.
 export const DEFAULT_CODEX_GENERATION_TIMEOUT_MS =
-  configuredTimeoutMs ?? 10 * 60 * 1000;
+  configuredTimeoutMs ?? 15 * 60 * 1000;
 
 const reasoningTimeoutsMs: Record<string, number> = {
-  none: 10 * 60 * 1000,
-  minimal: 10 * 60 * 1000,
-  low: 10 * 60 * 1000,
-  medium: 15 * 60 * 1000,
-  high: 25 * 60 * 1000,
-  xhigh: 35 * 60 * 1000,
-  max: 45 * 60 * 1000,
-  ultra: 60 * 60 * 1000,
+  none: 15 * 60 * 1000,
+  minimal: 15 * 60 * 1000,
+  low: 15 * 60 * 1000,
+  medium: 25 * 60 * 1000,
+  high: 40 * 60 * 1000,
+  xhigh: 60 * 60 * 1000,
+  max: 90 * 60 * 1000,
+  ultra: 120 * 60 * 1000,
 };
 
 export function codexGenerationTimeoutMs(
@@ -41,7 +44,7 @@ export function codexGenerationTimeoutMs(
   return Math.max(
     minimumMs,
     reasoningTimeoutsMs[reasoningEffort ?? ''] ??
-      35 * 60 * 1000,
+      60 * 60 * 1000,
   );
 }
 

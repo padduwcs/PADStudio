@@ -17,7 +17,14 @@ const durationLabels: Record<TopicProject['topicInput']['duration'], string> = {
   concise: '1–2 phút',
   standard: '3–5 phút',
   deep: '6–8 phút',
+  custom: 'Tùy chỉnh',
 };
+
+function projectDurationLabel(project: TopicProject) {
+  return project.topicInput.duration === 'custom'
+    ? `${project.topicInput.targetDurationMinutes ?? 10} phút`
+    : durationLabels[project.topicInput.duration];
+}
 
 function formatUpdatedAt(value: string) {
   return new Intl.DateTimeFormat('vi-VN', {
@@ -250,7 +257,7 @@ export function ProjectLibrary({
                   <span className="project-meta">
                     <span>
                       <ClockIcon />
-                      {durationLabels[project.topicInput.duration]}
+                      {projectDurationLabel(project)}
                     </span>
                     <time dateTime={project.updatedAt}>
                       {formatUpdatedAt(project.updatedAt)}

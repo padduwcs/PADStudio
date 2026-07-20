@@ -11,10 +11,14 @@ import type {
 } from '../shared/topic.ts';
 import {
   DEFAULT_NARRATION_CALIBRATION,
-  narrationDurationTargets,
   plannedBeatDurationSeconds,
+  resolveNarrationDurationTarget,
   targetNarrationTokenCount,
 } from '../shared/narrationTiming.ts';
+import {
+  hasSafeTotalBeatCount,
+  pipelineSafetyLimits,
+} from '../shared/pipelineLimits.ts';
 import type {CodexAppServerClient} from './codexConnection.ts';
 import {
   CodexStructuredGenerationError,
@@ -22,7 +26,7 @@ import {
   runCodexStructuredGeneration,
 } from './codexStructuredGeneration.ts';
 
-export const VOICE_VISUAL_PROMPT_VERSION = 'voice-visual-v2';
+export const VOICE_VISUAL_PROMPT_VERSION = 'voice-visual-v3';
 
 const generatedVoiceVisualSchema = z
   .object({
@@ -36,21 +40,25 @@ const generatedVoiceVisualSchema = z
               .array(
                 z
                   .object({
-                    voiceover: z.string().trim().min(12).max(1000),
-                    visualDescription: z.string().trim().min(12).max(700),
-                    animationDescription: z.string().trim().min(8).max(500),
+                    voiceover: z.string().trim().min(12).max(4000),
+                    visualDescription: z.string().trim().min(12).max(2000),
+                    animationDescription: z.string().trim().min(8).max(2000),
                   })
                   .strict(),
               )
-              .min(1)
-              .max(8),
+              .min(pipelineSafetyLimits.minimumBeatsPerSection)
+              .max(pipelineSafetyLimits.maximumBeatsPerSection),
           })
           .strict(),
       )
-      .min(2)
-      .max(10),
+      .min(pipelineSafetyLimits.minimumSections)
+      .max(pipelineSafetyLimits.maximumSections),
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) => hasSafeTotalBeatCount(value.sections),
+    `Tổng số beat vượt quá cầu chì an toàn ${pipelineSafetyLimits.maximumTotalBeats}.`,
+  );
 
 const outputJsonSchema = z.toJSONSchema(generatedVoiceVisualSchema, {
   target: 'draft-7',
@@ -115,13 +123,14 @@ function currentPlanForPrompt(plan: VoiceVisualPlan) {
 }
 
 function buildPrompt(request: VoiceVisualGenerationRequest) {
+  const durationTarget = resolveNarrationDurationTarget(request.topicInput);
   const payload: Record<string, unknown> = {
     topicInput: request.topicInput,
     outline: outlineForPrompt(request.outline),
     narrationBudget: {
-      ...narrationDurationTargets[request.topicInput.duration],
+      ...durationTarget,
       targetWhitespaceTokenCount: targetNarrationTokenCount(
-        narrationDurationTargets[request.topicInput.duration].targetSeconds,
+        durationTarget.targetSeconds,
       ),
     },
     timingCalibration:
@@ -141,7 +150,7 @@ function buildPrompt(request: VoiceVisualGenerationRequest) {
   return [
     'Tạo kế hoạch voice–visual tiếng Việt từ JSON sau.',
     'Giữ nguyên số lượng và thứ tự các section của outline; mỗi phần tử output tương ứng đúng một section.',
-    'Chia mỗi section thành 1–4 beat ngắn. Mỗi beat chỉ truyền đạt một ý.',
+    `Tự chọn số beat cần thiết cho từng section theo nội dung và targetNarrationTokenCount; mỗi beat chỉ truyền đạt một ý. Không ép vào 1–4 beat. Cầu chì kỹ thuật là ${pipelineSafetyLimits.maximumBeatsPerSection} beat/section và ${pipelineSafetyLimits.maximumTotalBeats} beat/project.`,
     'voiceover là lời kể tự nhiên sẵn sàng cho TTS, không chứa chỉ dẫn sân khấu.',
     'Viết toàn bộ voiceover như một bài nói liên tục: section sau nối trực tiếp ý và nhịp của section trước, không lặp mở bài, không tự giới thiệu lại và không kết luận riêng từng section.',
     'Bám sát targetNarrationTokenCount của từng section và tổng narrationBudget; đây là ngân sách các đơn vị phân tách bằng khoảng trắng, không phải số từ ngôn ngữ học.',

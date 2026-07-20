@@ -41,6 +41,31 @@ test('TopicInputSchema từ chối chủ đề quá mơ hồ', () => {
   assert.equal(result.success, false);
 });
 
+test('TopicInputSchema hỗ trợ thời lượng mục tiêu tùy chỉnh có cầu chì an toàn', () => {
+  const custom = TopicInputSchema.parse({
+    topic: 'Giải thích kiến trúc pipeline video dài một cách trực quan',
+    audience: 'familiar',
+    duration: 'custom',
+    targetDurationMinutes: 27.5,
+  });
+
+  assert.equal(custom.targetDurationMinutes, 27.5);
+  assert.equal(
+    TopicInputSchema.safeParse({
+      ...custom,
+      targetDurationMinutes: undefined,
+    }).success,
+    false,
+  );
+  assert.equal(
+    TopicInputSchema.safeParse({
+      ...custom,
+      targetDurationMinutes: 181,
+    }).success,
+    false,
+  );
+});
+
 test('CreateTopicProjectSchema chỉ khởi tạo project ở bước outline', () => {
   const request = {
     creationId: '00000000-0000-4000-8000-000000000001',
@@ -413,6 +438,16 @@ test('parseTopicProject migrates v8 and v9 without widening historical step enum
   assert.equal(migratedVersionNine.visualDesignBundle, null);
   assert.equal(migratedVersionNine.renderBundle, null);
   assert.equal(ProjectStepSchema.safeParse('render').success, true);
+  const migratedVersionEleven = parseTopicProject({
+    ...versionEight,
+    version: 11,
+    currentStep: 'render',
+    layoutBundle: null,
+    renderBundle: null,
+    visualDesignBundle: null,
+  });
+  assert.equal(migratedVersionEleven.version, currentProjectVersion);
+  assert.equal(migratedVersionEleven.currentStep, 'render');
   assert.throws(() =>
     parseTopicProject({...versionEight, currentStep: 'layout'}),
   );

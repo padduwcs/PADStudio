@@ -8,6 +8,7 @@ import {
 } from 'react';
 import type {ProjectStep, TopicProject} from '../shared/topic.ts';
 import {targetNarrationTokenCount} from '../shared/narrationTiming.ts';
+import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {
@@ -93,6 +94,11 @@ const durationOptions: Array<{
   {value: 'concise', title: 'Ngắn gọn', description: '1–2 phút'},
   {value: 'standard', title: 'Tiêu chuẩn', description: '3–5 phút'},
   {value: 'deep', title: 'Chuyên sâu', description: '6–8 phút'},
+  {
+    value: 'custom',
+    title: 'Tùy chỉnh',
+    description: 'Chọn số phút',
+  },
 ];
 
 const audienceLabels: Record<TopicFormState['audience'], string> = {
@@ -104,7 +110,18 @@ const durationLabels: Record<TopicFormState['duration'], string> = {
   concise: '1–2 phút',
   standard: '3–5 phút',
   deep: '6–8 phút',
+  custom: 'Tùy chỉnh',
 };
+
+function durationLabel(
+  input: Pick<TopicFormState, 'duration' | 'targetDurationMinutes'>,
+) {
+  return input.duration === 'custom'
+    ? Number.isFinite(input.targetDurationMinutes)
+      ? `${input.targetDurationMinutes} phút (mục tiêu)`
+      : 'Chưa chọn thời lượng'
+    : durationLabels[input.duration];
+}
 
 function Brand() {
   return (
@@ -362,7 +379,7 @@ function BriefPreview({
             <ClockIcon />
             Thời lượng
           </dt>
-          <dd>{durationLabels[form.duration]}</dd>
+          <dd>{durationLabel(form)}</dd>
         </div>
       </dl>
 
@@ -648,6 +665,52 @@ function TopicPage({
                       />
                     ))}
                   </div>
+                  {form.duration === 'custom' && (
+                    <label className="custom-duration-field">
+                      <span>Thời lượng mục tiêu</span>
+                      <span className="custom-duration-control">
+                        <input
+                          className={
+                            fieldErrors.targetDurationMinutes
+                              ? 'has-error'
+                              : ''
+                          }
+                          type="number"
+                          min={
+                            pipelineSafetyLimits.minimumCustomDurationMinutes
+                          }
+                          max={
+                            pipelineSafetyLimits.maximumCustomDurationMinutes
+                          }
+                          step="0.5"
+                          value={
+                            Number.isFinite(form.targetDurationMinutes)
+                              ? form.targetDurationMinutes
+                              : ''
+                          }
+                          aria-invalid={Boolean(
+                            fieldErrors.targetDurationMinutes,
+                          )}
+                          onChange={(event) =>
+                            updateField(
+                              'targetDurationMinutes',
+                              event.currentTarget.valueAsNumber,
+                            )
+                          }
+                        />
+                        <span>phút</span>
+                      </span>
+                      <small>
+                        Đây là mục tiêu linh hoạt; nội dung có thể chênh khoảng
+                        ±15% để giữ nhịp kể tự nhiên.
+                      </small>
+                      {fieldErrors.targetDurationMinutes && (
+                        <span className="field-error" role="alert">
+                          {fieldErrors.targetDurationMinutes}
+                        </span>
+                      )}
+                    </label>
+                  )}
                 </fieldset>
               </div>
 
@@ -919,7 +982,13 @@ function OutlinePage({projectId}: {projectId: string}) {
               </div>
               <div>
                 <dt>Thời lượng</dt>
-                <dd>{durationLabels[project.topicInput.duration]}</dd>
+                <dd>
+                  {durationLabel({
+                    duration: project.topicInput.duration,
+                    targetDurationMinutes:
+                      project.topicInput.targetDurationMinutes ?? 10,
+                  })}
+                </dd>
               </div>
               <div>
                 <dt>Định hướng riêng</dt>
@@ -1036,7 +1105,10 @@ function OutlinePage({projectId}: {projectId: string}) {
                   </div>
                   <button
                     type="button"
-                    disabled={draft.sections.length >= 10}
+                    disabled={
+                      draft.sections.length >=
+                      pipelineSafetyLimits.maximumSections
+                    }
                     onClick={outline.addSection}
                   >
                     + Thêm ý
@@ -1082,7 +1154,10 @@ function OutlinePage({projectId}: {projectId: string}) {
                         <button
                           className="is-danger"
                           type="button"
-                          disabled={draft.sections.length <= 2}
+                          disabled={
+                            draft.sections.length <=
+                            pipelineSafetyLimits.minimumSections
+                          }
                           onClick={() => outline.removeSection(section.id)}
                         >
                           Xóa
@@ -1110,7 +1185,7 @@ function OutlinePage({projectId}: {projectId: string}) {
                         <span>Nội dung cần giải thích</span>
                         <textarea
                           rows={4}
-                          maxLength={900}
+                          maxLength={4000}
                           value={section.content}
                           onChange={(event) =>
                             outline.updateSection(
@@ -1132,8 +1207,12 @@ function OutlinePage({projectId}: {projectId: string}) {
                         <span>
                           <input
                             type="number"
-                            min={10}
-                            max={240}
+                            min={
+                              pipelineSafetyLimits.minimumSectionDurationSeconds
+                            }
+                            max={
+                              pipelineSafetyLimits.maximumSectionDurationSeconds
+                            }
                             value={section.estimatedSeconds}
                             onChange={(event) =>
                               outline.updateSection(
@@ -1164,7 +1243,7 @@ function OutlinePage({projectId}: {projectId: string}) {
                 </div>
                 <textarea
                   rows={3}
-                  maxLength={600}
+                  maxLength={4000}
                   value={guidance}
                   placeholder="Ví dụ: Mở đầu hấp dẫn hơn, rút ngắn phần ví dụ và nhấn mạnh điều kiện dữ liệu phải được sắp xếp."
                   onChange={(event) => setGuidance(event.target.value)}

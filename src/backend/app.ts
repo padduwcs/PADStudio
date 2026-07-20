@@ -144,6 +144,7 @@ import {
   type VoiceWorkspace,
 } from './voiceWorkspace.ts';
 import {plannedBeatDurationSeconds} from '../shared/narrationTiming.ts';
+import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import {
   createDefaultCredentialStore,
   type CredentialStore,
@@ -154,10 +155,9 @@ import {
   type WatermarkAssetStore,
 } from './watermarkAssetStore.ts';
 
-// A valid voice–visual plan can contain up to 80 narration/visual beats.
-// Keep a bounded request size, but leave enough room for the strict schema's
-// maximum UTF-8 payload instead of rejecting valid content before validation.
-const MAX_JSON_BODY_SIZE = 1024 * 1024;
+// The body limit is a transport safety fuse sized for long-form plans (up to
+// 512 beats), not a product preset. Strict schemas still bound every field.
+const MAX_JSON_BODY_SIZE = pipelineSafetyLimits.maximumJsonBodyBytes;
 const MAX_WATERMARK_IMAGE_SIZE = 5 * 1024 * 1024;
 const CodexApiKeyLoginSchema = z
   .object({apiKey: z.string().trim().min(1).max(512)})
@@ -1038,6 +1038,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
   type GenerationCacheEntry<Result> = {
     fingerprint: string;
     promise: Promise<{result: Result; generatedAt: string}>;
+    settled: boolean;
   };
   const outlineGenerations = new Map<
     string,
@@ -1080,6 +1081,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
     fingerprint: string,
     operation: () => Promise<Result>,
     retainFailure: (error: unknown) => boolean = () => false,
+    maximumEntries = 50,
   ) {
     const existing = generations.get(key);
     if (existing) {
@@ -1097,7 +1099,16 @@ export function createPadStudioServer(options: AppOptions = {}) {
       result,
       generatedAt: new Date().toISOString(),
     }));
-    generations.set(key, {fingerprint, promise});
+    const entry = {fingerprint, promise, settled: false};
+    generations.set(key, entry);
+    void promise.then(
+      () => {
+        entry.settled = true;
+      },
+      () => {
+        entry.settled = true;
+      },
+    );
     void promise.catch((error) => {
       if (retainFailure(error)) return;
       if (generations.get(key)?.promise === promise) {
@@ -1105,9 +1116,12 @@ export function createPadStudioServer(options: AppOptions = {}) {
       }
     });
 
-    if (generations.size > 50) {
-      const oldestKey = generations.keys().next().value;
-      if (oldestKey) generations.delete(oldestKey);
+    if (generations.size > maximumEntries) {
+      const oldestSettled = [...generations.entries()].find(
+        ([candidateKey, candidate]) =>
+          candidateKey !== key && candidate.settled,
+      )?.[0];
+      if (oldestSettled) generations.delete(oldestSettled);
     }
 
     return promise;
@@ -2011,14 +2025,33 @@ export function createPadStudioServer(options: AppOptions = {}) {
                   error.code === 'MOTION_CANVAS_VALIDATION_FAILED' &&
                   error.details &&
                   motionCanvasGenerator.repair &&
-                  repairAttempts < 2
+                  repairAttempts < 1
                 ) {
                   repairAttempts += 1;
-                  generated = await motionCanvasGenerator.repair(
-                    generationRequest,
-                    generated,
-                    error.details,
-                  );
+                  try {
+                    generated = await motionCanvasGenerator.repair(
+                      generationRequest,
+                      generated,
+                      error.details,
+                    );
+                  } catch (repairError) {
+                    if (
+                      !motionCanvasGenerator.recover ||
+                      fallbackAttempted
+                    ) {
+                      throw repairError;
+                    }
+                    fallbackAttempted = true;
+                    generated = motionCanvasGenerator.recover(
+                      generationRequest,
+                      generated,
+                      `${error.details}\n\nRepair failed: ${
+                        repairError instanceof Error
+                          ? repairError.message
+                          : String(repairError)
+                      }`,
+                    );
+                  }
                   continue;
                 }
                 if (
@@ -2475,6 +2508,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
                 (error) =>
                   error instanceof ElevenLabsVoiceError &&
                   error.code === 'ELEVENLABS_TTS_RESULT_UNKNOWN',
+                pipelineSafetyLimits.maximumVoiceChunks * 2,
               );
               if (chunkGeneration.result.requestId) {
                 previousRequestIds.push(chunkGeneration.result.requestId);
@@ -2493,6 +2527,12 @@ export function createPadStudioServer(options: AppOptions = {}) {
                 chunks: generatedChunks,
               },
             );
+            const chunkKeyPrefix = `${generationKey}:chunk:`;
+            for (const key of voiceSectionGenerations.keys()) {
+              if (key.startsWith(chunkKeyPrefix)) {
+                voiceSectionGenerations.delete(key);
+              }
+            }
             return {
               configuration: resolved.configuration,
               prepared,

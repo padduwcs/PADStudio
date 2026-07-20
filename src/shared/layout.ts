@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {pipelineSafetyLimits} from './pipelineLimits.ts';
 
 export const layoutStatusValues = ['draft', 'approved'] as const;
 export const layoutFontFamilyValues = [
@@ -120,7 +121,7 @@ export type LayoutNodeOverride = z.infer<typeof LayoutNodeOverrideSchema>;
 
 export const LayoutOverridesArraySchema = z
   .array(LayoutNodeOverrideSchema)
-  .max(2_000)
+  .max(20_000)
   .superRefine((overrides, context) => {
     const targets = new Set<string>();
     for (const [index, override] of overrides.entries()) {
@@ -285,7 +286,10 @@ export const LayoutEditorManifestSchema = z
     sourceAnimationSyncGenerationId: CreationIdSchema,
     sourceAnimationSyncContentRevision: z.number().int().positive(),
     sourceAnimationSyncSourceHash: Sha256Schema,
-    scenes: z.array(LayoutEditorSceneSchema).min(2).max(10),
+    scenes: z
+      .array(LayoutEditorSceneSchema)
+      .min(pipelineSafetyLimits.minimumSections)
+      .max(pipelineSafetyLimits.maximumSections),
   })
   .strict()
   .superRefine((manifest, context) => {
@@ -338,7 +342,10 @@ export const LayoutBundleSchema = z
     manifestFile: z.literal('editor-manifest.json'),
     overrideContractVersion: z.literal(1),
     totalDurationSeconds: z.number().positive(),
-    scenes: z.array(LayoutSceneSummarySchema).min(2).max(10),
+    scenes: z
+      .array(LayoutSceneSummarySchema)
+      .min(pipelineSafetyLimits.minimumSections)
+      .max(pipelineSafetyLimits.maximumSections),
     validation: z
       .object({
         validatedAt: z.string().datetime(),

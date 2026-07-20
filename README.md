@@ -41,9 +41,10 @@ Vertical slice đầu tiên đã có thể chạy:
 - Chỉnh sửa, sắp xếp beat, tạo lại theo góp ý và chốt kế hoạch trước khi sinh
   scene hoặc gọi dịch vụ tạo voice.
 - Sinh một scene Motion Canvas cho từng section đã chốt, kiểm tra quyền import
-  và biên dịch TypeScript trước khi nhận kết quả. Scene lỗi được sửa có định hướng
-  tối đa hai lần; nếu Codex vẫn trả TSX hỏng, PAD Studio dựng scene an toàn tại chỗ
-  cho riêng section đó thay vì bỏ dở toàn bộ generation.
+  và biên dịch TypeScript trước khi nhận kết quả. Scene lỗi được sửa một lượt theo
+  diagnostics, sau đó sinh sạch từ đầu một lượt nếu cần; nếu Codex vẫn trả TSX hỏng,
+  PAD Studio dựng scene an toàn tại chỗ cho riêng section đó thay vì bỏ dở toàn bộ
+  generation.
 - Tự khởi động preview ngay trên UI sau khi sinh scene và cho chỉnh visual trước
   khi tạo voice. Các modifier này tiếp tục được đưa vào Layout Editor sau sync.
 - Xem source, tạo lại theo góp ý và chốt bộ scene trước khi sang bước tiếp theo.
@@ -59,7 +60,7 @@ Vertical slice đầu tiên đã có thể chạy:
 - Có thể đọc thêm cấu hình từng dùng trên web ElevenLabs khi API key được cấp
   `History → Read`; thiếu quyền này không chặn tạo voice.
 - Viết narration như một bài nói liên tục xuyên section, có word budget theo
-  preset thời lượng và không mở bài/kết bài lại ở mỗi ranh giới.
+  thời lượng mục tiêu và không mở bài/kết bài lại ở mỗi ranh giới.
 - Tạo TTS thật cho toàn bộ narration trong một request khi nằm trong giới hạn
   model. Bài dài được chia thành số continuity group tối thiểu; model hỗ trợ sẽ
   nhận context và request ID trước đó. Eleven v3 không dùng Request Stitching
@@ -101,11 +102,17 @@ Vertical slice đầu tiên đã có thể chạy:
 - Liệt kê, mở lại, chỉnh sửa và xóa project cục bộ.
 - Giao diện responsive cho desktop và mobile.
 
-Thời lượng định hướng hiện dùng ba mức:
+Thời lượng định hướng có ba lựa chọn nhanh và một lựa chọn linh hoạt:
 
 - Ngắn gọn: 1–2 phút.
 - Tiêu chuẩn: 3–5 phút.
 - Chuyên sâu: 6–8 phút.
+- Tùy chỉnh: từ 0,5 đến 180 phút; đây là cầu chì kỹ thuật rộng, không phải preset
+  nội dung. Outline dùng khoảng ±15% quanh mục tiêu để giữ nhịp kể tự nhiên.
+
+Số section/beat cũng không còn là preset sản phẩm. AI và người dùng chọn cấu trúc
+phù hợp nội dung; các mức 64 section, 64 beat/section và 512 beat toàn bài chỉ là
+cầu chì chống payload hỏng hoặc vòng lặp ngoài ý muốn.
 
 Project metadata và toàn bộ artifact generation được giữ trong
 `projects/<project-id>/` trên máy người dùng. Đây là dữ liệu runtime có thể rất
@@ -115,8 +122,8 @@ di chuyển project cần lưu trữ bằng cơ chế riêng, không dùng repos
 
 Mỗi project có hai chỉ số độc lập:
 
-- `version` là phiên bản cấu trúc file; dữ liệu v1 đến v10 được đọc và nâng cấp
-  lên cấu trúc v11 hiện tại ở lần ghi tiếp theo. Voice/sync section-based của v7
+- `version` là phiên bản cấu trúc file; dữ liệu v1 đến v11 được đọc và nâng cấp
+  lên cấu trúc v12 hiện tại ở lần ghi tiếp theo. Voice/sync section-based của v7
   được chủ động vô hiệu hóa để tạo lại bằng master narration, không giả vờ
   migrate audio cũ thành audio liên tục.
 - `revision` tăng sau mỗi thay đổi nội dung và được dùng với `If-Match` để
@@ -151,8 +158,8 @@ trước khi sang voice–visual.
 
 Kế hoạch voice–visual dùng cùng cơ chế an toàn nhưng có prompt và schema riêng.
 Mỗi section của mạch giảng được giữ nguyên ranh giới và chia thành các beat ngắn.
-Outline phân bổ tổng thời lượng cố định theo preset: ngắn gọn 90 giây, tiêu
-chuẩn 240 giây và chuyên sâu 420 giây. Từ ngân sách đó, PAD Studio tính word
+Outline phân bổ tổng thời lượng theo lựa chọn nhanh (90/240/420 giây) hoặc mục
+tiêu phút do người dùng nhập. Từ ngân sách đó, PAD Studio tính word
 budget với tốc độ mục tiêu 180 đơn vị trắng/phút; AI chỉ viết nội dung, còn
 duration của beat được tính bằng mô hình kết hợp số từ và số ký tự. Mặc định hệ
 thống dùng 195 đơn vị/phút và 14,5 ký tự/giây; sau khi có voice thật, median của
@@ -171,9 +178,9 @@ capability thay đổi trước lúc chạy, backend từ chối rõ ràng để
 lại thay vì âm thầm hạ mức reasoning. Scene đã sinh thành công
 được cache theo `generationId`, kể cả khi một scene timeout hoặc vòng sửa chưa
 hoàn tất; retry chỉ chạy lại scene lỗi. Lỗi TypeScript
-được gửi về một vòng sửa có định hướng cho đúng file lỗi, tối đa hai lần, thay
-vì sinh lại toàn bộ video. Nếu hai vòng vẫn không biên dịch, một fallback local
-giữ đúng time-event của beat được dùng cho section lỗi mà không tốn thêm token.
+được gửi về đúng một vòng sửa có định hướng cho file lỗi. Nếu vẫn sai, hệ thống
+sinh lại riêng scene đó từ context gốc thay vì tiếp tục chắp vá source; sau cùng,
+một fallback local giữ đúng time-event của beat được dùng mà không tốn thêm token.
 Mỗi generation chỉ được lưu tại
 `projects/<project-id>/motion-canvas/generations/<generation-id>/`; project chỉ
 giữ metadata và con trỏ đến generation hiện hành sau khi toàn bộ scene biên dịch
@@ -373,11 +380,14 @@ Mặc định các bước AI dùng model và reasoning mặc định trong Code
 dùng có thể đổi cả hai ngay trên card Codex và lựa chọn được truyền vào từng
 request. Card hiển thị khoảng thời gian tham khảo theo loại tác vụ, effort và số
 batch scene; sau mỗi lần thành công, khoảng này tự hiệu chỉnh bằng lịch sử cục bộ
-trên máy. Effort cao có timeout lớn hơn để không hủy sớm: từ 10 phút ở `low` tới
-60 phút ở `ultra`. Deployment có thể yêu cầu model hoặc effort cụ thể bằng
+trên máy. Effort cao có timeout lớn hơn để không hủy sớm: từ 15 phút ở `low` tới
+120 phút ở `ultra`. Deployment có thể yêu cầu model hoặc effort cụ thể bằng
 `PAD_MOTION_CANVAS_MODEL` và `PAD_MOTION_CANVAS_REASONING_EFFORT`; generator sẽ
 đối chiếu capability trước khi gửi request. `PAD_CODEX_GENERATION_TIMEOUT_MS`
 chủ động thay thế cơ chế timeout thích ứng khi deployment cần một hard guard.
+TTS mặc định có guard thích ứng 2–30 phút theo độ dài text; deployment có mạng
+đặc thù có thể đặt `PAD_ELEVENLABS_GENERATION_TIMEOUT_MS`. POST TTS tốn phí không
+bao giờ được tự gửi lại khi timeout hoặc mất kết nối khiến kết quả chưa rõ.
 
 ## Kiểm tra và chạy production
 

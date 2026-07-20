@@ -16,6 +16,7 @@ import type {
   TopicProject,
 } from '../shared/topic.ts';
 import {currentProjectVersion} from '../shared/topic.ts';
+import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import type {
   LayoutBundle,
   LayoutEditorManifest,
@@ -2463,7 +2464,7 @@ test('POST /api/projects không thể khởi tạo ở bước tùy ý', async (
   assert.equal(listBody.projects.length, 0);
 });
 
-test('API đọc JSON trên 64 KiB và từ chối payload lớn hơn 1 MiB', async (context) => {
+test('API đọc JSON trên 64 KiB và từ chối payload vượt cầu chì 16 MiB', async (context) => {
   const {baseUrl} = await startTestApp(context);
   const acceptedResponse = await fetch(`${baseUrl}/api/projects`, {
     method: 'POST',
@@ -2478,7 +2479,9 @@ test('API đọc JSON trên 64 KiB và từ chối payload lớn hơn 1 MiB', as
   const rejectedResponse = await fetch(`${baseUrl}/api/projects`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({unknown: 'x'.repeat(1024 * 1024)}),
+    body: JSON.stringify({
+      unknown: 'x'.repeat(pipelineSafetyLimits.maximumJsonBodyBytes),
+    }),
   });
   const rejectedBody = await rejectedResponse.json();
 

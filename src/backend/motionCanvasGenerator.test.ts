@@ -52,7 +52,7 @@ class FakeCodexClient implements CodexAppServerClient {
   private threadCount = 0;
   private turnCount = 0;
   private readonly failFirstTurn: boolean;
-  private readonly invalidFirstTurn: boolean;
+  private readonly invalidTurnCount: number;
   private readonly models: Array<Record<string, unknown>>;
 
   constructor(
@@ -80,11 +80,16 @@ class FakeCodexClient implements CodexAppServerClient {
         defaultReasoningEffort: 'medium',
       },
     ],
-    invalidFirstTurn = false,
+    invalidFirstTurn: boolean | number = false,
   ) {
     this.failFirstTurn = failFirstTurn;
     this.models = models;
-    this.invalidFirstTurn = invalidFirstTurn;
+    this.invalidTurnCount =
+      typeof invalidFirstTurn === 'number'
+        ? invalidFirstTurn
+        : invalidFirstTurn
+          ? 1
+          : 0;
   }
 
   async request(method: string, params?: unknown) {
@@ -133,7 +138,7 @@ class FakeCodexClient implements CodexAppServerClient {
                 text: JSON.stringify({
                   name: `Scene ${turnNumber}`,
                   source:
-                    this.invalidFirstTurn && turnNumber === 1
+                    turnNumber <= this.invalidTurnCount
                       ? timedSceneSource(beatIds).replace(
                           'view.add(<Rect',
                           'view.add(<Rect broken={',
@@ -251,6 +256,21 @@ function createGenerationRequest(): MotionCanvasGenerationRequest {
     outline,
     voiceVisualPlan,
   };
+}
+
+function createSingleSceneGenerationRequest() {
+  const request = createGenerationRequest();
+  return {
+    ...request,
+    outline: {
+      ...request.outline,
+      sections: request.outline.sections.slice(0, 1),
+    },
+    voiceVisualPlan: {
+      ...request.voiceVisualPlan,
+      sections: request.voiceVisualPlan.sections.slice(0, 1),
+    },
+  } satisfies MotionCanvasGenerationRequest;
 }
 
 test('Motion Canvas generator ánh xạ scene theo đúng voice–visual', async (context) => {
@@ -398,6 +418,56 @@ test('Motion Canvas generator tự sửa source TSX lỗi trước khi trả gen
 
   assert.equal(result.scenes.length, 2);
   assert.ok(result.scenes.every((scene) => scene.source.includes('makeScene2D')));
+  assert.equal(
+    client.calls.filter((call) => call.method === 'turn/start').length,
+    3,
+  );
+});
+
+test('Motion Canvas generator sinh mới từ đầu khi lượt sửa TSX vẫn lỗi', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-clean-regeneration-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const client = new FakeCodexClient(false, undefined, 2);
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+  });
+
+  const result = await generator.generate(
+    createSingleSceneGenerationRequest(),
+  );
+
+  assert.equal(result.scenes.length, 1);
+  validateMotionCanvasSceneSource(result.scenes[0]!.source);
+  assert.doesNotMatch(result.model, /local-safe-fallback/);
+  assert.equal(
+    client.calls.filter((call) => call.method === 'turn/start').length,
+    3,
+  );
+});
+
+test('Motion Canvas generator hoàn tất bằng fallback an toàn khi cả lượt sinh mới vẫn sai TSX', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-invalid-output-fallback-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const client = new FakeCodexClient(false, undefined, 3);
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+  });
+  const request = createSingleSceneGenerationRequest();
+
+  const result = await generator.generate(request);
+
+  assert.match(result.model, /local-safe-fallback/);
+  validateMotionCanvasSceneSource(result.scenes[0]!.source);
+  validateMotionCanvasTimingContract(
+    result.scenes[0]!.source,
+    request.voiceVisualPlan.sections[0]!.beats,
+  );
   assert.equal(
     client.calls.filter((call) => call.method === 'turn/start').length,
     3,

@@ -6,6 +6,7 @@ import {
   type VoiceVisualPlanContent,
 } from '../shared/topic.ts';
 import {plannedBeatDurationSeconds} from '../shared/narrationTiming.ts';
+import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import {
   outlineIsReady,
   sameValue,
@@ -272,12 +273,21 @@ export function useVoiceVisualDraft(projectId: string) {
   }
 
   function addBeat(outlineSectionId: string) {
-    setDraft((current) => ({
-      ...current,
-      sections: current.sections.map((section) =>
-        section.outlineSectionId === outlineSectionId &&
-        section.beats.length < 8
-          ? {
+    setDraft((current) => {
+      const totalBeats = current.sections.reduce(
+        (total, section) => total + section.beats.length,
+        0,
+      );
+      if (totalBeats >= pipelineSafetyLimits.maximumTotalBeats) {
+        return current;
+      }
+
+      return {
+        ...current,
+        sections: current.sections.map((section) =>
+          section.outlineSectionId === outlineSectionId &&
+          section.beats.length < pipelineSafetyLimits.maximumBeatsPerSection
+            ? {
               ...section,
               beats: [
                 ...section.beats,
@@ -298,9 +308,10 @@ export function useVoiceVisualDraft(projectId: string) {
                 },
               ],
             }
-          : section,
-      ),
-    }));
+            : section,
+        ),
+      };
+    });
   }
 
   function removeBeat(outlineSectionId: string, beatId: string) {

@@ -949,7 +949,10 @@ export function createAnimationSyncWorkspace(
             {
               cwd: repositoryRoot,
               windowsHide: true,
-              timeout: 120_000,
+              timeout: Math.min(
+                2 * 60 * 60_000,
+                Math.max(120_000, voiceBundle.totalDurationSeconds * 500),
+              ),
               maxBuffer: 2 * 1024 * 1024,
             },
           );
@@ -980,7 +983,10 @@ export function createAnimationSyncWorkspace(
             {
               cwd: repositoryRoot,
               windowsHide: true,
-              timeout: 60_000,
+              timeout: Math.min(
+                10 * 60_000,
+                60_000 + motionCanvasBundle.scenes.length * 15_000,
+              ),
               maxBuffer: 1024 * 1024,
             },
           );

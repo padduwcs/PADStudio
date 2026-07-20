@@ -72,8 +72,8 @@ theo mạch giảng; người dùng chỉ sắp xếp beat bên trong từng sec
 tình thay đổi logic giảng giải.
 
 Thời lượng video được dẫn dắt bởi narration, không bởi độ dài animation mà AI
-tự đoán. Outline phân bổ ngân sách thời lượng tổng theo preset, rồi chuyển thành
-word budget cho từng section. AI viết nội dung trong ngân sách đó; PAD Studio
+tự đoán. Outline phân bổ ngân sách theo lựa chọn nhanh hoặc mục tiêu phút tùy chỉnh,
+rồi chuyển thành word budget cho từng section. AI viết nội dung trong ngân sách đó; PAD Studio
 tính duration beat từ số từ và số ký tự, cộng thêm `visualHoldSeconds` do người
 dùng chủ động đặt. Khi đã có voice thật, tốc độ đọc đo từ alignment của cùng
 voice/model/speed được dùng để hiệu chỉnh những kế hoạch mới. Timing bắt đầu
@@ -86,10 +86,17 @@ Hiện tại Codex sinh một scene cho mỗi section từ kế hoạch đã ch�
 theo model mặc định của Codex catalog, chọn mức reasoning chất lượng cao khi
 capability cho phép (`medium` cho lượt dựng đầy đủ) và tự lùi về default hợp lệ
 thay vì phụ thuộc tên model.
+
+Source scene được kiểm tra cú pháp, policy và timing contract trước khi ghi workspace.
+Đầu ra sai được sửa một lần theo diagnostics, rồi sinh sạch từ context gốc một lần;
+nếu cả hai vẫn sai, fallback cục bộ hợp lệ hoàn tất riêng section đó. Luồng này có
+trần số lượt gọi rõ ràng, trong khi timeout/kết nối vẫn được báo thật để retry chỉ
+chạy lại scene chưa hoàn tất.
+
 Kết quả được giới hạn bằng structured output và chính sách source, sau đó phải
 biên dịch TypeScript thành công trước khi trở thành bản nháp có thể review.
-Retry giữ lại scene đã thành công; compiler chỉ gửi file lỗi qua tối đa hai vòng
-sửa có định hướng. Mỗi lần sinh được lưu thành workspace bất biến riêng trong
+Retry giữ lại scene đã thành công và chỉ chạy lại scene chưa hoàn tất. Mỗi lần
+sinh được lưu thành workspace bất biến riêng trong
 project; thay đổi mạch giảng hoặc kế hoạch voice–visual làm scene downstream
 trở thành dữ liệu cũ và buộc sinh lại. Người dùng vẫn là người chốt scene trước
 bước sản xuất tiếp theo.
@@ -248,8 +255,10 @@ Các ranh giới kỹ thuật đang bảo vệ những nguyên tắc trên:
 - Trạng thái `ready`/`stale` và phép đối chiếu section/beat/event dùng predicate
   chung ở `src/shared/projectPipeline.ts`. Backend bổ sung kiểm tra hash narration
   khi quyết định voice có còn đúng nguồn hay không.
-- JSON request bị giới hạn ở 1 MiB và tiếp tục phải qua schema strict. Mức này
-  đủ cho kế hoạch voice–visual tối đa hiện tại nhưng vẫn chặn payload bất thường.
+- Các giới hạn cấu trúc là cầu chì, không phải preset nội dung: tối đa 64 section,
+  64 beat/section, 512 beat toàn bài và thời lượng tùy chỉnh 0,5–180 phút. JSON
+  request bị giới hạn ở 16 MiB và tiếp tục phải qua schema strict để long-form
+  không bị từ chối giả trong khi payload bất thường vẫn bị chặn.
 - `npm run validate` là quality gate cục bộ chuẩn. CI chạy cùng gate trên
   Node.js 24/Ubuntu 24.04, cài FFmpeg tường minh và smoke-test player bằng
   trình duyệt headless; không gọi dịch vụ live hoặc tiêu quota.

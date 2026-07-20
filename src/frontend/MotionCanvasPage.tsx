@@ -458,7 +458,7 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                   </div>
                   <textarea
                     rows={3}
-                    maxLength={600}
+                    maxLength={4000}
                     value={guidance}
                     placeholder="Ví dụ: Giảm chữ, làm chuyển động chia đôi trực quan hơn và giữ bố cục an toàn cho màn hình dọc."
                     onChange={(event) => setGuidance(event.target.value)}

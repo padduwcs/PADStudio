@@ -32,6 +32,7 @@ export interface TopicFormState {
   videoDirection: string;
   audience: TopicInput['audience'];
   duration: TopicInput['duration'];
+  targetDurationMinutes: number;
 }
 
 type FieldErrors = Partial<Record<keyof TopicFormState, string>>;
@@ -50,6 +51,7 @@ const initialForm: TopicFormState = {
   videoDirection: '',
   audience: 'beginner',
   duration: 'standard',
+  targetDurationMinutes: 10,
 };
 
 function loadLocalDraft(): TopicFormState {
@@ -71,9 +73,15 @@ function loadLocalDraft(): TopicFormState {
       duration:
         value.duration === 'concise' ||
         value.duration === 'standard' ||
-        value.duration === 'deep'
+        value.duration === 'deep' ||
+        value.duration === 'custom'
           ? value.duration
           : 'standard',
+      targetDurationMinutes:
+        typeof value.targetDurationMinutes === 'number' &&
+        Number.isFinite(value.targetDurationMinutes)
+          ? value.targetDurationMinutes
+          : 10,
     };
   } catch {
     return initialForm;
@@ -101,12 +109,16 @@ function toFormState(input: TopicInput): TopicFormState {
     videoDirection: input.videoDirection ?? '',
     audience: input.audience,
     duration: input.duration,
+    targetDurationMinutes: input.targetDurationMinutes ?? 10,
   };
 }
 
 function toCandidate(form: TopicFormState) {
+  const {targetDurationMinutes, ...baseForm} = form;
   return {
-    ...form,
+    ...baseForm,
+    targetDurationMinutes:
+      form.duration === 'custom' ? targetDurationMinutes : undefined,
     learningGoal: form.learningGoal.trim() || undefined,
     videoDirection: form.videoDirection.trim() || undefined,
   };

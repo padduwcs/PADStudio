@@ -17,6 +17,7 @@ import {
   countNarrationCharacters,
   countNarrationWhitespaceTokens,
 } from '../shared/narrationTiming.ts';
+import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import type {
   VoiceBundle,
   VoiceSectionAudio,
@@ -267,9 +268,10 @@ async function commitWorkspace(stagingDirectory: string, finalDirectory: string)
 function validateNarration(narration: GeneratedVoiceNarration) {
   const textLength = Array.from(narration.text).length;
   if (
-    narration.sections.length < 2 ||
+    narration.sections.length < pipelineSafetyLimits.minimumSections ||
+    narration.sections.length > pipelineSafetyLimits.maximumSections ||
     narration.chunks.length < 1 ||
-    narration.chunks.length > 40
+    narration.chunks.length > pipelineSafetyLimits.maximumVoiceChunks
   ) {
     throw new VoiceWorkspaceError(
       'VOICE_WORKSPACE_INVALID',
@@ -506,7 +508,10 @@ export function createVoiceWorkspace(
             ffmpegArguments(rawChunks, masterAudioFile),
             {
               windowsHide: true,
-              timeout: 120_000,
+              timeout: Math.min(
+                2 * 60 * 60_000,
+                Math.max(120_000, combined.durationSeconds * 500),
+              ),
               maxBuffer: 2 * 1024 * 1024,
             },
           );

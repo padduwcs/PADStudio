@@ -34,6 +34,42 @@ export const narrationDurationTargets = {
   },
 } as const;
 
+export type NarrationDurationPreset = keyof typeof narrationDurationTargets;
+
+export interface NarrationDurationSelection {
+  duration: NarrationDurationPreset | 'custom';
+  targetDurationMinutes?: number;
+}
+
+export interface NarrationDurationTarget {
+  minimumSeconds: number;
+  targetSeconds: number;
+  maximumSeconds: number;
+}
+
+export function resolveNarrationDurationTarget(
+  selection: NarrationDurationSelection,
+): NarrationDurationTarget {
+  if (selection.duration !== 'custom') {
+    return narrationDurationTargets[selection.duration];
+  }
+
+  const requestedMinutes = Number(selection.targetDurationMinutes);
+  const targetSeconds = Math.max(
+    pipelineSafetyLimits.minimumCustomDurationMinutes * 60,
+    Math.round((Number.isFinite(requestedMinutes) ? requestedMinutes : 10) * 60),
+  );
+  // Custom duration remains a target rather than an artificial exact length.
+  // A ±15% band gives narration room to sound natural while keeping planning
+  // and review anchored to the user's requested scale.
+  const flexibilitySeconds = Math.max(15, Math.round(targetSeconds * 0.15));
+  return {
+    minimumSeconds: Math.max(15, targetSeconds - flexibilitySeconds),
+    targetSeconds,
+    maximumSeconds: targetSeconds + flexibilitySeconds,
+  };
+}
+
 export function normalizeNarrationText(text: string) {
   return text.trim().replace(/\r\n?/g, '\n');
 }
@@ -91,10 +127,19 @@ export function plannedBeatDurationSeconds(
   visualHoldSeconds = 0,
   calibration: NarrationCalibration = DEFAULT_NARRATION_CALIBRATION,
 ) {
-  const hold = Math.max(0, Math.min(30, Math.round(visualHoldSeconds)));
+  const hold = Math.max(
+    0,
+    Math.min(
+      pipelineSafetyLimits.maximumVisualHoldSeconds,
+      Math.round(visualHoldSeconds),
+    ),
+  );
   return Math.max(
-    4,
-    Math.min(90, Math.ceil(estimateNarrationSeconds(text, calibration)) + hold),
+    pipelineSafetyLimits.minimumBeatDurationSeconds,
+    Math.min(
+      pipelineSafetyLimits.maximumBeatDurationSeconds,
+      Math.ceil(estimateNarrationSeconds(text, calibration)) + hold,
+    ),
   );
 }
 
@@ -124,3 +169,4 @@ export function calibrationFromActualNarration(
     charactersPerSecond: characterCount / durationSeconds,
   };
 }
+import {pipelineSafetyLimits} from './pipelineLimits.ts';

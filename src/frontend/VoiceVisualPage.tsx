@@ -3,6 +3,7 @@ import {
   narrationMetrics,
   targetNarrationTokenCount,
 } from '../shared/narrationTiming.ts';
+import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {
@@ -458,7 +459,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                   <span>Lời thuyết minh</span>
                                   <textarea
                                     rows={4}
-                                    maxLength={1000}
+                                    maxLength={4000}
                                     disabled={plan.stale}
                                     value={beat.voiceover}
                                     onChange={(event) =>
@@ -475,7 +476,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                   <span>Visual cần thấy</span>
                                   <textarea
                                     rows={3}
-                                    maxLength={700}
+                                    maxLength={2000}
                                     disabled={plan.stale}
                                     value={beat.visualDescription}
                                     onChange={(event) =>
@@ -492,7 +493,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                   <span>Chuyển động</span>
                                   <textarea
                                     rows={2}
-                                    maxLength={500}
+                                    maxLength={2000}
                                     disabled={plan.stale}
                                     value={beat.animationDescription}
                                     onChange={(event) =>
@@ -529,7 +530,9 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                     <input
                                       type="number"
                                       min={0}
-                                      max={30}
+                                      max={
+                                        pipelineSafetyLimits.maximumVisualHoldSeconds
+                                      }
                                       disabled={plan.stale}
                                       value={beat.visualHoldSeconds}
                                       onChange={(event) =>
@@ -554,7 +557,11 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                         className="voice-visual-add-beat"
                         type="button"
                         disabled={
-                          planSection.beats.length >= 8 || plan.stale
+                          planSection.beats.length >=
+                            pipelineSafetyLimits.maximumBeatsPerSection ||
+                          beatCount >=
+                            pipelineSafetyLimits.maximumTotalBeats ||
+                          plan.stale
                         }
                         onClick={() =>
                           plan.addBeat(planSection.outlineSectionId)
@@ -581,7 +588,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                   </div>
                   <textarea
                     rows={3}
-                    maxLength={600}
+                    maxLength={4000}
                     value={guidance}
                     placeholder="Ví dụ: Rút gọn lời kể, giảm số beat và làm visual dễ dựng hơn."
                     onChange={(event) => setGuidance(event.target.value)}

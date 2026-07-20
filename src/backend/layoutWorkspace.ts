@@ -24,6 +24,7 @@ import {
 } from '../shared/layout.ts';
 import type {AnimationSyncBundle} from '../shared/topic.ts';
 import {layoutMatchesAnimationSync} from '../shared/projectPipeline.ts';
+import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -62,7 +63,10 @@ const StoredLayoutWorkspaceManifestSchema = z
     totalDurationSeconds: z.number().positive(),
     motionCanvasVersion: z.string().trim().min(1).max(40),
     audioDurationSeconds: z.number().positive(),
-    scenes: z.array(LayoutSceneSummarySchema).min(2).max(10),
+    scenes: z
+      .array(LayoutSceneSummarySchema)
+      .min(pipelineSafetyLimits.minimumSections)
+      .max(pipelineSafetyLimits.maximumSections),
     validatedAt: z.string().datetime(),
   })
   .strict()

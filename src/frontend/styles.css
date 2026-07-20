@@ -757,7 +757,56 @@ textarea.has-error,
 }
 
 .duration-grid {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.custom-duration-field {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 13px 14px;
+  border: 1px solid #dfe6e1;
+  border-radius: 10px;
+  background: #f8faf8;
+  color: #52645d;
+  font-size: 11px;
+}
+
+.custom-duration-field > span:first-child {
+  color: #334d44;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.custom-duration-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.custom-duration-control input {
+  width: 120px;
+  padding: 9px 10px;
+  border: 1px solid #ccd7d1;
+  border-radius: 8px;
+  background: #fff;
+  color: #263d35;
+  font: inherit;
+  font-size: 13px;
+}
+
+.custom-duration-control input:focus {
+  border-color: var(--green-700);
+  outline: 3px solid rgba(36, 95, 77, 0.12);
+}
+
+.custom-duration-control input.has-error {
+  border-color: #bd5959;
+}
+
+.custom-duration-field small {
+  color: #75847e;
+  line-height: 1.45;
 }
 
 .choice-card {

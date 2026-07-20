@@ -9,9 +9,10 @@ import type {
   TopicInput,
 } from '../shared/topic.ts';
 import {
-  narrationDurationTargets,
+  resolveNarrationDurationTarget,
   targetNarrationTokenCount,
 } from '../shared/narrationTiming.ts';
+import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import type {CodexAppServerClient} from './codexConnection.ts';
 import {
   CodexStructuredGenerationError,
@@ -19,7 +20,7 @@ import {
   runCodexStructuredGeneration,
 } from './codexStructuredGeneration.ts';
 
-export const OUTLINE_PROMPT_VERSION = 'outline-v2';
+export const OUTLINE_PROMPT_VERSION = 'outline-v3';
 
 const generatedOutlineSchema = z
   .object({
@@ -36,13 +37,17 @@ const generatedOutlineSchema = z
           .object({
             title: z.string().trim().min(3).max(120),
             goal: z.string().trim().min(6).max(280),
-            content: z.string().trim().min(12).max(900),
-            estimatedSeconds: z.number().int().min(10).max(240),
+            content: z.string().trim().min(12).max(4000),
+            estimatedSeconds: z
+              .number()
+              .int()
+              .min(pipelineSafetyLimits.minimumSectionDurationSeconds)
+              .max(pipelineSafetyLimits.maximumSectionDurationSeconds),
           })
           .strict(),
       )
-      .min(2)
-      .max(10),
+      .min(pipelineSafetyLimits.minimumSections)
+      .max(pipelineSafetyLimits.maximumSections),
   })
   .strict();
 
@@ -50,11 +55,19 @@ const outputJsonSchema = z.toJSONSchema(generatedOutlineSchema, {
   target: 'draft-7',
 });
 
-const durationInstructions: Record<TopicInput['duration'], string> = {
+const durationInstructions = {
   concise: '60–120 giây, mục tiêu 90 giây, thường 2–4 ý',
   standard: '180–300 giây, mục tiêu 240 giây, thường 4–6 ý',
   deep: '360–480 giây, mục tiêu 420 giây, thường 5–8 ý',
-};
+} satisfies Record<Exclude<TopicInput['duration'], 'custom'>, string>;
+
+function durationInstruction(topicInput: TopicInput) {
+  if (topicInput.duration !== 'custom') {
+    return durationInstructions[topicInput.duration];
+  }
+  const target = resolveNarrationDurationTarget(topicInput);
+  return `${target.minimumSeconds}–${target.maximumSeconds} giây, mục tiêu ${target.targetSeconds} giây; tự chọn số ý phù hợp với nội dung`;
+}
 
 export interface OutlineGenerationRequest {
   topicInput: TopicInput;
@@ -92,10 +105,10 @@ function currentOutlineForPrompt(outline: TeachingOutline) {
 }
 
 function buildPrompt(request: OutlineGenerationRequest) {
-  const durationTarget = narrationDurationTargets[request.topicInput.duration];
+  const durationTarget = resolveNarrationDurationTarget(request.topicInput);
   const payload: Record<string, unknown> = {
     topicInput: request.topicInput,
-    targetDuration: durationInstructions[request.topicInput.duration],
+    targetDuration: durationInstruction(request.topicInput),
     narrationBudget: {
       ...durationTarget,
       minimumWhitespaceTokenCount: targetNarrationTokenCount(
@@ -121,6 +134,7 @@ function buildPrompt(request: OutlineGenerationRequest) {
   return [
     'Tạo mạch giảng tiếng Việt từ JSON sau.',
     'Giữ đúng ý người dùng; nêu giả định khi đầu vào chưa rõ.',
+    `Tự chọn số section theo độ phức tạp và thời lượng; không ép vào preset cố định. Cầu chì kỹ thuật cho phép tối đa ${pipelineSafetyLimits.maximumSections} section nhưng chỉ dùng số lượng thực sự có ích.`,
     'Mỗi ý phải có vai trò riêng; phân bổ estimatedSeconds sao cho tổng gần targetSeconds và đủ ngân sách narration tương ứng.',
     'Không viết lời thoại, code, cảnh quay, caption hay hướng dẫn animation.',
     JSON.stringify(payload),
@@ -137,9 +151,9 @@ function allocateTargetDurations(
   );
   const durations = sections.map((section) =>
     Math.max(
-      10,
+      pipelineSafetyLimits.minimumSectionDurationSeconds,
       Math.min(
-        240,
+        pipelineSafetyLimits.maximumSectionDurationSeconds,
         Math.round((section.estimatedSeconds / totalWeight) * targetSeconds),
       ),
     ),
@@ -149,7 +163,9 @@ function allocateTargetDurations(
   while (difference !== 0) {
     const direction = Math.sign(difference);
     const index = durations.findIndex((value) =>
-      direction > 0 ? value < 240 : value > 10,
+      direction > 0
+        ? value < pipelineSafetyLimits.maximumSectionDurationSeconds
+        : value > pipelineSafetyLimits.minimumSectionDurationSeconds,
     );
     if (index < 0) break;
     durations[index] = durations[index]! + direction;
@@ -242,7 +258,7 @@ export function createCodexOutlineGenerator(
 
         const targetDurations = allocateTargetDurations(
           parsedOutline.data.sections,
-          narrationDurationTargets[request.topicInput.duration].targetSeconds,
+          resolveNarrationDurationTarget(request.topicInput).targetSeconds,
         );
         return {
           content: {

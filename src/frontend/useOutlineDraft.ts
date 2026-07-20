@@ -5,6 +5,7 @@ import {
   type TeachingOutlineSection,
   type TopicProject,
 } from '../shared/topic.ts';
+import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import {
   outlineIsStale,
   sameValue,
@@ -264,7 +265,9 @@ export function useOutlineDraft(projectId: string) {
 
   function addSection() {
     setDraft((current) => {
-      if (current.sections.length >= 10) return current;
+      if (
+        current.sections.length >= pipelineSafetyLimits.maximumSections
+      ) return current;
       return {
         ...current,
         sections: [
@@ -283,7 +286,9 @@ export function useOutlineDraft(projectId: string) {
 
   function removeSection(sectionId: string) {
     setDraft((current) => {
-      if (current.sections.length <= 2) return current;
+      if (
+        current.sections.length <= pipelineSafetyLimits.minimumSections
+      ) return current;
       return {
         ...current,
         sections: current.sections.filter(

@@ -7,6 +7,7 @@ import {
   estimateNarrationSeconds,
   narrationDurationTargets,
   plannedBeatDurationSeconds,
+  resolveNarrationDurationTarget,
   targetNarrationTokenCount,
 } from './narrationTiming.ts';
 
@@ -21,6 +22,20 @@ test('Bộ timing narration kết hợp đơn vị khoảng trắng và số ký
   assert.equal(
     plannedBeatDurationSeconds(text, 3),
     Math.max(4, Math.ceil(seconds) + 3),
+  );
+});
+
+test('Thời lượng tùy chỉnh tạo target linh hoạt thay vì preset cứng', () => {
+  assert.deepEqual(
+    resolveNarrationDurationTarget({
+      duration: 'custom',
+      targetDurationMinutes: 20,
+    }),
+    {
+      minimumSeconds: 1020,
+      targetSeconds: 1200,
+      maximumSeconds: 1380,
+    },
   );
 });
 

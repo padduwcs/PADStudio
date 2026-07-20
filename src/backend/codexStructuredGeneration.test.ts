@@ -19,5 +19,5 @@ test('timeout Codex tăng theo mức reasoning cao', {
   assert.ok(high > medium);
   assert.ok(ultra > high);
   assert.ok(futureEffort >= high);
-  assert.ok(ultra <= 60 * 60 * 1000);
+  assert.ok(ultra <= 120 * 60 * 1000);
 });

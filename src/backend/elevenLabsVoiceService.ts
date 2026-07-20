@@ -15,6 +15,14 @@ import type {
 const ELEVENLABS_API_ORIGIN = 'https://api.elevenlabs.io';
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+function environmentGenerationTimeoutMs() {
+  const raw = process.env.PAD_ELEVENLABS_GENERATION_TIMEOUT_MS?.trim();
+  if (!raw) return undefined;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return undefined;
+  return Math.max(1_000, Math.min(2 * 60 * 60 * 1000, Math.floor(value)));
+}
+
 const voiceSchema = z
   .object({
     voice_id: z.string().min(1),
@@ -306,11 +314,22 @@ export function createElevenLabsVoiceService(
 ): ElevenLabsVoiceService {
   const fetchRequest = options.fetch ?? globalThis.fetch;
   const timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-  const generationTimeoutMs = Math.max(
-    timeoutMs,
-    options.generationTimeoutMs ?? 3 * 60 * 1000,
-  );
+  const configuredGenerationTimeoutMs =
+    options.generationTimeoutMs ?? environmentGenerationTimeoutMs();
   const retryDelaysMs = options.retryDelaysMs ?? [350, 900, 1_800];
+
+  function generationTimeoutMs(text: string) {
+    if (configuredGenerationTimeoutMs !== undefined) {
+      return Math.max(timeoutMs, configuredGenerationTimeoutMs);
+    }
+    // Long sections need proportionally more provider time. This is only a
+    // guard against a truly stuck request; a costly POST is never retried
+    // automatically because its outcome may be unknown after a disconnect.
+    return Math.max(
+      timeoutMs,
+      Math.min(30 * 60 * 1000, 2 * 60 * 1000 + text.length * 120),
+    );
+  }
 
   async function configuredApiKey() {
     const apiKey = (
@@ -639,7 +658,7 @@ export function createElevenLabsVoiceService(
           }),
         },
         false,
-        generationTimeoutMs,
+        generationTimeoutMs(input.text),
         true,
       );
       if (!response.ok) throw await errorForResponse(response);

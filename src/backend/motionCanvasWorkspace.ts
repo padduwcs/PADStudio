@@ -21,6 +21,7 @@ import {
   type MotionCanvasBundle,
   type MotionCanvasScene,
 } from '../shared/topic.ts';
+import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import {
   MOTION_CANVAS_FPS,
   MOTION_CANVAS_HEIGHT,
@@ -357,10 +358,13 @@ export function createMotionCanvasWorkspace(
           'Generation ID của workspace Motion Canvas không hợp lệ.',
         );
       }
-      if (scenes.length < 2 || scenes.length > 10) {
+      if (
+        scenes.length < pipelineSafetyLimits.minimumSections ||
+        scenes.length > pipelineSafetyLimits.maximumSections
+      ) {
         throw new MotionCanvasWorkspaceError(
           'MOTION_CANVAS_WORKSPACE_INVALID',
-          'Workspace Motion Canvas cần từ 2 đến 10 scene.',
+          'Số scene của workspace Motion Canvas vượt cầu chì an toàn.',
         );
       }
       const scenePaths = new Set<string>();
@@ -469,7 +473,10 @@ declare type Callback = (...args: any[]) => void;
             {
               cwd: repositoryRoot,
               windowsHide: true,
-              timeout: 60_000,
+              timeout: Math.min(
+                10 * 60_000,
+                60_000 + scenes.length * 15_000,
+              ),
               maxBuffer: 1024 * 1024,
             },
           );
