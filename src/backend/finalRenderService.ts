@@ -3,6 +3,7 @@ import {createReadStream, existsSync} from 'node:fs';
 import {
   mkdir,
   lstat,
+  readdir,
   readFile,
   realpath,
   rename,
@@ -19,8 +20,12 @@ import {fileURLToPath, pathToFileURL} from 'node:url';
 import {promisify} from 'node:util';
 import {execFile} from 'node:child_process';
 import {
+  FinalRenderDiagnosticSchema,
   FinalRenderBundleSchema,
+  FinalRenderJobReportSchema,
+  FinalRenderJobStatusSchema,
   finalRenderTimingToleranceSeconds,
+  type FinalRenderDiagnostic,
   type FinalRenderBundle,
   type FinalRenderJobStatus,
   type RenderWatermark,
@@ -48,8 +53,11 @@ const CRF = 18;
 const PRESET = 'medium' as const;
 const MAX_FRAME_BYTES = 32 * 1024 * 1024;
 const MAX_STATUS_BYTES = 64 * 1024;
+const BROWSER_SEGMENT_FRAMES = FPS * 60;
 const RENDER_MANIFEST_FILE = 'manifest.json';
 const VIDEO_FILE = 'video.mp4' as const;
+const RENDER_JOBS_DIRECTORY = 'jobs';
+const MAX_JOB_REPORT_BYTES = 128 * 1024;
 
 export interface RenderFrameTiming {
   estimatedFrameCount: number;
@@ -192,6 +200,7 @@ interface RenderBridge {
   token: string;
   name: string;
   durationSeconds: number;
+  rangeFrames: [number, number];
   overrides: Awaited<ReturnType<LayoutWorkspace['readOverrides']>>;
   editorManifest: Awaited<
     ReturnType<LayoutWorkspace['readEditorManifest']>
@@ -203,7 +212,7 @@ interface RenderBridge {
   } | null;
   writeFrame(frame: number, body: Buffer): Promise<void>;
   complete(): void;
-  fail(message: string): void;
+  fail(message: string, diagnostic?: unknown): void;
 }
 
 interface ProbeResult {
@@ -227,7 +236,11 @@ export interface FinalRenderService {
   getStatus(
     projectId: string,
     generationId?: string,
-  ): FinalRenderJobStatus | null;
+  ): Promise<FinalRenderJobStatus | null>;
+  getCompletedBundle(
+    projectId: string,
+    generationId: string,
+  ): Promise<FinalRenderBundle | null>;
   resolveVideo(
     projectId: string,
     bundle: FinalRenderBundle,
@@ -242,10 +255,16 @@ export interface FinalRenderOptions {
 
 export class FinalRenderError extends Error {
   readonly code: string;
+  readonly diagnostic: FinalRenderDiagnostic | null;
 
-  constructor(code: string, message: string, options?: ErrorOptions) {
+  constructor(
+    code: string,
+    message: string,
+    options?: ErrorOptions & {diagnostic?: FinalRenderDiagnostic | null},
+  ) {
     super(message, options);
     this.code = code;
+    this.diagnostic = options?.diagnostic ?? null;
   }
 }
 
@@ -338,6 +357,90 @@ async function readBody(request: IncomingMessage, maximumBytes: number) {
     chunks.push(buffer);
   }
   return Buffer.concat(chunks, size);
+}
+
+function boundedText(value: unknown, maximumLength: number) {
+  const text = typeof value === 'string' ? value : String(value ?? '');
+  return text.replaceAll('\u0000', '').trim().slice(0, maximumLength);
+}
+
+function sanitizeDiagnosticText(
+  value: string | null,
+  replacements: string[],
+) {
+  if (!value) return null;
+  let sanitized = value;
+  for (const replacement of replacements) {
+    if (!replacement) continue;
+    sanitized = sanitized.replaceAll(replacement, '[render-workspace]');
+    sanitized = sanitized.replaceAll(
+      replacement.replaceAll('\\', '/'),
+      '[render-workspace]',
+    );
+  }
+  sanitized = sanitized.replace(
+    /https?:\/\/127\.0\.0\.1:\d+/giu,
+    '[render-runtime]',
+  );
+  return sanitized;
+}
+
+function sanitizeRenderDiagnostic(
+  value: unknown,
+  replacements: string[] = [],
+) {
+  const parsed = FinalRenderDiagnosticSchema.safeParse(value);
+  if (!parsed.success) return null;
+  return FinalRenderDiagnosticSchema.parse({
+    ...parsed.data,
+    sceneName: sanitizeDiagnosticText(parsed.data.sceneName, replacements),
+    logs: parsed.data.logs.map(log => ({
+      ...log,
+      message: sanitizeDiagnosticText(log.message, replacements),
+      remarks: sanitizeDiagnosticText(log.remarks, replacements),
+      stack: sanitizeDiagnosticText(log.stack, replacements),
+    })),
+  });
+}
+
+function backendRenderDiagnostic(
+  stage: FinalRenderDiagnostic['stage'],
+  message: string,
+  progress: {frame?: number | null; timeSeconds?: number | null} = {},
+): FinalRenderDiagnostic {
+  return FinalRenderDiagnosticSchema.parse({
+    stage,
+    frame: progress.frame ?? null,
+    sceneFrame: null,
+    sceneName: null,
+    timeSeconds: progress.timeSeconds ?? null,
+    logs: [
+      {
+        level: 'error',
+        message: boundedText(message, 1_000) || 'Final render thất bại.',
+        remarks: null,
+        stack: null,
+      },
+    ],
+  });
+}
+
+function diagnosticStageForErrorCode(
+  code: string,
+): FinalRenderDiagnostic['stage'] {
+  if (code.includes('ENCODER') || code.includes('FFMPEG')) return 'encoder';
+  if (code.includes('BROWSER')) return 'browser';
+  if (
+    code.includes('DURATION') ||
+    code.includes('PROBE') ||
+    code.includes('VALIDATION')
+  ) {
+    return 'finalizing';
+  }
+  if (code.includes('MOTION_CANVAS') || code.includes('FRAME')) {
+    return 'motion-canvas';
+  }
+  return 'preparing';
 }
 
 function findBrowserExecutable(configured?: string) {
@@ -535,11 +638,202 @@ export function createFinalRenderService(
     const key = jobKey(projectId, generationId);
     const previous = statuses.get(key);
     if (!previous) return;
-    statuses.set(key, {
-      ...previous,
-      ...patch,
-      updatedAt: new Date().toISOString(),
+    statuses.set(
+      key,
+      FinalRenderJobStatusSchema.parse({
+        ...previous,
+        ...patch,
+        message:
+          patch.message === undefined
+            ? previous.message
+            : boundedText(patch.message, 500),
+        updatedAt: new Date().toISOString(),
+      }),
+    );
+  }
+
+  async function resolveJobReportsDirectory(
+    projectId: string,
+    create: boolean,
+  ) {
+    const projectsRoot = await realpath(path.resolve(projectsDirectory));
+    const projectDirectory = await realpath(
+      path.resolve(projectsRoot, projectId),
+    );
+    if (!isInside(projectsRoot, projectDirectory)) {
+      throw new FinalRenderError(
+        'FINAL_RENDER_INVALID',
+        'Thư mục project của render report không an toàn.',
+      );
+    }
+
+    const rendersCandidate = path.join(projectDirectory, 'renders');
+    let rendersEntry = await lstat(rendersCandidate).catch(error => {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      ) {
+        return null;
+      }
+      throw error;
     });
+    if (!rendersEntry && create) {
+      await mkdir(rendersCandidate);
+      rendersEntry = await lstat(rendersCandidate);
+    }
+    if (!rendersEntry) return null;
+    const rendersDirectory = await realpath(rendersCandidate);
+    if (
+      rendersEntry.isSymbolicLink() ||
+      !rendersEntry.isDirectory() ||
+      !isInside(projectDirectory, rendersDirectory)
+    ) {
+      throw new FinalRenderError(
+        'FINAL_RENDER_INVALID',
+        'Thư mục lưu render report không an toàn.',
+      );
+    }
+
+    const jobsCandidate = path.join(
+      rendersDirectory,
+      RENDER_JOBS_DIRECTORY,
+    );
+    let jobsEntry = await lstat(jobsCandidate).catch(error => {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      ) {
+        return null;
+      }
+      throw error;
+    });
+    if (!jobsEntry && create) {
+      await mkdir(jobsCandidate);
+      jobsEntry = await lstat(jobsCandidate);
+    }
+    if (!jobsEntry) return null;
+    const jobsDirectory = await realpath(jobsCandidate);
+    if (
+      jobsEntry.isSymbolicLink() ||
+      !jobsEntry.isDirectory() ||
+      !isInside(projectDirectory, jobsDirectory)
+    ) {
+      throw new FinalRenderError(
+        'FINAL_RENDER_INVALID',
+        'Thư mục render report không an toàn.',
+      );
+    }
+    return jobsDirectory;
+  }
+
+  async function persistTerminalStatus(
+    projectId: string,
+    layoutBundle: LayoutBundle,
+    status: FinalRenderJobStatus,
+    bundle: FinalRenderBundle | null = null,
+  ) {
+    const report = FinalRenderJobReportSchema.parse({
+      version: 1,
+      projectId,
+      sourceLayoutContentRevision: layoutBundle.contentRevision,
+      sourceLayoutGenerationId: layoutBundle.generation.generationId,
+      sourceLayoutSourceHash: layoutBundle.validation.sourceHash,
+      status,
+      bundle,
+    });
+    const jobsDirectory = await resolveJobReportsDirectory(projectId, true);
+    if (!jobsDirectory) {
+      throw new FinalRenderError(
+        'FINAL_RENDER_REPORT_UNAVAILABLE',
+        'Không thể mở thư mục lưu render report.',
+      );
+    }
+    const target = path.join(jobsDirectory, `${status.generationId}.json`);
+    const temporary = path.join(
+      jobsDirectory,
+      `.staging-${status.generationId}-${randomBytes(6).toString('hex')}.json`,
+    );
+    if (!isInside(jobsDirectory, target) || !isInside(jobsDirectory, temporary)) {
+      throw new FinalRenderError(
+        'FINAL_RENDER_INVALID',
+        'Đường dẫn render report không an toàn.',
+      );
+    }
+    try {
+      await writeFile(temporary, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+      await rename(temporary, target);
+    } finally {
+      await rm(temporary, {force: true}).catch(() => undefined);
+    }
+  }
+
+  async function readPersistedReport(
+    projectId: string,
+    generationId: string,
+  ) {
+    const jobsDirectory = await resolveJobReportsDirectory(projectId, false);
+    if (!jobsDirectory) return null;
+    const candidate = path.join(jobsDirectory, `${generationId}.json`);
+    if (!isInside(jobsDirectory, candidate)) return null;
+    try {
+      const entry = await stat(candidate);
+      if (!entry.isFile() || entry.size > MAX_JOB_REPORT_BYTES) return null;
+      const parsed = FinalRenderJobReportSchema.safeParse(
+        JSON.parse(await readFile(candidate, 'utf8')),
+      );
+      if (
+        !parsed.success ||
+        parsed.data.projectId !== projectId ||
+        parsed.data.status.generationId !== generationId
+      ) {
+        return null;
+      }
+      return parsed.data;
+    } catch {
+      return null;
+    }
+  }
+
+  async function readPersistedStatus(
+    projectId: string,
+    generationId?: string,
+  ) {
+    if (generationId) {
+      return (await readPersistedReport(projectId, generationId))?.status ?? null;
+    }
+    const jobsDirectory = await resolveJobReportsDirectory(projectId, false);
+    if (!jobsDirectory) return null;
+    const fileNames = (await readdir(jobsDirectory))
+      .filter(fileName =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.json$/iu.test(
+          fileName,
+        ),
+      )
+      .slice(0, 1_000);
+    const reports = await Promise.all(
+      fileNames.map(async fileName => {
+        const candidate = path.join(jobsDirectory, fileName);
+        if (!isInside(jobsDirectory, candidate)) return null;
+        try {
+          const entry = await stat(candidate);
+          if (!entry.isFile() || entry.size > MAX_JOB_REPORT_BYTES) return null;
+          const parsed = FinalRenderJobReportSchema.safeParse(
+            JSON.parse(await readFile(candidate, 'utf8')),
+          );
+          if (!parsed.success || parsed.data.projectId !== projectId) return null;
+          return parsed.data.status;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    return reports
+      .filter((status): status is FinalRenderJobStatus => Boolean(status))
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
   }
 
   async function loadRuntime(): Promise<RenderRuntime> {
@@ -592,6 +886,7 @@ export function createFinalRenderService(
               sendJson(response, 200, {
                 name: bridge.name,
                 durationSeconds: bridge.durationSeconds,
+                rangeFrames: bridge.rangeFrames,
                 fps: FPS,
                 width: WIDTH,
                 height: HEIGHT,
@@ -642,10 +937,17 @@ export function createFinalRenderService(
               }
               const body = JSON.parse(
                 (await readBody(request, MAX_STATUS_BYTES)).toString('utf8'),
-              ) as {state?: string; message?: string};
+              ) as {
+                state?: string;
+                message?: string;
+                diagnostic?: unknown;
+              };
               if (body.state === 'completed') bridge.complete();
               else if (body.state === 'failed') {
-                bridge.fail(String(body.message ?? 'Motion Canvas render thất bại.'));
+                bridge.fail(
+                  String(body.message ?? 'Motion Canvas render thất bại.'),
+                  body.diagnostic,
+                );
               } else {
                 sendJson(response, 422, {error: {code: 'FINAL_RENDER_STATUS_INVALID'}});
                 return;
@@ -656,7 +958,9 @@ export function createFinalRenderService(
             next();
           };
           void handle().catch(error => {
-            bridge.fail(error instanceof Error ? error.message : String(error));
+            bridge.fail(
+              error instanceof Error ? error.message : String(error),
+            );
             if (!response.headersSent) {
               sendJson(response, 500, {error: {code: 'FINAL_RENDER_BRIDGE_FAILED'}});
             } else if (!response.writableEnded) {
@@ -862,21 +1166,30 @@ export function createFinalRenderService(
     let viteServer: RuntimeServer | null = null;
     let browser: ReturnType<typeof spawn> | null = null;
     let ffmpeg: ReturnType<typeof spawn> | null = null;
-    let completionSettled = false;
-    let completeRender: () => void = () => {};
-    let failRender: (error: Error) => void = () => {};
-    const completion = new Promise<void>((resolve, reject) => {
-      completeRender = () => {
-        if (completionSettled) return;
-        completionSettled = true;
-        resolve();
-      };
-      failRender = error => {
-        if (completionSettled) return;
-        completionSettled = true;
-        reject(error);
-      };
-    });
+    let renderPhase: FinalRenderDiagnostic['stage'] = 'preparing';
+    let segmentCompletion:
+      | {resolve: () => void; reject: (error: Error) => void}
+      | null = null;
+    let terminalRenderError: Error | null = null;
+    const beginSegment = () => {
+      if (terminalRenderError) return Promise.reject(terminalRenderError);
+      return new Promise<void>((resolve, reject) => {
+        segmentCompletion = {resolve, reject};
+      });
+    };
+    const completeRender = () => {
+      const pending = segmentCompletion;
+      if (!pending) return;
+      segmentCompletion = null;
+      pending.resolve();
+    };
+    const failRender = (error: Error) => {
+      terminalRenderError ??= error;
+      const pending = segmentCompletion;
+      if (!pending) return;
+      segmentCompletion = null;
+      pending.reject(error);
+    };
     const stopActiveRender = () => {
       failRender(
         new FinalRenderError(
@@ -897,6 +1210,7 @@ export function createFinalRenderService(
         copiedWorkspace,
       );
       const runtime = await loadRuntime();
+      renderPhase = 'encoder';
       ffmpeg = spawn(
         ffmpegPath,
         [
@@ -957,17 +1271,35 @@ export function createFinalRenderService(
             new FinalRenderError(
               'FINAL_RENDER_ENCODER_UNAVAILABLE',
               'Không thể khởi động FFmpeg. Hãy kiểm tra FFMPEG_PATH.',
-              {cause: error},
+              {
+                cause: error,
+                diagnostic: backendRenderDiagnostic(
+                  'encoder',
+                  error.message,
+                  {frame: framesReceived > 0 ? framesReceived - 1 : null},
+                ),
+              },
             ),
           ),
         );
         ffmpeg?.once('exit', code => {
           if (code === 0) resolve();
-          else reject(
-            new Error(
-              `FFmpeg dừng với mã ${String(code)}. ${ffmpegErrors.join('').slice(-1200)}`,
-            ),
-          );
+          else {
+            const details = ffmpegErrors.join('').slice(-4_000).trim();
+            reject(
+              new FinalRenderError(
+                'FINAL_RENDER_ENCODER_FAILED',
+                `FFmpeg dừng với mã ${String(code)} khi đang mã hóa video.`,
+                {
+                  diagnostic: backendRenderDiagnostic(
+                    'encoder',
+                    details || `FFmpeg dừng với mã ${String(code)}.`,
+                    {frame: framesReceived > 0 ? framesReceived - 1 : null},
+                  ),
+                },
+              ),
+            );
+          }
         });
       });
       ffmpegExit.catch(error => failRender(error));
@@ -976,6 +1308,10 @@ export function createFinalRenderService(
         token: randomBytes(32).toString('base64url'),
         name: `pad-studio-${projectId}`,
         durationSeconds: layoutBundle.totalDurationSeconds,
+        rangeFrames: [0, Math.min(
+          BROWSER_SEGMENT_FRAMES - 1,
+          estimatedTotalFrames - 1,
+        )],
         overrides: verified.overrides,
         editorManifest: verified.editorManifest,
         watermark: renderOptions.watermark,
@@ -1010,8 +1346,26 @@ export function createFinalRenderService(
         complete() {
           completeRender();
         },
-        fail(message) {
-          failRender(new Error(message));
+        fail(message, diagnostic) {
+          const normalizedDiagnostic = sanitizeRenderDiagnostic(
+            diagnostic,
+            [repositoryRoot, copiedWorkspace, bridge.token],
+          );
+          failRender(
+            new FinalRenderError(
+              'FINAL_RENDER_MOTION_CANVAS_FAILED',
+              boundedText(message, 500) || 'Motion Canvas render thất bại.',
+              {
+                diagnostic:
+                  normalizedDiagnostic ??
+                  backendRenderDiagnostic(
+                    'motion-canvas',
+                    message,
+                    {frame: framesReceived > 0 ? framesReceived - 1 : null},
+                  ),
+              },
+            ),
+          );
         },
       };
 
@@ -1078,64 +1432,110 @@ export function createFinalRenderService(
         progress: 0.04,
         message: `Đang dựng khoảng ${estimatedTotalFrames.toLocaleString('vi-VN')} frame…`,
       });
-      browser = spawn(
-        browserPath,
-        [
-          '--headless=new',
-          '--disable-background-networking',
-          '--disable-component-update',
-          '--disable-default-apps',
-          '--disable-dev-shm-usage',
-          '--disable-extensions',
-          '--disable-features=Translate',
-          '--disable-sync',
-          '--no-first-run',
-          '--no-default-browser-check',
-          '--autoplay-policy=no-user-gesture-required',
-          `--user-data-dir=${path.join(cacheDirectory, 'browser-profile')}`,
-          renderUrl.toString(),
-        ],
-        {stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true},
-      );
-      browser.stderr?.setEncoding('utf8');
-      browser.stderr?.on('data', chunk => {
-        browserErrors.push(String(chunk));
-        if (browserErrors.length > 40) browserErrors.shift();
-      });
-      browser.once('error', error =>
-        failRender(
-          new FinalRenderError(
-            'FINAL_RENDER_BROWSER_UNAVAILABLE',
-            'Không thể khởi động Chrome/Edge cho final render.',
-            {cause: error},
-          ),
-        ),
-      );
-      browser.once('exit', code => {
-        if (!completionSettled) {
-          failRender(
-            new Error(
-              `Trình duyệt render dừng sớm (${String(code)}). ${browserErrors.join('').slice(-1000)}`,
-            ),
-          );
-        }
-      });
+      renderPhase = 'motion-canvas';
       const timeoutMs = Math.min(
         2 * 60 * 60 * 1000,
         Math.max(5 * 60 * 1000, estimatedTotalFrames * 1_500),
       );
-      let timer: NodeJS.Timeout | null = null;
-      const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error('Final render vượt quá thời gian cho phép.')),
-          timeoutMs,
+      const deadline = Date.now() + timeoutMs;
+      let segmentIndex = 0;
+      while (framesReceived < estimatedTotalFrames) {
+        const segmentStartFrame = framesReceived;
+        const segmentEndFrame = Math.min(
+          segmentStartFrame + BROWSER_SEGMENT_FRAMES - 1,
+          estimatedTotalFrames - 1,
         );
-        timer.unref();
-      });
-      try {
-        await Promise.race([completion, timeout]);
-      } finally {
-        if (timer) clearTimeout(timer);
+        bridge.rangeFrames = [segmentStartFrame, segmentEndFrame];
+        const completion = beginSegment();
+        browserErrors.length = 0;
+        browser = spawn(
+          browserPath,
+          [
+            '--headless=new',
+            '--disable-background-networking',
+            '--disable-component-update',
+            '--disable-default-apps',
+            '--disable-dev-shm-usage',
+            '--disable-extensions',
+            '--disable-features=Translate',
+            '--disable-sync',
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--autoplay-policy=no-user-gesture-required',
+            `--user-data-dir=${path.join(cacheDirectory, `browser-profile-${segmentIndex}`)}`,
+            renderUrl.toString(),
+          ],
+          {stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true},
+        );
+        browser.stderr?.setEncoding('utf8');
+        browser.stderr?.on('data', chunk => {
+          browserErrors.push(String(chunk));
+          if (browserErrors.length > 40) browserErrors.shift();
+        });
+        browser.once('error', error =>
+          failRender(
+            new FinalRenderError(
+              'FINAL_RENDER_BROWSER_UNAVAILABLE',
+              'Không thể khởi động Chrome/Edge cho final render.',
+              {
+                cause: error,
+                diagnostic: backendRenderDiagnostic(
+                  'browser',
+                  error.message,
+                  {frame: framesReceived > 0 ? framesReceived - 1 : null},
+                ),
+              },
+            ),
+          ),
+        );
+        browser.once('exit', code => {
+          if (segmentCompletion) {
+            const details = browserErrors.join('').slice(-4_000).trim();
+            failRender(
+              new FinalRenderError(
+                'FINAL_RENDER_BROWSER_STOPPED',
+                `Trình duyệt render dừng sớm với mã ${String(code)}.`,
+                {
+                  diagnostic: backendRenderDiagnostic(
+                    'browser',
+                    details || `Trình duyệt dừng với mã ${String(code)}.`,
+                    {frame: framesReceived > 0 ? framesReceived - 1 : null},
+                  ),
+                },
+              ),
+            );
+          }
+        });
+
+        const remainingMs = deadline - Date.now();
+        if (remainingMs <= 0) {
+          throw new Error('Final render vượt quá thời gian cho phép.');
+        }
+        let timer: NodeJS.Timeout | null = null;
+        const timeout = new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Final render vượt quá thời gian cho phép.')),
+            remainingMs,
+          );
+          timer.unref();
+        });
+        try {
+          await Promise.race([completion, timeout]);
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
+        await terminateChildProcess(browser);
+        browser = null;
+        if (framesReceived <= segmentStartFrame) {
+          throw new FinalRenderError(
+            'FINAL_RENDER_EMPTY_SEGMENT',
+            `Motion Canvas không xuất frame cho segment bắt đầu tại ${segmentStartFrame}.`,
+          );
+        }
+        if (framesReceived < segmentEndFrame + 1) {
+          break;
+        }
+        segmentIndex += 1;
       }
       const renderedFrameTiming = inspectRenderFrameTiming(
         framesReceived,
@@ -1152,8 +1552,7 @@ export function createFinalRenderService(
         progress: 0.95,
         message: 'Đang hoàn tất MP4 và kiểm tra đầu ra…',
       });
-      await terminateChildProcess(browser);
-      browser = null;
+      renderPhase = 'finalizing';
       ffmpeg.stdin?.end();
       await ffmpegExit;
       ffmpeg = null;
@@ -1221,21 +1620,42 @@ export function createFinalRenderService(
         renderedFrames: framesReceived,
         totalFrames: framesReceived,
         message: 'Video cuối đã sẵn sàng.',
+        diagnostic: null,
       });
       return bundle;
     } catch (error) {
-      const renderError =
+      const baseError =
         error instanceof FinalRenderError
           ? error
           : new FinalRenderError(
               'FINAL_RENDER_FAILED',
               error instanceof Error ? error.message : 'Final render thất bại.',
-              {cause: error},
+              {
+                cause: error,
+                diagnostic: backendRenderDiagnostic(
+                  renderPhase,
+                  error instanceof Error
+                    ? error.message
+                    : 'Final render thất bại.',
+                  {frame: framesReceived > 0 ? framesReceived - 1 : null},
+                ),
+              },
             );
+      const renderError = baseError.diagnostic
+        ? baseError
+        : new FinalRenderError(baseError.code, baseError.message, {
+            cause: baseError,
+            diagnostic: backendRenderDiagnostic(
+              renderPhase,
+              baseError.message,
+              {frame: framesReceived > 0 ? framesReceived - 1 : null},
+            ),
+          });
       updateStatus(projectId, generationId, {
         state: 'failed',
         errorCode: renderError.code,
         message: renderError.message,
+        diagnostic: renderError.diagnostic,
       });
       logger.error(renderError);
       throw renderError;
@@ -1278,17 +1698,21 @@ export function createFinalRenderService(
       const totalFrames = estimateRenderFrameCount(
         layoutBundle.totalDurationSeconds,
       );
-      statuses.set(key, {
-        generationId,
-        state: 'queued',
-        progress: 0,
-        renderedFrames: 0,
-        totalFrames,
-        startedAt: null,
-        updatedAt: now,
-        message: 'Đã xếp hàng render.',
-        errorCode: null,
-      });
+      statuses.set(
+        key,
+        FinalRenderJobStatusSchema.parse({
+          generationId,
+          state: 'queued',
+          progress: 0,
+          renderedFrames: 0,
+          totalFrames,
+          startedAt: null,
+          updatedAt: now,
+          message: 'Đã xếp hàng render.',
+          errorCode: null,
+          diagnostic: null,
+        }),
+      );
       latestByProject.set(projectId, generationId);
       const operation = queueTail
         .catch(() => undefined)
@@ -1302,8 +1726,22 @@ export function createFinalRenderService(
             renderOptions,
           ),
         )
-        .catch(error => {
-          const renderError =
+        .then(async bundle => {
+          const status = statuses.get(key);
+          if (status?.state === 'completed') {
+            await persistTerminalStatus(
+              projectId,
+              layoutBundle,
+              status,
+              bundle,
+            ).catch(
+              error => logger.error(error),
+            );
+          }
+          return bundle;
+        })
+        .catch(async error => {
+          const baseError =
             error instanceof FinalRenderError
               ? error
               : new FinalRenderError(
@@ -1313,12 +1751,37 @@ export function createFinalRenderService(
                     : 'Final render thất bại.',
                   {cause: error},
                 );
-          if (statuses.get(key)?.state !== 'failed') {
+          const renderError = baseError.diagnostic
+            ? baseError
+            : new FinalRenderError(baseError.code, baseError.message, {
+                cause: baseError,
+                diagnostic: backendRenderDiagnostic(
+                  diagnosticStageForErrorCode(baseError.code),
+                  baseError.message,
+                  {
+                    frame:
+                      (statuses.get(key)?.renderedFrames ?? 0) > 0
+                        ? (statuses.get(key)?.renderedFrames ?? 1) - 1
+                        : null,
+                  },
+                ),
+              });
+          if (
+            statuses.get(key)?.state !== 'failed' ||
+            !statuses.get(key)?.diagnostic
+          ) {
             updateStatus(projectId, generationId, {
               state: 'failed',
               errorCode: renderError.code,
               message: renderError.message,
+              diagnostic: renderError.diagnostic,
             });
+          }
+          const status = statuses.get(key);
+          if (status?.state === 'failed') {
+            await persistTerminalStatus(projectId, layoutBundle, status).catch(
+              persistenceError => logger.error(persistenceError),
+            );
           }
           throw renderError;
         });
@@ -1333,12 +1796,31 @@ export function createFinalRenderService(
       return operation;
     },
 
-    getStatus(projectId, generationId) {
+    async getStatus(projectId, generationId) {
       assertProjectId(projectId);
       const resolvedGeneration = generationId ?? latestByProject.get(projectId);
-      if (!resolvedGeneration) return null;
-      assertGenerationId(resolvedGeneration);
-      return statuses.get(jobKey(projectId, resolvedGeneration)) ?? null;
+      if (resolvedGeneration) {
+        assertGenerationId(resolvedGeneration);
+        const memoryStatus = statuses.get(
+          jobKey(projectId, resolvedGeneration),
+        );
+        if (memoryStatus) return memoryStatus;
+      }
+      return readPersistedStatus(projectId, resolvedGeneration);
+    },
+
+    async getCompletedBundle(projectId, generationId) {
+      assertProjectId(projectId);
+      assertGenerationId(generationId);
+      const report = await readPersistedReport(projectId, generationId);
+      if (
+        report?.status.state !== 'completed' ||
+        !report.bundle ||
+        report.bundle.generation.generationId !== generationId
+      ) {
+        return null;
+      }
+      return report.bundle;
     },
 
     async resolveVideo(projectId, bundle) {

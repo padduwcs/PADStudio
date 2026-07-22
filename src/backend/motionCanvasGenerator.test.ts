@@ -273,6 +273,51 @@ function createSingleSceneGenerationRequest() {
   } satisfies MotionCanvasGenerationRequest;
 }
 
+test('Motion Canvas generator chỉ sinh section được chọn và giữ scene identity', async context => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-scoped-generator-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const request = createGenerationRequest();
+  const currentScenes = request.outline.sections.map((section, index) => {
+    const beat = request.voiceVisualPlan.sections[index]!.beats[0]!;
+    return {
+      id: randomUUID(),
+      outlineSectionId: section.id,
+      name: `Scene cũ ${index + 1}`,
+      filePath: `src/scenes/0${index + 1}-scene-cu-${index + 1}.tsx`,
+      durationSeconds: beat.durationSeconds,
+      timingEvents: [
+        {
+          beatId: beat.id,
+          startEvent: `beat:${beat.id}:start`,
+          endEvent: `beat:${beat.id}:end`,
+          plannedDurationSeconds: beat.durationSeconds,
+        },
+      ],
+      source: timedSceneSource([beat.id]),
+    };
+  });
+  const client = new FakeCodexClient();
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+  });
+  const result = await generator.generate({
+    ...request,
+    guidance: 'Chỉ làm scene thứ hai trực quan hơn.',
+    sectionIndexes: [1],
+    currentScenes,
+  });
+  assert.equal(result.scenes.length, 1);
+  assert.equal(result.scenes[0]?.outlineSectionId, request.outline.sections[1]?.id);
+  assert.equal(result.scenes[0]?.id, currentScenes[1]?.id);
+  assert.equal(result.scenes[0]?.filePath, currentScenes[1]?.filePath);
+  assert.equal(
+    client.calls.filter(call => call.method === 'turn/start').length,
+    1,
+  );
+});
+
 test('Motion Canvas generator ánh xạ scene theo đúng voice–visual', async (context) => {
   const runtimeDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-studio-motion-generator-'),

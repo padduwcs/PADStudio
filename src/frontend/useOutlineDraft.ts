@@ -5,6 +5,12 @@ import {
   type TeachingOutlineSection,
   type TopicProject,
 } from '../shared/topic.ts';
+import type {
+  OutlineCandidateRecord,
+  OutlineEditScope,
+  OutlineHistoryResponse,
+  OutlineVersionRecord,
+} from '../shared/outlineHistory.ts';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import {
   outlineIsStale,
@@ -12,9 +18,15 @@ import {
 } from '../shared/projectPipeline.ts';
 import {
   ApiRequestError,
+  applyOutlineCandidate,
   approveTeachingOutline,
+  createOutlineCandidate,
+  createOutlineCheckpoint,
   generateTeachingOutline,
+  getOutlineHistory,
   getProject,
+  rejectOutlineCandidate,
+  restoreOutlineVersion,
   updateTeachingOutline,
 } from './api.ts';
 import {recordCodexWaitSample} from './codexWaitEstimate.ts';
@@ -70,11 +82,23 @@ export function useOutlineDraft(projectId: string) {
   const [saveState, setSaveState] = useState<OutlineSaveState>('idle');
   const [actionError, setActionError] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [candidateGenerating, setCandidateGenerating] = useState(false);
+  const [candidateApplying, setCandidateApplying] = useState(false);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [history, setHistory] = useState<OutlineHistoryResponse | null>(null);
+  const [historyError, setHistoryError] = useState('');
+  const [candidate, setCandidate] = useState<OutlineCandidateRecord | null>(
+    null,
+  );
   const [approving, setApproving] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const projectRef = useRef<TopicProject | null>(null);
   const draftRef = useRef<TeachingOutlineContent | null>(null);
   const generationRequestRef = useRef<{
+    fingerprint: string;
+    generationId: string;
+  } | null>(null);
+  const candidateRequestRef = useRef<{
     fingerprint: string;
     generationId: string;
   } | null>(null);
@@ -89,6 +113,7 @@ export function useOutlineDraft(projectId: string) {
     projectRef.current = null;
     draftRef.current = null;
     generationRequestRef.current = null;
+    candidateRequestRef.current = null;
     setProject(null);
     setDraftState(null);
     setLoadState('loading');
@@ -96,6 +121,12 @@ export function useOutlineDraft(projectId: string) {
     setActionError('');
     setSaveState('idle');
     setGenerating(false);
+    setCandidateGenerating(false);
+    setCandidateApplying(false);
+    setHistoryBusy(false);
+    setHistory(null);
+    setHistoryError('');
+    setCandidate(null);
     setApproving(false);
 
     void getProject(projectId)
@@ -108,6 +139,31 @@ export function useOutlineDraft(projectId: string) {
         setDraftState(content);
         setLoadState('ready');
         setSaveState(content ? 'saved' : 'idle');
+        if (loadedProject.outline) {
+          void getOutlineHistory(projectId)
+            .then(loadedHistory => {
+              if (!active || sessionRef.current !== session) return;
+              setHistory(loadedHistory);
+              setCandidate(
+                loadedHistory.candidates.find(
+                  item =>
+                    item.decision === 'pending' &&
+                    item.rootBaseContextHash ===
+                      loadedHistory.currentContextHash &&
+                    item.candidateContentHash !==
+                      loadedHistory.currentContentHash,
+                ) ?? null,
+              );
+            })
+            .catch(error => {
+              if (!active || sessionRef.current !== session) return;
+              setHistoryError(
+                error instanceof ApiRequestError
+                  ? error.message
+                  : 'Không thể tải lịch sử phiên bản.',
+              );
+            });
+        }
       })
       .catch((error) => {
         if (!active) return;
@@ -163,6 +219,9 @@ export function useOutlineDraft(projectId: string) {
       !project?.outline ||
       !draft ||
       generating ||
+      candidateGenerating ||
+      candidateApplying ||
+      historyBusy ||
       approving ||
       saveState === 'conflict'
     ) {
@@ -206,8 +265,11 @@ export function useOutlineDraft(projectId: string) {
     };
   }, [
     approving,
+    candidateApplying,
+    candidateGenerating,
     draft,
     generating,
+    historyBusy,
     loadState,
     project,
     saveCurrentDraft,
@@ -427,6 +489,300 @@ export function useOutlineDraft(projectId: string) {
     }
   }
 
+  async function refreshHistory() {
+    try {
+      const loadedHistory = await getOutlineHistory(projectId);
+      setHistory(loadedHistory);
+      setHistoryError('');
+      return loadedHistory;
+    } catch (error) {
+      setHistoryError(
+        error instanceof ApiRequestError
+          ? error.message
+          : 'Không thể tải lịch sử phiên bản.',
+      );
+      return null;
+    }
+  }
+
+  async function projectForContentReplacement() {
+    const currentProject = projectRef.current;
+    const currentDraft = draftRef.current;
+    if (!currentProject || !currentDraft) {
+      throw new OutlineOperationCancelledError();
+    }
+    if (TeachingOutlineContentSchema.safeParse(currentDraft).success) {
+      return saveCurrentDraft();
+    }
+    return currentProject;
+  }
+
+  async function createEditCandidate(
+    guidance: string,
+    scope: OutlineEditScope,
+    model?: string,
+    reasoningEffort?: string,
+    baseCandidateId?: string,
+  ) {
+    if (
+      candidateGenerating ||
+      generating ||
+      saveState === 'conflict'
+    ) {
+      return null;
+    }
+    const startedAt = Date.now();
+    setCandidateGenerating(true);
+    setActionError('');
+
+    try {
+      const nextCandidate = await operationQueueRef.current.enqueue(
+        async () => {
+          const currentProject = await saveCurrentDraft();
+          const normalizedGuidance = guidance.trim();
+          const fingerprint = JSON.stringify({
+            projectId,
+            revision: currentProject.revision,
+            baseCandidateId,
+            model,
+            reasoningEffort,
+            guidance: normalizedGuidance,
+            scope,
+          });
+          const previousRequest = candidateRequestRef.current;
+          const generationId =
+            previousRequest?.fingerprint === fingerprint
+              ? previousRequest.generationId
+              : crypto.randomUUID();
+          candidateRequestRef.current = {fingerprint, generationId};
+          return createOutlineCandidate(
+            projectId,
+            {
+              generationId,
+              ...(baseCandidateId ? {baseCandidateId} : {}),
+              ...(model ? {model} : {}),
+              ...(reasoningEffort ? {reasoningEffort} : {}),
+              guidance: normalizedGuidance,
+              scope,
+            },
+            currentProject.revision,
+          );
+        },
+      );
+      setCandidate(nextCandidate);
+      candidateRequestRef.current = null;
+      setHistory(current =>
+        current
+          ? {
+              ...current,
+              candidates: [
+                nextCandidate,
+                ...current.candidates.filter(
+                  item => item.candidateId !== nextCandidate.candidateId,
+                ),
+              ],
+            }
+          : current,
+      );
+      if (reasoningEffort) {
+        recordCodexWaitSample({
+          model: nextCandidate.generation.model || model || 'default',
+          reasoningEffort,
+          task: 'outline',
+          elapsedMs: Date.now() - startedAt,
+        });
+      }
+      void refreshHistory();
+      return nextCandidate;
+    } catch (error) {
+      const isConflict =
+        error instanceof ApiRequestError &&
+        error.code === 'PROJECT_CONFLICT';
+      if (isConflict) setSaveState('conflict');
+      setActionError(
+        error instanceof OutlineDraftInvalidError
+          ? 'Hãy hoàn thiện mạch giảng đang sửa trước khi tạo đề xuất.'
+          : error instanceof ApiRequestError
+            ? error.message
+            : 'Không thể tạo đề xuất chỉnh sửa lúc này.',
+      );
+      return null;
+    } finally {
+      setCandidateGenerating(false);
+    }
+  }
+
+  async function applyCandidate(candidateToApply = candidate) {
+    if (
+      !candidateToApply ||
+      candidateApplying ||
+      saveState === 'conflict'
+    ) {
+      return null;
+    }
+    setCandidateApplying(true);
+    setActionError('');
+    try {
+      const updatedProject = await operationQueueRef.current.enqueue(
+        async () => {
+          const currentProject = await projectForContentReplacement();
+          return applyOutlineCandidate(
+            projectId,
+            candidateToApply.candidateId,
+            currentProject.revision,
+          );
+        },
+      );
+      const content = getOutlineContent(updatedProject);
+      projectRef.current = updatedProject;
+      draftRef.current = content;
+      setProject(updatedProject);
+      setDraftState(content);
+      setSaveState('saved');
+      setCandidate(null);
+      await refreshHistory();
+      return updatedProject;
+    } catch (error) {
+      const isConflict =
+        error instanceof ApiRequestError &&
+        error.code === 'PROJECT_CONFLICT';
+      if (isConflict) setSaveState('conflict');
+      setActionError(
+        error instanceof OutlineDraftInvalidError
+          ? 'Hãy hoàn thiện mạch giảng đang sửa trước khi áp dụng đề xuất.'
+          : error instanceof ApiRequestError
+            ? error.message
+            : 'Không thể áp dụng đề xuất lúc này.',
+      );
+      return null;
+    } finally {
+      setCandidateApplying(false);
+    }
+  }
+
+  async function saveCheckpoint(label?: string) {
+    if (historyBusy || saveState === 'conflict') return null;
+    setHistoryBusy(true);
+    setActionError('');
+    try {
+      const version = await operationQueueRef.current.enqueue(async () => {
+        const currentProject = await saveCurrentDraft();
+        return createOutlineCheckpoint(
+          projectId,
+          currentProject.revision,
+          label,
+        );
+      });
+      await refreshHistory();
+      return version;
+    } catch (error) {
+      if (
+        error instanceof ApiRequestError &&
+        error.code === 'PROJECT_CONFLICT'
+      ) {
+        setSaveState('conflict');
+      }
+      setActionError(
+        error instanceof OutlineDraftInvalidError
+          ? 'Hãy hoàn thiện mạch giảng trước khi lưu phiên bản.'
+          : error instanceof ApiRequestError
+            ? error.message
+            : 'Không thể lưu phiên bản lúc này.',
+      );
+      return null;
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
+
+  async function rejectCandidate(candidateToReject = candidate) {
+    if (!candidateToReject || historyBusy || saveState === 'conflict') {
+      return null;
+    }
+    setHistoryBusy(true);
+    setActionError('');
+    try {
+      const currentProject = projectRef.current;
+      if (!currentProject) throw new OutlineOperationCancelledError();
+      const rejected = await rejectOutlineCandidate(
+        projectId,
+        candidateToReject.candidateId,
+        currentProject.revision,
+      );
+      setCandidate(null);
+      setHistory(current =>
+        current
+          ? {
+              ...current,
+              candidates: current.candidates.map(item =>
+                item.candidateId === rejected.candidateId ? rejected : item,
+              ),
+            }
+          : current,
+      );
+      return rejected;
+    } catch (error) {
+      if (
+        error instanceof ApiRequestError &&
+        error.code === 'PROJECT_CONFLICT'
+      ) {
+        setSaveState('conflict');
+      }
+      setActionError(
+        error instanceof ApiRequestError
+          ? error.message
+          : 'Không thể cập nhật trạng thái candidate lúc này.',
+      );
+      return null;
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
+
+  async function restoreVersion(version: OutlineVersionRecord) {
+    if (historyBusy || saveState === 'conflict') return null;
+    setHistoryBusy(true);
+    setActionError('');
+    try {
+      const updatedProject = await operationQueueRef.current.enqueue(
+        async () => {
+          const currentProject = await projectForContentReplacement();
+          return restoreOutlineVersion(
+            projectId,
+            version.versionId,
+            currentProject.revision,
+          );
+        },
+      );
+      const content = getOutlineContent(updatedProject);
+      projectRef.current = updatedProject;
+      draftRef.current = content;
+      setProject(updatedProject);
+      setDraftState(content);
+      setSaveState('saved');
+      setCandidate(null);
+      await refreshHistory();
+      return updatedProject;
+    } catch (error) {
+      if (
+        error instanceof ApiRequestError &&
+        error.code === 'PROJECT_CONFLICT'
+      ) {
+        setSaveState('conflict');
+      }
+      setActionError(
+        error instanceof OutlineDraftInvalidError
+          ? 'Hãy hoàn thiện mạch giảng trước khi chuyển phiên bản.'
+          : error instanceof ApiRequestError
+            ? error.message
+            : 'Không thể khôi phục phiên bản lúc này.',
+      );
+      return null;
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
+
   async function approve() {
     if (approving || saveState === 'conflict') return null;
     setApproving(true);
@@ -474,6 +830,12 @@ export function useOutlineDraft(projectId: string) {
     saveState,
     actionError,
     generating,
+    candidateGenerating,
+    candidateApplying,
+    historyBusy,
+    history,
+    historyError,
+    candidate,
     approving,
     stale,
     valid,
@@ -488,6 +850,14 @@ export function useOutlineDraft(projectId: string) {
     removeSection,
     moveSection,
     generate,
+    createEditCandidate,
+    applyCandidate,
+    saveCheckpoint,
+    restoreVersion,
+    rejectCandidate,
+    refreshHistory,
+    selectCandidate: setCandidate,
+    dismissCandidate: () => setCandidate(null),
     approve,
     reload: () => setReloadKey((current) => current + 1),
   };

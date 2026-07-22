@@ -38,6 +38,26 @@ import type {
   LayoutEditorManifest,
   LayoutOverridesDocument,
 } from '../shared/layout.ts';
+import type {
+  CreateOutlineCandidate,
+  OutlineCandidateRecord,
+  OutlineHistoryResponse,
+  OutlineVersionRecord,
+} from '../shared/outlineHistory.ts';
+import type {
+  CreateVoiceVisualCandidate,
+  CreateVoiceVisualReview,
+  VoiceVisualCandidateRecord,
+  VoiceVisualHistoryResponse,
+  VoiceVisualReviewRecord,
+  VoiceVisualVersionRecord,
+} from '../shared/voiceVisualHistory.ts';
+import type {
+  CreateMotionCanvasCandidate,
+  MotionCanvasCandidateRecord,
+  MotionCanvasHistoryResponse,
+  MotionCanvasVersionRecord,
+} from '../shared/motionCanvasHistory.ts';
 
 export class ApiRequestError extends Error {
   constructor(
@@ -208,6 +228,141 @@ export async function approveTeachingOutline(
   return getProjectPayload(payload);
 }
 
+export async function getOutlineHistory(projectId: string) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/outline/history`,
+  );
+  const payload = await readPayload<OutlineHistoryResponse>(response);
+  assertSuccessful(response, payload);
+  if (
+    !payload ||
+    !('versions' in payload) ||
+    !('candidates' in payload) ||
+    !('currentContentHash' in payload)
+  ) {
+    throw new ApiRequestError(
+      'Phản hồi lịch sử mạch giảng không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload;
+}
+
+export async function createOutlineCheckpoint(
+  projectId: string,
+  expectedRevision: number,
+  label?: string,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/outline/versions`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(label?.trim() ? {label: label.trim()} : {}),
+    },
+  );
+  const payload = await readPayload<{version: OutlineVersionRecord}>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('version' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi lưu phiên bản không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.version;
+}
+
+export async function createOutlineCandidate(
+  projectId: string,
+  request: CreateOutlineCandidate,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/outline/candidates`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{candidate: OutlineCandidateRecord}>(
+    response,
+  );
+  assertSuccessful(response, payload);
+  if (!payload || !('candidate' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi đề xuất chỉnh sửa không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.candidate;
+}
+
+export async function applyOutlineCandidate(
+  projectId: string,
+  candidateId: string,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/outline/candidates/${encodeURIComponent(candidateId)}/apply`,
+    {
+      method: 'POST',
+      headers: {'If-Match': `"${expectedRevision}"`},
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function rejectOutlineCandidate(
+  projectId: string,
+  candidateId: string,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/outline/candidates/${encodeURIComponent(candidateId)}/reject`,
+    {
+      method: 'POST',
+      headers: {'If-Match': `"${expectedRevision}"`},
+    },
+  );
+  const payload = await readPayload<{candidate: OutlineCandidateRecord}>(
+    response,
+  );
+  assertSuccessful(response, payload);
+  if (!payload || !('candidate' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi từ chối candidate không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.candidate;
+}
+
+export async function restoreOutlineVersion(
+  projectId: string,
+  versionId: string,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/outline/versions/${encodeURIComponent(versionId)}/restore`,
+    {
+      method: 'POST',
+      headers: {'If-Match': `"${expectedRevision}"`},
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
 export async function generateVoiceVisualPlan(
   projectId: string,
   request: GenerateVoiceVisualPlan,
@@ -226,6 +381,164 @@ export async function generateVoiceVisualPlan(
   );
   const payload = await readPayload<{project: TopicProject}>(response);
 
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function getVoiceVisualHistory(projectId: string) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/voice-visual/history`,
+  );
+  const payload = await readPayload<VoiceVisualHistoryResponse>(response);
+  assertSuccessful(response, payload);
+  if (
+    !payload ||
+    !('versions' in payload) ||
+    !('candidates' in payload) ||
+    !('currentContentHash' in payload) ||
+    !('currentContextHash' in payload)
+  ) {
+    throw new ApiRequestError(
+      'Phản hồi lịch sử voice–visual không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload;
+}
+
+export async function createVoiceVisualCheckpoint(
+  projectId: string,
+  label: string,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/voice-visual/versions`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify({label: label.trim() || undefined}),
+    },
+  );
+  const payload = await readPayload<{version: VoiceVisualVersionRecord}>(
+    response,
+  );
+  assertSuccessful(response, payload);
+  if (!payload || !('version' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi lưu phiên bản voice–visual không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.version;
+}
+
+export async function createVoiceVisualCandidate(
+  projectId: string,
+  request: CreateVoiceVisualCandidate,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/voice-visual/candidates`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{candidate: VoiceVisualCandidateRecord}>(
+    response,
+  );
+  assertSuccessful(response, payload);
+  if (!payload || !('candidate' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi đề xuất voice–visual không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.candidate;
+}
+
+export async function reviewVoiceVisualPlan(
+  projectId: string,
+  request: CreateVoiceVisualReview,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/voice-visual/reviews`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{review: VoiceVisualReviewRecord}>(
+    response,
+  );
+  assertSuccessful(response, payload);
+  if (!payload || !('review' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi review voice–visual không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.review;
+}
+
+export async function applyVoiceVisualCandidate(
+  projectId: string,
+  candidateId: string,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/voice-visual/candidates/${encodeURIComponent(candidateId)}/apply`,
+    {method: 'POST', headers: {'If-Match': `"${expectedRevision}"`}},
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function rejectVoiceVisualCandidate(
+  projectId: string,
+  candidateId: string,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/voice-visual/candidates/${encodeURIComponent(candidateId)}/reject`,
+    {method: 'POST', headers: {'If-Match': `"${expectedRevision}"`}},
+  );
+  const payload = await readPayload<{candidate: VoiceVisualCandidateRecord}>(
+    response,
+  );
+  assertSuccessful(response, payload);
+  if (!payload || !('candidate' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi từ chối candidate voice–visual không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.candidate;
+}
+
+export async function restoreVoiceVisualVersion(
+  projectId: string,
+  versionId: string,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/voice-visual/versions/${encodeURIComponent(versionId)}/restore`,
+    {method: 'POST', headers: {'If-Match': `"${expectedRevision}"`}},
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
   assertSuccessful(response, payload);
   return getProjectPayload(payload);
 }
@@ -287,6 +600,180 @@ export async function generateMotionCanvas(
   );
   const payload = await readPayload<{project: TopicProject}>(response);
 
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function getMotionCanvasHistory(projectId: string) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/history`,
+  );
+  const payload = await readPayload<MotionCanvasHistoryResponse>(response);
+  assertSuccessful(response, payload);
+  if (
+    !payload ||
+    !('versions' in payload) ||
+    !('candidates' in payload) ||
+    !('currentContentHash' in payload) ||
+    !('currentContextHash' in payload)
+  ) {
+    throw new ApiRequestError(
+      'Phản hồi lịch sử Motion Canvas không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload;
+}
+
+export async function createMotionCanvasCheckpoint(
+  projectId: string,
+  label: string,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/versions`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify({label: label.trim() || undefined}),
+    },
+  );
+  const payload = await readPayload<{version: MotionCanvasVersionRecord}>(
+    response,
+  );
+  assertSuccessful(response, payload);
+  if (!payload || !('version' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi lưu phiên bản Motion Canvas không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.version;
+}
+
+export async function createMotionCanvasCandidate(
+  projectId: string,
+  request: CreateMotionCanvasCandidate,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/candidates`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{candidate: MotionCanvasCandidateRecord}>(
+    response,
+  );
+  assertSuccessful(response, payload);
+  if (!payload || !('candidate' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi candidate Motion Canvas không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.candidate;
+}
+
+export async function applyMotionCanvasCandidate(
+  projectId: string,
+  candidateId: string,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/candidates/${encodeURIComponent(candidateId)}/apply`,
+    {method: 'POST', headers: {'If-Match': `"${expectedRevision}"`}},
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function getMotionCanvasCandidatePreview(
+  projectId: string,
+  candidateId: string,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/candidates/${encodeURIComponent(candidateId)}/preview`,
+  );
+  const payload = await readPayload<{
+    preview: {
+      url: string;
+      sessionNonce: string;
+      sourceMotionCanvasGenerationId: string;
+    };
+  }>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('preview' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi preview candidate Motion Canvas không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.preview;
+}
+
+export async function getMotionCanvasCandidateFiles(
+  projectId: string,
+  candidateId: string,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/candidates/${encodeURIComponent(candidateId)}/files`,
+  );
+  const payload = await readPayload<{
+    bundle: MotionCanvasBundle;
+    files: Array<{path: string; source: string}>;
+  }>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('files' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi source candidate Motion Canvas không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload;
+}
+
+export async function rejectMotionCanvasCandidate(
+  projectId: string,
+  candidateId: string,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/candidates/${encodeURIComponent(candidateId)}/reject`,
+    {method: 'POST', headers: {'If-Match': `"${expectedRevision}"`}},
+  );
+  const payload = await readPayload<{candidate: MotionCanvasCandidateRecord}>(
+    response,
+  );
+  assertSuccessful(response, payload);
+  if (!payload || !('candidate' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi từ chối candidate Motion Canvas không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.candidate;
+}
+
+export async function restoreMotionCanvasVersion(
+  projectId: string,
+  versionId: string,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/versions/${encodeURIComponent(versionId)}/restore`,
+    {method: 'POST', headers: {'If-Match': `"${expectedRevision}"`}},
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
   assertSuccessful(response, payload);
   return getProjectPayload(payload);
 }
@@ -680,9 +1167,15 @@ export async function generateFinalRender(
       body: JSON.stringify(request),
     },
   );
-  const payload = await readPayload<{project: TopicProject}>(response);
+  const payload = await readPayload<{status: FinalRenderJobStatus}>(response);
   assertSuccessful(response, payload);
-  return getProjectPayload(payload);
+  if (!payload || !('status' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi khởi tạo final render không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.status;
 }
 
 export async function uploadWatermarkImage(projectId: string, file: File) {

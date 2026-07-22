@@ -31,6 +31,14 @@ function formatBytes(bytes: number) {
   })} MB`;
 }
 
+const diagnosticStageLabels = {
+  preparing: 'Chuẩn bị nguồn',
+  'motion-canvas': 'Motion Canvas',
+  encoder: 'FFmpeg',
+  browser: 'Trình duyệt render',
+  finalizing: 'Kiểm tra đầu ra',
+} as const;
+
 const stateLabels = {
   queued: 'Đang xếp hàng',
   preparing: 'Đang chuẩn bị',
@@ -86,6 +94,9 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
   }
 
   const {project, status} = render;
+  const diagnostic = status?.state === 'failed'
+    ? status.diagnostic ?? null
+    : null;
   const layout = project.layoutBundle;
   const bundle = project.renderBundle;
   if (!render.prerequisitesReady || !layout) {
@@ -443,7 +454,38 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
       {render.actionError && (
         <div className="inline-error render-error" role="alert">
           <strong>Chưa thể hoàn tất render</strong>
-          <span>{render.actionError}</span>
+          <div className="render-error-content">
+            <span>{render.actionError}</span>
+            {diagnostic && (
+              <>
+              <small className="render-error-location">
+                {diagnosticStageLabels[diagnostic.stage]}
+                {diagnostic.sceneName ? ` · scene ${diagnostic.sceneName}` : ''}
+                {diagnostic.frame !== null
+                  ? ` · frame ${diagnostic.frame.toLocaleString('vi-VN')}`
+                  : ''}
+                {diagnostic.timeSeconds !== null
+                  ? ` · ${formatTime(diagnostic.timeSeconds)}`
+                  : ''}
+              </small>
+              {diagnostic.logs.length > 0 && (
+                <details className="render-error-details">
+                  <summary>Chi tiết kỹ thuật</summary>
+                  {diagnostic.logs.map((log, index) => (
+                    <div key={`${log.level}-${index}`}>
+                      <strong>{log.level.toUpperCase()}</strong>
+                      <pre>{[
+                        log.message,
+                        log.remarks,
+                        log.stack,
+                      ].filter(Boolean).join('\n')}</pre>
+                    </div>
+                  ))}
+                </details>
+              )}
+              </>
+            )}
+          </div>
           <button type="button" onClick={render.reload}>Kiểm tra lại</button>
         </div>
       )}

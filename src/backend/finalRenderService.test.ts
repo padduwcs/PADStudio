@@ -1,10 +1,18 @@
 import assert from 'node:assert/strict';
+import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import {
   audioTempoFilter,
+  createFinalRenderService,
   inspectRenderFrameTiming,
 } from './finalRenderService.ts';
-import {FinalRenderBundleSchema} from '../shared/render.ts';
+import {
+  FinalRenderBundleSchema,
+  FinalRenderJobReportSchema,
+  FinalRenderJobStatusSchema,
+} from '../shared/render.ts';
 
 test('ước tính frame giữ quy ước endpoint của Motion Canvas', () => {
   const timing = inspectRenderFrameTiming(31, 1, 30);
@@ -98,4 +106,115 @@ test('audio tempo được chia chuỗi an toàn cho toàn dải tốc độ ren
     audioTempoFilter(4),
     'atempo=2.000000,atempo=2.000000',
   );
+});
+
+test('status render giữ diagnostic có scene, frame và stack', () => {
+  const status = FinalRenderJobStatusSchema.parse({
+    generationId: '20000000-0000-4000-8000-000000000002',
+    state: 'failed',
+    progress: 0.4,
+    renderedFrames: 120,
+    totalFrames: 300,
+    startedAt: '2026-07-22T00:00:00.000Z',
+    updatedAt: '2026-07-22T00:01:00.000Z',
+    message: 'Không thể vẽ node.',
+    errorCode: 'FINAL_RENDER_MOTION_CANVAS_FAILED',
+    diagnostic: {
+      stage: 'motion-canvas',
+      frame: 119,
+      sceneFrame: 29,
+      sceneName: 'scene-02',
+      timeSeconds: 119 / 30,
+      logs: [
+        {
+          level: 'error',
+          message: 'Không thể vẽ node.',
+          remarks: null,
+          stack: 'Error: Không thể vẽ node.\n at scene-02.tsx:10',
+        },
+      ],
+    },
+  });
+
+  assert.equal(status.diagnostic?.sceneName, 'scene-02');
+  assert.equal(status.diagnostic?.frame, 119);
+});
+
+test('job report chỉ chấp nhận trạng thái terminal', () => {
+  const base = {
+    version: 1,
+    projectId: 'diagnostic-project',
+    sourceLayoutContentRevision: 1,
+    sourceLayoutGenerationId: '10000000-0000-4000-8000-000000000001',
+    sourceLayoutSourceHash: 'a'.repeat(64),
+    status: {
+      generationId: '20000000-0000-4000-8000-000000000002',
+      state: 'completed',
+      progress: 1,
+      renderedFrames: 31,
+      totalFrames: 31,
+      startedAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:00:10.000Z',
+      message: 'Video cuối đã sẵn sàng.',
+      errorCode: null,
+      diagnostic: null,
+    },
+  };
+
+  assert.equal(FinalRenderJobReportSchema.safeParse(base).success, true);
+  assert.equal(
+    FinalRenderJobReportSchema.safeParse({
+      ...base,
+      status: {...base.status, state: 'rendering'},
+    }).success,
+    false,
+  );
+});
+
+test('khôi phục status terminal từ report sau khi service khởi động lại', async context => {
+  const projectsDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-render-report-test-'),
+  );
+  context.after(() => rm(projectsDirectory, {recursive: true, force: true}));
+  const projectId = 'diagnostic-project';
+  const generationId = '20000000-0000-4000-8000-000000000002';
+  const jobsDirectory = path.join(
+    projectsDirectory,
+    projectId,
+    'renders',
+    'jobs',
+  );
+  await mkdir(jobsDirectory, {recursive: true});
+  const report = FinalRenderJobReportSchema.parse({
+    version: 1,
+    projectId,
+    sourceLayoutContentRevision: 1,
+    sourceLayoutGenerationId: '10000000-0000-4000-8000-000000000001',
+    sourceLayoutSourceHash: 'a'.repeat(64),
+    status: {
+      generationId,
+      state: 'failed',
+      progress: 0.4,
+      renderedFrames: 120,
+      totalFrames: 300,
+      startedAt: '2026-07-22T00:00:00.000Z',
+      updatedAt: '2026-07-22T00:01:00.000Z',
+      message: 'Không thể vẽ node.',
+      errorCode: 'FINAL_RENDER_MOTION_CANVAS_FAILED',
+      diagnostic: null,
+    },
+  });
+  await writeFile(
+    path.join(jobsDirectory, `${generationId}.json`),
+    JSON.stringify(report),
+    'utf8',
+  );
+
+  const service = createFinalRenderService(projectsDirectory, {
+    logger: {info() {}, error() {}},
+  });
+  context.after(() => service.close());
+
+  assert.deepEqual(await service.getStatus(projectId, generationId), report.status);
+  assert.deepEqual(await service.getStatus(projectId), report.status);
 });

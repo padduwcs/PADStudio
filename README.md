@@ -34,12 +34,23 @@ Vertical slice đầu tiên đã có thể chạy:
 - Phát hiện xung đột chỉnh sửa thay vì âm thầm ghi đè dữ liệu mới hơn.
 - Đăng nhập Codex và xác minh phiên bằng kết nối thật trước khi sang mạch giảng.
 - Dùng toàn bộ đầu vào để AI tóm tắt yêu cầu và đề xuất mạch giảng có cấu trúc.
-- Chỉnh sửa, sắp xếp, tạo lại và chốt mạch giảng trước bước voice–visual.
+- Chỉnh sửa, sắp xếp và chốt mạch giảng trước bước voice–visual. Khi đã có
+  outline, AI không còn ghi đè trực tiếp: người dùng chọn đúng section/trường
+  được phép sửa, review candidate và diff rồi mới áp dụng.
+- Lưu lịch sử outline bất biến, tạo checkpoint thủ công hoặc tự động trước lượt
+  AI, so sánh phiên bản và khôi phục theo kiểu copy-forward nên phiên bản cũ
+  không bao giờ bị sửa lại.
+- Mỗi candidate được kiểm tra mạch lạc trên toàn bản đã ghép. AI được đọc toàn
+  outline nhưng backend chỉ chấp nhận patch trong phạm vi đã chọn; nếu cần đụng
+  phần được bảo vệ, candidate bị giữ ở trạng thái cần mở rộng phạm vi. UI có thể
+  lấy đúng section/beat/scene reviewer chỉ ra, điền sẵn hướng khắc phục và chỉnh
+  tiếp trên candidate hiện tại thay vì sinh lại từ bản gốc.
 - Tạo kế hoạch voice–visual theo từng ý đã chốt, gồm lời thuyết minh, visual,
   chuyển động và thời lượng của từng beat; thời lượng được PAD Studio tính từ
   chính lời đọc thay vì để AI ước lượng theo animation.
-- Chỉnh sửa, sắp xếp beat, tạo lại theo góp ý và chốt kế hoạch trước khi sinh
-  scene hoặc gọi dịch vụ tạo voice.
+- Chỉnh sửa, sắp xếp beat và chốt kế hoạch trước khi sinh scene hoặc gọi dịch
+  vụ tạo voice. Góp ý AI tạo candidate theo đúng field/beat được chọn; beat và
+  narration ngoài phạm vi giữ nguyên, visual-only edit không làm voice bị stale.
 - Sinh một scene Motion Canvas cho từng section đã chốt, kiểm tra quyền import
   và biên dịch TypeScript trước khi nhận kết quả. Scene lỗi được sửa một lượt theo
   diagnostics, sau đó sinh sạch từ đầu một lượt nếu cần; nếu Codex vẫn trả TSX hỏng,
@@ -47,7 +58,10 @@ Vertical slice đầu tiên đã có thể chạy:
   generation.
 - Tự khởi động preview ngay trên UI sau khi sinh scene và cho chỉnh visual trước
   khi tạo voice. Các modifier này tiếp tục được đưa vào Layout Editor sau sync.
-- Xem source, tạo lại theo góp ý và chốt bộ scene trước khi sang bước tiếp theo.
+- Xem source, chọn đúng scene cần sinh lại và chốt bộ scene trước khi sang bước
+  tiếp theo. Candidate có workspace/preview riêng; scene không chọn được giữ
+  nguyên source, `sceneId` và `filePath`. Reviewer chỉ đánh giá sau khi candidate
+  đã compile/repair xong, nên kết luận luôn thuộc đúng source cuối sẽ được áp dụng.
 - Scene mới dùng time-event ổn định theo từng beat
   (`beat:<beat-id>:start/end`) và có metadata timing dự kiến, để bước đồng bộ
   sau này chỉ thay thời điểm event bằng timing audio thật.
@@ -120,6 +134,14 @@ lớn (source sinh tự động, audio, alignment, watermark, preview và video 
 vì vậy toàn bộ `projects/` bị ignore và không được đưa vào Git. Hãy sao lưu hoặc
 di chuyển project cần lưu trữ bằng cơ chế riêng, không dùng repository mã nguồn.
 
+Lịch sử mạch giảng, voice–visual và Motion Canvas nằm riêng tại
+`projects/<project-id>/history/<stage>/{versions,candidates}/`, với `<stage>` là
+`outline`, `voice-visual` hoặc `motion-canvas`. Mỗi record có `manifest.json` và
+`artifact.json` bất biến, được ghi artifact trước rồi mới publish manifest;
+quyết định accepted/rejected cũng là record write-once riêng. Candidate không
+sửa `project.json`, không tăng `revision` và không làm stale downstream; chỉ
+thao tác Apply/Restore mới tạo revision nội dung mới theo đúng review gate.
+
 Mỗi project có hai chỉ số độc lập:
 
 - `version` là phiên bản cấu trúc file; dữ liệu v1 đến v11 được đọc và nâng cấp
@@ -149,12 +171,14 @@ effort đã chọn (không cache token hoặc email) để nhận diện phiên 
 khi Codex trả về trạng thái đã đăng xuất; lỗi mạng hoặc lỗi CLI chỉ yêu cầu kiểm
 tra lại.
 
-Mạch giảng được sinh qua một thread Codex tạm thời với structured output và
-sandbox chỉ đọc. PAD Studio dùng một prompt ngắn có version, không gửi lại mạch
-cũ khi tạo mới, chỉ gửi khi người dùng yêu cầu AI chỉnh theo góp ý và không tự
-retry làm tăng chi phí. Mỗi request có `generationId` để retry lỗi mạng không
-gọi AI hai lần. Kết quả AI luôn là bản nháp; người dùng phải review và chốt
-trước khi sang voice–visual.
+Mạch giảng ban đầu được sinh qua một thread Codex tạm thời với structured output
+và sandbox chỉ đọc. Sau đó mọi lượt AI là candidate hai pha: editor đọc toàn bộ
+ngữ cảnh nhưng chỉ trả patch theo stable section ID và field scope; backend áp
+patch, validate toàn artifact và gọi một reviewer độc lập kiểm tra logic,
+transition, thuật ngữ, lặp ý và pacing trên bản đã ghép. Phần ngoài scope được
+giữ byte-for-byte ở cấp dữ liệu. Mỗi request có `generationId` để retry lỗi mạng
+không gọi AI hai lần; candidate không tự trở thành bản hiện hành và có thể được
+chỉnh tiếp theo chuỗi parent candidate trước khi người dùng bấm áp dụng.
 
 Kế hoạch voice–visual dùng cùng cơ chế an toàn nhưng có prompt và schema riêng.
 Mỗi section của mạch giảng được giữ nguyên ranh giới và chia thành các beat ngắn.
@@ -167,6 +191,22 @@ các generation cùng voice/model/speed được dùng làm timing calibration c
 hoạch mới. Người dùng chỉ có thể thêm `visualHoldSeconds` khi visual cần giữ lâu
 hơn lời nói. Nếu đầu vào hoặc mạch giảng thay đổi, kế hoạch downstream được đánh
 dấu cũ và phải tạo lại trước khi có thể chốt.
+
+Sau khi kế hoạch đã tồn tại, endpoint sinh toàn bộ không được phép ghi đè bản
+đang dùng. Editor AI đọc toàn bộ outline/kế hoạch nhưng chỉ trả patch theo stable
+`beatId` và field scope; backend từ chối patch ngoài scope, chỉ tính lại duration
+khi voiceover/visual hold đổi, rồi reviewer độc lập kiểm tra câu nối, thuật ngữ,
+voice–visual alignment và ranh giới với beat được bảo vệ. Candidate có diff,
+checkpoint, trạng thái accepted/rejected và khôi phục copy-forward. Kết luận của
+reviewer ở bước này là tư vấn: cảnh báo mạnh hoặc đề nghị mở rộng phạm vi không
+được quyền chặn một thao tác Apply có chủ ý của người dùng; chỉ lỗi cấu trúc hoặc
+context nền đã thay đổi mới ngăn việc áp dụng. Người dùng cũng có thể chạy review
+độc lập trên bản hiện tại hoặc candidate đang xem; thao tác này không tạo
+candidate, không đổi revision và chỉ chuẩn bị beat/field cùng góp ý khi người dùng
+chọn xử lý. Candidate con dùng candidate trước làm nền nhưng auto-scope không
+mang lại các field vừa được sửa; chúng được giữ khóa cho tới khi người dùng tự
+chọn cho phép sửa lại. UI hiển thị cả diff của lượt mới và diff tích lũy từ bản
+đang dùng.
 
 Scene Motion Canvas chỉ được sinh từ mạch giảng và kế hoạch voice–visual đã chốt,
 qua structured output có schema riêng. Source bị giới hạn trong các package
@@ -186,6 +226,14 @@ Mỗi generation chỉ được lưu tại
 giữ metadata và con trỏ đến generation hiện hành sau khi toàn bộ scene biên dịch
 thành công. Khi dữ liệu upstream đổi, bộ
 scene được đánh dấu cũ và không thể chốt cho đến khi sinh lại.
+
+Khi workspace hiện hành còn khớp upstream, sinh lại trực tiếp bị khóa. Người
+dùng chọn một hay nhiều scene để tạo candidate; generator chỉ gọi Codex cho các
+section tương ứng, ghép source mới với source cũ nguyên byte, giữ stable
+`sceneId`/`filePath`, review tính liên tục của toàn chuỗi và biên dịch vào một
+workspace candidate bất biến. UI cho xem preview/source candidate trước Apply.
+Version cũ vẫn trỏ tới workspace bất biến; Restore tạo một workspace generation
+mới theo copy-forward, vì vậy có thể qua lại mà không sửa lịch sử.
 
 Scene generation mới bắt buộc giữ đúng hai Motion Canvas time-event cho mỗi
 beat và dùng `useDuration` thay vì hard-code ranh giới beat. Workspace đồng thời
@@ -413,6 +461,22 @@ outline ngắn qua đúng production path và không gọi ElevenLabs:
 
 ```bash
 npm run smoke:live -- --allow-codex
+```
+
+Để chạy riêng production path hai lượt của scoped editor và coherence reviewer
+trên một outline nhỏ (không ghi project), dùng cờ tường minh:
+
+```bash
+npm run smoke:live -- --allow-codex-revision
+```
+
+Hai scoped path Voice & Visual và Motion Canvas có cờ smoke riêng. Motion smoke
+sinh lại đúng một scene rồi review toàn chuỗi hai scene:
+
+```bash
+npm run smoke:live -- --allow-codex-voice-visual-revision
+npm run smoke:live -- --allow-codex-voice-visual-review
+npm run smoke:live -- --allow-codex-motion-revision
 ```
 
 Phép thử TTS được tách thành `--allow-elevenlabs` để không thể vô tình tiêu credit

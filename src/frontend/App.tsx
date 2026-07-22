@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   type FormEvent,
   type KeyboardEvent,
   useCallback,
@@ -6,7 +8,16 @@ import {
   useRef,
   useState,
 } from 'react';
-import type {ProjectStep, TopicProject} from '../shared/topic.ts';
+import type {
+  ProjectStep,
+  TeachingOutlineContent,
+  TopicProject,
+} from '../shared/topic.ts';
+import type {
+  OutlineGlobalField,
+  OutlineSectionField,
+  OutlineVersionRecord,
+} from '../shared/outlineHistory.ts';
 import {targetNarrationTokenCount} from '../shared/narrationTiming.ts';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
@@ -26,11 +37,6 @@ import {
   XIcon,
 } from './icons.tsx';
 import {ProjectLibrary} from './ProjectLibrary.tsx';
-import {AnimationSyncPage} from './AnimationSyncPage.tsx';
-import {LayoutEditorPage} from './LayoutEditorPage.tsx';
-import {FinalRenderPage} from './FinalRenderPage.tsx';
-import {MotionCanvasPage} from './MotionCanvasPage.tsx';
-import {VoicePage} from './VoicePage.tsx';
 import {
   navigate,
   navigateDiscardingPendingChanges,
@@ -47,7 +53,31 @@ import {
 } from './useTopicDraft.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useOutlineDraft} from './useOutlineDraft.ts';
-import {VoiceVisualPage} from './VoiceVisualPage.tsx';
+
+const VoiceVisualPage = lazy(async () => {
+  const module = await import('./VoiceVisualPage.tsx');
+  return {default: module.VoiceVisualPage};
+});
+const MotionCanvasPage = lazy(async () => {
+  const module = await import('./MotionCanvasPage.tsx');
+  return {default: module.MotionCanvasPage};
+});
+const VoicePage = lazy(async () => {
+  const module = await import('./VoicePage.tsx');
+  return {default: module.VoicePage};
+});
+const AnimationSyncPage = lazy(async () => {
+  const module = await import('./AnimationSyncPage.tsx');
+  return {default: module.AnimationSyncPage};
+});
+const LayoutEditorPage = lazy(async () => {
+  const module = await import('./LayoutEditorPage.tsx');
+  return {default: module.LayoutEditorPage};
+});
+const FinalRenderPage = lazy(async () => {
+  const module = await import('./FinalRenderPage.tsx');
+  return {default: module.FinalRenderPage};
+});
 
 const pipelineSteps: ReadonlyArray<{
   id: ProjectStep;
@@ -792,10 +822,226 @@ function TopicPage({
   );
 }
 
+type OutlineDiffItem = {
+  key: string;
+  label: string;
+  before: string;
+  after: string;
+};
+
+const outlineVersionOriginLabels: Record<
+  OutlineVersionRecord['origin'],
+  string
+> = {
+  baseline: 'Mốc tự động',
+  manual_checkpoint: 'Người dùng lưu',
+  ai_candidate: 'Áp dụng AI',
+  restore: 'Khôi phục',
+  approval: 'Đã chốt',
+};
+
+function outlineContentFromArtifact(
+  artifact: OutlineVersionRecord['artifact'],
+): TeachingOutlineContent {
+  return {
+    brief: artifact.brief,
+    centralMessage: artifact.centralMessage,
+    sections: artifact.sections,
+  };
+}
+
+function outlineDiff(
+  before: TeachingOutlineContent,
+  after: TeachingOutlineContent,
+) {
+  const changes: OutlineDiffItem[] = [];
+  const add = (key: string, label: string, left: unknown, right: unknown) => {
+    if (JSON.stringify(left) === JSON.stringify(right)) return;
+    changes.push({
+      key,
+      label,
+      before: Array.isArray(left) ? left.join('\n') : String(left ?? ''),
+      after: Array.isArray(right) ? right.join('\n') : String(right ?? ''),
+    });
+  };
+  add('brief.summary', 'Tóm tắt yêu cầu', before.brief.summary, after.brief.summary);
+  add(
+    'brief.assumptions',
+    'Các giả định',
+    before.brief.assumptions,
+    after.brief.assumptions,
+  );
+  add(
+    'centralMessage',
+    'Thông điệp trung tâm',
+    before.centralMessage,
+    after.centralMessage,
+  );
+  const beforeById = new Map(before.sections.map(section => [section.id, section]));
+  const afterById = new Map(after.sections.map(section => [section.id, section]));
+  const allIds = new Set([...beforeById.keys(), ...afterById.keys()]);
+  for (const sectionId of allIds) {
+    const left = beforeById.get(sectionId);
+    const right = afterById.get(sectionId);
+    const title = right?.title ?? left?.title ?? 'Section';
+    if (!left || !right) {
+      add(
+        `section.${sectionId}`,
+        `${title} · cấu trúc`,
+        left ? 'Có trong phiên bản' : 'Không có',
+        right ? 'Có trong phiên bản' : 'Không có',
+      );
+      continue;
+    }
+    add(`${sectionId}.title`, `${title} · tên ý`, left.title, right.title);
+    add(`${sectionId}.goal`, `${title} · mục tiêu`, left.goal, right.goal);
+    add(
+      `${sectionId}.content`,
+      `${title} · nội dung`,
+      left.content,
+      right.content,
+    );
+    add(
+      `${sectionId}.estimatedSeconds`,
+      `${title} · thời lượng`,
+      `${left.estimatedSeconds} giây`,
+      `${right.estimatedSeconds} giây`,
+    );
+  }
+  return changes;
+}
+
+function OutlineDiffList({
+  changes,
+  beforeLabel = 'Đang dùng',
+  afterLabel = 'Đề xuất',
+}: {
+  changes: OutlineDiffItem[];
+  beforeLabel?: string;
+  afterLabel?: string;
+}) {
+  if (changes.length === 0) {
+    return <p className="outline-diff-empty">Không có khác biệt nội dung.</p>;
+  }
+  return (
+    <div className="outline-diff-list">
+      {changes.map(change => (
+        <article key={change.key} className="outline-diff-item">
+          <strong>{change.label}</strong>
+          <div>
+            <span>
+              <small>{beforeLabel}</small>
+              <p>{change.before || '—'}</p>
+            </span>
+            <span className="is-candidate">
+              <small>{afterLabel}</small>
+              <p>{change.after || '—'}</p>
+            </span>
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function OutlinePage({projectId}: {projectId: string}) {
   const outline = useOutlineDraft(projectId);
   const codexConnection = useCodexConnection();
   const [guidance, setGuidance] = useState('');
+  const [scopeSectionIds, setScopeSectionIds] = useState<string[]>([]);
+  const [sectionFields, setSectionFields] = useState<OutlineSectionField[]>([
+    'goal',
+    'content',
+  ]);
+  const [globalFields, setGlobalFields] = useState<OutlineGlobalField[]>([]);
+  const [scopeError, setScopeError] = useState('');
+  const [checkpointLabel, setCheckpointLabel] = useState('');
+  const [selectedVersion, setSelectedVersion] =
+    useState<OutlineVersionRecord | null>(null);
+
+  useEffect(() => {
+    const validIds = new Set(
+      outline.draft?.sections.map(section => section.id) ?? [],
+    );
+    setScopeSectionIds(current =>
+      current.filter(sectionId => validIds.has(sectionId)),
+    );
+  }, [outline.draft?.sections]);
+
+  function toggleScopeSection(sectionId: string) {
+    setScopeSectionIds(current =>
+      current.includes(sectionId)
+        ? current.filter(item => item !== sectionId)
+        : [...current, sectionId],
+    );
+    setScopeError('');
+  }
+
+  function toggleSectionField(field: OutlineSectionField) {
+    setSectionFields(current =>
+      current.includes(field)
+        ? current.filter(item => item !== field)
+        : [...current, field],
+    );
+    setScopeError('');
+  }
+
+  function toggleGlobalField(field: OutlineGlobalField) {
+    setGlobalFields(current =>
+      current.includes(field)
+        ? current.filter(item => item !== field)
+        : [...current, field],
+    );
+    setScopeError('');
+  }
+
+  function prepareScopeExpansion() {
+    const candidate = outline.candidate;
+    const sections = outline.draft?.sections ?? [];
+    if (!candidate || sections.length === 0) return;
+
+    const validSectionIds = new Set(sections.map(section => section.id));
+    const expandedIds = new Set(candidate.scope.sections.map(item => item.sectionId));
+    for (const issue of candidate.coherence.issues) {
+      if (!issue.requiresScopeExpansion) continue;
+      for (const sectionId of issue.affectedSectionIds) {
+        if (validSectionIds.has(sectionId)) expandedIds.add(sectionId);
+      }
+    }
+    if (expandedIds.size === candidate.scope.sections.length) {
+      const selectedIndexes = sections
+        .map((section, index) => expandedIds.has(section.id) ? index : -1)
+        .filter(index => index >= 0);
+      for (const index of selectedIndexes) {
+        const previous = sections[index - 1];
+        const next = sections[index + 1];
+        if (previous) expandedIds.add(previous.id);
+        if (next) expandedIds.add(next.id);
+      }
+    }
+
+    const expandedFields = new Set<OutlineSectionField>(
+      candidate.scope.sections.flatMap(item => item.fields),
+    );
+    setScopeSectionIds([...expandedIds]);
+    setSectionFields(
+      expandedFields.size > 0 ? [...expandedFields] : ['content'],
+    );
+    setGlobalFields([...candidate.scope.globalFields]);
+    const fixes = candidate.coherence.issues
+      .filter(issue => issue.requiresScopeExpansion)
+      .map(issue => issue.suggestedFix.trim())
+      .filter(Boolean);
+    setGuidance(
+      [
+        'Tiếp tục từ candidate hiện tại, giữ nguyên mọi phần đã tốt và chỉ xử lý các điểm reviewer nêu.',
+        ...new Set(fixes),
+      ]
+        .join(' ')
+        .slice(0, 4000),
+    );
+    setScopeError('');
+  }
 
   async function handleGenerate() {
     if (
@@ -808,12 +1054,49 @@ function OutlinePage({projectId}: {projectId: string}) {
     const selection = codexConnection.getGenerationSelection();
     if (!selection) return;
 
-    const generatedProject = await outline.generate(
+    if (!outline.draft) {
+      const generatedProject = await outline.generate(
+        guidance,
+        selection.model,
+        selection.reasoningEffort,
+      );
+      if (generatedProject) setGuidance('');
+      return;
+    }
+
+    if (!guidance.trim()) {
+      setScopeError('Hãy mô tả cụ thể điều bạn muốn AI chỉnh.');
+      return;
+    }
+    if (
+      globalFields.length === 0 &&
+      (scopeSectionIds.length === 0 || sectionFields.length === 0)
+    ) {
+      setScopeError('Hãy chọn ít nhất một phần AI được phép chỉnh.');
+      return;
+    }
+    const nextCandidate = await outline.createEditCandidate(
       guidance,
+      {
+        globalFields,
+        sections:
+          sectionFields.length === 0
+            ? []
+            : scopeSectionIds.map(sectionId => ({
+                sectionId,
+                fields: sectionFields,
+              })),
+      },
       selection.model,
       selection.reasoningEffort,
+      outline.candidate?.decision === 'pending'
+        ? outline.candidate.candidateId
+        : undefined,
     );
-    if (generatedProject) setGuidance('');
+    if (nextCandidate) {
+      setGuidance('');
+      setScopeError('');
+    }
   }
 
   async function handleApprove() {
@@ -821,6 +1104,23 @@ function OutlinePage({projectId}: {projectId: string}) {
     if (approvedProject) {
       navigate(projectVoiceVisualPath(approvedProject.id), true);
     }
+  }
+
+  function confirmDiscardInvalidDraft(action: string) {
+    if (outline.validationErrors.length === 0) return true;
+    return window.confirm(
+      `Bản đang gõ chưa hợp lệ nên chưa thể lưu. ${action} sẽ bỏ các thay đổi cục bộ chưa hợp lệ và dùng dữ liệu đã lưu gần nhất. Bạn có muốn tiếp tục?`,
+    );
+  }
+
+  async function handleApplyCandidate() {
+    if (!confirmDiscardInvalidDraft('Áp dụng candidate')) return;
+    await outline.applyCandidate();
+  }
+
+  async function handleRestoreVersion(version: OutlineVersionRecord) {
+    if (!confirmDiscardInvalidDraft('Khôi phục phiên bản')) return;
+    await outline.restoreVersion(version);
   }
 
   if (outline.loadState === 'loading') {
@@ -1132,6 +1432,14 @@ function OutlinePage({projectId}: {projectId: string}) {
                       <span className="outline-section-index">
                         {String(index + 1).padStart(2, '0')}
                       </span>
+                      <label className="outline-ai-scope-toggle">
+                        <input
+                          type="checkbox"
+                          checked={scopeSectionIds.includes(section.id)}
+                          onChange={() => toggleScopeSection(section.id)}
+                        />
+                        AI sửa
+                      </label>
                       <input
                         className="outline-section-title"
                         value={section.title}
@@ -1242,49 +1550,227 @@ function OutlinePage({projectId}: {projectId: string}) {
               </section>
 
               <section className="outline-ai-revision">
-                <div>
+                <div className="outline-ai-revision-heading">
                   <span className="preview-kicker">
                     <SparkIcon />
-                    Nhờ AI chỉnh lại
+                    {outline.candidate?.decision === 'pending'
+                      ? 'Chỉnh tiếp đề xuất'
+                      : 'Tạo đề xuất AI'}
                   </span>
                   <h2>Bạn muốn thay đổi điều gì?</h2>
                   <p>
-                    Chỉ khi có góp ý, mạch hiện tại mới được gửi lại cho AI.
+                    AI đọc toàn bài nhưng chỉ được ghi vào phạm vi bạn chọn.
                   </p>
                 </div>
-                <textarea
-                  rows={3}
-                  maxLength={4000}
-                  value={guidance}
-                  placeholder="Ví dụ: Mở đầu hấp dẫn hơn, rút ngắn phần ví dụ và nhấn mạnh điều kiện dữ liệu phải được sắp xếp."
-                  onChange={(event) => setGuidance(event.target.value)}
-                />
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={
-                    outline.generating ||
-                    outline.saveState === 'conflict' ||
-                    codexConnection.checking ||
-                    !codexConnection.generationReady
-                  }
-                  onClick={() => void handleGenerate()}
-                >
-                  {outline.generating ? (
-                    <>
-                      <span className="spinner dark" />
-                      AI đang chỉnh…
-                    </>
-                  ) : (
-                    <>
-                      <SparkIcon />
-                      {guidance.trim()
-                        ? 'Chỉnh theo góp ý'
-                        : 'Tạo lại toàn bộ'}
-                    </>
-                  )}
-                </button>
+                <div className="outline-ai-scope">
+                  <div className="outline-ai-scope-group">
+                    <strong>Phần tổng quan được phép sửa</strong>
+                    <div>
+                      {([
+                        ['brief.summary', 'Tóm tắt'],
+                        ['brief.assumptions', 'Giả định'],
+                        ['centralMessage', 'Thông điệp'],
+                      ] as const).map(([field, label]) => (
+                        <label key={field}>
+                          <input
+                            type="checkbox"
+                            checked={globalFields.includes(field)}
+                            onChange={() => toggleGlobalField(field)}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="outline-ai-scope-group">
+                    <strong>
+                      {scopeSectionIds.length} ý đã chọn · trường được sửa
+                    </strong>
+                    <div>
+                      {([
+                        ['title', 'Tên ý'],
+                        ['goal', 'Mục tiêu'],
+                        ['content', 'Nội dung'],
+                        ['estimatedSeconds', 'Thời lượng'],
+                      ] as const).map(([field, label]) => (
+                        <label key={field}>
+                          <input
+                            type="checkbox"
+                            checked={sectionFields.includes(field)}
+                            onChange={() => toggleSectionField(field)}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                    <p>
+                      Chọn “AI sửa” trên từng ý phía trên. ID, thứ tự và các ý
+                      không chọn luôn được giữ nguyên.
+                    </p>
+                  </div>
+                </div>
+                <div className="outline-ai-revision-request">
+                  <textarea
+                    rows={3}
+                    maxLength={4000}
+                    value={guidance}
+                    placeholder={
+                      outline.candidate?.decision === 'pending'
+                        ? 'Ví dụ: Giữ toàn bộ đề xuất này, chỉ làm câu kết tự nhiên hơn.'
+                        : 'Ví dụ: Rút gọn ví dụ nhưng giữ nguyên luận điểm và làm câu chuyển sang ý tiếp theo tự nhiên hơn.'
+                    }
+                    onChange={(event) => {
+                      setGuidance(event.target.value);
+                      setScopeError('');
+                    }}
+                  />
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={
+                      outline.candidateGenerating ||
+                      outline.saveState === 'conflict' ||
+                      codexConnection.checking ||
+                      !codexConnection.generationReady
+                    }
+                    onClick={() => void handleGenerate()}
+                  >
+                    {outline.candidateGenerating ? (
+                      <>
+                        <span className="spinner dark" />
+                        AI đang tạo và kiểm tra…
+                      </>
+                    ) : (
+                      <>
+                        <SparkIcon />
+                        {outline.candidate?.decision === 'pending'
+                          ? 'Chỉnh tiếp trên đề xuất'
+                          : 'Tạo đề xuất để so sánh'}
+                      </>
+                    )}
+                  </button>
+                </div>
+                {scopeError && (
+                  <p className="outline-scope-error" role="alert">
+                    {scopeError}
+                  </p>
+                )}
               </section>
+
+              {outline.candidate && (
+                <section className="outline-candidate-review">
+                  <header>
+                    <div>
+                      <span className="preview-kicker">
+                        <LayersIcon />
+                        {outline.candidate.decision === 'accepted'
+                          ? 'Candidate đã áp dụng'
+                          : outline.candidate.decision === 'rejected'
+                            ? 'Candidate đã giữ lại'
+                            : 'Candidate chưa áp dụng'}
+                      </span>
+                      <h2>{outline.candidate.patch.editSummary}</h2>
+                    </div>
+                    <span className={`candidate-status is-${outline.candidate.status}`}>
+                      {outline.candidate.status === 'ready'
+                        ? 'Mạch lạc'
+                        : outline.candidate.status === 'coherence_warning'
+                          ? 'Có lưu ý'
+                          : outline.candidate.status === 'coherence_blocked'
+                            ? 'Cần chỉnh tiếp'
+                            : 'Cần mở rộng phạm vi'}
+                    </span>
+                  </header>
+
+                  <div className="outline-coherence-summary">
+                    <strong>Kiểm tra sau khi ghép với toàn bài</strong>
+                    <p>{outline.candidate.coherence.summary}</p>
+                    {outline.candidate.coherence.issues.length > 0 && (
+                      <ul>
+                        {outline.candidate.coherence.issues.map((issue, index) => (
+                          <li key={`${issue.category}-${index}`}>
+                            <strong>
+                              {issue.severity === 'error' ? 'Cần xử lý' : 'Lưu ý'}:
+                            </strong>{' '}
+                            {issue.message}
+                            <small>{issue.suggestedFix}</small>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  {outline.candidate.decision === 'pending' &&
+                    outline.candidate.status === 'scope_expansion_required' && (
+                      <div className="candidate-scope-expansion">
+                        <div>
+                          <strong>Reviewer đề nghị mở rộng đúng phần liên quan</strong>
+                          <small>
+                            Candidate hiện tại vẫn làm nền; các section không nằm trong
+                            phạm vi mới tiếp tục được bảo vệ.
+                          </small>
+                        </div>
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={prepareScopeExpansion}
+                        >
+                          Mở phạm vi theo gợi ý
+                        </button>
+                      </div>
+                    )}
+
+                  <OutlineDiffList
+                    changes={outlineDiff(draft, outline.candidate.content)}
+                  />
+
+                  <footer>
+                    {outline.candidate.decision === 'pending' ? (
+                      <>
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          disabled={outline.historyBusy}
+                          onClick={() => void outline.rejectCandidate()}
+                        >
+                          Giữ bản đang dùng
+                        </button>
+                        <button
+                          className="submit-button"
+                          type="button"
+                          disabled={
+                            outline.candidateApplying ||
+                            outline.candidate.status ===
+                              'scope_expansion_required' ||
+                            outline.candidate.status === 'coherence_blocked'
+                          }
+                          onClick={() => void handleApplyCandidate()}
+                        >
+                          {outline.candidateApplying ? (
+                            <>
+                              <span className="spinner" />
+                              Đang áp dụng…
+                            </>
+                          ) : (
+                            <>
+                              Áp dụng thành phiên bản mới
+                              <CheckIcon />
+                            </>
+                          )}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={outline.dismissCandidate}
+                      >
+                        Đóng so sánh
+                      </button>
+                    )}
+                  </footer>
+                </section>
+              )}
             </div>
 
             <aside className="outline-editor-side">
@@ -1350,6 +1836,141 @@ function OutlinePage({projectId}: {projectId: string}) {
                     hình ảnh ở bước này.
                   </p>
                 </div>
+              </section>
+
+              <section className="outline-history-card">
+                <header>
+                  <div>
+                    <span className="preview-label">Lịch sử phiên bản</span>
+                    <h2>Quay lại bất cứ lúc nào</h2>
+                  </div>
+                  <div className="outline-checkpoint-action">
+                    <input
+                      value={checkpointLabel}
+                      maxLength={120}
+                      placeholder="Tên phiên bản (tùy chọn)"
+                      onChange={event => setCheckpointLabel(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      disabled={outline.historyBusy}
+                      onClick={() => {
+                        void outline
+                          .saveCheckpoint(checkpointLabel)
+                          .then(version => {
+                            if (version) setCheckpointLabel('');
+                          });
+                      }}
+                    >
+                      {outline.historyBusy ? 'Đang lưu…' : '+ Lưu phiên bản'}
+                    </button>
+                  </div>
+                </header>
+
+                {outline.historyError && (
+                  <p className="outline-history-error">{outline.historyError}</p>
+                )}
+
+                <div className="outline-version-list">
+                  {outline.history?.versions.slice(0, 8).map(version => {
+                    const isCurrent =
+                      JSON.stringify(outlineContentFromArtifact(version.artifact)) ===
+                      JSON.stringify(draft);
+                    return (
+                      <article
+                        key={version.versionId}
+                        className={isCurrent ? 'is-current' : ''}
+                      >
+                        <div>
+                          <strong>{version.label ?? outlineVersionOriginLabels[version.origin]}</strong>
+                          <span>
+                            {outlineVersionOriginLabels[version.origin]} ·{' '}
+                            {new Date(version.createdAt).toLocaleString('vi-VN')}
+                          </span>
+                        </div>
+                        <div>
+                          {isCurrent ? (
+                            <span className="outline-version-current">Đang dùng</span>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedVersion(version)}
+                              >
+                                So sánh
+                              </button>
+                              <button
+                                type="button"
+                                disabled={outline.historyBusy}
+                                onClick={() => void handleRestoreVersion(version)}
+                              >
+                                Khôi phục
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+
+                {(outline.history?.candidates.length ?? 0) > 0 && (
+                  <div className="outline-candidate-history">
+                    <strong>Đề xuất AI</strong>
+                    {outline.history?.candidates.slice(0, 8).map(item => {
+                      const contextCurrent =
+                        item.rootBaseContextHash ===
+                        outline.history?.currentContextHash;
+                      return (
+                        <article key={item.candidateId}>
+                          <div>
+                            <strong>{item.patch.editSummary}</strong>
+                            <span>
+                              {item.decision === 'accepted'
+                                ? 'Đã áp dụng'
+                                : item.decision === 'rejected'
+                                  ? 'Đã giữ bản cũ'
+                                  : contextCurrent
+                                    ? 'Đang chờ review'
+                                    : 'Context cũ'}{' '}
+                              · {new Date(item.createdAt).toLocaleString('vi-VN')}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => outline.selectCandidate(item)}
+                          >
+                            So sánh
+                          </button>
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {selectedVersion && (
+                  <div className="outline-version-compare">
+                    <header>
+                      <strong>
+                        So với {selectedVersion.label ?? 'phiên bản đã chọn'}
+                      </strong>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedVersion(null)}
+                      >
+                        Đóng
+                      </button>
+                    </header>
+                    <OutlineDiffList
+                      changes={outlineDiff(
+                        outlineContentFromArtifact(selectedVersion.artifact),
+                        draft,
+                      )}
+                      beforeLabel="Phiên bản đã chọn"
+                      afterLabel="Đang dùng"
+                    />
+                  </div>
+                )}
               </section>
             </aside>
           </div>
@@ -1532,44 +2153,53 @@ export default function App() {
           className={`workspace-page is-${pageTransition}`}
           key={routeIdentity}
         >
-          {route.name === 'new-topic' && (
-            <TopicPage
-              autosavePaused={libraryOpen}
-              onContinue={(project) =>
-                navigate(projectOutlinePath(project.id), true)
-              }
-            />
-          )}
-          {route.name === 'project-topic' && (
-            <TopicPage
-              projectId={route.projectId}
-              autosavePaused={libraryOpen}
-              onContinue={(project) =>
-                navigate(projectOutlinePath(project.id), true)
-              }
-            />
-          )}
-          {route.name === 'project-outline' && (
-            <OutlinePage projectId={route.projectId} />
-          )}
-          {route.name === 'project-voice-visual' && (
-            <VoiceVisualPage projectId={route.projectId} />
-          )}
-          {route.name === 'project-motion-canvas' && (
-            <MotionCanvasPage projectId={route.projectId} />
-          )}
-          {route.name === 'project-voice' && (
-            <VoicePage projectId={route.projectId} />
-          )}
-          {route.name === 'project-sync' && (
-            <AnimationSyncPage projectId={route.projectId} />
-          )}
-          {route.name === 'project-layout' && (
-            <LayoutEditorPage projectId={route.projectId} />
-          )}
-          {route.name === 'project-render' && (
-            <FinalRenderPage projectId={route.projectId} />
-          )}
+          <Suspense
+            fallback={
+              <div className="page-state" role="status">
+                <span className="spinner dark" />
+                <strong>Đang mở công cụ của bước này…</strong>
+              </div>
+            }
+          >
+            {route.name === 'new-topic' && (
+              <TopicPage
+                autosavePaused={libraryOpen}
+                onContinue={(project) =>
+                  navigate(projectOutlinePath(project.id), true)
+                }
+              />
+            )}
+            {route.name === 'project-topic' && (
+              <TopicPage
+                projectId={route.projectId}
+                autosavePaused={libraryOpen}
+                onContinue={(project) =>
+                  navigate(projectOutlinePath(project.id), true)
+                }
+              />
+            )}
+            {route.name === 'project-outline' && (
+              <OutlinePage projectId={route.projectId} />
+            )}
+            {route.name === 'project-voice-visual' && (
+              <VoiceVisualPage projectId={route.projectId} />
+            )}
+            {route.name === 'project-motion-canvas' && (
+              <MotionCanvasPage projectId={route.projectId} />
+            )}
+            {route.name === 'project-voice' && (
+              <VoicePage projectId={route.projectId} />
+            )}
+            {route.name === 'project-sync' && (
+              <AnimationSyncPage projectId={route.projectId} />
+            )}
+            {route.name === 'project-layout' && (
+              <LayoutEditorPage projectId={route.projectId} />
+            )}
+            {route.name === 'project-render' && (
+              <FinalRenderPage projectId={route.projectId} />
+            )}
+          </Suspense>
         </div>
       </main>
 

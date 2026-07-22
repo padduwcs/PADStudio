@@ -7,6 +7,11 @@ import {
   applySceneOverrides,
   serializeSignalValue,
 } from '../layout-editor/modifier-model.js';
+import {
+  createRenderDiagnosticTracker,
+  diagnosticMessage,
+  rendererRangeFromFrames,
+} from './diagnostics.js';
 
 const EXPORTER_ID = 'pad-studio/ffmpeg-stream';
 
@@ -183,21 +188,33 @@ class PadStreamingExporter {
   static displayName = 'PAD Studio FFmpeg stream';
 
   static async create(_project, settings) {
-    return new PadStreamingExporter(settings.exporter.options.token);
+    return new PadStreamingExporter(
+      settings.exporter.options.token,
+      settings.exporter.options.diagnostics,
+    );
   }
 
-  constructor(token) {
+  constructor(token, diagnostics) {
     this.token = token;
+    this.diagnostics = diagnostics;
   }
 
-  async handleFrame(canvas, frame, _sceneFrame, _sceneName, signal) {
+  async handleFrame(canvas, frame, sceneFrame, sceneName, signal) {
     if (signal.aborted) return;
-    const blob = await new Promise((resolve, reject) => {
-      canvas.toBlob(
-        value => value ? resolve(value) : reject(new Error('Không thể mã hóa frame PNG.')),
-        'image/png',
-      );
-    });
+    this.diagnostics.markFrame(frame, sceneFrame, sceneName);
+    let blob = null;
+    for (let attempt = 1; attempt <= 3 && !blob; attempt += 1) {
+      blob = await new Promise(resolve => {
+        canvas.toBlob(resolve, 'image/png');
+      });
+      if (!blob && attempt < 3 && !signal.aborted) {
+        await new Promise(resolve => setTimeout(resolve, attempt * 25));
+      }
+    }
+    if (signal.aborted) return;
+    if (!blob) {
+      throw new Error('Không thể mã hóa frame PNG sau 3 lần thử.');
+    }
     const response = await fetch(
       `/__pad-render/frame?token=${encodeURIComponent(this.token)}&frame=${frame}`,
       {method: 'POST', headers: {'content-type': 'image/png'}, body: blob, signal},
@@ -243,20 +260,36 @@ async function start(project) {
   );
   if (!response.ok) throw new Error('Không thể đọc cấu hình final render.');
   const config = await response.json();
-  let watermarkBitmap = null;
-  if (config.watermark?.type === 'image') {
-    const imageResponse = await fetch(
-      `/__pad-render/watermark?token=${encodeURIComponent(token)}`,
-      {cache: 'no-store'},
-    );
-    if (!imageResponse.ok) throw new Error('Không thể đọc ảnh watermark đã chọn.');
-    watermarkBitmap = await createImageBitmap(await imageResponse.blob());
-  }
+  const diagnostics = createRenderDiagnosticTracker(config.fps);
+  const disposeLogger = project.logger.onLogged.subscribe(payload => {
+    diagnostics.record(payload);
+  });
+  let disposeFrame = () => {};
+  try {
+    let watermarkBitmap = null;
+    if (config.watermark?.type === 'image') {
+      const imageResponse = await fetch(
+        `/__pad-render/watermark?token=${encodeURIComponent(token)}`,
+        {cache: 'no-store'},
+      );
+      if (!imageResponse.ok) throw new Error('Không thể đọc ảnh watermark đã chọn.');
+      watermarkBitmap = await createImageBitmap(await imageResponse.blob());
+    }
 
-  project.meta.rendering.exporter.exporters.push(PadStreamingExporter);
-  const renderer = new Renderer(project);
-  const baseRender = renderer.stage.render.bind(renderer.stage);
-  renderer.stage.render = async (currentScene, previousScene) => {
+    project.meta.rendering.exporter.exporters.push(PadStreamingExporter);
+    const renderer = new Renderer(project);
+    disposeFrame = renderer.onFrameChanged.subscribe(frame => {
+      const scene = renderer.playback?.currentScene;
+      diagnostics.markFrame(
+        frame,
+        scene && Number.isFinite(scene.firstFrame)
+          ? frame - scene.firstFrame
+          : null,
+        scene?.name,
+      );
+    });
+    const baseRender = renderer.stage.render.bind(renderer.stage);
+    renderer.stage.render = async (currentScene, previousScene) => {
     let restoreCurrent = () => {};
     let restorePrevious = () => {};
     try {
@@ -280,38 +313,64 @@ async function start(project) {
       restoreCurrent();
       restorePrevious();
     }
-  };
+    };
 
-  let result = RendererResult.Error;
-  const dispose = renderer.onFinished.subscribe(value => {
-    result = value;
-  });
-  try {
-    await renderer.render({
+    let result = RendererResult.Error;
+    const disposeFinished = renderer.onFinished.subscribe(value => {
+      result = value;
+    });
+    try {
+      const rangeFrames = Array.isArray(config.rangeFrames)
+        ? config.rangeFrames
+        : [0, Math.ceil(config.durationSeconds * config.fps)];
+      const range = rendererRangeFromFrames(rangeFrames, config.fps);
+      await renderer.render({
       name: config.name,
-      range: [0, config.durationSeconds],
+      range,
       fps: config.fps,
       size: new Vector2(config.width, config.height),
       resolutionScale: 1,
       background: null,
       colorSpace: 'srgb',
       audioOffset: 0,
-      exporter: {name: EXPORTER_ID, options: {token}},
+      exporter: {name: EXPORTER_ID, options: {token, diagnostics}},
+      });
+    } finally {
+      disposeFinished();
+    }
+    if (result !== RendererResult.Success) {
+      const diagnostic = diagnostics.build(null, 'motion-canvas');
+      const error = new Error(
+        diagnosticMessage(
+          diagnostic,
+          result === RendererResult.Aborted
+            ? 'Motion Canvas đã dừng trước khi hoàn tất.'
+            : 'Motion Canvas không thể dựng frame hiện tại.',
+        ),
+      );
+      error.renderDiagnostic = diagnostic;
+      throw error;
+    }
+    await postJson(`/__pad-render/status?token=${encodeURIComponent(token)}`, {
+      state: 'completed',
     });
+  } catch (error) {
+    if (error && typeof error === 'object' && error.renderDiagnostic) {
+      throw error;
+    }
+    const wrapped = error instanceof Error ? error : new Error(String(error));
+    wrapped.renderDiagnostic = diagnostics.build(wrapped, 'motion-canvas');
+    throw wrapped;
   } finally {
-    dispose();
+    disposeFrame();
+    disposeLogger();
   }
-  if (result !== RendererResult.Success) {
-    throw new Error(`Motion Canvas kết thúc với mã ${result}.`);
-  }
-  await postJson(`/__pad-render/status?token=${encodeURIComponent(token)}`, {
-    state: 'completed',
-  });
 }
 
 export function editor(project) {
   void start(project).catch(async error => {
     const message = error instanceof Error ? error.message : String(error);
+    const diagnostic = error?.renderDiagnostic ?? null;
     const detail = document.querySelector('#render-detail');
     if (detail) detail.textContent = message;
     const token = new URLSearchParams(window.location.search).get('token') ?? '';
@@ -319,6 +378,7 @@ export function editor(project) {
       await postJson(`/__pad-render/status?token=${encodeURIComponent(token)}`, {
         state: 'failed',
         message,
+        diagnostic,
       }).catch(() => undefined);
     }
   });

@@ -176,30 +176,19 @@ export function useFinalRender(projectId: string) {
       errorCode: null,
     });
     try {
-      const updatedProject = await generateFinalRender(
+      const startedStatus = await generateFinalRender(
         projectId,
         {generationId: nextGenerationId, ...options},
         currentProject.revision,
       );
-      publishProject(updatedProject);
-      renderingRef.current = false;
-      setStatus(previous => {
-        if (!previous) return previous;
-        const renderedFrames =
-          updatedProject.renderBundle?.validation.renderedFrameCount ??
-          previous.totalFrames;
-        return {
-          ...previous,
-          state: 'completed',
-          progress: 1,
-          renderedFrames,
-          totalFrames: renderedFrames,
-          updatedAt: new Date().toISOString(),
-          message: 'Video cuối đã sẵn sàng.',
-          errorCode: null,
-        };
-      });
-      return updatedProject;
+      renderingRef.current = jobIsActive(startedStatus);
+      setStatus(startedStatus);
+      if (startedStatus.state === 'completed') {
+        const updatedProject = await getProject(projectId);
+        publishProject(updatedProject);
+        return updatedProject;
+      }
+      return currentProject;
     } catch (error) {
       renderingRef.current = false;
       const isConflict =
@@ -208,15 +197,33 @@ export function useFinalRender(projectId: string) {
         setConflict(true);
         if (error.currentProject) publishProject(error.currentProject);
       }
-      const message =
+      let message =
         error instanceof ApiRequestError
           ? error.message
           : 'Không thể hoàn tất final render lúc này.';
+      try {
+        const failedStatus = await getFinalRenderStatus(
+          projectId,
+          nextGenerationId,
+        );
+        if (failedStatus?.state === 'failed') {
+          setStatus(failedStatus);
+          message = failedStatus.message;
+        }
+      } catch {
+        // Giữ lỗi từ request chính nếu status endpoint cũng không khả dụng.
+      }
       setActionError(message);
       setStatus(previous =>
-        previous
+        previous?.state !== 'failed'
           ? {
-              ...previous,
+              ...(previous ?? {
+                generationId: nextGenerationId,
+                progress: 0,
+                renderedFrames: 0,
+                totalFrames,
+                startedAt: null,
+              }),
               state: 'failed',
               updatedAt: new Date().toISOString(),
               message,

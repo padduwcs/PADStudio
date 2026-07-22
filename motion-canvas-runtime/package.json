@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test --test-isolation=none layout-editor/modifier-model.test.js layout-editor/editor-targets.test.js"
+    "test": "node --test --test-isolation=none layout-editor/modifier-model.test.js layout-editor/editor-targets.test.js render/diagnostics.test.js"
   },
   "devDependencies": {
     "@motion-canvas/ui": "3.17.2",

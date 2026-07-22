@@ -79,8 +79,9 @@ export interface MotionCanvasGenerationRequest {
   topicInput: TopicInput;
   outline: TeachingOutline;
   voiceVisualPlan: VoiceVisualPlan;
+  sectionIndexes?: number[];
   guidance?: string;
-  currentScenes?: Array<Pick<MotionCanvasSourceScene, 'name' | 'source'>>;
+  currentScenes?: MotionCanvasSourceScene[];
 }
 
 export interface MotionCanvasGenerationResult {
@@ -183,7 +184,12 @@ function generationPayload(
     },
     ...(request.guidance ? {guidance: request.guidance} : {}),
     ...(request.guidance && request.currentScenes?.[sectionIndex]
-      ? {currentScene: request.currentScenes[sectionIndex]}
+      ? {
+          currentScene: {
+            name: request.currentScenes[sectionIndex]!.name,
+            source: request.currentScenes[sectionIndex]!.source,
+          },
+        }
       : {}),
   };
 }
@@ -1159,6 +1165,7 @@ export function createCodexMotionCanvasGenerator(
       let initialModel = '';
       let initialUsage: CodexTokenUsage | null = null;
       let initialScene: MotionCanvasSourceScene | undefined;
+      const previousScene = request.currentScenes?.[sectionIndex];
       try {
         const scenePolicy = await resolveScenePolicy(
           request.model,
@@ -1190,6 +1197,7 @@ export function createCodexMotionCanvasGenerator(
           generated.responseText,
           generated.model,
           generated.usage,
+          previousScene,
         );
         initialScene = initialResult.scene;
         try {
@@ -1394,28 +1402,44 @@ export function createCodexMotionCanvasGenerator(
 
   return {
     async generate(request) {
-      const results = new Array<GeneratedSceneResult>(
-        request.outline.sections.length,
-      );
+      const sectionIndexes = request.sectionIndexes ??
+        request.outline.sections.map((_section, index) => index);
+      if (
+        sectionIndexes.length === 0 ||
+        new Set(sectionIndexes).size !== sectionIndexes.length ||
+        sectionIndexes.some(
+          index =>
+            !Number.isSafeInteger(index) ||
+            index < 0 ||
+            index >= request.outline.sections.length,
+        )
+      ) {
+        throw new MotionCanvasGenerationError(
+          'CODEX_MOTION_CANVAS_INVALID_REQUEST',
+          'Phạm vi scene cần sinh không hợp lệ.',
+        );
+      }
+      const results = new Array<GeneratedSceneResult>(sectionIndexes.length);
       const failures: Array<{index: number; error: unknown}> = [];
       let nextIndex = 0;
       const workerCount = Math.min(
         concurrency,
-        request.outline.sections.length,
+        sectionIndexes.length,
       );
       const workers = Array.from({length: workerCount}, async () => {
         while (true) {
-          const sectionIndex = nextIndex;
+          const resultIndex = nextIndex;
           nextIndex += 1;
-          if (sectionIndex >= request.outline.sections.length) return;
+          if (resultIndex >= sectionIndexes.length) return;
+          const sectionIndex = sectionIndexes[resultIndex]!;
 
           try {
-            results[sectionIndex] = await generateSceneOnce(
+            results[resultIndex] = await generateSceneOnce(
               request,
               sectionIndex,
             );
           } catch (error) {
-            failures.push({index: sectionIndex, error});
+            failures.push({index: resultIndex, error});
           }
         }
       });
@@ -1473,13 +1497,23 @@ export function createCodexMotionCanvasGenerator(
             const repairIndex = nextRepair;
             nextRepair += 1;
             if (repairIndex >= indexes.length) return;
-            const sectionIndex = indexes[repairIndex]!;
+            const generatedIndex = indexes[repairIndex]!;
+            const generatedScene = generated.scenes[generatedIndex]!;
+            const sectionIndex = request.outline.sections.findIndex(
+              section => section.id === generatedScene.outlineSectionId,
+            );
+            if (sectionIndex < 0) {
+              throw new MotionCanvasGenerationError(
+                'CODEX_MOTION_CANVAS_INVALID_REQUEST',
+                'Scene cần sửa không còn khớp với mạch giảng.',
+              );
+            }
             repairs[repairIndex] = await repairScene(
               request,
-              generated.scenes[sectionIndex]!,
+              generatedScene,
               sectionIndex,
               diagnosticsForScene(
-                generated.scenes[sectionIndex]!.filePath,
+                generatedScene.filePath,
               ),
             );
           }
@@ -1511,7 +1545,16 @@ export function createCodexMotionCanvasGenerator(
     },
     recover(request, generated, compilerDiagnostics) {
       const normalizedDiagnostics = compilerDiagnostics.replaceAll('\\', '/');
-      const fallbackScenes = generated.scenes.map((scene, sectionIndex) => {
+      const fallbackScenes = generated.scenes.map((scene) => {
+        const sectionIndex = request.outline.sections.findIndex(
+          section => section.id === scene.outlineSectionId,
+        );
+        if (sectionIndex < 0) {
+          throw new MotionCanvasGenerationError(
+            'CODEX_MOTION_CANVAS_INVALID_REQUEST',
+            'Scene fallback không còn khớp với mạch giảng.',
+          );
+        }
         if (
           normalizedDiagnostics &&
           normalizedDiagnostics.includes('src/scenes/') &&

@@ -32,13 +32,20 @@ import type {CodexConnectionService} from './codexConnection.ts';
 import type {ElevenLabsConnectionService} from './elevenLabsConnection.ts';
 import type {ElevenLabsVoiceService} from './elevenLabsVoiceService.ts';
 import type {OutlineGenerator} from './outlineGenerator.ts';
+import type {OutlineRevisionService} from './outlineRevisionService.ts';
 import type {MotionCanvasGenerator} from './motionCanvasGenerator.ts';
+import {
+  MotionCanvasWorkspaceError,
+  type MotionCanvasWorkspace,
+} from './motionCanvasWorkspace.ts';
+import type {MotionCanvasRevisionReviewService} from './motionCanvasRevisionReview.ts';
 import {
   LayoutPreviewError,
   type LayoutPreviewService,
 } from './layoutPreviewService.ts';
 import type {LayoutWorkspace} from './layoutWorkspace.ts';
 import type {VoiceVisualGenerator} from './voiceVisualGenerator.ts';
+import type {VoiceVisualRevisionService} from './voiceVisualRevisionService.ts';
 import type {VoiceWorkspace} from './voiceWorkspace.ts';
 import type {FinalRenderService} from './finalRenderService.ts';
 import type {CredentialStore} from './credentialStore.ts';
@@ -72,8 +79,12 @@ async function startTestApp(
       apiKey: string,
     ) => ElevenLabsConnectionService;
     outlineGenerator?: OutlineGenerator;
+    outlineRevisionService?: OutlineRevisionService;
     voiceVisualGenerator?: VoiceVisualGenerator;
+    voiceVisualRevisionService?: VoiceVisualRevisionService;
     motionCanvasGenerator?: MotionCanvasGenerator;
+    motionCanvasWorkspace?: MotionCanvasWorkspace;
+    motionCanvasRevisionReviewService?: MotionCanvasRevisionReviewService;
     voiceWorkspace?: VoiceWorkspace;
     animationSyncWorkspace?: AnimationSyncWorkspace;
     animationSyncPreviewService?: AnimationSyncPreviewService;
@@ -93,8 +104,13 @@ async function startTestApp(
     credentialStore: options.credentialStore,
     elevenLabsConnectionFactory: options.elevenLabsConnectionFactory,
     outlineGenerator: options.outlineGenerator,
+    outlineRevisionService: options.outlineRevisionService,
     voiceVisualGenerator: options.voiceVisualGenerator,
+    voiceVisualRevisionService: options.voiceVisualRevisionService,
     motionCanvasGenerator: options.motionCanvasGenerator,
+    motionCanvasWorkspace: options.motionCanvasWorkspace,
+    motionCanvasRevisionReviewService:
+      options.motionCanvasRevisionReviewService,
     voiceWorkspace: options.voiceWorkspace,
     animationSyncWorkspace: options.animationSyncWorkspace,
     animationSyncPreviewService: options.animationSyncPreviewService,
@@ -146,7 +162,10 @@ test('backend cleanup chờ final render dừng xong và có tính idempotent', 
     async render() {
       throw new Error('Không dùng trong test cleanup.');
     },
-    getStatus() {
+    async getStatus() {
+      return null;
+    },
+    async getCompletedBundle() {
       return null;
     },
     async resolveVideo() {
@@ -766,6 +785,1166 @@ test('API tạo, chỉnh sửa và chốt mạch giảng an toàn', async (conte
   assert.equal(outdatedApproveBody.error.code, 'OUTLINE_OUTDATED');
 });
 
+test('API Outline candidate giữ bản hiện tại, áp dụng có kiểm soát và khôi phục copy-forward', async context => {
+  const firstSectionId = '11111111-1111-4111-8111-111111111111';
+  const secondSectionId = '22222222-2222-4222-8222-222222222222';
+  const originalContent = {
+    brief: {
+      summary: 'Video giúp người mới hiểu trực giác chia đôi không gian tìm kiếm.',
+      assumptions: ['Dữ liệu đầu vào đã được sắp xếp.'],
+    },
+    centralMessage: 'Mỗi lần so sánh loại bỏ một nửa vùng tìm kiếm.',
+    sections: [
+      {
+        id: firstSectionId,
+        title: 'Đặt vấn đề',
+        goal: 'Nhận ra giới hạn của tìm kiếm tuần tự.',
+        content: 'Tìm một giá trị trong danh sách dài bằng cách xem lần lượt.',
+        estimatedSeconds: 60,
+      },
+      {
+        id: secondSectionId,
+        title: 'Chia đôi',
+        goal: 'Hiểu cách loại bỏ một nửa dữ liệu.',
+        content: 'So sánh phần tử giữa rồi giữ lại nửa phù hợp.',
+        estimatedSeconds: 90,
+      },
+    ],
+  };
+  const revisedContent = {
+    ...originalContent,
+    sections: [
+      {
+        ...originalContent.sections[0]!,
+        content:
+          'Hãy hình dung việc tìm một tên trong danh bạ hàng nghìn mục bằng cách xem lần lượt từ đầu.',
+      },
+      originalContent.sections[1]!,
+    ],
+  };
+  const outlineGenerator: OutlineGenerator = {
+    async generate() {
+      return {content: originalContent, model: 'outline-model', usage: null};
+    },
+  };
+  let revisionCalls = 0;
+  const outlineRevisionService: OutlineRevisionService = {
+    async revise(request) {
+      revisionCalls += 1;
+      assert.equal(request.baseContent.sections[0]?.id, firstSectionId);
+      assert.deepEqual(request.scope, {
+        globalFields: [],
+        sections: [{sectionId: firstSectionId, fields: ['content']}],
+      });
+      const coherenceBlocked = request.guidance.includes('kiểm thử lỗi');
+      return {
+        patch: {
+          editSummary: 'Làm ví dụ mở đầu trực quan hơn.',
+          brief: {summary: null, assumptions: null},
+          centralMessage: null,
+          sections: [
+            {
+              sectionId: firstSectionId,
+              title: null,
+              goal: null,
+              content: revisedContent.sections[0]!.content,
+              estimatedSeconds: null,
+            },
+          ],
+        },
+        content: revisedContent,
+        coherence: coherenceBlocked
+          ? {
+              verdict: 'warning',
+              summary: 'Bản ghép còn một lỗi logic phải chỉnh tiếp.',
+              issues: [
+                {
+                  severity: 'error',
+                  category: 'logic',
+                  message: 'Ví dụ mới chưa dẫn được tới nguyên lý ở phần sau.',
+                  suggestedFix: 'Bổ sung một câu nối ngay trong section được chọn.',
+                  affectedSectionIds: [firstSectionId],
+                  requiresScopeExpansion: false,
+                },
+              ],
+            }
+          : {
+              verdict: 'coherent',
+              summary: 'Ví dụ mới vẫn dẫn tự nhiên sang nguyên lý chia đôi.',
+              issues: [],
+            },
+        model: 'revision-model',
+        editorUsage: null,
+        reviewerUsage: null,
+      };
+    },
+  };
+  const {baseUrl} = await startTestApp(context, {
+    outlineGenerator,
+    outlineRevisionService,
+  });
+  const {project} = await createProject(baseUrl);
+  const generatedResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"1"',
+      },
+      body: JSON.stringify({generationId: randomUUID()}),
+    },
+  );
+  const generatedBody = await generatedResponse.json();
+  assert.equal(generatedResponse.status, 200);
+  assert.equal(generatedBody.project.revision, 2);
+
+  const historyResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/history`,
+  );
+  const historyBody = await historyResponse.json();
+  assert.equal(historyResponse.status, 200);
+  assert.equal(historyBody.versions.length, 1);
+  const baselineVersionId = historyBody.versions[0].versionId;
+
+  const candidateId = randomUUID();
+  const candidateRequest = {
+    generationId: candidateId,
+    guidance: 'Làm ví dụ mở đầu trực quan hơn nhưng giữ nguyên phần sau.',
+    scope: {
+      globalFields: [],
+      sections: [{sectionId: firstSectionId, fields: ['content']}],
+    },
+  };
+  const candidateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/candidates`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"2"',
+      },
+      body: JSON.stringify(candidateRequest),
+    },
+  );
+  const candidateBody = await candidateResponse.json();
+  assert.equal(candidateResponse.status, 201);
+  assert.equal(candidateBody.candidate.status, 'ready');
+  assert.equal(candidateBody.candidate.baseVersionId, baselineVersionId);
+  assert.equal(revisionCalls, 1);
+
+  const repeatedCandidate = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/candidates`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"2"',
+      },
+      body: JSON.stringify(candidateRequest),
+    },
+  );
+  assert.equal(repeatedCandidate.status, 200);
+  assert.equal(revisionCalls, 1);
+
+  const blockedCandidateId = randomUUID();
+  const blockedCandidateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/candidates`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"2"',
+      },
+      body: JSON.stringify({
+        ...candidateRequest,
+        generationId: blockedCandidateId,
+        guidance: 'Tạo candidate kiểm thử lỗi mạch lạc nghiêm trọng.',
+      }),
+    },
+  );
+  const blockedCandidateBody = await blockedCandidateResponse.json();
+  assert.equal(blockedCandidateResponse.status, 201);
+  assert.equal(blockedCandidateBody.candidate.status, 'coherence_blocked');
+  assert.equal(revisionCalls, 2);
+  const blockedApplyResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/candidates/${blockedCandidateId}/apply`,
+    {method: 'POST', headers: {'If-Match': '"2"'}},
+  );
+  const blockedApplyBody = await blockedApplyResponse.json();
+  assert.equal(blockedApplyResponse.status, 409);
+  assert.equal(blockedApplyBody.error.code, 'OUTLINE_COHERENCE_BLOCKED');
+  const rejectResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/candidates/${blockedCandidateId}/reject`,
+    {method: 'POST', headers: {'If-Match': '"2"'}},
+  );
+  const rejectBody = await rejectResponse.json();
+  assert.equal(rejectResponse.status, 200);
+  assert.equal(rejectBody.candidate.decision, 'rejected');
+
+  const unchangedProject = await (
+    await fetch(`${baseUrl}/api/projects/${project.id}`)
+  ).json();
+  assert.equal(unchangedProject.project.revision, 2);
+  assert.equal(
+    unchangedProject.project.outline.sections[0].content,
+    originalContent.sections[0]!.content,
+  );
+
+  const applyResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/candidates/${candidateId}/apply`,
+    {method: 'POST', headers: {'If-Match': '"2"'}},
+  );
+  const applyBody = await applyResponse.json();
+  assert.equal(applyResponse.status, 200);
+  assert.equal(applyBody.project.revision, 3);
+  const acceptedCandidate = applyBody.version?.candidateId;
+  assert.equal(acceptedCandidate, candidateId);
+  assert.equal(
+    applyBody.project.outline.sections[0].content,
+    revisedContent.sections[0]!.content,
+  );
+  assert.deepEqual(
+    applyBody.project.outline.sections[1],
+    originalContent.sections[1],
+  );
+
+  const restoreResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/versions/${baselineVersionId}/restore`,
+    {method: 'POST', headers: {'If-Match': '"3"'}},
+  );
+  const restoreBody = await restoreResponse.json();
+  assert.equal(restoreResponse.status, 200);
+  assert.equal(restoreBody.project.revision, 4);
+  assert.equal(restoreBody.project.outline.status, 'draft');
+  assert.equal(
+    restoreBody.project.outline.sections[0].content,
+    originalContent.sections[0]!.content,
+  );
+  assert.equal(restoreBody.project.outline.contentRevision, 3);
+
+  const finalHistory = await (
+    await fetch(`${baseUrl}/api/projects/${project.id}/outline/history`)
+  ).json();
+  assert.ok(finalHistory.versions.length >= 3);
+  assert.equal(finalHistory.candidates.length, 2);
+  assert.equal(
+    finalHistory.candidates.find(
+      (item: {candidateId: string}) => item.candidateId === candidateId,
+    ).decision,
+    'accepted',
+  );
+  assert.equal(
+    finalHistory.versions.some(
+      (version: {origin: string; restoredFromVersionId: string | null}) =>
+        version.origin === 'restore' &&
+        version.restoredFromVersionId === baselineVersionId,
+    ),
+    true,
+  );
+
+  const staleContextCandidateId = randomUUID();
+  const staleContextCandidateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/candidates`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"4"',
+      },
+      body: JSON.stringify({
+        ...candidateRequest,
+        generationId: staleContextCandidateId,
+        guidance: 'Giữ cách sửa nhưng dùng để kiểm thử khóa context.',
+      }),
+    },
+  );
+  assert.equal(staleContextCandidateResponse.status, 201);
+  const topicChangeResponse = await updateProject(baseUrl, project.id, 4, {
+    topicInput: {
+      ...project.topicInput,
+      videoDirection: 'Context mới sau khi candidate đã được tạo.',
+    },
+  });
+  assert.equal(topicChangeResponse.status, 200);
+  const staleApplyResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/candidates/${staleContextCandidateId}/apply`,
+    {method: 'POST', headers: {'If-Match': '"5"'}},
+  );
+  const staleApplyBody = await staleApplyResponse.json();
+  assert.equal(staleApplyResponse.status, 409);
+  assert.equal(staleApplyBody.error.code, 'OUTLINE_CONTEXT_CHANGED');
+});
+
+test('API Voice–visual candidate giữ beat ổn định, khóa context và restore copy-forward', async context => {
+  const outlineSectionId = '11111111-1111-4111-8111-111111111111';
+  const firstBeatId = '22222222-2222-4222-8222-222222222222';
+  const secondBeatId = '33333333-3333-4333-8333-333333333333';
+  const outlineGenerator: OutlineGenerator = {
+    async generate() {
+      return {
+        content: {
+          brief: {
+            summary: 'Giải thích trực giác tìm kiếm nhị phân cho người mới.',
+            assumptions: ['Danh sách đầu vào đã được sắp xếp.'],
+          },
+          centralMessage: 'Mỗi lần so sánh loại bỏ một nửa vùng tìm kiếm.',
+          sections: [
+            {
+              id: outlineSectionId,
+              title: 'Chia đôi vùng tìm kiếm',
+              goal: 'Hiểu vì sao phần tử giữa giúp loại bỏ một nửa.',
+              content: 'Dùng một danh sách số và theo dõi hai biên tìm kiếm.',
+              estimatedSeconds: 90,
+            },
+          ],
+        },
+        model: 'outline-model',
+        usage: null,
+      };
+    },
+  };
+  const baseVisual = 'Một dãy số nằm ngang với hai biên được đánh dấu.';
+  const revisedVisual =
+    'Một dãy số dài, phần tử giữa sáng lên và hai biên được đánh dấu rõ.';
+  const revisedSecondVisual =
+    'Nửa bị loại mờ xuống trong khi vùng còn lại giữ màu nhấn nhất quán.';
+  const voiceVisualGenerator: VoiceVisualGenerator = {
+    async generate() {
+      return {
+        content: {
+          voiceDirection: 'Kể rõ ràng, gần gũi và nối ý tự nhiên.',
+          visualDirection: 'Dùng dãy số và vùng tô sáng nhất quán.',
+          timingCalibration: {
+            source: 'default',
+            whitespaceTokensPerMinute: 135,
+            charactersPerSecond: 12,
+            voiceId: null,
+            modelId: null,
+            voiceName: null,
+            sampleCount: 0,
+          },
+          sections: [
+            {
+              outlineSectionId,
+              beats: [
+                {
+                  id: firstBeatId,
+                  voiceover:
+                    'Ta bắt đầu với một danh sách dài đã được sắp xếp.',
+                  visualDescription: baseVisual,
+                  animationDescription:
+                    'Hai biên xuất hiện rồi phần tử giữa sáng lên.',
+                  visualHoldSeconds: 0,
+                  durationSeconds: 8,
+                },
+                {
+                  id: secondBeatId,
+                  voiceover:
+                    'Sau phép so sánh, ta bỏ đi ngay một nửa không phù hợp.',
+                  visualDescription:
+                    'Một nửa dãy số mờ đi, nửa còn lại giữ màu.',
+                  animationDescription:
+                    'Vùng tìm kiếm co lại quanh các phần tử còn lại.',
+                  visualHoldSeconds: 0,
+                  durationSeconds: 9,
+                },
+              ],
+            },
+          ],
+        },
+        model: 'voice-visual-model',
+        usage: null,
+      };
+    },
+  };
+  let revisionCalls = 0;
+  let standaloneReviewCalls = 0;
+  const voiceVisualRevisionService: VoiceVisualRevisionService = {
+    async revise(request) {
+      revisionCalls += 1;
+      const continuesCandidate =
+        request.baseContent.sections[0]!.beats[0]!.visualDescription ===
+        revisedVisual;
+      if (continuesCandidate) {
+        assert.deepEqual(request.scope, {
+          globalFields: [],
+          beats: [{beatId: secondBeatId, fields: ['visualDescription']}],
+        });
+        const content = structuredClone(request.baseContent);
+        content.sections[0]!.beats[1]!.visualDescription = revisedSecondVisual;
+        return {
+          patch: {
+            editSummary: 'Nối tiếp visual sang beat hai mà giữ nguyên beat đầu.',
+            voiceDirection: null,
+            visualDirection: null,
+            beats: [
+              {
+                beatId: secondBeatId,
+                voiceover: null,
+                visualDescription: revisedSecondVisual,
+                animationDescription: null,
+                visualHoldSeconds: null,
+              },
+            ],
+          },
+          content,
+          coherence: {
+            verdict: 'coherent',
+            summary: 'Hai beat đã nối mạch và phần chỉnh trước được giữ nguyên.',
+            issues: [],
+          },
+          model: 'voice-visual-revision-model',
+          editorUsage: null,
+          reviewerUsage: null,
+        };
+      }
+      assert.deepEqual(request.scope, {
+        globalFields: [],
+        beats: [{beatId: firstBeatId, fields: ['visualDescription']}],
+      });
+      const content = structuredClone(request.baseContent);
+      content.sections[0]!.beats[0]!.visualDescription = revisedVisual;
+      return {
+        patch: {
+          editSummary: 'Làm rõ phần tử giữa trong visual mở đầu.',
+          voiceDirection: null,
+          visualDirection: null,
+          beats: [
+            {
+              beatId: firstBeatId,
+              voiceover: null,
+              visualDescription: revisedVisual,
+              animationDescription: null,
+              visualHoldSeconds: null,
+            },
+          ],
+        },
+        content,
+        coherence: {
+          verdict: 'needs_scope_expansion',
+          summary:
+            'AI đề nghị chỉnh thêm beat sau, nhưng người dùng vẫn có thể giữ chủ đích hiện tại.',
+          issues: [
+            {
+              severity: 'warning',
+              category: 'visual_consistency',
+              message: 'Reviewer muốn làm rõ thêm chuyển tiếp sang beat sau.',
+              suggestedFix: 'Có thể mở rộng phạm vi sang beat sau nếu người dùng đồng ý.',
+              affectedBeatIds: [secondBeatId],
+              requiresScopeExpansion: true,
+            },
+          ],
+        },
+        model: 'voice-visual-revision-model',
+        editorUsage: null,
+        reviewerUsage: null,
+      };
+    },
+    async review(request) {
+      standaloneReviewCalls += 1;
+      return {
+        coherence: {
+          verdict: 'warning',
+          summary:
+            request.target === 'candidate'
+              ? 'Candidate có thể nối visual rõ hơn sang beat hai.'
+              : 'Bản hiện tại ổn, có thể làm rõ visual mở đầu.',
+          issues: [
+            {
+              severity: 'warning',
+              category: 'visual_consistency',
+              message: 'Có thể làm ngôn ngữ hình ảnh nhất quán hơn.',
+              suggestedFix: 'Chỉ chỉnh visual ở beat được chỉ ra.',
+              affectedBeatIds: [
+                request.target === 'candidate' ? secondBeatId : firstBeatId,
+              ],
+              requiresScopeExpansion: false,
+            },
+          ],
+        },
+        model: 'voice-visual-review-model',
+        usage: null,
+      };
+    },
+  };
+  const {baseUrl} = await startTestApp(context, {
+    outlineGenerator,
+    voiceVisualGenerator,
+    voiceVisualRevisionService,
+  });
+  const {project} = await createProject(baseUrl);
+  const outlineGenerated = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/generate`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"1"'},
+      body: JSON.stringify({generationId: randomUUID()}),
+    },
+  );
+  assert.equal(outlineGenerated.status, 200);
+  const outlineApproved = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/approve`,
+    {method: 'POST', headers: {'If-Match': '"2"'}},
+  );
+  assert.equal(outlineApproved.status, 200);
+  const generated = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual/generate`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"3"'},
+      body: JSON.stringify({generationId: randomUUID()}),
+    },
+  );
+  const generatedBody = await generated.json();
+  assert.equal(generated.status, 200);
+  assert.equal(generatedBody.project.revision, 4);
+  assert.equal(generatedBody.project.voiceVisualPlan.narrationRevision, 1);
+
+  const currentReviewId = randomUUID();
+  const currentReview = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual/reviews`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"4"'},
+      body: JSON.stringify({reviewId: currentReviewId}),
+    },
+  );
+  const currentReviewBody = await currentReview.json();
+  assert.equal(currentReview.status, 201);
+  assert.equal(currentReviewBody.review.target, 'current');
+  assert.equal(currentReviewBody.review.targetCandidateId, null);
+  assert.equal(standaloneReviewCalls, 1);
+  const retriedCurrentReview = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual/reviews`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"4"'},
+      body: JSON.stringify({reviewId: currentReviewId}),
+    },
+  );
+  assert.equal(retriedCurrentReview.status, 201);
+  assert.equal(standaloneReviewCalls, 1);
+
+  const overwriteAttempt = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual/generate`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"4"'},
+      body: JSON.stringify({generationId: randomUUID()}),
+    },
+  );
+  const overwriteBody = await overwriteAttempt.json();
+  assert.equal(overwriteAttempt.status, 409);
+  assert.equal(overwriteBody.error.code, 'VOICE_VISUAL_CANDIDATE_REQUIRED');
+
+  const history = await (
+    await fetch(`${baseUrl}/api/projects/${project.id}/voice-visual/history`)
+  ).json();
+  assert.equal(history.versions.length, 1);
+  const baselineVersionId = history.versions[0].versionId;
+  const candidateId = randomUUID();
+  const candidateRequest = {
+    generationId: candidateId,
+    guidance: 'Làm phần tử giữa nổi bật hơn, giữ nguyên lời kể.',
+    scope: {
+      globalFields: [],
+      beats: [{beatId: firstBeatId, fields: ['visualDescription']}],
+    },
+  };
+  const candidateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual/candidates`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"4"'},
+      body: JSON.stringify(candidateRequest),
+    },
+  );
+  const candidateBody = await candidateResponse.json();
+  assert.equal(candidateResponse.status, 201);
+  assert.equal(candidateBody.candidate.status, 'scope_expansion_required');
+  assert.equal(revisionCalls, 1);
+  const candidateReview = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual/reviews`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"4"'},
+      body: JSON.stringify({
+        reviewId: randomUUID(),
+        candidateId,
+      }),
+    },
+  );
+  const candidateReviewBody = await candidateReview.json();
+  assert.equal(candidateReview.status, 201);
+  assert.equal(candidateReviewBody.review.target, 'candidate');
+  assert.equal(candidateReviewBody.review.targetCandidateId, candidateId);
+  assert.equal(standaloneReviewCalls, 2);
+
+  const childCandidateId = randomUUID();
+  const childCandidate = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual/candidates`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"4"'},
+      body: JSON.stringify({
+        generationId: childCandidateId,
+        baseCandidateId: candidateId,
+        guidance: 'Chỉ nối tiếp visual ở beat hai, giữ nguyên beat đầu đã tốt.',
+        scope: {
+          globalFields: [],
+          beats: [{beatId: secondBeatId, fields: ['visualDescription']}],
+        },
+      }),
+    },
+  );
+  const childCandidateBody = await childCandidate.json();
+  assert.equal(childCandidate.status, 201);
+  assert.equal(childCandidateBody.candidate.parentCandidateId, candidateId);
+  assert.equal(childCandidateBody.candidate.status, 'ready');
+  assert.equal(revisionCalls, 2);
+  assert.equal(
+    childCandidateBody.candidate.content.sections[0].beats[0]
+      .visualDescription,
+    revisedVisual,
+  );
+  const unchanged = await (
+    await fetch(`${baseUrl}/api/projects/${project.id}`)
+  ).json();
+  assert.equal(unchanged.project.revision, 4);
+  assert.equal(
+    unchanged.project.voiceVisualPlan.sections[0].beats[0].visualDescription,
+    baseVisual,
+  );
+
+  const applied = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual/candidates/${childCandidateId}/apply`,
+    {method: 'POST', headers: {'If-Match': '"4"'}},
+  );
+  const appliedBody = await applied.json();
+  assert.equal(applied.status, 200);
+  assert.equal(appliedBody.project.revision, 5);
+  assert.equal(appliedBody.project.voiceVisualPlan.narrationRevision, 1);
+  assert.equal(
+    appliedBody.project.voiceVisualPlan.sections[0].beats[0].id,
+    firstBeatId,
+  );
+  assert.equal(
+    appliedBody.project.voiceVisualPlan.sections[0].beats[0]
+      .visualDescription,
+    revisedVisual,
+  );
+  assert.equal(
+    appliedBody.project.voiceVisualPlan.sections[0].beats[1]
+      .visualDescription,
+    revisedSecondVisual,
+  );
+  assert.equal(
+    appliedBody.project.voiceVisualPlan.sections[0].beats[1].voiceover,
+    generatedBody.project.voiceVisualPlan.sections[0].beats[1].voiceover,
+  );
+
+  const restored = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual/versions/${baselineVersionId}/restore`,
+    {method: 'POST', headers: {'If-Match': '"5"'}},
+  );
+  const restoredBody = await restored.json();
+  assert.equal(restored.status, 200);
+  assert.equal(restoredBody.project.revision, 6);
+  assert.equal(restoredBody.project.voiceVisualPlan.status, 'draft');
+  assert.equal(restoredBody.project.voiceVisualPlan.narrationRevision, 1);
+  assert.equal(
+    restoredBody.project.voiceVisualPlan.sections[0].beats[0].visualDescription,
+    baseVisual,
+  );
+
+  const staleCandidateId = randomUUID();
+  const staleCandidate = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual/candidates`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"6"'},
+      body: JSON.stringify({...candidateRequest, generationId: staleCandidateId}),
+    },
+  );
+  assert.equal(staleCandidate.status, 201);
+  const manuallyChangedContent = {
+    voiceDirection: restoredBody.project.voiceVisualPlan.voiceDirection,
+    visualDirection: 'Dùng nền tối nhưng vẫn giữ hệ màu nhấn nhất quán.',
+    timingCalibration: restoredBody.project.voiceVisualPlan.timingCalibration,
+    sections: restoredBody.project.voiceVisualPlan.sections,
+  };
+  const manualUpdate = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual`,
+    {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"6"'},
+      body: JSON.stringify(manuallyChangedContent),
+    },
+  );
+  assert.equal(manualUpdate.status, 200);
+  const staleApply = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice-visual/candidates/${staleCandidateId}/apply`,
+    {method: 'POST', headers: {'If-Match': '"7"'}},
+  );
+  const staleApplyBody = await staleApply.json();
+  assert.equal(staleApply.status, 409);
+  assert.equal(staleApplyBody.error.code, 'VOICE_VISUAL_CONTEXT_CHANGED');
+});
+
+test('API Motion Canvas candidate chỉ thay scene được chọn và giữ workspace cũ để restore', async context => {
+  const sectionIds = [
+    '11111111-1111-4111-8111-111111111111',
+    '22222222-2222-4222-8222-222222222222',
+  ];
+  const beatIds = [
+    '33333333-3333-4333-8333-333333333333',
+    '44444444-4444-4444-8444-444444444444',
+  ];
+  const sceneIds = [
+    '55555555-5555-4555-8555-555555555555',
+    '66666666-6666-4666-8666-666666666666',
+  ];
+  const originalSources = [
+    'export default function sceneOne() { return "scene one original"; }',
+    'export default function sceneTwo() { return "scene two original"; }',
+  ];
+  const revisedSecondSource =
+    'export default function sceneTwo() { return "scene two revised only"; }';
+  const invalidSecondSource =
+    'export default function sceneTwo() { return "scene two before repair"; } // INVALID_CANDIDATE';
+  const outlineGenerator: OutlineGenerator = {
+    async generate() {
+      return {
+        content: {
+          brief: {
+            summary: 'Giải thích tìm kiếm nhị phân bằng hai cảnh liên tục.',
+            assumptions: ['Danh sách đã được sắp xếp.'],
+          },
+          centralMessage: 'Chia đôi giúp thu hẹp vùng tìm kiếm rất nhanh.',
+          sections: sectionIds.map((id, index) => ({
+            id,
+            title: index === 0 ? 'Đặt vấn đề' : 'Chia đôi',
+            goal:
+              index === 0
+                ? 'Nhận ra chi phí tìm tuần tự.'
+                : 'Hiểu cách loại bỏ một nửa.',
+            content:
+              index === 0
+                ? 'Quan sát một danh sách dài.'
+                : 'So sánh phần tử giữa và thu hẹp vùng.',
+            estimatedSeconds: 45,
+          })),
+        },
+        model: 'outline-model',
+        usage: null,
+      };
+    },
+  };
+  const voiceVisualGenerator: VoiceVisualGenerator = {
+    async generate() {
+      return {
+        content: {
+          voiceDirection: 'Kể rõ ràng và nối hai cảnh tự nhiên.',
+          visualDirection: 'Giữ palette xanh và cam trên nền tối.',
+          timingCalibration: {
+            source: 'default',
+            whitespaceTokensPerMinute: 135,
+            charactersPerSecond: 12,
+            voiceId: null,
+            modelId: null,
+            voiceName: null,
+            sampleCount: 0,
+          },
+          sections: sectionIds.map((outlineSectionId, index) => ({
+            outlineSectionId,
+            beats: [
+              {
+                id: beatIds[index]!,
+                voiceover:
+                  index === 0
+                    ? 'Danh sách dài khiến cách xem lần lượt trở nên chậm.'
+                    : 'Phần tử giữa giúp ta loại ngay một nửa không phù hợp.',
+                visualDescription:
+                  index === 0
+                    ? 'Một dãy số dài phủ kín khung hình.'
+                    : 'Phần tử giữa sáng lên và nửa sai mờ đi.',
+                animationDescription:
+                  index === 0
+                    ? 'Camera lướt dọc dãy số.'
+                    : 'Vùng tìm kiếm co lại một nửa.',
+                visualHoldSeconds: 0,
+                durationSeconds: 8,
+              },
+            ],
+          })),
+        },
+        model: 'voice-visual-model',
+        usage: null,
+      };
+    },
+  };
+  let motionCalls = 0;
+  let motionRepairCalls = 0;
+  const motionCanvasGenerator: MotionCanvasGenerator = {
+    async generate(request) {
+      motionCalls += 1;
+      const indexes =
+        request.sectionIndexes ?? request.outline.sections.map((_item, index) => index);
+      return {
+        scenes: indexes.map(index => {
+          const previous = request.currentScenes?.[index];
+          return {
+            id: previous?.id ?? sceneIds[index]!,
+            outlineSectionId: sectionIds[index]!,
+            name:
+              request.sectionIndexes
+                ? `Scene ${index + 1} revised`
+                : `Scene ${index + 1} original`,
+            filePath:
+              previous?.filePath ??
+              `src/scenes/0${index + 1}-scene-${index + 1}.tsx`,
+            durationSeconds: 8,
+            timingEvents: [
+              {
+                beatId: beatIds[index]!,
+                startEvent: `beat:${beatIds[index]}:start`,
+                endEvent: `beat:${beatIds[index]}:end`,
+                plannedDurationSeconds: 8,
+              },
+            ],
+            source:
+              request.sectionIndexes
+                ? invalidSecondSource
+                : originalSources[index]!,
+          };
+        }),
+        model: 'motion-model',
+        usage: null,
+      };
+    },
+    async repair(_request, generated) {
+      motionRepairCalls += 1;
+      return {
+        ...generated,
+        scenes: generated.scenes.map(scene => ({
+          ...scene,
+          source: revisedSecondSource,
+        })),
+      };
+    },
+  };
+  const workspaceSources = new Map<
+    string,
+    Array<{
+      id: string;
+      outlineSectionId: string;
+      name: string;
+      filePath: string;
+      durationSeconds: number;
+      timingEvents?: Array<{
+        beatId: string;
+        startEvent: string;
+        endEvent: string;
+        plannedDurationSeconds: number;
+      }>;
+      source: string;
+    }>
+  >();
+  const motionCanvasWorkspace: MotionCanvasWorkspace = {
+    async prepare(_projectId, generationId, scenes) {
+      const cloned = structuredClone(scenes);
+      if (cloned.some(scene => scene.source.includes('INVALID_CANDIDATE'))) {
+        throw new MotionCanvasWorkspaceError(
+          'MOTION_CANVAS_VALIDATION_FAILED',
+          'Candidate cần repair trước khi review.',
+          {details: 'src/scenes/02-scene-2.tsx(1,1): simulated error'},
+        );
+      }
+      workspaceSources.set(generationId, cloned);
+      const sourceHash = createHash('sha256')
+        .update(JSON.stringify(cloned))
+        .digest('hex');
+      return {
+        workspacePath: `motion-canvas/generations/${generationId}`,
+        projectFile: 'src/project.ts',
+        scenes: cloned.map(({source: _source, ...scene}) => scene),
+        validation: {
+          validatedAt: new Date().toISOString(),
+          sourceHash,
+          motionCanvasVersion: '3.17.2',
+        },
+      };
+    },
+    async readSceneSources(_projectId, bundle) {
+      return structuredClone(
+        workspaceSources.get(bundle.generation.generationId) ?? [],
+      );
+    },
+    async readFiles(_projectId, bundle) {
+      const sources = workspaceSources.get(bundle.generation.generationId) ?? [];
+      return [
+        {path: 'src/project.ts', source: 'export default [];'},
+        ...sources.map(scene => ({path: scene.filePath, source: scene.source})),
+      ];
+    },
+    async verify(_projectId, bundle) {
+      assert.ok(workspaceSources.has(bundle.generation.generationId));
+      return {
+        projectDirectory: 'C:/test/project',
+        workspaceDirectory: 'C:/test/project/motion-canvas',
+        projectFile: 'C:/test/project/motion-canvas/src/project.ts',
+        sourceHash: bundle.validation.sourceHash,
+      };
+    },
+  };
+  let reviewCalls = 0;
+  const motionCanvasRevisionReviewService: MotionCanvasRevisionReviewService = {
+    async review(request) {
+      reviewCalls += 1;
+      assert.equal(request.scenes.length, 2);
+      assert.equal(request.scenes.filter(scene => scene.changed).length, 1);
+      assert.equal(
+        request.scenes.find(scene => scene.changed)?.sourceExcerpt,
+        revisedSecondSource,
+      );
+      if (request.guidance.toLowerCase().includes('kiểm thử mở rộng')) {
+        return {
+          coherence: {
+            verdict: 'needs_scope_expansion',
+            summary: 'Cần chỉnh scene liền kề để giữ chuyển tiếp tự nhiên.',
+            issues: [
+              {
+                severity: 'warning',
+                category: 'narrative_continuity',
+                message: 'Chuyển tiếp cần thay đổi ở cả hai scene.',
+                suggestedFix: 'Mở rộng phạm vi sang scene liền kề.',
+                affectedSceneIds: request.scenes.map(scene => scene.sceneId),
+                requiresScopeExpansion: true,
+              },
+            ],
+          },
+          model: 'review-model',
+          usage: null,
+        };
+      }
+      return {
+        coherence: {
+          verdict: 'coherent',
+          summary: 'Scene sửa vẫn nối mạch và giữ đúng ngôn ngữ hình ảnh.',
+          issues: [],
+        },
+        model: 'review-model',
+        usage: null,
+      };
+    },
+  };
+  const layoutPreviewService: LayoutPreviewService = {
+    async start() {
+      throw new Error('Sync preview không thuộc test này.');
+    },
+    async startMotion(_projectId, motionBundle) {
+      return {
+        generationId: motionBundle.generation.generationId,
+        sourceSyncGenerationId: motionBundle.generation.generationId,
+        sessionNonce: randomUUID(),
+        url: `http://127.0.0.1:9999/?generation=${motionBundle.generation.generationId}`,
+      };
+    },
+    getManifest() {
+      throw new Error('Manifest không thuộc test này.');
+    },
+    getSourceWorkspaceHash() {
+      throw new Error('Source hash preview không thuộc test này.');
+    },
+    async close() {},
+  };
+  const {baseUrl} = await startTestApp(context, {
+    outlineGenerator,
+    voiceVisualGenerator,
+    motionCanvasGenerator,
+    motionCanvasWorkspace,
+    motionCanvasRevisionReviewService,
+    layoutPreviewService,
+  });
+  const {project} = await createProject(baseUrl);
+  await fetch(`${baseUrl}/api/projects/${project.id}/outline/generate`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'If-Match': '"1"'},
+    body: JSON.stringify({generationId: randomUUID()}),
+  });
+  await fetch(`${baseUrl}/api/projects/${project.id}/outline/approve`, {
+    method: 'POST',
+    headers: {'If-Match': '"2"'},
+  });
+  await fetch(`${baseUrl}/api/projects/${project.id}/voice-visual/generate`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json', 'If-Match': '"3"'},
+    body: JSON.stringify({generationId: randomUUID()}),
+  });
+  await fetch(`${baseUrl}/api/projects/${project.id}/voice-visual/approve`, {
+    method: 'POST',
+    headers: {'If-Match': '"4"'},
+  });
+  const generated = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/generate`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"5"'},
+      body: JSON.stringify({generationId: randomUUID()}),
+    },
+  );
+  const generatedBody = await generated.json();
+  assert.equal(generated.status, 200);
+  assert.equal(generatedBody.project.revision, 6);
+
+  const overwrite = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/generate`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"6"'},
+      body: JSON.stringify({generationId: randomUUID()}),
+    },
+  );
+  const overwriteBody = await overwrite.json();
+  assert.equal(overwrite.status, 409);
+  assert.equal(overwriteBody.error.code, 'MOTION_CANVAS_CANDIDATE_REQUIRED');
+
+  const history = await (
+    await fetch(`${baseUrl}/api/projects/${project.id}/motion-canvas/history`)
+  ).json();
+  const baselineVersionId = history.versions[0].versionId;
+  const expansionCandidateId = randomUUID();
+  const expansionCandidate = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/candidates`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"6"'},
+      body: JSON.stringify({
+        generationId: expansionCandidateId,
+        guidance: 'Kiểm thử mở rộng phạm vi sang scene liền kề.',
+        scope: {sceneIds: [sceneIds[1]]},
+      }),
+    },
+  );
+  const expansionCandidateBody = await expansionCandidate.json();
+  assert.equal(expansionCandidate.status, 201);
+  assert.equal(
+    expansionCandidateBody.candidate.status,
+    'scope_expansion_required',
+  );
+  const blockedExpansionApply = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/candidates/${expansionCandidateId}/apply`,
+    {method: 'POST', headers: {'If-Match': '"6"'}},
+  );
+  const blockedExpansionApplyBody = await blockedExpansionApply.json();
+  assert.equal(blockedExpansionApply.status, 409);
+  assert.equal(
+    blockedExpansionApplyBody.error.code,
+    'MOTION_CANVAS_SCOPE_EXPANSION_REQUIRED',
+  );
+
+  const candidateId = randomUUID();
+  const candidateRequest = {
+    generationId: candidateId,
+    guidance: 'Làm scene hai trực quan hơn nhưng giữ nguyên scene một.',
+    scope: {sceneIds: [sceneIds[1]]},
+  };
+  const candidate = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/candidates`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"6"'},
+      body: JSON.stringify(candidateRequest),
+    },
+  );
+  const candidateBody = await candidate.json();
+  assert.equal(candidate.status, 201);
+  assert.equal(candidateBody.candidate.status, 'ready');
+  assert.equal(motionCalls, 3);
+  assert.equal(motionRepairCalls, 2);
+  assert.equal(reviewCalls, 2);
+  const unchanged = await (
+    await fetch(`${baseUrl}/api/projects/${project.id}`)
+  ).json();
+  assert.equal(unchanged.project.revision, 6);
+  const candidateFiles = await (
+    await fetch(
+      `${baseUrl}/api/projects/${project.id}/motion-canvas/candidates/${candidateId}/files`,
+    )
+  ).json();
+  assert.equal(candidateFiles.files[1].source, originalSources[0]);
+  assert.equal(candidateFiles.files[2].source, revisedSecondSource);
+  const candidatePreview = await (
+    await fetch(
+      `${baseUrl}/api/projects/${project.id}/motion-canvas/candidates/${candidateId}/preview`,
+    )
+  ).json();
+  assert.equal(
+    candidatePreview.preview.sourceMotionCanvasGenerationId,
+    candidateId,
+  );
+
+  const applied = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/candidates/${candidateId}/apply`,
+    {method: 'POST', headers: {'If-Match': '"6"'}},
+  );
+  const appliedBody = await applied.json();
+  assert.equal(applied.status, 200);
+  assert.equal(appliedBody.project.revision, 7);
+  assert.deepEqual(
+    appliedBody.project.motionCanvasBundle.scenes.map(
+      (scene: {id: string}) => scene.id,
+    ),
+    sceneIds,
+  );
+  const appliedFiles = await (
+    await fetch(`${baseUrl}/api/projects/${project.id}/motion-canvas/files`)
+  ).json();
+  assert.equal(appliedFiles.files[1].source, originalSources[0]);
+  assert.equal(appliedFiles.files[2].source, revisedSecondSource);
+
+  const restored = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/versions/${baselineVersionId}/restore`,
+    {method: 'POST', headers: {'If-Match': '"7"'}},
+  );
+  const restoredBody = await restored.json();
+  assert.equal(restored.status, 200);
+  assert.equal(restoredBody.project.revision, 8);
+  assert.notEqual(
+    restoredBody.project.motionCanvasBundle.generation.generationId,
+    generatedBody.project.motionCanvasBundle.generation.generationId,
+  );
+  const restoredFiles = await (
+    await fetch(`${baseUrl}/api/projects/${project.id}/motion-canvas/files`)
+  ).json();
+  assert.equal(restoredFiles.files[1].source, originalSources[0]);
+  assert.equal(restoredFiles.files[2].source, originalSources[1]);
+
+  const staleCandidateId = randomUUID();
+  const staleCandidate = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/candidates`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"8"'},
+      body: JSON.stringify({...candidateRequest, generationId: staleCandidateId}),
+    },
+  );
+  assert.equal(staleCandidate.status, 201);
+  const approvedCurrent = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/approve`,
+    {method: 'POST', headers: {'If-Match': '"8"'}},
+  );
+  assert.equal(approvedCurrent.status, 200);
+  const staleApply = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/candidates/${staleCandidateId}/apply`,
+    {method: 'POST', headers: {'If-Match': '"9"'}},
+  );
+  const staleApplyBody = await staleApply.json();
+  assert.equal(staleApply.status, 409);
+  assert.equal(staleApplyBody.error.code, 'MOTION_CANVAS_CONTEXT_CHANGED');
+});
+
 test('API chạy pipeline voice–visual đến final render an toàn', async (context) => {
   const outlineGenerator: OutlineGenerator = {
     async generate() {
@@ -1377,7 +2556,9 @@ export default makeScene2D(function* (view) {
   );
   let finalRenderCalls = 0;
   let finalRenderOptions: Parameters<FinalRenderService['render']>[5];
-  let finalRenderStatus: ReturnType<FinalRenderService['getStatus']> = null;
+  let finalRenderStatus: Awaited<
+    ReturnType<FinalRenderService['getStatus']>
+  > = null;
   const finalRenderService: FinalRenderService = {
     async render(
       _projectId,
@@ -1394,14 +2575,24 @@ export default makeScene2D(function* (view) {
         Math.ceil(layoutBundle.totalDurationSeconds * 30) + 1;
       finalRenderStatus = {
         generationId,
+        state: 'queued',
+        progress: 0,
+        renderedFrames: 0,
+        totalFrames,
+        startedAt: null,
+        updatedAt: now,
+        message: 'Đã xếp hàng render.',
+        errorCode: null,
+      };
+      await new Promise(resolve => setImmediate(resolve));
+      finalRenderStatus = {
+        ...finalRenderStatus,
         state: 'completed',
         progress: 1,
         renderedFrames: totalFrames,
-        totalFrames,
         startedAt: now,
-        updatedAt: now,
+        updatedAt: new Date().toISOString(),
         message: 'Video cuối đã sẵn sàng.',
-        errorCode: null,
       };
       return {
         status: 'completed',
@@ -1447,8 +2638,11 @@ export default makeScene2D(function* (view) {
         },
       };
     },
-    getStatus() {
+    async getStatus() {
       return finalRenderStatus;
+    },
+    async getCompletedBundle() {
+      return null;
     },
     async resolveVideo() {
       return {filePath: renderVideoPath, size: renderVideo.length};
@@ -2195,18 +3389,36 @@ export default makeScene2D(function* (view) {
     },
   );
   const finalRenderBody = await finalRenderResponse.json();
-  assert.equal(finalRenderResponse.status, 200);
-  assert.equal(finalRenderBody.project.revision, 15);
-  assert.equal(finalRenderBody.project.currentStep, 'render');
+  assert.equal(finalRenderResponse.status, 202);
+  assert.equal(finalRenderBody.status.generationId, finalRenderGenerationId);
+  assert.equal(finalRenderBody.status.state, 'queued');
+  let finalizedProject: TopicProject | null = null;
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const projectResponse = await fetch(
+      `${baseUrl}/api/projects/${project.id}`,
+    );
+    const projectBody = await projectResponse.json();
+    if (
+      projectBody.project.renderBundle?.generation.generationId ===
+      finalRenderGenerationId
+    ) {
+      finalizedProject = projectBody.project;
+      break;
+    }
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.ok(finalizedProject);
+  assert.equal(finalizedProject.revision, 15);
+  assert.equal(finalizedProject.currentStep, 'render');
   assert.equal(
-    finalRenderBody.project.renderBundle.generation.generationId,
+    finalizedProject.renderBundle?.generation.generationId,
     finalRenderGenerationId,
   );
   assert.equal(finalRenderCalls, 1);
   assert.deepEqual(finalRenderOptions, renderOptions);
   assert.equal(
-    finalRenderBody.project.renderBundle.durationSeconds,
-    finalRenderBody.project.layoutBundle.totalDurationSeconds / 1.25,
+    finalizedProject.renderBundle?.durationSeconds,
+    finalizedProject.layoutBundle!.totalDurationSeconds / 1.25,
   );
 
   const finalRenderStatusResponse = await fetch(
@@ -2246,8 +3458,8 @@ export default makeScene2D(function* (view) {
   );
   assert.equal(repeatedFinalRenderResponse.status, 200);
   assert.equal(
-    (await repeatedFinalRenderResponse.json()).project.revision,
-    15,
+    (await repeatedFinalRenderResponse.json()).status.state,
+    'completed',
   );
   assert.equal(finalRenderCalls, 1);
 

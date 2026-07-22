@@ -59,7 +59,7 @@ export interface MotionCanvasWorkspace {
   readSceneSources(
     projectId: string,
     bundle: MotionCanvasBundle,
-  ): Promise<Array<Pick<MotionCanvasSourceScene, 'name' | 'source'>>>;
+  ): Promise<MotionCanvasSourceScene[]>;
   verify(
     projectId: string,
     bundle: MotionCanvasBundle,
@@ -545,7 +545,7 @@ declare type Callback = (...args: any[]) => void;
       const directory = resolveBundleDirectory(projectId, bundle);
       return Promise.all(
         bundle.scenes.map(async (scene) => ({
-          name: scene.name,
+          ...scene,
           source: await readWorkspaceFile(directory, scene.filePath),
         })),
       );

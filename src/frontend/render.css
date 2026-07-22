@@ -431,6 +431,52 @@
   cursor: pointer;
 }
 
+.render-error-content {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+.render-error-location {
+  color: #985348;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.render-error-details {
+  max-width: 100%;
+  color: #67362f;
+}
+
+.render-error-details summary {
+  width: fit-content;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.render-error-details > div {
+  margin-top: 8px;
+}
+
+.render-error-details > div > strong {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+
+.render-error-details pre {
+  max-height: 220px;
+  margin: 4px 0 0;
+  padding: 9px 10px;
+  overflow: auto;
+  border-radius: 8px;
+  color: #f8e9e6;
+  background: #3e2521;
+  font: 10px/1.55 Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .render-final-actions {
   margin-top: 24px;
   padding-top: 22px;

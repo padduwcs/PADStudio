@@ -60,6 +60,38 @@ export const finalRenderJobStateValues = [
   'failed',
 ] as const;
 
+export const finalRenderDiagnosticStageValues = [
+  'preparing',
+  'motion-canvas',
+  'encoder',
+  'browser',
+  'finalizing',
+] as const;
+
+export const FinalRenderDiagnosticLogSchema = z
+  .object({
+    level: z.enum(['error', 'warn', 'info', 'debug']),
+    message: z.string().trim().min(1).max(1_000),
+    remarks: z.string().trim().min(1).max(2_000).nullable().default(null),
+    stack: z.string().trim().min(1).max(4_000).nullable().default(null),
+  })
+  .strict();
+
+export const FinalRenderDiagnosticSchema = z
+  .object({
+    stage: z.enum(finalRenderDiagnosticStageValues),
+    frame: z.number().int().nonnegative().nullable(),
+    sceneFrame: z.number().int().nonnegative().nullable(),
+    sceneName: z.string().trim().min(1).max(200).nullable(),
+    timeSeconds: z.number().nonnegative().finite().nullable(),
+    logs: z.array(FinalRenderDiagnosticLogSchema).max(8),
+  })
+  .strict();
+
+export type FinalRenderDiagnostic = z.infer<
+  typeof FinalRenderDiagnosticSchema
+>;
+
 export const FinalRenderBundleSchema = z
   .object({
     status: z.enum(finalRenderStatusValues),
@@ -190,9 +222,54 @@ export const FinalRenderJobStatusSchema = z
     updatedAt: z.string().datetime(),
     message: z.string().trim().min(1).max(500),
     errorCode: z.string().trim().min(1).max(100).nullable(),
+    diagnostic: FinalRenderDiagnosticSchema.nullable().optional(),
   })
   .strict();
 
 export type FinalRenderJobStatus = z.infer<
   typeof FinalRenderJobStatusSchema
+>;
+
+export const FinalRenderJobReportSchema = z
+  .object({
+    version: z.literal(1),
+    projectId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,100}$/),
+    sourceLayoutContentRevision: z.number().int().positive(),
+    sourceLayoutGenerationId: CreationIdSchema,
+    sourceLayoutSourceHash: Sha256Schema,
+    status: FinalRenderJobStatusSchema,
+    bundle: FinalRenderBundleSchema.nullable().optional(),
+  })
+  .strict()
+  .superRefine((report, context) => {
+    if (!['completed', 'failed'].includes(report.status.state)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Chỉ job render đã kết thúc mới được lưu thành report.',
+        path: ['status', 'state'],
+      });
+    }
+    if (report.bundle) {
+      if (
+        report.status.state !== 'completed' ||
+        report.bundle.generation.generationId !==
+          report.status.generationId ||
+        report.bundle.sourceLayoutContentRevision !==
+          report.sourceLayoutContentRevision ||
+        report.bundle.sourceLayoutGenerationId !==
+          report.sourceLayoutGenerationId ||
+        report.bundle.sourceLayoutSourceHash !==
+          report.sourceLayoutSourceHash
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Bundle trong render report không khớp job hoặc Layout nguồn.',
+          path: ['bundle'],
+        });
+      }
+    }
+  });
+
+export type FinalRenderJobReport = z.infer<
+  typeof FinalRenderJobReportSchema
 >;

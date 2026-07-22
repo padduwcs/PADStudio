@@ -5,6 +5,13 @@ import {
   type VoiceVisualBeat,
   type VoiceVisualPlanContent,
 } from '../shared/topic.ts';
+import type {
+  VoiceVisualCandidateRecord,
+  VoiceVisualEditScope,
+  VoiceVisualHistoryResponse,
+  VoiceVisualReviewRecord,
+  VoiceVisualVersionRecord,
+} from '../shared/voiceVisualHistory.ts';
 import {plannedBeatDurationSeconds} from '../shared/narrationTiming.ts';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import {
@@ -15,9 +22,16 @@ import {
 } from '../shared/projectPipeline.ts';
 import {
   ApiRequestError,
+  applyVoiceVisualCandidate,
   approveVoiceVisualPlan,
+  createVoiceVisualCandidate,
+  createVoiceVisualCheckpoint,
   generateVoiceVisualPlan,
+  getVoiceVisualHistory,
   getProject,
+  rejectVoiceVisualCandidate,
+  reviewVoiceVisualPlan,
+  restoreVoiceVisualVersion,
   updateVoiceVisualPlan,
 } from './api.ts';
 import {recordCodexWaitSample} from './codexWaitEstimate.ts';
@@ -85,6 +99,18 @@ export function useVoiceVisualDraft(projectId: string) {
     useState<VoiceVisualSaveState>('idle');
   const [actionError, setActionError] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [candidateGenerating, setCandidateGenerating] = useState(false);
+  const [candidateApplying, setCandidateApplying] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [standaloneReview, setStandaloneReview] =
+    useState<VoiceVisualReviewRecord | null>(null);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [history, setHistory] = useState<VoiceVisualHistoryResponse | null>(
+    null,
+  );
+  const [historyError, setHistoryError] = useState('');
+  const [candidate, setCandidate] =
+    useState<VoiceVisualCandidateRecord | null>(null);
   const [approving, setApproving] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const projectRef = useRef<TopicProject | null>(null);
@@ -92,6 +118,14 @@ export function useVoiceVisualDraft(projectId: string) {
   const generationRequestRef = useRef<{
     fingerprint: string;
     generationId: string;
+  } | null>(null);
+  const candidateRequestRef = useRef<{
+    fingerprint: string;
+    generationId: string;
+  } | null>(null);
+  const reviewRequestRef = useRef<{
+    fingerprint: string;
+    reviewId: string;
   } | null>(null);
   const sessionRef = useRef(0);
   const operationQueueRef = useRef(new ProjectOperationQueue());
@@ -104,6 +138,8 @@ export function useVoiceVisualDraft(projectId: string) {
     projectRef.current = null;
     draftRef.current = null;
     generationRequestRef.current = null;
+    candidateRequestRef.current = null;
+    reviewRequestRef.current = null;
     setProject(null);
     setDraftState(null);
     setLoadState('loading');
@@ -111,6 +147,14 @@ export function useVoiceVisualDraft(projectId: string) {
     setActionError('');
     setSaveState('idle');
     setGenerating(false);
+    setCandidateGenerating(false);
+    setCandidateApplying(false);
+    setReviewing(false);
+    setStandaloneReview(null);
+    setHistoryBusy(false);
+    setHistory(null);
+    setHistoryError('');
+    setCandidate(null);
     setApproving(false);
 
     void getProject(projectId)
@@ -123,6 +167,31 @@ export function useVoiceVisualDraft(projectId: string) {
         setDraftState(content);
         setLoadState('ready');
         setSaveState(content ? 'saved' : 'idle');
+        if (content && !voiceVisualIsStale(loadedProject)) {
+          void getVoiceVisualHistory(projectId)
+            .then(loadedHistory => {
+              if (!active || sessionRef.current !== session) return;
+              setHistory(loadedHistory);
+              setCandidate(
+                loadedHistory.candidates.find(
+                  item =>
+                    item.decision === 'pending' &&
+                    item.rootBaseContextHash ===
+                      loadedHistory.currentContextHash &&
+                    item.candidateContentHash !==
+                      loadedHistory.currentContentHash,
+                ) ?? null,
+              );
+            })
+            .catch(error => {
+              if (!active || sessionRef.current !== session) return;
+              setHistoryError(
+                error instanceof ApiRequestError
+                  ? error.message
+                  : 'Không thể tải lịch sử voice–visual.',
+              );
+            });
+        }
       })
       .catch((error) => {
         if (!active) return;
@@ -179,12 +248,33 @@ export function useVoiceVisualDraft(projectId: string) {
     return updatedProject;
   }, [projectId]);
 
+  const projectForContentReplacement = useCallback(async () => {
+    const currentProject = projectRef.current;
+    const currentDraft = draftRef.current;
+    if (!currentProject || !currentDraft) {
+      throw new VoiceVisualOperationCancelledError();
+    }
+    const parsedDraft = VoiceVisualPlanContentSchema.safeParse(currentDraft);
+    if (
+      parsedDraft.success &&
+      currentProject.outline &&
+      voiceVisualMatchesOutline(parsedDraft.data, currentProject.outline)
+    ) {
+      return saveCurrentDraft();
+    }
+    return currentProject;
+  }, [saveCurrentDraft]);
+
   useEffect(() => {
     if (
       loadState !== 'ready' ||
       !project?.voiceVisualPlan ||
       !draft ||
       generating ||
+      candidateGenerating ||
+      candidateApplying ||
+      reviewing ||
+      historyBusy ||
       approving ||
       saveState === 'conflict' ||
       voiceVisualIsStale(project)
@@ -238,10 +328,14 @@ export function useVoiceVisualDraft(projectId: string) {
     };
   }, [
     approving,
+    candidateApplying,
+    candidateGenerating,
     draft,
     generating,
+    historyBusy,
     loadState,
     project,
+    reviewing,
     saveCurrentDraft,
     saveState,
   ]);
@@ -255,6 +349,9 @@ export function useVoiceVisualDraft(projectId: string) {
       draftRef.current = next;
       return next;
     });
+    setStandaloneReview(current =>
+      current?.target === 'current' ? null : current,
+    );
     setActionError('');
     if (saveState !== 'conflict') setSaveState('idle');
   }
@@ -411,6 +508,13 @@ export function useVoiceVisualDraft(projectId: string) {
             throw new VoiceVisualOutlineNotReadyError();
           }
 
+          if (
+            currentProject.voiceVisualPlan &&
+            !voiceVisualIsStale(currentProject)
+          ) {
+            throw new VoiceVisualCandidateRequiredError();
+          }
+
           const normalizedGuidance = guidance.trim() || undefined;
           if (
             normalizedGuidance &&
@@ -478,6 +582,8 @@ export function useVoiceVisualDraft(projectId: string) {
       setActionError(
         error instanceof VoiceVisualOutlineNotReadyError
           ? 'Hãy chốt mạch giảng trước khi tạo kế hoạch voice–visual.'
+          : error instanceof VoiceVisualCandidateRequiredError
+            ? 'Kế hoạch đã tồn tại. Hãy chọn phạm vi và tạo bản đề xuất để so sánh.'
           : error instanceof VoiceVisualOutdatedError
             ? 'Mạch giảng đã thay đổi. Hãy tạo lại toàn bộ kế hoạch trước.'
             : error instanceof VoiceVisualDraftInvalidError
@@ -489,6 +595,358 @@ export function useVoiceVisualDraft(projectId: string) {
       return null;
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function createCandidate(
+    guidance: string,
+    scope: VoiceVisualEditScope,
+    model?: string,
+    reasoningEffort?: string,
+    baseMode: 'auto' | 'current' | 'candidate' = 'auto',
+  ) {
+    if (candidateGenerating || saveState === 'conflict') return null;
+    const startedAt = Date.now();
+    setCandidateGenerating(true);
+    setActionError('');
+    setHistoryError('');
+    try {
+      const created = await operationQueueRef.current.enqueue(async () => {
+        const currentProject = await saveCurrentDraft();
+        const normalizedGuidance = guidance.trim();
+        if (!normalizedGuidance) throw new VoiceVisualGuidanceRequiredError();
+        const baseCandidateId =
+          baseMode !== 'current' && candidate?.decision === 'pending'
+            ? candidate.candidateId
+            : undefined;
+        if (baseMode === 'candidate' && !baseCandidateId) {
+          throw new VoiceVisualCandidateBaseRequiredError();
+        }
+        const fingerprint = JSON.stringify({
+          projectId,
+          revision: currentProject.revision,
+          baseCandidateId,
+          guidance: normalizedGuidance,
+          scope,
+          model,
+          reasoningEffort,
+        });
+        const previous = candidateRequestRef.current;
+        const generationId =
+          previous?.fingerprint === fingerprint
+            ? previous.generationId
+            : crypto.randomUUID();
+        candidateRequestRef.current = {fingerprint, generationId};
+        return createVoiceVisualCandidate(
+          projectId,
+          {
+            generationId,
+            baseCandidateId,
+            guidance: normalizedGuidance,
+            scope,
+            model: model || undefined,
+            reasoningEffort: reasoningEffort || undefined,
+          },
+          currentProject.revision,
+        );
+      });
+      candidateRequestRef.current = null;
+      setCandidate(created);
+      setStandaloneReview(null);
+      setHistory(current =>
+        current
+          ? {
+              ...current,
+              candidates: [
+                created,
+                ...current.candidates.filter(
+                  item => item.candidateId !== created.candidateId,
+                ),
+              ],
+            }
+          : current,
+      );
+      if (reasoningEffort) {
+        recordCodexWaitSample({
+          model: created.generation.requestedModel ?? model ?? created.generation.model,
+          reasoningEffort,
+          task: 'voiceVisual',
+          workUnits: Math.max(1, scope.beats.length),
+          elapsedMs: Date.now() - startedAt,
+        });
+      }
+      return created;
+    } catch (error) {
+      if (error instanceof VoiceVisualOperationCancelledError) return null;
+      if (
+        error instanceof ApiRequestError &&
+        error.code === 'PROJECT_CONFLICT'
+      ) {
+        setSaveState('conflict');
+      }
+      setActionError(
+        error instanceof VoiceVisualGuidanceRequiredError
+          ? 'Hãy nhập góp ý cụ thể cho phần đã chọn.'
+          : error instanceof VoiceVisualCandidateBaseRequiredError
+            ? 'Candidate dùng làm nền không còn khả dụng. Hãy chọn lại candidate hoặc dùng bản hiện tại.'
+          : error instanceof VoiceVisualDraftInvalidError
+            ? 'Hãy hoàn thiện các beat đang chỉnh trước khi nhờ AI sửa.'
+            : error instanceof ApiRequestError
+              ? error.message
+              : 'Không thể tạo bản đề xuất voice–visual lúc này.',
+      );
+      return null;
+    } finally {
+      setCandidateGenerating(false);
+    }
+  }
+
+  async function reviewPlan(
+    target: 'current' | 'candidate',
+    model?: string,
+    reasoningEffort?: string,
+  ) {
+    if (reviewing || saveState === 'conflict') return null;
+    const targetCandidate = target === 'candidate' ? candidate : null;
+    if (target === 'candidate' && !targetCandidate) return null;
+    const startedAt = Date.now();
+    setReviewing(true);
+    setActionError('');
+    try {
+      const reviewed = await operationQueueRef.current.enqueue(async () => {
+        const currentProject = target === 'current'
+          ? await saveCurrentDraft()
+          : projectRef.current;
+        if (!currentProject) throw new VoiceVisualOperationCancelledError();
+        const candidateId = targetCandidate?.candidateId;
+        const fingerprint = JSON.stringify({
+          projectId,
+          revision: currentProject.revision,
+          target,
+          candidateId,
+          model,
+          reasoningEffort,
+        });
+        const previous = reviewRequestRef.current;
+        const reviewId = previous?.fingerprint === fingerprint
+          ? previous.reviewId
+          : crypto.randomUUID();
+        reviewRequestRef.current = {fingerprint, reviewId};
+        return reviewVoiceVisualPlan(
+          projectId,
+          {
+            reviewId,
+            ...(candidateId ? {candidateId} : {}),
+            model: model || undefined,
+            reasoningEffort: reasoningEffort || undefined,
+          },
+          currentProject.revision,
+        );
+      });
+      reviewRequestRef.current = null;
+      setStandaloneReview(reviewed);
+      if (target === 'current') setSaveState('saved');
+      if (reasoningEffort) {
+        recordCodexWaitSample({
+          model: reviewed.generation.requestedModel ?? model ?? reviewed.generation.model,
+          reasoningEffort,
+          task: 'voiceVisual',
+          workUnits: Math.max(
+            1,
+            draftRef.current?.sections.reduce(
+              (total, section) => total + section.beats.length,
+              0,
+            ) ?? 1,
+          ),
+          elapsedMs: Date.now() - startedAt,
+        });
+      }
+      return reviewed;
+    } catch (error) {
+      if (error instanceof VoiceVisualOperationCancelledError) return null;
+      if (
+        error instanceof ApiRequestError &&
+        error.code === 'PROJECT_CONFLICT'
+      ) {
+        setSaveState('conflict');
+      }
+      setActionError(
+        error instanceof VoiceVisualDraftInvalidError
+          ? 'Hãy hoàn thiện các beat đang chỉnh trước khi nhờ AI review.'
+          : error instanceof ApiRequestError
+            ? error.message
+            : 'Không thể review kế hoạch voice–visual lúc này.',
+      );
+      return null;
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  async function applyCandidate(candidateId = candidate?.candidateId) {
+    if (!candidateId || candidateApplying || saveState === 'conflict') {
+      return null;
+    }
+    setCandidateApplying(true);
+    setActionError('');
+    try {
+      const updatedProject = await operationQueueRef.current.enqueue(
+        async () => {
+          const currentProject = await projectForContentReplacement();
+          return applyVoiceVisualCandidate(
+            projectId,
+            candidateId,
+            currentProject.revision,
+          );
+        },
+      );
+      const content = getPlanContent(updatedProject);
+      projectRef.current = updatedProject;
+      draftRef.current = content;
+      setProject(updatedProject);
+      setDraftState(content);
+      setCandidate(null);
+      setStandaloneReview(null);
+      setSaveState('saved');
+      const loadedHistory = await getVoiceVisualHistory(projectId);
+      setHistory(loadedHistory);
+      return updatedProject;
+    } catch (error) {
+      if (error instanceof VoiceVisualOperationCancelledError) return null;
+      if (
+        error instanceof ApiRequestError &&
+        error.code === 'PROJECT_CONFLICT'
+      ) {
+        setSaveState('conflict');
+      }
+      setActionError(
+        error instanceof ApiRequestError
+          ? error.message
+          : 'Không thể áp dụng bản đề xuất voice–visual.',
+      );
+      return null;
+    } finally {
+      setCandidateApplying(false);
+    }
+  }
+
+  async function rejectCandidate(candidateId = candidate?.candidateId) {
+    const currentProject = projectRef.current;
+    if (!candidateId || !currentProject || historyBusy) return null;
+    setHistoryBusy(true);
+    setHistoryError('');
+    try {
+      const rejected = await rejectVoiceVisualCandidate(
+        projectId,
+        candidateId,
+        currentProject.revision,
+      );
+      setHistory(current =>
+        current
+          ? {
+              ...current,
+              candidates: current.candidates.map(item =>
+                item.candidateId === rejected.candidateId ? rejected : item,
+              ),
+            }
+          : current,
+      );
+      if (candidate?.candidateId === candidateId) setCandidate(null);
+      if (standaloneReview?.targetCandidateId === candidateId) {
+        setStandaloneReview(null);
+      }
+      return rejected;
+    } catch (error) {
+      setHistoryError(
+        error instanceof ApiRequestError
+          ? error.message
+          : 'Không thể từ chối candidate voice–visual.',
+      );
+      return null;
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
+
+  async function createCheckpoint(label: string) {
+    if (historyBusy || saveState === 'conflict') return null;
+    setHistoryBusy(true);
+    setHistoryError('');
+    try {
+      const version = await operationQueueRef.current.enqueue(async () => {
+        const currentProject = await saveCurrentDraft();
+        return createVoiceVisualCheckpoint(
+          projectId,
+          label,
+          currentProject.revision,
+        );
+      });
+      setHistory(current =>
+        current
+          ? {
+              ...current,
+              versions: [
+                version,
+                ...current.versions.filter(
+                  item => item.versionId !== version.versionId,
+                ),
+              ],
+            }
+          : current,
+      );
+      return version;
+    } catch (error) {
+      setHistoryError(
+        error instanceof ApiRequestError
+          ? error.message
+          : 'Không thể lưu phiên bản voice–visual.',
+      );
+      return null;
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
+
+  async function restoreVersion(version: VoiceVisualVersionRecord) {
+    if (historyBusy || saveState === 'conflict') return null;
+    setHistoryBusy(true);
+    setHistoryError('');
+    try {
+      const updatedProject = await operationQueueRef.current.enqueue(
+        async () => {
+          const currentProject = await projectForContentReplacement();
+          return restoreVoiceVisualVersion(
+            projectId,
+            version.versionId,
+            currentProject.revision,
+          );
+        },
+      );
+      const content = getPlanContent(updatedProject);
+      projectRef.current = updatedProject;
+      draftRef.current = content;
+      setProject(updatedProject);
+      setDraftState(content);
+      setCandidate(null);
+      setStandaloneReview(null);
+      setSaveState('saved');
+      setHistory(await getVoiceVisualHistory(projectId));
+      return updatedProject;
+    } catch (error) {
+      if (
+        error instanceof ApiRequestError &&
+        error.code === 'PROJECT_CONFLICT'
+      ) {
+        setSaveState('conflict');
+      }
+      setHistoryError(
+        error instanceof ApiRequestError
+          ? error.message
+          : 'Không thể khôi phục phiên bản voice–visual.',
+      );
+      return null;
+    } finally {
+      setHistoryBusy(false);
     }
   }
 
@@ -553,6 +1011,14 @@ export function useVoiceVisualDraft(projectId: string) {
     saveState,
     actionError,
     generating,
+    candidateGenerating,
+    candidateApplying,
+    reviewing,
+    standaloneReview,
+    historyBusy,
+    history,
+    historyError,
+    candidate,
     approving,
     stale,
     ready,
@@ -564,6 +1030,27 @@ export function useVoiceVisualDraft(projectId: string) {
     removeBeat,
     moveBeat,
     generate,
+    createCandidate,
+    reviewPlan,
+    applyCandidate,
+    rejectCandidate,
+    createCheckpoint,
+    restoreVersion,
+    selectCandidate: (nextCandidate: VoiceVisualCandidateRecord) => {
+      setCandidate(nextCandidate);
+      setStandaloneReview(current =>
+        current?.targetCandidateId === nextCandidate.candidateId
+          ? current
+          : null,
+      );
+    },
+    dismissCandidate: () => {
+      setCandidate(null);
+      setStandaloneReview(current =>
+        current?.target === 'candidate' ? null : current,
+      );
+    },
+    dismissReview: () => setStandaloneReview(null),
     approve,
     reload: () => setReloadKey((current) => current + 1),
   };
@@ -573,3 +1060,6 @@ class VoiceVisualOperationCancelledError extends Error {}
 class VoiceVisualDraftInvalidError extends Error {}
 class VoiceVisualOutdatedError extends Error {}
 class VoiceVisualOutlineNotReadyError extends Error {}
+class VoiceVisualCandidateRequiredError extends Error {}
+class VoiceVisualGuidanceRequiredError extends Error {}
+class VoiceVisualCandidateBaseRequiredError extends Error {}

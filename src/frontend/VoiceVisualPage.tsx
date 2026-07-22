@@ -1,9 +1,16 @@
 import {useState} from 'react';
+import type {
+  VoiceVisualBeatField,
+  VoiceVisualCandidateRecord,
+  VoiceVisualCoherenceReview,
+  VoiceVisualGlobalField,
+} from '../shared/voiceVisualHistory.ts';
 import {
   narrationMetrics,
   targetNarrationTokenCount,
 } from '../shared/narrationTiming.ts';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
+import type {VoiceVisualPlanContent} from '../shared/topic.ts';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {
@@ -21,15 +28,105 @@ import {
 } from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useVoiceVisualDraft} from './useVoiceVisualDraft.ts';
+import {prepareVoiceVisualReviewSuggestions} from './voiceVisualReviewSuggestions.ts';
 
 function formatTime(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+interface VoiceVisualDiffItem {
+  key: string;
+  label: string;
+  before: string;
+  after: string;
+}
+
+function voiceVisualContentChanges(
+  before: VoiceVisualPlanContent,
+  after: VoiceVisualPlanContent,
+): VoiceVisualDiffItem[] {
+  const changes: VoiceVisualDiffItem[] = [];
+  if (before.voiceDirection !== after.voiceDirection) {
+    changes.push({
+      key: 'voiceDirection',
+      label: 'Giọng kể',
+      before: before.voiceDirection,
+      after: after.voiceDirection,
+    });
+  }
+  if (before.visualDirection !== after.visualDirection) {
+    changes.push({
+      key: 'visualDirection',
+      label: 'Ngôn ngữ hình ảnh',
+      before: before.visualDirection,
+      after: after.visualDirection,
+    });
+  }
+  const beforeBeats = before.sections.flatMap(section => section.beats);
+  after.sections.forEach((section, sectionIndex) => {
+    section.beats.forEach((beat, beatIndex) => {
+      const baseBeat = beforeBeats.find(item => item.id === beat.id);
+      if (!baseBeat) return;
+      for (const [field, label] of [
+        ['voiceover', 'Lời kể'],
+        ['visualDescription', 'Visual'],
+        ['animationDescription', 'Chuyển động'],
+        ['visualHoldSeconds', 'Giữ hình'],
+      ] as const) {
+        if (baseBeat[field] === beat[field]) continue;
+        changes.push({
+          key: `${beat.id}-${field}`,
+          label: `Ý ${sectionIndex + 1} · Beat ${beatIndex + 1} · ${label}`,
+          before: String(baseBeat[field]),
+          after: String(beat[field]),
+        });
+      }
+    });
+  });
+  return changes;
+}
+
+function VoiceVisualDiffList({
+  title,
+  changes,
+}: {
+  title?: string;
+  changes: VoiceVisualDiffItem[];
+}) {
+  return (
+    <div className="voice-visual-diff-group">
+      {title && <strong className="voice-visual-diff-title">{title}</strong>}
+      <div className="outline-diff-list">
+        {changes.map(change => (
+          <article className="outline-diff-item" key={change.key}>
+            <strong>{change.label}</strong>
+            <div>
+              <span>{change.before}</span>
+              <span aria-hidden="true">→</span>
+              <span className="is-candidate">{change.after}</span>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function VoiceVisualPage({projectId}: {projectId: string}) {
   const plan = useVoiceVisualDraft(projectId);
   const codexConnection = useCodexConnection();
   const [guidance, setGuidance] = useState('');
+  const [selectedGlobalFields, setSelectedGlobalFields] = useState<
+    VoiceVisualGlobalField[]
+  >([]);
+  const [selectedBeatFields, setSelectedBeatFields] = useState<
+    Record<string, VoiceVisualBeatField[]>
+  >({});
+  const [protectedSuggestionCount, setProtectedSuggestionCount] = useState(0);
+  const [candidateBaseMode, setCandidateBaseMode] = useState<
+    'auto' | 'current' | 'candidate'
+  >('auto');
+  const [checkpointLabel, setCheckpointLabel] = useState('');
 
   async function handleGenerate(forcedGuidance?: string) {
     if (
@@ -55,6 +152,130 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
     if (approvedProject) {
       navigate(projectMotionCanvasPath(approvedProject.id), true);
     }
+  }
+
+  function toggleGlobalField(field: VoiceVisualGlobalField) {
+    setProtectedSuggestionCount(0);
+    setSelectedGlobalFields(current =>
+      current.includes(field)
+        ? current.filter(item => item !== field)
+        : [...current, field],
+    );
+  }
+
+  function toggleBeatField(beatId: string, field: VoiceVisualBeatField) {
+    setProtectedSuggestionCount(0);
+    setSelectedBeatFields(current => {
+      const fields = current[beatId] ?? [];
+      const nextFields = fields.includes(field)
+        ? fields.filter(item => item !== field)
+        : [...fields, field];
+      const next = {...current};
+      if (nextFields.length > 0) next[beatId] = nextFields;
+      else delete next[beatId];
+      return next;
+    });
+  }
+
+  function prepareReviewSuggestions(
+    coherence: VoiceVisualCoherenceReview,
+    sourceCandidate: VoiceVisualCandidateRecord | null,
+    onlyScopeExpansion = false,
+  ) {
+    const content = sourceCandidate?.content ?? plan.draft;
+    if (!content) return;
+    const prepared = prepareVoiceVisualReviewSuggestions({
+      coherence,
+      content,
+      sourceCandidate,
+      onlyScopeExpansion,
+    });
+    setSelectedGlobalFields([]);
+    setSelectedBeatFields(prepared.selectedBeatFields);
+    setProtectedSuggestionCount(prepared.protectedFieldCount);
+    setCandidateBaseMode(sourceCandidate ? 'candidate' : 'current');
+    setGuidance(prepared.guidance);
+  }
+
+  async function handleReview(target: 'current' | 'candidate') {
+    if (
+      plan.reviewing ||
+      codexConnection.checking ||
+      !codexConnection.generationReady
+    ) return;
+    const connectionStatus = await codexConnection.verify();
+    if (connectionStatus?.state !== 'connected') return;
+    const selection = codexConnection.getGenerationSelection();
+    if (!selection) return;
+    await plan.reviewPlan(
+      target,
+      selection.model,
+      selection.reasoningEffort,
+    );
+  }
+
+  async function handleCreateCandidate() {
+    if (
+      plan.candidateGenerating ||
+      codexConnection.checking ||
+      !codexConnection.generationReady
+    ) return;
+    const connectionStatus = await codexConnection.verify();
+    if (connectionStatus?.state !== 'connected') return;
+    const selection = codexConnection.getGenerationSelection();
+    if (!selection) return;
+    const created = await plan.createCandidate(
+      guidance,
+      {
+        globalFields: selectedGlobalFields,
+        beats: Object.entries(selectedBeatFields).map(([beatId, fields]) => ({
+          beatId,
+          fields,
+        })),
+      },
+      selection.model,
+      selection.reasoningEffort,
+      candidateBaseMode,
+    );
+    if (created) {
+      setGuidance('');
+      setProtectedSuggestionCount(0);
+      setCandidateBaseMode('auto');
+    }
+  }
+
+  async function handleApplyCandidate() {
+    const confirmations: string[] = [];
+    if (plan.validationErrors.length > 0) {
+      confirmations.push(
+        'Bản đang nhập có trường chưa hợp lệ. Áp dụng candidate sẽ bỏ các thay đổi cục bộ chưa lưu.',
+      );
+    }
+    if (
+      plan.candidate?.status === 'coherence_blocked' ||
+      plan.candidate?.status === 'scope_expansion_required'
+    ) {
+      confirmations.push(
+        'AI reviewer khuyến nghị xem lại candidate này, nhưng đây chỉ là tư vấn. Quyết định áp dụng vẫn thuộc về bạn.',
+      );
+    }
+    if (
+      confirmations.length > 0 &&
+      !window.confirm(`${confirmations.join('\n\n')}\n\nBạn vẫn muốn áp dụng?`)
+    ) return;
+    await plan.applyCandidate();
+  }
+
+  async function handleRestore(
+    version: NonNullable<typeof plan.history>['versions'][number],
+  ) {
+    if (
+      plan.validationErrors.length > 0 &&
+      !window.confirm(
+        'Bản đang nhập có trường chưa hợp lệ. Khôi phục sẽ bỏ các thay đổi cục bộ chưa lưu. Bạn muốn tiếp tục?',
+      )
+    ) return;
+    await plan.restoreVersion(version);
   }
 
   if (plan.loadState === 'loading') {
@@ -131,6 +352,42 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
     project.voiceVisualPlan?.status === 'approved' &&
     plan.saveState === 'saved' &&
     !plan.stale;
+  const selectedFieldCount =
+    selectedGlobalFields.length +
+    Object.values(selectedBeatFields).reduce(
+      (total, fields) => total + fields.length,
+      0,
+    );
+  const candidateReviewable = Boolean(
+    plan.candidate?.decision === 'pending' &&
+      plan.history &&
+      plan.candidate.rootBaseContextHash === plan.history.currentContextHash,
+  );
+  const candidateRootArtifact = plan.candidate
+    ? plan.history?.versions.find(
+        item => item.versionId === plan.candidate?.baseVersionId,
+      )?.artifact
+    : null;
+  const candidateRootBase: VoiceVisualPlanContent | null = candidateRootArtifact
+    ? {
+        voiceDirection: candidateRootArtifact.voiceDirection,
+        visualDirection: candidateRootArtifact.visualDirection,
+        timingCalibration: candidateRootArtifact.timingCalibration,
+        sections: candidateRootArtifact.sections,
+      }
+    : null;
+  const candidateBase = plan.candidate?.parentCandidateId
+    ? plan.history?.candidates.find(
+        item => item.candidateId === plan.candidate?.parentCandidateId,
+      )?.content ?? null
+    : candidateRootBase;
+  const candidateChanges = plan.candidate && candidateBase
+    ? voiceVisualContentChanges(candidateBase, plan.candidate.content)
+    : [];
+  const candidateCumulativeChanges =
+    plan.candidate?.parentCandidateId && candidateRootBase
+      ? voiceVisualContentChanges(candidateRootBase, plan.candidate.content)
+      : candidateChanges;
   let runningSeconds = 0;
 
   return (
@@ -325,7 +582,19 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                 </header>
                 <div className="voice-visual-direction-grid">
                   <label className="outline-field">
-                    <span>Giọng kể</span>
+                    <span className="voice-visual-field-heading">
+                      Giọng kể
+                      <span className="voice-visual-scope-toggle">
+                        <input
+                          type="checkbox"
+                          checked={selectedGlobalFields.includes(
+                            'voiceDirection',
+                          )}
+                          onChange={() => toggleGlobalField('voiceDirection')}
+                        />
+                        Cho AI sửa
+                      </span>
+                    </span>
                     <textarea
                       rows={3}
                       maxLength={320}
@@ -340,7 +609,19 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                     />
                   </label>
                   <label className="outline-field">
-                    <span>Ngôn ngữ hình ảnh</span>
+                    <span className="voice-visual-field-heading">
+                      Ngôn ngữ hình ảnh
+                      <span className="voice-visual-scope-toggle">
+                        <input
+                          type="checkbox"
+                          checked={selectedGlobalFields.includes(
+                            'visualDirection',
+                          )}
+                          onChange={() => toggleGlobalField('visualDirection')}
+                        />
+                        Cho AI sửa
+                      </span>
+                    </span>
                     <textarea
                       rows={3}
                       maxLength={420}
@@ -465,6 +746,31 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                 </div>
                               </header>
 
+                              <div className="voice-visual-beat-scope">
+                                <span>AI được phép sửa:</span>
+                                {(
+                                  [
+                                    ['voiceover', 'Lời kể'],
+                                    ['visualDescription', 'Visual'],
+                                    ['animationDescription', 'Chuyển động'],
+                                    ['visualHoldSeconds', 'Giữ hình'],
+                                  ] as const
+                                ).map(([field, label]) => (
+                                  <label key={field}>
+                                    <input
+                                      type="checkbox"
+                                      checked={(
+                                        selectedBeatFields[beat.id] ?? []
+                                      ).includes(field)}
+                                      onChange={() =>
+                                        toggleBeatField(beat.id, field)
+                                      }
+                                    />
+                                    {label}
+                                  </label>
+                                ))}
+                              </div>
+
                               <div className="voice-visual-beat-fields">
                                 <label className="outline-field voice-field">
                                   <span>Lời thuyết minh</span>
@@ -586,50 +892,329 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
               </div>
 
               {!plan.stale && (
-                <section className="outline-ai-revision">
-                  <div>
-                    <span className="preview-kicker">
-                      <SparkIcon />
-                      Nhờ AI chỉnh lại
-                    </span>
-                    <h2>Bạn muốn thay đổi điều gì?</h2>
-                    <p>
-                      Khi có góp ý, kế hoạch hiện tại mới được gửi lại cho AI.
-                    </p>
-                  </div>
-                  <textarea
-                    rows={3}
-                    maxLength={4000}
-                    value={guidance}
-                    placeholder="Ví dụ: Rút gọn lời kể, giảm số beat và làm visual dễ dựng hơn."
-                    onChange={(event) => setGuidance(event.target.value)}
-                  />
-                  <button
-                    className="secondary-button"
-                    type="button"
-                    disabled={
-                      plan.generating ||
-                      plan.saveState === 'conflict' ||
-                      codexConnection.checking ||
-                      !codexConnection.generationReady
-                    }
-                    onClick={() => void handleGenerate()}
-                  >
-                    {plan.generating ? (
-                      <>
-                        <span className="spinner dark" />
-                        AI đang chỉnh…
-                      </>
-                    ) : (
-                      <>
+                <>
+                  <section className="voice-visual-review-launcher">
+                    <div>
+                      <span className="preview-kicker">
                         <SparkIcon />
-                        {guidance.trim()
-                          ? 'Chỉnh theo góp ý'
-                          : 'Tạo lại toàn bộ'}
-                      </>
+                        AI review độc lập
+                      </span>
+                      <h2>Kiểm tra mà không thay đổi nội dung</h2>
+                      <p>
+                        Review chỉ đưa ra nhận xét và gợi ý phạm vi. Không candidate
+                        nào được tạo hoặc áp dụng từ thao tác này.
+                      </p>
+                    </div>
+                    <div className="voice-visual-review-actions">
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={
+                          plan.reviewing ||
+                          !plan.valid ||
+                          plan.saveState === 'conflict' ||
+                          codexConnection.checking ||
+                          !codexConnection.generationReady
+                        }
+                        onClick={() => void handleReview('current')}
+                      >
+                        {plan.reviewing ? (
+                          <>
+                            <span className="spinner dark" />
+                            AI đang review…
+                          </>
+                        ) : (
+                          'Review bản hiện tại'
+                        )}
+                      </button>
+                      {plan.candidate && candidateReviewable && (
+                        <button
+                          className="ghost-button"
+                          type="button"
+                          disabled={
+                            plan.reviewing ||
+                            plan.saveState === 'conflict' ||
+                            codexConnection.checking ||
+                            !codexConnection.generationReady
+                          }
+                          onClick={() => void handleReview('candidate')}
+                        >
+                          Review candidate đang xem
+                        </button>
+                      )}
+                    </div>
+                  </section>
+
+                  {plan.standaloneReview && (
+                    <section className="outline-candidate-review voice-visual-standalone-review">
+                      <header>
+                        <div>
+                          <span className="preview-kicker">
+                            <SparkIcon />
+                            Kết quả review độc lập
+                          </span>
+                          <h2>
+                            {plan.standaloneReview.target === 'candidate'
+                              ? 'Candidate vẫn chỉ là bản đề xuất'
+                              : 'Bản hiện tại chưa bị thay đổi'}
+                          </h2>
+                        </div>
+                        <span className={`candidate-status is-${
+                          plan.standaloneReview.coherence.verdict === 'coherent'
+                            ? 'ready'
+                            : 'coherence_warning'
+                        }`}>
+                          {plan.standaloneReview.coherence.verdict === 'coherent'
+                            ? 'AI đánh giá ổn'
+                            : 'AI có gợi ý'}
+                        </span>
+                      </header>
+                      <p>{plan.standaloneReview.coherence.summary}</p>
+                      {plan.standaloneReview.coherence.issues.length > 0 && (
+                        <ul className="voice-visual-coherence-issues">
+                          {plan.standaloneReview.coherence.issues.map(
+                            (issue, index) => (
+                              <li key={`${issue.category}-${index}`}>
+                                <strong>
+                                  {issue.severity === 'error'
+                                    ? 'Nên xem kỹ'
+                                    : 'Gợi ý'}
+                                </strong>{' '}
+                                {issue.message}
+                                <small>{issue.suggestedFix}</small>
+                              </li>
+                            ),
+                          )}
+                        </ul>
+                      )}
+                      <p className="candidate-advisory-note">
+                        Review không ghi đè bản hiện tại và không tự tạo candidate.
+                      </p>
+                      <footer>
+                        <button
+                          className="ghost-button"
+                          type="button"
+                          onClick={plan.dismissReview}
+                        >
+                          Đóng review
+                        </button>
+                        {plan.standaloneReview.coherence.issues.length > 0 && (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            onClick={() =>
+                              prepareReviewSuggestions(
+                                plan.standaloneReview!.coherence,
+                                plan.standaloneReview!.target === 'candidate'
+                                  ? plan.candidate
+                                  : null,
+                              )
+                            }
+                          >
+                            Chuẩn bị chỉnh theo gợi ý
+                          </button>
+                        )}
+                      </footer>
+                    </section>
+                  )}
+
+                  {plan.candidate && (
+                    <section className="outline-candidate-review voice-visual-candidate-review">
+                      <header>
+                        <div>
+                          <span className="preview-kicker">
+                            <SparkIcon />
+                            Candidate chưa ghi đè bản hiện tại
+                          </span>
+                          <h2>{plan.candidate.patch.editSummary}</h2>
+                        </div>
+                        <span className={`candidate-status is-${plan.candidate.status}`}>
+                          {plan.candidate.decision === 'accepted'
+                            ? 'Đã áp dụng'
+                            : plan.candidate.decision === 'rejected'
+                              ? 'Đã từ chối'
+                              : plan.candidate.status === 'ready'
+                                ? 'Sẵn sàng'
+                                : plan.candidate.status === 'coherence_warning'
+                                  ? 'AI có lưu ý'
+                                  : plan.candidate.status === 'scope_expansion_required'
+                                    ? 'AI đề nghị mở phạm vi'
+                                    : 'AI khuyến nghị xem lại'}
+                        </span>
+                      </header>
+
+                      <span className="voice-visual-auto-review-label">
+                        Review tự động sau khi AI chỉnh sửa
+                      </span>
+                      <p>{plan.candidate.coherence.summary}</p>
+                      <p className="candidate-advisory-note">
+                        Đánh giá này chỉ hỗ trợ quyết định. Bạn luôn có thể áp dụng
+                        candidate nếu nội dung phù hợp với chủ đích của mình.
+                      </p>
+                      {plan.candidate.coherence.issues.length > 0 && (
+                        <ul className="voice-visual-coherence-issues">
+                          {plan.candidate.coherence.issues.map((issue, index) => (
+                            <li key={`${issue.category}-${index}`}>
+                              <strong>
+                                {issue.severity === 'error' ? 'Lỗi' : 'Lưu ý'}
+                              </strong>{' '}
+                              {issue.message}
+                              <small>{issue.suggestedFix}</small>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {plan.candidate.decision === 'pending' &&
+                        plan.candidate.status === 'scope_expansion_required' && (
+                          <div className="candidate-scope-expansion">
+                            <div>
+                              <strong>Reviewer đề nghị mở rộng đúng beat liên quan</strong>
+                              <small>
+                                Candidate hiện tại vẫn làm nền; PAD Studio chỉ bổ sung các
+                                trường cần thiết để nối mạch.
+                              </small>
+                            </div>
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={() =>
+                                prepareReviewSuggestions(
+                                  plan.candidate!.coherence,
+                                  plan.candidate,
+                                  true,
+                                )
+                              }
+                            >
+                              Mở phạm vi theo gợi ý
+                            </button>
+                          </div>
+                        )}
+
+                      {plan.candidate.parentCandidateId ? (
+                        <div className="voice-visual-layered-diff">
+                          <VoiceVisualDiffList
+                            title="Lượt vừa chỉnh · candidate trước → candidate này"
+                            changes={candidateChanges}
+                          />
+                          <VoiceVisualDiffList
+                            title="Tổng thay đổi · bản đang dùng → candidate này"
+                            changes={candidateCumulativeChanges}
+                          />
+                        </div>
+                      ) : (
+                        <VoiceVisualDiffList changes={candidateChanges} />
+                      )}
+
+                      <footer>
+                        {plan.candidate.decision === 'pending' ? (
+                          <>
+                            <button
+                              className="ghost-button"
+                              type="button"
+                              disabled={plan.historyBusy}
+                              onClick={() => void plan.rejectCandidate()}
+                            >
+                              Giữ bản cũ, từ chối
+                            </button>
+                            <button
+                              className="submit-button"
+                              type="button"
+                              disabled={plan.candidateApplying}
+                              onClick={() => void handleApplyCandidate()}
+                            >
+                              {plan.candidateApplying
+                                ? 'Đang áp dụng…'
+                                : plan.candidate.status === 'coherence_blocked' ||
+                                    plan.candidate.status ===
+                                      'scope_expansion_required'
+                                  ? 'Vẫn áp dụng theo ý tôi'
+                                  : 'Áp dụng candidate'}
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            className="ghost-button"
+                            type="button"
+                            onClick={plan.dismissCandidate}
+                          >
+                            Đóng
+                          </button>
+                        )}
+                      </footer>
+                    </section>
+                  )}
+
+                  <section className="outline-ai-revision">
+                    <div>
+                      <span className="preview-kicker">
+                        <SparkIcon />
+                        Chỉnh hẹp, đọc toàn cục
+                      </span>
+                      <h2>Bạn muốn thay đổi điều gì?</h2>
+                      <p>
+                        Chọn chính xác trường AI được sửa. AI vẫn đọc toàn bộ
+                        kế hoạch và kiểm tra lại hai ranh giới với phần giữ nguyên.
+                      </p>
+                    </div>
+                    <div className="voice-visual-scope-summary">
+                      <strong>{selectedFieldCount} trường được phép sửa</strong>
+                      <span>
+                        {candidateBaseMode === 'candidate'
+                          ? 'Candidate đang xem là bản nền; các field vừa chỉnh được giữ khóa mặc định.'
+                          : candidateBaseMode === 'current'
+                            ? 'Lượt này dùng bản hiện tại làm nền, không dựa trên candidate đang chờ.'
+                            : 'Thêm, xóa hoặc đổi thứ tự beat vẫn thực hiện thủ công để tránh AI làm lệch cấu trúc.'}
+                      </span>
+                    </div>
+                    {protectedSuggestionCount > 0 && (
+                      <div className="voice-visual-protected-suggestion" role="status">
+                        <strong>
+                          Đã giữ khóa {protectedSuggestionCount} field vừa được chỉnh tốt
+                        </strong>
+                        <span>
+                          AI sẽ không sửa lại các field đó. Nếu thật sự muốn thay đổi,
+                          bạn có thể tự tích checkbox tương ứng.
+                        </span>
+                      </div>
                     )}
-                  </button>
-                </section>
+                    <textarea
+                      rows={3}
+                      maxLength={4000}
+                      value={guidance}
+                      placeholder="Ví dụ: Rút gọn lời kể của beat đã chọn, nhưng giữ nguyên ví dụ và nối tự nhiên với beat kế tiếp."
+                      onChange={(event) => setGuidance(event.target.value)}
+                    />
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      disabled={
+                        plan.candidateGenerating ||
+                        selectedFieldCount === 0 ||
+                        guidance.trim().length < 3 ||
+                        plan.saveState === 'conflict' ||
+                        codexConnection.checking ||
+                        !codexConnection.generationReady
+                      }
+                      onClick={() => void handleCreateCandidate()}
+                    >
+                      {plan.candidateGenerating ? (
+                        <>
+                          <span className="spinner dark" />
+                          AI đang tạo candidate…
+                        </>
+                      ) : (
+                        <>
+                          <SparkIcon />
+                          {plan.candidate?.decision === 'pending'
+                            ? candidateBaseMode === 'current'
+                              ? 'Tạo candidate từ bản hiện tại'
+                              : 'Chỉnh tiếp candidate'
+                            : 'Tạo candidate để so sánh'}
+                        </>
+                      )}
+                    </button>
+                  </section>
+                </>
               )}
             </div>
 
@@ -700,6 +1285,99 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                   </p>
                 </div>
               </section>
+
+              {!plan.stale && (
+                <section className="outline-history-card voice-visual-history-card">
+                  <header>
+                    <div>
+                      <span className="preview-label">Lịch sử an toàn</span>
+                      <h2>Phiên bản voice–visual</h2>
+                    </div>
+                  </header>
+
+                  <div className="outline-checkpoint-action">
+                    <input
+                      type="text"
+                      maxLength={120}
+                      value={checkpointLabel}
+                      placeholder="Tên mốc, ví dụ: trước khi rút lời"
+                      onChange={event => setCheckpointLabel(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      disabled={plan.historyBusy || !plan.valid}
+                      onClick={() =>
+                        void plan.createCheckpoint(checkpointLabel).then(
+                          version => {
+                            if (version) setCheckpointLabel('');
+                          },
+                        )
+                      }
+                    >
+                      Lưu mốc
+                    </button>
+                  </div>
+
+                  {plan.historyError && (
+                    <p className="outline-history-error" role="alert">
+                      {plan.historyError}
+                    </p>
+                  )}
+
+                  {plan.history?.candidates.length ? (
+                    <div className="outline-candidate-history">
+                      <strong>Candidates</strong>
+                      {plan.history.candidates.slice(0, 8).map(item => (
+                        <article key={item.candidateId}>
+                          <div>
+                            <strong>{item.patch.editSummary}</strong>
+                            <span>
+                              {item.decision === 'pending'
+                                ? 'Chờ review'
+                                : item.decision === 'accepted'
+                                  ? 'Đã áp dụng'
+                                  : 'Đã từ chối'}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => plan.selectCandidate(item)}
+                          >
+                            Xem
+                          </button>
+                        </article>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <div className="outline-version-list">
+                    {plan.history?.versions.slice(0, 12).map(version => (
+                      <article key={version.versionId}>
+                        <div>
+                          <strong>{version.label ?? 'Phiên bản đã lưu'}</strong>
+                          <span>
+                            {new Date(version.createdAt).toLocaleString('vi-VN')}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={
+                            plan.historyBusy ||
+                            version.contentHash ===
+                              plan.history?.currentContentHash
+                          }
+                          onClick={() => void handleRestore(version)}
+                        >
+                          {version.contentHash ===
+                          plan.history?.currentContentHash
+                            ? 'Hiện tại'
+                            : 'Khôi phục'}
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              )}
             </aside>
           </div>
 
@@ -725,6 +1403,9 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                 disabled={
                   plan.approving ||
                   plan.generating ||
+                  plan.candidateGenerating ||
+                  plan.candidateApplying ||
+                  plan.candidate?.decision === 'pending' ||
                   (!approved && plan.stale) ||
                   plan.saveState === 'conflict'
                 }
