@@ -405,7 +405,6 @@ export function VoicePage({projectId}: {projectId: string}) {
                 <input
                   id="voice-search"
                   value={search}
-                  maxLength={120}
                   placeholder="Tên giọng hoặc voice ID"
                   onChange={(event) => setSearch(event.target.value)}
                 />

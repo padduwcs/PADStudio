@@ -116,8 +116,7 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
         'Tiếp tục từ candidate hiện tại, giữ nguyên mọi phần đã tốt và chỉ xử lý các điểm reviewer nêu.',
         ...new Set(fixes),
       ]
-        .join(' ')
-        .slice(0, 4000),
+        .join(' '),
     );
   }
 
@@ -724,13 +723,29 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                         candidate; toàn chuỗi được review lại trước khi áp dụng.
                       </p>
                     </div>
+                    <div className="ai-scope-presets" aria-label="Chọn nhanh scene">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSelectedSceneIds(
+                            motionCanvas.project?.motionCanvasBundle?.scenes.map(
+                              scene => scene.id,
+                            ) ?? [],
+                          )
+                        }
+                      >
+                        Chọn tất cả scene
+                      </button>
+                      <button type="button" onClick={() => setSelectedSceneIds([])}>
+                        Bỏ chọn
+                      </button>
+                    </div>
                     <div className="voice-visual-scope-summary">
                       <strong>{selectedSceneIds.length} scene được phép sinh lại</strong>
                       <span>ID và filePath của mọi scene vẫn được giữ ổn định.</span>
                     </div>
                     <textarea
                       rows={3}
-                      maxLength={4000}
                       value={guidance}
                       placeholder="Ví dụ: Làm chuyển động chia đôi trực quan hơn ở scene đã chọn, giữ palette và nhịp chuyển tiếp với scene kế bên."
                       onChange={(event) => setGuidance(event.target.value)}
@@ -831,7 +846,6 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                   <div className="outline-checkpoint-action">
                     <input
                       type="text"
-                      maxLength={120}
                       value={checkpointLabel}
                       placeholder="Tên mốc trước khi chỉnh scene"
                       onChange={event => setCheckpointLabel(event.target.value)}

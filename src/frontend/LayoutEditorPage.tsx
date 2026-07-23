@@ -21,7 +21,7 @@ import {
   type LayoutOverridesDocument,
   type LayoutRenderSettings,
 } from '../shared/layout.ts';
-import type {RenderWatermark, WatermarkPosition} from '../shared/render.ts';
+import type {RenderWatermark} from '../shared/render.ts';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {
   ArrowLeftIcon,
@@ -256,8 +256,8 @@ function editorFacingNodes(nodes: LayoutEditorNode[]) {
 
 interface LayoutNumberInputProps {
   value: number;
-  min: number;
-  max: number;
+  min?: number;
+  max?: number;
   step: number;
   disabled: boolean;
   onCommit: (value: number) => void;
@@ -293,7 +293,10 @@ function LayoutNumberInput({
       setDraft(String(value));
       return;
     }
-    const normalized = Math.min(max, Math.max(min, parsed));
+    const normalized = Math.min(
+      max ?? Number.POSITIVE_INFINITY,
+      Math.max(min ?? Number.NEGATIVE_INFINITY, parsed),
+    );
     setDraft(String(normalized));
     if (normalized !== value) onCommit(normalized);
   }
@@ -339,14 +342,13 @@ function LayoutTextEditor({
   useEffect(() => setDraft(value), [value]);
 
   function commit() {
-    if (draft !== value) onCommit(draft.slice(0, 500));
+    if (draft !== value) onCommit(draft);
   }
 
   return (
     <div className="layout-text-editor">
       <textarea
         rows={4}
-        maxLength={500}
         value={draft}
         disabled={disabled}
         aria-label="Nội dung chữ"
@@ -360,7 +362,7 @@ function LayoutTextEditor({
         }}
       />
       <div>
-        <small>{draft.length}/500 · tự áp dụng khi rời ô</small>
+        <small>{draft.length} ký tự · tự áp dụng khi rời ô</small>
         <button
           type="button"
           disabled={disabled || draft === value}
@@ -839,6 +841,20 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
               ? nextSelection
               : null,
         );
+        return;
+      }
+
+      if (message.type === 'watermark-position-change') {
+        const xPercent = Number(payload.xPercent);
+        const yPercent = Number(payload.yPercent);
+        const current = renderSettingsRef.current.watermark;
+        if (
+          current.type !== 'none' &&
+          Number.isFinite(xPercent) &&
+          Number.isFinite(yPercent)
+        ) {
+          updateWatermark({...current, xPercent, yPercent});
+        }
         return;
       }
 
@@ -1700,47 +1716,16 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
         </div>
       )}
 
-      <section className="layout-output-settings" aria-label="Tốc độ và watermark">
+      <section className="layout-output-settings" aria-label="Watermark">
         <header>
           <div>
             <span className="preview-kicker">Xem trước bản xuất</span>
-            <strong>Tốc độ và watermark</strong>
+            <strong>Watermark</strong>
           </div>
           <small>
             Các lựa chọn này được lưu cùng Layout và áp dụng trực tiếp khi render.
           </small>
         </header>
-        <div className="layout-output-control">
-          <label htmlFor="layout-playback-rate">Tốc độ</label>
-          <input
-            id="layout-playback-rate"
-            type="range"
-            min={0.25}
-            max={4}
-            step={0.01}
-            value={renderSettings.playbackRate}
-            onChange={event =>
-              updateRenderSettings({
-                ...renderSettingsRef.current,
-                playbackRate: Number(event.currentTarget.value),
-              })
-            }
-          />
-          <LayoutNumberInput
-            value={renderSettings.playbackRate}
-            min={0.25}
-            max={4}
-            step={0.01}
-            disabled={false}
-            onCommit={playbackRate =>
-              updateRenderSettings({
-                ...renderSettingsRef.current,
-                playbackRate,
-              })
-            }
-          />
-          <span>×</span>
-        </div>
         <div className="layout-watermark-settings">
           <label>
             <span>Watermark</span>
@@ -1755,7 +1740,8 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                         type: 'text',
                         text: '',
                         opacity: 0.3,
-                        position: 'bottom-right',
+                        xPercent: 88,
+                        yPercent: 92,
                         fontSize: 44,
                         color: '#ffffff',
                       }
@@ -1764,7 +1750,8 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                           type: 'image',
                           assetId: '',
                           opacity: 0.3,
-                          position: 'bottom-right',
+                          xPercent: 88,
+                          yPercent: 92,
                           widthPercent: 22,
                         }
                       : {type: 'none'},
@@ -1782,7 +1769,6 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                 <span>Nội dung</span>
                 <input
                   type="text"
-                  maxLength={120}
                   value={watermark.text}
                   placeholder="Tên kênh hoặc thương hiệu"
                   onChange={event =>
@@ -1797,8 +1783,7 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                 <span>Cỡ chữ</span>
                 <LayoutNumberInput
                   value={watermark.fontSize}
-                  min={16}
-                  max={200}
+                  min={0.01}
                   step={1}
                   disabled={false}
                   onCommit={fontSize =>
@@ -1863,29 +1848,33 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
           {watermark.type !== 'none' && (
             <>
               <label>
-                <span>Vị trí</span>
-                <select
-                  value={watermark.position}
-                  onChange={event =>
-                    updateWatermark({
-                      ...watermark,
-                      position: event.currentTarget.value as WatermarkPosition,
-                    })
+                <span>Vị trí X (%)</span>
+                <LayoutNumberInput
+                  value={watermark.xPercent}
+                  step={0.1}
+                  disabled={false}
+                  onCommit={xPercent =>
+                    updateWatermark({...watermark, xPercent})
                   }
-                >
-                  <option value="top-left">Trên trái</option>
-                  <option value="top-right">Trên phải</option>
-                  <option value="bottom-left">Dưới trái</option>
-                  <option value="bottom-right">Dưới phải</option>
-                  <option value="center">Chính giữa</option>
-                </select>
+                />
+              </label>
+              <label>
+                <span>Vị trí Y (%)</span>
+                <LayoutNumberInput
+                  value={watermark.yPercent}
+                  step={0.1}
+                  disabled={false}
+                  onCommit={yPercent =>
+                    updateWatermark({...watermark, yPercent})
+                  }
+                />
               </label>
               <div className="layout-output-control is-opacity">
                 <label htmlFor="layout-watermark-opacity">Opacity</label>
                 <input
                   id="layout-watermark-opacity"
                   type="range"
-                  min={0.05}
+                  min={0}
                   max={1}
                   step={0.01}
                   value={watermark.opacity}
@@ -1898,7 +1887,7 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                 />
                 <LayoutNumberInput
                   value={watermark.opacity * 100}
-                  min={5}
+                  min={0}
                   max={100}
                   step={1}
                   disabled={false}
@@ -1914,19 +1903,38 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
             </>
           )}
           {watermark.type === 'image' && (
-            <label>
-              <span>Chiều rộng (%)</span>
+            <div className="layout-output-control is-watermark-width">
+              <label htmlFor="layout-watermark-width">Chiều rộng</label>
+              <input
+                id="layout-watermark-width"
+                type="range"
+                min={0}
+                max={Math.max(200, watermark.widthPercent * 1.5)}
+                step={0.1}
+                value={watermark.widthPercent}
+                onChange={event =>
+                  updateWatermark({
+                    ...watermark,
+                    widthPercent: Number(event.currentTarget.value),
+                  })
+                }
+              />
               <LayoutNumberInput
                 value={watermark.widthPercent}
-                min={5}
-                max={80}
-                step={0.5}
+                min={0}
+                step={0.1}
                 disabled={false}
                 onCommit={widthPercent =>
                   updateWatermark({...watermark, widthPercent})
                 }
               />
-            </label>
+              <span>%</span>
+            </div>
+          )}
+          {watermark.type !== 'none' && (
+            <small className="layout-watermark-drag-hint">
+              Kéo trực tiếp watermark trên khung preview; có thể nhập X/Y ngoài khung nếu cần.
+            </small>
           )}
         </div>
         {watermarkUploadError && (

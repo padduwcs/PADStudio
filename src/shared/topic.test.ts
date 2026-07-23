@@ -8,12 +8,15 @@ import {
   GenerateMotionCanvasSchema,
   LayoutBundleSchema,
   LayoutEditorManifestSchema,
+  LayoutNodePatchSchema,
   LayoutOverridesDocumentSchema,
   parseTopicProject,
   ProjectStepSchema,
   TopicInputSchema,
   TopicProjectSchema,
+  TeachingOutlineContentSchema,
   UpdateProjectSchema,
+  VoiceVisualBeatSchema,
 } from './topic.ts';
 
 test('TopicInputSchema chuẩn hóa khoảng trắng ở đầu và cuối', () => {
@@ -39,6 +42,51 @@ test('TopicInputSchema từ chối chủ đề quá mơ hồ', () => {
   });
 
   assert.equal(result.success, false);
+});
+
+test('TopicInputSchema không cắt hoặc từ chối nội dung dài do người dùng nhập', () => {
+  const longText = 'Nội dung chi tiết '.repeat(1_000);
+  const result = TopicInputSchema.parse({
+    topic: longText,
+    learningGoal: longText,
+    videoDirection: longText,
+    audience: 'familiar',
+    duration: 'deep',
+  });
+
+  assert.equal(result.topic, longText.trim());
+  assert.equal(result.learningGoal, longText.trim());
+  assert.equal(result.videoDirection, longText.trim());
+});
+
+test('nội dung dài vẫn đi xuyên qua outline, voice–visual và Layout text', () => {
+  const longText = 'Giải thích không bị cắt '.repeat(500);
+  const outline = TeachingOutlineContentSchema.parse({
+    brief: {summary: longText, assumptions: [longText]},
+    centralMessage: longText,
+    sections: [
+      {
+        id: '00000000-0000-4000-8000-000000000011',
+        title: longText,
+        goal: longText,
+        content: longText,
+        estimatedSeconds: 60,
+      },
+    ],
+  });
+  const beat = VoiceVisualBeatSchema.parse({
+    id: '00000000-0000-4000-8000-000000000012',
+    voiceover: longText,
+    visualDescription: longText,
+    animationDescription: longText,
+    visualHoldSeconds: 0,
+    durationSeconds: 60,
+  });
+  const patch = LayoutNodePatchSchema.parse({text: longText});
+
+  assert.equal(outline.sections[0]?.content, longText.trim());
+  assert.equal(beat.voiceover, longText.trim());
+  assert.equal(patch.text, longText);
 });
 
 test('TopicInputSchema hỗ trợ thời lượng mục tiêu tùy chỉnh có cầu chì an toàn', () => {
@@ -448,6 +496,15 @@ test('parseTopicProject migrates v8 and v9 without widening historical step enum
   });
   assert.equal(migratedVersionEleven.version, currentProjectVersion);
   assert.equal(migratedVersionEleven.currentStep, 'render');
+  const migratedVersionTwelve = parseTopicProject({
+    ...versionEight,
+    version: 12,
+    currentStep: 'render',
+    layoutBundle: null,
+    renderBundle: null,
+    visualDesignBundle: null,
+  });
+  assert.equal(migratedVersionTwelve.version, currentProjectVersion);
   assert.throws(() =>
     parseTopicProject({...versionEight, currentStep: 'layout'}),
   );
@@ -652,10 +709,56 @@ test('layout bundle and commands lock every write to a sync generation', () => {
   assert.equal(parsedBundle.success, true);
   if (parsedBundle.success) {
     assert.deepEqual(parsedBundle.data.renderSettings, {
-      playbackRate: 1,
       watermark: {type: 'none'},
     });
   }
+  const migratedLegacyLayout = parseTopicProject({
+    id: 'legacy-layout-project',
+    version: 12,
+    revision: 1,
+    creationId: null,
+    status: 'draft',
+    currentStep: 'render',
+    topicInput: {
+      topic: 'Chủ đề dùng để kiểm tra migration Layout',
+      audience: 'beginner',
+      duration: 'standard',
+    },
+    outline: null,
+    voiceVisualPlan: null,
+    motionCanvasBundle: null,
+    voiceBundle: null,
+    animationSyncBundle: null,
+    layoutBundle: {
+      ...bundle,
+      renderSettings: {
+        playbackRate: 1.25,
+        watermark: {
+          type: 'text',
+          text: 'Legacy',
+          opacity: 0.25,
+          position: 'top-left',
+          fontSize: 32,
+          color: '#ffffff',
+        },
+      },
+    },
+    renderBundle: null,
+    visualDesignBundle: null,
+    createdAt: now,
+    updatedAt: now,
+  });
+  assert.deepEqual(migratedLegacyLayout.layoutBundle?.renderSettings, {
+    watermark: {
+      type: 'text',
+      text: 'Legacy',
+      opacity: 0.25,
+      xPercent: 8,
+      yPercent: 8,
+      fontSize: 32,
+      color: '#ffffff',
+    },
+  });
   assert.equal(
     LayoutBundleSchema.safeParse({
       ...bundle,
@@ -699,18 +802,28 @@ test('layout bundle and commands lock every write to a sync generation', () => {
     CommitLayoutSchema.safeParse({
       ...command,
       renderSettings: {
-        playbackRate: 1.03,
         watermark: {
           type: 'text',
           text: 'PAD Studio',
           opacity: 0.31,
-          position: 'bottom-right',
+          xPercent: 120,
+          yPercent: -15,
           fontSize: 44,
           color: '#ffffff',
         },
       },
     }).success,
     true,
+  );
+  assert.equal(
+    CommitLayoutSchema.safeParse({
+      ...command,
+      renderSettings: {
+        playbackRate: 1.03,
+        watermark: {type: 'none'},
+      },
+    }).success,
+    false,
   );
   assert.equal(
     CommitLayoutSchema.safeParse({...command, sessionNonce: 'short'}).success,

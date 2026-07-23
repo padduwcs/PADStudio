@@ -622,37 +622,82 @@ async function startEditor(project) {
     0,
   );
 
+  function finiteNumber(value, fallback) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  function placeWatermark(content, watermark) {
+    content.style.left = `${finiteNumber(watermark.xPercent, 88)}%`;
+    content.style.top = `${finiteNumber(watermark.yPercent, 92)}%`;
+  }
+
+  function enableWatermarkDrag(content, watermark) {
+    let dragging = false;
+    let xPercent = finiteNumber(watermark.xPercent, 88);
+    let yPercent = finiteNumber(watermark.yPercent, 92);
+    const move = event => {
+      if (!dragging) return;
+      const bounds = watermarkLayer.getBoundingClientRect();
+      if (bounds.width <= 0 || bounds.height <= 0) return;
+      xPercent = ((event.clientX - bounds.left) / bounds.width) * 100;
+      yPercent = ((event.clientY - bounds.top) / bounds.height) * 100;
+      placeWatermark(content, {xPercent, yPercent});
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const finish = event => {
+      if (!dragging) return;
+      move(event);
+      dragging = false;
+      content.classList.remove('is-dragging');
+      if (content.hasPointerCapture(event.pointerId)) {
+        content.releasePointerCapture(event.pointerId);
+      }
+      protocol.post('watermark-position-change', {xPercent, yPercent});
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    content.addEventListener('pointerdown', event => {
+      if (event.button !== 0) return;
+      dragging = true;
+      content.classList.add('is-dragging');
+      content.setPointerCapture(event.pointerId);
+      move(event);
+    });
+    content.addEventListener('pointermove', move);
+    content.addEventListener('pointerup', finish);
+    content.addEventListener('pointercancel', finish);
+  }
+
   function setRenderSettings(payload = {}) {
     const renderSettings = payload.renderSettings ?? payload;
-    const playbackRate = Math.min(
-      4,
-      Math.max(0.25, Number(renderSettings.playbackRate) || 1),
-    );
-    player.setSpeed(playbackRate);
-
     const watermark = renderSettings.watermark;
     watermarkLayer.replaceChildren();
     watermarkLayer.hidden = !watermark || watermark.type === 'none';
-    watermarkLayer.dataset.position = watermark?.position ?? 'bottom-right';
     if (watermarkLayer.hidden) return;
-    watermarkLayer.style.opacity = String(
-      Math.min(1, Math.max(0.05, Number(watermark.opacity) || 0.3)),
+    const content = element('div', 'layout-watermark-content');
+    content.style.opacity = String(
+      Math.min(1, Math.max(0, finiteNumber(watermark.opacity, 0.3))),
     );
+    placeWatermark(content, watermark);
     if (watermark.type === 'text') {
       const text = element('span', 'layout-watermark-text', watermark.text ?? '');
       text.style.color = /^#[0-9a-f]{6}$/i.test(watermark.color ?? '')
         ? watermark.color
         : '#ffffff';
-      const fontSize = Math.min(200, Math.max(16, Number(watermark.fontSize) || 44));
+      const fontSize = Math.max(0.01, finiteNumber(watermark.fontSize, 44));
       text.style.setProperty('--watermark-font-cqw', String(fontSize / 10.8));
-      watermarkLayer.append(text);
+      content.append(text);
     } else if (watermark.type === 'image' && payload.imageUrl) {
       const image = element('img', 'layout-watermark-image');
       image.alt = 'Watermark preview';
       image.src = payload.imageUrl;
-      image.style.width = `${Math.min(80, Math.max(5, Number(watermark.widthPercent) || 22))}%`;
-      watermarkLayer.append(image);
+      content.style.width = `${Math.max(0, finiteNumber(watermark.widthPercent, 22))}%`;
+      content.append(image);
     }
+    watermarkLayer.append(content);
+    enableWatermarkDrag(content, watermark);
   }
   for (const plugin of project.plugins) plugin.player?.(player);
   player.deactivate();

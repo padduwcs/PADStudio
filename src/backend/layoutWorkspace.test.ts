@@ -345,7 +345,6 @@ function layoutBundle(
     overridesFile: prepared.overridesFile,
     manifestFile: prepared.manifestFile,
     renderSettings: {
-      playbackRate: 1,
       watermark: {type: 'none'},
     },
     overrideContractVersion: prepared.overrideContractVersion,

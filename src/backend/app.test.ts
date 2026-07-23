@@ -32,6 +32,7 @@ import type {CodexConnectionService} from './codexConnection.ts';
 import type {ElevenLabsConnectionService} from './elevenLabsConnection.ts';
 import type {ElevenLabsVoiceService} from './elevenLabsVoiceService.ts';
 import type {OutlineGenerator} from './outlineGenerator.ts';
+import type {TopicGuidanceGenerator} from './topicGuidanceGenerator.ts';
 import type {OutlineRevisionService} from './outlineRevisionService.ts';
 import type {MotionCanvasGenerator} from './motionCanvasGenerator.ts';
 import {
@@ -79,6 +80,7 @@ async function startTestApp(
       apiKey: string,
     ) => ElevenLabsConnectionService;
     outlineGenerator?: OutlineGenerator;
+    topicGuidanceGenerator?: TopicGuidanceGenerator;
     outlineRevisionService?: OutlineRevisionService;
     voiceVisualGenerator?: VoiceVisualGenerator;
     voiceVisualRevisionService?: VoiceVisualRevisionService;
@@ -104,6 +106,7 @@ async function startTestApp(
     credentialStore: options.credentialStore,
     elevenLabsConnectionFactory: options.elevenLabsConnectionFactory,
     outlineGenerator: options.outlineGenerator,
+    topicGuidanceGenerator: options.topicGuidanceGenerator,
     outlineRevisionService: options.outlineRevisionService,
     voiceVisualGenerator: options.voiceVisualGenerator,
     voiceVisualRevisionService: options.voiceVisualRevisionService,
@@ -231,6 +234,7 @@ test('API Codex trả trạng thái xác minh thật và URL đăng nhập', asy
           email: 'user@example.com',
           planType: 'plus',
         },
+        quota: null,
         verifiedAt: new Date().toISOString(),
       };
     },
@@ -299,6 +303,65 @@ test('API Codex trả trạng thái xác minh thật và URL đăng nhập', asy
     {method: 'POST'},
   );
   assert.equal(logoutResponse.status, 200);
+});
+
+test('API đề xuất định hướng chủ đề idempotent và không tự ghi vào project', async context => {
+  let generationCalls = 0;
+  const topicGuidanceGenerator: TopicGuidanceGenerator = {
+    async generate(request) {
+      generationCalls += 1;
+      assert.equal(request.topicInput.topic, topicInput.topic);
+      return {
+        suggestion: {
+          learningGoal: 'Hiểu trực giác vì sao mỗi bước loại được một nửa dữ liệu.',
+          videoDirection:
+            'Mở bằng đối chiếu tìm tuần tự, dùng hình ảnh vùng tìm kiếm thu hẹp dần và kết bằng điều kiện áp dụng.',
+          suggestedAngles: [
+            'So sánh số lần kiểm tra',
+            'Điều kiện dữ liệu đã sắp xếp',
+          ],
+        },
+        model: 'gpt-test',
+        usage: null,
+      };
+    },
+  };
+  const {baseUrl} = await startTestApp(context, {topicGuidanceGenerator});
+  const generationId = randomUUID();
+  const request = {
+    generationId,
+    topicInput,
+    model: 'gpt-test',
+    reasoningEffort: 'medium',
+  };
+
+  const first = await fetch(`${baseUrl}/api/topic-guidance/generate`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(request),
+  });
+  const firstBody = await first.json();
+  assert.equal(first.status, 200);
+  assert.equal(firstBody.suggestion.learningGoal.includes('một nửa'), true);
+
+  const retry = await fetch(`${baseUrl}/api/topic-guidance/generate`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(request),
+  });
+  assert.equal(retry.status, 200);
+  assert.equal(generationCalls, 1);
+
+  const reused = await fetch(`${baseUrl}/api/topic-guidance/generate`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      ...request,
+      topicInput: {...topicInput, topic: `${topicInput.topic} Bổ sung`},
+    }),
+  });
+  assert.equal(reused.status, 409);
+  assert.equal((await reused.json()).error.code, 'GENERATION_ID_REUSED');
 });
 
 test('API ElevenLabs trả trạng thái từ phép xác minh live', async (context) => {
@@ -2555,7 +2618,6 @@ export default makeScene2D(function* (view) {
     rm(renderOutputDirectory, {recursive: true, force: true}),
   );
   let finalRenderCalls = 0;
-  let finalRenderOptions: Parameters<FinalRenderService['render']>[5];
   let finalRenderStatus: Awaited<
     ReturnType<FinalRenderService['getStatus']>
   > = null;
@@ -2566,10 +2628,8 @@ export default makeScene2D(function* (view) {
       contentRevision,
       _syncBundle,
       layoutBundle,
-      options,
     ) {
       finalRenderCalls += 1;
-      finalRenderOptions = options;
       const now = new Date().toISOString();
       const totalFrames =
         Math.ceil(layoutBundle.totalDurationSeconds * 30) + 1;
@@ -2606,12 +2666,8 @@ export default makeScene2D(function* (view) {
         width: 1080,
         height: 1920,
         fps: 30,
-        playbackRate: options?.playbackRate ?? 1,
-        sourceDurationSeconds: layoutBundle.totalDurationSeconds,
-        watermark: options?.watermark ?? {type: 'none'},
-        durationSeconds:
-          layoutBundle.totalDurationSeconds /
-          (options?.playbackRate ?? 1),
+        watermark: layoutBundle.renderSettings.watermark,
+        durationSeconds: layoutBundle.totalDurationSeconds,
         fileSizeBytes: renderVideo.length,
         encoding: {
           container: 'mp4',
@@ -2626,9 +2682,7 @@ export default makeScene2D(function* (view) {
           sourceHash: '1'.repeat(64),
           videoHash: createHash('sha256').update(renderVideo).digest('hex'),
           renderedFrameCount: totalFrames,
-          probedDurationSeconds:
-            layoutBundle.totalDurationSeconds /
-            (options?.playbackRate ?? 1),
+          probedDurationSeconds: layoutBundle.totalDurationSeconds,
         },
         generation: {
           generationId,
@@ -3130,12 +3184,12 @@ export default makeScene2D(function* (view) {
   const firstLayoutNode = previewManifest.scenes[0]!.nodes[0]!;
   const layoutGenerationId = randomUUID();
   const renderOptions = {
-    playbackRate: 1.25,
     watermark: {
       type: 'text' as const,
       text: 'PAD Studio',
       opacity: 0.31,
-      position: 'bottom-right' as const,
+      xPercent: 88,
+      yPercent: 92,
       fontSize: 44,
       color: '#ffffff',
     },
@@ -3343,10 +3397,10 @@ export default makeScene2D(function* (view) {
       }),
     },
   );
-  assert.equal(mismatchedRenderSettingsResponse.status, 409);
+  assert.equal(mismatchedRenderSettingsResponse.status, 422);
   assert.equal(
     (await mismatchedRenderSettingsResponse.json()).error.code,
-    'FINAL_RENDER_SETTINGS_OUTDATED',
+    'VALIDATION_ERROR',
   );
 
   const watermarkImage = Buffer.concat([
@@ -3384,7 +3438,6 @@ export default makeScene2D(function* (view) {
       },
       body: JSON.stringify({
         generationId: finalRenderGenerationId,
-        ...renderOptions,
       }),
     },
   );
@@ -3415,10 +3468,9 @@ export default makeScene2D(function* (view) {
     finalRenderGenerationId,
   );
   assert.equal(finalRenderCalls, 1);
-  assert.deepEqual(finalRenderOptions, renderOptions);
   assert.equal(
     finalizedProject.renderBundle?.durationSeconds,
-    finalizedProject.layoutBundle!.totalDurationSeconds / 1.25,
+    finalizedProject.layoutBundle!.totalDurationSeconds,
   );
 
   const finalRenderStatusResponse = await fetch(
@@ -3452,7 +3504,6 @@ export default makeScene2D(function* (view) {
       },
       body: JSON.stringify({
         generationId: finalRenderGenerationId,
-        ...renderOptions,
       }),
     },
   );

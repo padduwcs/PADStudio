@@ -50,7 +50,21 @@ test('verifyConnection xác minh phiên bằng các request live', async () => {
       };
     }
     if (method === 'account/rateLimits/read') {
-      return {rateLimits: {primary: null}};
+      return {
+        rateLimits: {
+          limitId: 'codex',
+          limitName: 'Codex',
+          primary: {
+            usedPercent: 27,
+            windowDurationMins: 300,
+            resetsAt: 1_800_000_000,
+          },
+          secondary: null,
+          credits: {hasCredits: true, unlimited: false, balance: '4.50'},
+          individualLimit: null,
+          rateLimitReachedType: null,
+        },
+      };
     }
     if (method === 'model/list') {
       return {data: [{id: 'available-model'}], nextCursor: null};
@@ -67,6 +81,13 @@ test('verifyConnection xác minh phiên bằng các request live', async () => {
     ['account/read', 'account/rateLimits/read', 'model/list'],
   );
   assert.deepEqual(client.calls[0]?.params, {refreshToken: true});
+  assert.equal(status.state === 'connected' && status.quota?.limitId, 'codex');
+  assert.deepEqual(status.state === 'connected' && status.quota?.primary, {
+    usedPercent: 27,
+    remainingPercent: 73,
+    windowDurationMinutes: 300,
+    resetsAt: new Date(1_800_000_000_000).toISOString(),
+  });
 });
 
 test('verifyConnection phân biệt chưa đăng nhập với lỗi kết nối', async () => {

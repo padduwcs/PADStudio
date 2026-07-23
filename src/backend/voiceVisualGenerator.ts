@@ -30,8 +30,8 @@ export const VOICE_VISUAL_PROMPT_VERSION = 'voice-visual-v3';
 
 const generatedVoiceVisualSchema = z
   .object({
-    voiceDirection: z.string().trim().min(6).max(320),
-    visualDirection: z.string().trim().min(6).max(420),
+    voiceDirection: z.string().trim().min(6),
+    visualDirection: z.string().trim().min(6),
     sections: z
       .array(
         z
@@ -40,9 +40,9 @@ const generatedVoiceVisualSchema = z
               .array(
                 z
                   .object({
-                    voiceover: z.string().trim().min(12).max(4000),
-                    visualDescription: z.string().trim().min(12).max(2000),
-                    animationDescription: z.string().trim().min(8).max(2000),
+                    voiceover: z.string().trim().min(12),
+                    visualDescription: z.string().trim().min(12),
+                    animationDescription: z.string().trim().min(8),
                   })
                   .strict(),
               )

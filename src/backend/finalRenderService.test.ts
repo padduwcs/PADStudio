@@ -4,7 +4,6 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
-  audioTempoFilter,
   createFinalRenderService,
   inspectRenderFrameTiming,
 } from './finalRenderService.ts';
@@ -53,8 +52,6 @@ test('schema final render dùng cùng dung sai cho kết quả ffprobe', () => {
     width: 1080,
     height: 1920,
     fps: 30,
-    playbackRate: 1,
-    sourceDurationSeconds: 205.2,
     watermark: {type: 'none'},
     durationSeconds: 205.2,
     fileSizeBytes: 1,
@@ -82,6 +79,29 @@ test('schema final render dùng cùng dung sai cho kết quả ffprobe', () => {
   };
 
   assert.equal(FinalRenderBundleSchema.safeParse(bundle).success, true);
+  const migrated = FinalRenderBundleSchema.parse({
+    ...bundle,
+    playbackRate: 1.25,
+    sourceDurationSeconds: 256.5,
+    watermark: {
+      type: 'text',
+      text: 'Legacy',
+      opacity: 0.2,
+      position: 'bottom-right',
+      fontSize: 32,
+      color: '#ffffff',
+    },
+  });
+  assert.deepEqual(migrated.watermark, {
+    type: 'text',
+    text: 'Legacy',
+    opacity: 0.2,
+    xPercent: 92,
+    yPercent: 92,
+    fontSize: 32,
+    color: '#ffffff',
+  });
+  assert.equal('playbackRate' in migrated, false);
   assert.equal(
     FinalRenderBundleSchema.safeParse({
       ...bundle,
@@ -94,18 +114,6 @@ test('schema final render dùng cùng dung sai cho kết quả ffprobe', () => {
 test('từ chối scene thực sự kết thúc sớm và frame count rỗng', () => {
   assert.equal(inspectRenderFrameTiming(2_580, 87.04, 30).matches, false);
   assert.equal(inspectRenderFrameTiming(0, 87.04, 30).matches, false);
-});
-
-test('audio tempo được chia chuỗi an toàn cho toàn dải tốc độ render', () => {
-  assert.equal(audioTempoFilter(1), 'atempo=1.000000');
-  assert.equal(
-    audioTempoFilter(0.25),
-    'atempo=0.500000,atempo=0.500000',
-  );
-  assert.equal(
-    audioTempoFilter(4),
-    'atempo=2.000000,atempo=2.000000',
-  );
 });
 
 test('status render giữ diagnostic có scene, frame và stack', () => {

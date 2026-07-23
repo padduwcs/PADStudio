@@ -8,10 +8,12 @@ import {
   useRef,
   useState,
 } from 'react';
-import type {
-  ProjectStep,
-  TeachingOutlineContent,
-  TopicProject,
+import {
+  TopicInputSchema,
+  type TopicGuidanceGenerationResponse,
+  type ProjectStep,
+  type TeachingOutlineContent,
+  type TopicProject,
 } from '../shared/topic.ts';
 import type {
   OutlineGlobalField,
@@ -53,6 +55,7 @@ import {
 } from './useTopicDraft.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useOutlineDraft} from './useOutlineDraft.ts';
+import {ApiRequestError, generateTopicGuidance} from './api.ts';
 
 const VoiceVisualPage = lazy(async () => {
   const module = await import('./VoiceVisualPage.tsx');
@@ -463,6 +466,83 @@ function TopicPage({
     submit,
   } = useTopicDraft({projectId, onContinue, autosavePaused});
   const codexConnection = useCodexConnection();
+  const [guidanceSuggestion, setGuidanceSuggestion] =
+    useState<TopicGuidanceGenerationResponse | null>(null);
+  const [guidanceGenerating, setGuidanceGenerating] = useState(false);
+  const [guidanceError, setGuidanceError] = useState('');
+  const guidanceRequestRef = useRef<{
+    fingerprint: string;
+    generationId: string;
+  } | null>(null);
+
+  useEffect(() => {
+    setGuidanceSuggestion(null);
+    setGuidanceError('');
+    guidanceRequestRef.current = null;
+  }, [
+    form.audience,
+    form.duration,
+    form.targetDurationMinutes,
+    form.topic,
+  ]);
+
+  async function requestTopicGuidance() {
+    if (guidanceGenerating || codexConnection.checking) return;
+    const topicInput = TopicInputSchema.safeParse({
+      topic: form.topic,
+      learningGoal: form.learningGoal.trim() || undefined,
+      videoDirection: form.videoDirection.trim() || undefined,
+      audience: form.audience,
+      duration: form.duration,
+      targetDurationMinutes:
+        form.duration === 'custom'
+          ? form.targetDurationMinutes
+          : undefined,
+    });
+    if (!topicInput.success) {
+      setGuidanceError(
+        'Hãy nhập chủ đề và thời lượng hợp lệ trước khi nhờ AI đề xuất.',
+      );
+      return;
+    }
+
+    setGuidanceGenerating(true);
+    setGuidanceError('');
+    try {
+      const connectionStatus = await codexConnection.verify();
+      if (connectionStatus?.state !== 'connected') return;
+      const selection = codexConnection.getGenerationSelection();
+      if (!selection) {
+        setGuidanceError('Hãy chọn model và reasoning effort trước.');
+        return;
+      }
+      const fingerprint = JSON.stringify({
+        topicInput: topicInput.data,
+        ...selection,
+      });
+      if (guidanceRequestRef.current?.fingerprint !== fingerprint) {
+        guidanceRequestRef.current = {
+          fingerprint,
+          generationId: crypto.randomUUID(),
+        };
+      }
+      const response = await generateTopicGuidance({
+        generationId: guidanceRequestRef.current.generationId,
+        topicInput: topicInput.data,
+        ...selection,
+      });
+      setGuidanceSuggestion(response);
+      guidanceRequestRef.current = null;
+    } catch (error) {
+      setGuidanceError(
+        error instanceof ApiRequestError
+          ? error.message
+          : 'Không thể tạo gợi ý định hướng lúc này.',
+      );
+    } finally {
+      setGuidanceGenerating(false);
+    }
+  }
 
   async function continueWithVerifiedCodex() {
     if (submitState === 'submitting' || codexConnection.checking) return;
@@ -545,7 +625,6 @@ function TopicPage({
               <div className="form-section primary-input">
                 <div className="field-heading">
                   <label htmlFor="topic">Chủ đề cần giải thích</label>
-                  <span>{form.topic.length} / 180</span>
                 </div>
                 <div
                   className={`textarea-shell${fieldErrors.topic ? ' has-error' : ''}`}
@@ -554,7 +633,6 @@ function TopicPage({
                     id="topic"
                     name="topic"
                     value={form.topic}
-                    maxLength={180}
                     rows={3}
                     autoFocus
                     placeholder="Ví dụ: Vì sao tìm kiếm nhị phân nhanh hơn tìm kiếm tuần tự?"
@@ -601,14 +679,12 @@ function TopicPage({
                     Sau video, người xem nên hiểu được gì?
                     <small>Tùy chọn</small>
                   </label>
-                  <span>{form.learningGoal.length} / 320</span>
                 </div>
                 <textarea
                   className={fieldErrors.learningGoal ? 'has-error' : ''}
                   id="learning-goal"
                   name="learningGoal"
                   value={form.learningGoal}
-                  maxLength={320}
                   rows={2}
                   placeholder="Ví dụ: Hiểu trực giác “chia đôi” và biết khi nào có thể áp dụng."
                   aria-invalid={Boolean(fieldErrors.learningGoal)}
@@ -627,14 +703,12 @@ function TopicPage({
                     Mô tả video bạn muốn làm
                     <small>Tùy chọn</small>
                   </label>
-                  <span>{form.videoDirection.length} / 1200</span>
                 </div>
                 <textarea
                   className={fieldErrors.videoDirection ? 'has-error' : ''}
                   id="video-direction"
                   name="videoDirection"
                   value={form.videoDirection}
-                  maxLength={1200}
                   rows={4}
                   placeholder="Ví dụ: Video ngắn đăng TikTok, nhịp nhanh, mở đầu bằng một câu hỏi gây tò mò, không dùng code và tập trung vào trực giác."
                   aria-invalid={Boolean(fieldErrors.videoDirection)}
@@ -746,6 +820,105 @@ function TopicPage({
 
               <CodexConnectionCard connection={codexConnection} />
 
+              <section className="topic-ai-guidance" aria-live="polite">
+                <header>
+                  <div>
+                    <span className="preview-kicker">
+                      <SparkIcon /> AI hỗ trợ định hướng
+                    </span>
+                    <h2>Không cần bắt đầu từ trang trắng</h2>
+                    <p>
+                      Codex sẽ dựa trên chủ đề, người xem và thời lượng để viết
+                      một bản nháp. Bạn có thể tham khảo, áp dụng rồi chỉnh tiếp.
+                    </p>
+                  </div>
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    disabled={
+                      guidanceGenerating ||
+                      codexConnection.checking ||
+                      !codexConnection.generationReady ||
+                      form.topic.trim().length < 6
+                    }
+                    onClick={() => void requestTopicGuidance()}
+                  >
+                    {guidanceGenerating ? (
+                      <><span className="spinner" /> Đang đề xuất…</>
+                    ) : guidanceSuggestion ? (
+                      'Tạo phương án khác'
+                    ) : (
+                      'Đề xuất định hướng'
+                    )}
+                  </button>
+                </header>
+
+                {guidanceError && (
+                  <p className="field-error" role="alert">{guidanceError}</p>
+                )}
+
+                {guidanceSuggestion && (
+                  <div className="topic-guidance-result">
+                    <div className="topic-guidance-result-heading">
+                      <strong>Bản nháp từ {guidanceSuggestion.generation.model}</strong>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateField(
+                            'learningGoal',
+                            guidanceSuggestion.suggestion.learningGoal,
+                          );
+                          updateField(
+                            'videoDirection',
+                            guidanceSuggestion.suggestion.videoDirection,
+                          );
+                        }}
+                      >
+                        Áp dụng cả hai trường
+                      </button>
+                    </div>
+                    <article>
+                      <span>Mục tiêu học</span>
+                      <p>{guidanceSuggestion.suggestion.learningGoal}</p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateField(
+                            'learningGoal',
+                            guidanceSuggestion.suggestion.learningGoal,
+                          )
+                        }
+                      >
+                        Dùng mục tiêu này
+                      </button>
+                    </article>
+                    <article>
+                      <span>Định hướng video</span>
+                      <p>{guidanceSuggestion.suggestion.videoDirection}</p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateField(
+                            'videoDirection',
+                            guidanceSuggestion.suggestion.videoDirection,
+                          )
+                        }
+                      >
+                        Dùng định hướng này
+                      </button>
+                    </article>
+                    <div className="topic-guidance-angles">
+                      <span>Góc khai thác có thể cân nhắc</span>
+                      <ul>
+                        {guidanceSuggestion.suggestion.suggestedAngles.map(
+                          (angle) => <li key={angle}>{angle}</li>,
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </section>
+
               {submitError && submitState === 'error' && (
                 <div className="submit-error" role="alert">
                   {submitError}
@@ -782,7 +955,9 @@ function TopicPage({
                     ? saveState === 'conflict'
                       ? 'Mở lại project trước khi tiếp tục chỉnh sửa'
                       : 'Thay đổi hợp lệ được lưu sau 0,7 giây'
-                    : 'Chưa gọi AI ở bước này'}
+                    : guidanceSuggestion
+                      ? 'Gợi ý chỉ được lưu khi bạn áp dụng vào biểu mẫu'
+                      : 'Bản nháp chỉ được gửi tới AI khi bạn chủ động yêu cầu'}
                 </small>
               </span>
             </div>
@@ -995,6 +1170,33 @@ function OutlinePage({projectId}: {projectId: string}) {
     setScopeError('');
   }
 
+  function selectEntireOutline() {
+    if (!outline.draft) return;
+    setGlobalFields([
+      'brief.summary',
+      'brief.assumptions',
+      'centralMessage',
+    ]);
+    setScopeSectionIds(outline.draft.sections.map(section => section.id));
+    setSectionFields(['title', 'goal', 'content', 'estimatedSeconds']);
+    setScopeError('');
+  }
+
+  function selectAllOutlineSections() {
+    if (!outline.draft) return;
+    setScopeSectionIds(outline.draft.sections.map(section => section.id));
+    if (sectionFields.length === 0) {
+      setSectionFields(['title', 'goal', 'content', 'estimatedSeconds']);
+    }
+    setScopeError('');
+  }
+
+  function clearOutlineScope() {
+    setGlobalFields([]);
+    setScopeSectionIds([]);
+    setScopeError('');
+  }
+
   function prepareScopeExpansion() {
     const candidate = outline.candidate;
     const sections = outline.draft?.sections ?? [];
@@ -1037,8 +1239,7 @@ function OutlinePage({projectId}: {projectId: string}) {
         'Tiếp tục từ candidate hiện tại, giữ nguyên mọi phần đã tốt và chỉ xử lý các điểm reviewer nêu.',
         ...new Set(fixes),
       ]
-        .join(' ')
-        .slice(0, 4000),
+        .join(' '),
     );
     setScopeError('');
   }
@@ -1344,7 +1545,6 @@ function OutlinePage({projectId}: {projectId: string}) {
                   <span>Tóm tắt yêu cầu</span>
                   <textarea
                     rows={4}
-                    maxLength={700}
                     value={draft.brief.summary}
                     onChange={(event) =>
                       outline.updateBriefSummary(event.target.value)
@@ -1373,7 +1573,6 @@ function OutlinePage({projectId}: {projectId: string}) {
                         <div className="assumption-row" key={index}>
                           <input
                             value={assumption}
-                            maxLength={220}
                             aria-label={`Giả định ${index + 1}`}
                             onChange={(event) =>
                               outline.updateAssumption(
@@ -1399,7 +1598,6 @@ function OutlinePage({projectId}: {projectId: string}) {
                   <span>Thông điệp trung tâm</span>
                   <textarea
                     rows={3}
-                    maxLength={400}
                     value={draft.centralMessage}
                     onChange={(event) =>
                       outline.updateCentralMessage(event.target.value)
@@ -1443,7 +1641,6 @@ function OutlinePage({projectId}: {projectId: string}) {
                       <input
                         className="outline-section-title"
                         value={section.title}
-                        maxLength={120}
                         aria-label={`Tên ý ${index + 1}`}
                         onChange={(event) =>
                           outline.updateSection(
@@ -1489,7 +1686,6 @@ function OutlinePage({projectId}: {projectId: string}) {
                         <span>Người xem cần hiểu gì?</span>
                         <textarea
                           rows={2}
-                          maxLength={280}
                           value={section.goal}
                           onChange={(event) =>
                             outline.updateSection(
@@ -1504,7 +1700,6 @@ function OutlinePage({projectId}: {projectId: string}) {
                         <span>Nội dung cần giải thích</span>
                         <textarea
                           rows={4}
-                          maxLength={4000}
                           value={section.content}
                           onChange={(event) =>
                             outline.updateSection(
@@ -1563,6 +1758,17 @@ function OutlinePage({projectId}: {projectId: string}) {
                   </p>
                 </div>
                 <div className="outline-ai-scope">
+                  <div className="ai-scope-presets" aria-label="Chọn nhanh phạm vi">
+                    <button type="button" onClick={selectEntireOutline}>
+                      Chọn toàn bộ bài
+                    </button>
+                    <button type="button" onClick={selectAllOutlineSections}>
+                      Chọn tất cả các ý
+                    </button>
+                    <button type="button" onClick={clearOutlineScope}>
+                      Bỏ chọn
+                    </button>
+                  </div>
                   <div className="outline-ai-scope-group">
                     <strong>Phần tổng quan được phép sửa</strong>
                     <div>
@@ -1612,7 +1818,6 @@ function OutlinePage({projectId}: {projectId: string}) {
                 <div className="outline-ai-revision-request">
                   <textarea
                     rows={3}
-                    maxLength={4000}
                     value={guidance}
                     placeholder={
                       outline.candidate?.decision === 'pending'
@@ -1847,7 +2052,6 @@ function OutlinePage({projectId}: {projectId: string}) {
                   <div className="outline-checkpoint-action">
                     <input
                       value={checkpointLabel}
-                      maxLength={120}
                       placeholder="Tên phiên bản (tùy chọn)"
                       onChange={event => setCheckpointLabel(event.target.value)}
                     />

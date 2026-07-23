@@ -3,7 +3,6 @@ const MAX_SCALE = 20;
 const MAX_ROTATION = 3_600;
 const MAX_Z_INDEX = 1_000;
 const MAX_STROKE_WIDTH = 200;
-const MAX_TEXT_LENGTH = 500;
 const FONT_FAMILIES = new Set([
   'Arial, sans-serif',
   'Segoe UI, Arial, sans-serif',
@@ -71,7 +70,7 @@ export function normalizePatch(value = {}) {
     );
   }
   if (typeof value.text === 'string') {
-    result.text = value.text.slice(0, MAX_TEXT_LENGTH);
+    result.text = value.text;
   }
   if (FONT_FAMILIES.has(value.fontFamily)) {
     result.fontFamily = value.fontFamily;

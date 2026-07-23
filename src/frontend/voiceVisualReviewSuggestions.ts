@@ -121,7 +121,6 @@ export function prepareVoiceVisualReviewSuggestions({
         : 'Chỉ xử lý các điểm reviewer nêu trên bản hiện tại, không viết lại phần đang tốt.',
       ...new Set(fixes),
     ]
-      .join(' ')
-      .slice(0, 4000),
+      .join(' '),
   };
 }

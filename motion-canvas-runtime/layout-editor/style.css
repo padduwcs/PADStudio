@@ -262,14 +262,12 @@ input:focus-visible {
 .layout-watermark-preview {
   container-type: inline-size;
   z-index: 4;
-  display: flex;
+  position: relative;
+  display: block;
   grid-area: 1 / 1;
-  align-items: flex-end;
-  justify-content: flex-end;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
-  padding: 3.5%;
   pointer-events: none;
 }
 
@@ -277,28 +275,24 @@ input:focus-visible {
   display: none;
 }
 
-.layout-watermark-preview[data-position="top-left"] {
-  align-items: flex-start;
-  justify-content: flex-start;
+.layout-watermark-content {
+  position: absolute;
+  width: max-content;
+  max-width: none;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
 }
 
-.layout-watermark-preview[data-position="top-right"] {
-  align-items: flex-start;
-  justify-content: flex-end;
-}
-
-.layout-watermark-preview[data-position="bottom-left"] {
-  align-items: flex-end;
-  justify-content: flex-start;
-}
-
-.layout-watermark-preview[data-position="center"] {
-  align-items: center;
-  justify-content: center;
+.layout-watermark-content.is-dragging {
+  cursor: grabbing;
 }
 
 .layout-watermark-text {
-  max-width: 80%;
+  display: block;
+  max-width: none;
   color: #fff;
   font: 700 calc(var(--watermark-font-cqw, 4.07) * 1cqw) Inter, Arial, sans-serif;
   line-height: 1.12;
@@ -310,6 +304,7 @@ input:focus-visible {
 
 .layout-watermark-image {
   display: block;
+  width: 100%;
   height: auto;
   object-fit: contain;
 }

@@ -152,8 +152,14 @@
   padding: 4px;
 }
 
-.layout-output-control.is-opacity {
+.layout-output-control.is-opacity,
+.layout-output-control.is-watermark-width {
   grid-template-columns: auto minmax(80px, 1fr) 72px auto;
+}
+
+.layout-watermark-drag-hint {
+  grid-column: 1 / -1;
+  color: var(--ink-soft);
 }
 
 .layout-watermark-upload small {
@@ -174,7 +180,8 @@
 @media (max-width: 560px) {
   .layout-watermark-settings,
   .layout-output-control,
-  .layout-output-control.is-opacity {
+  .layout-output-control.is-opacity,
+  .layout-output-control.is-watermark-width {
     grid-template-columns: minmax(0, 1fr) 72px auto;
   }
 

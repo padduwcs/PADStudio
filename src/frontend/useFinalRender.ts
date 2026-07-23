@@ -1,8 +1,5 @@
 import {useEffect, useRef, useState} from 'react';
-import type {
-  FinalRenderJobStatus,
-  GenerateFinalRender,
-} from '../shared/render.ts';
+import type {FinalRenderJobStatus} from '../shared/render.ts';
 import type {TopicProject} from '../shared/topic.ts';
 import {
   finalRenderIsReady,
@@ -143,12 +140,7 @@ export function useFinalRender(projectId: string) {
     };
   }, [generationId, projectId]);
 
-  async function render(
-    options: Omit<GenerateFinalRender, 'generationId'> = {
-      playbackRate: 1,
-      watermark: {type: 'none'},
-    },
-  ) {
+  async function render() {
     if (renderingRef.current || conflict) return null;
     const currentProject = projectRef.current;
     if (!currentProject || !finalRenderPrerequisitesAreReady(currentProject)) {
@@ -158,8 +150,7 @@ export function useFinalRender(projectId: string) {
     const nextGenerationId = crypto.randomUUID();
     const queuedAt = new Date().toISOString();
     const totalFrames = Math.ceil(
-      ((currentProject.layoutBundle?.totalDurationSeconds ?? 0) /
-        options.playbackRate) * 30,
+      (currentProject.layoutBundle?.totalDurationSeconds ?? 0) * 30,
     ) + 1;
     renderingRef.current = true;
     setGenerationId(nextGenerationId);
@@ -178,7 +169,7 @@ export function useFinalRender(projectId: string) {
     try {
       const startedStatus = await generateFinalRender(
         projectId,
-        {generationId: nextGenerationId, ...options},
+        {generationId: nextGenerationId},
         currentProject.revision,
       );
       renderingRef.current = jobIsActive(startedStatus);

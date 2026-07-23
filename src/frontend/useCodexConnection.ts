@@ -20,6 +20,7 @@ import {
 
 const LOGIN_POLL_INTERVAL_MS = 2_000;
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1_000;
+const QUOTA_REFRESH_INTERVAL_MS = 60_000;
 const MODEL_STORAGE_KEY = 'pad-studio:codex-model';
 const REASONING_STORAGE_KEY = 'pad-studio:codex-reasoning-by-model';
 
@@ -98,12 +99,15 @@ export function useCodexConnection() {
   const selectedModelRef = useRef(selectedModel);
   const selectedReasoningEffortRef = useRef('');
   const generationReadyRef = useRef(false);
+  const modelsRef = useRef<CodexModelSummary[]>([]);
+  const connectedRef = useRef(false);
 
   const refreshModels = useCallback(async () => {
     generationReadyRef.current = false;
     setModelsLoading(true);
     try {
       const available = await getCodexModels();
+      modelsRef.current = available;
       setModels(available);
       const selected = available.find(
         (item) => item.model === selectedModelRef.current,
@@ -131,6 +135,7 @@ export function useCodexConnection() {
       return available;
     } catch (requestError) {
       setModels([]);
+      modelsRef.current = [];
       generationReadyRef.current = false;
       selectedReasoningEffortRef.current = '';
       setSelectedReasoningEffortState('');
@@ -156,8 +161,18 @@ export function useCodexConnection() {
       const connectionStatus = await verifyCodexConnection();
       if (requestSequence.current !== requestId) return connectionStatus;
 
+      if (
+        background &&
+        connectedRef.current &&
+        connectionStatus.state !== 'connected'
+      ) {
+        setError(`Chưa thể làm mới quota: ${connectionStatus.message}`);
+        return connectionStatus;
+      }
+
       setStatus(connectionStatus);
       if (connectionStatus.state === 'connected') {
+        connectedRef.current = true;
         setCachedAccount(
           cacheCodexAccount(
             connectionStatus.account,
@@ -166,11 +181,17 @@ export function useCodexConnection() {
         );
         setLoginPending(false);
         setLogin(null);
-        await refreshModels();
+        if (!background || modelsRef.current.length === 0) {
+          await refreshModels();
+        }
       } else if (connectionStatus.state === 'disconnected') {
+        connectedRef.current = false;
         generationReadyRef.current = false;
         clearCachedCodexAccount();
         setCachedAccount(null);
+      } else {
+        connectedRef.current = false;
+        generationReadyRef.current = false;
       }
       return connectionStatus;
     } catch (requestError) {
@@ -180,6 +201,11 @@ export function useCodexConnection() {
         requestError instanceof ApiRequestError
           ? requestError.message
           : 'Không thể kiểm tra kết nối Codex.';
+      if (background && connectedRef.current) {
+        setError(`Chưa thể làm mới quota: ${message}`);
+        return null;
+      }
+      connectedRef.current = false;
       setStatus({
         state: 'error',
         message,
@@ -198,6 +224,14 @@ export function useCodexConnection() {
   useEffect(() => {
     void verify();
   }, [verify]);
+
+  useEffect(() => {
+    if (status?.state !== 'connected' || loginPending) return;
+    const interval = window.setInterval(() => {
+      void verify(true);
+    }, QUOTA_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(interval);
+  }, [loginPending, status?.state, verify]);
 
   useEffect(() => {
     if (!loginPending) return;
@@ -260,6 +294,7 @@ export function useCodexConnection() {
       const connectionStatus = await loginCodexWithApiKey(apiKey);
       setStatus(connectionStatus);
       if (connectionStatus.state === 'connected') {
+        connectedRef.current = true;
         setCachedAccount(
           cacheCodexAccount(
             connectionStatus.account,
@@ -269,9 +304,11 @@ export function useCodexConnection() {
         await refreshModels();
         return true;
       }
+      connectedRef.current = false;
       setError(connectionStatus.message);
       return false;
     } catch (requestError) {
+      connectedRef.current = false;
       setError(
         requestError instanceof ApiRequestError
           ? requestError.message
@@ -295,7 +332,9 @@ export function useCodexConnection() {
         message: 'Phiên Codex đã đăng xuất.',
         checkedAt: new Date().toISOString(),
       });
+      connectedRef.current = false;
       setModels([]);
+      modelsRef.current = [];
       selectedModelRef.current = '';
       selectedReasoningEffortRef.current = '';
       generationReadyRef.current = false;

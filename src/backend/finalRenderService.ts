@@ -231,7 +231,6 @@ export interface FinalRenderService {
     contentRevision: number,
     syncBundle: AnimationSyncBundle,
     layoutBundle: LayoutBundle,
-    options?: FinalRenderOptions,
   ): Promise<FinalRenderBundle>;
   getStatus(
     projectId: string,
@@ -246,11 +245,6 @@ export interface FinalRenderService {
     bundle: FinalRenderBundle,
   ): Promise<{filePath: string; size: number}>;
   close(): Promise<void>;
-}
-
-export interface FinalRenderOptions {
-  playbackRate: number;
-  watermark: RenderWatermark;
 }
 
 export class FinalRenderError extends Error {
@@ -541,21 +535,6 @@ async function probeVideo(ffprobePath: string, videoPath: string) {
 
 function moduleUrl(filePath: string, query = '') {
   return `/@fs/${filePath.replaceAll('\\', '/')}${query}`;
-}
-
-export function audioTempoFilter(playbackRate: number) {
-  const filters: number[] = [];
-  let remaining = playbackRate;
-  while (remaining < 0.5 - 1e-9) {
-    filters.push(0.5);
-    remaining /= 0.5;
-  }
-  while (remaining > 2 + 1e-9) {
-    filters.push(2);
-    remaining /= 2;
-  }
-  filters.push(remaining);
-  return filters.map(value => `atempo=${value.toFixed(6)}`).join(',');
 }
 
 export function createFinalRenderService(
@@ -1027,7 +1006,6 @@ export function createFinalRenderService(
     contentRevision: number,
     syncBundle: AnimationSyncBundle,
     layoutBundle: LayoutBundle,
-    renderOptions: FinalRenderOptions,
   ) {
     if (closed) {
       throw new FinalRenderError('FINAL_RENDER_CLOSED', 'Bộ dựng video đang đóng.');
@@ -1064,25 +1042,19 @@ export function createFinalRenderService(
         'Layout chưa có editor manifest đã xác minh.',
       );
     }
-    const playbackRate = renderOptions.playbackRate;
-    if (!Number.isFinite(playbackRate) || playbackRate < 0.25 || playbackRate > 4) {
-      throw new FinalRenderError(
-        'FINAL_RENDER_INVALID',
-        'Tốc độ video cần nằm trong khoảng 0,25× đến 4×.',
-      );
-    }
-    const targetDurationSeconds = layoutBundle.totalDurationSeconds / playbackRate;
+    const targetDurationSeconds = layoutBundle.totalDurationSeconds;
     const sourceTimingToleranceSeconds = finalRenderTimingToleranceSeconds(
       FPS,
       layoutBundle.totalDurationSeconds,
     );
     const outputPaddingSeconds =
-      sourceTimingToleranceSeconds / playbackRate + 2 / FPS;
+      sourceTimingToleranceSeconds + 2 / FPS;
+    const watermark = layoutBundle.renderSettings.watermark;
     const watermarkImage =
-      renderOptions.watermark.type === 'image'
+      watermark.type === 'image'
         ? await watermarkAssets.read(
             projectId,
-            renderOptions.watermark.assetId,
+            watermark.assetId,
           ).then(asset => ({
             value: asset.value,
             contentType: asset.summary.contentType,
@@ -1096,9 +1068,7 @@ export function createFinalRenderService(
           sourceLayoutSourceHash: layoutBundle.validation.sourceHash,
           sourceWorkspaceHash: verified.sourceWorkspaceHash,
           durationSeconds: layoutBundle.totalDurationSeconds,
-          playbackRate,
-          targetDurationSeconds,
-          watermark: renderOptions.watermark,
+          watermark,
           width: WIDTH,
           height: HEIGHT,
           fps: FPS,
@@ -1241,13 +1211,11 @@ export function createFinalRenderService(
           '-pix_fmt',
           'yuv420p',
           '-vf',
-          `setpts=PTS/${playbackRate.toFixed(6)},tpad=stop_mode=clone:stop_duration=${outputPaddingSeconds.toFixed(6)}`,
+          `tpad=stop_mode=clone:stop_duration=${outputPaddingSeconds.toFixed(6)}`,
           '-r',
           String(FPS),
           '-c:a',
           'aac',
-          '-af',
-          audioTempoFilter(playbackRate),
           '-b:a',
           '192k',
           '-ar',
@@ -1314,7 +1282,7 @@ export function createFinalRenderService(
         )],
         overrides: verified.overrides,
         editorManifest: verified.editorManifest,
-        watermark: renderOptions.watermark,
+        watermark,
         watermarkImage,
         async writeFrame(frame, body) {
           if (frame !== framesReceived) {
@@ -1581,9 +1549,7 @@ export function createFinalRenderService(
         width: WIDTH,
         height: HEIGHT,
         fps: FPS,
-        playbackRate,
-        sourceDurationSeconds: layoutBundle.totalDurationSeconds,
-        watermark: renderOptions.watermark,
+        watermark,
         durationSeconds: targetDurationSeconds,
         fileSizeBytes: videoStat.size,
         encoding: {
@@ -1687,7 +1653,6 @@ export function createFinalRenderService(
       contentRevision,
       syncBundle,
       layoutBundle,
-      renderOptions = {playbackRate: 1, watermark: {type: 'none'}},
     ) {
       assertProjectId(projectId);
       assertGenerationId(generationId);
@@ -1723,7 +1688,6 @@ export function createFinalRenderService(
             contentRevision,
             syncBundle,
             layoutBundle,
-            renderOptions,
           ),
         )
         .then(async bundle => {

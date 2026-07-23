@@ -33,8 +33,7 @@ export const CreateMotionCanvasCandidateSchema = z
     guidance: z
       .string()
       .trim()
-      .min(3, 'Hãy mô tả điều cần chỉnh rõ hơn một chút.')
-      .max(4000, 'Góp ý cho scene vượt quá 4000 ký tự.'),
+      .min(3, 'Hãy mô tả điều cần chỉnh rõ hơn một chút.'),
     scope: MotionCanvasEditScopeSchema,
   })
   .strict();
@@ -44,7 +43,7 @@ export type CreateMotionCanvasCandidate = z.infer<
 >;
 
 export const CreateMotionCanvasCheckpointSchema = z
-  .object({label: z.string().trim().min(1).max(120).optional()})
+  .object({label: z.string().trim().min(1).optional()})
   .strict();
 
 export const MotionCanvasCoherenceReviewSchema = z
@@ -94,7 +93,7 @@ export const MotionCanvasVersionRecordSchema = z
     projectId: z.string().min(1).max(101),
     createdAt: z.string().datetime(),
     origin: MotionCanvasVersionOriginSchema,
-    label: z.string().min(1).max(120).nullable(),
+    label: z.string().min(1).nullable(),
     parentVersionId: CreationIdSchema.nullable(),
     restoredFromVersionId: CreationIdSchema.nullable(),
     candidateId: CreationIdSchema.nullable(),
@@ -138,7 +137,7 @@ export const MotionCanvasCandidateRecordSchema = z
     baseProjectRevision: z.number().int().positive(),
     candidateContentHash: z.string().regex(/^[a-f0-9]{64}$/),
     requestFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-    guidance: z.string().trim().min(3).max(4000),
+    guidance: z.string().trim().min(3),
     scope: MotionCanvasEditScopeSchema,
     bundle: MotionCanvasBundleSchema,
     coherence: MotionCanvasCoherenceReviewSchema,

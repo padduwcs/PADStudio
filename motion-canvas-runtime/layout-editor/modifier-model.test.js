@@ -89,6 +89,28 @@ test('patchDocument giữ nguyên thứ tự khi patch không đổi', () => {
   );
 });
 
+test('text modifier không cắt nội dung dài của người dùng', () => {
+  const text = 'Nội dung dài '.repeat(200);
+  const base = normalizeDocument(null, {
+    generationId: 'sync-generation',
+    contentRevision: 3,
+    sourceHash: 'source-hash',
+  });
+  const patched = patchDocument(
+    base,
+    'scene-id',
+    'scene/label',
+    'label-fingerprint',
+    {text},
+  );
+
+  assert.equal(
+    getOverride(buildModifierIndex(patched), 'scene-id', 'scene/label').patch
+      .text,
+    text,
+  );
+});
+
 test('applyOverride restores raw animated signals in finally-compatible order', () => {
   const node = {
     position: signal({x: 5, y: 7}),

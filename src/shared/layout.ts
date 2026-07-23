@@ -4,7 +4,6 @@ import {RenderWatermarkSchema} from './render.ts';
 
 export const LayoutRenderSettingsSchema = z
   .object({
-    playbackRate: z.number().finite().min(0.25).max(4).default(1),
     watermark: RenderWatermarkSchema.default({type: 'none'}),
   })
   .strict();
@@ -14,7 +13,6 @@ export type LayoutRenderSettings = z.infer<
 >;
 
 export const defaultLayoutRenderSettings: LayoutRenderSettings = {
-  playbackRate: 1,
   watermark: {type: 'none'},
 };
 
@@ -99,7 +97,7 @@ export const LayoutNodePatchSchema = z
     stroke: HexColorSchema.nullable().optional(),
     strokeWidth: z.number().finite().min(0).max(200).optional(),
     zIndexDelta: z.number().int().min(-1_000).max(1_000).optional(),
-    text: z.string().max(500).optional(),
+    text: z.string().optional(),
     fontFamily: z.enum(layoutFontFamilyValues).optional(),
     fontSize: z.number().finite().min(8).max(500).optional(),
     fontWeight: z

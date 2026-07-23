@@ -354,8 +354,6 @@ export function finalRenderMatchesLayout(
     | 'sourceLayoutGenerationId'
     | 'sourceLayoutSourceHash'
     | 'durationSeconds'
-    | 'sourceDurationSeconds'
-    | 'playbackRate'
     | 'watermark'
     | 'fps'
   >,
@@ -372,12 +370,9 @@ export function finalRenderMatchesLayout(
     bundle.sourceLayoutContentRevision === layout.contentRevision &&
     bundle.sourceLayoutGenerationId === layout.generation.generationId &&
     bundle.sourceLayoutSourceHash === layout.validation.sourceHash &&
-    bundle.playbackRate === layout.renderSettings.playbackRate &&
     sameValue(bundle.watermark, layout.renderSettings.watermark) &&
     Math.abs(
-      (bundle.sourceDurationSeconds ??
-        bundle.durationSeconds * (bundle.playbackRate ?? 1)) -
-        layout.totalDurationSeconds,
+      bundle.durationSeconds - layout.totalDurationSeconds,
     ) <
       finalRenderTimingToleranceSeconds(
         bundle.fps,

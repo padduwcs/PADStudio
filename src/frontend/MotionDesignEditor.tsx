@@ -239,15 +239,13 @@ function TextEditor({
   useEffect(() => setDraft(value), [value]);
 
   function commit() {
-    const normalized = draft.slice(0, 500);
-    if (normalized !== value) onCommit(normalized);
+    if (draft !== value) onCommit(draft);
   }
 
   return (
     <div className="layout-text-editor">
       <textarea
         rows={4}
-        maxLength={500}
         value={draft}
         disabled={disabled}
         aria-label="Nội dung chữ"
@@ -261,7 +259,7 @@ function TextEditor({
         }}
       />
       <div>
-        <small>{draft.length}/500 · tự áp dụng khi rời ô</small>
+        <small>{draft.length} ký tự · tự áp dụng khi rời ô</small>
         <button type="button" disabled={disabled || draft === value} onClick={commit}>
           Áp dụng
         </button>

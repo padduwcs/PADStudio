@@ -182,7 +182,6 @@ function createReadyProject(): TopicProject {
         '60000000-0000-4000-8000-000000000001',
       sourceAnimationSyncSourceHash: 'a'.repeat(64),
       renderSettings: {
-        playbackRate: 1,
         watermark: {type: 'none'},
       },
       totalDurationSeconds: 20,
@@ -672,11 +671,10 @@ test('final render stays locked to the exact approved Layout generation', () => 
     sourceLayoutGenerationId:
       '70000000-0000-4000-8000-000000000001',
     sourceLayoutSourceHash: 'c'.repeat(64),
-    playbackRate: 1,
     watermark: {type: 'none'},
     durationSeconds: 20,
     fps: 30,
-  } as TopicProject['renderBundle'];
+  } as unknown as TopicProject['renderBundle'];
 
   assert.equal(
     finalRenderMatchesLayout(project.renderBundle!, project.layoutBundle!),
@@ -692,12 +690,20 @@ test('final render stays locked to the exact approved Layout generation', () => 
     [true, true, true, false],
   );
 
-  project.layoutBundle!.renderSettings.playbackRate = 1.01;
+  project.layoutBundle!.renderSettings.watermark = {
+    type: 'text',
+    text: 'PAD Studio',
+    opacity: 0.3,
+    xPercent: 88,
+    yPercent: 92,
+    fontSize: 44,
+    color: '#ffffff',
+  };
   assert.deepEqual(
     [finalRenderIsCurrent(project), finalRenderIsReady(project), finalRenderIsStale(project)],
     [false, false, true],
   );
-  project.layoutBundle!.renderSettings.playbackRate = 1;
+  project.layoutBundle!.renderSettings.watermark = {type: 'none'};
 
   project.layoutBundle!.validation.sourceHash = 'd'.repeat(64);
   assert.deepEqual(

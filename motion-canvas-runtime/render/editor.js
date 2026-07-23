@@ -110,19 +110,11 @@ function drawTextDecorations(context, scene, document, sceneId) {
   context.restore();
 }
 
-function watermarkOrigin(position, canvasWidth, canvasHeight, width, height) {
-  const margin = Math.max(24, Math.min(canvasWidth, canvasHeight) * 0.035);
-  const left = position.endsWith('right')
-    ? canvasWidth - margin - width
-    : position === 'center'
-      ? (canvasWidth - width) / 2
-      : margin;
-  const top = position.startsWith('bottom')
-    ? canvasHeight - margin - height
-    : position === 'center'
-      ? (canvasHeight - height) / 2
-      : margin;
-  return {left, top};
+function watermarkOrigin(watermark, canvasWidth, canvasHeight, width, height) {
+  return {
+    left: canvasWidth * (watermark.xPercent / 100) - width / 2,
+    top: canvasHeight * (watermark.yPercent / 100) - height / 2,
+  };
 }
 
 function drawWatermark(context, watermark, bitmap) {
@@ -137,7 +129,7 @@ function drawWatermark(context, watermark, bitmap) {
     const drawWidth = width * (watermark.widthPercent / 100);
     const drawHeight = drawWidth * (bitmap.height / bitmap.width);
     const origin = watermarkOrigin(
-      watermark.position,
+      watermark,
       width,
       height,
       drawWidth,
@@ -147,13 +139,15 @@ function drawWatermark(context, watermark, bitmap) {
   } else if (watermark.type === 'text') {
     context.font = `700 ${watermark.fontSize}px Inter, Arial, sans-serif`;
     context.textBaseline = 'top';
-    const measuredWidth = Math.min(
-      context.measureText(watermark.text).width,
-      width * 0.8,
+    const lines = String(watermark.text).split(/\r?\n/);
+    const measuredWidth = Math.max(
+      0,
+      ...lines.map(line => context.measureText(line).width),
     );
-    const measuredHeight = watermark.fontSize * 1.25;
+    const lineHeight = watermark.fontSize * 1.12;
+    const measuredHeight = lineHeight * lines.length;
     const origin = watermarkOrigin(
-      watermark.position,
+      watermark,
       width,
       height,
       measuredWidth,
@@ -162,12 +156,9 @@ function drawWatermark(context, watermark, bitmap) {
     context.fillStyle = watermark.color;
     context.shadowColor = 'rgba(0, 0, 0, 0.55)';
     context.shadowBlur = Math.max(3, watermark.fontSize * 0.08);
-    context.fillText(
-      watermark.text,
-      origin.left,
-      origin.top,
-      width * 0.8,
-    );
+    lines.forEach((line, index) => {
+      context.fillText(line, origin.left, origin.top + index * lineHeight);
+    });
   }
   context.restore();
 }

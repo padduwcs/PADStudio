@@ -8,6 +8,7 @@ import readline from 'node:readline';
 import {z} from 'zod';
 import type {
   CodexConnectionStatus,
+  CodexQuotaSummary,
   CodexLoginStart,
   CodexModelSummary,
 } from '../shared/codex.ts';
@@ -39,9 +40,51 @@ const accountResponseSchema = z
   })
   .passthrough();
 
+const rateLimitWindowSchema = z
+  .object({
+    usedPercent: z.number().finite(),
+    windowDurationMins: z.number().int().positive().nullable().optional(),
+    resetsAt: z.number().int().nonnegative().nullable().optional(),
+  })
+  .passthrough();
+
+const creditsSnapshotSchema = z
+  .object({
+    hasCredits: z.boolean(),
+    unlimited: z.boolean(),
+    balance: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+const individualLimitSchema = z
+  .object({
+    limit: z.string(),
+    used: z.string(),
+    remainingPercent: z.number().int(),
+    resetsAt: z.number().int().nonnegative(),
+  })
+  .passthrough();
+
+const rateLimitSnapshotSchema = z
+  .object({
+    limitId: z.string().nullable().optional(),
+    limitName: z.string().nullable().optional(),
+    planType: z.string().nullable().optional(),
+    primary: rateLimitWindowSchema.nullable().optional(),
+    secondary: rateLimitWindowSchema.nullable().optional(),
+    credits: creditsSnapshotSchema.nullable().optional(),
+    individualLimit: individualLimitSchema.nullable().optional(),
+    rateLimitReachedType: z.string().nullable().optional(),
+  })
+  .passthrough();
+
 const rateLimitsResponseSchema = z
   .object({
-    rateLimits: z.object({}).passthrough(),
+    rateLimits: rateLimitSnapshotSchema.nullable().optional(),
+    rateLimitsByLimitId: z
+      .record(z.string(), rateLimitSnapshotSchema)
+      .nullable()
+      .optional(),
   })
   .passthrough();
 
@@ -118,6 +161,64 @@ export class CodexConnectionError extends Error {
     super(message, options);
     this.code = code;
   }
+}
+
+function percentage(value: number) {
+  return Math.min(100, Math.max(0, value));
+}
+
+function resetTime(value: number | null | undefined) {
+  if (!value) return null;
+  const date = new Date(value * 1_000);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function quotaSummary(
+  response: z.infer<typeof rateLimitsResponseSchema>,
+  refreshedAt: string,
+): CodexQuotaSummary | null {
+  const namedSnapshots = Object.values(response.rateLimitsByLimitId ?? {});
+  const snapshot =
+    namedSnapshots.find((item) => item.limitId === 'codex') ??
+    response.rateLimits ??
+    namedSnapshots[0];
+  if (!snapshot) return null;
+
+  const mapWindow = (window: z.infer<typeof rateLimitWindowSchema> | null | undefined) =>
+    window
+      ? {
+          usedPercent: percentage(window.usedPercent),
+          remainingPercent: percentage(100 - window.usedPercent),
+          windowDurationMinutes: window.windowDurationMins ?? null,
+          resetsAt: resetTime(window.resetsAt),
+        }
+      : null;
+
+  return {
+    limitId: snapshot.limitId ?? null,
+    limitName: snapshot.limitName ?? null,
+    primary: mapWindow(snapshot.primary),
+    secondary: mapWindow(snapshot.secondary),
+    credits: snapshot.credits
+      ? {
+          hasCredits: snapshot.credits.hasCredits,
+          unlimited: snapshot.credits.unlimited,
+          balance: snapshot.credits.balance ?? null,
+        }
+      : null,
+    individualLimit: snapshot.individualLimit
+      ? {
+          limit: snapshot.individualLimit.limit,
+          used: snapshot.individualLimit.used,
+          remainingPercent: percentage(
+            snapshot.individualLimit.remainingPercent,
+          ),
+          resetsAt: resetTime(snapshot.individualLimit.resetsAt),
+        }
+      : null,
+    rateLimitReachedType: snapshot.rateLimitReachedType ?? null,
+    refreshedAt,
+  };
 }
 
 class CodexAppServerProcessError extends Error {
@@ -479,7 +580,9 @@ export function createCodexConnectionService(
           }),
         ]);
 
-        rateLimitsResponseSchema.parse(rateLimitsResponse);
+        const parsedRateLimits = rateLimitsResponseSchema.parse(
+          rateLimitsResponse,
+        );
         modelListResponseSchema.parse(modelListResponse);
 
         return {
@@ -492,6 +595,7 @@ export function createCodexConnectionService(
                   planType: accountResponse.account.planType,
                 }
               : {type: 'apiKey'},
+          quota: quotaSummary(parsedRateLimits, checkedAt),
           verifiedAt: checkedAt,
         };
       } catch (error) {

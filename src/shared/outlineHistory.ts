@@ -80,8 +80,7 @@ export const CreateOutlineCandidateSchema = z
     guidance: z
       .string()
       .trim()
-      .min(3, 'Hãy mô tả điều cần chỉnh rõ hơn một chút.')
-      .max(4000, 'Góp ý cho AI vượt quá 4000 ký tự.'),
+      .min(3, 'Hãy mô tả điều cần chỉnh rõ hơn một chút.'),
     scope: OutlineEditScopeSchema,
   })
   .strict();
@@ -92,7 +91,7 @@ export type CreateOutlineCandidate = z.infer<
 
 export const CreateOutlineCheckpointSchema = z
   .object({
-    label: z.string().trim().min(1).max(120).optional(),
+    label: z.string().trim().min(1).optional(),
   })
   .strict();
 
@@ -189,7 +188,7 @@ export const OutlineVersionRecordSchema = z
     projectId: z.string().min(1).max(101),
     createdAt: z.string().datetime(),
     origin: OutlineVersionOriginSchema,
-    label: z.string().min(1).max(120).nullable(),
+    label: z.string().min(1).nullable(),
     parentVersionId: CreationIdSchema.nullable(),
     restoredFromVersionId: CreationIdSchema.nullable(),
     candidateId: CreationIdSchema.nullable(),
@@ -240,7 +239,7 @@ export const OutlineCandidateRecordSchema = z
     baseProjectRevision: z.number().int().positive().optional(),
     candidateContentHash: z.string().regex(/^[a-f0-9]{64}$/),
     requestFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-    guidance: z.string().trim().min(3).max(4000),
+    guidance: z.string().trim().min(3),
     scope: OutlineEditScopeSchema,
     patch: OutlineAiPatchSchema,
     content: TeachingOutlineContentSchema,

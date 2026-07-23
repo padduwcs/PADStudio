@@ -36,7 +36,7 @@ export const voiceVisualStatusValues = ['draft', 'approved'] as const;
 export const motionCanvasStatusValues = ['draft', 'approved'] as const;
 export const voiceStatusValues = ['draft', 'approved'] as const;
 export const animationSyncStatusValues = ['draft', 'approved'] as const;
-export const currentProjectVersion = 12 as const;
+export const currentProjectVersion = 13 as const;
 
 export const ProjectStepSchema = z.enum(projectStepValues);
 const ProjectStepV8Schema = z.enum(projectStepV8Values);
@@ -50,17 +50,14 @@ export const TopicInputSchema = z
     topic: z
       .string()
       .trim()
-      .min(6, 'Hãy mô tả chủ đề rõ hơn một chút.')
-      .max(180, 'Chủ đề nên ngắn hơn 180 ký tự.'),
+      .min(6, 'Hãy mô tả chủ đề rõ hơn một chút.'),
     learningGoal: z
       .string()
       .trim()
-      .max(320, 'Mục tiêu học nên ngắn hơn 320 ký tự.')
       .optional(),
     videoDirection: z
       .string()
       .trim()
-      .max(1200, 'Mô tả video nên ngắn hơn 1200 ký tự.')
       .optional(),
     audience: z.enum(audienceValues),
     duration: z.enum(durationValues),
@@ -93,20 +90,53 @@ export const TopicInputSchema = z
 
 export type TopicInput = z.infer<typeof TopicInputSchema>;
 
+export const TopicGuidanceSuggestionSchema = z
+  .object({
+    learningGoal: z
+      .string()
+      .trim()
+      .min(6, 'Mục tiêu học do AI đề xuất cần rõ nghĩa hơn.'),
+    videoDirection: z
+      .string()
+      .trim()
+      .min(12, 'Định hướng video do AI đề xuất cần rõ nghĩa hơn.'),
+    suggestedAngles: z
+      .array(z.string().trim().min(3))
+      .min(1)
+      .max(8),
+  })
+  .strict();
+
+export type TopicGuidanceSuggestion = z.infer<
+  typeof TopicGuidanceSuggestionSchema
+>;
+
+export interface TopicGuidanceGenerationResponse {
+  suggestion: TopicGuidanceSuggestion;
+  generation: {
+    generationId: string;
+    provider: 'codex';
+    model: string;
+    requestedModel?: string;
+    reasoningEffort?: string;
+    promptVersion: string;
+    generatedAt: string;
+    usage: CodexTokenUsage | null;
+  };
+}
+
 export const AiVideoBriefSchema = z
   .object({
     summary: z
       .string()
       .trim()
-      .min(12, 'Bản tóm tắt yêu cầu còn quá ngắn.')
-      .max(700, 'Bản tóm tắt yêu cầu nên ngắn hơn 700 ký tự.'),
+      .min(12, 'Bản tóm tắt yêu cầu còn quá ngắn.'),
     assumptions: z
       .array(
         z
           .string()
           .trim()
-          .min(3, 'Giả định cần rõ nghĩa hơn.')
-          .max(220, 'Mỗi giả định nên ngắn hơn 220 ký tự.'),
+          .min(3, 'Giả định cần rõ nghĩa hơn.'),
       )
       .max(6, 'Chỉ nên giữ tối đa 6 giả định.'),
   })
@@ -118,18 +148,15 @@ export const TeachingOutlineSectionSchema = z
     title: z
       .string()
       .trim()
-      .min(3, 'Tên ý còn quá ngắn.')
-      .max(120, 'Tên ý nên ngắn hơn 120 ký tự.'),
+      .min(3, 'Tên ý còn quá ngắn.'),
     goal: z
       .string()
       .trim()
-      .min(6, 'Mục tiêu của ý cần rõ hơn.')
-      .max(280, 'Mục tiêu của ý nên ngắn hơn 280 ký tự.'),
+      .min(6, 'Mục tiêu của ý cần rõ hơn.'),
     content: z
       .string()
       .trim()
-      .min(12, 'Nội dung của ý cần rõ hơn.')
-      .max(4000, 'Nội dung của ý vượt quá cầu chì an toàn 4000 ký tự.'),
+      .min(12, 'Nội dung của ý cần rõ hơn.'),
     estimatedSeconds: z
       .number()
       .int()
@@ -154,8 +181,7 @@ export const TeachingOutlineContentSchema = z
     centralMessage: z
       .string()
       .trim()
-      .min(10, 'Thông điệp trung tâm cần rõ hơn.')
-      .max(400, 'Thông điệp trung tâm nên ngắn hơn 400 ký tự.'),
+      .min(10, 'Thông điệp trung tâm cần rõ hơn.'),
     sections: z
       .array(TeachingOutlineSectionSchema)
       .min(
@@ -190,6 +216,19 @@ export const CodexReasoningEffortSchema = z
   .trim()
   .regex(/^[a-z][a-z0-9_-]{0,39}$/);
 
+export const GenerateTopicGuidanceSchema = z
+  .object({
+    generationId: CreationIdSchema,
+    topicInput: TopicInputSchema,
+    model: z.string().trim().min(1).max(160).optional(),
+    reasoningEffort: CodexReasoningEffortSchema.optional(),
+  })
+  .strict();
+
+export type GenerateTopicGuidance = z.infer<
+  typeof GenerateTopicGuidanceSchema
+>;
+
 export const TeachingOutlineSchema = TeachingOutlineContentSchema.extend({
   status: z.enum(outlineStatusValues),
   contentRevision: z.number().int().positive(),
@@ -216,18 +255,15 @@ export const VoiceVisualBeatSchema = z
     voiceover: z
       .string()
       .trim()
-      .min(12, 'Lời thuyết minh của beat cần rõ hơn.')
-      .max(4000, 'Lời thuyết minh của beat vượt quá 4000 ký tự.'),
+      .min(12, 'Lời thuyết minh của beat cần rõ hơn.'),
     visualDescription: z
       .string()
       .trim()
-      .min(12, 'Mô tả visual của beat cần rõ hơn.')
-      .max(2000, 'Mô tả visual của beat vượt quá 2000 ký tự.'),
+      .min(12, 'Mô tả visual của beat cần rõ hơn.'),
     animationDescription: z
       .string()
       .trim()
-      .min(8, 'Mô tả chuyển động của beat cần rõ hơn.')
-      .max(2000, 'Mô tả chuyển động của beat vượt quá 2000 ký tự.'),
+      .min(8, 'Mô tả chuyển động của beat cần rõ hơn.'),
     visualHoldSeconds: z
       .number()
       .int()
@@ -274,13 +310,11 @@ export const VoiceVisualPlanContentSchema = z
     voiceDirection: z
       .string()
       .trim()
-      .min(6, 'Định hướng giọng kể cần rõ hơn.')
-      .max(320, 'Định hướng giọng kể nên ngắn hơn 320 ký tự.'),
+      .min(6, 'Định hướng giọng kể cần rõ hơn.'),
     visualDirection: z
       .string()
       .trim()
-      .min(6, 'Định hướng hình ảnh cần rõ hơn.')
-      .max(420, 'Định hướng hình ảnh nên ngắn hơn 420 ký tự.'),
+      .min(6, 'Định hướng hình ảnh cần rõ hơn.'),
     timingCalibration: z
       .object({
         source: z.enum(['default', 'voice-history']),
@@ -914,7 +948,12 @@ const topicProjectV11Schema = topicProjectV10Schema
   })
   .strict();
 
-export const TopicProjectSchema = topicProjectV11Schema
+const topicProjectV12Schema = topicProjectV11Schema
+  .omit({version: true})
+  .extend({version: z.literal(12)})
+  .strict();
+
+export const TopicProjectSchema = topicProjectV12Schema
   .omit({version: true})
   .extend({version: z.literal(currentProjectVersion)})
   .strict();
@@ -930,11 +969,75 @@ function inheritRenderSettings(
     layoutBundle: {
       ...project.layoutBundle,
       renderSettings: {
-        playbackRate: project.renderBundle.playbackRate,
         watermark: project.renderBundle.watermark,
       },
     },
   };
+}
+
+const legacyWatermarkCoordinates = {
+  'top-left': {xPercent: 8, yPercent: 8},
+  'top-right': {xPercent: 92, yPercent: 8},
+  'bottom-left': {xPercent: 8, yPercent: 92},
+  'bottom-right': {xPercent: 92, yPercent: 92},
+  center: {xPercent: 50, yPercent: 50},
+} as const;
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function normalizeLegacyWatermark(value: unknown) {
+  if (!isUnknownRecord(value) || value.type === 'none') return value;
+  const position =
+    typeof value.position === 'string' &&
+    value.position in legacyWatermarkCoordinates
+      ? legacyWatermarkCoordinates[
+          value.position as keyof typeof legacyWatermarkCoordinates
+        ]
+      : legacyWatermarkCoordinates['bottom-right'];
+  const watermark: Record<string, unknown> = {...value};
+  delete watermark.position;
+  return {
+    ...watermark,
+    xPercent:
+      typeof value.xPercent === 'number'
+        ? value.xPercent
+        : position.xPercent,
+    yPercent:
+      typeof value.yPercent === 'number'
+        ? value.yPercent
+        : position.yPercent,
+  };
+}
+
+function normalizeLegacyRenderConfiguration(value: unknown) {
+  if (!isUnknownRecord(value)) return value;
+  const normalized: Record<string, unknown> = {...value};
+  if (isUnknownRecord(value.layoutBundle)) {
+    const layoutBundle: Record<string, unknown> = {...value.layoutBundle};
+    if (isUnknownRecord(value.layoutBundle.renderSettings)) {
+      const renderSettings: Record<string, unknown> = {
+        ...value.layoutBundle.renderSettings,
+      };
+      delete renderSettings.playbackRate;
+      layoutBundle.renderSettings = {
+        ...renderSettings,
+        watermark: normalizeLegacyWatermark(renderSettings.watermark),
+      };
+    }
+    normalized.layoutBundle = layoutBundle;
+  }
+  if (isUnknownRecord(value.renderBundle)) {
+    const renderBundle: Record<string, unknown> = {...value.renderBundle};
+    delete renderBundle.playbackRate;
+    delete renderBundle.sourceDurationSeconds;
+    normalized.renderBundle = {
+      ...renderBundle,
+      watermark: normalizeLegacyWatermark(renderBundle.watermark),
+    };
+  }
+  return normalized;
 }
 
 function bindLegacyVisualDesignSource(
@@ -967,11 +1070,14 @@ function bindLegacyVisualDesignSource(
 }
 
 export function parseTopicProject(value: unknown): TopicProject {
-  const currentProject = TopicProjectSchema.safeParse(value);
+  const normalizedValue = normalizeLegacyRenderConfiguration(value);
+  const currentProject = TopicProjectSchema.safeParse(normalizedValue);
   if (currentProject.success) {
     const rawLayout =
-      value && typeof value === 'object' && 'layoutBundle' in value
-        ? value.layoutBundle
+      normalizedValue &&
+      typeof normalizedValue === 'object' &&
+      'layoutBundle' in normalizedValue
+        ? normalizedValue.layoutBundle
         : null;
     const explicitlyStored = Boolean(
       rawLayout &&
@@ -984,7 +1090,17 @@ export function parseTopicProject(value: unknown): TopicProject {
     return bindLegacyVisualDesignSource(withRenderSettings);
   }
 
-  const versionElevenProject = topicProjectV11Schema.safeParse(value);
+  const versionTwelveProject = topicProjectV12Schema.safeParse(
+    normalizedValue,
+  );
+  if (versionTwelveProject.success) {
+    return bindLegacyVisualDesignSource(inheritRenderSettings({
+      ...versionTwelveProject.data,
+      version: currentProjectVersion,
+    }));
+  }
+
+  const versionElevenProject = topicProjectV11Schema.safeParse(normalizedValue);
   if (versionElevenProject.success) {
     return bindLegacyVisualDesignSource(inheritRenderSettings({
       ...versionElevenProject.data,
@@ -992,7 +1108,7 @@ export function parseTopicProject(value: unknown): TopicProject {
     }));
   }
 
-  const versionTenProject = topicProjectV10Schema.safeParse(value);
+  const versionTenProject = topicProjectV10Schema.safeParse(normalizedValue);
   if (versionTenProject.success) {
     return bindLegacyVisualDesignSource(inheritRenderSettings({
       ...versionTenProject.data,
@@ -1001,7 +1117,7 @@ export function parseTopicProject(value: unknown): TopicProject {
     }));
   }
 
-  const versionNineProject = topicProjectV9Schema.safeParse(value);
+  const versionNineProject = topicProjectV9Schema.safeParse(normalizedValue);
   if (versionNineProject.success) {
     return {
       ...versionNineProject.data,
@@ -1011,7 +1127,7 @@ export function parseTopicProject(value: unknown): TopicProject {
     };
   }
 
-  const versionEightProject = topicProjectV8Schema.safeParse(value);
+  const versionEightProject = topicProjectV8Schema.safeParse(normalizedValue);
   if (versionEightProject.success) {
     return {
       ...versionEightProject.data,
@@ -1022,7 +1138,7 @@ export function parseTopicProject(value: unknown): TopicProject {
     };
   }
 
-  const versionSevenProject = topicProjectV7Schema.safeParse(value);
+  const versionSevenProject = topicProjectV7Schema.safeParse(normalizedValue);
   if (versionSevenProject.success) {
     return {
       ...versionSevenProject.data,
@@ -1039,7 +1155,7 @@ export function parseTopicProject(value: unknown): TopicProject {
     };
   }
 
-  const versionSixProject = topicProjectV6Schema.safeParse(value);
+  const versionSixProject = topicProjectV6Schema.safeParse(normalizedValue);
   if (versionSixProject.success) {
     return {
       ...versionSixProject.data,
@@ -1052,7 +1168,7 @@ export function parseTopicProject(value: unknown): TopicProject {
     };
   }
 
-  const versionFiveProject = topicProjectV5Schema.safeParse(value);
+  const versionFiveProject = topicProjectV5Schema.safeParse(normalizedValue);
   if (versionFiveProject.success) {
     return {
       ...versionFiveProject.data,
@@ -1065,7 +1181,7 @@ export function parseTopicProject(value: unknown): TopicProject {
     };
   }
 
-  const versionFourProject = topicProjectV4Schema.safeParse(value);
+  const versionFourProject = topicProjectV4Schema.safeParse(normalizedValue);
   if (versionFourProject.success) {
     return {
       ...versionFourProject.data,
@@ -1079,7 +1195,7 @@ export function parseTopicProject(value: unknown): TopicProject {
     };
   }
 
-  const versionThreeProject = topicProjectV3Schema.safeParse(value);
+  const versionThreeProject = topicProjectV3Schema.safeParse(normalizedValue);
   if (versionThreeProject.success) {
     return {
       ...versionThreeProject.data,
@@ -1094,7 +1210,7 @@ export function parseTopicProject(value: unknown): TopicProject {
     };
   }
 
-  const versionTwoProject = topicProjectV2Schema.safeParse(value);
+  const versionTwoProject = topicProjectV2Schema.safeParse(normalizedValue);
   if (versionTwoProject.success) {
     return {
       ...versionTwoProject.data,
@@ -1110,7 +1226,7 @@ export function parseTopicProject(value: unknown): TopicProject {
     };
   }
 
-  const legacyProject = topicProjectV1Schema.safeParse(value);
+  const legacyProject = topicProjectV1Schema.safeParse(normalizedValue);
   if (legacyProject.success) {
     return {
       ...legacyProject.data,
@@ -1164,7 +1280,6 @@ export const GenerateTeachingOutlineSchema = z
     guidance: z
       .string()
       .trim()
-      .max(4000, 'Góp ý cho AI vượt quá 4000 ký tự.')
       .optional(),
   })
   .strict();
@@ -1181,7 +1296,6 @@ export const GenerateVoiceVisualPlanSchema = z
     guidance: z
       .string()
       .trim()
-      .max(4000, 'Góp ý cho AI vượt quá 4000 ký tự.')
       .optional(),
   })
   .strict();
@@ -1198,7 +1312,6 @@ export const GenerateMotionCanvasSchema = z
     guidance: z
       .string()
       .trim()
-      .max(4000, 'Góp ý cho scene vượt quá 4000 ký tự.')
       .optional(),
   })
   .strict();

@@ -13,6 +13,7 @@ import type {
   ApiErrorPayload,
   AnimationSyncBundle,
   CreateTopicProject,
+  GenerateTopicGuidance,
   GenerateAnimationSync,
   GenerateMotionCanvas,
   GenerateTeachingOutline,
@@ -22,6 +23,7 @@ import type {
   MotionCanvasBundle,
   TeachingOutlineContent,
   TopicProject,
+  TopicGuidanceGenerationResponse,
   UpdateProject,
   VoiceVisualPlanContent,
 } from '../shared/topic.ts';
@@ -117,6 +119,25 @@ export async function createTopicProject(request: CreateTopicProject) {
 
   assertSuccessful(response, payload);
   return getProjectPayload(payload);
+}
+
+export async function generateTopicGuidance(
+  request: GenerateTopicGuidance,
+) {
+  const response = await fetch('/api/topic-guidance/generate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(request),
+  });
+  const payload = await readPayload<TopicGuidanceGenerationResponse>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('suggestion' in payload) || !('generation' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi đề xuất định hướng không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload;
 }
 
 export async function listProjects() {

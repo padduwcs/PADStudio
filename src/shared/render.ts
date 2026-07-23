@@ -3,15 +3,6 @@ import {z} from 'zod';
 const CreationIdSchema = z.string().uuid();
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 
-export const watermarkPositionValues = [
-  'top-left',
-  'top-right',
-  'bottom-left',
-  'bottom-right',
-  'center',
-] as const;
-export type WatermarkPosition = (typeof watermarkPositionValues)[number];
-
 export function finalRenderTimingToleranceSeconds(
   fps: number,
   durationSeconds: number,
@@ -29,22 +20,23 @@ export function finalRenderTimingToleranceSeconds(
 }
 
 const WatermarkBaseSchema = z.object({
-  opacity: z.number().min(0.05).max(1),
-  position: z.enum(watermarkPositionValues),
+  opacity: z.number().finite().min(0).max(1),
+  xPercent: z.number().finite(),
+  yPercent: z.number().finite(),
 });
 
 export const RenderWatermarkSchema = z.discriminatedUnion('type', [
   z.object({type: z.literal('none')}).strict(),
   WatermarkBaseSchema.extend({
     type: z.literal('text'),
-    text: z.string().trim().min(1).max(120),
-    fontSize: z.number().int().min(16).max(200),
+    text: z.string().trim().min(1),
+    fontSize: z.number().finite().positive(),
     color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   }).strict(),
   WatermarkBaseSchema.extend({
     type: z.literal('image'),
     assetId: Sha256Schema,
-    widthPercent: z.number().min(5).max(80),
+    widthPercent: z.number().finite().nonnegative(),
   }).strict(),
 ]);
 
@@ -92,7 +84,47 @@ export type FinalRenderDiagnostic = z.infer<
   typeof FinalRenderDiagnosticSchema
 >;
 
-export const FinalRenderBundleSchema = z
+function normalizeLegacyFinalRenderBundle(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const bundle: Record<string, unknown> = {...value};
+  delete bundle.playbackRate;
+  delete bundle.sourceDurationSeconds;
+  const watermark = bundle.watermark;
+  if (
+    watermark &&
+    typeof watermark === 'object' &&
+    !Array.isArray(watermark) &&
+    'type' in watermark &&
+    watermark.type !== 'none'
+  ) {
+    const legacy = {...watermark} as Record<string, unknown>;
+    const coordinates =
+      legacy.position === 'top-left'
+        ? {xPercent: 8, yPercent: 8}
+        : legacy.position === 'top-right'
+          ? {xPercent: 92, yPercent: 8}
+          : legacy.position === 'bottom-left'
+            ? {xPercent: 8, yPercent: 92}
+            : legacy.position === 'center'
+              ? {xPercent: 50, yPercent: 50}
+              : {xPercent: 92, yPercent: 92};
+    delete legacy.position;
+    bundle.watermark = {
+      ...legacy,
+      xPercent:
+        typeof legacy.xPercent === 'number'
+          ? legacy.xPercent
+          : coordinates.xPercent,
+      yPercent:
+        typeof legacy.yPercent === 'number'
+          ? legacy.yPercent
+          : coordinates.yPercent,
+    };
+  }
+  return bundle;
+}
+
+const FinalRenderBundleValueSchema = z
   .object({
     status: z.enum(finalRenderStatusValues),
     contentRevision: z.number().int().positive(),
@@ -108,8 +140,6 @@ export const FinalRenderBundleSchema = z
     width: z.number().int().min(480).max(3840),
     height: z.number().int().min(480).max(3840),
     fps: z.number().int().min(1).max(120),
-    playbackRate: z.number().min(0.25).max(4).default(1),
-    sourceDurationSeconds: z.number().positive().optional(),
     watermark: RenderWatermarkSchema.default({type: 'none'}),
     durationSeconds: z.number().positive(),
     fileSizeBytes: z.number().int().positive(),
@@ -175,31 +205,18 @@ export const FinalRenderBundleSchema = z
         path: ['validation', 'probedDurationSeconds'],
       });
     }
-    if (
-      bundle.sourceDurationSeconds !== undefined &&
-      Math.abs(
-        bundle.durationSeconds -
-          bundle.sourceDurationSeconds / bundle.playbackRate,
-      ) > finalRenderTimingToleranceSeconds(
-        bundle.fps,
-        bundle.durationSeconds,
-      )
-    ) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Thời lượng video không khớp tốc độ phát đã chọn.',
-        path: ['playbackRate'],
-      });
-    }
   });
+
+export const FinalRenderBundleSchema = z.preprocess(
+  normalizeLegacyFinalRenderBundle,
+  FinalRenderBundleValueSchema,
+);
 
 export type FinalRenderBundle = z.infer<typeof FinalRenderBundleSchema>;
 
 export const GenerateFinalRenderSchema = z
   .object({
     generationId: CreationIdSchema,
-    playbackRate: z.number().min(0.25).max(4).default(1),
-    watermark: RenderWatermarkSchema.default({type: 'none'}),
   })
   .strict();
 

@@ -22,14 +22,14 @@ const planLabels: Record<string, string> = {
 };
 
 const reasoningLabels: Record<string, string> = {
-  none: 'Không suy luận',
-  minimal: 'Tối thiểu',
-  low: 'Thấp',
-  medium: 'Trung bình',
-  high: 'Cao',
-  xhigh: 'Rất cao',
-  max: 'Tối đa',
-  ultra: 'Siêu cao',
+  none: 'None',
+  minimal: 'Minimal',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Extra High',
+  max: 'Maximum',
+  ultra: 'Ultra',
 };
 
 const taskLabels: Record<CodexGenerationTask, string> = {
@@ -43,6 +43,37 @@ function formatVerifiedAt(value: string) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value));
+}
+
+function formatResetAt(value: string | null) {
+  if (!value) return 'Không có thời điểm reset';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Không có thời điểm reset';
+  return `Reset ${new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)}`;
+}
+
+function quotaWindowName(
+  kind: 'primary' | 'secondary',
+  durationMinutes: number | null,
+) {
+  if (durationMinutes) {
+    if (durationMinutes % (7 * 24 * 60) === 0) {
+      return `${durationMinutes / (7 * 24 * 60)} week`;
+    }
+    if (durationMinutes % (24 * 60) === 0) {
+      return `${durationMinutes / (24 * 60)} day`;
+    }
+    if (durationMinutes % 60 === 0) {
+      return `${durationMinutes / 60} hour`;
+    }
+    return `${durationMinutes} minute`;
+  }
+  return kind === 'primary' ? 'Primary window' : 'Secondary window';
 }
 
 export function CodexConnectionCard({
@@ -253,6 +284,77 @@ export function CodexConnectionCard({
 
       {connectedStatus && (
         <div className="codex-config-panel">
+          <div className="codex-quota-panel">
+            <div className="codex-quota-heading">
+              <span>
+                <strong>Codex quota</strong>
+                <small>
+                  {connectedStatus.quota?.limitName ||
+                    connectedStatus.quota?.limitId ||
+                    'Usage limits'}
+                </small>
+              </span>
+              <small>Tự cập nhật mỗi phút</small>
+            </div>
+            {connectedStatus.quota?.primary ||
+            connectedStatus.quota?.secondary ? (
+              <div className="codex-quota-windows">
+                {(['primary', 'secondary'] as const).map(kind => {
+                  const window = connectedStatus.quota?.[kind];
+                  if (!window) return null;
+                  return (
+                    <div className="codex-quota-window" key={kind}>
+                      <div>
+                        <span>
+                          {quotaWindowName(kind, window.windowDurationMinutes)}
+                        </span>
+                        <strong>{Math.round(window.remainingPercent)}% left</strong>
+                      </div>
+                      <div
+                        className="codex-quota-track"
+                        role="progressbar"
+                        aria-label={`${quotaWindowName(kind, window.windowDurationMinutes)} quota còn lại`}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(window.remainingPercent)}
+                      >
+                        <span style={{width: `${window.remainingPercent}%`}} />
+                      </div>
+                      <small>{formatResetAt(window.resetsAt)}</small>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : connectedStatus.quota?.individualLimit ? (
+              <div className="codex-quota-window">
+                <div>
+                  <span>Spend limit</span>
+                  <strong>
+                    {Math.round(
+                      connectedStatus.quota.individualLimit.remainingPercent,
+                    )}% left
+                  </strong>
+                </div>
+                <div className="codex-quota-track">
+                  <span
+                    style={{
+                      width: `${connectedStatus.quota.individualLimit.remainingPercent}%`,
+                    }}
+                  />
+                </div>
+                <small>
+                  {formatResetAt(
+                    connectedStatus.quota.individualLimit.resetsAt,
+                  )}
+                </small>
+              </div>
+            ) : (
+              <p className="codex-quota-unavailable">
+                Codex chưa công bố quota cho kiểu kết nối này.
+              </p>
+            )}
+          </div>
+
           <div className="codex-config-controls">
             <label className="codex-model-picker">
               <span>Model</span>
@@ -264,13 +366,16 @@ export function CodexConnectionCard({
                 {models.map((model) => (
                   <option value={model.model} key={model.id}>
                     {model.displayName}
-                    {model.isDefault ? ' · mặc định' : ''}
+                    {model.displayName !== model.model
+                      ? ` · ${model.model}`
+                      : ''}
+                    {model.isDefault ? ' · Default' : ''}
                   </option>
                 ))}
               </select>
             </label>
             <label className="codex-model-picker">
-              <span>Mức suy luận</span>
+              <span>Reasoning effort</span>
               <select
                 value={selectedReasoningEffort}
                 disabled={
@@ -288,7 +393,7 @@ export function CodexConnectionCard({
                       {reasoningLabels[reasoningEffort] ?? reasoningEffort}
                       {reasoningEffort ===
                       selectedModelSummary.defaultReasoningEffort
-                        ? ' · mặc định'
+                        ? ' · Default'
                         : ''}
                     </option>
                   ),

@@ -26,18 +26,18 @@ const generatedOutlineSchema = z
   .object({
     brief: z
       .object({
-        summary: z.string().trim().min(12).max(700),
-        assumptions: z.array(z.string().trim().min(3).max(220)).max(6),
+        summary: z.string().trim().min(12),
+        assumptions: z.array(z.string().trim().min(3)).max(6),
       })
       .strict(),
-    centralMessage: z.string().trim().min(10).max(400),
+    centralMessage: z.string().trim().min(10),
     sections: z
       .array(
         z
           .object({
-            title: z.string().trim().min(3).max(120),
-            goal: z.string().trim().min(6).max(280),
-            content: z.string().trim().min(12).max(4000),
+            title: z.string().trim().min(3),
+            goal: z.string().trim().min(6),
+            content: z.string().trim().min(12),
             estimatedSeconds: z
               .number()
               .int()

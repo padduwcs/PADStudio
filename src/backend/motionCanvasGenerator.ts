@@ -31,7 +31,7 @@ const MAX_SOURCE_REPAIR_ATTEMPTS = 1;
 
 const generatedMotionCanvasSceneSchema = z
   .object({
-    name: z.string().trim().min(3).max(120),
+    name: z.string().trim().min(3),
     source: z
       .string()
       .trim()

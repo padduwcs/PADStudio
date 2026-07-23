@@ -14,6 +14,7 @@ import {
   ApproveLayoutSchema,
   CommitLayoutSchema,
   CreateTopicProjectSchema,
+  GenerateTopicGuidanceSchema,
   GenerateFinalRenderSchema,
   GenerateAnimationSyncSchema,
   GenerateMotionCanvasSchema,
@@ -111,6 +112,13 @@ import {
   type ElevenLabsSectionGeneration,
   type ElevenLabsVoiceService,
 } from './elevenLabsVoiceService.ts';
+import {
+  createCodexTopicGuidanceGenerator,
+  TOPIC_GUIDANCE_PROMPT_VERSION,
+  TopicGuidanceGenerationError,
+  type TopicGuidanceGenerationResult,
+  type TopicGuidanceGenerator,
+} from './topicGuidanceGenerator.ts';
 import {
   createCodexOutlineGenerator,
   OutlineGenerationError,
@@ -219,7 +227,8 @@ import {
 } from './watermarkAssetStore.ts';
 
 // The body limit is a transport safety fuse sized for long-form plans (up to
-// 512 beats), not a product preset. Strict schemas still bound every field.
+// 512 beats), not a product preset. Schemas validate structure while this
+// aggregate limit prevents an unbounded request from exhausting the process.
 const MAX_JSON_BODY_SIZE = pipelineSafetyLimits.maximumJsonBodyBytes;
 const MAX_WATERMARK_IMAGE_SIZE = 5 * 1024 * 1024;
 const CodexApiKeyLoginSchema = z
@@ -253,6 +262,7 @@ interface AppOptions {
     apiKey: string,
   ) => ElevenLabsConnectionService;
   outlineGenerator?: OutlineGenerator;
+  topicGuidanceGenerator?: TopicGuidanceGenerator;
   outlineRevisionService?: OutlineRevisionService;
   outlineHistoryStore?: OutlineHistoryStore;
   voiceVisualGenerator?: VoiceVisualGenerator;
@@ -1181,6 +1191,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
   }
   const sharedCodexClient: CodexAppServerClient | null =
     !options.codexConnection ||
+    !options.topicGuidanceGenerator ||
     !options.outlineGenerator ||
     !options.outlineRevisionService ||
     !options.voiceVisualGenerator ||
@@ -1204,6 +1215,9 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const outlineGenerator =
     options.outlineGenerator ??
     createCodexOutlineGenerator(sharedCodexClient!);
+  const topicGuidanceGenerator =
+    options.topicGuidanceGenerator ??
+    createCodexTopicGuidanceGenerator(sharedCodexClient!);
   const outlineRevisionService =
     options.outlineRevisionService ??
     createCodexOutlineRevisionService(sharedCodexClient!);
@@ -1273,6 +1287,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const outlineGenerations = new Map<
     string,
     GenerationCacheEntry<OutlineGenerationResult>
+  >();
+  const topicGuidanceGenerations = new Map<
+    string,
+    GenerationCacheEntry<TopicGuidanceGenerationResult>
   >();
   const outlineCandidateGenerations = new Map<
     string,
@@ -2856,6 +2874,55 @@ export function createPadStudioServer(options: AppOptions = {}) {
       }
 
       if (
+        requestUrl.pathname === '/api/topic-guidance/generate' &&
+        request.method === 'POST'
+      ) {
+        const body = await readJsonBody(request);
+        const parsedRequest = GenerateTopicGuidanceSchema.safeParse(body);
+        if (!parsedRequest.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Thông tin để đề xuất định hướng chưa hợp lệ.',
+            fields: validationFields(parsedRequest.error.issues),
+          });
+          return;
+        }
+
+        const {generationId, topicInput, model, reasoningEffort} =
+          parsedRequest.data;
+        const fingerprint = JSON.stringify({
+          topicInput,
+          model: model ?? null,
+          reasoningEffort: reasoningEffort ?? null,
+        });
+        const generated = await generateOnce(
+          topicGuidanceGenerations,
+          generationId,
+          fingerprint,
+          () =>
+            topicGuidanceGenerator.generate({
+              topicInput,
+              ...(model ? {model} : {}),
+              ...(reasoningEffort ? {reasoningEffort} : {}),
+            }),
+        );
+        sendJson(response, 200, {
+          suggestion: generated.result.suggestion,
+          generation: {
+            generationId,
+            provider: 'codex',
+            model: generated.result.model,
+            ...(model ? {requestedModel: model} : {}),
+            ...(reasoningEffort ? {reasoningEffort} : {}),
+            promptVersion: TOPIC_GUIDANCE_PROMPT_VERSION,
+            generatedAt: generated.generatedAt,
+            usage: generated.result.usage,
+          },
+        });
+        return;
+      }
+
+      if (
         requestUrl.pathname === '/api/integrations/elevenlabs/status' &&
         request.method === 'GET'
       ) {
@@ -2943,7 +3010,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
         request.method === 'GET'
       ) {
         const catalog = await elevenLabsVoiceService.getCatalog(
-          requestUrl.searchParams.get('search')?.trim().slice(0, 120) ?? '',
+          requestUrl.searchParams.get('search')?.trim() ?? '',
           await localVoicePresets(repository),
         );
         sendJson(response, 200, {catalog});
@@ -2956,7 +3023,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
         request.method === 'GET'
       ) {
         const result = await elevenLabsVoiceService.searchSharedVoices(
-          requestUrl.searchParams.get('search')?.trim().slice(0, 120) ?? '',
+          requestUrl.searchParams.get('search')?.trim() ?? '',
         );
         sendJson(response, 200, {result});
         return;
@@ -5966,16 +6033,6 @@ export function createPadStudioServer(options: AppOptions = {}) {
           existingRender?.generation.generationId === generationId &&
           finalRenderIsReady(currentProject)
         ) {
-          if (
-            existingRender.playbackRate !== parsedRequest.data.playbackRate ||
-            !sameValue(existingRender.watermark, parsedRequest.data.watermark)
-          ) {
-            throw new RequestBodyError(
-              409,
-              'GENERATION_ID_REUSED',
-              'Render generation ID đã được dùng với tốc độ hoặc watermark khác.',
-            );
-          }
           const existingStatus =
             (await finalRenderService.getStatus(
               currentProject.id,
@@ -5996,6 +6053,13 @@ export function createPadStudioServer(options: AppOptions = {}) {
           sendJson(response, 200, {status: existingStatus});
           return;
         }
+        if (existingRender?.generation.generationId === generationId) {
+          throw new RequestBodyError(
+            409,
+            'GENERATION_ID_REUSED',
+            'Render generation ID đã thuộc về một Layout cũ. Hãy tạo generation mới từ Layout hiện hành.',
+          );
+        }
         if (currentProject.revision !== expectedRevision) {
           throw new ProjectConflictError(currentProject);
         }
@@ -6012,30 +6076,12 @@ export function createPadStudioServer(options: AppOptions = {}) {
             'Hãy duyệt Layout hiện hành trước khi render video cuối.',
           );
         }
-        if (
-          layout.renderSettings.playbackRate !==
-            parsedRequest.data.playbackRate ||
-          !sameValue(
-            layout.renderSettings.watermark,
-            parsedRequest.data.watermark,
-          )
-        ) {
-          throw new RequestBodyError(
-            409,
-            'FINAL_RENDER_SETTINGS_OUTDATED',
-            'Tốc độ hoặc watermark không khớp Layout đã chốt. Hãy xem trước và lưu lại trong Layout Editor.',
-          );
-        }
         const renderOperation = finalRenderService.render(
           currentProject.id,
           generationId,
           (existingRender?.contentRevision ?? 0) + 1,
           sync,
           layout,
-          {
-            playbackRate: parsedRequest.data.playbackRate,
-            watermark: parsedRequest.data.watermark,
-          },
         );
         const commitOperation = renderOperation
           .then(async renderBundle => {
@@ -6255,6 +6301,14 @@ export function createPadStudioServer(options: AppOptions = {}) {
       }
 
       if (error instanceof CodexConnectionError) {
+        sendApiError(response, 503, {
+          code: error.code,
+          message: error.message,
+        });
+        return;
+      }
+
+      if (error instanceof TopicGuidanceGenerationError) {
         sendApiError(response, 503, {
           code: error.code,
           message: error.message,

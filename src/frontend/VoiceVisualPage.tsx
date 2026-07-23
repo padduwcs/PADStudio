@@ -177,6 +177,53 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
     });
   }
 
+  function selectAllVoice() {
+    if (!plan.draft) return;
+    setProtectedSuggestionCount(0);
+    setSelectedGlobalFields(current =>
+      current.includes('voiceDirection')
+        ? current
+        : [...current, 'voiceDirection'],
+    );
+    setSelectedBeatFields(current => {
+      const next = {...current};
+      for (const beat of plan.draft!.sections.flatMap(section => section.beats)) {
+        const fields = next[beat.id] ?? [];
+        next[beat.id] = fields.includes('voiceover')
+          ? fields
+          : [...fields, 'voiceover'];
+      }
+      return next;
+    });
+  }
+
+  function selectEntireVoiceVisualPlan() {
+    if (!plan.draft) return;
+    setProtectedSuggestionCount(0);
+    setSelectedGlobalFields(['voiceDirection', 'visualDirection']);
+    setSelectedBeatFields(
+      Object.fromEntries(
+        plan.draft.sections
+          .flatMap(section => section.beats)
+          .map(beat => [
+            beat.id,
+            [
+              'voiceover',
+              'visualDescription',
+              'animationDescription',
+              'visualHoldSeconds',
+            ] satisfies VoiceVisualBeatField[],
+          ]),
+      ),
+    );
+  }
+
+  function clearVoiceVisualScope() {
+    setProtectedSuggestionCount(0);
+    setSelectedGlobalFields([]);
+    setSelectedBeatFields({});
+  }
+
   function prepareReviewSuggestions(
     coherence: VoiceVisualCoherenceReview,
     sourceCandidate: VoiceVisualCandidateRecord | null,
@@ -597,7 +644,6 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                     </span>
                     <textarea
                       rows={3}
-                      maxLength={320}
                       disabled={plan.stale}
                       value={draft.voiceDirection}
                       onChange={(event) =>
@@ -624,7 +670,6 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                     </span>
                     <textarea
                       rows={3}
-                      maxLength={420}
                       disabled={plan.stale}
                       value={draft.visualDirection}
                       onChange={(event) =>
@@ -776,7 +821,6 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                   <span>Lời thuyết minh</span>
                                   <textarea
                                     rows={4}
-                                    maxLength={4000}
                                     disabled={plan.stale}
                                     value={beat.voiceover}
                                     onChange={(event) =>
@@ -793,7 +837,6 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                   <span>Visual cần thấy</span>
                                   <textarea
                                     rows={3}
-                                    maxLength={2000}
                                     disabled={plan.stale}
                                     value={beat.visualDescription}
                                     onChange={(event) =>
@@ -810,7 +853,6 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                   <span>Chuyển động</span>
                                   <textarea
                                     rows={2}
-                                    maxLength={2000}
                                     disabled={plan.stale}
                                     value={beat.animationDescription}
                                     onChange={(event) =>
@@ -1156,6 +1198,17 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                         kế hoạch và kiểm tra lại hai ranh giới với phần giữ nguyên.
                       </p>
                     </div>
+                    <div className="ai-scope-presets" aria-label="Chọn nhanh phạm vi">
+                      <button type="button" onClick={selectAllVoice}>
+                        Chọn toàn bộ voice
+                      </button>
+                      <button type="button" onClick={selectEntireVoiceVisualPlan}>
+                        Chọn toàn bộ kế hoạch
+                      </button>
+                      <button type="button" onClick={clearVoiceVisualScope}>
+                        Bỏ chọn
+                      </button>
+                    </div>
                     <div className="voice-visual-scope-summary">
                       <strong>{selectedFieldCount} trường được phép sửa</strong>
                       <span>
@@ -1179,7 +1232,6 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                     )}
                     <textarea
                       rows={3}
-                      maxLength={4000}
                       value={guidance}
                       placeholder="Ví dụ: Rút gọn lời kể của beat đã chọn, nhưng giữ nguyên ví dụ và nối tự nhiên với beat kế tiếp."
                       onChange={(event) => setGuidance(event.target.value)}
@@ -1298,7 +1350,6 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                   <div className="outline-checkpoint-action">
                     <input
                       type="text"
-                      maxLength={120}
                       value={checkpointLabel}
                       placeholder="Tên mốc, ví dụ: trước khi rút lời"
                       onChange={event => setCheckpointLabel(event.target.value)}
