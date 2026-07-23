@@ -215,6 +215,7 @@ import {
   type VoiceWorkspace,
 } from './voiceWorkspace.ts';
 import {plannedBeatDurationSeconds} from '../shared/narrationTiming.ts';
+import {speechTextForBeat} from '../shared/vietnameseSpeech.ts';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import {
   createDefaultCredentialStore,
@@ -969,7 +970,7 @@ function normalizedVoiceVisualContent(
           ...beat,
           visualHoldSeconds,
           durationSeconds: plannedBeatDurationSeconds(
-            beat.voiceover,
+            speechTextForBeat(beat),
             visualHoldSeconds,
             content.timingCalibration,
           ),
@@ -2463,30 +2464,55 @@ export function createPadStudioServer(options: AppOptions = {}) {
               throw error;
             }
           }
-          const changedIndexes = new Set(sectionIndexes);
-          const review = await motionCanvasRevisionReviewService.review({
-            topicInput: currentProject.topicInput,
-            outline,
-            voiceVisualPlan,
-            scope: parsed.data.scope,
-            guidance: parsed.data.guidance,
-            scenes: mergedSources.map((scene, index) => {
-              const changed = selectedSceneIds.has(scene.id);
-              const adjacent = [...changedIndexes].some(
-                changedIndex => Math.abs(changedIndex - index) === 1,
-              );
-              const limit = changed ? 30_000 : adjacent ? 12_000 : 4_000;
-              return {
-                sceneId: scene.id,
-                outlineSectionId: scene.outlineSectionId,
-                name: scene.name,
-                changed,
-                sourceExcerpt: scene.source.slice(0, limit),
-              };
-            }),
-            model: parsed.data.model,
-            reasoningEffort: parsed.data.reasoningEffort,
-          });
+          let review: MotionCanvasRevisionReviewResult;
+          try {
+            review = await motionCanvasRevisionReviewService.review({
+              topicInput: currentProject.topicInput,
+              outline,
+              voiceVisualPlan,
+              scope: parsed.data.scope,
+              guidance: parsed.data.guidance,
+              scenes: mergedSources.map(scene => {
+                const changed = selectedSceneIds.has(scene.id);
+                return {
+                  sceneId: scene.id,
+                  outlineSectionId: scene.outlineSectionId,
+                  name: scene.name,
+                  changed,
+                  sourceExcerpt:
+                    changed ? scene.source.slice(0, 24_000) : '',
+                };
+              }),
+              model: parsed.data.model,
+              reasoningEffort: parsed.data.reasoningEffort,
+            });
+          } catch (error) {
+            if (!(error instanceof MotionCanvasRevisionReviewError)) {
+              throw error;
+            }
+            logger.info(
+              `Motion candidate ${generationId} đã compile nhưng reviewer không hoàn tất: ${error.code}`,
+            );
+            review = {
+              coherence: {
+                verdict: 'warning',
+                summary:
+                  'Các scene đã sinh qua kiểm tra TypeScript và timing; lượt review mạch lạc tự động chưa hoàn tất.',
+                issues: [{
+                  severity: 'warning',
+                  category: 'scope',
+                  message:
+                    'Reviewer Codex tạm thời không phản hồi, nhưng workspace hợp lệ vẫn được giữ để tránh mất kết quả đã sinh.',
+                  suggestedFix:
+                    'Mở preview candidate và chạy lại review nếu bạn cần kiểm tra thêm trước khi áp dụng.',
+                  affectedSceneIds: parsed.data.scope.sceneIds,
+                  requiresScopeExpansion: false,
+                }],
+              },
+              model: generated.model || 'unavailable',
+              usage: null,
+            };
+          }
           return {generated, prepared, review};
         },
       );

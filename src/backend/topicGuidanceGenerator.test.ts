@@ -87,6 +87,7 @@ test('Codex tạo bản nháp định hướng có cấu trúc từ topic', asyn
   const result = await generator.generate({
     topicInput: {
       topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
+      background: {mode: 'dark', color: '#10231D'},
       audience: 'beginner',
       duration: 'standard',
     },

@@ -101,6 +101,27 @@ test('schema final render dùng cùng dung sai cho kết quả ffprobe', () => {
     fontSize: 32,
     color: '#ffffff',
   });
+  const migratedImage = FinalRenderBundleSchema.parse({
+    ...bundle,
+    watermark: {
+      type: 'image',
+      assetId: 'd'.repeat(64),
+      opacity: 0.4,
+      xPercent: 50,
+      yPercent: 50,
+      widthPercent: 30,
+    },
+  });
+  assert.deepEqual(migratedImage.watermark, {
+    type: 'image',
+    assetId: 'd'.repeat(64),
+    opacity: 0.4,
+    xPercent: 50,
+    yPercent: 50,
+    widthPercent: 30,
+    tintColor: '#FFFFFF',
+    tintStrength: 0,
+  });
   assert.equal('playbackRate' in migrated, false);
   assert.equal(
     FinalRenderBundleSchema.safeParse({

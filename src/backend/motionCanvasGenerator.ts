@@ -10,6 +10,7 @@ import type {
   TopicInput,
   VoiceVisualPlan,
 } from '../shared/topic.ts';
+import {videoBackgroundTone} from '../shared/topic.ts';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import type {CodexAppServerClient} from './codexConnection.ts';
 import {
@@ -18,7 +19,7 @@ import {
   runCodexStructuredGeneration,
 } from './codexStructuredGeneration.ts';
 
-export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v5';
+export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v6';
 export const MOTION_CANVAS_VERSION = '3.17.2';
 export const MOTION_CANVAS_WIDTH = 1080;
 export const MOTION_CANVAS_HEIGHT = 1920;
@@ -214,6 +215,7 @@ function buildPrompt(
     'Giá trị flex dùng kebab-case như space-between, không dùng spaceBetween.',
     'Scene phải tự chứa toàn bộ node và animation, chạy độc lập và không import file tương đối.',
     'Thiết kế cho khung dọc 1080x1920, ưu tiên hình khối, vị trí, màu và chuyển động để giải thích bản chất.',
+    `Nền gốc bắt buộc là ${request.topicInput.background.color} (${videoBackgroundTone(request.topicInput.background)}). Node scene-background phải dùng đúng màu này; mọi chữ, stroke, card và màu nhấn phải đủ tương phản với nền.`,
     'Không hiển thị source code. Không dùng caption để gánh nội dung chính; chữ ngắn, số và ký hiệu chỉ được dùng khi bản thân visual cần chúng.',
     'Mỗi beat phải gọi đúng một lần yield* waitUntil(startEvent), sau đó khai báo const beatDuration = useDuration(endEvent) và const beatEndTime = useThread().time() + beatDuration. Chạy visual theo tỷ lệ beatDuration rồi kết thúc beat bằng yield* waitFor(Math.max(0, beatEndTime - useThread().time())). Dùng tên duration/endTime riêng cho từng beat nếu không tạo block scope.',
     'Không gọi waitUntil(endEvent), vì waitUntil cũng đăng ký event và sẽ gây trùng với useDuration. Import useThread và waitFor từ @motion-canvas/core.',
@@ -650,6 +652,72 @@ export function validateMotionCanvasTimingContract(
   }
 }
 
+export function validateMotionCanvasBackground(
+  source: string,
+  requiredColor: string,
+) {
+  const sourceFile = ts.createSourceFile(
+    'generated-scene.tsx',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const backgroundColors: string[] = [];
+
+  function staticAttribute(
+    node: ts.JsxOpeningElement | ts.JsxSelfClosingElement,
+    name: string,
+  ) {
+    const attribute = node.attributes.properties.find(
+      candidate =>
+        ts.isJsxAttribute(candidate) &&
+        ts.isIdentifier(candidate.name) &&
+        candidate.name.text === name,
+    );
+    if (!attribute || !ts.isJsxAttribute(attribute)) return null;
+    const initializer = attribute.initializer;
+    if (initializer && ts.isStringLiteral(initializer)) {
+      return initializer.text;
+    }
+    if (
+      initializer &&
+      ts.isJsxExpression(initializer) &&
+      initializer.expression &&
+      (ts.isStringLiteral(initializer.expression) ||
+        ts.isNoSubstitutionTemplateLiteral(initializer.expression))
+    ) {
+      return initializer.expression.text;
+    }
+    return null;
+  }
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isJsxOpeningElement(node) ||
+      ts.isJsxSelfClosingElement(node)
+    ) {
+      if (staticAttribute(node, 'key') === 'scene-background') {
+        const color = staticAttribute(node, 'fill');
+        if (color) backgroundColors.push(color);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+
+  const backgroundColor = backgroundColors.at(-1);
+  if (
+    backgroundColor?.toLocaleLowerCase('en-US') !==
+    requiredColor.toLocaleLowerCase('en-US')
+  ) {
+    throw new MotionCanvasGenerationError(
+      'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+      `Scene phải có node scene-background dùng đúng màu ${requiredColor}.`,
+    );
+  }
+}
+
 function mapStructuredError(error: CodexStructuredGenerationError) {
   if (error.reason === 'timeout') {
     return new MotionCanvasGenerationError(
@@ -692,6 +760,10 @@ function fallbackSceneSource(
 ) {
   const outlineSection = request.outline.sections[sectionIndex]!;
   const beats = request.voiceVisualPlan.sections[sectionIndex]!.beats;
+  const background = request.topicInput.background;
+  const backgroundTone = videoBackgroundTone(background);
+  const foreground = backgroundTone === 'light' ? '#18342C' : '#F3F7F4';
+  const trackColor = backgroundTone === 'light' ? '#D7E1DB' : '#365149';
   const colors = ['#51B68E', '#ED8F67', '#71A7E8', '#D8B85A'];
   const beatBlocks = beats.map((beat, beatIndex) => {
     const number = beatIndex + 1;
@@ -718,13 +790,13 @@ export default makeScene2D(function* (view) {
   const progressFill = createRef<Rect>();
 
   view.add(
-    <Rect key="scene-background" width={1080} height={1920} fill={'#10231D'}>
+    <Rect key="scene-background" width={1080} height={1920} fill={${JSON.stringify(background.color)}}>
       <Txt
         key="scene-heading"
         text={${JSON.stringify(outlineSection.title.slice(0, 80))}}
         y={-650}
         width={880}
-        fill={'#F3F7F4'}
+        fill={${JSON.stringify(foreground)}}
         fontSize={66}
         fontWeight={700}
         textAlign={'center'}
@@ -749,14 +821,14 @@ export default makeScene2D(function* (view) {
           textAlign={'center'}
         />
       </Rect>
-      <Rect key="progress-track" y={650} width={760} height={18} radius={9} fill={'#365149'}>
+      <Rect key="progress-track" y={650} width={760} height={18} radius={9} fill={${JSON.stringify(trackColor)}}>
         <Rect
           key="progress-fill"
           ref={progressFill}
           width={0}
           height={18}
           radius={9}
-          fill={'#F3F7F4'}
+          fill={${JSON.stringify(foreground)}}
           offsetX={-1}
           x={-380}
         />
@@ -1042,6 +1114,10 @@ export function createCodexMotionCanvasGenerator(
     result: GeneratedSceneResult,
   ) {
     validateMotionCanvasSceneSource(result.scene.source);
+    validateMotionCanvasBackground(
+      result.scene.source,
+      request.topicInput.background.color,
+    );
     validateMotionCanvasTimingContract(
       result.scene.source,
       request.voiceVisualPlan.sections[sectionIndex]!.beats,
@@ -1354,6 +1430,10 @@ export function createCodexMotionCanvasGenerator(
         repairs.push(candidate);
         try {
           validateMotionCanvasSceneSource(candidate.scene.source);
+          validateMotionCanvasBackground(
+            candidate.scene.source,
+            request.topicInput.background.color,
+          );
           validateMotionCanvasTimingContract(
             candidate.scene.source,
             request.voiceVisualPlan.sections[sectionIndex]!.beats,
@@ -1566,6 +1646,10 @@ export function createCodexMotionCanvasGenerator(
           source: fallbackSceneSource(request, sectionIndex),
         };
         validateMotionCanvasSceneSource(fallback.source);
+        validateMotionCanvasBackground(
+          fallback.source,
+          request.topicInput.background.color,
+        );
         validateMotionCanvasTimingContract(
           fallback.source,
           request.voiceVisualPlan.sections[sectionIndex]!.beats,

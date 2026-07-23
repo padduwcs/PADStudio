@@ -208,7 +208,11 @@ export async function runCodexStructuredGeneration({
   developerInstructions: string;
   model?: string;
   reasoningEffort?: string;
-}) {
+}): Promise<{
+  responseText: string;
+  model: string;
+  usage: CodexTokenUsage | null;
+}> {
   await mkdir(runtimeDirectory, {recursive: true});
 
   let threadId = '';

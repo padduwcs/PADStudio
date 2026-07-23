@@ -153,7 +153,8 @@
 }
 
 .layout-output-control.is-opacity,
-.layout-output-control.is-watermark-width {
+.layout-output-control.is-watermark-width,
+.layout-output-control.is-tint-strength {
   grid-template-columns: auto minmax(80px, 1fr) 72px auto;
 }
 
@@ -181,7 +182,8 @@
   .layout-watermark-settings,
   .layout-output-control,
   .layout-output-control.is-opacity,
-  .layout-output-control.is-watermark-width {
+  .layout-output-control.is-watermark-width,
+  .layout-output-control.is-tint-strength {
     grid-template-columns: minmax(0, 1fr) 72px auto;
   }
 
@@ -1509,7 +1511,73 @@
   scrollbar-width: thin;
 }
 
-.layout-layer-list .layout-node-row + .layout-node-row {
+.layout-layer-group {
+  min-width: 0;
+  border: 1px solid rgba(221, 235, 228, 0.09);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.022);
+  overflow: clip;
+}
+
+.layout-layer-group + .layout-layer-group {
+  margin-top: 6px;
+}
+
+.layout-layer-group > summary {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 9px;
+  color: rgba(225, 235, 230, 0.78);
+  background: rgba(255, 255, 255, 0.045);
+  font-size: 0.64rem;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+
+.layout-layer-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.layout-layer-group > summary::before {
+  content: "›";
+  color: rgba(225, 235, 230, 0.48);
+  font-size: 1rem;
+  transform: rotate(0deg);
+  transition: transform 140ms ease;
+}
+
+.layout-layer-group[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.layout-layer-group > summary > span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layout-layer-group > summary > small {
+  display: grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 999px;
+  color: #f0a07b;
+  background: rgba(237, 154, 117, 0.12);
+  font-size: 0.57rem;
+}
+
+.layout-layer-group > div {
+  display: grid;
+  gap: 3px;
+  padding: 4px;
+}
+
+.layout-layer-group .layout-node-row + .layout-node-row {
   margin-top: 4px;
 }
 

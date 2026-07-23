@@ -98,3 +98,21 @@ test('Narration source từ chối beat đơn lẻ vượt giới hạn model', 
     /Một beat narration vượt giới hạn/,
   );
 });
+
+test('Narration source gửi transcript phiên âm thay vì ký hiệu kỹ thuật sang TTS', () => {
+  const plan = planFixture();
+  const beat = plan.sections[0]!.beats[0]!;
+  beat.voiceover = 'Ta duyệt a[i] một lần với độ phức tạp O(n).';
+  beat.spokenVoiceover = undefined;
+  let source = buildNarrationSource(plan);
+  assert.match(
+    source.text,
+    /a tại chỉ số i một lần với độ phức tạp ô nờ/u,
+  );
+  assert.doesNotMatch(source.text, /O\(n\)|a\[i\]/u);
+
+  beat.spokenVoiceover =
+    'Ta duyệt phần tử a tại vị trí i, đúng một lượt tuyến tính.';
+  source = buildNarrationSource(plan);
+  assert.match(source.text, /đúng một lượt tuyến tính/u);
+});

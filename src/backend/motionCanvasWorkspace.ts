@@ -4,6 +4,7 @@ import {
   cp,
   lstat,
   mkdir,
+  readdir,
   readFile,
   realpath,
   rename,
@@ -33,6 +34,9 @@ import {
 const execFileAsync = promisify(execFile);
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const staleStagingPattern =
+  /^\.staging-[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const STALE_STAGING_AGE_MS = 6 * 60 * 60 * 1_000;
 
 export interface PreparedMotionCanvasWorkspace {
   workspacePath: string;
@@ -213,6 +217,36 @@ function sourceHash(files: MotionCanvasWorkspaceFile[]) {
     hash.update('\0');
   }
   return hash.digest('hex');
+}
+
+async function cleanupStaleStagingDirectories(
+  generationsDirectory: string,
+) {
+  const entries = await readdir(generationsDirectory, {
+    withFileTypes: true,
+  }).catch(() => []);
+  const now = Date.now();
+  await Promise.all(
+    entries
+      .filter(
+        entry =>
+          entry.isDirectory() && staleStagingPattern.test(entry.name),
+      )
+      .map(async entry => {
+        const target = path.resolve(generationsDirectory, entry.name);
+        if (!isInside(generationsDirectory, target)) return;
+        const metadata = await lstat(target).catch(() => null);
+        if (
+          !metadata?.isDirectory() ||
+          now - metadata.mtimeMs < STALE_STAGING_AGE_MS
+        ) {
+          return;
+        }
+        await rm(target, {recursive: true, force: true}).catch(
+          () => undefined,
+        );
+      }),
+  );
 }
 
 function isInside(root: string, candidate: string) {
@@ -409,6 +443,7 @@ export function createMotionCanvasWorkspace(
       );
 
       await mkdir(generationsDirectory, {recursive: true});
+      await cleanupStaleStagingDirectories(generationsDirectory);
       const finalExists = await stat(finalDirectory)
         .then((entry) => entry.isDirectory())
         .catch(() => false);

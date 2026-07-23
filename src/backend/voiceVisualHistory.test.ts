@@ -19,8 +19,10 @@ import {
 } from './voiceVisualHistoryStore.ts';
 import {
   applyVoiceVisualPatch,
+  normalizeVoiceVisualPatchResponse,
   VoiceVisualRevisionError,
 } from './voiceVisualRevisionService.ts';
+import {VoiceVisualAiPatchSchema} from '../shared/voiceVisualHistory.ts';
 
 const sectionId = '11111111-1111-4111-8111-111111111111';
 const firstBeatId = '22222222-2222-4222-8222-222222222222';
@@ -136,6 +138,30 @@ test('patch voice–visual từ chối thay đổi ngoài phạm vi', () => {
     (error: unknown) =>
       error instanceof VoiceVisualRevisionError &&
       error.code === 'VOICE_VISUAL_PATCH_OUT_OF_SCOPE',
+  );
+});
+
+test('chuẩn hóa patch sparse mà Codex bỏ các trường null', () => {
+  const normalized = normalizeVoiceVisualPatchResponse({
+    patch: {
+      summary: 'Rút gọn lời kể và chuẩn hóa cách đọc TTS.',
+      beats: [{
+        id: firstBeatId,
+        changes: {
+          voiceover: 'Ta duyệt danh sách một lần với độ phức tạp O(n).',
+          spokenVoiceover:
+            'Ta duyệt danh sách một lần với độ phức tạp ô nờ.',
+        },
+      }],
+    },
+  });
+  const parsed = VoiceVisualAiPatchSchema.parse(normalized);
+  assert.equal(parsed.voiceDirection, null);
+  assert.equal(parsed.visualDirection, null);
+  assert.equal(parsed.beats[0]?.visualDescription, null);
+  assert.equal(
+    parsed.beats[0]?.spokenVoiceover,
+    'Ta duyệt danh sách một lần với độ phức tạp ô nờ.',
   );
 });
 

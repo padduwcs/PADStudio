@@ -34,7 +34,9 @@ import {
   LightbulbIcon,
   LockIcon,
   MenuIcon,
+  MoonIcon,
   SparkIcon,
+  SunIcon,
   UserIcon,
   XIcon,
 } from './icons.tsx';
@@ -56,6 +58,7 @@ import {
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useOutlineDraft} from './useOutlineDraft.ts';
 import {ApiRequestError, generateTopicGuidance} from './api.ts';
+import {useTheme, type PadTheme} from './useTheme.ts';
 
 const VoiceVisualPage = lazy(async () => {
   const module = await import('./VoiceVisualPage.tsx');
@@ -134,6 +137,32 @@ const durationOptions: Array<{
   },
 ];
 
+const backgroundOptions: Array<{
+  value: TopicFormState['backgroundMode'];
+  title: string;
+  description: string;
+  color: string;
+}> = [
+  {
+    value: 'light',
+    title: 'Nền sáng',
+    description: 'Sạch, thoáng, tương phản tối',
+    color: '#F5F7F4',
+  },
+  {
+    value: 'dark',
+    title: 'Nền tối',
+    description: 'Sâu, tập trung, tương phản sáng',
+    color: '#10231D',
+  },
+  {
+    value: 'custom',
+    title: 'Màu tùy chọn',
+    description: 'Dùng màu thương hiệu của bạn',
+    color: '#315F4E',
+  },
+];
+
 const audienceLabels: Record<TopicFormState['audience'], string> = {
   beginner: 'Người mới',
   familiar: 'Đã biết cơ bản',
@@ -178,6 +207,8 @@ function PipelineSidebar({
   onClose,
   onOpenProjects,
   onSelectStep,
+  theme,
+  onToggleTheme,
 }: {
   activeStep: number;
   hasProject: boolean;
@@ -185,6 +216,8 @@ function PipelineSidebar({
   onClose: () => void;
   onOpenProjects: () => void;
   onSelectStep: (step: ProjectStep) => void;
+  theme: PadTheme;
+  onToggleTheme: () => void;
 }) {
   return (
     <aside
@@ -211,6 +244,19 @@ function PipelineSidebar({
       >
         <FolderIcon />
         Project của bạn
+      </button>
+      <button
+        className="theme-toggle"
+        type="button"
+        aria-label={
+          theme === 'dark'
+            ? 'Chuyển sang giao diện sáng'
+            : 'Chuyển sang giao diện tối'
+        }
+        onClick={onToggleTheme}
+      >
+        {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+        <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
       </button>
 
       <div className="sidebar-heading">
@@ -272,11 +318,15 @@ function MobileHeader({
   sidebarOpen,
   onToggleSidebar,
   onOpenProjects,
+  theme,
+  onToggleTheme,
 }: {
   activeStep: number;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   onOpenProjects: () => void;
+  theme: PadTheme;
+  onToggleTheme: () => void;
 }) {
   return (
     <header className="mobile-header">
@@ -301,6 +351,18 @@ function MobileHeader({
           onClick={onOpenProjects}
         >
           <FolderIcon />
+        </button>
+        <button
+          className="mobile-theme-button"
+          type="button"
+          aria-label={
+            theme === 'dark'
+              ? 'Chuyển sang giao diện sáng'
+              : 'Chuyển sang giao diện tối'
+          }
+          onClick={onToggleTheme}
+        >
+          {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
         </button>
         <span>Bước {activeStep + 1} / 8</span>
         <span className="mobile-progress-track">
@@ -414,6 +476,22 @@ function BriefPreview({
           </dt>
           <dd>{durationLabel(form)}</dd>
         </div>
+        <div>
+          <dt>
+            <span
+              className="background-color-dot"
+              style={{backgroundColor: form.backgroundColor}}
+            />
+            Background
+          </dt>
+          <dd>
+            {form.backgroundMode === 'light'
+              ? 'Sáng'
+              : form.backgroundMode === 'dark'
+                ? 'Tối'
+                : form.backgroundColor.toUpperCase()}
+          </dd>
+        </div>
       </dl>
 
       <div className="readiness">
@@ -481,6 +559,8 @@ function TopicPage({
     guidanceRequestRef.current = null;
   }, [
     form.audience,
+    form.backgroundColor,
+    form.backgroundMode,
     form.duration,
     form.targetDurationMinutes,
     form.topic,
@@ -492,6 +572,10 @@ function TopicPage({
       topic: form.topic,
       learningGoal: form.learningGoal.trim() || undefined,
       videoDirection: form.videoDirection.trim() || undefined,
+      background: {
+        mode: form.backgroundMode,
+        color: form.backgroundColor,
+      },
       audience: form.audience,
       duration: form.duration,
       targetDurationMinutes:
@@ -725,6 +809,66 @@ function TopicPage({
                   </p>
                 )}
               </div>
+
+              <fieldset className="form-section background-picker">
+                <legend>
+                  Background video
+                  <small>AI sẽ thiết kế toàn bộ scene theo nền này</small>
+                </legend>
+                <div className="background-choice-grid">
+                  {backgroundOptions.map((option) => {
+                    const selected = form.backgroundMode === option.value;
+                    const swatchColor =
+                      option.value === 'custom'
+                        ? form.backgroundColor
+                        : option.color;
+                    return (
+                      <button
+                        className={`background-choice${selected ? ' is-selected' : ''}`}
+                        type="button"
+                        aria-pressed={selected}
+                        key={option.value}
+                        onClick={() => {
+                          updateField('backgroundMode', option.value);
+                          if (option.value !== 'custom') {
+                            updateField('backgroundColor', option.color);
+                          }
+                        }}
+                      >
+                        <span
+                          className="background-choice-swatch"
+                          style={{backgroundColor: swatchColor}}
+                        />
+                        <span>
+                          <strong>{option.title}</strong>
+                          <small>{option.description}</small>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {form.backgroundMode === 'custom' && (
+                  <label className="background-custom-color">
+                    <span>Màu nền chính xác</span>
+                    <span>
+                      <input
+                        type="color"
+                        value={form.backgroundColor}
+                        onChange={(event) =>
+                          updateField(
+                            'backgroundColor',
+                            event.currentTarget.value.toUpperCase(),
+                          )
+                        }
+                      />
+                      <code>{form.backgroundColor.toUpperCase()}</code>
+                    </span>
+                  </label>
+                )}
+                {fieldErrors.backgroundColor && (
+                  <p className="field-error">{fieldErrors.backgroundColor}</p>
+                )}
+              </fieldset>
 
               <div className="options-grid">
                 <fieldset className="form-section option-group">
@@ -2237,6 +2381,7 @@ function OutlinePage({projectId}: {projectId: string}) {
 
 export default function App() {
   const route = useAppRoute();
+  const {theme, toggleTheme} = useTheme();
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [newProjectKey, setNewProjectKey] = useState(0);
@@ -2333,6 +2478,8 @@ export default function App() {
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         onOpenProjects={openLibrary}
+        theme={theme}
+        onToggleTheme={toggleTheme}
         onSelectStep={(step) => {
           if (!activeProjectId) return;
           navigate(projectStepPath(activeProjectId, step));
@@ -2350,6 +2497,8 @@ export default function App() {
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((current) => !current)}
         onOpenProjects={openLibrary}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
 
       <main className="workspace">

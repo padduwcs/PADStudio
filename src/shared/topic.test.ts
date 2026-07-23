@@ -32,6 +32,10 @@ test('TopicInputSchema chuẩn hóa khoảng trắng ở đầu và cuối', () 
     result.learningGoal,
     'Hiểu vì sao mỗi bước loại được một nửa dữ liệu.',
   );
+  assert.deepEqual(result.background, {
+    mode: 'dark',
+    color: '#10231D',
+  });
 });
 
 test('TopicInputSchema từ chối chủ đề quá mơ hồ', () => {
@@ -505,6 +509,19 @@ test('parseTopicProject migrates v8 and v9 without widening historical step enum
     visualDesignBundle: null,
   });
   assert.equal(migratedVersionTwelve.version, currentProjectVersion);
+  const migratedVersionThirteen = parseTopicProject({
+    ...versionEight,
+    version: 13,
+    currentStep: 'render',
+    layoutBundle: null,
+    renderBundle: null,
+    visualDesignBundle: null,
+  });
+  assert.equal(migratedVersionThirteen.version, currentProjectVersion);
+  assert.deepEqual(migratedVersionThirteen.topicInput.background, {
+    mode: 'dark',
+    color: '#10231D',
+  });
   assert.throws(() =>
     parseTopicProject({...versionEight, currentStep: 'layout'}),
   );

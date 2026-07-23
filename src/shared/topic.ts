@@ -36,7 +36,42 @@ export const voiceVisualStatusValues = ['draft', 'approved'] as const;
 export const motionCanvasStatusValues = ['draft', 'approved'] as const;
 export const voiceStatusValues = ['draft', 'approved'] as const;
 export const animationSyncStatusValues = ['draft', 'approved'] as const;
-export const currentProjectVersion = 13 as const;
+export const currentProjectVersion = 14 as const;
+
+export const videoBackgroundModeValues = [
+  'light',
+  'dark',
+  'custom',
+] as const;
+export const defaultVideoBackground = {
+  mode: 'dark',
+  color: '#10231D',
+} as const;
+export const VideoBackgroundSchema = z
+  .object({
+    mode: z.enum(videoBackgroundModeValues),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+  })
+  .strict();
+export type VideoBackground = z.infer<typeof VideoBackgroundSchema>;
+
+export function videoBackgroundTone(
+  background: Pick<VideoBackground, 'color'>,
+): 'light' | 'dark' {
+  const hex = background.color.replace('#', '');
+  const red = Number.parseInt(hex.slice(0, 2), 16) / 255;
+  const green = Number.parseInt(hex.slice(2, 4), 16) / 255;
+  const blue = Number.parseInt(hex.slice(4, 6), 16) / 255;
+  const linear = (channel: number) =>
+    channel <= 0.04045
+      ? channel / 12.92
+      : ((channel + 0.055) / 1.055) ** 2.4;
+  const luminance =
+    linear(red) * 0.2126 +
+    linear(green) * 0.7152 +
+    linear(blue) * 0.0722;
+  return luminance >= 0.42 ? 'light' : 'dark';
+}
 
 export const ProjectStepSchema = z.enum(projectStepValues);
 const ProjectStepV8Schema = z.enum(projectStepV8Values);
@@ -59,6 +94,7 @@ export const TopicInputSchema = z
       .string()
       .trim()
       .optional(),
+    background: VideoBackgroundSchema.default(defaultVideoBackground),
     audience: z.enum(audienceValues),
     duration: z.enum(durationValues),
     targetDurationMinutes: z
@@ -256,6 +292,11 @@ export const VoiceVisualBeatSchema = z
       .string()
       .trim()
       .min(12, 'Lời thuyết minh của beat cần rõ hơn.'),
+    spokenVoiceover: z
+      .string()
+      .trim()
+      .min(1, 'Cách đọc TTS không thể để trống.')
+      .optional(),
     visualDescription: z
       .string()
       .trim()
@@ -953,7 +994,12 @@ const topicProjectV12Schema = topicProjectV11Schema
   .extend({version: z.literal(12)})
   .strict();
 
-export const TopicProjectSchema = topicProjectV12Schema
+const topicProjectV13Schema = topicProjectV12Schema
+  .omit({version: true})
+  .extend({version: z.literal(13)})
+  .strict();
+
+export const TopicProjectSchema = topicProjectV13Schema
   .omit({version: true})
   .extend({version: z.literal(currentProjectVersion)})
   .strict();
@@ -1000,6 +1046,18 @@ function normalizeLegacyWatermark(value: unknown) {
   delete watermark.position;
   return {
     ...watermark,
+    ...(value.type === 'image'
+      ? {
+          tintColor:
+            typeof value.tintColor === 'string'
+              ? value.tintColor
+              : '#FFFFFF',
+          tintStrength:
+            typeof value.tintStrength === 'number'
+              ? value.tintStrength
+              : 0,
+        }
+      : {}),
     xPercent:
       typeof value.xPercent === 'number'
         ? value.xPercent
@@ -1088,6 +1146,16 @@ export function parseTopicProject(value: unknown): TopicProject {
       ? currentProject.data
       : inheritRenderSettings(currentProject.data);
     return bindLegacyVisualDesignSource(withRenderSettings);
+  }
+
+  const versionThirteenProject = topicProjectV13Schema.safeParse(
+    normalizedValue,
+  );
+  if (versionThirteenProject.success) {
+    return bindLegacyVisualDesignSource(inheritRenderSettings({
+      ...versionThirteenProject.data,
+      version: currentProjectVersion,
+    }));
   }
 
   const versionTwelveProject = topicProjectV12Schema.safeParse(

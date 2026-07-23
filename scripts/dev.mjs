@@ -78,6 +78,7 @@ let restartTimer;
 let restartPromise = Promise.resolve();
 const sourceWatchers = [];
 const stoppingPids = new Set();
+const backendRestartDrainTimeoutMs = 3 * 60 * 60 * 1_000;
 
 function isPidAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -255,7 +256,25 @@ async function restartBackend() {
   if (shuttingDown || !backendEntry) return;
   const previous = backendEntry;
   console.info('\nMã backend thay đổi, đang khởi động lại...');
-  await stopChild(previous);
+  previous.expectedExit = true;
+  let draining = false;
+  try {
+    if (previous.child.connected) {
+      previous.child.send({type: 'pad-dev-restart'});
+      draining = true;
+    }
+  } catch {
+    draining = false;
+  }
+  if (
+    !draining ||
+    !(await waitForExit(
+      previous.child,
+      backendRestartDrainTimeoutMs,
+    ))
+  ) {
+    await stopChild(previous);
+  }
   if (!shuttingDown && backendEntry === previous) backendEntry = startBackend();
 }
 

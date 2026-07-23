@@ -10,6 +10,40 @@ import type {
 } from './codexConnection.ts';
 import {createCodexVoiceVisualGenerator} from './voiceVisualGenerator.ts';
 
+function assertStrictObjectSchemas(schema: unknown, path = 'root') {
+  if (!schema || typeof schema !== 'object') return;
+  const node = schema as Record<string, unknown>;
+  const properties =
+    node.properties && typeof node.properties === 'object'
+      ? (node.properties as Record<string, unknown>)
+      : null;
+  if (node.type === 'object' && properties) {
+    assert.deepEqual(
+      node.required,
+      Object.keys(properties),
+      `${path} phải đánh dấu mọi property là required.`,
+    );
+    assert.equal(
+      node.additionalProperties,
+      false,
+      `${path} phải từ chối property ngoài schema.`,
+    );
+    for (const [key, value] of Object.entries(properties)) {
+      assertStrictObjectSchemas(value, `${path}.${key}`);
+    }
+  }
+  if ('items' in node) {
+    assertStrictObjectSchemas(node.items, `${path}[]`);
+  }
+  for (const unionKey of ['anyOf', 'oneOf', 'allOf'] as const) {
+    const branches = node[unionKey];
+    if (!Array.isArray(branches)) continue;
+    branches.forEach((branch, index) =>
+      assertStrictObjectSchemas(branch, `${path}.${unionKey}[${index}]`),
+    );
+  }
+}
+
 class FakeCodexClient implements CodexAppServerClient {
   readonly calls: Array<{method: string; params?: unknown}> = [];
   private listeners = new Set<
@@ -45,6 +79,8 @@ class FakeCodexClient implements CodexAppServerClient {
                       {
                         voiceover:
                           'Hãy hình dung ta đang tìm một giá trị trong cả dãy.',
+                        spokenVoiceover:
+                          'Hãy hình dung ta đang tìm một giá trị trong cả dãy.',
                         visualDescription:
                           'Một dãy phần tử trải ngang và toàn bộ vùng được sáng.',
                         animationDescription:
@@ -56,6 +92,8 @@ class FakeCodexClient implements CodexAppServerClient {
                     beats: [
                       {
                         voiceover:
+                          'Ta nhìn vào phần tử giữa để loại một nửa không thể chứa đáp án.',
+                        spokenVoiceover:
                           'Ta nhìn vào phần tử giữa để loại một nửa không thể chứa đáp án.',
                         visualDescription:
                           'Phần tử giữa nổi bật, một nửa dãy chuyển sang màu mờ.',
@@ -115,6 +153,7 @@ test('Codex voice–visual generator ánh xạ kết quả vào đúng section o
   const sourceInput = {
     topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
     learningGoal: 'Hiểu trực giác chia đôi.',
+    background: {mode: 'dark' as const, color: '#10231D'},
     audience: 'beginner' as const,
     duration: 'concise' as const,
   };
@@ -176,10 +215,30 @@ test('Codex voice–visual generator ánh xạ kết quả vào đúng section o
   const turnCall = client.calls.find((call) => call.method === 'turn/start');
   const turnParams = turnCall?.params as {
     input?: Array<{text?: string}>;
-    outputSchema?: unknown;
+    outputSchema?: {
+      properties?: {
+        sections?: {
+          items?: {
+            properties?: {
+              beats?: {
+                items?: {
+                  properties?: Record<string, unknown>;
+                  required?: string[];
+                };
+              };
+            };
+          };
+        };
+      };
+    };
     effort?: unknown;
   };
   assert.ok(turnParams.outputSchema);
+  assertStrictObjectSchemas(turnParams.outputSchema);
+  const generatedBeatSchema =
+    turnParams.outputSchema.properties?.sections?.items?.properties?.beats
+      ?.items;
+  assert.ok(generatedBeatSchema?.required?.includes('spokenVoiceover'));
   assert.equal(turnParams.effort, 'xhigh');
   assert.equal(
     turnParams.input?.[0]?.text?.includes('currentPlan'),

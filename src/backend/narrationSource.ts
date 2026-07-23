@@ -1,4 +1,5 @@
 import type {VoiceVisualPlan} from '../shared/topic.ts';
+import {speechTextForBeat} from '../shared/vietnameseSpeech.ts';
 
 export interface NarrationSourceBeat {
   beatId: string;
@@ -32,7 +33,7 @@ export function buildNarrationSource(plan: VoiceVisualPlan): NarrationSource {
     const beats = section.beats.map((beat, beatIndex) => {
       if (beatIndex > 0) characters.push('\n', '\n');
       const beatStartIndex = characters.length;
-      characters.push(...Array.from(beat.voiceover.trim()));
+      characters.push(...Array.from(speechTextForBeat(beat)));
       return {
         beatId: beat.id,
         textStartIndex: beatStartIndex,

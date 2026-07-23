@@ -37,6 +37,11 @@ export const RenderWatermarkSchema = z.discriminatedUnion('type', [
     type: z.literal('image'),
     assetId: Sha256Schema,
     widthPercent: z.number().finite().nonnegative(),
+    tintColor: z
+      .string()
+      .regex(/^#[0-9a-fA-F]{6}$/)
+      .default('#FFFFFF'),
+    tintStrength: z.number().finite().min(0).max(1).default(0),
   }).strict(),
 ]);
 
@@ -111,6 +116,18 @@ function normalizeLegacyFinalRenderBundle(value: unknown) {
     delete legacy.position;
     bundle.watermark = {
       ...legacy,
+      ...(legacy.type === 'image'
+        ? {
+            tintColor:
+              typeof legacy.tintColor === 'string'
+                ? legacy.tintColor
+                : '#FFFFFF',
+            tintStrength:
+              typeof legacy.tintStrength === 'number'
+                ? legacy.tintStrength
+                : 0,
+          }
+        : {}),
       xPercent:
         typeof legacy.xPercent === 'number'
           ? legacy.xPercent

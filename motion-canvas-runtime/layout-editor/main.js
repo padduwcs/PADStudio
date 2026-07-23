@@ -690,11 +690,25 @@ async function startEditor(project) {
       text.style.setProperty('--watermark-font-cqw', String(fontSize / 10.8));
       content.append(text);
     } else if (watermark.type === 'image' && payload.imageUrl) {
+      const imageShell = element('span', 'layout-watermark-image-shell');
       const image = element('img', 'layout-watermark-image');
       image.alt = 'Watermark preview';
       image.src = payload.imageUrl;
+      const tint = element('span', 'layout-watermark-image-tint');
+      const tintColor = /^#[0-9a-f]{6}$/i.test(watermark.tintColor ?? '')
+        ? watermark.tintColor
+        : '#ffffff';
+      const tintStrength = Math.min(
+        1,
+        Math.max(0, finiteNumber(watermark.tintStrength, 0)),
+      );
+      tint.style.backgroundColor = tintColor;
+      tint.style.opacity = String(tintStrength);
+      tint.style.maskImage = `url("${payload.imageUrl}")`;
+      tint.style.webkitMaskImage = `url("${payload.imageUrl}")`;
       content.style.width = `${Math.max(0, finiteNumber(watermark.widthPercent, 22))}%`;
-      content.append(image);
+      imageShell.append(image, tint);
+      content.append(imageShell);
     }
     watermarkLayer.append(content);
     enableWatermarkDrag(content, watermark);

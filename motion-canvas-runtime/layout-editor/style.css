@@ -302,11 +302,31 @@ input:focus-visible {
   white-space: pre-wrap;
 }
 
+.layout-watermark-image-shell {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
 .layout-watermark-image {
   display: block;
   width: 100%;
   height: auto;
   object-fit: contain;
+}
+
+.layout-watermark-image-tint {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background-position: center;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  pointer-events: none;
 }
 
 .layout-loading {

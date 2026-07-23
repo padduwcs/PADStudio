@@ -18,6 +18,10 @@ import {
   type VoiceVisualPlanContent,
 } from '../shared/topic.ts';
 import {plannedBeatDurationSeconds} from '../shared/narrationTiming.ts';
+import {
+  speechTextForBeat,
+  toVietnameseSpeechText,
+} from '../shared/vietnameseSpeech.ts';
 import type {CodexAppServerClient} from './codexConnection.ts';
 import {
   CodexStructuredGenerationError,
@@ -26,9 +30,10 @@ import {
 } from './codexStructuredGeneration.ts';
 
 export const VOICE_VISUAL_REVISION_PROMPT_VERSION =
-  'voice-visual-edit-v1';
+  'voice-visual-edit-v2';
 export const VOICE_VISUAL_COHERENCE_PROMPT_VERSION =
-  'voice-visual-coherence-v1';
+  'voice-visual-coherence-v2';
+const VOICE_VISUAL_CANDIDATE_REVIEW_TIMEOUT_MS = 90_000;
 
 const patchOutputSchema = z.toJSONSchema(VoiceVisualAiPatchSchema, {
   target: 'draft-7',
@@ -182,19 +187,29 @@ export function applyVoiceVisualPatch(
     let timingChanged = false;
     for (const field of [
       'voiceover',
+      'spokenVoiceover',
       'visualDescription',
       'animationDescription',
       'visualHoldSeconds',
     ] as const) {
       const value = beatPatch[field];
-      if (value === null) continue;
+      if (value == null) continue;
       assertAllowed(allowedFields.has(field), `beat ${beat.id} · ${field}`);
       beat[field] = value as never;
-      timingChanged ||= field === 'voiceover' || field === 'visualHoldSeconds';
+      timingChanged ||=
+        field === 'voiceover' ||
+        field === 'spokenVoiceover' ||
+        field === 'visualHoldSeconds';
+    }
+    if (
+      beatPatch.voiceover !== null &&
+      beatPatch.spokenVoiceover == null
+    ) {
+      beat.spokenVoiceover = toVietnameseSpeechText(beat.voiceover);
     }
     if (timingChanged) {
       beat.durationSeconds = plannedBeatDurationSeconds(
-        beat.voiceover,
+        speechTextForBeat(beat),
         beat.visualHoldSeconds,
         next.timingCalibration,
       );
@@ -231,14 +246,126 @@ function promptOutline(outline: TeachingOutline) {
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function nullableValue(
+  source: Record<string, unknown>,
+  key: string,
+) {
+  return key in source ? source[key] ?? null : null;
+}
+
+/**
+ * Structured output models occasionally omit fields whose value is null or
+ * wrap the requested object in `patch`. Normalize those equivalent sparse
+ * shapes before applying the strict, persisted patch contract.
+ */
+export function normalizeVoiceVisualPatchResponse(value: unknown) {
+  const root =
+    isRecord(value) && isRecord(value.patch) ? value.patch : value;
+  if (!isRecord(root)) return value;
+  const directions = isRecord(root.directions) ? root.directions : {};
+  const rawBeats =
+    Array.isArray(root.beats)
+      ? root.beats
+      : isRecord(root.beats)
+        ? Object.entries(root.beats).map(([beatId, patch]) => ({
+            beatId,
+            ...(isRecord(patch) ? patch : {}),
+          }))
+        : [];
+
+  return {
+    editSummary:
+      typeof root.editSummary === 'string'
+        ? root.editSummary
+        : typeof root.summary === 'string'
+          ? root.summary
+          : '',
+    voiceDirection:
+      'voiceDirection' in root
+        ? root.voiceDirection ?? null
+        : nullableValue(directions, 'voiceDirection'),
+    visualDirection:
+      'visualDirection' in root
+        ? root.visualDirection ?? null
+        : nullableValue(directions, 'visualDirection'),
+    beats: rawBeats.map((rawBeat) => {
+      if (!isRecord(rawBeat)) return rawBeat;
+      const changes = isRecord(rawBeat.changes)
+        ? rawBeat.changes
+        : isRecord(rawBeat.fields)
+          ? rawBeat.fields
+          : rawBeat;
+      const hold = nullableValue(changes, 'visualHoldSeconds');
+      return {
+        beatId:
+          typeof rawBeat.beatId === 'string'
+            ? rawBeat.beatId
+            : rawBeat.id,
+        voiceover: nullableValue(changes, 'voiceover'),
+        spokenVoiceover: nullableValue(changes, 'spokenVoiceover'),
+        visualDescription: nullableValue(changes, 'visualDescription'),
+        animationDescription: nullableValue(
+          changes,
+          'animationDescription',
+        ),
+        visualHoldSeconds:
+          typeof hold === 'string' && hold.trim() !== ''
+            ? Number(hold)
+            : hold,
+      };
+    }),
+  };
+}
+
+function parseAgentJson(responseText: string) {
+  const trimmed = responseText.trim();
+  const fenced = trimmed.match(
+    /^```(?:json)?\s*([\s\S]*?)\s*```$/iu,
+  );
+  return JSON.parse(fenced?.[1] ?? trimmed) as unknown;
+}
+
+function parseVoiceVisualPatch(responseText: string) {
+  const json = parseAgentJson(responseText);
+  return VoiceVisualAiPatchSchema.safeParse(
+    normalizeVoiceVisualPatchResponse(json),
+  );
+}
+
+function addUsage(
+  left: CodexTokenUsage | null,
+  right: CodexTokenUsage | null,
+) {
+  if (!left || !right) return left ?? right;
+  return {
+    inputTokens: left.inputTokens + right.inputTokens,
+    cachedInputTokens: left.cachedInputTokens + right.cachedInputTokens,
+    outputTokens: left.outputTokens + right.outputTokens,
+    reasoningOutputTokens:
+      left.reasoningOutputTokens + right.reasoningOutputTokens,
+    totalTokens: left.totalTokens + right.totalTokens,
+  };
+}
+
+function reviewReasoningEffort(effort?: string) {
+  return ['high', 'xhigh', 'max', 'ultra'].includes(effort ?? '')
+    ? 'medium'
+    : effort;
+}
+
 function buildRevisionPrompt(request: VoiceVisualRevisionRequest) {
   const editableBeatIds = new Set(request.scope.beats.map(beat => beat.beatId));
   return [
     'Chỉnh kế hoạch voice–visual tiếng Việt theo góp ý trong JSON.',
     'Đọc TOÀN BỘ outline và kế hoạch để giữ mạch kể, chuyển tiếp, thuật ngữ, nhịp và ngôn ngữ hình ảnh.',
-    'Chỉ trả giá trị mới cho đúng trường trong editScope; mọi trường khác phải là null và không được patch beat ngoài scope.',
+    'Chỉ trả giá trị mới cho đúng trường trong editScope; có thể bỏ hẳn các trường không đổi hoặc đặt chúng là null. Không được patch beat ngoài scope.',
     'Không thêm, xóa, đổi ID, đổi thứ tự beat/section hoặc sửa timingCalibration. Không viết lại phần đang tốt.',
     'Nếu sửa voiceover, câu mới phải nối tự nhiên với beat ngay trước và ngay sau. Nếu sửa visual/animation, phải tiếp tục khớp chính xác với lời kể hiện có.',
+    'Khi sửa voiceover, đồng thời cung cấp spokenVoiceover là cách TTS tiếng Việt cần đọc; phiên âm ký hiệu/công thức như O(n) → “ô nờ”, O(n^2) → “ô nờ bình”, O(log n) → “ô lốc nờ”, a[i] → “a tại chỉ số i”.',
     JSON.stringify({
       topicInput: request.topicInput,
       outline: promptOutline(request.outline),
@@ -249,6 +376,25 @@ function buildRevisionPrompt(request: VoiceVisualRevisionRequest) {
         .filter(beat => !editableBeatIds.has(beat.id))
         .map(beat => beat.id),
       currentPlan: request.baseContent,
+    }),
+  ].join('\n');
+}
+
+function buildPatchRepairPrompt(
+  request: VoiceVisualRevisionRequest,
+  invalidResponse: string,
+  issues: Array<{path: PropertyKey[]; message: string}>,
+) {
+  return [
+    buildRevisionPrompt(request),
+    'Phản hồi trước chưa khớp schema. Hãy trả lại đúng một JSON patch đã sửa; không giải thích.',
+    'Có thể bỏ các trường không đổi. Không đổi beatId và không thêm beat ngoài editScope.',
+    JSON.stringify({
+      validationIssues: issues.map(issue => ({
+        path: issue.path.join('.'),
+        message: issue.message,
+      })),
+      invalidResponse: invalidResponse.slice(0, 20_000),
     }),
   ].join('\n');
 }
@@ -327,12 +473,20 @@ export function createCodexVoiceVisualRevisionService(
     request: VoiceVisualReviewRequest,
   ): Promise<VoiceVisualReviewResult> {
     try {
+      const reasoningEffort = reviewReasoningEffort(
+        request.reasoningEffort,
+      );
       const reviewer = await runCodexStructuredGeneration({
         client,
         runtimeDirectory,
         timeoutMs:
           options.timeoutMs ??
-          codexGenerationTimeoutMs(request.reasoningEffort),
+          (request.target === 'candidate'
+            ? Math.min(
+                codexGenerationTimeoutMs(reasoningEffort),
+                VOICE_VISUAL_CANDIDATE_REVIEW_TIMEOUT_MS,
+              )
+            : codexGenerationTimeoutMs(reasoningEffort)),
         outputSchema: coherenceOutputSchema,
         prompt: buildReviewPrompt(request),
         baseInstructions:
@@ -340,7 +494,7 @@ export function createCodexVoiceVisualRevisionService(
         developerInstructions:
           'Review toàn bộ nội dung, chỉ ra đúng beat liên quan và phân biệt lỗi thực sự với sở thích diễn đạt. Bạn chỉ tư vấn, không quyết định thay người dùng.',
         model: request.model,
-        reasoningEffort: request.reasoningEffort,
+        reasoningEffort,
       });
       let reviewerJson: unknown;
       try {
@@ -397,7 +551,7 @@ export function createCodexVoiceVisualRevisionService(
     async revise(request) {
       assertScopeMatchesContent(request.baseContent, request.scope);
       try {
-        const editor = await runCodexStructuredGeneration({
+        let editor = await runCodexStructuredGeneration({
           client,
           runtimeDirectory,
           timeoutMs:
@@ -412,21 +566,68 @@ export function createCodexVoiceVisualRevisionService(
           model: request.model,
           reasoningEffort: request.reasoningEffort,
         });
-        let editorJson: unknown;
+        let parsedPatch:
+          | ReturnType<typeof parseVoiceVisualPatch>
+          | null = null;
+        let initialIssues: Array<{path: PropertyKey[]; message: string}> = [];
         try {
-          editorJson = JSON.parse(editor.responseText);
+          parsedPatch = parseVoiceVisualPatch(editor.responseText);
+          if (!parsedPatch.success) {
+            initialIssues = parsedPatch.error.issues;
+          }
         } catch (error) {
-          throw new VoiceVisualRevisionError(
-            'CODEX_VOICE_VISUAL_REVISION_INVALID_RESPONSE',
-            'Codex trả về patch không đúng định dạng.',
-            {cause: error},
-          );
+          initialIssues = [{
+            path: [],
+            message:
+              error instanceof Error
+                ? error.message
+                : 'JSON không hợp lệ.',
+          }];
         }
-        const parsedPatch = VoiceVisualAiPatchSchema.safeParse(editorJson);
+
+        if (!parsedPatch?.success) {
+          const repaired = await runCodexStructuredGeneration({
+            client,
+            runtimeDirectory,
+            timeoutMs:
+              options.timeoutMs ??
+              codexGenerationTimeoutMs(request.reasoningEffort),
+            outputSchema: patchOutputSchema,
+            prompt: buildPatchRepairPrompt(
+              request,
+              editor.responseText,
+              initialIssues,
+            ),
+            baseInstructions:
+              'Bạn sửa một JSON patch voice–visual cho PAD Studio. Không dùng công cụ hoặc đọc tệp. Chỉ trả JSON đúng schema.',
+            developerInstructions:
+              'Chỉ sửa cấu trúc phản hồi và các giá trị sai schema. Không mở rộng editScope, không đổi ID và không viết lại thêm nội dung.',
+            model: request.model,
+            reasoningEffort: request.reasoningEffort,
+          });
+          const combinedUsage = addUsage(editor.usage, repaired.usage);
+          const combinedModel = [...new Set([editor.model, repaired.model])]
+            .join(', ')
+            .slice(0, 160);
+          editor = {
+            ...repaired,
+            model: combinedModel,
+            usage: combinedUsage,
+          };
+          try {
+            parsedPatch = parseVoiceVisualPatch(repaired.responseText);
+          } catch (error) {
+            throw new VoiceVisualRevisionError(
+              'CODEX_VOICE_VISUAL_REVISION_INVALID_RESPONSE',
+              'Codex chưa sửa được patch JSON sau lượt tự khắc phục.',
+              {cause: error},
+            );
+          }
+        }
         if (!parsedPatch.success) {
           throw new VoiceVisualRevisionError(
             'CODEX_VOICE_VISUAL_REVISION_INVALID_RESPONSE',
-            'Codex trả về patch chưa đúng cấu trúc yêu cầu.',
+            'Codex chưa sửa được cấu trúc patch sau lượt tự khắc phục.',
             {cause: parsedPatch.error},
           );
         }
@@ -436,25 +637,55 @@ export function createCodexVoiceVisualRevisionService(
           parsedPatch.data,
         );
 
-        const reviewed = await review({
-          target: 'candidate',
-          topicInput: request.topicInput,
-          outline: request.outline,
-          baseContent: request.baseContent,
-          content,
-          scope: request.scope,
-          guidance: request.guidance,
-          patch: parsedPatch.data,
-          model: request.model,
-          reasoningEffort: request.reasoningEffort,
-        });
+        let coherence: VoiceVisualCoherenceReview;
+        let reviewerUsage: CodexTokenUsage | null = null;
+        try {
+          const reviewed = await review({
+            target: 'candidate',
+            topicInput: request.topicInput,
+            outline: request.outline,
+            baseContent: request.baseContent,
+            content,
+            scope: request.scope,
+            guidance: request.guidance,
+            patch: parsedPatch.data,
+            model: request.model,
+            reasoningEffort: request.reasoningEffort,
+          });
+          coherence = reviewed.coherence;
+          reviewerUsage = reviewed.usage;
+        } catch (error) {
+          coherence = {
+            verdict: 'warning',
+            summary:
+              'Patch đã hợp lệ và được áp dụng đúng phạm vi, nhưng lượt kiểm tra mạch lạc tự động chưa hoàn tất.',
+            issues: [{
+              severity: 'warning',
+              category: 'scope',
+              message:
+                'Reviewer Codex tạm thời không phản hồi; candidate vẫn được giữ để bạn không mất phần chỉnh sửa đã sinh.',
+              suggestedFix:
+                'Xem trước candidate và chạy lại góp ý toàn bộ nếu cần kiểm tra thêm.',
+              affectedBeatIds: request.scope.beats.map(
+                item => item.beatId,
+              ),
+              requiresScopeExpansion: false,
+            }],
+          };
+          if (
+            !(error instanceof VoiceVisualRevisionError) &&
+            !(error instanceof CodexStructuredGenerationError)
+          ) {
+            throw error;
+          }
+        }
         return {
           patch: parsedPatch.data,
           content,
-          coherence: reviewed.coherence,
+          coherence,
           model: editor.model,
           editorUsage: editor.usage,
-          reviewerUsage: reviewed.usage,
+          reviewerUsage,
         };
       } catch (error) {
         if (error instanceof VoiceVisualRevisionError) throw error;

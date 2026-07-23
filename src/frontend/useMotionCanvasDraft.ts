@@ -29,6 +29,7 @@ import {
   restoreMotionCanvasVersion,
 } from './api.ts';
 import {recordCodexWaitSample} from './codexWaitEstimate.ts';
+import {motionCanvasReviewerRepair} from './motionCanvasCandidateRepair.ts';
 import {ProjectOperationQueue} from './projectOperationQueue.ts';
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -46,6 +47,7 @@ export function useMotionCanvasDraft(projectId: string) {
   const [actionError, setActionError] = useState('');
   const [generating, setGenerating] = useState(false);
   const [candidateGenerating, setCandidateGenerating] = useState(false);
+  const [candidateRepairing, setCandidateRepairing] = useState(false);
   const [candidateApplying, setCandidateApplying] = useState(false);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [history, setHistory] = useState<MotionCanvasHistoryResponse | null>(
@@ -82,6 +84,10 @@ export function useMotionCanvasDraft(projectId: string) {
     fingerprint: string;
     generationId: string;
   } | null>(null);
+  const candidateRepairRequestRef = useRef<{
+    fingerprint: string;
+    generationId: string;
+  } | null>(null);
 
   async function loadFiles(loadedProject: TopicProject, session: number) {
     if (!loadedProject.motionCanvasBundle) {
@@ -103,6 +109,7 @@ export function useMotionCanvasDraft(projectId: string) {
     operationQueueRef.current = new ProjectOperationQueue();
     generationRequestRef.current = null;
     candidateRequestRef.current = null;
+    candidateRepairRequestRef.current = null;
     projectRef.current = null;
     setProject(null);
     setFiles([]);
@@ -113,6 +120,7 @@ export function useMotionCanvasDraft(projectId: string) {
     setConflict(false);
     setGenerating(false);
     setCandidateGenerating(false);
+    setCandidateRepairing(false);
     setCandidateApplying(false);
     setHistoryBusy(false);
     setHistory(null);
@@ -381,10 +389,11 @@ export function useMotionCanvasDraft(projectId: string) {
     if (candidateGenerating || conflict) return null;
     const startedAt = Date.now();
     setCandidateGenerating(true);
+    setCandidateRepairing(false);
     setActionError('');
     setHistoryError('');
     try {
-      const created = await operationQueueRef.current.enqueue(async () => {
+      const result = await operationQueueRef.current.enqueue(async () => {
         const currentProject = projectRef.current;
         if (!currentProject) throw new MotionCanvasOperationCancelledError();
         if (motionCanvasIsStale(currentProject)) {
@@ -411,7 +420,7 @@ export function useMotionCanvasDraft(projectId: string) {
             ? previous.generationId
             : crypto.randomUUID();
         candidateRequestRef.current = {fingerprint, generationId};
-        return createMotionCanvasCandidate(
+        const created = await createMotionCanvasCandidate(
           projectId,
           {
             generationId,
@@ -423,22 +432,97 @@ export function useMotionCanvasDraft(projectId: string) {
           },
           currentProject.revision,
         );
+        const reviewerRepair = motionCanvasReviewerRepair(created);
+        if (!reviewerRepair) {
+          return {
+            candidates: [created],
+            finalCandidate: created,
+            repairError: null,
+          };
+        }
+
+        setCandidate(created);
+        setCandidateRepairing(true);
+        const repairFingerprint = JSON.stringify({
+          projectId,
+          revision: currentProject.revision,
+          baseCandidateId: created.candidateId,
+          guidance: reviewerRepair.guidance,
+          scope: reviewerRepair.scope,
+          model,
+          reasoningEffort,
+        });
+        const previousRepair = candidateRepairRequestRef.current;
+        const repairGenerationId =
+          previousRepair?.fingerprint === repairFingerprint
+            ? previousRepair.generationId
+            : crypto.randomUUID();
+        candidateRepairRequestRef.current = {
+          fingerprint: repairFingerprint,
+          generationId: repairGenerationId,
+        };
+        try {
+          const repaired = await createMotionCanvasCandidate(
+            projectId,
+            {
+              generationId: repairGenerationId,
+              baseCandidateId: created.candidateId,
+              guidance: reviewerRepair.guidance,
+              scope: reviewerRepair.scope,
+              model: model || undefined,
+              reasoningEffort: reasoningEffort || undefined,
+            },
+            currentProject.revision,
+          );
+          return {
+            candidates: [created, repaired],
+            finalCandidate: repaired,
+            repairError: null,
+          };
+        } catch (repairError) {
+          return {
+            candidates: [created],
+            finalCandidate: created,
+            repairError,
+          };
+        }
       });
-      candidateRequestRef.current = null;
+      const created = result.finalCandidate;
+      if (!result.repairError) {
+        candidateRequestRef.current = null;
+        candidateRepairRequestRef.current = null;
+      }
       setCandidate(created);
       setHistory(current =>
         current
           ? {
               ...current,
               candidates: [
-                created,
+                ...[...result.candidates].reverse(),
                 ...current.candidates.filter(
-                  item => item.candidateId !== created.candidateId,
+                  item =>
+                    !result.candidates.some(
+                      createdItem =>
+                        createdItem.candidateId === item.candidateId,
+                    ),
                 ),
               ],
             }
           : current,
       );
+      if (result.repairError) {
+        if (
+          result.repairError instanceof ApiRequestError &&
+          result.repairError.code === 'PROJECT_CONFLICT'
+        ) setConflict(true);
+        const detail =
+          result.repairError instanceof ApiRequestError
+            ? result.repairError.message
+            : 'Codex chưa hoàn tất lượt sửa tiếp theo.';
+        setActionError(
+          `Candidate đầu tiên đã được lưu và có thể preview, nhưng lượt tự sửa theo reviewer chưa hoàn tất: ${detail}`,
+        );
+      }
       if (reasoningEffort) {
         recordCodexWaitSample({
           model: created.generation.requestedModel ?? model ?? created.generation.model,
@@ -466,6 +550,7 @@ export function useMotionCanvasDraft(projectId: string) {
       );
       return null;
     } finally {
+      setCandidateRepairing(false);
       setCandidateGenerating(false);
     }
   }
@@ -719,6 +804,7 @@ export function useMotionCanvasDraft(projectId: string) {
     actionError,
     generating,
     candidateGenerating,
+    candidateRepairing,
     candidateApplying,
     historyBusy,
     history,

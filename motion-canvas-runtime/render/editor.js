@@ -117,6 +117,33 @@ function watermarkOrigin(watermark, canvasWidth, canvasHeight, width, height) {
   };
 }
 
+async function tintWatermarkBitmap(bitmap, watermark) {
+  const strength = Math.min(1, Math.max(0, Number(watermark.tintStrength) || 0));
+  if (
+    strength <= 0 ||
+    !/^#[0-9a-f]{6}$/i.test(String(watermark.tintColor ?? ''))
+  ) {
+    return bitmap;
+  }
+  const canvas =
+    typeof OffscreenCanvas === 'function'
+      ? new OffscreenCanvas(bitmap.width, bitmap.height)
+      : Object.assign(document.createElement('canvas'), {
+          width: bitmap.width,
+          height: bitmap.height,
+        });
+  const context = canvas.getContext('2d');
+  if (!context) return bitmap;
+  context.drawImage(bitmap, 0, 0);
+  context.globalCompositeOperation = 'source-atop';
+  context.globalAlpha = strength;
+  context.fillStyle = watermark.tintColor;
+  context.fillRect(0, 0, bitmap.width, bitmap.height);
+  const tinted = await createImageBitmap(canvas);
+  bitmap.close?.();
+  return tinted;
+}
+
 function drawWatermark(context, watermark, bitmap) {
   if (!watermark || watermark.type === 'none') return;
   const width = context.canvas.width;
@@ -265,6 +292,10 @@ async function start(project) {
       );
       if (!imageResponse.ok) throw new Error('Không thể đọc ảnh watermark đã chọn.');
       watermarkBitmap = await createImageBitmap(await imageResponse.blob());
+      watermarkBitmap = await tintWatermarkBitmap(
+        watermarkBitmap,
+        config.watermark,
+      );
     }
 
     project.meta.rendering.exporter.exporters.push(PadStreamingExporter);

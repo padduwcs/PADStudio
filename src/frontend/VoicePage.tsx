@@ -9,6 +9,7 @@ import {
   narrationMetrics,
   type NarrationCalibration,
 } from '../shared/narrationTiming.ts';
+import {speechTextForBeat} from '../shared/vietnameseSpeech.ts';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {ElevenLabsConnectionCard} from './ElevenLabsConnectionCard.tsx';
 import {
@@ -303,7 +304,7 @@ export function VoicePage({projectId}: {projectId: string}) {
     freeTier &&
     Boolean(voice.selectedVoice?.requiresPaidApiOnFreeTier);
   const narrationText = plan.sections
-    .flatMap((section) => section.beats.map((beat) => beat.voiceover.trim()))
+    .flatMap((section) => section.beats.map(speechTextForBeat))
     .join('\n\n');
   const characterCount = Array.from(narrationText).length;
   const selectedPreset = voice.catalog?.recentPresets.find(

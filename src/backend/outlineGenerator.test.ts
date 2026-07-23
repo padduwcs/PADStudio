@@ -137,6 +137,7 @@ test('Codex outline generator nhận kết quả từ item stream khi turn khôn
       topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
       learningGoal: 'Hiểu trực giác chia đôi.',
       videoDirection: 'Video dọc 90 giây, ngắn gọn, không dùng code.',
+      background: {mode: 'light', color: '#F5F7F4'},
       audience: 'beginner',
       duration: 'concise',
     },

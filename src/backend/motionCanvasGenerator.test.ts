@@ -12,6 +12,7 @@ import {
   createCodexMotionCanvasGenerator,
   MotionCanvasGenerationError,
   type MotionCanvasGenerationRequest,
+  validateMotionCanvasBackground,
   validateMotionCanvasSceneSource,
   validateMotionCanvasTimingContract,
 } from './motionCanvasGenerator.ts';
@@ -20,7 +21,11 @@ const sceneSource = `import {makeScene2D, Rect} from '@motion-canvas/2d';
 import {waitFor} from '@motion-canvas/core';
 
 export default makeScene2D(function* (view) {
-  view.add(<Rect key="main-visual-card" width={640} height={120} radius={24} fill={'#dbe9e2'} />);
+  view.add(
+    <Rect key="scene-background" width={1080} height={1920} fill={'#10231D'}>
+      <Rect key="main-visual-card" width={640} height={120} radius={24} fill={'#dbe9e2'} />
+    </Rect>,
+  );
   yield* waitFor(12);
 });
 `;
@@ -30,7 +35,11 @@ function timedSceneSource(beatIds: string[]) {
 import {useDuration, useThread, waitFor, waitUntil} from '@motion-canvas/core';
 
 export default makeScene2D(function* (view) {
-  view.add(<Rect key="main-visual-card" width={640} height={120} radius={24} fill={'#dbe9e2'} />);
+  view.add(
+    <Rect key="scene-background" width={1080} height={1920} fill={'#10231D'}>
+      <Rect key="main-visual-card" width={640} height={120} radius={24} fill={'#dbe9e2'} />
+    </Rect>,
+  );
 ${beatIds
   .map(
     (beatId, index) => `  yield* waitUntil('beat:${beatId}:start');
@@ -43,6 +52,18 @@ ${beatIds
 });
 `;
 }
+
+test('Motion Canvas bắt buộc scene dùng đúng background người dùng chọn', () => {
+  assert.doesNotThrow(() =>
+    validateMotionCanvasBackground(sceneSource, '#10231D'),
+  );
+  assert.throws(
+    () => validateMotionCanvasBackground(sceneSource, '#F5F7F4'),
+    (error: unknown) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+  );
+});
 
 class FakeCodexClient implements CodexAppServerClient {
   readonly calls: Array<{method: string; params?: unknown}> = [];
@@ -140,8 +161,8 @@ class FakeCodexClient implements CodexAppServerClient {
                   source:
                     turnNumber <= this.invalidTurnCount
                       ? timedSceneSource(beatIds).replace(
-                          'view.add(<Rect',
-                          'view.add(<Rect broken={',
+                          'width={1080}',
+                          'width={',
                         )
                       : timedSceneSource(beatIds),
                 }),
@@ -183,6 +204,7 @@ function createGenerationRequest(): MotionCanvasGenerationRequest {
   const sectionIds = [randomUUID(), randomUUID()];
   const topicInput = {
     topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
+    background: {mode: 'dark' as const, color: '#10231D'},
     audience: 'beginner' as const,
     duration: 'concise' as const,
   };
@@ -327,6 +349,7 @@ test('Motion Canvas generator ánh xạ scene theo đúng voice–visual', async
   const secondSectionId = randomUUID();
   const sourceInput = {
     topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
+    background: {mode: 'dark' as const, color: '#10231D'},
     audience: 'beginner' as const,
     duration: 'concise' as const,
   };
@@ -744,22 +767,24 @@ test('Motion Canvas source policy yêu cầu layout key duy nhất trong scene',
 });
 
 test('Motion Canvas source policy chặn node sinh qua callback, loop hoặc constructor', () => {
-  const visualLine =
-    '  view.add(<Rect key="main-visual-card" width={640} height={120} radius={24} fill={\'#dbe9e2\'} />);';
+  const timingLine = '  yield* waitFor(12);';
   const invalidSources = [
     sceneSource.replace(
-      visualLine,
-      '  [1, 2].map(() => <Rect key="mapped-visual-card" width={640} height={120} />);',
+      timingLine,
+      `  [1, 2].map(() => <Rect key="mapped-visual-card" width={640} height={120} />);
+${timingLine}`,
     ),
     sceneSource.replace(
-      visualLine,
+      timingLine,
       `  for (let index = 0; index < 2; index += 1) {
     view.add(<Rect key="looped-visual-card" width={640} height={120} />);
-  }`,
+  }
+${timingLine}`,
     ),
     sceneSource.replace(
-      visualLine,
-      '  view.add(new Rect({width: 640, height: 120}));',
+      timingLine,
+      `  view.add(new Rect({width: 640, height: 120}));
+${timingLine}`,
     ),
   ];
 

@@ -11,6 +11,7 @@ import {
 } from '../shared/narrationTiming.ts';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import type {VoiceVisualPlanContent} from '../shared/topic.ts';
+import {speechTextForBeat} from '../shared/vietnameseSpeech.ts';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {
@@ -69,6 +70,7 @@ function voiceVisualContentChanges(
       if (!baseBeat) return;
       for (const [field, label] of [
         ['voiceover', 'Lời kể'],
+        ['spokenVoiceover', 'Cách đọc TTS'],
         ['visualDescription', 'Visual'],
         ['animationDescription', 'Chuyển động'],
         ['visualHoldSeconds', 'Giữ hình'],
@@ -189,9 +191,13 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
       const next = {...current};
       for (const beat of plan.draft!.sections.flatMap(section => section.beats)) {
         const fields = next[beat.id] ?? [];
-        next[beat.id] = fields.includes('voiceover')
-          ? fields
-          : [...fields, 'voiceover'];
+        next[beat.id] = [
+          ...new Set([
+            ...fields,
+            'voiceover' as const,
+            'spokenVoiceover' as const,
+          ]),
+        ];
       }
       return next;
     });
@@ -209,6 +215,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
             beat.id,
             [
               'voiceover',
+              'spokenVoiceover',
               'visualDescription',
               'animationDescription',
               'visualHoldSeconds',
@@ -796,6 +803,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                 {(
                                   [
                                     ['voiceover', 'Lời kể'],
+                                    ['spokenVoiceover', 'Cách đọc TTS'],
                                     ['visualDescription', 'Visual'],
                                     ['animationDescription', 'Chuyển động'],
                                     ['visualHoldSeconds', 'Giữ hình'],
@@ -832,6 +840,43 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                       )
                                     }
                                   />
+                                </label>
+                                <label className="outline-field voice-field tts-pronunciation-field">
+                                  <span>
+                                    Cách ElevenLabs đọc
+                                    <small>
+                                      Đã chuyển ký hiệu và công thức thành âm tiết
+                                    </small>
+                                  </span>
+                                  <textarea
+                                    rows={3}
+                                    disabled={plan.stale}
+                                    value={speechTextForBeat(beat)}
+                                    onChange={(event) =>
+                                      plan.updateBeat(
+                                        planSection.outlineSectionId,
+                                        beat.id,
+                                        'spokenVoiceover',
+                                        event.target.value,
+                                      )
+                                    }
+                                  />
+                                  {beat.spokenVoiceover && (
+                                    <button
+                                      type="button"
+                                      disabled={plan.stale}
+                                      onClick={() =>
+                                        plan.updateBeat(
+                                          planSection.outlineSectionId,
+                                          beat.id,
+                                          'spokenVoiceover',
+                                          undefined,
+                                        )
+                                      }
+                                    >
+                                      Dùng lại phiên âm tự động
+                                    </button>
+                                  )}
                                 </label>
                                 <label className="outline-field">
                                   <span>Visual cần thấy</span>
@@ -874,7 +919,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                     <small>
                                       {
                                         narrationMetrics(
-                                          beat.voiceover,
+                                          speechTextForBeat(beat),
                                           draft.timingCalibration,
                                         )
                                           .whitespaceTokenCount

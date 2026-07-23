@@ -9,6 +9,7 @@ import type {
   VoiceVisualPlan,
   VoiceVisualPlanContent,
 } from '../shared/topic.ts';
+import {videoBackgroundTone} from '../shared/topic.ts';
 import {
   DEFAULT_NARRATION_CALIBRATION,
   plannedBeatDurationSeconds,
@@ -26,7 +27,7 @@ import {
   runCodexStructuredGeneration,
 } from './codexStructuredGeneration.ts';
 
-export const VOICE_VISUAL_PROMPT_VERSION = 'voice-visual-v3';
+export const VOICE_VISUAL_PROMPT_VERSION = 'voice-visual-v5';
 
 const generatedVoiceVisualSchema = z
   .object({
@@ -41,6 +42,7 @@ const generatedVoiceVisualSchema = z
                 z
                   .object({
                     voiceover: z.string().trim().min(12),
+                    spokenVoiceover: z.string().trim().min(1),
                     visualDescription: z.string().trim().min(12),
                     animationDescription: z.string().trim().min(8),
                   })
@@ -152,10 +154,12 @@ function buildPrompt(request: VoiceVisualGenerationRequest) {
     'Giữ nguyên số lượng và thứ tự các section của outline; mỗi phần tử output tương ứng đúng một section.',
     `Tự chọn số beat cần thiết cho từng section theo nội dung và targetNarrationTokenCount; mỗi beat chỉ truyền đạt một ý. Không ép vào 1–4 beat. Cầu chì kỹ thuật là ${pipelineSafetyLimits.maximumBeatsPerSection} beat/section và ${pipelineSafetyLimits.maximumTotalBeats} beat/project.`,
     'voiceover là lời kể tự nhiên sẵn sàng cho TTS, không chứa chỉ dẫn sân khấu.',
+    'Mỗi beat phải có spokenVoiceover là cách ElevenLabs cần đọc bằng tiếng Việt: phiên âm ký hiệu, công thức và truy cập mảng thành âm tiết tự nhiên. Ví dụ O(n) → “ô nờ”, O(n^2) → “ô nờ bình”, O(log n) → “ô lốc nờ”, a[i] → “a tại chỉ số i”. Không để ký hiệu kỹ thuật khó đọc trong spokenVoiceover.',
     'Viết toàn bộ voiceover như một bài nói liên tục: section sau nối trực tiếp ý và nhịp của section trước, không lặp mở bài, không tự giới thiệu lại và không kết luận riêng từng section.',
     'Bám sát targetNarrationTokenCount của từng section và tổng narrationBudget; đây là ngân sách các đơn vị phân tách bằng khoảng trắng, không phải số từ ngôn ngữ học.',
     'visualDescription mô tả điều người xem cần thấy; animationDescription mô tả thay đổi hoặc chuyển động cụ thể.',
     'Visual phải tự truyền đạt ý cùng voice, không phụ thuộc caption, không hiển thị source code và không thêm chi tiết trang trí vô nghĩa.',
+    `Toàn bộ visual phải phù hợp background ${request.topicInput.background.color} (${videoBackgroundTone(request.topicInput.background)}): chọn màu chữ, đường nét, thẻ và điểm nhấn có độ tương phản rõ, không tự thay nền chính sang tone đối nghịch.`,
     'Không tự ước lượng duration; PAD Studio sẽ tính timing từ chính lời thoại.',
     JSON.stringify(payload),
   ].join('\n');
@@ -266,17 +270,19 @@ export function createCodexVoiceVisualGenerator(
               },
             sections: parsedPlan.data.sections.map((section, index) => ({
               outlineSectionId: request.outline.sections[index]!.id,
-              beats: section.beats.map((beat) => ({
-                id: randomUUID(),
-                ...beat,
-                visualHoldSeconds: 0,
-                durationSeconds: plannedBeatDurationSeconds(
-                  beat.voiceover,
-                  0,
-                  request.timingCalibration ??
-                    DEFAULT_NARRATION_CALIBRATION,
-                ),
-              })),
+              beats: section.beats.map((beat) => {
+                return {
+                  id: randomUUID(),
+                  ...beat,
+                  visualHoldSeconds: 0,
+                  durationSeconds: plannedBeatDurationSeconds(
+                    beat.spokenVoiceover,
+                    0,
+                    request.timingCalibration ??
+                      DEFAULT_NARRATION_CALIBRATION,
+                  ),
+                };
+              }),
             })),
           },
           model: generated.model,

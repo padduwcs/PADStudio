@@ -5,6 +5,7 @@ import {
   closePadStudioServerServices,
   createPadStudioServer,
 } from './app.ts';
+import {closeHttpServer} from './httpServerShutdown.ts';
 
 const envFile = fileURLToPath(new URL('../../.env', import.meta.url));
 if (existsSync(envFile)) loadEnvFile(envFile);
@@ -32,37 +33,26 @@ server.listen(port, host, () => {
 let shutdownPromise: Promise<void> | null = null;
 let supervisorWatchdog: NodeJS.Timeout | null = null;
 
-function shutdown() {
+function shutdown(options: {drainInFlight?: boolean} = {}) {
   if (shutdownPromise) return shutdownPromise;
   if (supervisorWatchdog) {
     clearInterval(supervisorWatchdog);
     supervisorWatchdog = null;
   }
   shutdownPromise = (async () => {
-    if (server.listening) {
-      await new Promise<void>((resolve) => {
-        const forceClose = setTimeout(() => {
-          server.closeAllConnections();
-        }, 1_500);
-        forceClose.unref();
-        server.closeIdleConnections();
-        server.close((error) => {
-          clearTimeout(forceClose);
-          if (error) {
-            console.error(error);
-            process.exitCode = 1;
-          }
-          resolve();
-        });
-      });
-    }
+    await closeHttpServer(server, {
+      forceCloseAfterMs: options.drainInFlight ? null : 1_500,
+    });
     await closePadStudioServerServices(server);
   })();
   return shutdownPromise;
 }
 
-function shutdownAndExit(exitCode = 0) {
-  void shutdown().then(() => process.exit(exitCode));
+function shutdownAndExit(
+  exitCode = 0,
+  options: {drainInFlight?: boolean} = {},
+) {
+  void shutdown(options).then(() => process.exit(exitCode));
 }
 
 if (Number.isInteger(devSupervisorPid) && devSupervisorPid > 0) {
@@ -85,6 +75,15 @@ process.on('message', (message) => {
     message.type === 'pad-dev-shutdown'
   ) {
     shutdownAndExit(0);
+    return;
+  }
+  if (
+    typeof message === 'object' &&
+    message !== null &&
+    'type' in message &&
+    message.type === 'pad-dev-restart'
+  ) {
+    shutdownAndExit(0, {drainInFlight: true});
   }
 });
 process.on('SIGINT', () => shutdownAndExit(0));

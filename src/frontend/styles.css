@@ -12,15 +12,61 @@
   --green-800: #1b4a3d;
   --green-700: #245f4d;
   --green-100: #deebe5;
-  --paper: #fbfaf7;
-  --canvas: #f3f1eb;
-  --line: #dcded8;
+  --paper: #fffdf9;
+  --surface: #f8faf8;
+  --surface-raised: #ffffff;
+  --surface-soft: #eff4f1;
+  --control-bg: #ffffff;
+  --canvas: #e9ece7;
+  --line: #cbd5cf;
+  --line-strong: #b7c5bd;
   --orange: #e77849;
   --orange-soft: #fff0e7;
   --danger: #b94738;
   --success: #2b7457;
-  --shadow: 0 18px 55px rgba(35, 55, 47, 0.08);
+  --shadow:
+    0 1px 2px rgba(29, 55, 45, 0.06),
+    0 16px 42px rgba(29, 55, 45, 0.11);
+  --shadow-sm:
+    0 1px 2px rgba(29, 55, 45, 0.05),
+    0 7px 20px rgba(29, 55, 45, 0.07);
+  --control-shadow:
+    inset 0 1px 0 rgba(24, 56, 44, 0.025),
+    0 1px 2px rgba(24, 56, 44, 0.045);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root[data-theme="dark"] {
+  color: #e5eee9;
+  background: #08120f;
+  --ink: #e5eee9;
+  --ink-soft: #9aada5;
+  --green-900: #0a1512;
+  --green-800: #173d32;
+  --green-700: #78b99c;
+  --green-100: #203b32;
+  --paper: #14271f;
+  --surface: #1b322a;
+  --surface-raised: #1f3a30;
+  --surface-soft: #0f211a;
+  --control-bg: #193028;
+  --canvas: #08120f;
+  --line: #345148;
+  --line-strong: #42645a;
+  --orange: #f09369;
+  --orange-soft: #3b261f;
+  --danger: #ef8c7e;
+  --success: #72c99c;
+  --shadow:
+    inset 0 1px 0 rgba(225, 240, 233, 0.045),
+    0 20px 52px rgba(0, 0, 0, 0.43),
+    0 3px 10px rgba(0, 0, 0, 0.24);
+  --shadow-sm:
+    inset 0 1px 0 rgba(225, 240, 233, 0.035),
+    0 9px 24px rgba(0, 0, 0, 0.28);
+  --control-shadow:
+    inset 0 1px 0 rgba(225, 240, 233, 0.035),
+    0 2px 5px rgba(0, 0, 0, 0.18);
 }
 
 * {
@@ -208,6 +254,35 @@ button:not(:disabled):active {
 }
 
 .projects-nav-button svg {
+  width: 15px;
+  color: #ef9870;
+}
+
+.theme-toggle {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 9px;
+  margin-top: 8px;
+  padding: 0 12px;
+  border: 1px solid rgba(213, 231, 222, 0.12);
+  border-radius: 10px;
+  color: #c0d4cb;
+  background: rgba(255, 255, 255, 0.045);
+  font-size: 10.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  border-color: rgba(213, 231, 222, 0.24);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.theme-toggle svg {
   width: 15px;
   color: #ef9870;
 }
@@ -405,6 +480,22 @@ button:not(:disabled):active {
   width: 15px;
 }
 
+.mobile-theme-button {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  grid-row: 1 / 3;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 9px;
+  color: #e2ece7;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.mobile-theme-button svg {
+  width: 15px;
+}
+
 .workspace {
   min-height: 100vh;
   overflow-x: clip;
@@ -547,7 +638,7 @@ button:not(:disabled):active {
   overflow: hidden;
   border: 1px solid rgba(64, 86, 77, 0.12);
   border-radius: 20px;
-  background: rgba(251, 250, 247, 0.95);
+  background: color-mix(in srgb, var(--paper) 95%, transparent);
   box-shadow: var(--shadow);
 }
 
@@ -3607,7 +3698,7 @@ kbd {
 
   .mobile-progress {
     display: grid;
-    grid-template-columns: auto auto;
+    grid-template-columns: auto auto auto;
     align-items: center;
     justify-items: end;
     gap: 4px 9px;
@@ -4361,6 +4452,252 @@ kbd {
   margin-bottom: 11px;
   padding-bottom: 11px;
   border-bottom: 1px solid rgba(53, 87, 74, 0.09);
+}
+
+.background-picker {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+}
+
+.background-picker > legend {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.background-picker > legend small {
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 560;
+}
+
+.background-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 11px;
+}
+
+.background-choice {
+  display: flex;
+  min-width: 0;
+  min-height: 70px;
+  align-items: center;
+  gap: 11px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.background-choice:hover,
+.background-choice.is-selected {
+  border-color: var(--orange);
+  box-shadow: 0 0 0 2px rgba(231, 120, 73, 0.1);
+}
+
+.background-choice-swatch {
+  width: 34px;
+  height: 46px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(128, 142, 136, 0.35);
+  border-radius: 9px;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.16);
+}
+
+.background-choice > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.background-choice strong {
+  font-size: 11px;
+}
+
+.background-choice small {
+  color: var(--ink-soft);
+  font-size: 9.5px;
+  line-height: 1.35;
+}
+
+.background-custom-color {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: var(--ink-soft);
+  background: var(--surface-soft);
+  font-size: 10.5px;
+}
+
+.background-custom-color > span {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.background-custom-color input[type="color"] {
+  width: 38px;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.background-custom-color code {
+  color: var(--ink);
+}
+
+.background-color-dot {
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgba(128, 142, 136, 0.4);
+  border-radius: 50%;
+}
+
+.tts-pronunciation-field {
+  position: relative;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--green-700) 24%, var(--line));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--green-100) 38%, transparent);
+}
+
+.tts-pronunciation-field > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tts-pronunciation-field > span small {
+  color: var(--ink-soft);
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.tts-pronunciation-field > button {
+  width: fit-content;
+  margin-top: 7px;
+  border: 0;
+  color: var(--green-700);
+  background: transparent;
+  font-size: 9.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.motion-candidate-progress {
+  display: block;
+  margin-top: 9px;
+  color: var(--ink-soft);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .background-choice-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Application theme: editor canvases remain intentionally neutral so the
+   selected video background is never confused with the PAD Studio UI theme. */
+:root[data-theme="dark"] body {
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+:root[data-theme="dark"] .workspace {
+  background:
+    linear-gradient(rgba(146, 181, 166, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(146, 181, 166, 0.035) 1px, transparent 1px),
+    var(--canvas);
+  background-size: 34px 34px;
+}
+
+:root[data-theme="dark"] .workspace :where(
+  h1,
+  h2,
+  h3,
+  h4,
+  label,
+  legend,
+  dt,
+  dd
+) {
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] .workspace :where(input, textarea, select) {
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--surface);
+}
+
+:root[data-theme="dark"] .workspace :where(input, textarea)::placeholder {
+  color: #6f827a;
+}
+
+:root[data-theme="dark"] :is(
+  .brief-preview,
+  .page-state,
+  .codex-connection,
+  .topic-ai-guidance,
+  .outline-side-card,
+  .outline-editor-card,
+  .voice-visual-card,
+  .motion-canvas-card,
+  .motion-design-card,
+  .voice-card,
+  .sync-card,
+  .layout-output-settings,
+  .render-summary,
+  .render-card,
+  .project-card
+) {
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--paper);
+}
+
+:root[data-theme="dark"] :is(
+  .choice-card,
+  .suggestion-row button,
+  .outline-section-card,
+  .outline-diff-item,
+  .voice-visual-beat,
+  .voice-model,
+  .sync-flow-source,
+  .sync-section-row,
+  .render-result-card
+) {
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--surface);
+}
+
+:root[data-theme="dark"] :is(
+  .form-divider,
+  .voice-visual-section > header,
+  .motion-canvas-source-header,
+  .sync-table-header
+) {
+  border-color: var(--line);
+  background: var(--surface-soft);
 }
 
 .codex-quota-heading,

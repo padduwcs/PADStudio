@@ -58,6 +58,7 @@ function outline(): TeachingOutline {
     contentRevision: 1,
     sourceInput: {
       topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
+      background: {mode: 'dark', color: '#10231D'},
       audience: 'beginner',
       duration: 'standard',
     },

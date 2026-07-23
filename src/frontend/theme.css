@@ -1,0 +1,658 @@
+/*
+ * Theme integration layer.
+ *
+ * This file is deliberately imported after every workflow stylesheet. Page
+ * styles own layout; this layer owns application chrome colors. Motion Canvas,
+ * Sync and Layout preview canvases are intentionally excluded so the selected
+ * video background remains visually truthful in both UI themes.
+ */
+
+:root {
+  --theme-panel-border: var(--line-strong);
+}
+
+:is(
+  .topic-form,
+  .brief-preview,
+  .page-state,
+  .codex-service-card,
+  .outline-primary-card,
+  .outline-side-card,
+  .outline-review-card,
+  .outline-ai-revision,
+  .outline-candidate-review,
+  .outline-history-card,
+  .voice-visual-card,
+  .motion-canvas-card,
+  .motion-design-card,
+  .voice-card,
+  .voice-config-card,
+  .voice-review,
+  .sync-card,
+  .sync-timeline-details,
+  .layout-output-settings,
+  .render-summary,
+  .render-progress-card,
+  .render-ready-card,
+  .render-result-card,
+  .project-library,
+  .layout-inspector,
+  .layout-shortcut-dialog
+) {
+  border-color: var(--theme-panel-border);
+  box-shadow: var(--shadow);
+}
+
+:is(
+  .choice-card,
+  .outline-section-card,
+  .outline-diff-item,
+  .outline-candidate-history article,
+  .outline-version-list > article,
+  .voice-visual-beat,
+  .voice-choice,
+  .voice-model,
+  .motion-canvas-command,
+  .motion-canvas-timeline-beat,
+  .sync-flow-source,
+  .sync-metrics > div,
+  .sync-workspace-card,
+  .sync-section-card,
+  .render-summary > div,
+  .topic-guidance-result article,
+  .topic-guidance-angles,
+  .layout-shortcut-grid > section
+) {
+  border-color: var(--line);
+  box-shadow: var(--shadow-sm);
+}
+
+:where(
+  .workspace,
+  .project-library,
+  .responsive-aside
+) :where(input, textarea, select) {
+  border-color: var(--line);
+  background: var(--control-bg);
+  box-shadow: var(--control-shadow);
+}
+
+:where(
+  .workspace,
+  .project-library,
+  .responsive-aside
+) :where(input, textarea, select):focus {
+  border-color: var(--green-700);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--green-700) 18%, transparent),
+    var(--control-shadow);
+}
+
+:root[data-theme="dark"] {
+  --theme-glass: rgba(20, 33, 29, 0.92);
+  --theme-glass-soft: rgba(24, 39, 34, 0.78);
+  --theme-hover: #20332c;
+  --theme-selected: #203c32;
+  --theme-success-surface: #17382b;
+  --theme-warning-surface: #3a3020;
+  --theme-danger-surface: #3b2421;
+  --theme-code-surface: #0c1814;
+}
+
+:root[data-theme="dark"] body {
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+:root[data-theme="dark"] .workspace {
+  color: var(--ink);
+  background:
+    linear-gradient(rgba(146, 181, 166, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(146, 181, 166, 0.035) 1px, transparent 1px),
+    var(--canvas);
+  background-size: 34px 34px;
+}
+
+:root[data-theme="dark"] .workspace :where(
+  h1,
+  h2,
+  h3,
+  h4,
+  label,
+  legend,
+  dt,
+  dd
+) {
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] :where(
+  .workspace,
+  .project-library,
+  .responsive-aside
+) :where(input, textarea, select) {
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--control-bg);
+  box-shadow: var(--control-shadow);
+}
+
+:root[data-theme="dark"] :where(
+  .workspace,
+  .project-library,
+  .responsive-aside
+) :where(input, textarea)::placeholder {
+  color: #71867d;
+}
+
+:root[data-theme="dark"] :is(
+  .brief-preview,
+  .page-state,
+  .codex-connection,
+  .codex-service-card,
+  .topic-ai-guidance,
+  .outline-side-card,
+  .outline-editor-card,
+  .outline-review-card,
+  .outline-ai-revision,
+  .outline-candidate-review,
+  .outline-history-card,
+  .voice-visual-card,
+  .motion-canvas-card,
+  .motion-design-card,
+  .voice-card,
+  .voice-config-card,
+  .voice-review,
+  .sync-card,
+  .sync-timeline-details,
+  .layout-output-settings,
+  .render-summary,
+  .render-progress-card,
+  .render-ready-card,
+  .render-result-card,
+  .project-card,
+  .project-library,
+  .layout-inspector,
+  .layout-shortcut-dialog
+) {
+  border-color: var(--line-strong);
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: var(--shadow);
+}
+
+:root[data-theme="dark"] :is(
+  .choice-card,
+  .outline-section-card,
+  .outline-diff-item,
+  .outline-candidate-history article,
+  .outline-version-list > article,
+  .voice-visual-beat,
+  .voice-choice,
+  .voice-model,
+  .sync-flow-source,
+  .sync-metrics > div,
+  .sync-workspace-card,
+  .sync-section-card,
+  .render-summary > div,
+  .render-result-card,
+  .topic-guidance-result article,
+  .topic-guidance-angles,
+  .layout-shortcut-grid > section
+) {
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+:root[data-theme="dark"] :is(
+  .voice-visual-empty-state,
+  .voice-visual-section-duration,
+  .voice-visual-add-beat,
+  .motion-canvas-empty-state,
+  .voice-catalog-loading,
+  .outline-empty-state,
+  .outline-assumptions,
+  .outline-ai-scope-group,
+  .voice-visual-review-launcher,
+  .voice-visual-beat-scope,
+  .voice-visual-scope-summary,
+  .motion-canvas-candidate-scenes article,
+  .motion-canvas-command,
+  .motion-canvas-timeline-beat,
+  .voice-beat-review-list li,
+  .voice-search,
+  .voice-master-player,
+  .sync-flow-visual,
+  .sync-timeline-details > summary > span:last-child,
+  .sync-beat-row > span:first-child,
+  .layout-heading-status code,
+  .layout-review-step,
+  .layout-review-step > span,
+  .outline-final-actions
+) {
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--surface-soft);
+}
+
+:root[data-theme="dark"] :is(
+  .form-divider,
+  .form-actions,
+  .outline-actions,
+  .preview-direction,
+  .outline-section-card > header,
+  .voice-visual-section-header,
+  .voice-visual-beat > header,
+  .motion-design-card > header,
+  .motion-canvas-scene > header,
+  .motion-canvas-timeline,
+  .sync-section-card > header,
+  .project-card-actions
+) {
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--surface-soft);
+}
+
+:root[data-theme="dark"] :is(
+  .secondary-button,
+  .suggestion-row button,
+  .outline-alert button,
+  .outline-subheading button,
+  .outline-section-heading > button,
+  .outline-section-controls button,
+  .outline-history-card > header button,
+  .outline-version-list button,
+  .outline-version-compare button,
+  .outline-candidate-history button,
+  .icon-button,
+  .responsive-aside-header button,
+  .topic-guidance-result button,
+  .ai-scope-presets button,
+  .voice-presets button,
+  .voice-show-more,
+  .sync-workspace-card button,
+  .layout-inspector > header button,
+  .layout-text-style-group button,
+  .layout-color-field button,
+  .layout-layer-actions button,
+  .layout-visibility-button,
+  .layout-inspector > footer button,
+  .layout-review-step button,
+  .layout-shortcut-trigger,
+  .layout-shortcut-dialog > header > button,
+  .elevenlabs-connection-card .codex-connection-actions button
+) {
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] :is(
+  .secondary-button,
+  .suggestion-row button,
+  .outline-alert button,
+  .outline-subheading button,
+  .outline-section-heading > button,
+  .outline-section-controls button,
+  .outline-history-card > header button,
+  .outline-version-list button,
+  .outline-version-compare button,
+  .outline-candidate-history button,
+  .icon-button,
+  .responsive-aside-header button,
+  .topic-guidance-result button,
+  .ai-scope-presets button,
+  .voice-presets button,
+  .voice-show-more,
+  .sync-workspace-card button,
+  .layout-inspector > header button,
+  .layout-text-style-group button,
+  .layout-color-field button,
+  .layout-layer-actions button,
+  .layout-visibility-button,
+  .layout-inspector > footer button,
+  .layout-review-step button,
+  .layout-shortcut-trigger,
+  .layout-shortcut-dialog > header > button,
+  .elevenlabs-connection-card .codex-connection-actions button
+):hover:not(:disabled) {
+  border-color: #496158;
+  color: var(--ink);
+  background: var(--theme-hover);
+}
+
+:root[data-theme="dark"] :is(
+  .choice-card.is-selected,
+  .voice-choice.is-selected,
+  .voice-model.is-selected,
+  .outline-version-list > article.is-current,
+  .layout-review-step.is-done,
+  .layout-text-style-group button.is-active
+) {
+  border-color: #527d69;
+  color: var(--ink);
+  background: var(--theme-selected);
+  box-shadow: inset 0 0 0 1px rgba(120, 185, 156, 0.12);
+}
+
+:root[data-theme="dark"] :is(
+  .choice-radio,
+  .voice-choice input[type="radio"],
+  .voice-model input[type="radio"]
+) {
+  border-color: #688078;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 4px var(--surface);
+}
+
+:root[data-theme="dark"] :is(
+  .custom-duration-field,
+  .codex-connection-card,
+  .codex-config-panel,
+  .codex-service-card .codex-api-key-panel,
+  .codex-service-card .codex-wait-estimate,
+  .outline-next-note,
+  .outline-coherence-summary,
+  .outline-usage,
+  .voice-beat-review > summary,
+  .motion-canvas-validation,
+  .sync-workspace-card > code,
+  .layout-shortcut-row kbd
+) {
+  border-color: var(--line);
+  color: var(--ink-soft);
+  background: var(--surface-soft);
+}
+
+:root[data-theme="dark"] .codex-connection-card.is-connected,
+:root[data-theme="dark"] .is-connected .codex-connection-icon,
+:root[data-theme="dark"] .codex-service-card.is-connected .codex-connection-icon {
+  border-color: #315f4d;
+  color: var(--success);
+  background: var(--theme-success-surface);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] :is(
+  .codex-connection-icon,
+  .codex-service-card .codex-connection-icon,
+  .codex-status-pill,
+  .codex-service-card .codex-connection-actions button,
+  .codex-service-card .codex-model-picker select,
+  .codex-service-card .codex-api-key-form input
+) {
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--surface);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .codex-status-pill.is-positive {
+  border-color: #315f4d;
+  color: var(--success);
+  background: var(--theme-success-surface);
+}
+
+:root[data-theme="dark"] :is(
+  .codex-status-pill.is-progress,
+  .codex-wait-estimate.is-slow,
+  .outline-alert,
+  .voice-config-warning,
+  .candidate-status.is-coherence_warning,
+  .voice-visual-coherence-issues li
+) {
+  border-color: #6b5930;
+  color: #e5c77a;
+  background: var(--theme-warning-surface);
+}
+
+:root[data-theme="dark"] :is(
+  .submit-error,
+  .page-state.is-error,
+  .outline-alert.is-error,
+  .candidate-scope-expansion,
+  .library-error,
+  .delete-confirmation,
+  .render-error,
+  .layout-inspector > footer button.is-danger,
+  .layout-visibility-button.is-hidden
+) {
+  border-color: #70413a;
+  color: var(--danger);
+  background: var(--theme-danger-surface);
+}
+
+:root[data-theme="dark"] :is(
+  .submit-success,
+  .saved-project,
+  .candidate-status,
+  .sync-drift,
+  .layout-review-step.is-done > span
+) {
+  border-color: #315f4d;
+  color: var(--success);
+  background: var(--theme-success-surface);
+}
+
+:root[data-theme="dark"] :is(
+  .candidate-status.is-scope_expansion_required,
+  .candidate-status.is-coherence_blocked
+) {
+  color: var(--danger);
+  background: var(--theme-danger-surface);
+}
+
+:root[data-theme="dark"] :is(
+  .library-warning,
+  .voice-config-warning
+) {
+  border-color: #6b5930;
+  color: #e5c77a;
+  background: var(--theme-warning-surface);
+}
+
+:root[data-theme="dark"] :is(
+  .outline-diff-item > strong,
+  .outline-diff-item > div > span,
+  .outline-diff-item > div > span.is-candidate
+) {
+  border-color: var(--line);
+  color: var(--ink);
+  background: var(--surface-soft);
+}
+
+:root[data-theme="dark"] :is(
+  .field-heading label,
+  .option-group legend,
+  .custom-duration-field > span:first-child,
+  .choice-card strong,
+  .preview-content h2,
+  .outline-topic h2,
+  .outline-empty-state h3,
+  .outline-review-card h2,
+  .outline-section-heading h2,
+  .outline-ai-revision h2,
+  .outline-candidate-review h2,
+  .outline-history-card h2,
+  .voice-visual-review-launcher h2,
+  .motion-canvas-candidate-scenes article strong,
+  .render-summary strong,
+  .render-progress-topline > strong,
+  .render-progress-card h2,
+  .render-ready-card h2,
+  .render-result-card h2,
+  .project-card-main > strong,
+  .codex-service-title > strong,
+  .codex-quota-heading strong,
+  .codex-quota-window > div:first-child span,
+  .codex-quota-window > div:first-child strong,
+  .layout-text-style-group button > :first-child
+) {
+  color: var(--ink);
+}
+
+:root[data-theme="dark"] :is(
+  .eyebrow,
+  .form-divider span,
+  .local-note,
+  .preview-kicker,
+  .preview-direction p,
+  .brief-meta dd,
+  .outline-side-card dd,
+  .outline-field > span,
+  .outline-time-field > span:first-child,
+  .outline-subheading > span,
+  .outline-ai-scope-toggle,
+  .outline-ai-scope-group > strong,
+  .outline-ai-scope-group label,
+  .outline-coherence-summary p,
+  .outline-coherence-summary ul,
+  .candidate-advisory-note,
+  .voice-visual-review-launcher p,
+  .voice-visual-auto-review-label,
+  .voice-visual-protected-suggestion span,
+  .voice-visual-diff-title,
+  .outline-diff-item p,
+  .outline-candidate-history > strong,
+  .voice-visual-scope-toggle,
+  .voice-visual-beat-scope label,
+  .voice-visual-beat-scope > span,
+  .voice-visual-scope-summary strong,
+  .motion-canvas-scene-scope,
+  .motion-canvas-candidate-source summary,
+  .outline-version-compare > header,
+  .voice-beat-review-list p,
+  .motion-canvas-timeline-beat p,
+  .render-progress-card p,
+  .render-ready-card p,
+  .render-result-card p,
+  .codex-service-card .codex-connection-label,
+  .codex-service-identity > p,
+  .codex-service-card .codex-model-picker > span,
+  .codex-service-card .codex-api-key-form label > span,
+  .topic-guidance-result article > span,
+  .topic-guidance-angles > span,
+  .layout-shortcut-row
+) {
+  color: var(--ink-soft);
+}
+
+:root[data-theme="dark"] .topic-ai-guidance {
+  background:
+    linear-gradient(145deg, rgba(32, 60, 50, 0.82), rgba(20, 33, 29, 0.98));
+}
+
+:root[data-theme="dark"] .voice-config-heading {
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 0 0, rgba(240, 147, 105, 0.12), transparent 36%),
+    linear-gradient(105deg, #1c2c26, #14211d);
+}
+
+:root[data-theme="dark"] .voice-config-heading-icon {
+  border-color: #6c4636;
+  color: var(--orange);
+  background: var(--orange-soft);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .voice-search {
+  background:
+    linear-gradient(135deg, rgba(32, 60, 50, 0.7), rgba(44, 31, 25, 0.62)),
+    var(--surface-soft);
+}
+
+:root[data-theme="dark"] .voice-master-player {
+  background:
+    linear-gradient(135deg, rgba(32, 60, 50, 0.72), rgba(44, 31, 25, 0.62));
+}
+
+:root[data-theme="dark"] .sync-flow-visual {
+  background:
+    radial-gradient(circle at 20% 30%, rgba(240, 147, 105, 0.15), transparent 32%),
+    linear-gradient(145deg, #1a2924, #111e1a);
+}
+
+:root[data-theme="dark"] .topic-guidance-result article,
+:root[data-theme="dark"] .topic-guidance-angles {
+  background: var(--theme-glass-soft);
+}
+
+:root[data-theme="dark"] .codex-quota-track,
+:root[data-theme="dark"] .render-progress-track {
+  background: #263a32;
+}
+
+:root[data-theme="dark"] .project-card-actions .danger-action:hover {
+  color: var(--danger);
+  background: var(--theme-danger-surface);
+}
+
+:root[data-theme="dark"] .layout-inspector {
+  scrollbar-color: #42584f transparent;
+}
+
+:root[data-theme="dark"] .layout-legacy-note {
+  border-color: #6b4d3b;
+  color: #e7aa88;
+  background: #39261f;
+}
+
+:root[data-theme="dark"] .layout-shortcut-dialog {
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.52);
+}
+
+:root[data-theme="dark"] .layout-shortcut-dialog > header > div > span {
+  color: var(--orange);
+  background: var(--orange-soft);
+}
+
+:root[data-theme="dark"] .layout-shortcut-row {
+  border-color: var(--line);
+}
+
+:root[data-theme="dark"] .motion-canvas-validation div {
+  background: var(--surface);
+}
+
+:root[data-theme="dark"] .motion-canvas-timeline-beat:nth-child(even) {
+  border-color: #594038;
+  background: #2d211d;
+}
+
+:root[data-theme="dark"] .sync-blocked-card {
+  border-color: #70483c;
+  background: var(--theme-danger-surface);
+}
+
+:root[data-theme="dark"] .sync-blocked-card code {
+  color: var(--ink);
+  background: var(--theme-code-surface);
+}
+
+:root[data-theme="dark"] .sync-timeline-details {
+  background: var(--theme-glass);
+}
+
+:root[data-theme="dark"] .render-error button,
+:root[data-theme="dark"] .render-error-details {
+  color: var(--danger);
+}
+
+/* Keep authored media surfaces independent from the application theme. */
+:root[data-theme="dark"] :is(
+  .motion-canvas-player-shell,
+  .motion-design-preview,
+  .sync-preview-review,
+  .sync-preview-frame,
+  .layout-editor-shell,
+  .layout-preview-stage,
+  .render-video-shell,
+  .render-video
+) {
+  color-scheme: dark;
+}

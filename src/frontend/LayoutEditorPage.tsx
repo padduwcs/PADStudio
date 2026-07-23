@@ -51,6 +51,7 @@ import {
   timelineVisibleEditorNodes,
   type RuntimeNodeVisibility,
 } from './layoutEditorState.ts';
+import {groupEditorLayers} from './layerGroups.ts';
 import {
   navigate,
   projectRenderPath,
@@ -1180,6 +1181,12 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
   const timelineHiddenNodeCount = activeScene
     ? activeScene.nodes.length - activeSceneNodes.length
     : 0;
+  const activeLayerGroups = groupEditorLayers(
+    activeSceneNodes,
+    scenes.find(scene => scene.sceneId === activeScene?.sceneId)?.nodes ??
+      activeScene?.nodes ??
+      [],
+  );
 
   useEffect(() => {
     if (!activeScene) return;
@@ -1753,6 +1760,8 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                           xPercent: 88,
                           yPercent: 92,
                           widthPercent: 22,
+                          tintColor: '#FFFFFF',
+                          tintStrength: 0,
                         }
                       : {type: 'none'},
                 );
@@ -1807,43 +1816,89 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
             </>
           )}
           {watermark.type === 'image' && (
-            <label className="is-wide layout-watermark-upload">
-              <span>Ảnh PNG, JPEG hoặc WebP</span>
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                disabled={watermarkUploading}
-                onChange={event => {
-                  const file = event.currentTarget.files?.[0];
-                  if (!file) return;
-                  event.currentTarget.value = '';
-                  setWatermarkUploading(true);
-                  setWatermarkUploadError('');
-                  void uploadWatermarkImage(projectId, file)
-                    .then(asset => {
-                      const current = renderSettingsRef.current.watermark;
-                      if (current.type === 'image') {
-                        updateWatermark({...current, assetId: asset.assetId});
-                      }
+            <>
+              <label className="is-wide layout-watermark-upload">
+                <span>Ảnh PNG, JPEG hoặc WebP</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  disabled={watermarkUploading}
+                  onChange={event => {
+                    const file = event.currentTarget.files?.[0];
+                    if (!file) return;
+                    event.currentTarget.value = '';
+                    setWatermarkUploading(true);
+                    setWatermarkUploadError('');
+                    void uploadWatermarkImage(projectId, file)
+                      .then(asset => {
+                        const current = renderSettingsRef.current.watermark;
+                        if (current.type === 'image') {
+                          updateWatermark({...current, assetId: asset.assetId});
+                        }
+                      })
+                      .catch(error =>
+                        setWatermarkUploadError(
+                          error instanceof ApiRequestError
+                            ? error.message
+                            : 'Không thể tải ảnh watermark.',
+                        ),
+                      )
+                      .finally(() => setWatermarkUploading(false));
+                  }}
+                />
+                <small>
+                  {watermarkUploading
+                    ? 'Đang tải và kiểm tra ảnh…'
+                    : watermark.assetId
+                      ? 'Ảnh đã sẵn sàng trong preview.'
+                      : 'Chưa chọn ảnh.'}
+                </small>
+              </label>
+              <label>
+                <span>Màu ảnh</span>
+                <input
+                  type="color"
+                  value={watermark.tintColor}
+                  onChange={event =>
+                    updateWatermark({
+                      ...watermark,
+                      tintColor: event.currentTarget.value,
                     })
-                    .catch(error =>
-                      setWatermarkUploadError(
-                        error instanceof ApiRequestError
-                          ? error.message
-                          : 'Không thể tải ảnh watermark.',
-                      ),
-                    )
-                    .finally(() => setWatermarkUploading(false));
-                }}
-              />
-              <small>
-                {watermarkUploading
-                  ? 'Đang tải và kiểm tra ảnh…'
-                  : watermark.assetId
-                    ? 'Ảnh đã sẵn sàng trong preview.'
-                    : 'Chưa chọn ảnh.'}
-              </small>
-            </label>
+                  }
+                />
+              </label>
+              <div className="layout-output-control is-tint-strength">
+                <label htmlFor="layout-watermark-tint">Phủ màu</label>
+                <input
+                  id="layout-watermark-tint"
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={watermark.tintStrength}
+                  onChange={event =>
+                    updateWatermark({
+                      ...watermark,
+                      tintStrength: Number(event.currentTarget.value),
+                    })
+                  }
+                />
+                <LayoutNumberInput
+                  value={watermark.tintStrength * 100}
+                  min={0}
+                  max={100}
+                  step={1}
+                  disabled={false}
+                  onCommit={tintStrength =>
+                    updateWatermark({
+                      ...watermark,
+                      tintStrength: tintStrength / 100,
+                    })
+                  }
+                />
+                <span>%</span>
+              </div>
+            </>
           )}
           {watermark.type !== 'none' && (
             <>
@@ -2062,48 +2117,67 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                     <small>Node map sẽ xuất hiện tại đây.</small>
                   </span>
                 </button>
-              ) : (
-                activeSceneNodes.map((node) => {
-                  const nodeOverride = document?.overrides.find(
-                    (item) =>
-                      item.sceneId === activeScene.sceneId &&
-                      item.nodeKey === node.key,
-                  );
-                  const selected =
-                    selection?.sceneId === activeScene.sceneId &&
-                    selection.nodeKey === node.key;
-                  return (
-                    <button
-                      className={`layout-node-row${
-                        selected ? ' is-selected' : ''
-                      }${nodeOverride?.patch.hidden ? ' is-hidden' : ''}`}
-                      type="button"
-                      key={node.key}
-                      title={node.key}
-                      aria-pressed={selected}
-                      onClick={() => selectNode(activeScene.sceneId, node.key)}
-                    >
-                      <span className="layout-node-type">
-                        {node.nodeType.slice(0, 2).toUpperCase()}
-                      </span>
-                      <span>
-                        <strong>{node.label}</strong>
-                        <small>{patchSummary(nodeOverride?.patch ?? {})}</small>
-                      </span>
-                      {(nodeOverride?.patch.hidden || node.identity === 'legacy') && (
-                        <span className="layout-node-state">
-                          {nodeOverride?.patch.hidden && (
-                            <EyeOffIcon aria-label="Node đang ẩn" />
+              ) : activeLayerGroups.map(group => (
+                <details
+                  className="layout-layer-group"
+                  key={group.id}
+                  open
+                >
+                  <summary>
+                    <span>{group.label}</span>
+                    <small>{group.nodes.length}</small>
+                  </summary>
+                  <div>
+                    {group.nodes.map((node) => {
+                      const nodeOverride = document?.overrides.find(
+                        (item) =>
+                          item.sceneId === activeScene.sceneId &&
+                          item.nodeKey === node.key,
+                      );
+                      const selected =
+                        selection?.sceneId === activeScene.sceneId &&
+                        selection.nodeKey === node.key;
+                      return (
+                        <button
+                          className={`layout-node-row${
+                            selected ? ' is-selected' : ''
+                          }${nodeOverride?.patch.hidden ? ' is-hidden' : ''}`}
+                          type="button"
+                          key={node.key}
+                          title={node.key}
+                          aria-pressed={selected}
+                          onClick={() =>
+                            selectNode(activeScene.sceneId, node.key)
+                          }
+                        >
+                          <span className="layout-node-type">
+                            {node.nodeType.slice(0, 2).toUpperCase()}
+                          </span>
+                          <span>
+                            <strong>{node.label}</strong>
+                            <small>
+                              {patchSummary(nodeOverride?.patch ?? {})}
+                            </small>
+                          </span>
+                          {(nodeOverride?.patch.hidden ||
+                            node.identity === 'legacy') && (
+                            <span className="layout-node-state">
+                              {nodeOverride?.patch.hidden && (
+                                <EyeOffIcon aria-label="Node đang ẩn" />
+                              )}
+                              {node.identity === 'legacy' && (
+                                <i title="Node legacy được khóa theo fingerprint">
+                                  L
+                                </i>
+                              )}
+                            </span>
                           )}
-                          {node.identity === 'legacy' && (
-                            <i title="Node legacy được khóa theo fingerprint">L</i>
-                          )}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })
-              )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </details>
+              ))}
             </div>
           </div>
           <footer>

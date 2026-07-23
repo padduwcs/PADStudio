@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useEffect, useState} from 'react';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {
@@ -17,6 +17,7 @@ import {
 } from './router.ts';
 import {ResponsiveAside} from './ResponsiveAside.tsx';
 import {useCodexConnection} from './useCodexConnection.ts';
+import {motionCanvasReviewerRepair} from './motionCanvasCandidateRepair.ts';
 import {useMotionCanvasDraft} from './useMotionCanvasDraft.ts';
 import {MotionDesignEditor} from './MotionDesignEditor.tsx';
 
@@ -31,6 +32,22 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
   const [copied, setCopied] = useState(false);
   const [selectedSceneIds, setSelectedSceneIds] = useState<string[]>([]);
   const [checkpointLabel, setCheckpointLabel] = useState('');
+  const [candidateElapsedSeconds, setCandidateElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!motionCanvas.candidateGenerating) {
+      setCandidateElapsedSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const update = () =>
+      setCandidateElapsedSeconds(
+        Math.max(0, Math.floor((Date.now() - startedAt) / 1_000)),
+      );
+    update();
+    const interval = window.setInterval(update, 1_000);
+    return () => window.clearInterval(interval);
+  }, [motionCanvas.candidateGenerating]);
 
   async function handleGenerate(forcedGuidance?: string) {
     if (
@@ -139,6 +156,33 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
     if (created) setGuidance('');
   }
 
+  async function handleRepairCandidate() {
+    const currentCandidate = motionCanvas.candidate;
+    const repair = currentCandidate
+      ? motionCanvasReviewerRepair(currentCandidate)
+      : null;
+    if (
+      !repair ||
+      motionCanvas.candidateGenerating ||
+      codexConnection.checking ||
+      !codexConnection.generationReady
+    ) return;
+    const connectionStatus = await codexConnection.verify();
+    if (connectionStatus?.state !== 'connected') return;
+    const selection = codexConnection.getGenerationSelection();
+    if (!selection) return;
+    const created = await motionCanvas.createCandidate(
+      repair.guidance,
+      repair.scope,
+      selection.model,
+      selection.reasoningEffort,
+    );
+    if (created) {
+      setGuidance('');
+      setSelectedSceneIds(created.scope.sceneIds);
+    }
+  }
+
   async function handleRestore(
     version: NonNullable<typeof motionCanvas.history>['versions'][number],
   ) {
@@ -213,6 +257,9 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
     ) ?? 0;
   const approved =
     bundle?.status === 'approved' && !motionCanvas.stale;
+  const reviewerRepair = motionCanvas.candidate
+    ? motionCanvasReviewerRepair(motionCanvas.candidate)
+    : null;
 
   return (
     <div className="motion-canvas-workspace">
@@ -561,7 +608,9 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                           </h2>
                         </div>
                         <span className={`candidate-status is-${motionCanvas.candidate.status}`}>
-                          {motionCanvas.candidate.decision === 'accepted'
+                          {motionCanvas.candidateRepairing
+                            ? 'Đang tự sửa theo reviewer'
+                            : motionCanvas.candidate.decision === 'accepted'
                             ? 'Đã áp dụng'
                             : motionCanvas.candidate.decision === 'rejected'
                               ? 'Đã từ chối'
@@ -683,6 +732,23 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                             >
                               Giữ workspace cũ
                             </button>
+                            {reviewerRepair && (
+                              <button
+                                className="secondary-button"
+                                type="button"
+                                disabled={
+                                  motionCanvas.candidateGenerating ||
+                                  motionCanvas.conflict ||
+                                  codexConnection.checking ||
+                                  !codexConnection.generationReady
+                                }
+                                onClick={() => void handleRepairCandidate()}
+                              >
+                                {motionCanvas.candidateGenerating
+                                  ? 'AI đang sửa theo reviewer…'
+                                  : `Sửa tự động ${reviewerRepair.scope.sceneIds.length} scene theo reviewer`}
+                              </button>
+                            )}
                             <button
                               className="submit-button"
                               type="button"
@@ -777,6 +843,19 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                         </>
                       )}
                     </button>
+                    {motionCanvas.candidateGenerating && (
+                      <small className="motion-candidate-progress" role="status">
+                        {motionCanvas.candidateRepairing
+                          ? `Reviewer đã tìm thấy lỗi trong phạm vi cho phép; Codex đang sửa đúng ${reviewerRepair?.scope.sceneIds.length ?? 0} scene liên quan.`
+                          : candidateElapsedSeconds < 30
+                          ? 'Codex đang dựng source cho scene đã chọn.'
+                          : candidateElapsedSeconds < 120
+                            ? 'Đang kiểm tra TypeScript, timing và semantic layer.'
+                            : 'Source hợp lệ sẽ được giữ ngay cả khi lượt review mạch lạc cần thử lại.'}
+                        {' · '}
+                        {formatTime(candidateElapsedSeconds)}
+                      </small>
+                    )}
                   </section>
                 </>
               )}

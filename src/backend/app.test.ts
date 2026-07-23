@@ -54,6 +54,7 @@ import type {CredentialStore} from './credentialStore.ts';
 const topicInput = {
   topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
   learningGoal: 'Hiểu trực giác chia đôi không gian tìm kiếm.',
+  background: {mode: 'dark' as const, color: '#10231D'},
   audience: 'beginner' as const,
   duration: 'standard' as const,
 };
@@ -3739,6 +3740,7 @@ test('POST /api/projects trả lỗi đúng field khi input không hợp lệ', 
       createRequest({
         topicInput: {
           topic: 'BFS',
+          background: {mode: 'dark', color: '#10231D'},
           audience: 'beginner',
           duration: 'standard',
         },

@@ -41,6 +41,7 @@ import {
   timelineVisibleEditorNodes,
   type RuntimeNodeVisibility,
 } from './layoutEditorState.ts';
+import {groupEditorLayers} from './layerGroups.ts';
 
 const PROTOCOL_SOURCE = 'pad-studio-layout-editor';
 const PROTOCOL_VERSION = 1;
@@ -512,6 +513,13 @@ export function MotionDesignEditor({
   const timelineHiddenNodeCount = activeScene
     ? activeScene.nodes.length - activeSceneNodes.length
     : 0;
+  const activeSceneAllNodes =
+    manifest?.scenes.find(scene => scene.sceneId === activeScene?.sceneId)
+      ?.nodes ?? activeScene?.nodes ?? [];
+  const activeLayerGroups = groupEditorLayers(
+    activeSceneNodes,
+    activeSceneAllNodes,
+  );
 
   function selectNode(sceneId: string, nodeKey?: string) {
     setActiveSceneId(sceneId);
@@ -683,26 +691,57 @@ export function MotionDesignEditor({
                     <small>{search ? 'Thử từ khóa khác.' : 'Node map sẽ xuất hiện tại đây.'}</small>
                   </span>
                 </button>
-              ) : activeSceneNodes.map((node) => {
-                const nodeOverride = document?.overrides.find(
-                  (item) => item.sceneId === activeScene.sceneId && item.nodeKey === node.key,
-                );
-                const selected = selection?.sceneId === activeScene.sceneId && selection.nodeKey === node.key;
-                return (
-                  <button
-                    className={`layout-node-row${selected ? ' is-selected' : ''}${nodeOverride?.patch.hidden ? ' is-hidden' : ''}`}
-                    type="button"
-                    key={node.key}
-                    title={node.key}
-                    aria-pressed={selected}
-                    onClick={() => selectNode(activeScene.sceneId, node.key)}
-                  >
-                    <span className="layout-node-type">{node.nodeType.slice(0, 2).toUpperCase()}</span>
-                    <span><strong>{node.label}</strong><small>{patchSummary(nodeOverride?.patch ?? {})}</small></span>
-                    {nodeOverride?.patch.hidden && <span className="layout-node-state"><EyeOffIcon /></span>}
-                  </button>
-                );
-              })}
+              ) : activeLayerGroups.map(group => (
+                <details
+                  className="layout-layer-group"
+                  key={group.id}
+                  open
+                >
+                  <summary>
+                    <span>{group.label}</span>
+                    <small>{group.nodes.length}</small>
+                  </summary>
+                  <div>
+                    {group.nodes.map((node) => {
+                      const nodeOverride = document?.overrides.find(
+                        (item) =>
+                          item.sceneId === activeScene.sceneId &&
+                          item.nodeKey === node.key,
+                      );
+                      const selected =
+                        selection?.sceneId === activeScene.sceneId &&
+                        selection.nodeKey === node.key;
+                      return (
+                        <button
+                          className={`layout-node-row${selected ? ' is-selected' : ''}${nodeOverride?.patch.hidden ? ' is-hidden' : ''}`}
+                          type="button"
+                          key={node.key}
+                          title={node.key}
+                          aria-pressed={selected}
+                          onClick={() =>
+                            selectNode(activeScene.sceneId, node.key)
+                          }
+                        >
+                          <span className="layout-node-type">
+                            {node.nodeType.slice(0, 2).toUpperCase()}
+                          </span>
+                          <span>
+                            <strong>{node.label}</strong>
+                            <small>
+                              {patchSummary(nodeOverride?.patch ?? {})}
+                            </small>
+                          </span>
+                          {nodeOverride?.patch.hidden && (
+                            <span className="layout-node-state">
+                              <EyeOffIcon />
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </details>
+              ))}
             </div>
           </div>
           <footer>

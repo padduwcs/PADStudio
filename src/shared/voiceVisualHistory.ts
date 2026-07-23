@@ -19,6 +19,7 @@ export type VoiceVisualGlobalField = z.infer<
 
 export const VoiceVisualBeatFieldSchema = z.enum([
   'voiceover',
+  'spokenVoiceover',
   'visualDescription',
   'animationDescription',
   'visualHoldSeconds',
@@ -30,7 +31,7 @@ export type VoiceVisualBeatField = z.infer<
 const VoiceVisualBeatScopeSchema = z
   .object({
     beatId: z.string().uuid(),
-    fields: z.array(VoiceVisualBeatFieldSchema).min(1).max(4),
+    fields: z.array(VoiceVisualBeatFieldSchema).min(1).max(5),
   })
   .strict()
   .refine(
@@ -122,6 +123,10 @@ export const VoiceVisualAiPatchSchema = z
           .object({
             beatId: z.string().uuid(),
             voiceover: VoiceVisualBeatSchema.shape.voiceover.nullable(),
+            spokenVoiceover: VoiceVisualBeatSchema.shape.spokenVoiceover
+              .unwrap()
+              .nullable()
+              .optional(),
             visualDescription:
               VoiceVisualBeatSchema.shape.visualDescription.nullable(),
             animationDescription:
@@ -133,6 +138,7 @@ export const VoiceVisualAiPatchSchema = z
           .refine(
             value =>
               value.voiceover !== null ||
+              value.spokenVoiceover != null ||
               value.visualDescription !== null ||
               value.animationDescription !== null ||
               value.visualHoldSeconds !== null,

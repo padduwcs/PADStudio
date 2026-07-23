@@ -2,6 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react';
 import {
   CreationIdSchema,
   TopicInputSchema,
+  defaultVideoBackground,
   type TopicInput,
   type TopicProject,
   type UpdateProject,
@@ -30,6 +31,8 @@ export interface TopicFormState {
   topic: string;
   learningGoal: string;
   videoDirection: string;
+  backgroundMode: TopicInput['background']['mode'];
+  backgroundColor: string;
   audience: TopicInput['audience'];
   duration: TopicInput['duration'];
   targetDurationMinutes: number;
@@ -49,6 +52,8 @@ const initialForm: TopicFormState = {
   topic: '',
   learningGoal: '',
   videoDirection: '',
+  backgroundMode: defaultVideoBackground.mode,
+  backgroundColor: defaultVideoBackground.color,
   audience: 'beginner',
   duration: 'standard',
   targetDurationMinutes: 10,
@@ -66,6 +71,17 @@ function loadLocalDraft(): TopicFormState {
         typeof value.learningGoal === 'string' ? value.learningGoal : '',
       videoDirection:
         typeof value.videoDirection === 'string' ? value.videoDirection : '',
+      backgroundMode:
+        value.backgroundMode === 'light' ||
+        value.backgroundMode === 'dark' ||
+        value.backgroundMode === 'custom'
+          ? value.backgroundMode
+          : defaultVideoBackground.mode,
+      backgroundColor:
+        typeof value.backgroundColor === 'string' &&
+        /^#[0-9a-fA-F]{6}$/.test(value.backgroundColor)
+          ? value.backgroundColor
+          : defaultVideoBackground.color,
       audience:
         value.audience === 'familiar' || value.audience === 'beginner'
           ? value.audience
@@ -107,6 +123,8 @@ function toFormState(input: TopicInput): TopicFormState {
     topic: input.topic,
     learningGoal: input.learningGoal ?? '',
     videoDirection: input.videoDirection ?? '',
+    backgroundMode: input.background.mode,
+    backgroundColor: input.background.color,
     audience: input.audience,
     duration: input.duration,
     targetDurationMinutes: input.targetDurationMinutes ?? 10,
@@ -114,9 +132,18 @@ function toFormState(input: TopicInput): TopicFormState {
 }
 
 function toCandidate(form: TopicFormState) {
-  const {targetDurationMinutes, ...baseForm} = form;
+  const {
+    targetDurationMinutes,
+    backgroundMode,
+    backgroundColor,
+    ...baseForm
+  } = form;
   return {
     ...baseForm,
+    background: {
+      mode: backgroundMode,
+      color: backgroundColor,
+    },
     targetDurationMinutes:
       form.duration === 'custom' ? targetDurationMinutes : undefined,
     learningGoal: form.learningGoal.trim() || undefined,
@@ -130,7 +157,12 @@ function getFieldErrors(
   const errors: FieldErrors = {};
 
   for (const issue of issues) {
-    const field = String(issue.path[0]) as keyof TopicFormState;
+    const field =
+      issue.path[0] === 'background'
+        ? issue.path[1] === 'mode'
+          ? 'backgroundMode'
+          : 'backgroundColor'
+        : String(issue.path[0]) as keyof TopicFormState;
     errors[field] ??= issue.message;
   }
 

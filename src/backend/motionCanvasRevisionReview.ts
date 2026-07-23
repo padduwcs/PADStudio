@@ -20,7 +20,10 @@ import {
 } from './codexStructuredGeneration.ts';
 
 export const MOTION_CANVAS_COHERENCE_PROMPT_VERSION =
-  'motion-canvas-coherence-v1';
+  'motion-canvas-coherence-v2';
+// This review is advisory and runs after the candidate has compiled. A valid
+// workspace must not be held behind the much longer source-generation timeout.
+export const MOTION_CANVAS_COHERENCE_TIMEOUT_MS = 90_000;
 
 const outputSchema = z.toJSONSchema(MotionCanvasCoherenceReviewSchema, {
   target: 'draft-7',
@@ -67,11 +70,17 @@ export class MotionCanvasRevisionReviewError extends Error {
 }
 
 function buildPrompt(request: MotionCanvasRevisionReviewRequest) {
+  const changedIndexes = request.scenes
+    .map((scene, index) => scene.changed ? index : -1)
+    .filter(index => index >= 0);
+  const relevantIndexes = new Set(
+    changedIndexes.flatMap(index => [index - 1, index, index + 1]),
+  );
   return [
-    'Review tính mạch lạc của TOÀN BỘ chuỗi scene Motion Canvas sau khi chỉ một số scene được sinh lại.',
+    'Review tính mạch lạc của chuỗi scene Motion Canvas sau khi chỉ một số scene được sinh lại.',
     'Không viết lại code. Chỉ báo cáo lỗi thực sự có ý nghĩa.',
     'Đối chiếu outline, lời kể, visual/animation từng beat và source scene để kiểm tra mạch kể, tính đúng ý, phong cách màu/chữ/bố cục, chuyển tiếp và timing.',
-    'Tập trung ranh giới trước/sau scene changed. Các sourceExcerpt đã được giới hạn độ dài nhưng mọi scene và toàn bộ voice–visual đều có mặt.',
+    'Tập trung source của scene changed và nội dung hai scene kề bên. Danh sách flow toàn video vẫn có mặt để giữ ngữ cảnh nhưng source scene không đổi không cần đọc lại.',
     'Nếu sửa hợp lý bắt buộc sinh lại scene ngoài scope, đặt verdict=needs_scope_expansion và requiresScopeExpansion=true.',
     JSON.stringify({
       topicInput: request.topicInput,
@@ -88,11 +97,32 @@ function buildPrompt(request: MotionCanvasRevisionReviewRequest) {
       },
       voiceVisual: {
         visualDirection: request.voiceVisualPlan.visualDirection,
-        sections: request.voiceVisualPlan.sections,
+        sections: request.voiceVisualPlan.sections
+          .map((section, index) => ({
+            index,
+            relation: changedIndexes.includes(index)
+              ? 'changed'
+              : changedIndexes.some(
+                    changedIndex => Math.abs(changedIndex - index) === 1,
+                  )
+                ? 'boundary'
+                : 'unchanged',
+            outlineSectionId: section.outlineSectionId,
+            beats: section.beats,
+          }))
+          .filter(section => relevantIndexes.has(section.index)),
       },
-      mergedScenes: request.scenes,
+      reviewedScenes: request.scenes
+        .map((scene, index) => ({...scene, index}))
+        .filter(scene => relevantIndexes.has(scene.index)),
     }),
   ].join('\n');
+}
+
+function reviewReasoningEffort(effort?: string) {
+  return ['high', 'xhigh', 'max', 'ultra'].includes(effort ?? '')
+    ? 'medium'
+    : effort;
 }
 
 function mapError(error: CodexStructuredGenerationError) {
@@ -132,7 +162,12 @@ export function createCodexMotionCanvasRevisionReviewService(
           runtimeDirectory,
           timeoutMs:
             options.timeoutMs ??
-            codexGenerationTimeoutMs(request.reasoningEffort),
+            Math.min(
+              codexGenerationTimeoutMs(
+                reviewReasoningEffort(request.reasoningEffort),
+              ),
+              MOTION_CANVAS_COHERENCE_TIMEOUT_MS,
+            ),
           outputSchema,
           prompt: buildPrompt(request),
           baseInstructions:
@@ -140,7 +175,9 @@ export function createCodexMotionCanvasRevisionReviewService(
           developerInstructions:
             'Review toàn bộ chuỗi nhưng tập trung ranh giới scene sửa/giữ. Phân biệt lỗi thật với sở thích thẩm mỹ.',
           model: request.model,
-          reasoningEffort: request.reasoningEffort,
+          reasoningEffort: reviewReasoningEffort(
+            request.reasoningEffort,
+          ),
         });
         let json: unknown;
         try {

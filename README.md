@@ -307,8 +307,10 @@ chiếm, lệnh dev báo lỗi rõ ràng thay vì âm thầm đổi port. Backen
 được tạo trong thời gian `npm run dev` đang chạy. Nhấn `Ctrl+C` hoặc đóng terminal
 sẽ dừng cả hai; supervisor và từng tiến trình con cùng theo dõi lẫn nhau để không
 để lại tiến trình nền giữ cổng nếu một lớp bị đóng bất thường. Backend vẫn tự khởi
-động lại khi mã trong `src/backend` hoặc `src/shared` thay đổi. Chỉ đặt `PORT` và
-`PAD_FRONTEND_PORT` khi chủ động muốn chạy một instance khác.
+động lại khi mã trong `src/backend` hoặc `src/shared` thay đổi. Nếu đang có
+request sinh nội dung dài, hot-restart ngừng nhận request mới và chờ response
+hiện tại hoàn tất trước khi thay backend, tránh làm mất candidate đã sinh. Chỉ
+đặt `PORT` và `PAD_FRONTEND_PORT` khi chủ động muốn chạy một instance khác.
 
 ### Kết nối ElevenLabs
 

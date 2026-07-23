@@ -13,6 +13,7 @@ import type {
   VoiceVisualVersionRecord,
 } from '../shared/voiceVisualHistory.ts';
 import {plannedBeatDurationSeconds} from '../shared/narrationTiming.ts';
+import {speechTextForBeat} from '../shared/vietnameseSpeech.ts';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import {
   outlineIsReady,
@@ -378,9 +379,16 @@ export function useVoiceVisualDraft(projectId: string) {
               beats: section.beats.map((beat) =>
                 beat.id === beatId
                   ? (() => {
-                      const updated = {...beat, [field]: value};
+                      const updated = {
+                        ...beat,
+                        [field]: value,
+                        ...(field === 'voiceover'
+                          ? {spokenVoiceover: undefined}
+                          : {}),
+                      };
                       if (
                         field !== 'voiceover' &&
+                        field !== 'spokenVoiceover' &&
                         field !== 'visualHoldSeconds'
                       ) {
                         return updated;
@@ -388,7 +396,7 @@ export function useVoiceVisualDraft(projectId: string) {
                       return {
                         ...updated,
                         durationSeconds: plannedBeatDurationSeconds(
-                          String(updated.voiceover),
+                          speechTextForBeat(updated),
                           Number(updated.visualHoldSeconds),
                           current.timingCalibration,
                         ),

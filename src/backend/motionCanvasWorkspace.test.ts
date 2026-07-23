@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtemp, readFile, rm} from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  utimes,
+} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -50,6 +57,16 @@ test('Motion Canvas workspace ghi generation bất biến và kiểm tra TypeScr
     }),
   );
   const workspace = createMotionCanvasWorkspace(projectsDirectory);
+  const staleStagingDirectory = path.join(
+    projectsDirectory,
+    projectId,
+    'motion-canvas',
+    'generations',
+    `.staging-${randomUUID()}`,
+  );
+  await mkdir(staleStagingDirectory, {recursive: true});
+  const staleTime = new Date(Date.now() - 7 * 60 * 60 * 1_000);
+  await utimes(staleStagingDirectory, staleTime, staleTime);
 
   const prepared = await workspace.prepare(
     projectId,
@@ -62,6 +79,7 @@ test('Motion Canvas workspace ghi generation bất biến và kiểm tra TypeScr
     `motion-canvas/generations/${generationId}`,
   );
   assert.match(prepared.validation.sourceHash, /^[a-f0-9]{64}$/);
+  await assert.rejects(stat(staleStagingDirectory), {code: 'ENOENT'});
   const projectSource = await readFile(
     path.join(
       projectsDirectory,

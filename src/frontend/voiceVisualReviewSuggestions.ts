@@ -18,15 +18,20 @@ function fieldsForIssue(
     return ['visualDescription', 'animationDescription'];
   }
   if (category === 'voice_visual_alignment') {
-    return ['voiceover', 'visualDescription'];
+    return ['voiceover', 'spokenVoiceover', 'visualDescription'];
   }
   if (category === 'timing') {
-    return ['voiceover', 'visualHoldSeconds'];
+    return ['voiceover', 'spokenVoiceover', 'visualHoldSeconds'];
   }
   if (category === 'scope') {
-    return ['voiceover', 'visualDescription', 'animationDescription'];
+    return [
+      'voiceover',
+      'spokenVoiceover',
+      'visualDescription',
+      'animationDescription',
+    ];
   }
-  return ['voiceover'];
+  return ['voiceover', 'spokenVoiceover'];
 }
 
 export function prepareVoiceVisualReviewSuggestions({
@@ -48,11 +53,12 @@ export function prepareVoiceVisualReviewSuggestions({
       const fields = new Set<VoiceVisualBeatField>();
       for (const field of [
         'voiceover',
+        'spokenVoiceover',
         'visualDescription',
         'animationDescription',
         'visualHoldSeconds',
       ] as const) {
-        if (beatPatch[field] !== null) fields.add(field);
+        if (beatPatch[field] != null) fields.add(field);
       }
       protectedBeatFields.set(beatPatch.beatId, fields);
     }
@@ -101,10 +107,16 @@ export function prepareVoiceVisualReviewSuggestions({
         previous &&
         !protectedBeatFields.get(previous.id)?.has('voiceover')
       ) {
-        selectedBeatFields[previous.id] = ['voiceover'];
+        selectedBeatFields[previous.id] = [
+          'voiceover',
+          'spokenVoiceover',
+        ];
       }
       if (next && !protectedBeatFields.get(next.id)?.has('voiceover')) {
-        selectedBeatFields[next.id] = ['voiceover'];
+        selectedBeatFields[next.id] = [
+          'voiceover',
+          'spokenVoiceover',
+        ];
       }
     }
   }
