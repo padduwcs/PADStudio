@@ -9,7 +9,10 @@ import type {
   CodexAppServerNotification,
 } from './codexConnection.ts';
 import {
+  assessMotionCanvasSceneQuality,
+  applyMotionCanvasDefaultFont,
   createCodexMotionCanvasGenerator,
+  MOTION_CANVAS_DEFAULT_FONT_FAMILY,
   MotionCanvasGenerationError,
   type MotionCanvasGenerationRequest,
   validateMotionCanvasBackground,
@@ -53,6 +56,38 @@ ${beatIds
 `;
 }
 
+function richTimedSceneSource(beatIds: string[]) {
+  return `import {Circle, Line, makeScene2D, Rect} from '@motion-canvas/2d';
+import {all, createRef, useDuration, useThread, waitFor, waitUntil} from '@motion-canvas/core';
+
+export default makeScene2D(function* (view) {
+  const card = createRef<Rect>();
+  const marker = createRef<Circle>();
+  const range = createRef<Line>();
+  view.add(
+    <Rect key="scene-background" width={1080} height={1920} fill={'#10231D'}>
+      <Rect key="main-visual-card" ref={card} width={640} height={420} radius={32} fill={'#dbe9e2'} />
+      <Circle key="pivot-marker" ref={marker} size={80} fill={'#51B68E'} />
+      <Line key="search-range" ref={range} points={[[-240, 0], [240, 0]]} lineWidth={12} stroke={'#FFFFFF'} />
+    </Rect>,
+  );
+${beatIds
+  .map(
+    (beatId, index) => `  yield* waitUntil('beat:${beatId}:start');
+  const beatDuration${index} = useDuration('beat:${beatId}:end');
+  const beatEndTime${index} = useThread().time() + beatDuration${index};
+  yield* all(
+    card().scale(1.05, beatDuration${index} * 0.15),
+    marker().opacity(0.7, beatDuration${index} * 0.15),
+    range().end(0.8, beatDuration${index} * 0.15),
+  );
+  yield* waitFor(Math.max(0, beatEndTime${index} - useThread().time()));`,
+  )
+  .join('\n')}
+});
+`;
+}
+
 test('Motion Canvas bắt buộc scene dùng đúng background người dùng chọn', () => {
   assert.doesNotThrow(() =>
     validateMotionCanvasBackground(sceneSource, '#10231D'),
@@ -62,6 +97,144 @@ test('Motion Canvas bắt buộc scene dùng đúng background người dùng ch
     (error: unknown) =>
       error instanceof MotionCanvasGenerationError &&
       error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+  );
+});
+
+test('Motion Canvas thêm Times New Roman cho Txt chưa có font và giữ font chủ động', () => {
+  const source = `import {makeScene2D, Rect, Txt} from '@motion-canvas/2d';
+
+export default makeScene2D(function* (view) {
+  view.add(
+    <Rect key="scene-background" width={1080} height={1920} fill={'#10231D'}>
+      <Txt key="default-label" text={'Mặc định'} />
+      <Txt key="custom-label" text={'Chủ động'} fontFamily={'Georgia, serif'} />
+    </Rect>,
+  );
+});
+`;
+
+  const normalized = applyMotionCanvasDefaultFont(source);
+
+  assert.match(
+    normalized,
+    new RegExp(
+      `key="default-label"[^>]*fontFamily=\\{"${MOTION_CANVAS_DEFAULT_FONT_FAMILY}"\\}`,
+    ),
+  );
+  assert.match(
+    normalized,
+    /key="custom-label"[^>]*fontFamily=\{'Georgia, serif'\}/u,
+  );
+  assert.equal(applyMotionCanvasDefaultFont(normalized), normalized);
+  assert.doesNotThrow(() => validateMotionCanvasSceneSource(normalized));
+});
+
+test('Motion Canvas rejects Line.points tweens with a different point count because they can lock the renderer', () => {
+  const source = `import {Line, makeScene2D, Rect} from '@motion-canvas/2d';
+import {createRef, waitFor} from '@motion-canvas/core';
+
+export default makeScene2D(function* (view) {
+  const chart = createRef<Line>();
+  view.add(
+    <Rect key="scene-background" width={1080} height={1920} fill={'#10231D'}>
+      <Line
+        ref={chart}
+        key="complexity-growth-line"
+        points={[[-330, 110], [-190, 65], [-40, 20], [120, -25], [300, -80]]}
+        stroke={'#4FD1A5'}
+        lineWidth={10}
+      />
+    </Rect>,
+  );
+  yield* chart().points(
+    [[-330, 112], [-205, 102], [-80, 72], [45, 18], [165, -58], [300, -128]],
+    0.8,
+  );
+  yield* waitFor(1);
+});
+`;
+
+  assert.throws(
+    () => validateMotionCanvasSceneSource(source),
+    (error: unknown) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE' &&
+      /Line\.points/u.test(error.message),
+  );
+  assert.doesNotThrow(() =>
+    validateMotionCanvasSceneSource(
+      source.replace(
+        '[[-330, 112], [-205, 102], [-80, 72], [45, 18], [165, -58], [300, -128]]',
+        '[[-330, 112], [-180, 72], [-20, 20], [130, -40], [300, -128]]',
+      ),
+    ),
+  );
+});
+
+test('Motion Canvas quality gate đo richness theo beat thay vì độ dài thuần', () => {
+  const beatId = randomUUID();
+  const simple = timedSceneSource([beatId]);
+  const richer = simple
+    .replace(
+      "import {makeScene2D, Rect} from '@motion-canvas/2d';",
+      "import {makeScene2D, Circle, Line, Rect} from '@motion-canvas/2d';",
+    )
+    .replace(
+      '<Rect key="main-visual-card" width={640} height={120} radius={24} fill={\'#dbe9e2\'} />',
+      `<Rect key="main-visual-card" width={640} height={120} radius={24} fill={'#dbe9e2'} />
+      <Circle key="pivot-marker" size={80} fill={'#51B68E'} />
+      <Line key="search-range" points={[[-240, 0], [240, 0]]} lineWidth={12} stroke={'#FFFFFF'} />`,
+    )
+    .replace(
+      '  yield* waitFor(beatDuration0);',
+      `  yield* view.opacity(0.9, beatDuration0 * 0.2);
+  yield* view.rotation(2, beatDuration0 * 0.2);
+  yield* waitFor(beatDuration0);`,
+    );
+
+  const simpleQuality = assessMotionCanvasSceneQuality(simple, 1);
+  const richQuality = assessMotionCanvasSceneQuality(richer, 1);
+  assert.ok(richQuality.score > simpleQuality.score);
+  assert.ok(
+    richQuality.richnessPerBeat > simpleQuality.richnessPerBeat,
+  );
+  assert.equal(richQuality.visualTypeCount >= 3, true);
+});
+
+test('Motion Canvas tự sinh lại scene tụt richness và chỉ nhận bản thực sự tốt hơn', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-quality-gate-'),
+  );
+  context.after(() =>
+    rm(runtimeDirectory, {recursive: true, force: true}),
+  );
+  const client = new FakeCodexClient(
+    false,
+    undefined,
+    false,
+    (turnNumber, beatIds) =>
+      turnNumber === 2
+        ? timedSceneSource(beatIds)
+        : richTimedSceneSource(beatIds),
+  );
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+    concurrency: 1,
+  });
+  const request = createGenerationRequest();
+  const generated = await generator.generate(request);
+
+  assert.equal(
+    client.calls.filter((call) => call.method === 'turn/start').length,
+    3,
+  );
+  assert.ok(
+    assessMotionCanvasSceneQuality(generated.scenes[1]!.source, 1)
+      .richnessPerBeat >
+      assessMotionCanvasSceneQuality(timedSceneSource([
+        request.voiceVisualPlan.sections[1]!.beats[0]!.id,
+      ]), 1).richnessPerBeat,
   );
 });
 
@@ -75,6 +248,10 @@ class FakeCodexClient implements CodexAppServerClient {
   private readonly failFirstTurn: boolean;
   private readonly invalidTurnCount: number;
   private readonly models: Array<Record<string, unknown>>;
+  private readonly sourceFactory?: (
+    turnNumber: number,
+    beatIds: string[],
+  ) => string;
 
   constructor(
     failFirstTurn = false,
@@ -102,6 +279,7 @@ class FakeCodexClient implements CodexAppServerClient {
       },
     ],
     invalidFirstTurn: boolean | number = false,
+    sourceFactory?: (turnNumber: number, beatIds: string[]) => string,
   ) {
     this.failFirstTurn = failFirstTurn;
     this.models = models;
@@ -111,6 +289,7 @@ class FakeCodexClient implements CodexAppServerClient {
         : invalidFirstTurn
           ? 1
           : 0;
+    this.sourceFactory = sourceFactory;
   }
 
   async request(method: string, params?: unknown) {
@@ -164,7 +343,8 @@ class FakeCodexClient implements CodexAppServerClient {
                           'width={1080}',
                           'width={',
                         )
-                      : timedSceneSource(beatIds),
+                      : this.sourceFactory?.(turnNumber, beatIds) ??
+                        timedSceneSource(beatIds),
                 }),
               },
             },
@@ -531,6 +711,10 @@ test('Motion Canvas generator hoàn tất bằng fallback an toàn khi cả lư�
   const result = await generator.generate(request);
 
   assert.match(result.model, /local-safe-fallback/);
+  assert.match(
+    result.scenes[0]!.source,
+    /fontFamily=\{"Times New Roman, Times, serif"\}/u,
+  );
   validateMotionCanvasSceneSource(result.scenes[0]!.source);
   validateMotionCanvasTimingContract(
     result.scenes[0]!.source,

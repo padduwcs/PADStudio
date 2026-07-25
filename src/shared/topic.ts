@@ -256,6 +256,11 @@ export const GenerateTopicGuidanceSchema = z
   .object({
     generationId: CreationIdSchema,
     topicInput: TopicInputSchema,
+    userGuidance: z
+      .string()
+      .trim()
+      .transform((value) => value || undefined)
+      .optional(),
     model: z.string().trim().min(1).max(160).optional(),
     reasoningEffort: CodexReasoningEffortSchema.optional(),
   })

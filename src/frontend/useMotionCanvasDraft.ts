@@ -2,6 +2,7 @@ import {useEffect, useRef, useState} from 'react';
 import type {LayoutNodeOverride} from '../shared/layout.ts';
 import type {TopicProject} from '../shared/topic.ts';
 import type {
+  CreateMotionCanvasCandidate,
   MotionCanvasCandidateRecord,
   MotionCanvasEditScope,
   MotionCanvasHistoryResponse,
@@ -30,6 +31,13 @@ import {
 } from './api.ts';
 import {recordCodexWaitSample} from './codexWaitEstimate.ts';
 import {motionCanvasReviewerRepair} from './motionCanvasCandidateRepair.ts';
+import {
+  clearPendingMotionCanvasCandidateOperation,
+  readPendingMotionCanvasCandidateOperation,
+  shouldRetainPendingMotionCanvasCandidateOperation,
+  writePendingMotionCanvasCandidateOperation,
+  type PendingMotionCanvasCandidateOperation,
+} from './motionCanvasPendingOperation.ts';
 import {ProjectOperationQueue} from './projectOperationQueue.ts';
 
 type LoadState = 'loading' | 'ready' | 'error';
@@ -84,10 +92,7 @@ export function useMotionCanvasDraft(projectId: string) {
     fingerprint: string;
     generationId: string;
   } | null>(null);
-  const candidateRepairRequestRef = useRef<{
-    fingerprint: string;
-    generationId: string;
-  } | null>(null);
+  const pendingResumeRef = useRef('');
 
   async function loadFiles(loadedProject: TopicProject, session: number) {
     if (!loadedProject.motionCanvasBundle) {
@@ -109,7 +114,7 @@ export function useMotionCanvasDraft(projectId: string) {
     operationQueueRef.current = new ProjectOperationQueue();
     generationRequestRef.current = null;
     candidateRequestRef.current = null;
-    candidateRepairRequestRef.current = null;
+    pendingResumeRef.current = '';
     projectRef.current = null;
     setProject(null);
     setFiles([]);
@@ -186,6 +191,153 @@ export function useMotionCanvasDraft(projectId: string) {
       active = false;
     };
   }, [projectId, reloadKey]);
+
+  async function runCandidateWorkflow(
+    operation: PendingMotionCanvasCandidateOperation,
+    onPrimaryCandidate?: (candidate: MotionCanvasCandidateRecord) => void,
+  ) {
+    const created = await createMotionCanvasCandidate(
+      projectId,
+      operation.request,
+      operation.expectedRevision,
+    );
+    const reviewerRepair = operation.reviewerRepairGenerationId
+      ? motionCanvasReviewerRepair(created)
+      : null;
+    if (!reviewerRepair) {
+      return {
+        candidates: [created],
+        finalCandidate: created,
+        repairError: null,
+        activeGenerationId: created.candidateId,
+      };
+    }
+
+    const repairRequest: CreateMotionCanvasCandidate = {
+      generationId: operation.reviewerRepairGenerationId!,
+      baseCandidateId: created.candidateId,
+      guidance: reviewerRepair.guidance,
+      scope: reviewerRepair.scope,
+      model: operation.request.model,
+      reasoningEffort: operation.request.reasoningEffort,
+    };
+    writePendingMotionCanvasCandidateOperation({
+      version: 1,
+      projectId,
+      expectedRevision: operation.expectedRevision,
+      request: repairRequest,
+      reviewerRepairGenerationId: null,
+      savedAt: Date.now(),
+    });
+    onPrimaryCandidate?.(created);
+
+    try {
+      const repaired = await createMotionCanvasCandidate(
+        projectId,
+        repairRequest,
+        operation.expectedRevision,
+      );
+      return {
+        candidates: [created, repaired],
+        finalCandidate: repaired,
+        repairError: null,
+        activeGenerationId: repaired.candidateId,
+      };
+    } catch (repairError) {
+      return {
+        candidates: [created],
+        finalCandidate: created,
+        repairError,
+        activeGenerationId: repairRequest.generationId,
+      };
+    }
+  }
+
+  useEffect(() => {
+    if (loadState !== 'ready' || !project) return;
+    const pending = readPendingMotionCanvasCandidateOperation(projectId);
+    if (!pending) return;
+    if (pending.expectedRevision !== project.revision) {
+      clearPendingMotionCanvasCandidateOperation(projectId);
+      return;
+    }
+    const operationId = pending.request.generationId;
+    if (pendingResumeRef.current === operationId) return;
+    pendingResumeRef.current = operationId;
+    const session = sessionRef.current;
+    let active = true;
+    setCandidateGenerating(true);
+    setCandidateRepairing(
+      Boolean(pending.request.baseCandidateId) &&
+        pending.reviewerRepairGenerationId === null,
+    );
+    setActionError('');
+    setHistoryError('');
+
+    void operationQueueRef.current
+      .enqueue(() =>
+        runCandidateWorkflow(pending, primary => {
+          if (!active || sessionRef.current !== session) return;
+          setCandidate(primary);
+          setCandidateRepairing(true);
+        }),
+      )
+      .then(async result => {
+        if (!active || sessionRef.current !== session) return;
+        setCandidate(result.finalCandidate);
+        if (!result.repairError) {
+          clearPendingMotionCanvasCandidateOperation(
+            projectId,
+            result.activeGenerationId,
+          );
+        } else {
+          if (
+            !shouldRetainPendingMotionCanvasCandidateOperation(
+              result.repairError,
+            )
+          ) {
+            clearPendingMotionCanvasCandidateOperation(
+              projectId,
+              result.activeGenerationId,
+            );
+          }
+          const detail =
+            result.repairError instanceof ApiRequestError
+              ? result.repairError.message
+              : 'Codex chưa hoàn tất lượt sửa tiếp theo.';
+          setActionError(
+            `Candidate đầu tiên đã được khôi phục sau khi trang tải lại, nhưng lượt tự sửa theo reviewer chưa hoàn tất: ${detail}`,
+          );
+        }
+        setHistory(await getMotionCanvasHistory(projectId));
+      })
+      .catch(error => {
+        if (!active || sessionRef.current !== session) return;
+        if (!shouldRetainPendingMotionCanvasCandidateOperation(error)) {
+          clearPendingMotionCanvasCandidateOperation(projectId, operationId);
+        }
+        if (
+          error instanceof ApiRequestError &&
+          error.code === 'PROJECT_CONFLICT'
+        ) {
+          setConflict(true);
+        }
+        setActionError(
+          error instanceof ApiRequestError
+            ? error.message
+            : 'Không thể nối lại lượt sinh scene sau khi trang tải lại.',
+        );
+      })
+      .finally(() => {
+        if (!active || sessionRef.current !== session) return;
+        setCandidateRepairing(false);
+        setCandidateGenerating(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [loadState, project, projectId]);
 
   const sourceGenerationId =
     project?.motionCanvasBundle?.generation.generationId ?? '';
@@ -420,77 +572,50 @@ export function useMotionCanvasDraft(projectId: string) {
             ? previous.generationId
             : crypto.randomUUID();
         candidateRequestRef.current = {fingerprint, generationId};
-        const created = await createMotionCanvasCandidate(
-          projectId,
-          {
-            generationId,
-            baseCandidateId,
-            guidance: normalizedGuidance,
-            scope,
-            model: model || undefined,
-            reasoningEffort: reasoningEffort || undefined,
-          },
-          currentProject.revision,
-        );
-        const reviewerRepair = motionCanvasReviewerRepair(created);
-        if (!reviewerRepair) {
-          return {
-            candidates: [created],
-            finalCandidate: created,
-            repairError: null,
-          };
-        }
-
-        setCandidate(created);
-        setCandidateRepairing(true);
-        const repairFingerprint = JSON.stringify({
-          projectId,
-          revision: currentProject.revision,
-          baseCandidateId: created.candidateId,
-          guidance: reviewerRepair.guidance,
-          scope: reviewerRepair.scope,
-          model,
-          reasoningEffort,
-        });
-        const previousRepair = candidateRepairRequestRef.current;
-        const repairGenerationId =
-          previousRepair?.fingerprint === repairFingerprint
-            ? previousRepair.generationId
-            : crypto.randomUUID();
-        candidateRepairRequestRef.current = {
-          fingerprint: repairFingerprint,
-          generationId: repairGenerationId,
+        const request: CreateMotionCanvasCandidate = {
+          generationId,
+          baseCandidateId,
+          guidance: normalizedGuidance,
+          scope,
+          model: model || undefined,
+          reasoningEffort: reasoningEffort || undefined,
         };
-        try {
-          const repaired = await createMotionCanvasCandidate(
-            projectId,
-            {
-              generationId: repairGenerationId,
-              baseCandidateId: created.candidateId,
-              guidance: reviewerRepair.guidance,
-              scope: reviewerRepair.scope,
-              model: model || undefined,
-              reasoningEffort: reasoningEffort || undefined,
-            },
-            currentProject.revision,
-          );
-          return {
-            candidates: [created, repaired],
-            finalCandidate: repaired,
-            repairError: null,
-          };
-        } catch (repairError) {
-          return {
-            candidates: [created],
-            finalCandidate: created,
-            repairError,
-          };
-        }
+        const storedOperation =
+          readPendingMotionCanvasCandidateOperation(projectId);
+        const reviewerRepairGenerationId =
+          storedOperation?.request.generationId === generationId
+            ? storedOperation.reviewerRepairGenerationId
+            : crypto.randomUUID();
+        const operation: PendingMotionCanvasCandidateOperation = {
+          version: 1,
+          projectId,
+          expectedRevision: currentProject.revision,
+          request,
+          reviewerRepairGenerationId,
+          savedAt: Date.now(),
+        };
+        writePendingMotionCanvasCandidateOperation(operation);
+        return runCandidateWorkflow(operation, created => {
+          setCandidate(created);
+          setCandidateRepairing(true);
+        });
       });
       const created = result.finalCandidate;
       if (!result.repairError) {
         candidateRequestRef.current = null;
-        candidateRepairRequestRef.current = null;
+        clearPendingMotionCanvasCandidateOperation(
+          projectId,
+          result.activeGenerationId,
+        );
+      } else if (
+        !shouldRetainPendingMotionCanvasCandidateOperation(
+          result.repairError,
+        )
+      ) {
+        clearPendingMotionCanvasCandidateOperation(
+          projectId,
+          result.activeGenerationId,
+        );
       }
       setCandidate(created);
       setHistory(current =>
@@ -535,6 +660,12 @@ export function useMotionCanvasDraft(projectId: string) {
       return created;
     } catch (error) {
       if (error instanceof MotionCanvasOperationCancelledError) return null;
+      if (!shouldRetainPendingMotionCanvasCandidateOperation(error)) {
+        clearPendingMotionCanvasCandidateOperation(
+          projectId,
+          candidateRequestRef.current?.generationId,
+        );
+      }
       if (
         error instanceof ApiRequestError &&
         error.code === 'PROJECT_CONFLICT'
@@ -575,6 +706,7 @@ export function useMotionCanvasDraft(projectId: string) {
       projectRef.current = updatedProject;
       setProject(updatedProject);
       setCandidate(null);
+      clearPendingMotionCanvasCandidateOperation(projectId);
       await loadFiles(updatedProject, session);
       setHistory(await getMotionCanvasHistory(projectId));
       return updatedProject;
@@ -617,6 +749,7 @@ export function useMotionCanvasDraft(projectId: string) {
           : current,
       );
       if (candidate?.candidateId === candidateId) setCandidate(null);
+      clearPendingMotionCanvasCandidateOperation(projectId);
       return rejected;
     } catch (error) {
       setHistoryError(
@@ -689,6 +822,7 @@ export function useMotionCanvasDraft(projectId: string) {
       projectRef.current = updatedProject;
       setProject(updatedProject);
       setCandidate(null);
+      clearPendingMotionCanvasCandidateOperation(projectId);
       await loadFiles(updatedProject, session);
       setHistory(await getMotionCanvasHistory(projectId));
       return updatedProject;
@@ -830,7 +964,10 @@ export function useMotionCanvasDraft(projectId: string) {
     createCheckpoint,
     restoreVersion,
     selectCandidate: setCandidate,
-    dismissCandidate: () => setCandidate(null),
+    dismissCandidate: () => {
+      clearPendingMotionCanvasCandidateOperation(projectId);
+      setCandidate(null);
+    },
     approve,
     saveDesign,
     retryPreview: () => setPreviewRetryKey((current) => current + 1),

@@ -14,7 +14,7 @@ import {
   runCodexStructuredGeneration,
 } from './codexStructuredGeneration.ts';
 
-export const TOPIC_GUIDANCE_PROMPT_VERSION = 'topic-guidance-v1';
+export const TOPIC_GUIDANCE_PROMPT_VERSION = 'topic-guidance-v2';
 
 const outputJsonSchema = z.toJSONSchema(TopicGuidanceSuggestionSchema, {
   target: 'draft-7',
@@ -22,6 +22,7 @@ const outputJsonSchema = z.toJSONSchema(TopicGuidanceSuggestionSchema, {
 
 export interface TopicGuidanceGenerationRequest {
   topicInput: TopicInput;
+  userGuidance?: string;
   model?: string;
   reasoningEffort?: string;
 }
@@ -47,14 +48,20 @@ export class TopicGuidanceGenerationError extends Error {
   }
 }
 
-function buildPrompt(topicInput: TopicInput) {
+function buildPrompt(request: TopicGuidanceGenerationRequest) {
   return [
     'Từ thông tin chủ đề trong JSON, đề xuất định hướng cho một video giáo dục bằng tiếng Việt.',
     'learningGoal phải mô tả kết quả học tập cụ thể mà người xem đạt được.',
     'videoDirection phải là một bản nháp giàu thông tin, có thể chỉnh sửa trực tiếp: cách mở đầu, mạch giải thích, nhịp điệu, phong cách hình ảnh, điểm cần nhấn mạnh và điều cần tránh khi phù hợp.',
     'suggestedAngles gồm các góc khai thác ngắn gọn để người dùng tham khảo; không lặp lại nguyên văn hai trường trên.',
     'Nếu người dùng đã nhập learningGoal hoặc videoDirection, hãy tôn trọng ràng buộc đó và phát triển chúng, không thay đổi ý định.',
-    JSON.stringify({topicInput}),
+    'Nếu có userGuidance, đây là góp ý trực tiếp của người dùng: ưu tiên làm đúng ý đó khi đề xuất, nhưng không sao chép máy móc hoặc làm giảm tính chính xác giáo dục. Nếu không có userGuidance, hãy tự đề xuất bình thường từ topicInput.',
+    JSON.stringify({
+      topicInput: request.topicInput,
+      ...(request.userGuidance
+        ? {userGuidance: request.userGuidance}
+        : {}),
+    }),
   ].join('\n');
 }
 
@@ -99,7 +106,7 @@ export function createCodexTopicGuidanceGenerator(
             options.timeoutMs ??
             codexGenerationTimeoutMs(request.reasoningEffort),
           outputSchema: outputJsonSchema,
-          prompt: buildPrompt(request.topicInput),
+          prompt: buildPrompt(request),
           baseInstructions:
             'Bạn hỗ trợ định hướng nội dung cho PAD Studio. Không dùng công cụ hoặc đọc tệp. Chỉ trả JSON đúng schema.',
           developerInstructions:

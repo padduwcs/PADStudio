@@ -5,6 +5,7 @@ import {
   CommitLayoutSchema,
   CreateTopicProjectSchema,
   currentProjectVersion,
+  GenerateTopicGuidanceSchema,
   GenerateMotionCanvasSchema,
   LayoutBundleSchema,
   LayoutEditorManifestSchema,
@@ -160,6 +161,36 @@ test('Codex generation chỉ nhận reasoning effort dạng capability identifie
       reasoningEffort: 'HIGH<script>',
     }).success,
     false,
+  );
+});
+
+test('góp ý cho đề xuất định hướng là tùy chọn và được chuẩn hóa', () => {
+  const request = {
+    generationId: '00000000-0000-4000-8000-000000000009',
+    topicInput: {
+      topic: 'Giải thích tìm kiếm nhị phân bằng ví dụ trực quan',
+      audience: 'beginner',
+      duration: 'standard',
+    },
+  };
+
+  assert.equal(
+    GenerateTopicGuidanceSchema.safeParse(request).success,
+    true,
+  );
+  assert.equal(
+    GenerateTopicGuidanceSchema.parse({
+      ...request,
+      userGuidance: '  Ưu tiên ví dụ đời thường.  ',
+    }).userGuidance,
+    'Ưu tiên ví dụ đời thường.',
+  );
+  assert.equal(
+    GenerateTopicGuidanceSchema.parse({
+      ...request,
+      userGuidance: '   ',
+    }).userGuidance,
+    undefined,
   );
 });
 
@@ -580,6 +611,67 @@ test('layout override and manifest schemas enforce stable targets and locks', ()
     LayoutOverridesDocumentSchema.safeParse({
       ...document,
       overrides: [{...overrides[0], patch: {}}],
+    }).success,
+    false,
+  );
+  assert.equal(
+    LayoutOverridesDocumentSchema.safeParse({
+      ...document,
+      overrides: [
+        {
+          ...overrides[0],
+          patch: {},
+          visibility: [
+            {timeSeconds: 1.25, hidden: true},
+            {timeSeconds: 2.5, hidden: false},
+          ],
+        },
+      ],
+    }).success,
+    true,
+  );
+  assert.equal(
+    LayoutOverridesDocumentSchema.safeParse({
+      ...document,
+      overrides: [
+        {
+          ...overrides[0],
+          patch: {},
+          visibility: [
+            {timeSeconds: 2.5, hidden: true},
+            {timeSeconds: 1.25, hidden: false},
+          ],
+        },
+      ],
+    }).success,
+    false,
+  );
+  assert.equal(
+    LayoutOverridesDocumentSchema.safeParse({
+      ...document,
+      overrides: [
+        {
+          ...overrides[0],
+          nodeKey: 'user-text:30000000-0000-4000-8000-000000000099',
+          patch: {
+            text: 'Text người dùng',
+            fontFamily: 'Times New Roman, Times, serif',
+          },
+        },
+      ],
+    }).success,
+    true,
+  );
+  assert.equal(
+    LayoutOverridesDocumentSchema.safeParse({
+      ...document,
+      overrides: [
+        {
+          ...overrides[0],
+          nodeKey: 'user-text:30000000-0000-4000-8000-000000000099',
+          patch: {fontSize: 64},
+        },
+      ],
     }).success,
     false,
   );

@@ -17,6 +17,7 @@ import {
   type LayoutEditorNode,
   type LayoutNodePatch,
   type LayoutOverridesDocument,
+  type LayoutVisibilityKeyframe,
 } from '../shared/layout.ts';
 import {
   ChevronDownIcon,
@@ -70,6 +71,8 @@ interface RuntimeSelection {
   lockReason: string | null;
   editorLocked: boolean;
   patch: LayoutNodePatch;
+  visibility?: LayoutVisibilityKeyframe[];
+  userText?: boolean;
   base?: Record<string, unknown>;
 }
 
@@ -80,6 +83,7 @@ interface RuntimeState {
   paused: boolean;
   sceneId: string;
   sceneName: string;
+  sceneTimeSeconds?: number;
   dirtyRevision: number;
   view?: {
     original: boolean;
@@ -790,6 +794,14 @@ export function MotionDesignEditor({
           </div>
           <div className="layout-command-bar">
             <div className="layout-command-group">
+              <button
+                type="button"
+                title="Thêm text vào scene hiện tại"
+                disabled={!runtimeReady || !activeScene}
+                onClick={() => sendCommand('addText')}
+              >
+                ＋ Text
+              </button>
               <button type="button" title="Hoàn tác" disabled={!runtimeState?.history.canUndo} onClick={() => sendCommand('undo')}>
                 <UndoIcon /><kbd>Ctrl Z</kbd>
               </button>
@@ -949,13 +961,47 @@ export function MotionDesignEditor({
                   <button type="button" disabled={!canEdit('zIndexDelta')} onClick={() => sendPatch({zIndexDelta: (selection.patch.zIndexDelta ?? 0) + 1})}><ChevronUpIcon />Đưa lên</button>
                   <button type="button" disabled={!canEdit('zIndexDelta')} onClick={() => sendPatch({zIndexDelta: (selection.patch.zIndexDelta ?? 0) - 1})}><ChevronDownIcon />Đưa xuống</button>
                 </div>
+                <div className="layout-temporal-visibility">
+                  <strong>Ẩn/hiện theo thời gian</strong>
+                  <p>
+                    Đặt trạng thái tại playhead
+                    {typeof runtimeState?.sceneTimeSeconds === 'number'
+                      ? ` (${runtimeState.sceneTimeSeconds.toFixed(2)}s trong scene)`
+                      : ''}.
+                  </p>
+                  <div>
+                    <button type="button" disabled={!canEdit('hidden')} onClick={() => sendCommand('setVisibilityAtTime', {hidden: true})}>
+                      <EyeOffIcon />Ẩn từ đây
+                    </button>
+                    <button type="button" disabled={!canEdit('hidden')} onClick={() => sendCommand('setVisibilityAtTime', {hidden: false})}>
+                      Hiện từ đây
+                    </button>
+                    <button type="button" disabled={(selection.visibility?.length ?? 0) === 0} onClick={() => sendCommand('clearVisibilityTrack')}>
+                      Xóa timing
+                    </button>
+                  </div>
+                  {(selection.visibility?.length ?? 0) > 0 && (
+                    <small>
+                      {selection.visibility!
+                        .map((keyframe) => `${keyframe.timeSeconds.toFixed(2)}s ${keyframe.hidden ? 'ẩn' : 'hiện'}`)
+                        .join(' · ')}
+                    </small>
+                  )}
+                </div>
                 <button className={`layout-visibility-button${selection.patch.hidden ? ' is-hidden' : ''}`} type="button" disabled={!canEdit('hidden')} onClick={() => sendPatch({hidden: !selection.patch.hidden})}>
-                  <EyeOffIcon />{selection.patch.hidden ? 'Khôi phục layer' : 'Ẩn layer khỏi video'}
+                  <EyeOffIcon />{selection.patch.hidden ? 'Khôi phục toàn scene' : 'Ẩn trong toàn scene'}
                 </button>
               </section>
               <footer>
                 <button type="button" disabled={selection.editorLocked} onClick={() => sendCommand('resetSelected')}><ResetIcon />Reset layer</button>
-                <button className="is-danger" type="button" disabled={!canEdit('hidden')} onClick={() => sendPatch({hidden: true})}><TrashIcon />Delete (ẩn)</button>
+                <button
+                  className="is-danger"
+                  type="button"
+                  disabled={selection.userText ? selection.editorLocked : !canEdit('hidden')}
+                  onClick={() => selection.userText ? sendCommand('deleteSelected') : sendPatch({hidden: true})}
+                >
+                  <TrashIcon />{selection.userText ? 'Xóa text' : 'Delete (ẩn)'}
+                </button>
               </footer>
             </>
           )}

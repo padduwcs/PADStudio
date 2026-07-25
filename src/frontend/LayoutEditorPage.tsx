@@ -20,6 +20,7 @@ import {
   type LayoutNodePatch,
   type LayoutOverridesDocument,
   type LayoutRenderSettings,
+  type LayoutVisibilityKeyframe,
 } from '../shared/layout.ts';
 import type {RenderWatermark} from '../shared/render.ts';
 import {AdaptiveHeading} from './AdaptiveText.tsx';
@@ -134,6 +135,8 @@ interface RuntimeSelection {
   lockReason: string | null;
   editorLocked: boolean;
   patch: LayoutNodePatch;
+  visibility?: LayoutVisibilityKeyframe[];
+  userText?: boolean;
   base?: Record<string, unknown>;
 }
 
@@ -145,6 +148,7 @@ interface RuntimeState {
   muted: boolean;
   sceneId: string;
   sceneName: string;
+  sceneTimeSeconds?: number;
   dirtyRevision: number;
   reviewed: boolean;
   view?: {
@@ -2266,6 +2270,14 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
           <div className="layout-command-bar">
             <div className="layout-command-group">
               <button
+                type="button"
+                title="Thêm text vào scene hiện tại"
+                disabled={!runtimeReady || !activeScene}
+                onClick={() => sendCommand('addText')}
+              >
+                ＋ Text
+              </button>
+              <button
                 ref={shortcutCloseRef}
                 type="button"
                 title="Hoàn tác (Ctrl+Z)"
@@ -2724,6 +2736,55 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                     Đưa xuống
                   </button>
                 </div>
+                <div className="layout-temporal-visibility">
+                  <strong>Ẩn/hiện theo thời gian</strong>
+                  <p>
+                    Đặt trạng thái tại playhead
+                    {typeof runtimeState?.sceneTimeSeconds === 'number'
+                      ? ` (${runtimeState.sceneTimeSeconds.toFixed(2)}s trong scene)`
+                      : ''}.
+                  </p>
+                  <div>
+                    <button
+                      type="button"
+                      disabled={!canEdit('hidden')}
+                      onClick={() =>
+                        sendCommand('setVisibilityAtTime', {hidden: true})
+                      }
+                    >
+                      <EyeOffIcon />
+                      Ẩn từ đây
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!canEdit('hidden')}
+                      onClick={() =>
+                        sendCommand('setVisibilityAtTime', {hidden: false})
+                      }
+                    >
+                      Hiện từ đây
+                    </button>
+                    <button
+                      type="button"
+                      disabled={(selection.visibility?.length ?? 0) === 0}
+                      onClick={() => sendCommand('clearVisibilityTrack')}
+                    >
+                      Xóa timing
+                    </button>
+                  </div>
+                  {(selection.visibility?.length ?? 0) > 0 && (
+                    <small>
+                      {selection.visibility!
+                        .map(
+                          (keyframe) =>
+                            `${keyframe.timeSeconds.toFixed(2)}s ${
+                              keyframe.hidden ? 'ẩn' : 'hiện'
+                            }`,
+                        )
+                        .join(' · ')}
+                    </small>
+                  )}
+                </div>
                 <button
                   className={`layout-visibility-button${
                     selection.patch.hidden ? ' is-hidden' : ''
@@ -2736,8 +2797,8 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                 >
                   {selection.patch.hidden ? <EyeIcon /> : <EyeOffIcon />}
                   {selection.patch.hidden
-                    ? 'Khôi phục node'
-                    : 'Ẩn node khỏi video'}
+                    ? 'Khôi phục toàn scene'
+                    : 'Ẩn trong toàn scene'}
                 </button>
               </section>
 
@@ -2753,11 +2814,19 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                 <button
                   className="is-danger"
                   type="button"
-                  disabled={!canEdit('hidden')}
-                  onClick={() => sendPatch({hidden: true})}
+                  disabled={
+                    selection.userText
+                      ? selection.editorLocked
+                      : !canEdit('hidden')
+                  }
+                  onClick={() =>
+                    selection.userText
+                      ? sendCommand('deleteSelected')
+                      : sendPatch({hidden: true})
+                  }
                 >
                   <TrashIcon />
-                  Delete (ẩn)
+                  {selection.userText ? 'Xóa text' : 'Delete (ẩn)'}
                 </button>
               </footer>
             </>

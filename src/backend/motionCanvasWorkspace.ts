@@ -28,6 +28,7 @@ import {
   MOTION_CANVAS_HEIGHT,
   MOTION_CANVAS_VERSION,
   MOTION_CANVAS_WIDTH,
+  validateMotionCanvasRuntimeSafety,
   type MotionCanvasSourceScene,
 } from './motionCanvasGenerator.ts';
 
@@ -452,6 +453,22 @@ export function createMotionCanvasWorkspace(
           'MOTION_CANVAS_WORKSPACE_CONFLICT',
           'Generation ID này đã có workspace Motion Canvas.',
         );
+      }
+
+      for (const scene of scenes) {
+        try {
+          validateMotionCanvasRuntimeSafety(scene.source);
+        } catch (error) {
+          const details =
+            error instanceof Error
+              ? `${scene.filePath}: ${error.message}`.slice(0, 12_000)
+              : `${scene.filePath}: Scene source không vượt qua runtime safety policy.`;
+          throw new MotionCanvasWorkspaceError(
+            'MOTION_CANVAS_VALIDATION_FAILED',
+            'Scene Motion Canvas có cấu trúc có thể làm treo runtime.',
+            {cause: error, details},
+          );
+        }
       }
 
       const files: MotionCanvasWorkspaceFile[] = [

@@ -84,21 +84,37 @@ test('Codex tạo bản nháp định hướng có cấu trúc từ topic', asyn
     timeoutMs: 1_000,
   });
 
+  const topicInput = {
+    topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
+    background: {mode: 'dark' as const, color: '#10231D'},
+    audience: 'beginner' as const,
+    duration: 'standard' as const,
+  };
   const result = await generator.generate({
-    topicInput: {
-      topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
-      background: {mode: 'dark', color: '#10231D'},
-      audience: 'beginner',
-      duration: 'standard',
-    },
+    topicInput,
+    reasoningEffort: 'medium',
+  });
+  const guidedResult = await generator.generate({
+    topicInput,
+    userGuidance:
+      'Ưu tiên ví dụ tra cứu một tên trong danh bạ đã sắp xếp.',
     reasoningEffort: 'medium',
   });
 
   assert.equal(result.model, 'gpt-test');
+  assert.equal(guidedResult.model, 'gpt-test');
   assert.equal(result.suggestion.suggestedAngles.length, 2);
-  const turn = client.calls.find(call => call.method === 'turn/start');
+  const turns = client.calls.filter(call => call.method === 'turn/start');
   assert.equal(
-    (turn?.params as {effort?: string}).effort,
+    (turns[0]?.params as {effort?: string}).effort,
     'medium',
+  );
+  assert.doesNotMatch(
+    JSON.stringify(turns[0]?.params),
+    /tra cứu một tên/u,
+  );
+  assert.match(
+    JSON.stringify(turns[1]?.params),
+    /tra cứu một tên/u,
   );
 });

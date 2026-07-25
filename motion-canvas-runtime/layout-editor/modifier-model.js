@@ -21,6 +21,8 @@ const FONT_WEIGHTS = new Set([100, 200, 300, 400, 500, 600, 700, 800, 900]);
 const FONT_STYLES = new Set(['normal', 'italic']);
 
 const HEX_COLOR = /^#[a-fA-F0-9]{6}(?:[a-fA-F0-9]{2})?$/;
+const USER_TEXT_NODE_KEY = /^user-text:[0-9a-f-]{36}$/i;
+const VISIBILITY_TIME_EPSILON = 1 / 240;
 
 function finite(value, fallback, min, max) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
@@ -128,8 +130,65 @@ function normalizeOverride(value) {
         : '';
   if (!sceneId || !nodeKey) return null;
   const patch = normalizePatch(value.patch ?? value);
-  if (Object.keys(patch).length === 0) return null;
-  return {sceneId, nodeKey, nodeFingerprint, patch};
+  const visibility = normalizeVisibilityTrack(value.visibility);
+  if (Object.keys(patch).length === 0 && visibility.length === 0) return null;
+  return {
+    sceneId,
+    nodeKey,
+    nodeFingerprint,
+    patch,
+    ...(visibility.length > 0 ? {visibility} : {}),
+  };
+}
+
+export function isUserTextNodeKey(nodeKey) {
+  return typeof nodeKey === 'string' && USER_TEXT_NODE_KEY.test(nodeKey);
+}
+
+export function normalizeVisibilityTrack(value) {
+  if (!Array.isArray(value)) return [];
+  const sorted = value
+    .filter(
+      keyframe =>
+        keyframe &&
+        typeof keyframe === 'object' &&
+        Number.isFinite(keyframe.timeSeconds) &&
+        keyframe.timeSeconds >= 0 &&
+        typeof keyframe.hidden === 'boolean',
+    )
+    .map(keyframe => ({
+      timeSeconds: Math.min(
+        86_400,
+        Math.round(keyframe.timeSeconds * 1_000) / 1_000,
+      ),
+      hidden: keyframe.hidden,
+    }))
+    .sort((left, right) => left.timeSeconds - right.timeSeconds);
+  const unique = [];
+  for (const keyframe of sorted) {
+    const previous = unique.at(-1);
+    if (
+      previous &&
+      Math.abs(previous.timeSeconds - keyframe.timeSeconds) <=
+        VISIBILITY_TIME_EPSILON
+    ) {
+      unique[unique.length - 1] = keyframe;
+    } else {
+      unique.push(keyframe);
+    }
+  }
+  return unique.slice(0, 500);
+}
+
+export function visibilityAtTime(visibility, timeSeconds) {
+  if (!Array.isArray(visibility) || visibility.length === 0) return null;
+  const time = Number.isFinite(timeSeconds) ? Math.max(0, timeSeconds) : 0;
+  let state = null;
+  for (const keyframe of visibility) {
+    if (keyframe.timeSeconds > time + VISIBILITY_TIME_EPSILON) break;
+    state = keyframe.hidden;
+  }
+  return state;
 }
 
 export function normalizeDocument(value, source = {}) {
@@ -202,12 +261,71 @@ export function patchDocument(
       nodeKey,
       nodeFingerprint: nodeFingerprint || current?.nodeFingerprint || '',
       patch: nextPatch,
+      ...(current?.visibility?.length
+        ? {visibility: current.visibility}
+        : {}),
     };
     if (targetIndex >= 0) overrides[targetIndex] = nextOverride;
     else overrides.push(nextOverride);
   } else if (targetIndex >= 0) {
     overrides.splice(targetIndex, 1);
   }
+  return {...normalized, overrides};
+}
+
+export function patchVisibilityDocument(
+  document,
+  sceneId,
+  nodeKey,
+  nodeFingerprint,
+  timeSeconds,
+  hidden,
+) {
+  const normalized = normalizeDocument(document);
+  const index = buildModifierIndex(normalized);
+  const current = getOverride(index, sceneId, nodeKey);
+  const nextTime = Math.max(
+    0,
+    Math.round((Number(timeSeconds) || 0) * 1_000) / 1_000,
+  );
+  const nextVisibility = normalizeVisibilityTrack([
+    ...(current?.visibility ?? []).filter(
+      keyframe =>
+        Math.abs(keyframe.timeSeconds - nextTime) >
+        VISIBILITY_TIME_EPSILON,
+    ),
+    {timeSeconds: nextTime, hidden: hidden === true},
+  ]);
+  const compactVisibility = nextVisibility.filter(
+    (keyframe, index, keyframes) =>
+      index === 0 || keyframes[index - 1]?.hidden !== keyframe.hidden,
+  );
+  const targetIndex = normalized.overrides.findIndex(
+    item => item.sceneId === sceneId && item.nodeKey === nodeKey,
+  );
+  const overrides = [...normalized.overrides];
+  const nextOverride = {
+    sceneId,
+    nodeKey,
+    nodeFingerprint: nodeFingerprint || current?.nodeFingerprint || '',
+    patch: current?.patch ?? {},
+    visibility: compactVisibility,
+  };
+  if (targetIndex >= 0) overrides[targetIndex] = nextOverride;
+  else overrides.push(nextOverride);
+  return {...normalized, overrides};
+}
+
+export function clearVisibilityDocument(document, sceneId, nodeKey) {
+  const normalized = normalizeDocument(document);
+  const overrides = normalized.overrides.flatMap(override => {
+    if (override.sceneId !== sceneId || override.nodeKey !== nodeKey) {
+      return [override];
+    }
+    if (Object.keys(override.patch ?? {}).length === 0) return [];
+    const {visibility: _visibility, ...withoutVisibility} = override;
+    return [withoutVisibility];
+  });
   return {...normalized, overrides};
 }
 
@@ -364,7 +482,11 @@ export function applyOverride(node, override, options = {}) {
     if (patch.strokeWidth !== undefined) {
       setSignal(node, 'lineWidth', patch.strokeWidth, restorers);
     }
-    if (patch.hidden) {
+    const timedHidden = visibilityAtTime(
+      override.visibility,
+      options.timeSeconds,
+    );
+    if (patch.hidden || timedHidden === true) {
       setSignal(node, 'opacity', 0, restorers);
     } else if (
       patch.opacity !== undefined &&

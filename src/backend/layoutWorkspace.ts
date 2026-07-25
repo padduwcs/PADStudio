@@ -449,7 +449,13 @@ export function validateLayoutDocuments(
     contentRevision: number;
     generation: {generationId: string};
     validation: {sourceHash: string};
-    sections: Array<{sceneId: string; filePath: string}>;
+    sections: Array<{
+      sceneId: string;
+      filePath: string;
+      durationSeconds?: number;
+      synchronizedDurationSeconds?: number;
+      plannedDurationSeconds?: number;
+    }>;
   },
   overrides: LayoutNodeOverride[],
   editorManifest: LayoutEditorManifest,
@@ -530,6 +536,9 @@ export function validateLayoutDocuments(
       ] as const),
     ),
   );
+  const sectionsById = new Map(
+    syncBundle.sections.map((section) => [section.sceneId, section]),
+  );
   for (const override of overridesDocument.data.overrides) {
     const node = nodesByTarget.get(
       `${override.sceneId}\0${override.nodeKey}`,
@@ -559,6 +568,22 @@ export function validateLayoutDocuments(
           `Thuộc tính “${property}” của node “${override.nodeKey}” không thể chỉnh.`,
         );
       }
+    }
+    const section = sectionsById.get(override.sceneId);
+    const sceneDuration =
+      section?.synchronizedDurationSeconds ??
+      section?.durationSeconds ??
+      section?.plannedDurationSeconds;
+    if (
+      Number.isFinite(sceneDuration) &&
+      override.visibility?.some(
+        (keyframe) => keyframe.timeSeconds > Number(sceneDuration) + 1 / 30,
+      )
+    ) {
+      throw new LayoutWorkspaceError(
+        'LAYOUT_OVERRIDE_TIMING_OUT_OF_RANGE',
+        `Mốc ẩn/hiện của node “${override.nodeKey}” nằm ngoài thời lượng scene.`,
+      );
     }
   }
 

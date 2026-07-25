@@ -548,6 +548,7 @@ function TopicPage({
     useState<TopicGuidanceGenerationResponse | null>(null);
   const [guidanceGenerating, setGuidanceGenerating] = useState(false);
   const [guidanceError, setGuidanceError] = useState('');
+  const [guidanceFeedback, setGuidanceFeedback] = useState('');
   const guidanceRequestRef = useRef<{
     fingerprint: string;
     generationId: string;
@@ -564,6 +565,7 @@ function TopicPage({
     form.duration,
     form.targetDurationMinutes,
     form.topic,
+    guidanceFeedback,
   ]);
 
   async function requestTopicGuidance() {
@@ -600,8 +602,10 @@ function TopicPage({
         setGuidanceError('Hãy chọn model và reasoning effort trước.');
         return;
       }
+      const userGuidance = guidanceFeedback.trim() || undefined;
       const fingerprint = JSON.stringify({
         topicInput: topicInput.data,
+        userGuidance: userGuidance ?? null,
         ...selection,
       });
       if (guidanceRequestRef.current?.fingerprint !== fingerprint) {
@@ -613,6 +617,7 @@ function TopicPage({
       const response = await generateTopicGuidance({
         generationId: guidanceRequestRef.current.generationId,
         topicInput: topicInput.data,
+        ...(userGuidance ? {userGuidance} : {}),
         ...selection,
       });
       setGuidanceSuggestion(response);
@@ -996,6 +1001,25 @@ function TopicPage({
                     )}
                   </button>
                 </header>
+
+                <label className="topic-guidance-feedback">
+                  <span>
+                    Góp ý cho AI <small>Không bắt buộc</small>
+                  </span>
+                  <textarea
+                    rows={3}
+                    value={guidanceFeedback}
+                    disabled={guidanceGenerating}
+                    placeholder="Ví dụ: Ưu tiên ví dụ đời thường, đi thẳng vào trực quan và tránh giải thích quá hàn lâm."
+                    onChange={(event) =>
+                      setGuidanceFeedback(event.currentTarget.value)
+                    }
+                  />
+                  <small>
+                    Bỏ trống nếu bạn muốn AI tự đề xuất hoàn toàn từ chủ đề,
+                    người xem và thời lượng.
+                  </small>
+                </label>
 
                 {guidanceError && (
                   <p className="field-error" role="alert">{guidanceError}</p>

@@ -4,13 +4,17 @@ import {
   buildModifierIndex,
   editableProperties,
   getOverride,
+  isUserTextNodeKey,
   nodeFingerprintSource,
   normalizeDocument,
+  patchVisibilityDocument,
+  clearVisibilityDocument,
   patchDocument,
   resetDocumentNode,
   serializeSignalValue,
   sha256,
 } from './modifier-model.js';
+import {reconcileUserTextNodes} from './user-text-nodes.js';
 import {
   createProtocol,
   fetchOptionalJson,
@@ -31,6 +35,7 @@ const NODE_KEY = /^[A-Za-z0-9][A-Za-z0-9._:/\[\]-]{0,159}$/;
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256 = /^[a-f0-9]{64}$/;
+const HEX_COLOR = /^#[a-fA-F0-9]{6}(?:[a-fA-F0-9]{2})?$/;
 const MAX_MANIFEST_NODES = 500;
 const SNAP_STEP = 10;
 
@@ -790,6 +795,8 @@ async function startEditor(project) {
       lockReason: manifestNode?.lockReason ?? null,
       editorLocked: patch.editorLocked === true,
       patch,
+      visibility: override?.visibility ?? [],
+      userText: isUserTextNodeKey(node.key),
       base: {
         position: signalSnapshot(node, 'position'),
         scale: signalSnapshot(node, 'scale'),
@@ -825,6 +832,7 @@ async function startEditor(project) {
       muted: state.muted,
       sceneId: currentSceneInfo().sceneId,
       sceneName: player.playback.currentScene?.name ?? '',
+      sceneTimeSeconds: sceneTimeSeconds(player.playback.currentScene),
       dirtyRevision,
       reviewed: reviewedRevision === dirtyRevision,
       view: {...view},
@@ -976,6 +984,99 @@ async function startEditor(project) {
     );
   }
 
+  function sceneTimeSeconds(scene) {
+    if (!scene) return 0;
+    return Math.max(
+      0,
+      (currentFrame - Number(scene.firstFrame || 0)) /
+        Math.max(1, player.status.fps),
+    );
+  }
+
+  function patchSelectionVisibility(hidden) {
+    if (dragging || !selected || !selectedCanEdit(['hidden'])) return false;
+    const payload = selectionPayload();
+    if (!payload?.nodeFingerprint) return false;
+    const next = patchVisibilityDocument(
+      overridesDocument,
+      selected.sceneId,
+      selected.nodeKey,
+      payload.nodeFingerprint,
+      sceneTimeSeconds(player.playback.currentScene),
+      hidden,
+    );
+    return replaceDocument(next, {
+      reason: hidden ? 'hide-selected-from-time' : 'show-selected-from-time',
+    });
+  }
+
+  function clearSelectionVisibility() {
+    if (dragging || !selected) return false;
+    return replaceDocument(
+      clearVisibilityDocument(
+        overridesDocument,
+        selected.sceneId,
+        selected.nodeKey,
+      ),
+      {reason: 'clear-selected-visibility'},
+    );
+  }
+
+  async function addUserText(payload = {}) {
+    const scene = player.playback.currentScene;
+    const info = currentSceneInfo();
+    if (!scene || !info.sceneId || typeof crypto.randomUUID !== 'function') {
+      return;
+    }
+    const nodeKey = `user-text:${crypto.randomUUID()}`;
+    const provisionalFingerprint = '0'.repeat(64);
+    const patch = {
+      text:
+        typeof payload.text === 'string' && payload.text.trim()
+          ? payload.text.slice(0, 10_000)
+          : 'Nhập nội dung',
+      x: Number.isFinite(payload.x) ? Number(payload.x) : 0,
+      y: Number.isFinite(payload.y) ? Number(payload.y) : 0,
+      fontFamily: 'Times New Roman, Times, serif',
+      fontSize: Number.isFinite(payload.fontSize)
+        ? Math.min(500, Math.max(8, Number(payload.fontSize)))
+        : 64,
+      fontWeight: 400,
+      fill:
+        typeof payload.fill === 'string' && HEX_COLOR.test(payload.fill)
+          ? payload.fill
+          : '#FFFFFF',
+      zIndexDelta: 100,
+    };
+    const provisional = patchDocument(
+      overridesDocument,
+      info.sceneId,
+      nodeKey,
+      provisionalFingerprint,
+      patch,
+    );
+    reconcileUserTextNodes(scene, provisional, {sceneId: info.sceneId});
+    const node = scene.getNode?.(nodeKey);
+    if (!node) {
+      reportError(new Error('Không thể tạo text trong scene hiện tại.'), 'add-text');
+      return;
+    }
+    const fingerprint = await sha256(nodeFingerprintSource(node));
+    const next = patchDocument(
+      provisional,
+      info.sceneId,
+      nodeKey,
+      fingerprint,
+      {},
+    );
+    replaceDocument(next, {reason: 'add-text'});
+    selected = {sceneId: info.sceneId, nodeKey};
+    selectedGeometry = nodeGeometry(node);
+    manifestInspectedScenes.delete(info.sceneId);
+    await ensureSceneManifest(scene);
+    postSelection();
+  }
+
   function normalizeKnownInternalOverrides() {
     let nextDocument = overridesDocument;
     for (const [sceneId, targetModel] of editorTargetsByScene) {
@@ -1106,6 +1207,13 @@ async function startEditor(project) {
   async function ensureSceneManifest(scene) {
     const info = sceneInfo(scene);
     if (!info.sceneId) return;
+    // User text is document-owned rather than source-owned, so reconstruct it
+    // before discovery. This also makes reload/reconnect sessions produce the
+    // same fingerprint and prevents a valid saved text node from becoming an
+    // orphaned override.
+    reconcileUserTextNodes(scene, overridesDocument, {
+      sceneId: info.sceneId,
+    });
     // Signal getters in generated scenes may depend on Motion Canvas' active
     // scene context. Manifest discovery runs after recalculation, so explicitly
     // restore that context while taking the synchronous node snapshots.
@@ -1232,6 +1340,9 @@ async function startEditor(project) {
 
   function applyForRender(scene, captureSelection = false) {
     const info = sceneInfo(scene);
+    reconcileUserTextNodes(scene, overridesDocument, {
+      sceneId: info.sceneId,
+    });
     const manifestScene = manifest.scenes?.find(
       item => item.sceneId === info.sceneId,
     );
@@ -1243,12 +1354,14 @@ async function startEditor(project) {
       overrides: overridesDocument.overrides.filter(
         override =>
           override.sceneId !== info.sceneId ||
+          isUserTextNodeKey(override.nodeKey) ||
           fingerprints.get(override.nodeKey) === override.nodeFingerprint,
       ),
     };
     const restore = applySceneOverrides(scene, verifiedDocument, {
       sceneId: info.sceneId,
       original: view.original,
+      timeSeconds: sceneTimeSeconds(scene),
     });
     if (captureSelection && selected && !view.original) {
       const node = scene.getNode?.(selected.nodeKey);
@@ -1851,6 +1964,16 @@ async function startEditor(project) {
             key => key === 'editorLocked',
           ),
       });
+    } else if (type === 'addText') {
+      void addUserText(payload);
+    } else if (type === 'setVisibilityAtTime') {
+      patchSelectionVisibility(payload.hidden === true);
+    } else if (type === 'clearVisibilityTrack') {
+      clearSelectionVisibility();
+    } else if (type === 'deleteSelected') {
+      if (selected && isUserTextNodeKey(selected.nodeKey)) {
+        resetSelection(true);
+      }
     } else if (type === 'reset' || type === 'resetSelected') {
       if (payload.scope === 'all') {
         replaceDocument(

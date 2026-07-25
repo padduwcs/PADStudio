@@ -590,6 +590,117 @@ test('Layout workspace ghi overlay bất biến, canonical và retry idempotent'
   );
 });
 
+test('Layout workspace lưu visibility theo thời gian và text người dùng như node thật', async (context) => {
+  const fixture = await createFixture();
+  context.after(() =>
+    rm(fixture.projectsDirectory, {recursive: true, force: true}),
+  );
+  const scene = fixture.manifest.scenes[0]!;
+  const userTextId = randomUUID();
+  const userTextKey = `user-text:${userTextId}`;
+  const userTextFingerprint = sha256(`Txt|${userTextKey}|scene-root`);
+  const manifest: LayoutEditorManifest = {
+    ...fixture.manifest,
+    scenes: fixture.manifest.scenes.map((item, index) =>
+      index !== 0
+        ? item
+        : {
+            ...item,
+            nodes: [
+              ...item.nodes,
+              {
+                key: userTextKey,
+                fingerprint: userTextFingerprint,
+                label: 'Text người dùng',
+                nodeType: 'Txt',
+                parentKey: null,
+                identity: 'semantic',
+                editableProperties: [
+                  'x',
+                  'y',
+                  'scale',
+                  'rotation',
+                  'opacity',
+                  'hidden',
+                  'fill',
+                  'stroke',
+                  'strokeWidth',
+                  'zIndexDelta',
+                  'text',
+                  'fontFamily',
+                  'fontSize',
+                  'fontWeight',
+                  'fontStyle',
+                  'underline',
+                  'strikethrough',
+                ],
+                lockedProperties: [],
+                lockReason: null,
+              },
+            ],
+          },
+    ),
+  };
+  const overrides: LayoutNodeOverride[] = [
+    {
+      sceneId: scene.sceneId,
+      nodeKey: scene.nodes[0]!.key,
+      nodeFingerprint: scene.nodes[0]!.fingerprint,
+      patch: {},
+      visibility: [
+        {timeSeconds: 1.25, hidden: true},
+        {timeSeconds: 2.75, hidden: false},
+      ],
+    },
+    {
+      sceneId: scene.sceneId,
+      nodeKey: userTextKey,
+      nodeFingerprint: userTextFingerprint,
+      patch: {
+        text: 'Giải thích thêm',
+        fontFamily: 'Times New Roman, Times, serif',
+        fontSize: 64,
+        fill: '#FFFFFF',
+        zIndexDelta: 100,
+      },
+    },
+  ];
+
+  const workspace = createLayoutWorkspace(fixture.projectsDirectory);
+  const generationId = randomUUID();
+  const prepared = await workspace.prepare(
+    fixture.projectId,
+    generationId,
+    fixture.syncBundle,
+    overrides,
+    manifest,
+  );
+  const stored = await workspace.readOverrides(
+    fixture.projectId,
+    layoutBundle(generationId, fixture.syncBundle, prepared),
+  );
+  assert.deepEqual(stored.overrides, overrides);
+  assert.equal(prepared.scenes[0]?.overrideCount, 2);
+  await assert.rejects(
+    () =>
+      workspace.prepare(
+        fixture.projectId,
+        randomUUID(),
+        fixture.syncBundle,
+        [
+          {
+            ...overrides[0]!,
+            visibility: [{timeSeconds: 4.5, hidden: true}],
+          },
+        ],
+        manifest,
+      ),
+    (error) =>
+      error instanceof LayoutWorkspaceError &&
+      error.code === 'LAYOUT_OVERRIDE_TIMING_OUT_OF_RANGE',
+  );
+});
+
 test('Layout workspace chặn fingerprint và thuộc tính không được chỉnh', async (context) => {
   const fixture = await createFixture();
   context.after(() =>

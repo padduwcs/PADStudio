@@ -4792,6 +4792,36 @@ kbd {
   line-height: 1.55;
 }
 
+.topic-guidance-feedback {
+  display: grid;
+  gap: 7px;
+}
+
+.topic-guidance-feedback > span {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.topic-guidance-feedback > span small {
+  margin-left: 7px;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 560;
+}
+
+.topic-guidance-feedback textarea {
+  min-height: 82px;
+  padding: 12px 14px;
+  font-size: 13px;
+}
+
+.topic-guidance-feedback > small {
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .topic-guidance-result {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

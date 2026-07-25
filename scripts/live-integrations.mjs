@@ -118,6 +118,7 @@ function scopedStageFixture() {
     topic: 'Tìm kiếm nhị phân hoạt động như thế nào',
     learningGoal: 'Hiểu trực giác chia đôi vùng tìm kiếm.',
     videoDirection: 'Smoke test ngắn, ưu tiên hình khối thay vì caption.',
+    background: {mode: 'dark', color: '#10231D'},
     audience: 'beginner',
     duration: 'concise',
   };

@@ -19,11 +19,13 @@ import {
   runCodexStructuredGeneration,
 } from './codexStructuredGeneration.ts';
 
-export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v6';
+export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v8';
 export const MOTION_CANVAS_VERSION = '3.17.2';
 export const MOTION_CANVAS_WIDTH = 1080;
 export const MOTION_CANVAS_HEIGHT = 1920;
 export const MOTION_CANVAS_FPS = 30;
+export const MOTION_CANVAS_DEFAULT_FONT_FAMILY =
+  'Times New Roman, Times, serif';
 const DEFAULT_SCENE_TIMEOUT_MS = 20 * 60 * 1000;
 // One focused repair plus one clean regeneration is both more reliable and
 // more token-efficient than repeatedly feeding an increasingly broken source
@@ -128,6 +130,205 @@ function toSlug(value: string) {
     .slice(0, 54);
 }
 
+export function applyMotionCanvasDefaultFont(source: string) {
+  const sourceFile = ts.createSourceFile(
+    'generated-scene.tsx',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const insertionOffsets = new Set<number>();
+
+  function visit(node: ts.Node) {
+    if (
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      ts.isIdentifier(node.tagName) &&
+      node.tagName.text === 'Txt' &&
+      !node.attributes.properties.some(
+        (attribute) =>
+          ts.isJsxAttribute(attribute) &&
+          ts.isIdentifier(attribute.name) &&
+          attribute.name.text === 'fontFamily',
+      )
+    ) {
+      insertionOffsets.add(node.attributes.end);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+
+  const attribute = ` fontFamily={${JSON.stringify(
+    MOTION_CANVAS_DEFAULT_FONT_FAMILY,
+  )}}`;
+  return [...insertionOffsets]
+    .sort((left, right) => right - left)
+    .reduce(
+      (result, offset) =>
+        `${result.slice(0, offset)}${attribute}${result.slice(offset)}`,
+      source,
+    );
+}
+
+export interface MotionCanvasSceneQualityAssessment {
+  score: number;
+  richnessPerBeat: number;
+  visualNodeCount: number;
+  animatedCallCount: number;
+  referencedNodeCount: number;
+  visualTypeCount: number;
+  issues: string[];
+}
+
+/**
+ * A deterministic post-generation quality signal. This is intentionally not a
+ * style judge; it detects the structural collapse seen in long batches (few
+ * visual objects and almost no animated changes per beat) while leaving
+ * intentional minimalist scenes alone.
+ */
+export function assessMotionCanvasSceneQuality(
+  source: string,
+  beatCount: number,
+): MotionCanvasSceneQualityAssessment {
+  const sourceFile = ts.createSourceFile(
+    'quality-scene.tsx',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const visualTypes = new Set<string>();
+  let visualNodeCount = 0;
+  let animatedCallCount = 0;
+  let referencedNodeCount = 0;
+  const animationProperties = new Set([
+    'position',
+    'x',
+    'y',
+    'scale',
+    'rotation',
+    'opacity',
+    'width',
+    'height',
+    'fill',
+    'stroke',
+    'lineWidth',
+    'text',
+    'points',
+    'end',
+    'start',
+  ]);
+
+  function visit(node: ts.Node) {
+    if (
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      ts.isIdentifier(node.tagName)
+    ) {
+      const type = node.tagName.text;
+      if (type !== 'Fragment') {
+        visualNodeCount += 1;
+        visualTypes.add(type);
+      }
+    }
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'createRef'
+    ) {
+      referencedNodeCount += 1;
+    }
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      animationProperties.has(node.expression.name.text) &&
+      node.arguments.length >= 2
+    ) {
+      animatedCallCount += 1;
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+
+  // The background is required infrastructure, not scene richness.
+  visualNodeCount = Math.max(0, visualNodeCount - 1);
+  const beats = Math.max(1, beatCount);
+  const richnessPerBeat =
+    (visualNodeCount * 4 +
+      animatedCallCount * 3 +
+      referencedNodeCount * 2 +
+      visualTypes.size * 2 +
+      Math.min(20, source.length / 250)) /
+    beats;
+  const expectedNodes = Math.max(4, beats * 2 + 2);
+  const expectedAnimations = Math.max(2, beats * 2);
+  const score = Math.round(
+    Math.min(
+      100,
+      (Math.min(visualNodeCount, expectedNodes) / expectedNodes) * 42 +
+        (Math.min(animatedCallCount, expectedAnimations) /
+          expectedAnimations) *
+          38 +
+        Math.min(10, referencedNodeCount * 2) +
+        Math.min(10, visualTypes.size * 2),
+    ),
+  );
+  const issues: string[] = [];
+  if (beats >= 2 && visualNodeCount < expectedNodes) {
+    issues.push(
+      `chỉ có ${visualNodeCount} visual node cho ${beats} beat (mục tiêu tối thiểu ${expectedNodes})`,
+    );
+  }
+  if (beats >= 2 && animatedCallCount < expectedAnimations) {
+    issues.push(
+      `chỉ có ${animatedCallCount} thay đổi có animation cho ${beats} beat (mục tiêu tối thiểu ${expectedAnimations})`,
+    );
+  }
+  if (visualTypes.size < 2) {
+    issues.push('ngôn ngữ hình ảnh chỉ dùng một loại node');
+  }
+  return {
+    score,
+    richnessPerBeat,
+    visualNodeCount,
+    animatedCallCount,
+    referencedNodeCount,
+    visualTypeCount: visualTypes.size,
+    issues,
+  };
+}
+
+function sceneDesignBrief(
+  request: MotionCanvasGenerationRequest,
+  sectionIndex: number,
+) {
+  const section = request.outline.sections[sectionIndex]!;
+  const beats = request.voiceVisualPlan.sections[sectionIndex]!.beats;
+  const previous = request.outline.sections[sectionIndex - 1];
+  const next = request.outline.sections[sectionIndex + 1];
+  const role =
+    sectionIndex === 0
+      ? 'opening'
+      : sectionIndex === request.outline.sections.length - 1
+        ? 'closing'
+        : 'development';
+  return {
+    role,
+    continuity: {
+      previousTitle: previous?.title ?? null,
+      currentTitle: section.title,
+      nextTitle: next?.title ?? null,
+    },
+    qualityBudget: {
+      minimumPurposefulVisualNodes: Math.max(4, beats.length * 2 + 2),
+      minimumAnimatedChanges: Math.max(2, beats.length * 2),
+      rule:
+        'Mỗi beat phải tạo một thay đổi thị giác có ý nghĩa; tái sử dụng hệ node chung nhưng không được để các beat sau chỉ đổi text hoặc màu.',
+    },
+    composition:
+      'Duy trì một visual anchor xuyên scene, phân cấp foreground/midground/background và chừa safe margin cho khung dọc.',
+  };
+}
+
 function generationPayload(
   request: MotionCanvasGenerationRequest,
   sectionIndex: number,
@@ -182,7 +383,9 @@ function generationPayload(
       width: MOTION_CANVAS_WIDTH,
       height: MOTION_CANVAS_HEIGHT,
       fps: MOTION_CANVAS_FPS,
+      defaultFontFamily: MOTION_CANVAS_DEFAULT_FONT_FAMILY,
     },
+    designBrief: sceneDesignBrief(request, sectionIndex),
     ...(request.guidance ? {guidance: request.guidance} : {}),
     ...(request.guidance && request.currentScenes?.[sectionIndex]
       ? {
@@ -212,9 +415,13 @@ function buildPrompt(
     'Không dùng scaleX/scaleY; dùng scale([x, y], duration) hoặc width/height với duration.',
     'Không yield* view.add/node.add. Mọi giá trị truyền vào all/chain hoặc yield* phải là animation generator, thường là signal(value, duration).',
     'Txt.text phải là string; chuyển số bằng String(value).',
+    `Mặc định mọi Txt phải dùng fontFamily={${JSON.stringify(MOTION_CANVAS_DEFAULT_FONT_FAMILY)}}. Chỉ đặt font khác khi góp ý người dùng hoặc visualDirection yêu cầu rõ ràng.`,
     'Giá trị flex dùng kebab-case như space-between, không dùng spaceBetween.',
     'Scene phải tự chứa toàn bộ node và animation, chạy độc lập và không import file tương đối.',
     'Thiết kế cho khung dọc 1080x1920, ưu tiên hình khối, vị trí, màu và chuyển động để giải thích bản chất.',
+    'Trước khi viết source, tự lập blueprint ngắn trong suy luận gồm visual anchor, vai trò từng node và thay đổi chính của từng beat; không xuất blueprint ra JSON.',
+    'Tuân thủ designBrief. Chất lượng và mật độ visual của scene sau phải ngang scene đầu: mỗi beat cần một thay đổi hình học/chuyển động có ý nghĩa, không được chỉ đổi text hoặc màu ở các beat cuối.',
+    'Giữ một visual anchor xuyên scene để mạch hình ảnh liền lạc, nhưng mỗi beat phải tiến triển trạng thái rõ ràng thay vì thay toàn bộ bố cục.',
     `Nền gốc bắt buộc là ${request.topicInput.background.color} (${videoBackgroundTone(request.topicInput.background)}). Node scene-background phải dùng đúng màu này; mọi chữ, stroke, card và màu nhấn phải đủ tương phản với nền.`,
     'Không hiển thị source code. Không dùng caption để gánh nội dung chính; chữ ngắn, số và ký hiệu chỉ được dùng khi bản thân visual cần chúng.',
     'Mỗi beat phải gọi đúng một lần yield* waitUntil(startEvent), sau đó khai báo const beatDuration = useDuration(endEvent) và const beatEndTime = useThread().time() + beatDuration. Chạy visual theo tỷ lệ beatDuration rồi kết thúc beat bằng yield* waitFor(Math.max(0, beatEndTime - useThread().time())). Dùng tên duration/endTime riêng cho từng beat nếu không tạo block scope.',
@@ -223,6 +430,7 @@ function buildPrompt(
     'Giữ source gọn, số node hợp lý, tái sử dụng reference và tránh hiệu ứng trang trí không truyền đạt thông tin.',
     'Tuân theo visualDirection để các scene độc lập vẫn có cùng ngôn ngữ hình ảnh.',
     'Source là mã thuần, không bọc bằng Markdown fence.',
+    'Line.points chỉ được tween khi mảng points nguồn và đích có cùng số điểm. Nếu cần đổi số điểm, hãy set points tức thời trước animation hoặc giữ nguyên cardinality; tween hai mảng khác độ dài có thể khóa renderer.',
     JSON.stringify(generationPayload(request, sectionIndex)),
   ].join('\n');
 }
@@ -245,6 +453,8 @@ function buildRepairPrompt(
     'Giữ hoặc bổ sung key string literal lowercase kebab-case có ít nhất hai từ cho mọi visual JSX node, kể cả node có ref; key phải duy nhất trong scene và mô tả vai trò ổn định của node.',
     'Không tạo key từ index, thứ tự, nội dung, vị trí, UUID, random, biểu thức hoặc biến. Không sinh visual JSX node bằng map/loop.',
     'Giá trị flex dùng kebab-case như space-between, space-around hoặc space-evenly; không dùng spaceBetween.',
+    `Giữ font mặc định của mọi Txt là ${MOTION_CANVAS_DEFAULT_FONT_FAMILY}; không xóa fontFamily khi sửa lỗi.`,
+    'Không tween Line.points giữa hai mảng khác số điểm. Nếu cần đổi cardinality, set points tức thời rồi mới animate các signal khác.',
     JSON.stringify({
       context: generationPayload(request, sectionIndex),
       compilerDiagnostics,
@@ -266,6 +476,125 @@ function buildRegenerationPrompt(
     'Lượt trước không vượt qua validation. Hãy sinh lại toàn bộ source từ đầu, không sao chép hoặc chắp vá source lỗi.',
     `Diagnostics cần tránh trong bản mới:\n${diagnostics}`,
   ].join('\n');
+}
+
+export function validateMotionCanvasRuntimeSafety(source: string) {
+  const sourceFile = ts.createSourceFile(
+    'generated-scene.tsx',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const motionLineImports = new Set<string>();
+  const motion2dNamespaces = new Set<string>();
+  const linePointCountsByRef = new Map<string, number>();
+
+  function jsxAttribute(
+    node: ts.JsxOpeningElement | ts.JsxSelfClosingElement,
+    name: string,
+  ) {
+    return node.attributes.properties.find(
+      (attribute): attribute is ts.JsxAttribute =>
+        ts.isJsxAttribute(attribute) &&
+        ts.isIdentifier(attribute.name) &&
+        attribute.name.text === name,
+    );
+  }
+
+  function jsxExpression(attribute: ts.JsxAttribute | undefined) {
+    return attribute?.initializer &&
+      ts.isJsxExpression(attribute.initializer)
+      ? attribute.initializer.expression
+      : undefined;
+  }
+
+  function arrayLiteralLength(expression: ts.Expression | undefined) {
+    let current = expression;
+    while (
+      current &&
+      (ts.isParenthesizedExpression(current) ||
+        ts.isAsExpression(current) ||
+        ts.isSatisfiesExpression(current))
+    ) {
+      current = current.expression;
+    }
+    return current && ts.isArrayLiteralExpression(current)
+      ? current.elements.length
+      : null;
+  }
+
+  function collect(node: ts.Node) {
+    if (
+      ts.isImportDeclaration(node) &&
+      ts.isStringLiteral(node.moduleSpecifier) &&
+      node.moduleSpecifier.text === '@motion-canvas/2d'
+    ) {
+      const bindings = node.importClause?.namedBindings;
+      if (bindings && ts.isNamedImports(bindings)) {
+        for (const element of bindings.elements) {
+          if ((element.propertyName ?? element.name).text === 'Line') {
+            motionLineImports.add(element.name.text);
+          }
+        }
+      } else if (bindings && ts.isNamespaceImport(bindings)) {
+        motion2dNamespaces.add(bindings.name.text);
+      }
+    }
+
+    if (
+      ts.isJsxOpeningElement(node) ||
+      ts.isJsxSelfClosingElement(node)
+    ) {
+      const tagName = node.tagName.getText(sourceFile);
+      const isLine =
+        motionLineImports.has(tagName) ||
+        [...motion2dNamespaces].some(
+          namespace => tagName === `${namespace}.Line`,
+        );
+      if (isLine) {
+        const ref = jsxExpression(jsxAttribute(node, 'ref'));
+        const pointCount = arrayLiteralLength(
+          jsxExpression(jsxAttribute(node, 'points')),
+        );
+        if (ref && ts.isIdentifier(ref) && pointCount !== null) {
+          linePointCountsByRef.set(ref.text, pointCount);
+        }
+      }
+    }
+
+    ts.forEachChild(node, collect);
+  }
+
+  function validate(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      node.arguments.length >= 2 &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === 'points' &&
+      ts.isCallExpression(node.expression.expression) &&
+      node.expression.expression.arguments.length === 0 &&
+      ts.isIdentifier(node.expression.expression.expression)
+    ) {
+      const refName = node.expression.expression.expression.text;
+      const initialPointCount = linePointCountsByRef.get(refName);
+      const targetPointCount = arrayLiteralLength(node.arguments[0]);
+      if (
+        initialPointCount !== undefined &&
+        targetPointCount !== null &&
+        initialPointCount !== targetPointCount
+      ) {
+        throw new MotionCanvasGenerationError(
+          'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+          `Line.points của ref “${refName}” không được tween từ ${initialPointCount} sang ${targetPointCount} điểm vì Motion Canvas có thể khóa renderer. Hãy giữ cùng số điểm hoặc set points tức thời.`,
+        );
+      }
+    }
+    ts.forEachChild(node, validate);
+  }
+
+  collect(sourceFile);
+  validate(sourceFile);
 }
 
 export function validateMotionCanvasSceneSource(source: string) {
@@ -304,6 +633,7 @@ export function validateMotionCanvasSceneSource(source: string) {
     true,
     ts.ScriptKind.TSX,
   );
+  validateMotionCanvasRuntimeSafety(source);
   const bannedIdentifiers = new Map([
     ['require', 'require'],
     ['eval', 'eval'],
@@ -941,6 +1271,7 @@ export function createCodexMotionCanvasGenerator(
     runtimeDirectory?: string;
     timeoutMs?: number;
     concurrency?: number;
+    qualityRetryLimit?: number;
     model?: string;
     reasoningEffort?: string;
   } = {},
@@ -952,7 +1283,11 @@ export function createCodexMotionCanvasGenerator(
   const configuredTimeoutMs = options.timeoutMs;
   const concurrency = Math.max(
     1,
-    Math.min(4, Math.floor(options.concurrency ?? 4)),
+    Math.min(4, Math.floor(options.concurrency ?? 2)),
+  );
+  const qualityRetryLimit = Math.max(
+    0,
+    Math.min(8, Math.floor(options.qualityRetryLimit ?? 4)),
   );
   const sceneGenerations = new Map<
     string,
@@ -1101,7 +1436,7 @@ export function createCodexMotionCanvasGenerator(
           endEvent: `beat:${beat.id}:end`,
           plannedDurationSeconds: beat.durationSeconds,
         })),
-        source: `${parsed.data.source.trim()}\n`,
+        source: `${applyMotionCanvasDefaultFont(parsed.data.source.trim())}\n`,
       },
       model,
       usage,
@@ -1163,7 +1498,9 @@ export function createCodexMotionCanvasGenerator(
           endEvent: `beat:${beat.id}:end`,
           plannedDurationSeconds: beat.durationSeconds,
         })),
-        source: fallbackSceneSource(request, sectionIndex),
+        source: applyMotionCanvasDefaultFont(
+          fallbackSceneSource(request, sectionIndex),
+        ),
       },
       model: [...new Set([model, 'local-safe-fallback'].filter(Boolean))]
         .join(', ')
@@ -1422,7 +1759,7 @@ export function createCodexMotionCanvasGenerator(
           scene: {
             ...currentScene,
             name: parsed.data.name,
-            source: `${parsed.data.source.trim()}\n`,
+            source: `${applyMotionCanvasDefaultFont(parsed.data.source.trim())}\n`,
           },
           model: repaired.model,
           usage: repaired.usage,
@@ -1528,6 +1865,99 @@ export function createCodexMotionCanvasGenerator(
       if (failures.length > 0) {
         failures.sort((left, right) => left.index - right.index);
         throw failures[0]!.error;
+      }
+
+      // Compare normalized richness across the batch. A deliberately simple
+      // video stays simple, while a scene that collapses relative to the
+      // established visual language gets one clean regeneration automatically.
+      const assessments = results.map((result, index) =>
+        assessMotionCanvasSceneQuality(
+          result.scene.source,
+          request.voiceVisualPlan.sections[sectionIndexes[index]!]!.beats
+            .length,
+        ),
+      );
+      const qualityRetryIndexes: number[] = [];
+      for (let index = 0; index < assessments.length; index++) {
+        const assessment = assessments[index]!;
+        const sectionIndex = sectionIndexes[index]!;
+        const beatCount =
+          request.voiceVisualPlan.sections[sectionIndex]!.beats.length;
+        const previousRichness = assessments
+          .slice(0, index)
+          .map((item) => item.richnessPerBeat)
+          .sort((left, right) => left - right);
+        const baseline =
+          previousRichness.length > 0
+            ? previousRichness[
+                Math.floor((previousRichness.length - 1) / 2)
+              ]!
+            : null;
+        const severeAbsoluteDrop =
+          beatCount >= 3 && assessment.score < 45;
+        const relativeDrop =
+          baseline !== null &&
+          baseline >= 12 &&
+          assessment.richnessPerBeat < baseline * 0.72;
+        if (severeAbsoluteDrop || relativeDrop) {
+          qualityRetryIndexes.push(index);
+        }
+      }
+
+      for (const resultIndex of qualityRetryIndexes.slice(
+        0,
+        qualityRetryLimit,
+      )) {
+        const sectionIndex = sectionIndexes[resultIndex]!;
+        const initialResult = results[resultIndex]!;
+        const initialAssessment = assessments[resultIndex]!;
+        const diagnostics = [
+          'QUALITY_GATE: Scene hợp lệ nhưng độ hoàn thiện thị giác thấp hơn chuẩn của batch.',
+          `Điểm cấu trúc ${initialAssessment.score}/100; richness/beat ${initialAssessment.richnessPerBeat.toFixed(1)}.`,
+          ...initialAssessment.issues.map((issue) => `- ${issue}`),
+          'Sinh lại từ đầu với visual anchor rõ, đủ node có mục đích và mỗi beat có một tiến triển hình học/chuyển động riêng. Không kéo dài caption để bù chất lượng.',
+        ].join('\n');
+        try {
+          const regenerated = await regenerateSceneFromScratch(
+            request,
+            sectionIndex,
+            diagnostics,
+            initialResult.scene,
+          );
+          const regeneratedAssessment = assessMotionCanvasSceneQuality(
+            regenerated.scene.source,
+            request.voiceVisualPlan.sections[sectionIndex]!.beats.length,
+          );
+          const improved =
+            regeneratedAssessment.richnessPerBeat >
+              initialAssessment.richnessPerBeat * 1.08 ||
+            regeneratedAssessment.score > initialAssessment.score + 5;
+          results[resultIndex] = {
+            ...(improved ? regenerated : initialResult),
+            model: [
+              ...new Set([initialResult.model, regenerated.model]),
+            ]
+              .join(', ')
+              .slice(0, 160),
+            usage: addUsage(initialResult.usage, [regenerated]),
+          };
+          assessments[resultIndex] = improved
+            ? regeneratedAssessment
+            : initialAssessment;
+          const outlineSection = request.outline.sections[sectionIndex]!;
+          const cacheKey = `${request.generationId}:${outlineSection.id}`;
+          const cached = sceneGenerations.get(cacheKey);
+          if (cached) {
+            sceneGenerations.set(cacheKey, {
+              fingerprint: cached.fingerprint,
+              promise: Promise.resolve(results[resultIndex]!),
+            });
+          }
+        } catch {
+          // The original scene already passed the strict source/timing gates.
+          // A best-effort visual retry must never turn a valid batch into a
+          // failed generation.
+        }
       }
 
       const models = [

@@ -1,5 +1,6 @@
 import {Player, Stage} from '@motion-canvas/core';
 import {applySceneOverrides} from '../layout-editor/modifier-model.js';
+import {reconcileUserTextNodes} from '../layout-editor/user-text-nodes.js';
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -135,6 +136,7 @@ async function startPreview(project) {
   player.deactivate();
 
   let duration = 0;
+  let currentFrame = 0;
   let ready = false;
   let disposed = false;
   const disposers = [];
@@ -167,13 +169,29 @@ async function startPreview(project) {
     player.onRender.subscribe(async () => {
       const currentScene = player.playback.currentScene;
       const previousScene = player.playback.previousScene;
+      const sceneTimeSeconds = scene =>
+        Math.max(
+          0,
+          (currentFrame - Number(scene?.firstFrame || 0)) /
+            Math.max(1, player.status.fps),
+        );
+      if (previousScene) {
+        reconcileUserTextNodes(previousScene, visualDesign, {
+          sceneId: sceneIds.get(previousScene) ?? previousScene.name,
+        });
+      }
+      reconcileUserTextNodes(currentScene, visualDesign, {
+        sceneId: sceneIds.get(currentScene) ?? currentScene.name,
+      });
       const restorePrevious = previousScene
         ? applySceneOverrides(previousScene, visualDesign, {
             sceneId: sceneIds.get(previousScene) ?? previousScene.name,
+            timeSeconds: sceneTimeSeconds(previousScene),
           })
         : () => {};
       const restoreCurrent = applySceneOverrides(currentScene, visualDesign, {
         sceneId: sceneIds.get(currentScene) ?? currentScene.name,
+        timeSeconds: sceneTimeSeconds(currentScene),
       });
       try {
         await stage.render(currentScene, previousScene);
@@ -203,6 +221,7 @@ async function startPreview(project) {
   );
   disposers.push(
     player.onFrameChanged.subscribe((frame) => {
+      currentFrame = Math.max(0, frame);
       seek.value = String(Math.min(duration, Math.max(0, frame)));
       timeCurrent.textContent = formatTime(frame, player.status.fps);
     }),

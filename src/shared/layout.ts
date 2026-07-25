@@ -85,7 +85,7 @@ const HexColorSchema = z
   .string()
   .regex(/^#[a-fA-F0-9]{6}(?:[a-fA-F0-9]{2})?$/);
 
-export const LayoutNodePatchSchema = z
+const LayoutNodePatchObjectSchema = z
   .object({
     x: z.number().finite().min(-100_000).max(100_000).optional(),
     y: z.number().finite().min(-100_000).max(100_000).optional(),
@@ -115,22 +115,77 @@ export const LayoutNodePatchSchema = z
     strikethrough: z.boolean().optional(),
     editorLocked: z.boolean().optional(),
   })
-  .strict()
-  .refine(
+  .strict();
+
+export const LayoutNodePatchSchema = LayoutNodePatchObjectSchema.refine(
     (patch) => Object.values(patch).some((value) => value !== undefined),
     'Layout patch cần có ít nhất một thay đổi.',
   );
 
 export type LayoutNodePatch = z.infer<typeof LayoutNodePatchSchema>;
 
+export const LayoutVisibilityKeyframeSchema = z
+  .object({
+    timeSeconds: z.number().finite().nonnegative().max(86_400),
+    hidden: z.boolean(),
+  })
+  .strict();
+
+export type LayoutVisibilityKeyframe = z.infer<
+  typeof LayoutVisibilityKeyframeSchema
+>;
+
+export const LayoutVisibilityTrackSchema = z
+  .array(LayoutVisibilityKeyframeSchema)
+  .max(500)
+  .superRefine((keyframes, context) => {
+    for (let index = 1; index < keyframes.length; index++) {
+      if (
+        keyframes[index]!.timeSeconds <=
+        keyframes[index - 1]!.timeSeconds
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Các mốc ẩn/hiện phải tăng dần và không được trùng.',
+          path: [index, 'timeSeconds'],
+        });
+      }
+    }
+  });
+
+export const userTextNodeKeyPrefix = 'user-text:';
+
 export const LayoutNodeOverrideSchema = z
   .object({
     sceneId: z.string().uuid(),
     nodeKey: LayoutNodeKeySchema,
     nodeFingerprint: Sha256Schema,
-    patch: LayoutNodePatchSchema,
+    patch: LayoutNodePatchObjectSchema,
+    visibility: LayoutVisibilityTrackSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((override, context) => {
+    if (
+      Object.values(override.patch).every((value) => value === undefined) &&
+      (override.visibility?.length ?? 0) === 0
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Layout override cần có thuộc tính hoặc mốc ẩn/hiện.',
+        path: ['patch'],
+      });
+    }
+    if (
+      override.nodeKey.startsWith(userTextNodeKeyPrefix) &&
+      typeof override.patch.text !== 'string'
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Text do người dùng thêm phải có nội dung.',
+        path: ['patch', 'text'],
+      });
+    }
+  });
 
 export type LayoutNodeOverride = z.infer<typeof LayoutNodeOverrideSchema>;
 

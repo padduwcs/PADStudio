@@ -27,7 +27,8 @@ PAD Studio đang trong giai đoạn phát triển ban đầu.
 
 Vertical slice đầu tiên đã có thể chạy:
 
-- Nhập chủ đề và định hướng cho video.
+- Nhập chủ đề và định hướng cho video. Khung AI hỗ trợ định hướng nhận thêm góp ý
+  tùy chọn của người dùng; bỏ trống thì AI vẫn tự đề xuất bình thường từ brief.
 - Validate dữ liệu ở frontend và backend.
 - Lưu project draft vào `projects/<project-id>/project.json`.
 - Tự động lưu thay đổi vào project hiện tại.
@@ -55,7 +56,14 @@ Vertical slice đầu tiên đã có thể chạy:
   và biên dịch TypeScript trước khi nhận kết quả. Scene lỗi được sửa một lượt theo
   diagnostics, sau đó sinh sạch từ đầu một lượt nếu cần; nếu Codex vẫn trả TSX hỏng,
   PAD Studio dựng scene an toàn tại chỗ cho riêng section đó thay vì bỏ dở toàn bộ
-  generation.
+  generation. Mọi `Txt` sinh mới chưa đặt font riêng được chuẩn hóa sang
+  `Times New Roman, Times, serif`; font đã được đặt chủ động vẫn được giữ.
+- Mỗi scene nhận cùng một design brief về vai trò trong toàn video, visual anchor,
+  mật độ node và tiến triển bắt buộc của từng beat. Mặc định chỉ sinh song song hai
+  scene; sau batch, quality gate chấm richness theo beat và tự sinh sạch lại scene
+  bị tụt rõ rệt so với ngôn ngữ hình ảnh đã thiết lập. Bản sinh lại chỉ được dùng
+  khi điểm cấu trúc thực sự tốt hơn; nếu lượt cải thiện lỗi, scene hợp lệ ban đầu
+  vẫn được giữ.
 - Tự khởi động preview ngay trên UI sau khi sinh scene và cho chỉnh visual trước
   khi tạo voice. Các modifier này tiếp tục được đưa vào Layout Editor sau sync.
 - Xem source, chọn đúng scene cần sinh lại và chốt bộ scene trước khi sang bước
@@ -100,6 +108,14 @@ Vertical slice đầu tiên đã có thể chạy:
 - Chỉnh trực tiếp node Motion Canvas trong Layout Editor bằng kéo, scale, xoay, opacity,
   fill/stroke, thứ tự layer, khóa và thao tác delete có thể khôi phục. Editor có undo/redo,
   copy/paste modifier, grid, snap, safe-zone, so sánh bản gốc và preview sạch.
+- Có thể thêm `Txt` thật vào scene ngay trong Motion Design hoặc Layout Editor; text
+  mặc định dùng Times New Roman và tiếp tục hỗ trợ kéo, typography, màu, layer,
+  undo/redo, tự lưu, preview và render cuối. Node do người dùng thêm có identity và
+  fingerprint riêng, được dựng lại ổn định sau reload thay vì ghi vào source scene.
+- Visibility có hai tầng rõ ràng: ẩn toàn scene như trước, hoặc đặt các keyframe
+  **Ẩn từ đây / Hiện từ đây** tại playhead theo giây cục bộ của scene. Cùng một bộ
+  đánh giá timing được dùng trong editor, Sync preview và render cuối; track có thể
+  xóa độc lập mà không làm mất các modifier khác của node.
 - Tự lưu modifier vào overlay bất biến tại
   `projects/<project-id>/layout/generations/<generation-id>/`, không sao chép hoặc sửa
   source/audio của bản Sync. Manifest node, fingerprint và source hash được khóa theo đúng
@@ -221,6 +237,10 @@ hoàn tất; retry chỉ chạy lại scene lỗi. Lỗi TypeScript
 được gửi về đúng một vòng sửa có định hướng cho file lỗi. Nếu vẫn sai, hệ thống
 sinh lại riêng scene đó từ context gốc thay vì tiếp tục chắp vá source; sau cùng,
 một fallback local giữ đúng time-event của beat được dùng mà không tốn thêm token.
+Ngoài compiler, generator và workspace cùng áp dụng runtime-safety policy cho
+các cấu trúc TypeScript hợp lệ nhưng có thể khóa renderer. Ví dụ,
+`Line.points` không được tween giữa hai mảng khác số điểm; scene vi phạm bị trả
+về vòng sửa trước khi generation có thể trở thành workspace hiện hành.
 Mỗi generation chỉ được lưu tại
 `projects/<project-id>/motion-canvas/generations/<generation-id>/`; project chỉ
 giữ metadata và con trỏ đến generation hiện hành sau khi toàn bộ scene biên dịch
@@ -311,6 +331,14 @@ sẽ dừng cả hai; supervisor và từng tiến trình con cùng theo dõi l�
 request sinh nội dung dài, hot-restart ngừng nhận request mới và chờ response
 hiện tại hoàn tất trước khi thay backend, tránh làm mất candidate đã sinh. Chỉ
 đặt `PORT` và `PAD_FRONTEND_PORT` khi chủ động muốn chạy một instance khác.
+
+Frontend dev bỏ qua `projects/`, `.pad-studio/`, `dist/` và `tmp/` khi theo dõi
+HMR. Workspace Motion Canvas có `tsconfig.json` riêng; nếu để Vite theo dõi,
+việc publish một generation sẽ bị hiểu nhầm là đổi cấu hình TypeScript và ép
+trang reload ngay trước khi candidate được trả về. Request candidate đang chạy
+cũng được nhớ trong `sessionStorage` của tab và nối lại bằng cùng `generationId`
+sau một lần reload, nên backend chỉ join/đọc lại generation idempotent thay vì
+gọi Codex lần hai.
 
 ### Kết nối ElevenLabs
 

@@ -150,4 +150,30 @@ test('Motion Canvas workspace ghi generation bất biến và kiểm tra TypeScr
       error instanceof MotionCanvasWorkspaceError &&
       error.code === 'MOTION_CANVAS_WORKSPACE_INVALID',
   );
+
+  const rendererLockingSource = `import {Line, makeScene2D} from '@motion-canvas/2d';
+import {createRef} from '@motion-canvas/core';
+
+export default makeScene2D(function* (view) {
+  const path = createRef<Line>();
+  view.add(
+    <Line
+      ref={path}
+      points={[[0, 0], [100, 0]]}
+      stroke={'#FFFFFF'}
+    />,
+  );
+  yield* path().points([[0, 0], [50, 50], [100, 0]], 1);
+});
+`;
+  await assert.rejects(
+    () =>
+      workspace.prepare(projectId, randomUUID(), [
+        {...scenes[0]!, source: rendererLockingSource},
+      ]),
+    (error) =>
+      error instanceof MotionCanvasWorkspaceError &&
+      error.code === 'MOTION_CANVAS_VALIDATION_FAILED' &&
+      /Line\.points/u.test(error.details ?? ''),
+  );
 });

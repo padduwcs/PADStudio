@@ -312,6 +312,10 @@ test('API đề xuất định hướng chủ đề idempotent và không tự g
     async generate(request) {
       generationCalls += 1;
       assert.equal(request.topicInput.topic, topicInput.topic);
+      assert.equal(
+        request.userGuidance,
+        'Ưu tiên ví dụ danh bạ đã sắp xếp.',
+      );
       return {
         suggestion: {
           learningGoal: 'Hiểu trực giác vì sao mỗi bước loại được một nửa dữ liệu.',
@@ -332,6 +336,7 @@ test('API đề xuất định hướng chủ đề idempotent và không tự g
   const request = {
     generationId,
     topicInput,
+    userGuidance: '  Ưu tiên ví dụ danh bạ đã sắp xếp.  ',
     model: 'gpt-test',
     reasoningEffort: 'medium',
   };
@@ -358,7 +363,7 @@ test('API đề xuất định hướng chủ đề idempotent và không tự g
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
       ...request,
-      topicInput: {...topicInput, topic: `${topicInput.topic} Bổ sung`},
+      userGuidance: 'Ưu tiên ví dụ thư viện đã sắp xếp.',
     }),
   });
   assert.equal(reused.status, 409);
@@ -1914,7 +1919,31 @@ test('API Motion Canvas candidate chỉ thay scene được chọn và giữ wor
     guidance: 'Làm scene hai trực quan hơn nhưng giữ nguyên scene một.',
     scope: {sceneIds: [sceneIds[1]]},
   };
-  const candidate = await fetch(
+  const candidateRequests = await Promise.all(
+    [0, 1].map(() =>
+      fetch(
+        `${baseUrl}/api/projects/${project.id}/motion-canvas/candidates`,
+        {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'If-Match': '"6"'},
+          body: JSON.stringify(candidateRequest),
+        },
+      ),
+    ),
+  );
+  const candidate = candidateRequests[0]!;
+  const candidateBody = await candidate.json();
+  assert.equal(candidate.status, 201);
+  assert.equal(candidateRequests[1]!.status, 201);
+  assert.equal(
+    (await candidateRequests[1]!.json()).candidate.candidateId,
+    candidateId,
+  );
+  assert.equal(candidateBody.candidate.status, 'ready');
+  assert.equal(motionCalls, 3);
+  assert.equal(motionRepairCalls, 2);
+  assert.equal(reviewCalls, 2);
+  const replayedCandidate = await fetch(
     `${baseUrl}/api/projects/${project.id}/motion-canvas/candidates`,
     {
       method: 'POST',
@@ -1922,9 +1951,8 @@ test('API Motion Canvas candidate chỉ thay scene được chọn và giữ wor
       body: JSON.stringify(candidateRequest),
     },
   );
-  const candidateBody = await candidate.json();
-  assert.equal(candidate.status, 201);
-  assert.equal(candidateBody.candidate.status, 'ready');
+  assert.equal(replayedCandidate.status, 200);
+  assert.equal((await replayedCandidate.json()).candidate.candidateId, candidateId);
   assert.equal(motionCalls, 3);
   assert.equal(motionRepairCalls, 2);
   assert.equal(reviewCalls, 2);

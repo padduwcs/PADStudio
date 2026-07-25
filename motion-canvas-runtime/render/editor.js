@@ -5,8 +5,10 @@ import {
 } from '@motion-canvas/core';
 import {
   applySceneOverrides,
+  isUserTextNodeKey,
   serializeSignalValue,
 } from '../layout-editor/modifier-model.js';
+import {reconcileUserTextNodes} from '../layout-editor/user-text-nodes.js';
 import {
   createRenderDiagnosticTracker,
   diagnosticMessage,
@@ -262,6 +264,7 @@ function sceneContext(scene, config) {
       overrides: (config.overrides.overrides ?? []).filter(
         override =>
           override.sceneId !== sceneId ||
+          isUserTextNodeKey(override.nodeKey) ||
           fingerprints.get(override.nodeKey) === override.nodeFingerprint,
       ),
     },
@@ -300,7 +303,9 @@ async function start(project) {
 
     project.meta.rendering.exporter.exporters.push(PadStreamingExporter);
     const renderer = new Renderer(project);
+    let currentFrame = 0;
     disposeFrame = renderer.onFrameChanged.subscribe(frame => {
+      currentFrame = frame;
       const scene = renderer.playback?.currentScene;
       diagnostics.markFrame(
         frame,
@@ -317,13 +322,29 @@ async function start(project) {
     try {
       if (previousScene) {
         const previous = sceneContext(previousScene, config);
+        reconcileUserTextNodes(previousScene, previous.document, {
+          sceneId: previous.sceneId,
+        });
         restorePrevious = applySceneOverrides(previousScene, previous.document, {
           sceneId: previous.sceneId,
+          timeSeconds: Math.max(
+            0,
+            (currentFrame - Number(previousScene.firstFrame || 0)) /
+              Math.max(1, config.fps),
+          ),
         });
       }
       const current = sceneContext(currentScene, config);
+      reconcileUserTextNodes(currentScene, current.document, {
+        sceneId: current.sceneId,
+      });
       restoreCurrent = applySceneOverrides(currentScene, current.document, {
         sceneId: current.sceneId,
+        timeSeconds: Math.max(
+          0,
+          (currentFrame - Number(currentScene.firstFrame || 0)) /
+            Math.max(1, config.fps),
+        ),
       });
       await baseRender(currentScene, previousScene);
       const context = renderer.stage.finalBuffer.getContext('2d');

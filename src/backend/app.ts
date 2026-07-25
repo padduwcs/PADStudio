@@ -2914,10 +2914,16 @@ export function createPadStudioServer(options: AppOptions = {}) {
           return;
         }
 
-        const {generationId, topicInput, model, reasoningEffort} =
-          parsedRequest.data;
+        const {
+          generationId,
+          topicInput,
+          userGuidance,
+          model,
+          reasoningEffort,
+        } = parsedRequest.data;
         const fingerprint = JSON.stringify({
           topicInput,
+          userGuidance: userGuidance ?? null,
           model: model ?? null,
           reasoningEffort: reasoningEffort ?? null,
         });
@@ -2928,6 +2934,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
           () =>
             topicGuidanceGenerator.generate({
               topicInput,
+              ...(userGuidance ? {userGuidance} : {}),
               ...(model ? {model} : {}),
               ...(reasoningEffort ? {reasoningEffort} : {}),
             }),
@@ -4751,6 +4758,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
             sections: motion.scenes.map((scene) => ({
               sceneId: scene.id,
               filePath: scene.filePath,
+              durationSeconds: scene.durationSeconds,
             })),
           },
           parsedRequest.data.overrides,

@@ -6,7 +6,10 @@ import {
   getOverride,
   normalizeDocument,
   patchDocument,
+  patchVisibilityDocument,
+  clearVisibilityDocument,
   resetDocumentNode,
+  visibilityAtTime,
 } from './modifier-model.js';
 
 function signal(initial) {
@@ -201,6 +204,81 @@ test('hidden is delete semantics and editor lock does not disable rendering', ()
   assert.equal(node.opacity(), 0);
   restore();
   assert.equal(node.opacity(), 0.75);
+});
+
+test('visibility keyframes switch state at scene-local time and survive patches', () => {
+  const base = normalizeDocument(null, {
+    generationId: 'sync-generation',
+    contentRevision: 3,
+    sourceHash: 'source-hash',
+  });
+  const hidden = patchVisibilityDocument(
+    base,
+    'scene-id',
+    'scene/card',
+    'card-fingerprint',
+    1.25,
+    true,
+  );
+  const visible = patchVisibilityDocument(
+    hidden,
+    'scene-id',
+    'scene/card',
+    'card-fingerprint',
+    2.5,
+    false,
+  );
+  const patched = patchDocument(
+    visible,
+    'scene-id',
+    'scene/card',
+    'card-fingerprint',
+    {x: 12},
+  );
+  const override = getOverride(
+    buildModifierIndex(patched),
+    'scene-id',
+    'scene/card',
+  );
+
+  assert.equal(visibilityAtTime(override.visibility, 1), null);
+  assert.equal(visibilityAtTime(override.visibility, 1.25), true);
+  assert.equal(visibilityAtTime(override.visibility, 2.49), true);
+  assert.equal(visibilityAtTime(override.visibility, 2.5), false);
+  assert.equal(override.patch.x, 12);
+
+  const node = {opacity: signal(0.75)};
+  const restoreHidden = applyOverride(node, override, {timeSeconds: 2});
+  assert.equal(node.opacity(), 0);
+  restoreHidden();
+  const restoreVisible = applyOverride(node, override, {timeSeconds: 3});
+  assert.equal(node.opacity(), 0.75);
+  restoreVisible();
+
+  const cleared = clearVisibilityDocument(
+    patched,
+    'scene-id',
+    'scene/card',
+  );
+  assert.equal(cleared.overrides[0].visibility, undefined);
+  assert.equal(cleared.overrides[0].patch.x, 12);
+});
+
+test('visibility-only overrides are removed when their track is cleared', () => {
+  const tracked = patchVisibilityDocument(
+    normalizeDocument(null),
+    'scene-id',
+    'scene/card',
+    'card-fingerprint',
+    0,
+    true,
+  );
+  assert.deepEqual(tracked.overrides[0].patch, {});
+  assert.equal(
+    clearVisibilityDocument(tracked, 'scene-id', 'scene/card').overrides
+      .length,
+    0,
+  );
 });
 
 test('text typography modifiers are normalized, applied, and restored', () => {
