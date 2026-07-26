@@ -1178,6 +1178,11 @@ export function createFinalRenderService(
       await copyPreviewWorkspace(
         verified.sourceWorkspaceDirectory,
         copiedWorkspace,
+        {
+          motionCanvasScenePaths: layoutBundle.scenes.map(
+            (scene) => scene.filePath,
+          ),
+        },
       );
       const runtime = await loadRuntime();
       renderPhase = 'encoder';

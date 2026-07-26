@@ -53,7 +53,10 @@ test('Motion Canvas workspace ghi generation bất biến và kiểm tra TypeScr
           plannedDurationSeconds: 10,
         },
       ],
-      source,
+      source:
+        index === 0
+          ? source.replace("'#dbe9e2'", "'transparent'")
+          : source,
     }),
   );
   const workspace = createMotionCanvasWorkspace(projectsDirectory);
@@ -132,6 +135,9 @@ test('Motion Canvas workspace ghi generation bất biến và kiểm tra TypeScr
     files.map((file) => file.path),
     ['src/project.ts', ...scenes.map((scene) => scene.filePath)],
   );
+  assert.match(scenes[0]!.source, /'transparent'/);
+  assert.match(files[1]!.source, /'#00000000'|"#00000000"/);
+  assert.doesNotMatch(files[1]!.source, /['"]transparent['"]/i);
 
   await assert.rejects(
     () => workspace.prepare(projectId, generationId, scenes),

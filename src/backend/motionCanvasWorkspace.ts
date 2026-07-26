@@ -31,6 +31,7 @@ import {
   validateMotionCanvasRuntimeSafety,
   type MotionCanvasSourceScene,
 } from './motionCanvasGenerator.ts';
+import {normalizeMotionCanvasColorFormats} from './motionCanvasSourceCompatibility.ts';
 
 const execFileAsync = promisify(execFile);
 const uuidPattern =
@@ -420,6 +421,10 @@ export function createMotionCanvasWorkspace(
         scenePaths.add(scene.filePath);
         sceneIds.add(scene.id);
       }
+      const normalizedScenes = scenes.map((scene) => ({
+        ...scene,
+        source: normalizeMotionCanvasColorFormats(scene.source),
+      }));
 
       const root = projectDirectory(projectId);
       const generationsDirectory = path.join(
@@ -455,7 +460,7 @@ export function createMotionCanvasWorkspace(
         );
       }
 
-      for (const scene of scenes) {
+      for (const scene of normalizedScenes) {
         try {
           validateMotionCanvasRuntimeSafety(scene.source);
         } catch (error) {
@@ -472,7 +477,7 @@ export function createMotionCanvasWorkspace(
       }
 
       const files: MotionCanvasWorkspaceFile[] = [
-        {path: 'src/project.ts', source: projectSource(scenes)},
+        {path: 'src/project.ts', source: projectSource(normalizedScenes)},
         {path: 'src/project.meta', source: projectMetaSource()},
         {
           path: 'src/motion-canvas.d.ts',
@@ -491,11 +496,11 @@ declare type Callback = (...args: any[]) => void;
             storedMotionCanvasPackagesPattern,
           ),
         },
-        ...scenes.map((scene) => ({
+        ...normalizedScenes.map((scene) => ({
           path: scene.filePath,
           source: scene.source,
         })),
-        ...scenes.map((scene) => ({
+        ...normalizedScenes.map((scene) => ({
           path: scene.filePath.replace(/\.tsx$/, '.meta'),
           source: sceneMetaSource(scene),
         })),
@@ -527,7 +532,7 @@ declare type Callback = (...args: any[]) => void;
               windowsHide: true,
               timeout: Math.min(
                 10 * 60_000,
-                60_000 + scenes.length * 15_000,
+                60_000 + normalizedScenes.length * 15_000,
               ),
               maxBuffer: 1024 * 1024,
             },
@@ -565,7 +570,7 @@ declare type Callback = (...args: any[]) => void;
         return {
           workspacePath,
           projectFile: 'src/project.ts',
-          scenes: scenes.map(({source: _source, ...scene}) => scene),
+          scenes: normalizedScenes.map(({source: _source, ...scene}) => scene),
           validation: {
             validatedAt: new Date().toISOString(),
             sourceHash: hash,

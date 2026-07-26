@@ -62,15 +62,32 @@ import type {
 } from '../shared/motionCanvasHistory.ts';
 
 export class ApiRequestError extends Error {
+  readonly code: string;
+  readonly status: number;
+  readonly fields?: Record<string, string[]>;
+  readonly currentProject?: TopicProject;
+
   constructor(
     message: string,
-    readonly code = 'REQUEST_ERROR',
-    readonly status = 0,
-    readonly fields?: Record<string, string[]>,
-    readonly currentProject?: TopicProject,
+    code = 'REQUEST_ERROR',
+    status = 0,
+    fields?: Record<string, string[]>,
+    currentProject?: TopicProject,
   ) {
     super(message);
+    this.code = code;
+    this.status = status;
+    this.fields = fields;
+    this.currentProject = currentProject;
   }
+}
+
+function previewRequestOptions(): RequestInit | undefined {
+  const parentOrigin =
+    typeof window === 'undefined' ? '' : window.location.origin;
+  return parentOrigin
+    ? {headers: {'X-Pad-Parent-Origin': parentOrigin}}
+    : undefined;
 }
 
 async function readPayload<ResponsePayload extends object>(response: Response) {
@@ -724,6 +741,7 @@ export async function getMotionCanvasCandidatePreview(
 ) {
   const response = await fetch(
     `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/candidates/${encodeURIComponent(candidateId)}/preview`,
+    previewRequestOptions(),
   );
   const payload = await readPayload<{
     preview: {
@@ -823,13 +841,9 @@ export async function getMotionCanvasPreview(
   projectId: string,
   generationId: string,
 ) {
-  const parentOrigin =
-    typeof window === 'undefined' ? '' : window.location.origin;
   const response = await fetch(
     `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/preview?generation=${encodeURIComponent(generationId)}`,
-    parentOrigin
-      ? {headers: {'X-Pad-Parent-Origin': parentOrigin}}
-      : undefined,
+    previewRequestOptions(),
   );
   const payload = await readPayload<{
     preview: {
@@ -1081,13 +1095,9 @@ export async function getLayoutPreview(
   projectId: string,
   generationId: string,
 ) {
-  const parentOrigin =
-    typeof window === 'undefined' ? '' : window.location.origin;
   const response = await fetch(
     `/api/projects/${encodeURIComponent(projectId)}/layout/preview?generation=${encodeURIComponent(generationId)}`,
-    parentOrigin
-      ? {headers: {'X-Pad-Parent-Origin': parentOrigin}}
-      : undefined,
+    previewRequestOptions(),
   );
   const payload = await readPayload<{
     preview: {

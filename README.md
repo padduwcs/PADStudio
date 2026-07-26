@@ -160,8 +160,8 @@ thao tác Apply/Restore mới tạo revision nội dung mới theo đúng review
 
 Mỗi project có hai chỉ số độc lập:
 
-- `version` là phiên bản cấu trúc file; dữ liệu v1 đến v11 được đọc và nâng cấp
-  lên cấu trúc v12 hiện tại ở lần ghi tiếp theo. Voice/sync section-based của v7
+- `version` là phiên bản cấu trúc file; dữ liệu v1 đến v13 được đọc và nâng cấp
+  lên cấu trúc v14 hiện tại ở lần ghi tiếp theo. Voice/sync section-based của v7
   được chủ động vô hiệu hóa để tạo lại bằng master narration, không giả vờ
   migrate audio cũ thành audio liên tục.
 - `revision` tăng sau mỗi thay đổi nội dung và được dùng với `If-Match` để

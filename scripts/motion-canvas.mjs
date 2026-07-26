@@ -35,22 +35,24 @@ function isInside(root, candidate) {
   );
 }
 
-async function createSyncPreviewCopy(sourceDirectory) {
+async function createPreviewCopy(sourceDirectory, stage, scenePaths) {
   await mkdir(temporaryRoot, {recursive: true});
   const temporaryDirectory = await mkdtemp(
-    path.join(temporaryRoot, 'sync-serve-'),
+    path.join(temporaryRoot, `${stage}-serve-`),
   );
-  // Keep the same directory depth as projects/<id>/sync/generations/<id>.
+  // Keep the same directory depth as the immutable generation workspace.
   // The generated tsconfig uses portable ../../../../../node_modules paths.
   const workspaceDirectory = path.join(
     temporaryDirectory,
-    'sync',
+    stage === 'sync' ? 'sync' : 'motion-canvas',
     'generations',
     path.basename(sourceDirectory),
   );
   try {
     await mkdir(path.dirname(workspaceDirectory), {recursive: true});
-    await copyPreviewWorkspace(sourceDirectory, workspaceDirectory);
+    await copyPreviewWorkspace(sourceDirectory, workspaceDirectory, {
+      motionCanvasScenePaths: scenePaths,
+    });
     return {temporaryDirectory, workspaceDirectory};
   } catch (error) {
     if (isInside(temporaryRoot, temporaryDirectory)) {
@@ -63,7 +65,7 @@ async function createSyncPreviewCopy(sourceDirectory) {
   }
 }
 
-async function removeSyncPreviewCopy(temporaryDirectory) {
+async function removePreviewCopy(temporaryDirectory) {
   if (
     temporaryDirectory &&
     isInside(temporaryRoot, temporaryDirectory)
@@ -111,15 +113,17 @@ if (
       projectDirectory,
       bundle.workspacePath,
     );
-    let temporaryDirectory = null;
-    let workspaceDirectory = sourceWorkspaceDirectory;
-    if (stage === 'sync') {
-      const previewCopy = await createSyncPreviewCopy(
-        sourceWorkspaceDirectory,
-      );
-      temporaryDirectory = previewCopy.temporaryDirectory;
-      workspaceDirectory = previewCopy.workspaceDirectory;
-    }
+    const scenePaths =
+      stage === 'sync'
+        ? bundle.sections.map((section) => section.filePath)
+        : bundle.scenes.map((scene) => scene.filePath);
+    const previewCopy = await createPreviewCopy(
+      sourceWorkspaceDirectory,
+      stage,
+      scenePaths,
+    );
+    const temporaryDirectory = previewCopy.temporaryDirectory;
+    const workspaceDirectory = previewCopy.workspaceDirectory;
     const projectFile = path.resolve(workspaceDirectory, bundle.projectFile);
     const outputDirectory = path.join(
       projectDirectory,
@@ -174,7 +178,7 @@ if (
         process.off('SIGTERM', stopOnTermination);
       }
     } finally {
-      await removeSyncPreviewCopy(temporaryDirectory);
+      await removePreviewCopy(temporaryDirectory);
     }
   }
 }

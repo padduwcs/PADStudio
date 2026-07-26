@@ -64,6 +64,7 @@ interface MiddlewareServer {
 }
 
 interface ActivePreview {
+  projectId: string;
   identity: string;
   generationId: string;
   sourceSyncGenerationId: string;
@@ -197,6 +198,13 @@ function canonicalHash(value: unknown) {
   return createHash('sha256')
     .update(JSON.stringify(canonicalValue(value)))
     .digest('hex');
+}
+
+export function layoutPreviewSlotKey(
+  projectId: string,
+  generationId: string,
+) {
+  return `${projectId}:${generationId}`;
 }
 
 function safeTokenEqual(left: string, right: string) {
@@ -813,10 +821,10 @@ export function createLayoutPreviewService(
     }
   }
 
-  async function trimPreviews(currentProjectId: string) {
+  async function trimPreviews(currentPreviewKey: string) {
     if (previews.size <= maximumActivePreviews) return;
     const candidates = [...previews.entries()]
-      .filter(([projectId]) => projectId !== currentProjectId)
+      .filter(([previewKey]) => previewKey !== currentPreviewKey)
       .sort(
         ([, left], [, right]) =>
           left.lastAccessedAt - right.lastAccessedAt,
@@ -825,6 +833,19 @@ export function createLayoutPreviewService(
     if (!oldest) return;
     previews.delete(oldest[0]);
     await closePreview(oldest[1]);
+  }
+
+  function previewForSession(
+    projectId: string,
+    sessionNonce: string,
+    sourceSyncGenerationId: string,
+  ) {
+    return [...previews.values()].find(
+      (entry) =>
+        entry.projectId === projectId &&
+        safeTokenEqual(entry.sessionNonce, sessionNonce) &&
+        entry.sourceSyncGenerationId === sourceSyncGenerationId,
+    );
   }
 
   async function createPreview(
@@ -860,6 +881,11 @@ export function createLayoutPreviewService(
       await copyPreviewWorkspace(
         source.workspaceDirectory,
         previewWorkspaceDirectory,
+        {
+          motionCanvasScenePaths: entry.manifestSeed.scenes.map(
+            (scene) => scene.filePath,
+          ),
+        },
       );
       server = await runtime.createServer({
         configFile: false,
@@ -1016,6 +1042,10 @@ export function createLayoutPreviewService(
             'Layout preview runtime đã dừng.',
           );
         }
+        const generationId =
+          layoutBundle?.generation.generationId ??
+          animationSyncBundle.generation.generationId;
+        const activePreviewKey = layoutPreviewSlotKey(projectId, generationId);
         const parentOrigin = normalizeParentOrigin(
           startOptions.parentOrigin,
         );
@@ -1042,9 +1072,9 @@ export function createLayoutPreviewService(
             };
           }
         } catch (error) {
-          const invalidated = previews.get(projectId);
+          const invalidated = previews.get(activePreviewKey);
           if (invalidated) {
-            previews.delete(projectId);
+            previews.delete(activePreviewKey);
             await closePreview(invalidated);
           }
           throw error;
@@ -1055,9 +1085,6 @@ export function createLayoutPreviewService(
             'Layout preview runtime đã dừng.',
           );
         }
-        const generationId =
-          layoutBundle?.generation.generationId ??
-          animationSyncBundle.generation.generationId;
         const identity = canonicalHash({
           projectId,
           generationId,
@@ -1079,12 +1106,12 @@ export function createLayoutPreviewService(
               : null,
           parentOrigin,
         });
-        const existing = previews.get(projectId);
+        const existing = previews.get(activePreviewKey);
         if (existing?.identity === identity) {
           try {
             existing.lastAccessedAt = Date.now();
             const preview = await existing.promise;
-            if (previews.get(projectId) !== existing) {
+            if (previews.get(activePreviewKey) !== existing) {
               throw new LayoutPreviewError(
                 'LAYOUT_PREVIEW_SUPERSEDED',
                 'Layout preview đã được thay bằng một session mới.',
@@ -1097,19 +1124,19 @@ export function createLayoutPreviewService(
               return preview;
             }
           } catch (error) {
-            if (previews.get(projectId) === existing) {
-              previews.delete(projectId);
+            if (previews.get(activePreviewKey) === existing) {
+              previews.delete(activePreviewKey);
             }
             await closePreview(existing);
             throw error;
           }
-          if (previews.get(projectId) === existing) {
-            previews.delete(projectId);
+          if (previews.get(activePreviewKey) === existing) {
+            previews.delete(activePreviewKey);
           }
           await closePreview(existing);
         }
-        if (existing && previews.get(projectId) === existing) {
-          previews.delete(projectId);
+        if (existing && previews.get(activePreviewKey) === existing) {
+          previews.delete(activePreviewKey);
           await closePreview(existing);
         }
 
@@ -1119,6 +1146,7 @@ export function createLayoutPreviewService(
           identity.slice(0, 32),
         );
         const entry: ActivePreview = {
+          projectId,
           identity,
           generationId,
           sourceSyncGenerationId:
@@ -1164,15 +1192,15 @@ export function createLayoutPreviewService(
           resolvedSource,
           entry,
         ).catch((error) => {
-          if (previews.get(projectId) === entry) {
-            previews.delete(projectId);
+          if (previews.get(activePreviewKey) === entry) {
+            previews.delete(activePreviewKey);
           }
           throw error;
         });
-        previews.set(projectId, entry);
-        await trimPreviews(projectId);
+        previews.set(activePreviewKey, entry);
+        await trimPreviews(activePreviewKey);
         const preview = await entry.promise;
-        if (previews.get(projectId) !== entry) {
+        if (previews.get(activePreviewKey) !== entry) {
           throw new LayoutPreviewError(
             'LAYOUT_PREVIEW_SUPERSEDED',
             'Layout preview đã được thay bằng một session mới.',
@@ -1191,6 +1219,8 @@ export function createLayoutPreviewService(
             'Layout preview runtime đã dừng.',
           );
         }
+        const generationId = motionCanvasBundle.generation.generationId;
+        const activePreviewKey = layoutPreviewSlotKey(projectId, generationId);
         const parentOrigin = normalizeParentOrigin(startOptions.parentOrigin);
         let resolvedSource: Awaited<ReturnType<typeof resolveMotionSource>>;
         try {
@@ -1200,9 +1230,9 @@ export function createLayoutPreviewService(
             startOptions.initialOverrides,
           );
         } catch (error) {
-          const invalidated = previews.get(projectId);
+          const invalidated = previews.get(activePreviewKey);
           if (invalidated) {
-            previews.delete(projectId);
+            previews.delete(activePreviewKey);
             await closePreview(invalidated);
           }
           if (error instanceof LayoutPreviewError) throw error;
@@ -1212,7 +1242,6 @@ export function createLayoutPreviewService(
             {cause: error},
           );
         }
-        const generationId = motionCanvasBundle.generation.generationId;
         const identity = canonicalHash({
           projectId,
           sourceKind: 'motion-canvas',
@@ -1227,36 +1256,39 @@ export function createLayoutPreviewService(
           ),
           parentOrigin,
         });
-        const existing = previews.get(projectId);
+        const existing = previews.get(activePreviewKey);
         if (existing?.identity === identity) {
           try {
             existing.lastAccessedAt = Date.now();
             const preview = await existing.promise;
             if (
-              previews.get(projectId) === existing &&
+              previews.get(activePreviewKey) === existing &&
               existing.server &&
               existing.server.httpServer?.listening !== false
             ) {
               return preview;
             }
           } catch (error) {
-            if (previews.get(projectId) === existing) {
-              previews.delete(projectId);
+            if (previews.get(activePreviewKey) === existing) {
+              previews.delete(activePreviewKey);
             }
             await closePreview(existing);
             throw error;
           }
-          if (previews.get(projectId) === existing) previews.delete(projectId);
+          if (previews.get(activePreviewKey) === existing) {
+            previews.delete(activePreviewKey);
+          }
           await closePreview(existing);
         }
-        if (existing && previews.get(projectId) === existing) {
-          previews.delete(projectId);
+        if (existing && previews.get(activePreviewKey) === existing) {
+          previews.delete(activePreviewKey);
           await closePreview(existing);
         }
 
         const sessionNonce = randomBytes(32).toString('base64url');
         const cacheDirectory = path.join(temporaryRoot, identity.slice(0, 32));
         const entry: ActivePreview = {
+          projectId,
           identity,
           generationId,
           sourceSyncGenerationId: generationId,
@@ -1286,13 +1318,15 @@ export function createLayoutPreviewService(
           manifest: null,
         };
         entry.promise = createPreview(resolvedSource, entry).catch((error) => {
-          if (previews.get(projectId) === entry) previews.delete(projectId);
+          if (previews.get(activePreviewKey) === entry) {
+            previews.delete(activePreviewKey);
+          }
           throw error;
         });
-        previews.set(projectId, entry);
-        await trimPreviews(projectId);
+        previews.set(activePreviewKey, entry);
+        await trimPreviews(activePreviewKey);
         const preview = await entry.promise;
-        if (previews.get(projectId) !== entry) {
+        if (previews.get(activePreviewKey) !== entry) {
           throw new LayoutPreviewError(
             'LAYOUT_PREVIEW_SUPERSEDED',
             'Layout preview đã được thay bằng một session mới.',
@@ -1304,10 +1338,13 @@ export function createLayoutPreviewService(
 
     getManifest(projectId, sessionNonce, sourceSyncGenerationId) {
       assertProjectId(projectId);
-      const entry = previews.get(projectId);
+      const entry = previewForSession(
+        projectId,
+        sessionNonce,
+        sourceSyncGenerationId,
+      );
       if (
         !entry ||
-        !safeTokenEqual(entry.sessionNonce, sessionNonce) ||
         entry.sourceSyncGenerationId !== sourceSyncGenerationId
       ) {
         throw new LayoutPreviewError(
@@ -1330,10 +1367,13 @@ export function createLayoutPreviewService(
       sourceSyncGenerationId,
     ) {
       assertProjectId(projectId);
-      const entry = previews.get(projectId);
+      const entry = previewForSession(
+        projectId,
+        sessionNonce,
+        sourceSyncGenerationId,
+      );
       if (
         !entry ||
-        !safeTokenEqual(entry.sessionNonce, sessionNonce) ||
         entry.sourceSyncGenerationId !== sourceSyncGenerationId ||
         !/^[a-f0-9]{64}$/.test(entry.sourceWorkspaceHash)
       ) {

@@ -10,6 +10,11 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import path from 'node:path';
+import {normalizeMotionCanvasColorFormats} from './motionCanvasSourceCompatibility.ts';
+
+export interface PreviewWorkspaceCopyOptions {
+  motionCanvasScenePaths?: readonly string[];
+}
 
 export class PreviewWorkspaceCopyError extends Error {
   readonly code:
@@ -231,9 +236,42 @@ async function rebaseTypeScriptConfig(
   }
 }
 
+async function normalizeMotionCanvasScenes(
+  destinationDirectory: string,
+  scenePaths: readonly string[],
+) {
+  for (const relativePath of new Set(scenePaths)) {
+    const scenePath = path.resolve(destinationDirectory, relativePath);
+    if (
+      !relativePath ||
+      path.isAbsolute(relativePath) ||
+      !isInside(destinationDirectory, scenePath) ||
+      normalizedPath(scenePath) === normalizedPath(destinationDirectory)
+    ) {
+      throw new PreviewWorkspaceCopyError(
+        'PREVIEW_WORKSPACE_COPY_INVALID',
+        'Đường dẫn scene cần nâng tương thích không hợp lệ.',
+      );
+    }
+    const entry = await lstat(scenePath);
+    if (!entry.isFile() || entry.isSymbolicLink()) {
+      throw new PreviewWorkspaceCopyError(
+        'PREVIEW_WORKSPACE_COPY_UNSAFE_ENTRY',
+        `Scene preview “${relativePath}” không phải file an toàn.`,
+      );
+    }
+    const source = await readFile(scenePath, 'utf8');
+    const normalized = normalizeMotionCanvasColorFormats(source);
+    if (normalized !== source) {
+      await writeFile(scenePath, normalized, 'utf8');
+    }
+  }
+}
+
 export async function copyPreviewWorkspace(
   sourceDirectory: string,
   destinationDirectory: string,
+  options: PreviewWorkspaceCopyOptions = {},
 ): Promise<void> {
   const source = path.resolve(sourceDirectory);
   const destination = path.resolve(destinationDirectory);
@@ -303,6 +341,10 @@ export async function copyPreviewWorkspace(
     destinationCreated = true;
     await copyDirectory(source, destination, '');
     await rebaseTypeScriptConfig(source, destination);
+    await normalizeMotionCanvasScenes(
+      destination,
+      options.motionCanvasScenePaths ?? [],
+    );
   } catch (error) {
     if (destinationCreated) {
       await rm(destination, {recursive: true, force: true}).catch(

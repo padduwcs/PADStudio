@@ -20,6 +20,7 @@ import type {AnimationSyncBundle} from '../shared/topic.ts';
 import {
   LayoutPreviewError,
   createLayoutPreviewService,
+  layoutPreviewSlotKey,
 } from './layoutPreviewService.ts';
 import {
   LayoutWorkspaceError,
@@ -1169,5 +1170,20 @@ test('Layout preview khóa generation/session và nhận manifest trực tiếp 
     (error) =>
       error instanceof LayoutPreviewError &&
       error.code === 'LAYOUT_PREVIEW_SOURCE_MISMATCH',
+  );
+});
+
+test('Motion current và candidate dùng hai preview slot độc lập', () => {
+  const projectId = 'candidate-preview-project';
+  const currentGenerationId = randomUUID();
+  const candidateGenerationId = randomUUID();
+
+  assert.notEqual(
+    layoutPreviewSlotKey(projectId, currentGenerationId),
+    layoutPreviewSlotKey(projectId, candidateGenerationId),
+  );
+  assert.equal(
+    layoutPreviewSlotKey(projectId, currentGenerationId),
+    layoutPreviewSlotKey(projectId, currentGenerationId),
   );
 });

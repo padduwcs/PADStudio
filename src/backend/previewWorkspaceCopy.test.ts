@@ -81,6 +81,30 @@ test('copyPreviewWorkspace sao chép đệ quy chính xác và không sửa ngu�
   );
 });
 
+test('copyPreviewWorkspace chỉ nâng tương thích màu trên bản sao tạm', async (context) => {
+  const root = await temporaryDirectory(context);
+  const source = path.join(root, 'source');
+  const destination = path.join(root, 'preview');
+  const scenePath = path.join('src', 'scenes', '01-scene.tsx');
+  const sceneSource =
+    "const scene = <Rect fill={'transparent'} />;\n";
+  await mkdir(path.join(source, 'src', 'scenes'), {recursive: true});
+  await writeFile(path.join(source, scenePath), sceneSource, 'utf8');
+
+  await copyPreviewWorkspace(source, destination, {
+    motionCanvasScenePaths: ['src/scenes/01-scene.tsx'],
+  });
+
+  assert.equal(
+    await readFile(path.join(source, scenePath), 'utf8'),
+    sceneSource,
+  );
+  assert.equal(
+    await readFile(path.join(destination, scenePath), 'utf8'),
+    'const scene = <Rect fill={"#00000000"} />;\n',
+  );
+});
+
 test('copyPreviewWorkspace rebase đường dẫn tsconfig khi preview đổi độ sâu thư mục', async (context) => {
   const root = await temporaryDirectory(context);
   const source = path.join(

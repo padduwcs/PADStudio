@@ -19,6 +19,10 @@ import {
   validateMotionCanvasSceneSource,
   validateMotionCanvasTimingContract,
 } from './motionCanvasGenerator.ts';
+import {
+  findUnsupportedMotionCanvasColorLiterals,
+  normalizeMotionCanvasColorFormats,
+} from './motionCanvasSourceCompatibility.ts';
 
 const sceneSource = `import {makeScene2D, Rect} from '@motion-canvas/2d';
 import {waitFor} from '@motion-canvas/core';
@@ -32,6 +36,84 @@ export default makeScene2D(function* (view) {
   yield* waitFor(12);
 });
 `;
+
+test('Motion Canvas chuẩn hóa transparent theo ngữ cảnh màu mà không đổi text', () => {
+  const sourceWithTransparentColors = `const clear = 'transparent';
+const clearSignal = createSignal('transparent');
+const textLabel = 'transparent';
+const demo = (
+  <>
+    <Rect fill={'transparent'} stroke="TRANSPARENT" shadowColor={\`transparent\`} />
+    <Rect fill={clearSignal} />
+    <Txt text={'transparent'} />
+    <Txt text={textLabel} />
+  </>
+);
+card().fill('transparent', 0.2);
+line().stroke(clear, 0.2);
+const gradientStop = {color: 'transparent'};
+const color = new Color('transparent');
+`;
+
+  assert.equal(
+    findUnsupportedMotionCanvasColorLiterals(
+      sourceWithTransparentColors,
+    ).length,
+    8,
+  );
+  const normalized = normalizeMotionCanvasColorFormats(
+    sourceWithTransparentColors,
+  );
+  assert.equal(
+    findUnsupportedMotionCanvasColorLiterals(normalized).length,
+    0,
+  );
+  assert.match(normalized, /<Txt text=\{'transparent'\}/);
+  assert.match(normalized, /const textLabel = 'transparent'/);
+  assert.equal(
+    normalizeMotionCanvasColorFormats(normalized),
+    normalized,
+  );
+  assert.equal(
+    normalized.match(/#00000000/g)?.length,
+    8,
+  );
+});
+
+test('Motion Canvas source policy từ chối transparent chưa được chuẩn hóa', () => {
+  const invalidSource = sceneSource.replace(
+    "'#dbe9e2'",
+    "'transparent'",
+  );
+
+  assert.throws(
+    () => validateMotionCanvasSceneSource(invalidSource),
+    (error) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+  );
+  assert.doesNotThrow(() =>
+    validateMotionCanvasSceneSource(
+      normalizeMotionCanvasColorFormats(invalidSource),
+    ),
+  );
+});
+
+test('Motion Canvas color compatibility tôn trọng lexical scope của alias', () => {
+  const source = `const label = 'transparent';
+function createCard() {
+  const label = '#ffffff';
+  return <Rect fill={label} />;
+}
+const caption = <Txt text={label} />;
+`;
+
+  assert.equal(
+    findUnsupportedMotionCanvasColorLiterals(source).length,
+    0,
+  );
+  assert.equal(normalizeMotionCanvasColorFormats(source), source);
+});
 
 function timedSceneSource(beatIds: string[]) {
   return `import {makeScene2D, Rect} from '@motion-canvas/2d';

@@ -241,6 +241,11 @@ export function createAnimationSyncPreviewService(
       await copyPreviewWorkspace(
         workspaceDirectory,
         previewWorkspaceDirectory,
+        {
+          motionCanvasScenePaths: bundle.sections.map(
+            (section) => section.filePath,
+          ),
+        },
       );
       await writeFile(
         visualDesignFile,

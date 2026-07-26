@@ -18,8 +18,12 @@ import {
   codexGenerationTimeoutMs,
   runCodexStructuredGeneration,
 } from './codexStructuredGeneration.ts';
+import {
+  findUnsupportedMotionCanvasColorLiterals,
+  normalizeMotionCanvasColorFormats,
+} from './motionCanvasSourceCompatibility.ts';
 
-export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v8';
+export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v9';
 export const MOTION_CANVAS_VERSION = '3.17.2';
 export const MOTION_CANVAS_WIDTH = 1080;
 export const MOTION_CANVAS_HEIGHT = 1920;
@@ -415,6 +419,7 @@ function buildPrompt(
     'Không dùng scaleX/scaleY; dùng scale([x, y], duration) hoặc width/height với duration.',
     'Không yield* view.add/node.add. Mọi giá trị truyền vào all/chain hoặc yield* phải là animation generator, thường là signal(value, duration).',
     'Txt.text phải là string; chuyển số bằng String(value).',
+    'Motion Canvas không hỗ trợ CSS keyword transparent. Luôn dùng #00000000 cho màu trong suốt; không dùng literal transparent cho fill, stroke, shadowColor, color hoặc Color().',
     `Mặc định mọi Txt phải dùng fontFamily={${JSON.stringify(MOTION_CANVAS_DEFAULT_FONT_FAMILY)}}. Chỉ đặt font khác khi góp ý người dùng hoặc visualDirection yêu cầu rõ ràng.`,
     'Giá trị flex dùng kebab-case như space-between, không dùng spaceBetween.',
     'Scene phải tự chứa toàn bộ node và animation, chạy độc lập và không import file tương đối.',
@@ -454,6 +459,7 @@ function buildRepairPrompt(
     'Không tạo key từ index, thứ tự, nội dung, vị trí, UUID, random, biểu thức hoặc biến. Không sinh visual JSX node bằng map/loop.',
     'Giá trị flex dùng kebab-case như space-between, space-around hoặc space-evenly; không dùng spaceBetween.',
     `Giữ font mặc định của mọi Txt là ${MOTION_CANVAS_DEFAULT_FONT_FAMILY}; không xóa fontFamily khi sửa lỗi.`,
+    'Motion Canvas không hỗ trợ CSS keyword transparent. Thay literal màu transparent bằng #00000000.',
     'Không tween Line.points giữa hai mảng khác số điểm. Nếu cần đổi cardinality, set points tức thời rồi mới animate các signal khác.',
     JSON.stringify({
       context: generationPayload(request, sectionIndex),
@@ -623,6 +629,12 @@ export function validateMotionCanvasSceneSource(source: string) {
       'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
       'Codex trả về scene có cú pháp TypeScript/TSX không hợp lệ.',
       {cause: syntaxDiagnostics},
+    );
+  }
+  if (findUnsupportedMotionCanvasColorLiterals(source).length > 0) {
+    throw new MotionCanvasGenerationError(
+      'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+      'Scene dùng CSS keyword transparent mà Motion Canvas không hỗ trợ; hãy dùng #00000000.',
     );
   }
 
@@ -1436,7 +1448,9 @@ export function createCodexMotionCanvasGenerator(
           endEvent: `beat:${beat.id}:end`,
           plannedDurationSeconds: beat.durationSeconds,
         })),
-        source: `${applyMotionCanvasDefaultFont(parsed.data.source.trim())}\n`,
+        source: `${applyMotionCanvasDefaultFont(
+          normalizeMotionCanvasColorFormats(parsed.data.source.trim()),
+        )}\n`,
       },
       model,
       usage,
@@ -1759,7 +1773,9 @@ export function createCodexMotionCanvasGenerator(
           scene: {
             ...currentScene,
             name: parsed.data.name,
-            source: `${applyMotionCanvasDefaultFont(parsed.data.source.trim())}\n`,
+            source: `${applyMotionCanvasDefaultFont(
+              normalizeMotionCanvasColorFormats(parsed.data.source.trim()),
+            )}\n`,
           },
           model: repaired.model,
           usage: repaired.usage,

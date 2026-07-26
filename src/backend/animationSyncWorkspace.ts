@@ -20,6 +20,7 @@ import type {
   VoiceBundle,
 } from '../shared/topic.ts';
 import {MOTION_CANVAS_VERSION} from './motionCanvasGenerator.ts';
+import {normalizeMotionCanvasColorFormats} from './motionCanvasSourceCompatibility.ts';
 
 const execFileAsync = promisify(execFile);
 const uuidPattern =
@@ -855,9 +856,11 @@ export function createAnimationSyncWorkspace(
           }
           try {
             const source = await readFile(sourceFile, 'utf8');
-            return normalizeSceneTimingSource(
-              source,
-              scene.timingEvents ?? [],
+            return normalizeMotionCanvasColorFormats(
+              normalizeSceneTimingSource(
+                source,
+                scene.timingEvents ?? [],
+              ),
             );
           } catch (error) {
             if (error instanceof AnimationSyncWorkspaceError) throw error;

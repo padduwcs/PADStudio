@@ -88,24 +88,26 @@ try {
       projectDirectory,
       bundle.workspacePath,
     );
-    if (stage === 'sync') {
-      // Motion Canvas owns and rewrites *.meta while loading a project.
-      // Validate a depth-compatible copy so an immutable Sync generation
-      // never changes merely because it was inspected.
-      workspaceDirectory = path.join(
-        validationDirectory,
-        'sync',
-        'generations',
-        path.basename(sourceWorkspaceDirectory),
-      );
-      await mkdir(path.dirname(workspaceDirectory), {recursive: true});
-      await copyPreviewWorkspace(
-        sourceWorkspaceDirectory,
-        workspaceDirectory,
-      );
-    } else {
-      workspaceDirectory = sourceWorkspaceDirectory;
-    }
+    // Motion Canvas owns and can rewrite *.meta while loading a project.
+    // Validate a depth-compatible copy so immutable generations stay intact
+    // and older color literals can be upgraded only inside the temporary copy.
+    workspaceDirectory = path.join(
+      validationDirectory,
+      stage === 'sync' ? 'sync' : 'motion-canvas',
+      'generations',
+      path.basename(sourceWorkspaceDirectory),
+    );
+    await mkdir(path.dirname(workspaceDirectory), {recursive: true});
+    await copyPreviewWorkspace(
+      sourceWorkspaceDirectory,
+      workspaceDirectory,
+      {
+        motionCanvasScenePaths:
+          stage === 'sync'
+            ? bundle.sections.map((section) => section.filePath)
+            : bundle.scenes.map((scene) => scene.filePath),
+      },
+    );
     projectFile = path.join(workspaceDirectory, bundle.projectFile);
     scenes = motionBundle.scenes;
   } else {
