@@ -5,6 +5,33 @@ export function isGeneratedEditorNodeKey(key) {
   return GENERATED_NODE_KEY.test(String(key ?? ''));
 }
 
+export function inferEditorNodeRole(node, hasChildren = false) {
+  const key = String(node?.key ?? '');
+  if (key === 'scene-background') return 'background';
+  if (key === 'scene-content-root') return 'content';
+  if (
+    key.startsWith('block-') ||
+    key.endsWith('-block') ||
+    (hasChildren &&
+      (key.endsWith('-group') || key.endsWith('-panel')))
+  ) {
+    return 'block';
+  }
+  return 'element';
+}
+
+export function blockAncestor(nodes, nodeKey) {
+  const byKey = new Map(nodes.map(node => [node.key, node]));
+  let current = byKey.get(nodeKey);
+  const visited = new Set();
+  while (current && !visited.has(current.key)) {
+    visited.add(current.key);
+    if (current.role === 'block' || current.role === 'content') return current;
+    current = current.parentKey ? byKey.get(current.parentKey) : null;
+  }
+  return null;
+}
+
 export function isInternalEditorNode(node) {
   if (!node) return false;
   return (
@@ -164,14 +191,20 @@ export function mergeEditorNodePolicy(discovered, previous) {
     ]),
   ];
   const editable = new Set(editableProperties);
-  const lockedProperties = (previous.lockedProperties ?? []).filter(
-    property => editable.has(property),
-  );
+  const lockedProperties = [
+    ...new Set([
+      ...(discovered.lockedProperties ?? []),
+      ...(previous.lockedProperties ?? []),
+    ]),
+  ].filter(property => editable.has(property));
   return {
     ...discovered,
     editableProperties,
     lockedProperties,
-    lockReason: lockedProperties.length > 0 ? previous.lockReason : null,
+    lockReason:
+      lockedProperties.length > 0
+        ? discovered.lockReason ?? previous.lockReason
+        : null,
   };
 }
 
@@ -232,10 +265,22 @@ export function migrateInternalNodeOverrides(
       continue;
     }
     const existing = overrides[existingIndex];
+    const animations = new Map(
+      [
+        ...(existing.animations ?? []),
+        ...(next.animations ?? []),
+      ].map(track => [track.property, track]),
+    );
     overrides[existingIndex] = {
       ...existing,
       nodeFingerprint: next.nodeFingerprint,
       patch: {...existing.patch, ...next.patch},
+      ...(next.visibility?.length
+        ? {visibility: next.visibility}
+        : {}),
+      ...(animations.size > 0
+        ? {animations: [...animations.values()]}
+        : {}),
     };
     changed = true;
   }

@@ -20,6 +20,10 @@ import {useCodexConnection} from './useCodexConnection.ts';
 import {motionCanvasReviewerRepair} from './motionCanvasCandidateRepair.ts';
 import {useMotionCanvasDraft} from './useMotionCanvasDraft.ts';
 import {MotionDesignEditor} from './MotionDesignEditor.tsx';
+import {
+  findVoiceVisualSection,
+  resolveVoiceVisualSectionPresentation,
+} from './voiceVisualSectionState.ts';
 
 function formatTime(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -260,6 +264,157 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
   const reviewerRepair = motionCanvas.candidate
     ? motionCanvasReviewerRepair(motionCanvas.candidate)
     : null;
+  const plannedBeatCount = plan.sections.reduce(
+    (total, section) => total + section.beats.length,
+    0,
+  );
+
+  if (bundle && motionCanvas.stale) {
+    return (
+      <div className="motion-canvas-workspace">
+        <header className="outline-heading motion-canvas-heading">
+          <div className="eyebrow">
+            <span>Bước 04</span>
+            <span className="eyebrow-line" />
+            Motion Canvas
+          </div>
+          <AdaptiveHeading as="h1">
+            Cập nhật scene theo mạch giảng mới.
+          </AdaptiveHeading>
+          <p>
+            Workspace trước vẫn được giữ nguyên. Hệ thống sẽ dựng một
+            generation mới, đúng cấu trúc Voice–Visual vừa chốt.
+          </p>
+        </header>
+
+        <div className="outline-codex motion-canvas-connection">
+          <CodexConnectionCard
+            connection={codexConnection}
+            task="motionCanvas"
+            workUnits={outline.sections.length}
+          />
+        </div>
+
+        {motionCanvas.conflict && (
+          <div className="outline-alert is-error" role="alert">
+            <span>
+              Project đã thay đổi ở nơi khác. Hãy tải lại trước khi tiếp tục.
+            </span>
+            <button type="button" onClick={motionCanvas.reload}>
+              Tải lại
+            </button>
+          </div>
+        )}
+
+        {motionCanvas.actionError && (
+          <div className="outline-alert is-error" role="alert">
+            {motionCanvas.actionError}
+          </div>
+        )}
+
+        <section className="motion-canvas-recovery" aria-labelledby="motion-recovery-title">
+          <div className="motion-canvas-recovery-icon" aria-hidden="true">
+            <LayersIcon />
+          </div>
+          <div className="motion-canvas-recovery-copy">
+            <span className="preview-kicker">Cần đồng bộ lại cấu trúc</span>
+            <h2 id="motion-recovery-title">
+              Sinh lại {outline.sections.length} scene hiện tại
+            </h2>
+            <p>
+              Bản cũ có {bundle.scenes.length} scene nên không còn khớp mạch
+              giảng. Editor được khóa để tránh lưu nhầm lên generation cũ.
+            </p>
+
+            <div className="motion-canvas-recovery-delta">
+              <div className="is-previous">
+                <small>Workspace đang giữ</small>
+                <strong>{bundle.scenes.length} scene</strong>
+                <span>Generation {bundle.contentRevision}</span>
+              </div>
+              <span className="motion-canvas-recovery-arrow" aria-hidden="true">
+                <ArrowRightIcon />
+              </span>
+              <div>
+                <small>Kế hoạch hiện tại</small>
+                <strong>{outline.sections.length} scene</strong>
+                <span>{plannedBeatCount} beat</span>
+              </div>
+            </div>
+
+            <button
+              className="submit-button motion-canvas-recovery-action"
+              type="button"
+              disabled={
+                motionCanvas.generating ||
+                motionCanvas.conflict ||
+                codexConnection.checking ||
+                !codexConnection.generationReady
+              }
+              onClick={() => void handleGenerate('')}
+            >
+              {motionCanvas.generating ? (
+                <>
+                  <span className="spinner" />
+                  Đang dựng generation mới…
+                </>
+              ) : (
+                <>
+                  Sinh lại toàn bộ scene
+                  <SparkIcon />
+                </>
+              )}
+            </button>
+            <small className="motion-canvas-recovery-note">
+              Scene và source cũ không bị xóa hoặc ghi đè.
+            </small>
+          </div>
+        </section>
+
+        <details className="motion-canvas-archive">
+          <summary>
+            <span>
+              <strong>Workspace cũ</strong>
+              <small>Chỉ mở khi cần đối chiếu</small>
+            </span>
+            <span>{bundle.scenes.length} scene</span>
+          </summary>
+          <div className="motion-canvas-archive-list">
+            {bundle.scenes.map((scene, index) => {
+              const presentation = resolveVoiceVisualSectionPresentation(
+                outline.sections,
+                scene.outlineSectionId,
+                index,
+                scene.durationSeconds,
+              );
+              return (
+                <div key={scene.id}>
+                  <span>{String(index + 1).padStart(2, '0')}</span>
+                  <div>
+                    <strong>{presentation.title}</strong>
+                    <small>{scene.filePath}</small>
+                  </div>
+                  <span>{formatTime(scene.durationSeconds)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </details>
+
+        <footer className="outline-final-actions motion-canvas-recovery-footer">
+          <button
+            className="secondary-button"
+            type="button"
+            onClick={() => navigate(projectVoiceVisualPath(project.id))}
+          >
+            <ArrowLeftIcon />
+            Xem lại Voice–Visual
+          </button>
+          <span>Chỉ generation mới mới được mở trong editor</span>
+        </footer>
+      </div>
+    );
+  }
 
   return (
     <div className="motion-canvas-workspace">
@@ -278,13 +433,15 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
         </p>
       </header>
 
-      <div className="outline-codex motion-canvas-connection">
-        <CodexConnectionCard
-          connection={codexConnection}
-          task="motionCanvas"
-          workUnits={outline.sections.length}
-        />
-      </div>
+      {!bundle && (
+        <div className="outline-codex motion-canvas-connection">
+          <CodexConnectionCard
+            connection={codexConnection}
+            task="motionCanvas"
+            workUnits={outline.sections.length}
+          />
+        </div>
+      )}
 
       {motionCanvas.conflict && (
         <div className="outline-alert is-error" role="alert">
@@ -293,26 +450,6 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
           </span>
           <button type="button" onClick={motionCanvas.reload}>
             Tải lại
-          </button>
-        </div>
-      )}
-
-      {motionCanvas.stale && (
-        <div className="outline-alert" role="status">
-          <span>
-            Kế hoạch voice–visual đã thay đổi. Workspace scene hiện tại chỉ
-            còn để tham khảo.
-          </span>
-          <button
-            type="button"
-            disabled={
-              motionCanvas.generating ||
-              codexConnection.checking ||
-              !codexConnection.generationReady
-            }
-            onClick={() => void handleGenerate('')}
-          >
-            {motionCanvas.generating ? 'Đang sinh lại…' : 'Sinh lại toàn bộ'}
           </button>
         </div>
       )}
@@ -437,9 +574,9 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                   <div>
                     <span className="preview-kicker">
                       <CheckIcon />
-                      TypeScript đã kiểm tra
+                      Workspace đã kiểm tra
                     </span>
-                    <h2>Workspace Motion Canvas</h2>
+                    <h2>Scene editor</h2>
                   </div>
                   <span
                     className={`draft-status${approved ? ' is-saved' : ''}`}
@@ -449,152 +586,182 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                   </span>
                 </header>
 
-                <div className="motion-canvas-command">
+                <div className="motion-canvas-quick-stats">
                   <div>
-                    <span>Tùy chọn developer · không cần để xem/chỉnh trên UI</span>
-                    <code>{motionCanvas.serveCommand}</code>
+                    <strong>{bundle.scenes.length}</strong>
+                    <span>scene</span>
                   </div>
-                  <button type="button" onClick={() => void copyServeCommand()}>
-                    {copied ? 'Đã sao chép' : 'Sao chép lệnh'}
-                  </button>
+                  <div>
+                    <strong>{formatTime(totalSeconds)}</strong>
+                    <span>thời lượng</span>
+                  </div>
+                  <div>
+                    <strong>
+                      {bundle.width} × {bundle.height}
+                    </strong>
+                    <span>khung hình</span>
+                  </div>
+                  <div>
+                    <strong>{bundle.fps} fps</strong>
+                    <span>frame rate</span>
+                  </div>
                 </div>
 
-                <dl className="motion-canvas-validation">
-                  <div>
-                    <dt>Khung hình</dt>
-                    <dd>
-                      {bundle.width} × {bundle.height}
-                    </dd>
+                <details className="motion-canvas-technical">
+                  <summary>Thông tin kỹ thuật</summary>
+                  <div className="motion-canvas-command">
+                    <div>
+                      <span>Lệnh preview dành cho developer</span>
+                      <code>{motionCanvas.serveCommand}</code>
+                    </div>
+                    <button type="button" onClick={() => void copyServeCommand()}>
+                      {copied ? 'Đã sao chép' : 'Sao chép lệnh'}
+                    </button>
                   </div>
-                  <div>
-                    <dt>Frame rate</dt>
-                    <dd>{bundle.fps} fps</dd>
-                  </div>
-                  <div>
-                    <dt>Motion Canvas</dt>
-                    <dd>{bundle.validation.motionCanvasVersion}</dd>
-                  </div>
-                  <div>
-                    <dt>Timing contract</dt>
-                    <dd>
-                      {bundle.timingContractVersion === 1
-                        ? 'Beat events v1'
-                        : 'Legacy · cần sinh lại trước sync'}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Source hash</dt>
-                    <dd title={bundle.validation.sourceHash}>
-                      {bundle.validation.sourceHash.slice(0, 12)}
-                    </dd>
-                  </div>
-                </dl>
+
+                  <dl className="motion-canvas-validation">
+                    <div>
+                      <dt>Motion Canvas</dt>
+                      <dd>{bundle.validation.motionCanvasVersion}</dd>
+                    </div>
+                    <div>
+                      <dt>Timing contract</dt>
+                      <dd>
+                        {bundle.timingContractVersion === 1
+                          ? 'Beat events v1'
+                          : 'Legacy · cần sinh lại trước sync'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Source hash</dt>
+                      <dd title={bundle.validation.sourceHash}>
+                        {bundle.validation.sourceHash.slice(0, 12)}
+                      </dd>
+                    </div>
+                  </dl>
+                </details>
               </section>
 
               <MotionDesignEditor motionCanvas={motionCanvas} />
 
-              <div className="motion-canvas-scenes">
-                {bundle.scenes.map((scene, index) => {
-                  const sourceFile = motionCanvas.files.find(
-                    (file) => file.path === scene.filePath,
-                  );
-                  const outlineSection = outline.sections[index]!;
-                  const planSection = plan.sections[index];
+              <details className="motion-canvas-scene-inspector">
+                <summary>
+                  <span>
+                    <strong>Scene và source</strong>
+                    <small>Timeline chi tiết, file và mã nguồn</small>
+                  </span>
+                  <span>{bundle.scenes.length} scene</span>
+                </summary>
+                <div className="motion-canvas-scenes">
+                  {bundle.scenes.map((scene, index) => {
+                    const sourceFile = motionCanvas.files.find(
+                      (file) => file.path === scene.filePath,
+                    );
+                    const sectionPresentation =
+                      resolveVoiceVisualSectionPresentation(
+                        outline.sections,
+                        scene.outlineSectionId,
+                        index,
+                        scene.durationSeconds,
+                      );
+                    const planSection = findVoiceVisualSection(
+                      plan.sections,
+                      scene.outlineSectionId,
+                    );
 
-                  return (
-                    <article
-                      className="motion-canvas-scene"
-                      key={scene.id}
-                    >
-                      <header>
-                        <span className="outline-section-index">
-                          {String(index + 1).padStart(2, '0')}
-                        </span>
-                        <div>
-                          <h2>{outlineSection.title}</h2>
-                          <p>{outlineSection.goal}</p>
-                          <span className="motion-canvas-scene-name">
-                            Scene source · {scene.name}
+                    return (
+                      <article
+                        className="motion-canvas-scene"
+                        key={scene.id}
+                      >
+                        <header>
+                          <span className="outline-section-index">
+                            {String(index + 1).padStart(2, '0')}
+                          </span>
+                          <div>
+                            <h2>{sectionPresentation.title}</h2>
+                            <p>{sectionPresentation.goal}</p>
+                            <span className="motion-canvas-scene-name">
+                              Scene source · {scene.name}
+                            </span>
+                          </div>
+                          <label className="motion-canvas-scene-scope">
+                            <input
+                              type="checkbox"
+                              checked={selectedSceneIds.includes(scene.id)}
+                              onChange={() => toggleScene(scene.id)}
+                            />
+                            Cho AI sinh lại scene này
+                          </label>
+                          <span className="voice-visual-section-duration">
+                            <ClockIcon />
+                            {formatTime(scene.durationSeconds)}
+                            {planSection
+                              ? ` · ${planSection.beats.length} beat`
+                              : ''}
+                          </span>
+                        </header>
+
+                        {planSection && (
+                          <div className="motion-canvas-timeline">
+                            <div className="motion-canvas-timeline-heading">
+                              <span>Timeline visual dự kiến</span>
+                              <small>
+                                {scene.timingEvents?.length
+                                  ? 'Điều khiển bằng beat events'
+                                  : 'Timing legacy'}
+                              </small>
+                            </div>
+                            <div
+                              className="motion-canvas-timeline-track"
+                              aria-label={`Timeline của ${sectionPresentation.title}`}
+                            >
+                              {planSection.beats.map((beat, beatIndex) => {
+                                const timing = scene.timingEvents?.find(
+                                  (event) => event.beatId === beat.id,
+                                );
+                                const duration =
+                                  timing?.plannedDurationSeconds ??
+                                  beat.durationSeconds;
+
+                                return (
+                                  <div
+                                    className="motion-canvas-timeline-beat"
+                                    style={{flexGrow: duration}}
+                                    title={beat.visualDescription}
+                                    key={beat.id}
+                                  >
+                                    <span>Beat {beatIndex + 1}</span>
+                                    <p>{beat.visualDescription}</p>
+                                    <small>{formatTime(duration)}</small>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="motion-canvas-file-row">
+                          <code>{scene.filePath}</code>
+                          <span>
+                            {sourceFile?.source.split('\n').length ?? 0} dòng
                           </span>
                         </div>
-                        <label className="motion-canvas-scene-scope">
-                          <input
-                            type="checkbox"
-                            checked={selectedSceneIds.includes(scene.id)}
-                            onChange={() => toggleScene(scene.id)}
-                          />
-                          Cho AI sinh lại scene này
-                        </label>
-                        <span className="voice-visual-section-duration">
-                          <ClockIcon />
-                          {formatTime(scene.durationSeconds)}
-                          {planSection
-                            ? ` · ${planSection.beats.length} beat`
-                            : ''}
-                        </span>
-                      </header>
+                        {sourceFile && (
+                          <details>
+                            <summary>Xem source scene</summary>
+                            <pre>
+                              <code>{sourceFile.source}</code>
+                            </pre>
+                          </details>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              </details>
 
-                      {planSection && (
-                        <div className="motion-canvas-timeline">
-                          <div className="motion-canvas-timeline-heading">
-                            <span>Timeline visual dự kiến</span>
-                            <small>
-                              {scene.timingEvents?.length
-                                ? 'Điều khiển bằng beat events'
-                                : 'Timing legacy'}
-                            </small>
-                          </div>
-                          <div
-                            className="motion-canvas-timeline-track"
-                            aria-label={`Timeline của ${outlineSection.title}`}
-                          >
-                            {planSection.beats.map((beat, beatIndex) => {
-                              const timing = scene.timingEvents?.find(
-                                (event) => event.beatId === beat.id,
-                              );
-                              const duration =
-                                timing?.plannedDurationSeconds ??
-                                beat.durationSeconds;
-
-                              return (
-                                <div
-                                  className="motion-canvas-timeline-beat"
-                                  style={{flexGrow: duration}}
-                                  title={beat.visualDescription}
-                                  key={beat.id}
-                                >
-                                  <span>Beat {beatIndex + 1}</span>
-                                  <p>{beat.visualDescription}</p>
-                                  <small>{formatTime(duration)}</small>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="motion-canvas-file-row">
-                        <code>{scene.filePath}</code>
-                        <span>
-                          {sourceFile?.source.split('\n').length ?? 0} dòng
-                        </span>
-                      </div>
-                      {sourceFile && (
-                        <details>
-                          <summary>Xem source scene</summary>
-                          <pre>
-                            <code>{sourceFile.source}</code>
-                          </pre>
-                        </details>
-                      )}
-                    </article>
-                  );
-                })}
-              </div>
-
-              {!motionCanvas.stale && (
-                <>
-                  {motionCanvas.candidate && (
+              {motionCanvas.candidate && (
                     <section className="outline-candidate-review motion-canvas-candidate-review">
                       <header>
                         <div>
@@ -775,19 +942,35 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                         )}
                       </footer>
                     </section>
-                  )}
+              )}
 
-                  <section className="outline-ai-revision">
-                    <div>
-                      <span className="preview-kicker">
-                        <SparkIcon />
-                        Sinh lại theo phạm vi
-                      </span>
-                      <h2>Scene được chọn cần điều chỉnh điều gì?</h2>
-                      <p>
-                        Scene không chọn được chép nguyên source vào workspace
-                        candidate; toàn chuỗi được review lại trước khi áp dụng.
-                      </p>
+              <details className="motion-canvas-ai-tools">
+                <summary>
+                  <span>
+                    <strong>Chỉnh scene bằng AI</strong>
+                    <small>Sinh lại riêng các scene đã chọn</small>
+                  </span>
+                  <SparkIcon />
+                </summary>
+                <section className="outline-ai-revision">
+                  <div>
+                    <span className="preview-kicker">
+                      <SparkIcon />
+                      Sinh lại theo phạm vi
+                    </span>
+                    <h2>Scene được chọn cần điều chỉnh điều gì?</h2>
+                    <p>
+                      Scene không chọn được chép nguyên source vào workspace
+                      candidate; toàn chuỗi được review lại trước khi áp dụng.
+                    </p>
+                  </div>
+                  <div className="motion-canvas-ai-form">
+                    <div className="motion-canvas-ai-connection">
+                      <CodexConnectionCard
+                        connection={codexConnection}
+                        task="motionCanvas"
+                        workUnits={selectedSceneIds.length || 1}
+                      />
                     </div>
                     <div className="ai-scope-presets" aria-label="Chọn nhanh scene">
                       <button
@@ -856,51 +1039,51 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                         {formatTime(candidateElapsedSeconds)}
                       </small>
                     )}
-                  </section>
-                </>
-              )}
+                  </div>
+                </section>
+              </details>
             </div>
 
             <ResponsiveAside
               className="motion-canvas-side"
-              label="Tổng quan scene"
+              label="Phiên bản và lịch sử"
             >
               <section className="outline-side-card">
-                <span className="preview-label">Tổng quan</span>
+                <span className="preview-label">Generation hiện tại</span>
                 <dl>
                   <div>
-                    <dt>Số scene</dt>
-                    <dd>{bundle.scenes.length}</dd>
+                    <dt>Phiên bản</dt>
+                    <dd>#{bundle.contentRevision}</dd>
                   </div>
                   <div>
-                    <dt>Thời lượng</dt>
-                    <dd>{formatTime(totalSeconds)}</dd>
+                    <dt>Model</dt>
+                    <dd>{bundle.generation.model}</dd>
+                  </div>
+                  <div>
+                    <dt>Token</dt>
+                    <dd>
+                      {usage
+                        ? usage.totalTokens.toLocaleString('vi-VN')
+                        : 'Không ghi nhận'}
+                    </dd>
                   </div>
                   <div>
                     <dt>Trạng thái</dt>
                     <dd>{approved ? 'Đã chốt' : 'Đang review'}</dd>
                   </div>
-                  <div>
-                    <dt>Workspace</dt>
-                    <dd>Generation {bundle.contentRevision}</dd>
-                  </div>
                 </dl>
 
                 {usage && (
                   <div className="outline-usage">
-                    <span>Token lần sinh gần nhất</span>
-                    <strong>
-                      {usage.totalTokens.toLocaleString('vi-VN')}
-                    </strong>
+                    <span>Chi tiết lượt sinh</span>
                     <small>
                       Input {usage.inputTokens.toLocaleString('vi-VN')} ·
                       Output {usage.outputTokens.toLocaleString('vi-VN')}
                     </small>
                     <small>
-                      {bundle.generation.model}
                       {bundle.generation.reasoningEffort
-                        ? ` · reasoning ${bundle.generation.reasoningEffort}`
-                        : ''}
+                        ? `Reasoning ${bundle.generation.reasoningEffort}`
+                        : 'Reasoning mặc định'}
                     </small>
                   </div>
                 )}
@@ -908,14 +1091,13 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                 <div className="outline-next-note">
                   <LightbulbIcon />
                   <p>
-                    Workspace generation cũ được giữ nguyên, nên sinh lại
-                    không ghi đè code scene trước đó.
+                    Lưu một mốc trước khi chỉnh nhiều scene để có thể quay lại
+                    nhanh.
                   </p>
                 </div>
               </section>
 
-              {!motionCanvas.stale && (
-                <section className="outline-history-card motion-canvas-history-card">
+              <section className="outline-history-card motion-canvas-history-card">
                   <header>
                     <div>
                       <span className="preview-label">Lịch sử an toàn</span>
@@ -999,8 +1181,7 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                       </article>
                     ))}
                   </div>
-                </section>
-              )}
+              </section>
             </ResponsiveAside>
           </div>
 
@@ -1019,7 +1200,7 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
               <span>
                 {approved
                   ? 'Scene Motion Canvas đã được chốt'
-                  : 'Mở editor và review chuyển động trước khi chốt'}
+                  : 'Review chuyển động trước khi chốt'}
               </span>
               <button
                 className="submit-button"
@@ -1032,7 +1213,6 @@ export function MotionCanvasPage({projectId}: {projectId: string}) {
                   motionCanvas.candidate?.decision === 'pending' ||
                   motionCanvas.designSaveState === 'saving' ||
                   motionCanvas.designSaveState === 'error' ||
-                  motionCanvas.stale ||
                   motionCanvas.conflict
                 }
                 onClick={() =>

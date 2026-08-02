@@ -108,6 +108,22 @@ Vertical slice đầu tiên đã có thể chạy:
 - Chỉnh trực tiếp node Motion Canvas trong Layout Editor bằng kéo, scale, xoay, opacity,
   fill/stroke, thứ tự layer, khóa và thao tác delete có thể khôi phục. Editor có undo/redo,
   copy/paste modifier, grid, snap, safe-zone, so sánh bản gốc và preview sạch.
+- Scene sinh mới tuân theo cấu trúc khung ổn định: một `scene-content-root` nằm trong
+  `scene-background`, bên trong là các `block-*` độc lập. Người dùng có thể chọn, kéo,
+  scale hoặc xoay toàn cảnh/một block mà không phải sửa từng phần tử con; double-click
+  đi vào block và Escape đi lên khung cha. Background được khóa để tránh phá canvas.
+- Motion Design và Layout Editor dùng chung timeline nhiều track với scene strip, beat
+  marker, waveform narration, zoom và playhead. Các thuộc tính X/Y/scale/rotation/opacity
+  có keyframe kéo-thả và easing `linear`, `ease-in`, `ease-out`, `ease-in-out`; cùng một
+  bộ nội suy được dùng cho preview, hit-test và final render nên kết quả không lệch nhau.
+  Khi Sync thay thời lượng dự kiến bằng voice thật, keyframe được ánh xạ tỷ lệ đúng một
+  lần sang thời lượng mới. Timeline được dock ngay dưới canvas và nằm trong chế độ toàn
+  màn hình; scene strip cùng thanh scrubber là nơi điều hướng scene duy nhất, tránh lặp
+  lại một scene navigator ở sidebar. Timing voice/scene vẫn chỉ đọc để giữ đồng bộ narration.
+- Canvas có zoom độc lập `50%–300%`, đưa về vừa khung bằng một lần bấm hoặc
+  `Ctrl/Cmd+0`. Panel Layers, Thuộc tính và Timeline có tay nắm kéo, hỗ trợ thu gọn hoàn
+  toàn bằng nhấp đúp/keyboard và lưu kích thước cục bộ; giới hạn resize luôn chừa vùng
+  canvas tối thiểu. Trên màn hình hẹp editor tự chuyển sang bố cục xếp dọc an toàn.
 - Có thể thêm `Txt` thật vào scene ngay trong Motion Design hoặc Layout Editor; text
   mặc định dùng Times New Roman và tiếp tục hỗ trợ kéo, typography, màu, layer,
   undo/redo, tự lưu, preview và render cuối. Node do người dùng thêm có identity và
@@ -307,6 +323,10 @@ Preview là runtime tạm thời, không sửa file `.meta` hay source trong wor
 Project cũ vẫn mở được, nhưng generation Motion Canvas chưa có
 `timingContractVersion: 1` phải được sinh lại trước khi đồng bộ. PAD Studio không
 đoán timing từ source legacy vì có thể làm animation chạy sai ý.
+
+Layout overlay cũ không cần migrate: schema modifier mới là phần mở rộng tương thích,
+node legacy vẫn chỉnh như trước. Contract `scene-content-root`/`block-*` chỉ bắt buộc
+với scene được sinh hoặc sửa ở generation mới.
 
 ## Chạy ở môi trường phát triển
 

@@ -26,6 +26,8 @@ import {
   LayoutWorkspaceError,
   animationSyncWorkspaceSourceHash,
   createLayoutWorkspace,
+  retimeLayoutOverridesForSync,
+  validateLayoutDocuments,
 } from './layoutWorkspace.ts';
 
 const sha256 = (value: string) =>
@@ -652,6 +654,15 @@ test('Layout workspace lưu visibility theo thời gian và text người dùng 
         {timeSeconds: 1.25, hidden: true},
         {timeSeconds: 2.75, hidden: false},
       ],
+      animations: [
+        {
+          property: 'scale',
+          keyframes: [
+            {timeSeconds: 0, value: 1, easing: 'linear'},
+            {timeSeconds: 3, value: 1.2, easing: 'ease-in-out'},
+          ],
+        },
+      ],
     },
     {
       sceneId: scene.sceneId,
@@ -700,6 +711,113 @@ test('Layout workspace lưu visibility theo thời gian và text người dùng 
       error instanceof LayoutWorkspaceError &&
       error.code === 'LAYOUT_OVERRIDE_TIMING_OUT_OF_RANGE',
   );
+});
+
+test('Layout manifest giữ đúng cây background, content và block nhưng vẫn nhận scene legacy', async (context) => {
+  const fixture = await createFixture();
+  context.after(() =>
+    rm(fixture.projectsDirectory, {recursive: true, force: true}),
+  );
+  const baseNode = fixture.manifest.scenes[0]!.nodes[0]!;
+  const node = (
+    key: string,
+    parentKey: string | null,
+    role: 'background' | 'content' | 'block' | 'element',
+  ) => ({
+    ...baseNode,
+    key,
+    parentKey,
+    role,
+    fingerprint: sha256(key),
+    lockedProperties:
+      role === 'background' ? [...baseNode.editableProperties] : [],
+    lockReason:
+      role === 'background' ? 'Canvas background is immutable.' : null,
+  });
+  const roleManifest: LayoutEditorManifest = {
+    ...fixture.manifest,
+    scenes: fixture.manifest.scenes.map((scene, index) =>
+      index === 0
+        ? {
+            ...scene,
+            nodes: [
+              node('scene-background', null, 'background'),
+              node('scene-content-root', 'scene-background', 'content'),
+              node('block-title', 'scene-content-root', 'block'),
+              node('title', 'block-title', 'element'),
+            ],
+          }
+        : scene,
+    ),
+  };
+
+  assert.doesNotThrow(() =>
+    validateLayoutDocuments(fixture.syncBundle, [], roleManifest),
+  );
+
+  const invalidManifest: LayoutEditorManifest = {
+    ...roleManifest,
+    scenes: roleManifest.scenes.map((scene, index) =>
+      index !== 0
+        ? scene
+        : {
+            ...scene,
+            nodes: scene.nodes.map(item =>
+              item.key === 'block-title'
+                ? {...item, parentKey: 'scene-background'}
+                : item,
+            ),
+          },
+    ),
+  };
+  assert.throws(
+    () => validateLayoutDocuments(fixture.syncBundle, [], invalidManifest),
+    (error) =>
+      error instanceof LayoutWorkspaceError &&
+      error.code === 'LAYOUT_MANIFEST_INVALID',
+  );
+});
+
+test('Keyframe Motion Design được ánh xạ một lần sang thời lượng voice thật', () => {
+  const sceneId = randomUUID();
+  const override: LayoutNodeOverride = {
+    sceneId,
+    nodeKey: 'block-title',
+    nodeFingerprint: sha256('block-title'),
+    patch: {},
+    visibility: [
+      {timeSeconds: 1, hidden: true},
+      {timeSeconds: 4, hidden: false},
+    ],
+    animations: [
+      {
+        property: 'scale',
+        keyframes: [
+          {timeSeconds: 0, value: 1, easing: 'linear'},
+          {timeSeconds: 2, value: 1.2, easing: 'ease-in-out'},
+        ],
+      },
+    ],
+  };
+
+  const [retimed] = retimeLayoutOverridesForSync([override], [
+    {
+      sceneId,
+      plannedDurationSeconds: 4,
+      synchronizedDurationSeconds: 6,
+    },
+  ]);
+  assert.deepEqual(
+    retimed?.visibility?.map(keyframe => keyframe.timeSeconds),
+    [1.5, 6],
+  );
+  assert.deepEqual(
+    retimed?.animations?.[0]?.keyframes.map(
+      keyframe => keyframe.timeSeconds,
+    ),
+    [0, 3],
+  );
+  assert.deepEqual(override.visibility?.map(item => item.timeSeconds), [1, 4]);
 });
 
 test('Layout workspace chặn fingerprint và thuộc tính không được chỉnh', async (context) => {

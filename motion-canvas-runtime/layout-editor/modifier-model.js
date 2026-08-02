@@ -23,6 +23,19 @@ const FONT_STYLES = new Set(['normal', 'italic']);
 const HEX_COLOR = /^#[a-fA-F0-9]{6}(?:[a-fA-F0-9]{2})?$/;
 const USER_TEXT_NODE_KEY = /^user-text:[0-9a-f-]{36}$/i;
 const VISIBILITY_TIME_EPSILON = 1 / 240;
+const ANIMATION_PROPERTIES = new Set([
+  'x',
+  'y',
+  'scale',
+  'rotation',
+  'opacity',
+]);
+const KEYFRAME_EASINGS = new Set([
+  'linear',
+  'ease-in',
+  'ease-out',
+  'ease-in-out',
+]);
 
 function finite(value, fallback, min, max) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
@@ -131,13 +144,21 @@ function normalizeOverride(value) {
   if (!sceneId || !nodeKey) return null;
   const patch = normalizePatch(value.patch ?? value);
   const visibility = normalizeVisibilityTrack(value.visibility);
-  if (Object.keys(patch).length === 0 && visibility.length === 0) return null;
+  const animations = normalizePropertyTracks(value.animations);
+  if (
+    Object.keys(patch).length === 0 &&
+    visibility.length === 0 &&
+    animations.length === 0
+  ) {
+    return null;
+  }
   return {
     sceneId,
     nodeKey,
     nodeFingerprint,
     patch,
     ...(visibility.length > 0 ? {visibility} : {}),
+    ...(animations.length > 0 ? {animations} : {}),
   };
 }
 
@@ -189,6 +210,116 @@ export function visibilityAtTime(visibility, timeSeconds) {
     state = keyframe.hidden;
   }
   return state;
+}
+
+function propertyBounds(property) {
+  if (property === 'scale') return [0.05, MAX_SCALE];
+  if (property === 'opacity') return [0, 1];
+  if (property === 'rotation') return [-MAX_ROTATION, MAX_ROTATION];
+  return [-MAX_TRANSLATE, MAX_TRANSLATE];
+}
+
+function normalizePropertyKeyframes(property, value) {
+  if (!Array.isArray(value)) return [];
+  const [minimum, maximum] = propertyBounds(property);
+  const sorted = value
+    .filter(
+      keyframe =>
+        keyframe &&
+        typeof keyframe === 'object' &&
+        Number.isFinite(keyframe.timeSeconds) &&
+        keyframe.timeSeconds >= 0 &&
+        Number.isFinite(keyframe.value),
+    )
+    .map(keyframe => ({
+      timeSeconds: Math.min(
+        86_400,
+        Math.round(keyframe.timeSeconds * 1_000) / 1_000,
+      ),
+      value: finite(keyframe.value, 0, minimum, maximum),
+      easing: KEYFRAME_EASINGS.has(keyframe.easing)
+        ? keyframe.easing
+        : 'ease-in-out',
+    }))
+    .sort((left, right) => left.timeSeconds - right.timeSeconds);
+  const unique = [];
+  for (const keyframe of sorted) {
+    const previous = unique.at(-1);
+    if (
+      previous &&
+      Math.abs(previous.timeSeconds - keyframe.timeSeconds) <=
+        VISIBILITY_TIME_EPSILON
+    ) {
+      unique[unique.length - 1] = keyframe;
+    } else {
+      unique.push(keyframe);
+    }
+  }
+  return unique.slice(0, 500);
+}
+
+export function normalizePropertyTracks(value) {
+  if (!Array.isArray(value)) return [];
+  const tracks = new Map();
+  for (const track of value) {
+    if (!track || !ANIMATION_PROPERTIES.has(track.property)) continue;
+    const keyframes = normalizePropertyKeyframes(
+      track.property,
+      track.keyframes,
+    );
+    if (keyframes.length > 0) {
+      tracks.set(track.property, {
+        property: track.property,
+        keyframes,
+      });
+    }
+  }
+  return [...tracks.values()].sort((left, right) =>
+    left.property.localeCompare(right.property),
+  );
+}
+
+function easingAmount(easing, amount) {
+  const value = Math.min(1, Math.max(0, amount));
+  if (easing === 'linear') return value;
+  if (easing === 'ease-in') return value ** 3;
+  if (easing === 'ease-out') return 1 - (1 - value) ** 3;
+  return value < 0.5
+    ? 4 * value ** 3
+    : 1 - ((-2 * value + 2) ** 3) / 2;
+}
+
+export function propertyValueAtTime(track, timeSeconds) {
+  if (!track?.keyframes?.length) return null;
+  const time = Number.isFinite(timeSeconds) ? Math.max(0, timeSeconds) : 0;
+  const first = track.keyframes[0];
+  const last = track.keyframes.at(-1);
+  if (time <= first.timeSeconds + VISIBILITY_TIME_EPSILON) return first.value;
+  if (time >= last.timeSeconds - VISIBILITY_TIME_EPSILON) return last.value;
+  for (let index = 1; index < track.keyframes.length; index++) {
+    const right = track.keyframes[index];
+    const left = track.keyframes[index - 1];
+    if (time > right.timeSeconds + VISIBILITY_TIME_EPSILON) continue;
+    const span = Math.max(
+      VISIBILITY_TIME_EPSILON,
+      right.timeSeconds - left.timeSeconds,
+    );
+    const amount = easingAmount(
+      right.easing,
+      (time - left.timeSeconds) / span,
+    );
+    return left.value + (right.value - left.value) * amount;
+  }
+  return last.value;
+}
+
+export function animatedPatchAtTime(override, timeSeconds) {
+  const patch = {...(override?.patch ?? override ?? {})};
+  for (const track of override?.animations ?? []) {
+    const value = propertyValueAtTime(track, timeSeconds);
+    if (value !== null) patch[track.property] = value;
+  }
+  return patch;
 }
 
 export function normalizeDocument(value, source = {}) {
@@ -255,7 +386,11 @@ export function patchDocument(
     item => item.sceneId === sceneId && item.nodeKey === nodeKey,
   );
   const overrides = [...normalized.overrides];
-  if (Object.keys(nextPatch).length > 0) {
+  if (
+    Object.keys(nextPatch).length > 0 ||
+    current?.visibility?.length ||
+    current?.animations?.length
+  ) {
     const nextOverride = {
       sceneId,
       nodeKey,
@@ -263,6 +398,9 @@ export function patchDocument(
       patch: nextPatch,
       ...(current?.visibility?.length
         ? {visibility: current.visibility}
+        : {}),
+      ...(current?.animations?.length
+        ? {animations: current.animations}
         : {}),
     };
     if (targetIndex >= 0) overrides[targetIndex] = nextOverride;
@@ -310,6 +448,9 @@ export function patchVisibilityDocument(
     nodeFingerprint: nodeFingerprint || current?.nodeFingerprint || '',
     patch: current?.patch ?? {},
     visibility: compactVisibility,
+    ...(current?.animations?.length
+      ? {animations: current.animations}
+      : {}),
   };
   if (targetIndex >= 0) overrides[targetIndex] = nextOverride;
   else overrides.push(nextOverride);
@@ -322,11 +463,144 @@ export function clearVisibilityDocument(document, sceneId, nodeKey) {
     if (override.sceneId !== sceneId || override.nodeKey !== nodeKey) {
       return [override];
     }
-    if (Object.keys(override.patch ?? {}).length === 0) return [];
+    if (
+      Object.keys(override.patch ?? {}).length === 0 &&
+      !override.animations?.length
+    ) {
+      return [];
+    }
     const {visibility: _visibility, ...withoutVisibility} = override;
     return [withoutVisibility];
   });
   return {...normalized, overrides};
+}
+
+export function patchPropertyKeyframeDocument(
+  document,
+  sceneId,
+  nodeKey,
+  nodeFingerprint,
+  property,
+  timeSeconds,
+  value,
+  easing = 'ease-in-out',
+) {
+  if (!ANIMATION_PROPERTIES.has(property)) return normalizeDocument(document);
+  const normalized = normalizeDocument(document);
+  const current = getOverride(
+    buildModifierIndex(normalized),
+    sceneId,
+    nodeKey,
+  );
+  const nextTime = Math.max(
+    0,
+    Math.round((Number(timeSeconds) || 0) * 1_000) / 1_000,
+  );
+  const tracks = new Map(
+    (current?.animations ?? []).map(track => [track.property, track]),
+  );
+  const currentTrack = tracks.get(property);
+  const keyframes = normalizePropertyKeyframes(property, [
+    ...(currentTrack?.keyframes ?? []).filter(
+      keyframe =>
+        Math.abs(keyframe.timeSeconds - nextTime) >
+        VISIBILITY_TIME_EPSILON,
+    ),
+    {
+      timeSeconds: nextTime,
+      value: Number(value),
+      easing,
+    },
+  ]);
+  tracks.set(property, {property, keyframes});
+  const animations = normalizePropertyTracks([...tracks.values()]);
+  const targetIndex = normalized.overrides.findIndex(
+    item => item.sceneId === sceneId && item.nodeKey === nodeKey,
+  );
+  const overrides = [...normalized.overrides];
+  const nextOverride = {
+    sceneId,
+    nodeKey,
+    nodeFingerprint: nodeFingerprint || current?.nodeFingerprint || '',
+    patch: current?.patch ?? {},
+    ...(current?.visibility?.length
+      ? {visibility: current.visibility}
+      : {}),
+    animations,
+  };
+  if (targetIndex >= 0) overrides[targetIndex] = nextOverride;
+  else overrides.push(nextOverride);
+  return {...normalized, overrides};
+}
+
+export function removePropertyKeyframeDocument(
+  document,
+  sceneId,
+  nodeKey,
+  property,
+  timeSeconds,
+) {
+  const normalized = normalizeDocument(document);
+  const targetIndex = normalized.overrides.findIndex(
+    item => item.sceneId === sceneId && item.nodeKey === nodeKey,
+  );
+  if (targetIndex < 0) return normalized;
+  const current = normalized.overrides[targetIndex];
+  const animations = normalizePropertyTracks(
+    (current.animations ?? []).flatMap(track => {
+      if (track.property !== property) return [track];
+      const keyframes = track.keyframes.filter(
+        keyframe =>
+          Math.abs(keyframe.timeSeconds - Number(timeSeconds)) >
+          VISIBILITY_TIME_EPSILON,
+      );
+      return keyframes.length > 0 ? [{...track, keyframes}] : [];
+    }),
+  );
+  const overrides = [...normalized.overrides];
+  if (
+    animations.length === 0 &&
+    Object.keys(current.patch ?? {}).length === 0 &&
+    !current.visibility?.length
+  ) {
+    overrides.splice(targetIndex, 1);
+  } else {
+    overrides[targetIndex] = {
+      ...current,
+      ...(animations.length > 0 ? {animations} : {}),
+    };
+    if (animations.length === 0) {
+      delete overrides[targetIndex].animations;
+    }
+  }
+  return {...normalized, overrides};
+}
+
+export function clearPropertyTrackDocument(
+  document,
+  sceneId,
+  nodeKey,
+  property,
+) {
+  const normalized = normalizeDocument(document);
+  const current = getOverride(
+    buildModifierIndex(normalized),
+    sceneId,
+    nodeKey,
+  );
+  const track = current?.animations?.find(item => item.property === property);
+  if (!track) return normalized;
+  return track.keyframes.reduce(
+    (next, keyframe) =>
+      removePropertyKeyframeDocument(
+        next,
+        sceneId,
+        nodeKey,
+        property,
+        keyframe.timeSeconds,
+      ),
+    normalized,
+  );
 }
 
 export function resetDocumentNode(document, sceneId, nodeKey) {
@@ -408,7 +682,7 @@ function installLayoutPositionOffset(node, x, y, restorers) {
 
 export function applyOverride(node, override, options = {}) {
   if (!node || !override) return () => {};
-  const patch = override.patch ?? override;
+  const patch = animatedPatchAtTime(override, options.timeSeconds);
   const restorers = [];
   try {
     if (

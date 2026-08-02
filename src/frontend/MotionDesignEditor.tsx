@@ -17,6 +17,7 @@ import {
   type LayoutEditorNode,
   type LayoutNodePatch,
   type LayoutOverridesDocument,
+  type LayoutPropertyTrack,
   type LayoutVisibilityKeyframe,
 } from '../shared/layout.ts';
 import {
@@ -38,11 +39,21 @@ import {
 import type {useMotionCanvasDraft} from './useMotionCanvasDraft.ts';
 import {useEditorFocusMode} from './useEditorFocusMode.ts';
 import {
+  EditorCanvasViewport,
+  EditorCanvasZoom,
+  EditorResizeHandle,
+  useEditorWorkspaceLayout,
+} from './useEditorWorkspaceLayout.tsx';
+import {
   parseRuntimeNodeVisibility,
   timelineVisibleEditorNodes,
   type RuntimeNodeVisibility,
 } from './layoutEditorState.ts';
 import {groupEditorLayers} from './layerGroups.ts';
+import {
+  ProfessionalTimeline,
+  type EditorTimelineScene,
+} from './ProfessionalTimeline.tsx';
 
 const PROTOCOL_SOURCE = 'pad-studio-layout-editor';
 const PROTOCOL_VERSION = 1;
@@ -66,12 +77,15 @@ interface RuntimeSelection {
   nodeType: string;
   parentKey: string | null;
   identity: 'semantic' | 'legacy';
+  role: LayoutEditorNode['role'];
   editableProperties: LayoutEditorNode['editableProperties'];
   lockedProperties: LayoutEditorNode['lockedProperties'];
   lockReason: string | null;
   editorLocked: boolean;
   patch: LayoutNodePatch;
+  animatedPatch?: LayoutNodePatch;
   visibility?: LayoutVisibilityKeyframe[];
+  animations?: LayoutPropertyTrack[];
   userText?: boolean;
   base?: Record<string, unknown>;
 }
@@ -84,6 +98,14 @@ interface RuntimeState {
   sceneId: string;
   sceneName: string;
   sceneTimeSeconds?: number;
+  enteredContainerKey?: string | null;
+  scenes?: Array<{
+    sceneId: string;
+    name: string;
+    firstFrame: number;
+    lastFrame: number;
+  }>;
+  selection?: RuntimeSelection | null;
   dirtyRevision: number;
   view?: {
     original: boolean;
@@ -108,6 +130,7 @@ function isRuntimeSelection(value: unknown): value is RuntimeSelection {
     nodeType: value.nodeType,
     parentKey: value.parentKey,
     identity: value.identity,
+    role: value.role,
     editableProperties: value.editableProperties,
     lockedProperties: value.lockedProperties,
     lockReason: value.lockReason,
@@ -158,17 +181,11 @@ function colorValue(value: unknown, fallback: string) {
     : fallback;
 }
 
-function formatTime(frame: number, fps: number) {
-  const seconds = Math.max(0, frame / Math.max(1, fps));
-  const rounded = Math.floor(seconds);
-  return `${Math.floor(rounded / 60)}:${String(rounded % 60).padStart(2, '0')}`;
-}
-
 function patchSummary(patch: LayoutNodePatch) {
   const count = Object.keys(patch).length;
-  if (count === 0) return 'Chưa chỉnh';
-  if (patch.hidden) return 'Đang ẩn';
-  return `${count} thay đổi`;
+  if (count === 0) return '';
+  if (patch.hidden) return 'Ẩn';
+  return `${count} chỉnh sửa`;
 }
 
 function NumberInput({
@@ -280,13 +297,13 @@ export function MotionDesignEditor({
 }) {
   const {editorRef, focusMode, toggleFocusMode} =
     useEditorFocusMode<HTMLElement>();
+  const editorWorkspace = useEditorWorkspaceLayout(editorRef);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const manifestStoredRef = useRef(false);
   const pendingOverridesRef = useRef<LayoutOverridesDocument['overrides'] | null>(null);
   const saveChainRef = useRef(Promise.resolve());
   const [runtimeReady, setRuntimeReady] = useState(false);
   const [runtimeError, setRuntimeError] = useState('');
-  const [manifestStored, setManifestStored] = useState(false);
   const [manifest, setManifest] = useState<LayoutEditorManifest | null>(null);
   const [document, setDocument] = useState<LayoutOverridesDocument | null>(null);
   const [selection, setSelection] = useState<RuntimeSelection | null>(null);
@@ -334,7 +351,6 @@ export function MotionDesignEditor({
     pendingOverridesRef.current = null;
     setRuntimeReady(false);
     setRuntimeError('');
-    setManifestStored(false);
     setManifest(null);
     setDocument(null);
     setSelection(null);
@@ -404,12 +420,28 @@ export function MotionDesignEditor({
         if (isRuntimeState(payload)) {
           setRuntimeState(payload);
           setActiveSceneId(payload.sceneId);
+          if (isRuntimeSelection(payload.selection)) {
+            setSelection(payload.selection);
+          } else if (payload.selection === null) {
+            setSelection(null);
+          }
         }
         return;
       }
       if (message.type === 'visibility') {
         const visibility = parseRuntimeNodeVisibility(payload);
         if (visibility) setRuntimeVisibility(visibility);
+        return;
+      }
+      if (
+        message.type === 'shortcut' &&
+        typeof payload.action === 'string'
+      ) {
+        window.dispatchEvent(
+          new CustomEvent('pad-layout-shortcut', {
+            detail: {action: payload.action},
+          }),
+        );
         return;
       }
       if (message.type === 'manifest') {
@@ -426,7 +458,6 @@ export function MotionDesignEditor({
             return;
           }
           manifestStoredRef.current = true;
-          setManifestStored(true);
           persistPending();
         }
         return;
@@ -524,6 +555,9 @@ export function MotionDesignEditor({
     activeSceneNodes,
     activeSceneAllNodes,
   );
+  const activeContentFrame = activeSceneAllNodes.find(
+    node => node.role === 'content',
+  );
 
   function selectNode(sceneId: string, nodeKey?: string) {
     setActiveSceneId(sceneId);
@@ -546,6 +580,13 @@ export function MotionDesignEditor({
   }
 
   function sendNumericPatch(property: NumericProperty, value: number) {
+    if (
+      ['x', 'y', 'scale', 'rotation', 'opacity'].includes(property) &&
+      selection?.animations?.some(track => track.property === property)
+    ) {
+      sendCommand('setPropertyKeyframe', {property, value});
+      return;
+    }
     sendPatch({[property]: value} as LayoutNodePatch);
   }
 
@@ -599,16 +640,83 @@ export function MotionDesignEditor({
     selection?.patch.fontStyle === 'italic' || selection?.base?.fontStyle === 'italic'
       ? 'italic'
       : 'normal';
+  const timelineScenes: EditorTimelineScene[] = (() => {
+    const labels = new Map(scenes.map(scene => [scene.sceneId, scene.label]));
+    const nodes = new Map(
+      manifest?.scenes.map(scene => [scene.sceneId, scene.nodes]) ?? [],
+    );
+    if (runtimeState?.scenes?.length) {
+      return runtimeState.scenes.map((scene, index) => ({
+        sceneId: scene.sceneId,
+        label: labels.get(scene.sceneId) ?? `Scene ${index + 1}`,
+        firstFrame: scene.firstFrame,
+        lastFrame: scene.lastFrame,
+        nodes: nodes.get(scene.sceneId) ?? [],
+      }));
+    }
+    let cursor = 0;
+    return (motion?.scenes ?? []).map((scene, index) => {
+      const firstFrame = cursor;
+      cursor += Math.max(
+        1,
+        Math.round(scene.durationSeconds * Math.max(1, runtimeState?.fps ?? 30)),
+      );
+      return {
+        sceneId: scene.id,
+        label: labels.get(scene.id) ?? `Scene ${index + 1}`,
+        firstFrame,
+        lastFrame: cursor,
+        nodes: nodes.get(scene.id) ?? [],
+      };
+    });
+  })();
+  const timelineMarkers = (() => {
+    const planBySection = new Map(
+      motionCanvas.project?.voiceVisualPlan?.sections.map(section => [
+        section.outlineSectionId,
+        section,
+      ]) ?? [],
+    );
+    return (motion?.scenes ?? []).flatMap(scene => {
+      const timelineScene = timelineScenes.find(item => item.sceneId === scene.id);
+      const plannedSection = planBySection.get(scene.outlineSectionId);
+      if (!timelineScene || !plannedSection) return [];
+      let elapsedSeconds = 0;
+      return plannedSection.beats.map((beat, index) => {
+        const frame = Math.min(
+          timelineScene.lastFrame,
+          timelineScene.firstFrame +
+            Math.round(elapsedSeconds * Math.max(1, runtimeState?.fps ?? 30)),
+        );
+        elapsedSeconds += beat.durationSeconds;
+        return {
+          id: beat.id,
+          label: `Beat ${index + 1}`,
+          frame,
+        };
+      });
+    });
+  })();
+
+  function selectedAnimationValue(
+    property: LayoutPropertyTrack['property'],
+  ) {
+    const fallback = property === 'scale' || property === 'opacity' ? 1 : 0;
+    return typeof selection?.animatedPatch?.[property] === 'number'
+      ? selection.animatedPatch[property]
+      : typeof selection?.patch[property] === 'number'
+        ? selection.patch[property]
+      : fallback;
+  }
 
   return (
     <section className="motion-design-card motion-design-workbench">
       <header>
         <div>
-          <span className="preview-kicker">Editor đầy đủ ngay sau khi sinh scene</span>
-          <h2>Xem và chỉnh visual scene</h2>
+          <span className="preview-kicker">Visual editor</span>
+          <h2>Chỉnh scene</h2>
           <p>
-            Chọn layer từ danh sách hoặc bấm trực tiếp trên canvas. Có thể kéo chữ và hình,
-            sửa nội dung, kiểu chữ, màu, opacity, thứ tự layer, đồng thời hoàn tác và tự lưu.
+            Chọn layer trên canvas hoặc bảng Layers; scene và thời gian nằm ở timeline bên dưới.
           </p>
         </div>
         <span className={`draft-status${motionCanvas.designSaveState === 'saved' ? ' is-saved' : ''}`}>
@@ -626,16 +734,30 @@ export function MotionDesignEditor({
       <section
         className={`layout-editor-shell motion-design-shell${focusMode ? ' is-editor-focus' : ''}`}
         ref={editorRef}
+        style={editorWorkspace.shellStyle}
+        data-editor-left-collapsed={
+          editorWorkspace.preferences.left === 0 || undefined
+        }
+        data-editor-right-collapsed={
+          editorWorkspace.preferences.right === 0 || undefined
+        }
+        data-editor-timeline-collapsed={
+          editorWorkspace.preferences.timeline === 0 || undefined
+        }
         role={focusMode ? 'dialog' : undefined}
         aria-modal={focusMode || undefined}
         aria-label={focusMode ? 'Visual editor toàn màn hình' : undefined}
         tabIndex={focusMode ? -1 : undefined}
       >
-        <aside className="layout-tree-panel" aria-label="Danh sách scene và layer">
+        <aside className="layout-tree-panel" aria-label="Danh sách layer">
           <header>
             <div>
-              <span className="preview-kicker"><LayersIcon /> Cấu trúc video</span>
-              <strong>{document?.overrides.length ?? 0} modifier</strong>
+              <span className="preview-kicker"><LayersIcon /> Layers</span>
+              <strong>
+                {timelineHiddenNodeCount > 0
+                  ? `${activeSceneNodes.length}/${activeScene?.nodes.length ?? 0}`
+                  : activeSceneNodes.length}
+              </strong>
             </div>
             <input
               type="search"
@@ -645,40 +767,7 @@ export function MotionDesignEditor({
               onChange={(event) => setSearch(event.currentTarget.value)}
             />
           </header>
-          <div className="layout-scene-navigator motion-design-scene-list">
-            <div className="layout-panel-label">
-              <span>Scene</span><small>{scenes.length}</small>
-            </div>
-            <div className="layout-scene-rail" role="tablist" aria-label="Chọn scene">
-              {scenes.map((scene, index) => {
-                const active = activeScene?.sceneId === scene.sceneId;
-                const modifierCount = document?.overrides.filter((item) => item.sceneId === scene.sceneId).length ?? 0;
-                return (
-                  <button
-                    className={`layout-scene-chip${active ? ' is-active' : ''}`}
-                    type="button"
-                    role="tab"
-                    aria-selected={active}
-                    key={scene.sceneId}
-                    onClick={() => selectNode(scene.sceneId)}
-                  >
-                    <span>{String(index + 1).padStart(2, '0')}</span>
-                    <strong>{scene.label}</strong>
-                    {modifierCount > 0 && <i>{modifierCount}</i>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
           <div className="layout-layer-browser">
-            <div className="layout-panel-label">
-              <span>Layer</span>
-              <small>
-                {timelineHiddenNodeCount > 0
-                  ? `${activeSceneNodes.length}/${activeScene?.nodes.length ?? 0} đang hiện`
-                  : `${activeSceneNodes.length} node`}
-              </small>
-            </div>
             <div className="layout-layer-list">
               {!activeScene ? (
                 <div className="layout-list-empty"><strong>Không có scene</strong></div>
@@ -715,6 +804,7 @@ export function MotionDesignEditor({
                       const selected =
                         selection?.sceneId === activeScene.sceneId &&
                         selection.nodeKey === node.key;
+                      const summary = patchSummary(nodeOverride?.patch ?? {});
                       return (
                         <button
                           className={`layout-node-row${selected ? ' is-selected' : ''}${nodeOverride?.patch.hidden ? ' is-hidden' : ''}`}
@@ -731,9 +821,7 @@ export function MotionDesignEditor({
                           </span>
                           <span>
                             <strong>{node.label}</strong>
-                            <small>
-                              {patchSummary(nodeOverride?.patch ?? {})}
-                            </small>
+                            {summary && <small>{summary}</small>}
                           </span>
                           {nodeOverride?.patch.hidden && (
                             <span className="layout-node-state">
@@ -748,11 +836,8 @@ export function MotionDesignEditor({
               ))}
             </div>
           </div>
-          <footer>
-            <span className={manifestStored ? 'is-ready' : ''} />
-            {manifestStored ? 'Node map đã xác nhận' : 'Đang nhận diện node trong scene'}
-          </footer>
         </aside>
+        <EditorResizeHandle panel="left" controller={editorWorkspace} />
 
         <div className="layout-preview-column">
           <div className="layout-preview-frame motion-design-frame">
@@ -768,17 +853,21 @@ export function MotionDesignEditor({
               </div>
             )}
             {motionCanvas.previewState === 'ready' && motionCanvas.previewUrl && (
-              <iframe
-                ref={frameRef}
-                title="Visual editor Motion Canvas"
-                src={motionCanvas.previewUrl}
-                allow="autoplay; fullscreen"
-                sandbox="allow-scripts allow-same-origin"
-                referrerPolicy="no-referrer"
-                allowFullScreen
-                onLoad={requestReady}
-                onError={() => setRuntimeError('Trình duyệt không tải được visual editor. Hãy mở lại.')}
-              />
+              <EditorCanvasViewport
+                zoom={editorWorkspace.preferences.canvasZoom}
+              >
+                <iframe
+                  ref={frameRef}
+                  title="Visual editor Motion Canvas"
+                  src={motionCanvas.previewUrl}
+                  allow="autoplay; fullscreen"
+                  sandbox="allow-scripts allow-same-origin"
+                  referrerPolicy="no-referrer"
+                  allowFullScreen
+                  onLoad={requestReady}
+                  onError={() => setRuntimeError('Trình duyệt không tải được visual editor. Hãy mở lại.')}
+                />
+              </EditorCanvasViewport>
             )}
             {motionCanvas.previewState === 'ready' && !runtimeReady && !runtimeError && (
               <div className="layout-preview-state" role="status">
@@ -802,23 +891,27 @@ export function MotionDesignEditor({
               >
                 ＋ Text
               </button>
-              <button type="button" title="Hoàn tác" disabled={!runtimeState?.history.canUndo} onClick={() => sendCommand('undo')}>
-                <UndoIcon /><kbd>Ctrl Z</kbd>
+              <button
+                type="button"
+                title="Chọn khung nội dung của scene"
+                disabled={!runtimeReady || !activeScene || !activeContentFrame}
+                onClick={() =>
+                  activeScene &&
+                  activeContentFrame &&
+                  selectNode(activeScene.sceneId, activeContentFrame.key)
+                }
+              >
+                Toàn cảnh
               </button>
-              <button type="button" title="Làm lại" disabled={!runtimeState?.history.canRedo} onClick={() => sendCommand('redo')}>
-                <RedoIcon /><kbd>Ctrl ⇧ Z</kbd>
+              <button type="button" title="Hoàn tác (Ctrl+Z)" aria-label="Hoàn tác" disabled={!runtimeState?.history.canUndo} onClick={() => sendCommand('undo')}>
+                <UndoIcon />
               </button>
-            </div>
-            <div className="layout-command-context">
-              <span className="layout-selection-dot" />
-              <span>{selection?.label ?? activeScene?.label ?? 'Chưa chọn layer'}</span>
-              <code>
-                {runtimeState
-                  ? `${formatTime(runtimeState.frame, runtimeState.fps)} / ${formatTime(runtimeState.duration, runtimeState.fps)}`
-                  : 'Đang kết nối…'}
-              </code>
+              <button type="button" title="Làm lại (Ctrl+Shift+Z)" aria-label="Làm lại" disabled={!runtimeState?.history.canRedo} onClick={() => sendCommand('redo')}>
+                <RedoIcon />
+              </button>
             </div>
             <div className="layout-command-group is-secondary">
+              <EditorCanvasZoom controller={editorWorkspace} />
               {focusMode && (
                 <span
                   className={`layout-focus-save-state${
@@ -857,6 +950,7 @@ export function MotionDesignEditor({
             </div>
           </div>
         </div>
+        <EditorResizeHandle panel="right" controller={editorWorkspace} />
 
         <aside className="layout-inspector" aria-label="Thuộc tính layer">
           {!selection ? (
@@ -868,7 +962,7 @@ export function MotionDesignEditor({
           ) : (
             <>
               <header>
-                <div><span>{selection.nodeType}</span><h2>{selection.label}</h2><code title={selection.nodeKey}>{selection.nodeKey}</code></div>
+                <div><span>{selection.nodeType}</span><h2>{selection.label}</h2></div>
                 <button
                   type="button"
                   title={selection.editorLocked ? 'Mở khóa chỉnh sửa' : 'Khóa thao tác nhầm'}
@@ -877,6 +971,32 @@ export function MotionDesignEditor({
                   {selection.editorLocked ? <LockIcon /> : <UnlockIcon />}
                 </button>
               </header>
+              <div className="layout-container-actions">
+                <span>
+                  {selection.role === 'content'
+                    ? 'Khung nội dung'
+                    : selection.role === 'block'
+                      ? 'Khối visual'
+                      : 'Phần tử'}
+                </span>
+                {(selection.role === 'block' ||
+                  selection.role === 'content') && (
+                  <button
+                    type="button"
+                    onClick={() => sendCommand('enterSelectedContainer')}
+                  >
+                    Chỉnh bên trong
+                  </button>
+                )}
+                {runtimeState?.enteredContainerKey && (
+                  <button
+                    type="button"
+                    onClick={() => sendCommand('selectParentContainer')}
+                  >
+                    Lên khung cha
+                  </button>
+                )}
+              </div>
               {selection.lockReason && <p className="layout-legacy-note">{selection.lockReason}</p>}
               <section className="layout-property-section">
                 <h3>Biến đổi</h3>
@@ -892,7 +1012,11 @@ export function MotionDesignEditor({
                     <label key={property}>
                       <span>{label}</span>
                       <NumberInput
-                        value={selection.patch[property] ?? fallback}
+                        value={
+                          selection.animatedPatch?.[property] ??
+                          selection.patch[property] ??
+                          fallback
+                        }
                         min={min}
                         max={max}
                         step={step}
@@ -903,6 +1027,31 @@ export function MotionDesignEditor({
                   ))}
                 </div>
               </section>
+              {selection.animations && selection.animations.length > 0 && (
+                <section className="layout-property-section">
+                  <h3>Chuyển động</h3>
+                  <div className="layout-animation-tracks">
+                    {selection.animations.map(track => (
+                      <div key={track.property}>
+                        <span>
+                          {track.property}
+                          <small>{track.keyframes.length} keyframe</small>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            sendCommand('clearPropertyTrack', {
+                              property: track.property,
+                            })
+                          }
+                        >
+                          Xóa track
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
               {selection.editableProperties.includes('text') && (
                 <section className="layout-property-section layout-typography-section">
                   <h3>Nội dung &amp; kiểu chữ</h3>
@@ -938,9 +1087,9 @@ export function MotionDesignEditor({
               <section className="layout-property-section">
                 <h3><PaletteIcon /> Hiển thị</h3>
                 <label className="layout-range-field">
-                  <span>Opacity <strong>{Math.round((selection.patch.opacity ?? 1) * 100)}%</strong></span>
-                  <input type="range" min={0} max={1} step={0.01} value={selection.patch.opacity ?? 1} disabled={!canEdit('opacity')} onChange={(event) => sendNumericPatch('opacity', Number(event.currentTarget.value))} />
-                  <NumberInput value={selection.patch.opacity ?? 1} min={0} max={1} step={0.01} disabled={!canEdit('opacity')} onCommit={(value) => sendNumericPatch('opacity', value)} />
+                  <span>Opacity <strong>{Math.round((selection.animatedPatch?.opacity ?? selection.patch.opacity ?? 1) * 100)}%</strong></span>
+                  <input type="range" min={0} max={1} step={0.01} value={selection.animatedPatch?.opacity ?? selection.patch.opacity ?? 1} disabled={!canEdit('opacity')} onChange={(event) => sendNumericPatch('opacity', Number(event.currentTarget.value))} />
+                  <NumberInput value={selection.animatedPatch?.opacity ?? selection.patch.opacity ?? 1} min={0} max={1} step={0.01} disabled={!canEdit('opacity')} onCommit={(value) => sendNumericPatch('opacity', value)} />
                 </label>
                 {selection.editableProperties.includes('fill') && (
                   <div className="layout-color-field">
@@ -1006,6 +1155,52 @@ export function MotionDesignEditor({
             </>
           )}
         </aside>
+        {runtimeState && timelineScenes.length > 0 && (
+          <>
+            <EditorResizeHandle
+              panel="timeline"
+              controller={editorWorkspace}
+            />
+            <ProfessionalTimeline
+              frame={runtimeState.frame}
+              duration={runtimeState.duration}
+              fps={runtimeState.fps}
+              scenes={timelineScenes}
+              markers={timelineMarkers}
+              activeSceneId={activeScene?.sceneId ?? runtimeState.sceneId}
+              selectedNodeKey={selection?.nodeKey}
+              editableProperties={selection?.editableProperties}
+              animationDisabled={selection?.editorLocked}
+              overrides={document?.overrides ?? []}
+              onSeek={frame => sendCommand('seek', {frame})}
+              onSelectNode={selectNode}
+              onSetKeyframe={(property, _value, easing) =>
+                sendCommand('setPropertyKeyframe', {
+                  property,
+                  value: selectedAnimationValue(property),
+                  easing,
+                })
+              }
+              onRemoveKeyframe={(property, timeSeconds) =>
+                sendCommand('removePropertyKeyframe', {
+                  property,
+                  timeSeconds,
+                })
+              }
+              onMoveKeyframe={(
+                property,
+                fromTimeSeconds,
+                toTimeSeconds,
+              ) =>
+                sendCommand('movePropertyKeyframe', {
+                  property,
+                  fromTimeSeconds,
+                  toTimeSeconds,
+                })
+              }
+            />
+          </>
+        )}
       </section>
     </section>
   );

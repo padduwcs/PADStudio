@@ -16,6 +16,7 @@ import {
   MotionCanvasGenerationError,
   type MotionCanvasGenerationRequest,
   validateMotionCanvasBackground,
+  validateMotionCanvasContainerContract,
   validateMotionCanvasSceneSource,
   validateMotionCanvasTimingContract,
 } from './motionCanvasGenerator.ts';
@@ -116,13 +117,17 @@ const caption = <Txt text={label} />;
 });
 
 function timedSceneSource(beatIds: string[]) {
-  return `import {makeScene2D, Rect} from '@motion-canvas/2d';
+  return `import {Layout, makeScene2D, Rect} from '@motion-canvas/2d';
 import {useDuration, useThread, waitFor, waitUntil} from '@motion-canvas/core';
 
 export default makeScene2D(function* (view) {
   view.add(
     <Rect key="scene-background" width={1080} height={1920} fill={'#10231D'}>
-      <Rect key="main-visual-card" width={640} height={120} radius={24} fill={'#dbe9e2'} />
+      <Layout key="scene-content-root">
+        <Layout key="block-main-visual">
+          <Rect key="main-visual-card" width={640} height={120} radius={24} fill={'#dbe9e2'} />
+        </Layout>
+      </Layout>
     </Rect>,
   );
 ${beatIds
@@ -139,7 +144,7 @@ ${beatIds
 }
 
 function richTimedSceneSource(beatIds: string[]) {
-  return `import {Circle, Line, makeScene2D, Rect} from '@motion-canvas/2d';
+  return `import {Circle, Layout, Line, makeScene2D, Rect} from '@motion-canvas/2d';
 import {all, createRef, useDuration, useThread, waitFor, waitUntil} from '@motion-canvas/core';
 
 export default makeScene2D(function* (view) {
@@ -148,9 +153,13 @@ export default makeScene2D(function* (view) {
   const range = createRef<Line>();
   view.add(
     <Rect key="scene-background" width={1080} height={1920} fill={'#10231D'}>
-      <Rect key="main-visual-card" ref={card} width={640} height={420} radius={32} fill={'#dbe9e2'} />
-      <Circle key="pivot-marker" ref={marker} size={80} fill={'#51B68E'} />
-      <Line key="search-range" ref={range} points={[[-240, 0], [240, 0]]} lineWidth={12} stroke={'#FFFFFF'} />
+      <Layout key="scene-content-root">
+        <Layout key="block-search-visual">
+          <Rect key="main-visual-card" ref={card} width={640} height={420} radius={32} fill={'#dbe9e2'} />
+          <Circle key="pivot-marker" ref={marker} size={80} fill={'#51B68E'} />
+          <Line key="search-range" ref={range} points={[[-240, 0], [240, 0]]} lineWidth={12} stroke={'#FFFFFF'} />
+        </Layout>
+      </Layout>
     </Rect>,
   );
 ${beatIds
@@ -176,6 +185,29 @@ test('Motion Canvas bắt buộc scene dùng đúng background người dùng ch
   );
   assert.throws(
     () => validateMotionCanvasBackground(sceneSource, '#F5F7F4'),
+    (error: unknown) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+  );
+});
+
+test('Motion Canvas generation contract bắt buộc content root và block container', () => {
+  const beatId = randomUUID();
+  assert.doesNotThrow(() =>
+    validateMotionCanvasContainerContract(timedSceneSource([beatId])),
+  );
+  assert.throws(
+    () => validateMotionCanvasContainerContract(sceneSource),
+    (error: unknown) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+  );
+  const rogueNodeSource = timedSceneSource([beatId]).replace(
+    '      </Layout>\n    </Rect>',
+    '      </Layout>\n      <Rect key="rogue-decoration" width={20} height={20} />\n    </Rect>',
+  );
+  assert.throws(
+    () => validateMotionCanvasContainerContract(rogueNodeSource),
     (error: unknown) =>
       error instanceof MotionCanvasGenerationError &&
       error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',

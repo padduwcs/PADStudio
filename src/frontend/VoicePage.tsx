@@ -36,6 +36,11 @@ import {
   type VoiceDraftConfiguration,
   useVoiceDraft,
 } from './useVoiceDraft.ts';
+import {
+  findVoiceVisualBeat,
+  findVoiceVisualSection,
+  resolveVoiceVisualSectionPresentation,
+} from './voiceVisualSectionState.ts';
 
 function formatTime(seconds: number) {
   const rounded = Math.max(0, Math.round(seconds));
@@ -282,6 +287,7 @@ export function VoicePage({projectId}: {projectId: string}) {
   }
 
   const bundle = project.voiceBundle;
+  const masterVoiceSection = bundle?.sections.at(0);
   const approved = bundle?.status === 'approved' && !voice.stale;
   const bundleConfiguration: VoiceDraftConfiguration | null = bundle
     ? {
@@ -816,21 +822,23 @@ export function VoicePage({projectId}: {projectId: string}) {
                     đơn vị/phút
                   </span>
                 </div>
-                <audio
-                  ref={masterAudioRef}
-                  controls
-                  preload="metadata"
-                  aria-label="Master narration toàn video"
-                  src={voiceAudioUrl(
-                    project.id,
-                    bundle.sections[0]!.outlineSectionId,
-                    bundle.generation.generationId,
-                  )}
-                  onTimeUpdate={handleMasterTimeUpdate}
-                  onSeeking={handleMasterSeeking}
-                  onPause={clearSectionPlayback}
-                  onEnded={clearSectionPlayback}
-                />
+                {masterVoiceSection && (
+                  <audio
+                    ref={masterAudioRef}
+                    controls
+                    preload="metadata"
+                    aria-label="Master narration toàn video"
+                    src={voiceAudioUrl(
+                      project.id,
+                      masterVoiceSection.outlineSectionId,
+                      bundle.generation.generationId,
+                    )}
+                    onTimeUpdate={handleMasterTimeUpdate}
+                    onSeeking={handleMasterSeeking}
+                    onPause={clearSectionPlayback}
+                    onEnded={clearSectionPlayback}
+                  />
+                )}
                 {sectionPlaybackError && (
                   <p className="voice-player-error" role="alert">
                     {sectionPlaybackError}
@@ -838,78 +846,99 @@ export function VoicePage({projectId}: {projectId: string}) {
                 )}
               </div>
 
-              {bundle.sections.map((section, index) => (
-                <article
-                  className="voice-review-section"
-                  key={section.outlineSectionId}
-                >
-                  <span className="outline-section-index">
-                    {String(index + 1).padStart(2, '0')}
-                  </span>
-                  <div>
-                    <h3>{outline.sections[index]?.title}</h3>
-                    <p>
-                      <ClockIcon />
-                      {formatTime(section.durationSeconds)}
-                      {' · '}
-                      {section.beats.length} beat
-                      {' · '}
-                      {section.startSeconds.toFixed(2)}–
-                      {section.endSeconds.toFixed(2)}s trên master
-                    </p>
-                    <button
-                      className="secondary-button voice-play-section"
-                      type="button"
-                      aria-pressed={
-                        sectionPlayback?.sectionIndex === index
-                      }
-                      onClick={() =>
-                        void playSection(
-                          index,
-                          section.startSeconds,
-                          section.endSeconds,
-                        )
-                      }
-                    >
-                      {sectionPlayback?.sectionIndex === index
-                        ? sectionPlayback.state === 'loading'
-                          ? 'Đang mở đúng đoạn…'
-                          : 'Dừng nghe section'
-                        : 'Nghe riêng section trên master'}
-                    </button>
-                    <details
-                      className="voice-beat-review"
-                      open={index === 0}
-                    >
-                      <summary>
-                        Xem lời và timing của {section.beats.length} beat
-                      </summary>
-                      <ol className="voice-beat-review-list">
-                        {section.beats.map((beat, beatIndex) => {
-                          const sourceBeat =
-                            plan.sections[index]?.beats[beatIndex];
+              {bundle.sections.map((section, index) => {
+                const sectionPresentation =
+                  resolveVoiceVisualSectionPresentation(
+                    outline.sections,
+                    section.outlineSectionId,
+                    index,
+                    section.durationSeconds,
+                  );
+                const sourceSection = findVoiceVisualSection(
+                  plan.sections,
+                  section.outlineSectionId,
+                );
 
-                          return (
-                            <li key={beat.beatId}>
-                              <div>
-                                <strong>Beat {beatIndex + 1}</strong>
-                                <span>
-                                  {beat.startSeconds.toFixed(2)}–
-                                  {beat.endSeconds.toFixed(2)}s
-                                </span>
-                              </div>
-                              <p>
-                                {sourceBeat?.voiceover ??
-                                  'Không tìm thấy lời đọc nguồn của beat.'}
-                              </p>
-                            </li>
-                          );
-                        })}
-                      </ol>
-                    </details>
-                  </div>
-                </article>
-              ))}
+                return (
+                  <article
+                    className="voice-review-section"
+                    key={section.outlineSectionId}
+                  >
+                    <span className="outline-section-index">
+                      {String(index + 1).padStart(2, '0')}
+                    </span>
+                    <div>
+                      <h3>{sectionPresentation.title}</h3>
+                      {!sectionPresentation.belongsToCurrentOutline && (
+                        <span className="voice-visual-stale-section">
+                          Voice từ phiên bản cũ
+                        </span>
+                      )}
+                      <p>
+                        <ClockIcon />
+                        {formatTime(section.durationSeconds)}
+                        {' · '}
+                        {section.beats.length} beat
+                        {' · '}
+                        {section.startSeconds.toFixed(2)}–
+                        {section.endSeconds.toFixed(2)}s trên master
+                      </p>
+                      <button
+                        className="secondary-button voice-play-section"
+                        type="button"
+                        aria-pressed={
+                          sectionPlayback?.sectionIndex === index
+                        }
+                        onClick={() =>
+                          void playSection(
+                            index,
+                            section.startSeconds,
+                            section.endSeconds,
+                          )
+                        }
+                      >
+                        {sectionPlayback?.sectionIndex === index
+                          ? sectionPlayback.state === 'loading'
+                            ? 'Đang mở đúng đoạn…'
+                            : 'Dừng nghe section'
+                          : 'Nghe riêng section trên master'}
+                      </button>
+                      <details
+                        className="voice-beat-review"
+                        open={index === 0}
+                      >
+                        <summary>
+                          Xem lời và timing của {section.beats.length} beat
+                        </summary>
+                        <ol className="voice-beat-review-list">
+                          {section.beats.map((beat, beatIndex) => {
+                            const sourceBeat = findVoiceVisualBeat(
+                              sourceSection,
+                              beat.beatId,
+                            );
+
+                            return (
+                              <li key={beat.beatId}>
+                                <div>
+                                  <strong>Beat {beatIndex + 1}</strong>
+                                  <span>
+                                    {beat.startSeconds.toFixed(2)}–
+                                    {beat.endSeconds.toFixed(2)}s
+                                  </span>
+                                </div>
+                                <p>
+                                  {sourceBeat?.voiceover ??
+                                    'Không tìm thấy lời đọc nguồn của beat.'}
+                                </p>
+                              </li>
+                            );
+                          })}
+                        </ol>
+                      </details>
+                    </div>
+                  </article>
+                );
+              })}
             </section>
           )}
         </div>

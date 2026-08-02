@@ -58,13 +58,16 @@ import {
   LayoutBundleSchema,
 } from '../shared/layout.ts';
 import {
+  animationSyncPrerequisitesAreReady,
   finalRenderIsReady,
   finalRenderPrerequisitesAreReady,
   layoutMatchesAnimationSync,
   layoutPrerequisitesAreReady,
+  motionCanvasIsStale,
   motionCanvasMatchesOutline,
   sameValue,
   visualDesignMatchesMotion,
+  voicePrerequisitesAreReady,
   voiceVisualMatchesOutline,
 } from '../shared/projectPipeline.ts';
 import {
@@ -88,6 +91,7 @@ import {
   LayoutWorkspaceError,
   type LayoutWorkspace,
   type PreparedLayoutWorkspace,
+  retimeLayoutOverridesForSync,
   validateLayoutDocuments,
 } from './layoutWorkspace.ts';
 import {
@@ -4735,6 +4739,13 @@ export function createPadStudioServer(options: AppOptions = {}) {
         if (currentProject.revision !== expectedRevision) {
           throw new ProjectConflictError(currentProject);
         }
+        if (motionCanvasIsStale(currentProject)) {
+          throw new RequestBodyError(
+            409,
+            'MOTION_CANVAS_OUTDATED',
+            'Kế hoạch voice–visual đã thay đổi. Hãy sinh lại scene trước khi chỉnh sửa.',
+          );
+        }
         if (
           motion.generation.generationId !==
             parsedRequest.data.sourceMotionCanvasGenerationId
@@ -5169,6 +5180,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
           !plan ||
           plan.status !== 'approved' ||
           !bundle ||
+          !voicePrerequisitesAreReady(currentProject) ||
           !voiceMatchesPlan(bundle, plan)
         ) {
           throw new RequestBodyError(
@@ -5399,7 +5411,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
           syncVisualDesign &&
           syncVisualDesign.contentRevision ===
             bundle.sourceVisualDesignContentRevision
-            ? syncVisualDesign.overrides
+            ? retimeLayoutOverridesForSync(
+                syncVisualDesign.overrides,
+                bundle.sections,
+              )
             : [],
         );
         response.setHeader('Cache-Control', 'no-store');
@@ -5512,6 +5527,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
           !voice ||
           voice.status !== 'approved' ||
           !bundle ||
+          !animationSyncPrerequisitesAreReady(currentProject) ||
           !animationSyncMatchesSources(
             bundle,
             motion,
@@ -5594,7 +5610,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
                     currentProject.visualDesignBundle,
                     currentProject.motionCanvasBundle,
                   )
-                    ? currentProject.visualDesignBundle.overrides
+                    ? retimeLayoutOverridesForSync(
+                        currentProject.visualDesignBundle.overrides,
+                        sync.sections,
+                      )
                     : [],
               };
         const manifest =
@@ -5668,7 +5687,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
                 currentProject.visualDesignBundle,
                 currentProject.motionCanvasBundle,
               )
-                ? currentProject.visualDesignBundle.overrides
+                ? retimeLayoutOverridesForSync(
+                    currentProject.visualDesignBundle.overrides,
+                    sync.sections,
+                  )
                 : [],
           },
         );
@@ -5926,7 +5948,6 @@ export function createPadStudioServer(options: AppOptions = {}) {
         const bundle = currentProject.layoutBundle;
         const alreadyApproved =
           currentProject.revision > expectedRevision &&
-          currentProject.currentStep === 'layout' &&
           bundle?.status === 'approved' &&
           bundle.generation.generationId === requestedGenerationId;
         if (
@@ -5970,7 +5991,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
           currentProject.id,
           {
             layoutBundle: {...bundle, status: 'approved'},
-            currentStep: 'layout',
+            currentStep: 'render',
           },
           expectedRevision,
         );

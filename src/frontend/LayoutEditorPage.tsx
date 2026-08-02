@@ -19,6 +19,7 @@ import {
   type LayoutEditorNode,
   type LayoutNodePatch,
   type LayoutOverridesDocument,
+  type LayoutPropertyTrack,
   type LayoutRenderSettings,
   type LayoutVisibilityKeyframe,
 } from '../shared/layout.ts';
@@ -54,6 +55,10 @@ import {
 } from './layoutEditorState.ts';
 import {groupEditorLayers} from './layerGroups.ts';
 import {
+  ProfessionalTimeline,
+  type EditorTimelineScene,
+} from './ProfessionalTimeline.tsx';
+import {
   navigate,
   projectRenderPath,
   projectSyncPath,
@@ -62,7 +67,14 @@ import {
 import {useLayoutEditor} from './useLayoutEditor.ts';
 import {useEditorFocusMode} from './useEditorFocusMode.ts';
 import {
+  EditorCanvasViewport,
+  EditorCanvasZoom,
+  EditorResizeHandle,
+  useEditorWorkspaceLayout,
+} from './useEditorWorkspaceLayout.tsx';
+import {
   ApiRequestError,
+  animationSyncAudioUrl,
   uploadWatermarkImage,
   watermarkAssetUrl,
 } from './api.ts';
@@ -108,6 +120,7 @@ const LAYOUT_SHORTCUT_GROUPS = [
       ['Đầu / cuối video', 'Home', 'End'],
       ['Bỏ chọn / đóng', 'Esc'],
       ['Chọn nhanh scene', '1', '…', '9'],
+      ['Zoom canvas', 'Ctrl/Cmd', '+ / − / 0'],
       ['Mở bảng phím tắt', '?'],
     ],
   },
@@ -130,12 +143,15 @@ interface RuntimeSelection {
   nodeType: string;
   parentKey: string | null;
   identity: 'semantic' | 'legacy';
+  role: LayoutEditorNode['role'];
   editableProperties: LayoutEditorNode['editableProperties'];
   lockedProperties: LayoutEditorNode['lockedProperties'];
   lockReason: string | null;
   editorLocked: boolean;
   patch: LayoutNodePatch;
+  animatedPatch?: LayoutNodePatch;
   visibility?: LayoutVisibilityKeyframe[];
+  animations?: LayoutPropertyTrack[];
   userText?: boolean;
   base?: Record<string, unknown>;
 }
@@ -149,6 +165,14 @@ interface RuntimeState {
   sceneId: string;
   sceneName: string;
   sceneTimeSeconds?: number;
+  enteredContainerKey?: string | null;
+  scenes?: Array<{
+    sceneId: string;
+    name: string;
+    firstFrame: number;
+    lastFrame: number;
+  }>;
+  selection?: RuntimeSelection | null;
   dirtyRevision: number;
   reviewed: boolean;
   view?: {
@@ -188,6 +212,7 @@ function isRuntimeSelection(value: unknown): value is RuntimeSelection {
     nodeType: selection.nodeType,
     parentKey: selection.parentKey,
     identity: selection.identity,
+    role: selection.role,
     editableProperties: selection.editableProperties,
     lockedProperties: selection.lockedProperties,
     lockReason: selection.lockReason,
@@ -229,17 +254,11 @@ function colorValue(value: unknown, fallback: string) {
     : fallback;
 }
 
-function formatTime(frame: number, fps: number) {
-  const seconds = Math.max(0, frame / Math.max(1, fps));
-  const rounded = Math.floor(seconds);
-  return `${Math.floor(rounded / 60)}:${String(rounded % 60).padStart(2, '0')}`;
-}
-
 function patchSummary(patch: LayoutNodePatch) {
   const count = Object.keys(patch).length;
-  if (count === 0) return 'Chưa chỉnh';
-  if (patch.hidden) return 'Đang ẩn';
-  return `${count} thay đổi`;
+  if (count === 0) return '';
+  if (patch.hidden) return 'Ẩn';
+  return `${count} chỉnh sửa`;
 }
 
 function editorFacingNodes(nodes: LayoutEditorNode[]) {
@@ -384,8 +403,8 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
   const layout = useLayoutEditor(projectId);
   const {editorRef, focusMode, toggleFocusMode} =
     useEditorFocusMode<HTMLElement>();
+  const editorWorkspace = useEditorWorkspaceLayout(editorRef);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
-  const sceneRailRef = useRef<HTMLDivElement | null>(null);
   const shortcutCloseRef = useRef<HTMLButtonElement | null>(null);
   const documentRef = useRef<LayoutOverridesDocument | null>(null);
   const committedDocumentRef =
@@ -829,6 +848,7 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
           'setRenderSettings',
           renderSettingsPayload(renderSettingsRef.current),
         );
+        sendCommand('requestState');
         const pendingSelection = pendingSelectionRef.current;
         if (pendingSelection) {
           pendingSelectionRef.current = null;
@@ -864,7 +884,14 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
       }
 
       if (message.type === 'state') {
-        if (isRuntimeState(payload)) setRuntimeState(payload);
+        if (isRuntimeState(payload)) {
+          setRuntimeState(payload);
+          if (isRuntimeSelection(payload.selection)) {
+            setSelection(payload.selection);
+          } else if (payload.selection === null) {
+            setSelection(null);
+          }
+        }
         return;
       }
 
@@ -1137,44 +1164,26 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
       ),
     }));
   }, [manifest, sourceSync]);
-  const hasKnownNodes = scenes.some((scene) => scene.nodes.length > 0);
-
-  const visibleScenes = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase('vi');
-    if (!query) return scenes;
-    return scenes
-      .map((scene) => {
-        const sceneMatches =
-          scene.label.toLocaleLowerCase('vi').includes(query) ||
-          scene.filePath.toLocaleLowerCase('vi').includes(query);
-        return {
-          ...scene,
-          nodes: sceneMatches
-            ? scene.nodes
-            : scene.nodes.filter(
-                (node) =>
-                  node.label.toLocaleLowerCase('vi').includes(query) ||
-                  node.key.toLocaleLowerCase('vi').includes(query) ||
-                  node.nodeType.toLocaleLowerCase('vi').includes(query),
-              ),
-        };
-      })
-      .filter(
-        (scene) =>
-          scene.nodes.length > 0 ||
-          scene.label.toLocaleLowerCase('vi').includes(query) ||
-          scene.filePath.toLocaleLowerCase('vi').includes(query),
-      );
-  }, [scenes, search]);
-  const activeScene =
-    visibleScenes.find((scene) => scene.sceneId === navigatorSceneId) ??
-    visibleScenes.find((scene) => scene.sceneId === selection?.sceneId) ??
-    visibleScenes.find((scene) => scene.sceneId === runtimeState?.sceneId) ??
-    visibleScenes[0] ??
+  const activeSceneSource =
+    scenes.find((scene) => scene.sceneId === navigatorSceneId) ??
+    scenes.find((scene) => scene.sceneId === selection?.sceneId) ??
+    scenes.find((scene) => scene.sceneId === runtimeState?.sceneId) ??
+    scenes[0] ??
     null;
-  const activeSceneIndex = activeScene
-    ? scenes.findIndex((scene) => scene.sceneId === activeScene.sceneId)
-    : -1;
+  const activeScene = useMemo(() => {
+    if (!activeSceneSource) return null;
+    const query = search.trim().toLocaleLowerCase('vi');
+    if (!query) return activeSceneSource;
+    return {
+      ...activeSceneSource,
+      nodes: activeSceneSource.nodes.filter(
+        node =>
+          node.label.toLocaleLowerCase('vi').includes(query) ||
+          node.key.toLocaleLowerCase('vi').includes(query) ||
+          node.nodeType.toLocaleLowerCase('vi').includes(query),
+      ),
+    };
+  }, [activeSceneSource, search]);
   const activeSceneNodes = activeScene
     ? timelineVisibleEditorNodes(
         activeScene.nodes,
@@ -1191,18 +1200,60 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
       activeScene?.nodes ??
       [],
   );
-
-  useEffect(() => {
-    if (!activeScene) return;
-    const activeButton = sceneRailRef.current?.querySelector<HTMLElement>(
-      `[data-scene-id="${activeScene.sceneId}"]`,
+  const activeContentFrame = (
+    scenes.find(scene => scene.sceneId === activeScene?.sceneId)?.nodes ??
+    activeScene?.nodes ??
+    []
+  ).find(node => node.role === 'content');
+  const timelineScenes: EditorTimelineScene[] = (() => {
+    const nodes = new Map(
+      manifest?.scenes.map(scene => [scene.sceneId, scene.nodes]) ?? [],
     );
-    activeButton?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'nearest',
-      inline: 'nearest',
+    if (runtimeState?.scenes?.length) {
+      return runtimeState.scenes.map((scene, index) => ({
+        sceneId: scene.sceneId,
+        label:
+          scenes.find(item => item.sceneId === scene.sceneId)?.label ??
+          `Scene ${String(index + 1).padStart(2, '0')}`,
+        firstFrame: scene.firstFrame,
+        lastFrame: scene.lastFrame,
+        nodes: nodes.get(scene.sceneId) ?? [],
+      }));
+    }
+    let cursor = 0;
+    return (sourceSync?.sections ?? []).map((section, index) => {
+      const firstFrame = cursor;
+      cursor += Math.max(
+        1,
+        Math.round(
+          section.synchronizedDurationSeconds *
+            Math.max(1, runtimeState?.fps ?? 30),
+        ),
+      );
+      return {
+        sceneId: section.sceneId,
+        label: `Scene ${String(index + 1).padStart(2, '0')}`,
+        firstFrame,
+        lastFrame: cursor,
+        nodes: nodes.get(section.sceneId) ?? [],
+      };
     });
-  }, [activeScene?.sceneId]);
+  })();
+  const timelineMarkers = (() => {
+    const fps = Math.max(1, runtimeState?.fps ?? 30);
+    let sectionStart = 0;
+    return (sourceSync?.sections ?? []).flatMap(section => {
+      const markers = section.beats.map((beat, index) => ({
+        id: beat.beatId,
+        label: `Beat ${index + 1}`,
+        frame: Math.round(
+          (sectionStart + beat.voiceStartSeconds) * fps,
+        ),
+      }));
+      sectionStart += section.synchronizedDurationSeconds;
+      return markers;
+    });
+  })();
 
   useEffect(() => {
     if (shortcutsOpen) shortcutCloseRef.current?.focus();
@@ -1227,6 +1278,13 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     property: NumericLayoutProperty,
     value: number,
   ) {
+    if (
+      ['x', 'y', 'scale', 'rotation', 'opacity'].includes(property) &&
+      selection?.animations?.some(track => track.property === property)
+    ) {
+      sendCommand('setPropertyKeyframe', {property, value});
+      return;
+    }
     sendPatch({
       [property]: value,
     } as LayoutNodePatch);
@@ -1244,13 +1302,6 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     }
     pendingSelectionRef.current = null;
     sendCommand('setSelected', pendingSelection);
-  }
-
-  function scrollSceneRail(direction: -1 | 1) {
-    sceneRailRef.current?.scrollBy({
-      left: direction * 220,
-      behavior: 'smooth',
-    });
   }
 
   function copySelectedPatch() {
@@ -1614,6 +1665,16 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
     selection?.base?.fontStyle === 'italic'
       ? 'italic'
       : 'normal';
+  function selectedAnimationValue(
+    property: LayoutPropertyTrack['property'],
+  ) {
+    const fallback = property === 'scale' || property === 'opacity' ? 1 : 0;
+    return typeof selection?.animatedPatch?.[property] === 'number'
+      ? selection.animatedPatch[property]
+      : typeof selection?.patch[property] === 'number'
+        ? selection.patch[property]
+      : fallback;
+  }
   const watermark = renderSettings.watermark;
   const renderSettingsValid =
     LayoutRenderSettingsSchema.safeParse(renderSettings).success;
@@ -1660,15 +1721,6 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
           </p>
         </div>
         <div className="layout-heading-status">
-          <button
-            className="layout-shortcut-trigger"
-            type="button"
-            onClick={() => setShortcutsOpen(true)}
-          >
-            <KeyboardIcon />
-            Phím tắt
-            <kbd>?</kbd>
-          </button>
           <span className={`draft-status${isSaved ? ' is-saved' : ''}`}>
             <span />
             {layout.saveState === 'saving'
@@ -1679,7 +1731,6 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                   ? 'Đã lưu modifier'
                   : 'Có thay đổi chưa lưu'}
           </span>
-          <code>{sourceSync.generation.generationId.slice(0, 8)}</code>
         </div>
       </header>
 
@@ -1727,16 +1778,25 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
         </div>
       )}
 
-      <section className="layout-output-settings" aria-label="Watermark">
-        <header>
+      <details
+        className="layout-output-settings"
+        aria-label="Tùy chọn xuất"
+      >
+        <summary>
           <div>
-            <span className="preview-kicker">Xem trước bản xuất</span>
+            <span className="preview-kicker">Tùy chọn xuất</span>
             <strong>Watermark</strong>
           </div>
           <small>
-            Các lựa chọn này được lưu cùng Layout và áp dụng trực tiếp khi render.
+            {!renderSettingsValid
+              ? 'Cần hoàn thiện'
+              : watermark.type === 'none'
+              ? 'Không dùng'
+              : watermark.type === 'text'
+                ? 'Watermark chữ'
+                : 'Watermark ảnh'}
           </small>
-        </header>
+        </summary>
         <div className="layout-watermark-settings">
           <label>
             <span>Watermark</span>
@@ -2004,100 +2064,48 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
             Hoàn thiện nội dung hoặc tải ảnh watermark trước khi lưu và chốt Layout.
           </small>
         )}
-      </section>
+      </details>
 
       <section
         className={`layout-editor-shell${focusMode ? ' is-editor-focus' : ''}`}
         ref={editorRef}
+        style={editorWorkspace.shellStyle}
+        data-editor-left-collapsed={
+          editorWorkspace.preferences.left === 0 || undefined
+        }
+        data-editor-right-collapsed={
+          editorWorkspace.preferences.right === 0 || undefined
+        }
+        data-editor-timeline-collapsed={
+          editorWorkspace.preferences.timeline === 0 || undefined
+        }
         role={focusMode ? 'dialog' : undefined}
         aria-modal={focusMode || undefined}
         aria-label={focusMode ? 'Layout Editor toàn màn hình' : undefined}
         tabIndex={focusMode ? -1 : undefined}
       >
-        <aside className="layout-tree-panel" aria-label="Danh sách scene và node">
+        <aside className="layout-tree-panel" aria-label="Danh sách layer">
           <header>
             <div>
               <span className="preview-kicker">
                 <LayersIcon />
-                Cấu trúc video
+                Layers
               </span>
-              <strong>{document?.overrides.length ?? 0} modifier</strong>
+              <strong>
+                {timelineHiddenNodeCount > 0
+                  ? `${activeSceneNodes.length}/${activeScene?.nodes.length ?? 0}`
+                  : activeSceneNodes.length}
+              </strong>
             </div>
             <input
               type="search"
               value={search}
-              placeholder="Tìm scene hoặc layer…"
-              aria-label="Tìm scene hoặc layer"
+              placeholder="Tìm layer…"
+              aria-label="Tìm layer"
               onChange={(event) => setSearch(event.target.value)}
             />
           </header>
-          <div className="layout-scene-navigator">
-            <div className="layout-panel-label">
-              <span>Scene</span>
-              <small>
-                {activeSceneIndex >= 0 ? activeSceneIndex + 1 : 0}/{scenes.length}
-              </small>
-            </div>
-            <div className="layout-scene-rail-wrap">
-              <button
-                className="layout-rail-arrow is-previous"
-                type="button"
-                aria-label="Cuộn scene về trước"
-                onClick={() => scrollSceneRail(-1)}
-              >
-                <ArrowLeftIcon />
-              </button>
-              <div
-                className="layout-scene-rail"
-                ref={sceneRailRef}
-                role="tablist"
-                aria-label="Chọn scene"
-              >
-                {visibleScenes.map((scene) => {
-                  const sceneIndex = scenes.findIndex(
-                    (item) => item.sceneId === scene.sceneId,
-                  );
-                  const active = activeScene?.sceneId === scene.sceneId;
-                  const modifierCount =
-                    document?.overrides.filter(
-                      (item) => item.sceneId === scene.sceneId,
-                    ).length ?? 0;
-                  return (
-                    <button
-                      className={`layout-scene-chip${active ? ' is-active' : ''}`}
-                      type="button"
-                      role="tab"
-                      aria-selected={active}
-                      data-scene-id={scene.sceneId}
-                      key={scene.sceneId}
-                      onClick={() => selectNode(scene.sceneId)}
-                    >
-                      <span>{String(sceneIndex + 1).padStart(2, '0')}</span>
-                      <strong>{scene.label}</strong>
-                      {modifierCount > 0 && <i>{modifierCount}</i>}
-                    </button>
-                  );
-                })}
-              </div>
-              <button
-                className="layout-rail-arrow is-next"
-                type="button"
-                aria-label="Cuộn scene tiếp theo"
-                onClick={() => scrollSceneRail(1)}
-              >
-                <ArrowRightIcon />
-              </button>
-            </div>
-          </div>
           <div className="layout-layer-browser">
-            <div className="layout-panel-label">
-              <span>Layer</span>
-              <small>
-                {timelineHiddenNodeCount > 0
-                  ? `${activeSceneNodes.length}/${activeScene?.nodes.length ?? 0} đang hiện`
-                  : `${activeSceneNodes.length} node`}
-              </small>
-            </div>
             <div className="layout-layer-list">
               {!activeScene ? (
                 <div className="layout-list-empty">
@@ -2141,6 +2149,7 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                       const selected =
                         selection?.sceneId === activeScene.sceneId &&
                         selection.nodeKey === node.key;
+                      const summary = patchSummary(nodeOverride?.patch ?? {});
                       return (
                         <button
                           className={`layout-node-row${
@@ -2159,9 +2168,7 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                           </span>
                           <span>
                             <strong>{node.label}</strong>
-                            <small>
-                              {patchSummary(nodeOverride?.patch ?? {})}
-                            </small>
+                            {summary && <small>{summary}</small>}
                           </span>
                           {(nodeOverride?.patch.hidden ||
                             node.identity === 'legacy') && (
@@ -2184,15 +2191,8 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
               ))}
             </div>
           </div>
-          <footer>
-            <span className={manifestStored ? 'is-ready' : ''} />
-            {manifestStored
-              ? 'Node map đã được xác nhận'
-              : hasKnownNodes
-                ? 'Đã tải node map · đang kết nối canvas'
-                : 'Đang nhận diện node trong scene'}
-          </footer>
         </aside>
+        <EditorResizeHandle panel="left" controller={editorWorkspace} />
 
         <div className="layout-preview-column">
           <div className="layout-preview-frame">
@@ -2228,17 +2228,21 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
               </div>
             )}
             {layout.previewState === 'ready' && layout.previewUrl && (
-              <iframe
-                ref={frameRef}
-                key={`${layout.previewSessionNonce}:${frameReloadKey}`}
-                title="Layout Editor Motion Canvas"
-                src={layout.previewUrl}
-                allow="autoplay; fullscreen"
-                sandbox="allow-scripts allow-same-origin"
-                referrerPolicy="no-referrer"
-                allowFullScreen
-                onLoad={() => sendCommand('requestReady')}
-              />
+              <EditorCanvasViewport
+                zoom={editorWorkspace.preferences.canvasZoom}
+              >
+                <iframe
+                  ref={frameRef}
+                  key={`${layout.previewSessionNonce}:${frameReloadKey}`}
+                  title="Layout Editor Motion Canvas"
+                  src={layout.previewUrl}
+                  allow="autoplay; fullscreen"
+                  sandbox="allow-scripts allow-same-origin"
+                  referrerPolicy="no-referrer"
+                  allowFullScreen
+                  onLoad={() => sendCommand('requestReady')}
+                />
+              </EditorCanvasViewport>
             )}
             {layout.previewState === 'ready' &&
               layout.previewUrl &&
@@ -2278,7 +2282,18 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                 ＋ Text
               </button>
               <button
-                ref={shortcutCloseRef}
+                type="button"
+                title="Chọn khung nội dung của scene"
+                disabled={!runtimeReady || !activeScene || !activeContentFrame}
+                onClick={() =>
+                  activeScene &&
+                  activeContentFrame &&
+                  selectNode(activeScene.sceneId, activeContentFrame.key)
+                }
+              >
+                Toàn cảnh
+              </button>
+              <button
                 type="button"
                 title="Hoàn tác (Ctrl+Z)"
                 aria-label="Hoàn tác"
@@ -2286,7 +2301,6 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                 onClick={() => sendCommand('undo')}
               >
                 <UndoIcon />
-                <kbd>Ctrl Z</kbd>
               </button>
               <button
                 type="button"
@@ -2296,26 +2310,10 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                 onClick={() => sendCommand('redo')}
               >
                 <RedoIcon />
-                <kbd>Ctrl ⇧ Z</kbd>
               </button>
             </div>
-            <div className="layout-command-context">
-              <span className="layout-selection-dot" />
-              <span>
-                {selection ? selection.label : activeScene?.label ?? 'Chưa chọn layer'}
-              </span>
-              <code>
-                {runtimeState
-                  ? `${formatTime(runtimeState.frame, runtimeState.fps)} / ${formatTime(
-                      runtimeState.duration,
-                      runtimeState.fps,
-                    )}`
-                  : runtimeError
-                    ? 'Player chưa kết nối'
-                    : 'Đang kết nối…'}
-              </code>
-            </div>
             <div className="layout-command-group is-secondary">
+              <EditorCanvasZoom controller={editorWorkspace} />
               {focusMode && (
                 <span
                   className={`layout-focus-save-state${
@@ -2344,7 +2342,7 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                 disabled={!selection}
                 onClick={copySelectedPatch}
               >
-                Sao chép <kbd>Ctrl C</kbd>
+                Sao chép
               </button>
               <button
                 type="button"
@@ -2355,7 +2353,7 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                 }
                 onClick={pasteSelectedPatch}
               >
-                Dán <kbd>Ctrl V</kbd>
+                Dán
               </button>
               <button
                 className="layout-command-help"
@@ -2365,7 +2363,6 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                 onClick={() => setShortcutsOpen(true)}
               >
                 <KeyboardIcon />
-                <kbd>?</kbd>
               </button>
               <button
                 className={`layout-command-focus${focusMode ? ' is-active' : ''}`}
@@ -2390,6 +2387,7 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
             </div>
           </div>
         </div>
+        <EditorResizeHandle panel="right" controller={editorWorkspace} />
 
         <aside className="layout-inspector" aria-label="Thuộc tính node">
           {!selection ? (
@@ -2408,7 +2406,6 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                 <div>
                   <span>{selection.nodeType}</span>
                   <h2>{selection.label}</h2>
-                  <code title={selection.nodeKey}>{selection.nodeKey}</code>
                 </div>
                 <button
                   type="button"
@@ -2431,6 +2428,33 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                   {selection.editorLocked ? <LockIcon /> : <UnlockIcon />}
                 </button>
               </header>
+
+              <div className="layout-container-actions">
+                <span>
+                  {selection.role === 'content'
+                    ? 'Khung nội dung'
+                    : selection.role === 'block'
+                      ? 'Khối visual'
+                      : 'Phần tử'}
+                </span>
+                {(selection.role === 'block' ||
+                  selection.role === 'content') && (
+                  <button
+                    type="button"
+                    onClick={() => sendCommand('enterSelectedContainer')}
+                  >
+                    Chỉnh bên trong
+                  </button>
+                )}
+                {runtimeState?.enteredContainerKey && (
+                  <button
+                    type="button"
+                    onClick={() => sendCommand('selectParentContainer')}
+                  >
+                    Lên khung cha
+                  </button>
+                )}
+              </div>
 
               {selection.identity === 'legacy' && (
                 <p className="layout-legacy-note">
@@ -2466,7 +2490,11 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                       <label key={property}>
                         <span>{label}</span>
                         <LayoutNumberInput
-                          value={selection.patch[property] ?? fallback}
+                          value={
+                            selection.animatedPatch?.[property] ??
+                            selection.patch[property] ??
+                            fallback
+                          }
                           min={min}
                           max={max}
                           step={step}
@@ -2480,6 +2508,31 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                   )}
                 </div>
               </section>
+              {selection.animations && selection.animations.length > 0 && (
+                <section className="layout-property-section">
+                  <h3>Chuyển động</h3>
+                  <div className="layout-animation-tracks">
+                    {selection.animations.map(track => (
+                      <div key={track.property}>
+                        <span>
+                          {track.property}
+                          <small>{track.keyframes.length} keyframe</small>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            sendCommand('clearPropertyTrack', {
+                              property: track.property,
+                            })
+                          }
+                        >
+                          Xóa track
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
 
               {selection.editableProperties.includes('text') && (
                 <section className="layout-property-section layout-typography-section">
@@ -2613,7 +2666,11 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                   <span>
                     Opacity
                     <strong>
-                      {Math.round((selection.patch.opacity ?? 1) * 100)}%
+                      {Math.round(
+                        (selection.animatedPatch?.opacity ??
+                          selection.patch.opacity ??
+                          1) * 100,
+                      )}%
                     </strong>
                   </span>
                   <input
@@ -2621,7 +2678,11 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                     min={0}
                     max={1}
                     step={0.01}
-                    value={selection.patch.opacity ?? 1}
+                    value={
+                      selection.animatedPatch?.opacity ??
+                      selection.patch.opacity ??
+                      1
+                    }
                     disabled={!canEdit('opacity')}
                     onChange={(event) =>
                       sendNumericPatch(
@@ -2631,7 +2692,11 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                     }
                   />
                   <LayoutNumberInput
-                    value={selection.patch.opacity ?? 1}
+                    value={
+                      selection.animatedPatch?.opacity ??
+                      selection.patch.opacity ??
+                      1
+                    }
                     min={0}
                     max={1}
                     step={0.01}
@@ -2832,6 +2897,56 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
             </>
           )}
         </aside>
+        {runtimeState && timelineScenes.length > 0 && (
+          <>
+            <EditorResizeHandle
+              panel="timeline"
+              controller={editorWorkspace}
+            />
+            <ProfessionalTimeline
+              frame={runtimeState.frame}
+              duration={runtimeState.duration}
+              fps={runtimeState.fps}
+              scenes={timelineScenes}
+              markers={timelineMarkers}
+              activeSceneId={activeScene?.sceneId ?? runtimeState.sceneId}
+              selectedNodeKey={selection?.nodeKey}
+              editableProperties={selection?.editableProperties}
+              animationDisabled={selection?.editorLocked}
+              overrides={document?.overrides ?? []}
+              audioUrl={animationSyncAudioUrl(
+                projectId,
+                sourceSync.generation.generationId,
+              )}
+              onSeek={frame => sendCommand('seek', {frame})}
+              onSelectNode={selectNode}
+              onSetKeyframe={(property, _value, easing) =>
+                sendCommand('setPropertyKeyframe', {
+                  property,
+                  value: selectedAnimationValue(property),
+                  easing,
+                })
+              }
+              onRemoveKeyframe={(property, timeSeconds) =>
+                sendCommand('removePropertyKeyframe', {
+                  property,
+                  timeSeconds,
+                })
+              }
+              onMoveKeyframe={(
+                property,
+                fromTimeSeconds,
+                toTimeSeconds,
+              ) =>
+                sendCommand('movePropertyKeyframe', {
+                  property,
+                  fromTimeSeconds,
+                  toTimeSeconds,
+                })
+              }
+            />
+          </>
+        )}
       </section>
 
       {shortcutsOpen && (
@@ -2859,6 +2974,7 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
                 </div>
               </div>
               <button
+                ref={shortcutCloseRef}
                 type="button"
                 aria-label="Đóng bảng phím tắt"
                 onClick={() => setShortcutsOpen(false)}

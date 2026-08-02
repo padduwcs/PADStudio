@@ -341,10 +341,11 @@ export function useMotionCanvasDraft(projectId: string) {
 
   const sourceGenerationId =
     project?.motionCanvasBundle?.generation.generationId ?? '';
+  const sourceIsStale = project ? motionCanvasIsStale(project) : false;
 
   useEffect(() => {
     let active = true;
-    if (loadState !== 'ready' || !sourceGenerationId) {
+    if (loadState !== 'ready' || !sourceGenerationId || sourceIsStale) {
       setPreviewState('idle');
       setPreviewUrl('');
       setPreviewSessionNonce('');
@@ -379,7 +380,13 @@ export function useMotionCanvasDraft(projectId: string) {
     return () => {
       active = false;
     };
-  }, [loadState, previewRetryKey, projectId, sourceGenerationId]);
+  }, [
+    loadState,
+    previewRetryKey,
+    projectId,
+    sourceGenerationId,
+    sourceIsStale,
+  ]);
 
   const candidateId = candidate?.candidateId ?? '';
   useEffect(() => {

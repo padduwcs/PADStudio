@@ -3393,6 +3393,7 @@ export default makeScene2D(function* (view) {
   assert.equal(layoutApproveResponse.status, 200);
   assert.equal(layoutApproveBody.project.revision, 14);
   assert.equal(layoutApproveBody.project.layoutBundle.status, 'approved');
+  assert.equal(layoutApproveBody.project.currentStep, 'render');
 
   const repeatedLayoutApproveResponse = await fetch(
     `${baseUrl}/api/projects/${project.id}/layout/approve`,
@@ -3646,6 +3647,54 @@ export default makeScene2D(function* (view) {
   );
   assert.equal(visualOnlyUpdateBody.project.layoutBundle.status, 'draft');
   assert.equal(visualOnlyUpdateBody.project.renderBundle, null);
+
+  const staleMotionDesignResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/motion-canvas/design`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"17"',
+      },
+      body: JSON.stringify({
+        sourceMotionCanvasGenerationId:
+          motionGenerateBody.project.motionCanvasBundle.generation.generationId,
+        sessionNonce: layoutSessionNonce,
+        overrides: motionDesignOverrides,
+      }),
+    },
+  );
+  const staleMotionDesignBody = await staleMotionDesignResponse.json();
+  assert.equal(staleMotionDesignResponse.status, 409);
+  assert.equal(
+    staleMotionDesignBody.error.code,
+    'MOTION_CANVAS_OUTDATED',
+  );
+
+  const staleVoiceApproveResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/voice/approve`,
+    {
+      method: 'POST',
+      headers: {'If-Match': '"17"'},
+    },
+  );
+  const staleVoiceApproveBody = await staleVoiceApproveResponse.json();
+  assert.equal(staleVoiceApproveResponse.status, 409);
+  assert.equal(staleVoiceApproveBody.error.code, 'VOICE_OUTDATED');
+
+  const staleSyncApproveResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/sync/approve`,
+    {
+      method: 'POST',
+      headers: {'If-Match': '"17"'},
+    },
+  );
+  const staleSyncApproveBody = await staleSyncApproveResponse.json();
+  assert.equal(staleSyncApproveResponse.status, 409);
+  assert.equal(
+    staleSyncApproveBody.error.code,
+    'ANIMATION_SYNC_OUTDATED',
+  );
 
   const visualPlan = visualOnlyUpdateBody.project.voiceVisualPlan;
   const voiceTextUpdateResponse = await fetch(

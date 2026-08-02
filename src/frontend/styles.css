@@ -1828,6 +1828,41 @@ kbd {
   background: #fffafa;
 }
 
+.page-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.page-state .page-state-actions button {
+  margin-top: 0;
+}
+
+.route-error-state details {
+  width: min(420px, 100%);
+  margin-top: 18px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  text-align: left;
+}
+
+.route-error-state summary {
+  cursor: pointer;
+  text-align: center;
+}
+
+.route-error-state code {
+  display: block;
+  margin-top: 8px;
+  padding: 9px;
+  overflow-wrap: anywhere;
+  border-radius: 8px;
+  background: rgba(123, 67, 49, 0.07);
+  font-family: "Cascadia Code", Consolas, monospace;
+}
+
 .outline-workspace {
   min-width: 0;
   width: min(1050px, 100%);

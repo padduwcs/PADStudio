@@ -6,6 +6,10 @@ import {
   getOverride,
   normalizeDocument,
   patchDocument,
+  patchPropertyKeyframeDocument,
+  removePropertyKeyframeDocument,
+  clearPropertyTrackDocument,
+  propertyValueAtTime,
   patchVisibilityDocument,
   clearVisibilityDocument,
   resetDocumentNode,
@@ -328,4 +332,104 @@ test('text typography modifiers are normalized, applied, and restored', () => {
   assert.equal(node.fontSize(), 48);
   assert.equal(node.fontWeight(), 400);
   assert.equal(node.fontStyle(), 'normal');
+});
+
+test('property tracks interpolate easing and compose with animated source signals', () => {
+  const base = normalizeDocument(null, {
+    generationId: 'sync-generation',
+    contentRevision: 3,
+    sourceHash: 'source-hash',
+  });
+  const first = patchPropertyKeyframeDocument(
+    base,
+    'scene-id',
+    'block-search',
+    'block-fingerprint',
+    'scale',
+    0,
+    1,
+    'linear',
+  );
+  const tracked = patchPropertyKeyframeDocument(
+    first,
+    'scene-id',
+    'block-search',
+    'block-fingerprint',
+    'scale',
+    2,
+    2,
+    'linear',
+  );
+  const override = tracked.overrides[0];
+  assert.equal(propertyValueAtTime(override.animations[0], 1), 1.5);
+
+  const node = {scale: signal([2, 3])};
+  const restore = applyOverride(node, override, {timeSeconds: 1});
+  assert.deepEqual(node.scale(), [3, 4.5]);
+  restore();
+  assert.deepEqual(node.scale(), [2, 3]);
+});
+
+test('property keyframes replace by time and tracks clear without losing static patch', () => {
+  const base = patchDocument(
+    normalizeDocument(null),
+    'scene-id',
+    'block-search',
+    'block-fingerprint',
+    {x: 12},
+  );
+  const first = patchPropertyKeyframeDocument(
+    base,
+    'scene-id',
+    'block-search',
+    'block-fingerprint',
+    'opacity',
+    1,
+    0.2,
+  );
+  const replaced = patchPropertyKeyframeDocument(
+    first,
+    'scene-id',
+    'block-search',
+    'block-fingerprint',
+    'opacity',
+    1,
+    0.8,
+  );
+  assert.equal(
+    replaced.overrides[0].animations[0].keyframes.length,
+    1,
+  );
+  assert.equal(
+    replaced.overrides[0].animations[0].keyframes[0].value,
+    0.8,
+  );
+
+  const removed = removePropertyKeyframeDocument(
+    replaced,
+    'scene-id',
+    'block-search',
+    'opacity',
+    1,
+  );
+  assert.equal(removed.overrides[0].animations, undefined);
+  assert.equal(removed.overrides[0].patch.x, 12);
+
+  const retracked = patchPropertyKeyframeDocument(
+    removed,
+    'scene-id',
+    'block-search',
+    'block-fingerprint',
+    'x',
+    0,
+    10,
+  );
+  const cleared = clearPropertyTrackDocument(
+    retracked,
+    'scene-id',
+    'block-search',
+    'x',
+  );
+  assert.equal(cleared.overrides[0].animations, undefined);
+  assert.equal(cleared.overrides[0].patch.x, 12);
 });

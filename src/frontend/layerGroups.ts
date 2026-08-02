@@ -49,10 +49,14 @@ export function groupEditorLayers(
     }
 
     const root = ancestry[0];
+    const explicitBlock = ancestry.find(item => item.role === 'block');
+    const explicitContent = ancestry.find(item => item.role === 'content');
     const component =
-      root && rootKeys.has(root.key)
+      explicitBlock ??
+      explicitContent ??
+      (root && rootKeys.has(root.key)
         ? ancestry[1] ?? root
-        : root ?? node;
+        : root ?? node);
     const groupId =
       component.key === node.key &&
       ancestry.length <= 2 &&

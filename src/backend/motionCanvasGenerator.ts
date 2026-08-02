@@ -415,6 +415,8 @@ function buildPrompt(
     'Dùng đúng tên export createRef, createSignal và easeInOutCubic; không import ref, signal hoặc easing.',
     'Không dùng JSX.Element hoặc namespace JSX trong type annotation.',
     'Mọi visual JSX node phải có key là string literal tường minh, duy nhất trong scene và mô tả đúng vai trò ổn định của node, kể cả node có ref. Dùng lowercase kebab-case gồm ít nhất hai từ, ví dụ key="search-range" hoặc key="pivot-marker".',
+    'Mọi scene mới phải có đúng một container key="scene-content-root" nằm trong scene-background. Mỗi cụm nội dung có thể thao tác độc lập phải nằm trong container có key bắt đầu bằng "block-". Container đặt tại tâm logic của cụm, còn node con dùng tọa độ local tương đối để người dùng scale/move cả khối mà không phá animation nội bộ.',
+    'scene-background chỉ giữ canvas/nền và scene-content-root; không đặt visual nội dung rời bên ngoài content root. Ưu tiên Layout làm container vô hình, không thêm border chỉ để biểu diễn khung editor.',
     'Không dùng index, thứ tự, nội dung hiển thị, vị trí hiện tại, UUID, random, biểu thức hoặc biến để tạo key. Không sinh visual JSX node bằng map/loop; hãy khai báo tường minh để Layout Editor giữ được identity ổn định.',
     'Không dùng scaleX/scaleY; dùng scale([x, y], duration) hoặc width/height với duration.',
     'Không yield* view.add/node.add. Mọi giá trị truyền vào all/chain hoặc yield* phải là animation generator, thường là signal(value, duration).',
@@ -456,6 +458,7 @@ function buildRepairPrompt(
     'Tên export phải dùng chính xác: createRef, createSignal, easeInOutCubic; không import ref, signal hoặc easing.',
     'Không dùng JSX.Element, scaleX/scaleY, hoặc yield* một node/setter không có duration.',
     'Giữ hoặc bổ sung key string literal lowercase kebab-case có ít nhất hai từ cho mọi visual JSX node, kể cả node có ref; key phải duy nhất trong scene và mô tả vai trò ổn định của node.',
+    'Giữ hoặc bổ sung scene-content-root và các container block-* cho từng cụm visual. Node con phải dùng tọa độ local của block; không làm phẳng mọi node trực tiếp dưới scene-background.',
     'Không tạo key từ index, thứ tự, nội dung, vị trí, UUID, random, biểu thức hoặc biến. Không sinh visual JSX node bằng map/loop.',
     'Giá trị flex dùng kebab-case như space-between, space-around hoặc space-evenly; không dùng spaceBetween.',
     `Giữ font mặc định của mọi Txt là ${MOTION_CANVAS_DEFAULT_FONT_FAMILY}; không xóa fontFamily khi sửa lỗi.`,
@@ -1060,6 +1063,129 @@ export function validateMotionCanvasBackground(
   }
 }
 
+export function validateMotionCanvasContainerContract(source: string) {
+  const sourceFile = ts.createSourceFile(
+    'generated-scene.tsx',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const nodes: Array<{key: string; parentKey: string | null}> = [];
+
+  function staticKey(
+    node: ts.JsxOpeningElement | ts.JsxSelfClosingElement,
+  ) {
+    const attribute = node.attributes.properties.find(
+      candidate =>
+        ts.isJsxAttribute(candidate) &&
+        ts.isIdentifier(candidate.name) &&
+        candidate.name.text === 'key',
+    );
+    if (!attribute || !ts.isJsxAttribute(attribute)) return null;
+    const initializer = attribute.initializer;
+    if (initializer && ts.isStringLiteral(initializer)) {
+      return initializer.text;
+    }
+    if (
+      initializer &&
+      ts.isJsxExpression(initializer) &&
+      initializer.expression &&
+      (ts.isStringLiteral(initializer.expression) ||
+        ts.isNoSubstitutionTemplateLiteral(initializer.expression))
+    ) {
+      return initializer.expression.text;
+    }
+    return null;
+  }
+
+  function parentKey(node: ts.Node) {
+    let parent: ts.Node | undefined = node.parent;
+    while (parent) {
+      if (
+        ts.isJsxElement(parent) &&
+        parent.openingElement !== node
+      ) {
+        const key = staticKey(parent.openingElement);
+        if (key) return key;
+      }
+      parent = parent.parent;
+    }
+    return null;
+  }
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isJsxOpeningElement(node) ||
+      ts.isJsxSelfClosingElement(node)
+    ) {
+      const key = staticKey(node);
+      if (key) nodes.push({key, parentKey: parentKey(node)});
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+
+  const contentRoots = nodes.filter(
+    node => node.key === 'scene-content-root',
+  );
+  const blockKeys = new Set(
+    nodes
+      .filter(node => node.key.startsWith('block-'))
+      .map(node => node.key),
+  );
+  const parentByKey = new Map(
+    nodes.map(node => [node.key, node.parentKey]),
+  );
+  function descendsFrom(key: string, ancestorKey: string) {
+    const visited = new Set<string>();
+    let current = parentByKey.get(key) ?? null;
+    while (current && !visited.has(current)) {
+      if (current === ancestorKey) return true;
+      visited.add(current);
+      current = parentByKey.get(current) ?? null;
+    }
+    return false;
+  }
+  function descendsFromAnyBlock(key: string) {
+    const visited = new Set<string>();
+    let current = parentByKey.get(key) ?? null;
+    while (current && !visited.has(current)) {
+      if (blockKeys.has(current)) return true;
+      visited.add(current);
+      current = parentByKey.get(current) ?? null;
+    }
+    return false;
+  }
+  const unframedContent = nodes.filter(
+    node =>
+      node.key !== 'scene-background' &&
+      node.key !== 'scene-content-root' &&
+      (
+        !descendsFrom(node.key, 'scene-content-root') ||
+        (
+          !node.key.startsWith('block-') &&
+          !descendsFromAnyBlock(node.key)
+        )
+      ),
+  );
+
+  if (
+    contentRoots.length !== 1 ||
+    contentRoots[0]!.parentKey !== 'scene-background' ||
+    blockKeys.size === 0 ||
+    [...blockKeys].some(
+      key => !descendsFrom(key, 'scene-content-root'),
+    ) ||
+    unframedContent.length > 0
+  ) {
+    throw new MotionCanvasGenerationError(
+      'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+      'Scene phải có scene-content-root trong scene-background và các container block-* dùng tọa độ local.',
+    );
+  }
+}
+
 function mapStructuredError(error: CodexStructuredGenerationError) {
   if (error.reason === 'timeout') {
     return new MotionCanvasGenerationError(
@@ -1123,7 +1249,7 @@ function fallbackSceneSource(
   );
   yield* waitFor(Math.max(0, beatEndTime${number} - useThread().time()));`;
   });
-  return `import {makeScene2D, Rect, Txt} from '@motion-canvas/2d';
+  return `import {Layout, makeScene2D, Rect, Txt} from '@motion-canvas/2d';
 import {all, createRef, useDuration, useThread, waitFor, waitUntil} from '@motion-canvas/core';
 
 export default makeScene2D(function* (view) {
@@ -1133,25 +1259,27 @@ export default makeScene2D(function* (view) {
 
   view.add(
     <Rect key="scene-background" width={1080} height={1920} fill={${JSON.stringify(background.color)}}>
-      <Txt
-        key="scene-heading"
-        text={${JSON.stringify(outlineSection.title.slice(0, 80))}}
-        y={-650}
-        width={880}
-        fill={${JSON.stringify(foreground)}}
-        fontSize={66}
-        fontWeight={700}
-        textAlign={'center'}
-      />
-      <Rect
-        key="concept-card"
-        ref={conceptCard}
-        width={860}
-        height={520}
-        radius={52}
-        fill={'#51B68E'}
-        padding={64}
-      >
+      <Layout key="scene-content-root">
+        <Layout key="block-scene-heading" y={-650}>
+          <Txt
+            key="scene-heading"
+            text={${JSON.stringify(outlineSection.title.slice(0, 80))}}
+            width={880}
+            fill={${JSON.stringify(foreground)}}
+            fontSize={66}
+            fontWeight={700}
+            textAlign={'center'}
+          />
+        </Layout>
+        <Rect
+          key="block-concept-card"
+          ref={conceptCard}
+          width={860}
+          height={520}
+          radius={52}
+          fill={'#51B68E'}
+          padding={64}
+        >
         <Txt
           key="concept-label"
           ref={conceptLabel}
@@ -1162,19 +1290,22 @@ export default makeScene2D(function* (view) {
           fontWeight={650}
           textAlign={'center'}
         />
-      </Rect>
-      <Rect key="progress-track" y={650} width={760} height={18} radius={9} fill={${JSON.stringify(trackColor)}}>
-        <Rect
-          key="progress-fill"
-          ref={progressFill}
-          width={0}
-          height={18}
-          radius={9}
-          fill={${JSON.stringify(foreground)}}
-          offsetX={-1}
-          x={-380}
-        />
-      </Rect>
+        </Rect>
+        <Layout key="block-progress-track" y={650}>
+          <Rect key="progress-track" width={760} height={18} radius={9} fill={${JSON.stringify(trackColor)}}>
+            <Rect
+              key="progress-fill"
+              ref={progressFill}
+              width={0}
+              height={18}
+              radius={9}
+              fill={${JSON.stringify(foreground)}}
+              offsetX={-1}
+              x={-380}
+            />
+          </Rect>
+        </Layout>
+      </Layout>
     </Rect>,
   );
 
@@ -1467,6 +1598,7 @@ export function createCodexMotionCanvasGenerator(
       result.scene.source,
       request.topicInput.background.color,
     );
+    validateMotionCanvasContainerContract(result.scene.source);
     validateMotionCanvasTimingContract(
       result.scene.source,
       request.voiceVisualPlan.sections[sectionIndex]!.beats,

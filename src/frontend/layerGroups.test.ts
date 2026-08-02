@@ -15,11 +15,45 @@ function node(
     nodeType,
     parentKey,
     identity: 'semantic',
+    role: 'element',
     editableProperties: ['opacity'],
     lockedProperties: [],
     lockReason: null,
   };
 }
+
+test('content root không nuốt các block semantic độc lập', () => {
+  const background = {...node('scene-background', null), role: 'background' as const};
+  const content = {
+    ...node('scene-content-root', 'scene-background', 'Layout'),
+    role: 'content' as const,
+  };
+  const firstBlock = {
+    ...node('block-title', 'scene-content-root', 'Layout'),
+    role: 'block' as const,
+  };
+  const secondBlock = {
+    ...node('block-diagram', 'scene-content-root', 'Layout'),
+    role: 'block' as const,
+  };
+  const nodes = [
+    background,
+    content,
+    firstBlock,
+    node('title-label', 'block-title', 'Txt'),
+    secondBlock,
+    node('diagram-card', 'block-diagram'),
+  ];
+  assert.deepEqual(
+    groupEditorLayers(nodes, nodes).map(group => group.id),
+    [
+      'scene-background',
+      'scene-content-root',
+      'block-title',
+      'block-diagram',
+    ],
+  );
+});
 
 test('nhóm layer theo component semantic dưới scene root', () => {
   const nodes = [

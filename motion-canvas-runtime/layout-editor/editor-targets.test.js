@@ -2,16 +2,46 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   canonicalizeEditorNodes,
+  blockAncestor,
   chooseEditorNodeHitTarget,
   editorGeometryContainsPoint,
   isEditorNodeTimelineVisible,
   isGeneratedEditorNodeKey,
   isInternalEditorNode,
+  inferEditorNodeRole,
   mergeEditorNodePolicy,
   migrateInternalNodeOverrides,
   resolveCanonicalEditorNodeKey,
   resolveLiveEditorNodeTarget,
 } from './editor-targets.js';
+
+test('container roles and nearest block ancestor are deterministic', () => {
+  const nodes = [
+    {
+      key: 'scene-content-root',
+      parentKey: 'scene-background',
+      role: 'content',
+    },
+    {
+      key: 'block-search-demo',
+      parentKey: 'scene-content-root',
+      role: 'block',
+    },
+    {
+      key: 'search-pointer',
+      parentKey: 'block-search-demo',
+      role: 'element',
+    },
+  ];
+  assert.equal(
+    inferEditorNodeRole({key: 'block-search-demo'}, true),
+    'block',
+  );
+  assert.equal(
+    blockAncestor(nodes, 'search-pointer')?.key,
+    'block-search-demo',
+  );
+});
 
 const text = {
   key: 'title',

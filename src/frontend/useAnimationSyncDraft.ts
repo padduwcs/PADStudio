@@ -84,9 +84,12 @@ export function useAnimationSyncDraft(projectId: string) {
 
   const previewGenerationId =
     project?.animationSyncBundle?.generation.generationId ?? '';
+  const previewIsStale = project
+    ? animationSyncIsStale(project)
+    : false;
   useEffect(() => {
     let active = true;
-    if (!previewGenerationId) {
+    if (!previewGenerationId || previewIsStale) {
       setPreviewState('idle');
       setPreviewUrl('');
       setPreviewError('');
@@ -122,7 +125,12 @@ export function useAnimationSyncDraft(projectId: string) {
     return () => {
       active = false;
     };
-  }, [projectId, previewGenerationId, previewRetryKey]);
+  }, [
+    previewGenerationId,
+    previewIsStale,
+    previewRetryKey,
+    projectId,
+  ]);
 
   async function generate() {
     if (generating || conflict) return null;

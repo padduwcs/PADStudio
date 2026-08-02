@@ -29,6 +29,7 @@ import {
 } from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useVoiceVisualDraft} from './useVoiceVisualDraft.ts';
+import {resolveVoiceVisualSectionPresentation} from './voiceVisualSectionState.ts';
 import {prepareVoiceVisualReviewSuggestions} from './voiceVisualReviewSuggestions.ts';
 
 function formatTime(seconds: number) {
@@ -692,11 +693,17 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
 
               <div className="voice-visual-sections">
                 {draft.sections.map((planSection, sectionIndex) => {
-                  const outlineSection = outline.sections[sectionIndex]!;
                   const sectionSeconds = planSection.beats.reduce(
                     (total, beat) => total + beat.durationSeconds,
                     0,
                   );
+                  const sectionPresentation =
+                    resolveVoiceVisualSectionPresentation(
+                      outline.sections,
+                      planSection.outlineSectionId,
+                      sectionIndex,
+                      sectionSeconds,
+                    );
                   const sectionNarration = planSection.beats
                     .map((beat) => beat.voiceover)
                     .join('\n\n');
@@ -705,7 +712,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                     draft.timingCalibration,
                   );
                   const sectionTokenTarget = targetNarrationTokenCount(
-                    outlineSection.estimatedSeconds,
+                    sectionPresentation.estimatedSeconds,
                   );
 
                   return (
@@ -718,8 +725,13 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                           {String(sectionIndex + 1).padStart(2, '0')}
                         </span>
                         <div>
-                          <h2>{outlineSection.title}</h2>
-                          <p>{outlineSection.goal}</p>
+                          <h2>{sectionPresentation.title}</h2>
+                          <p>{sectionPresentation.goal}</p>
+                          {!sectionPresentation.belongsToCurrentOutline && (
+                            <small className="voice-visual-stale-section">
+                              Không còn trong mạch giảng mới
+                            </small>
+                          )}
                         </div>
                         <span className="voice-visual-section-duration">
                           <ClockIcon />

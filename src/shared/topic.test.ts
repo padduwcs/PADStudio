@@ -637,6 +637,59 @@ test('layout override and manifest schemas enforce stable targets and locks', ()
         {
           ...overrides[0],
           patch: {},
+          animations: [
+            {
+              property: 'scale',
+              keyframes: [
+                {timeSeconds: 0, value: 1, easing: 'linear'},
+                {
+                  timeSeconds: 2,
+                  value: 1.5,
+                  easing: 'ease-in-out',
+                },
+              ],
+            },
+            {
+              property: 'opacity',
+              keyframes: [
+                {timeSeconds: 0, value: 0, easing: 'ease-out'},
+                {timeSeconds: 1, value: 1, easing: 'ease-out'},
+              ],
+            },
+          ],
+        },
+      ],
+    }).success,
+    true,
+  );
+  assert.equal(
+    LayoutOverridesDocumentSchema.safeParse({
+      ...document,
+      overrides: [
+        {
+          ...overrides[0],
+          patch: {},
+          animations: [
+            {
+              property: 'scale',
+              keyframes: [
+                {timeSeconds: 2, value: 1},
+                {timeSeconds: 1, value: 2},
+              ],
+            },
+          ],
+        },
+      ],
+    }).success,
+    false,
+  );
+  assert.equal(
+    LayoutOverridesDocumentSchema.safeParse({
+      ...document,
+      overrides: [
+        {
+          ...overrides[0],
+          patch: {},
           visibility: [
             {timeSeconds: 2.5, hidden: true},
             {timeSeconds: 1.25, hidden: false},

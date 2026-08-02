@@ -281,7 +281,6 @@
   .layout-visibility-button,
   .layout-inspector > footer button,
   .layout-review-step button,
-  .layout-shortcut-trigger,
   .layout-shortcut-dialog > header > button,
   .elevenlabs-connection-card .codex-connection-actions button
 ) {
@@ -316,7 +315,6 @@
   .layout-visibility-button,
   .layout-inspector > footer button,
   .layout-review-step button,
-  .layout-shortcut-trigger,
   .layout-shortcut-dialog > header > button,
   .elevenlabs-connection-card .codex-connection-actions button
 ):hover:not(:disabled) {

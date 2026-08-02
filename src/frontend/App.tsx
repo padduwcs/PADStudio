@@ -41,6 +41,7 @@ import {
   XIcon,
 } from './icons.tsx';
 import {ProjectLibrary} from './ProjectLibrary.tsx';
+import {RouteErrorBoundary} from './RouteErrorBoundary.tsx';
 import {
   navigate,
   navigateDiscardingPendingChanges,
@@ -2450,6 +2451,10 @@ export default function App() {
     };
   }
   const pageTransition = navigationRef.current.transition;
+  const previousStep =
+    activeProjectId && activeStep > 0
+      ? pipelineSteps[activeStep - 1]?.id
+      : null;
 
   const closeLibrary = useCallback(() => setLibraryOpen(false), []);
   const openLibrary = useCallback(() => setLibraryOpen(true), []);
@@ -2530,53 +2535,68 @@ export default function App() {
           className={`workspace-page is-${pageTransition}`}
           key={routeIdentity}
         >
-          <Suspense
-            fallback={
-              <div className="page-state" role="status">
-                <span className="spinner dark" />
-                <strong>Đang mở công cụ của bước này…</strong>
-              </div>
+          <RouteErrorBoundary
+            key={routeIdentity}
+            onRetry={() =>
+              setProjectReloadKey(current => current + 1)
+            }
+            onBack={() =>
+              activeProjectId && previousStep
+                ? navigate(
+                    projectStepPath(activeProjectId, previousStep),
+                    true,
+                  )
+                : navigate('/', true)
             }
           >
-            {route.name === 'new-topic' && (
-              <TopicPage
-                autosavePaused={libraryOpen}
-                onContinue={(project) =>
-                  navigate(projectOutlinePath(project.id), true)
-                }
-              />
-            )}
-            {route.name === 'project-topic' && (
-              <TopicPage
-                projectId={route.projectId}
-                autosavePaused={libraryOpen}
-                onContinue={(project) =>
-                  navigate(projectOutlinePath(project.id), true)
-                }
-              />
-            )}
-            {route.name === 'project-outline' && (
-              <OutlinePage projectId={route.projectId} />
-            )}
-            {route.name === 'project-voice-visual' && (
-              <VoiceVisualPage projectId={route.projectId} />
-            )}
-            {route.name === 'project-motion-canvas' && (
-              <MotionCanvasPage projectId={route.projectId} />
-            )}
-            {route.name === 'project-voice' && (
-              <VoicePage projectId={route.projectId} />
-            )}
-            {route.name === 'project-sync' && (
-              <AnimationSyncPage projectId={route.projectId} />
-            )}
-            {route.name === 'project-layout' && (
-              <LayoutEditorPage projectId={route.projectId} />
-            )}
-            {route.name === 'project-render' && (
-              <FinalRenderPage projectId={route.projectId} />
-            )}
-          </Suspense>
+            <Suspense
+              fallback={
+                <div className="page-state" role="status">
+                  <span className="spinner dark" />
+                  <strong>Đang mở công cụ của bước này…</strong>
+                </div>
+              }
+            >
+              {route.name === 'new-topic' && (
+                <TopicPage
+                  autosavePaused={libraryOpen}
+                  onContinue={(project) =>
+                    navigate(projectOutlinePath(project.id), true)
+                  }
+                />
+              )}
+              {route.name === 'project-topic' && (
+                <TopicPage
+                  projectId={route.projectId}
+                  autosavePaused={libraryOpen}
+                  onContinue={(project) =>
+                    navigate(projectOutlinePath(project.id), true)
+                  }
+                />
+              )}
+              {route.name === 'project-outline' && (
+                <OutlinePage projectId={route.projectId} />
+              )}
+              {route.name === 'project-voice-visual' && (
+                <VoiceVisualPage projectId={route.projectId} />
+              )}
+              {route.name === 'project-motion-canvas' && (
+                <MotionCanvasPage projectId={route.projectId} />
+              )}
+              {route.name === 'project-voice' && (
+                <VoicePage projectId={route.projectId} />
+              )}
+              {route.name === 'project-sync' && (
+                <AnimationSyncPage projectId={route.projectId} />
+              )}
+              {route.name === 'project-layout' && (
+                <LayoutEditorPage projectId={route.projectId} />
+              )}
+              {route.name === 'project-render' && (
+                <FinalRenderPage projectId={route.projectId} />
+              )}
+            </Suspense>
+          </RouteErrorBoundary>
         </div>
       </main>
 

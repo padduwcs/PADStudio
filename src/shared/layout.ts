@@ -63,12 +63,38 @@ export const layoutOverridePropertyValues = [
   'strikethrough',
 ] as const;
 export const layoutNodeIdentityValues = ['semantic', 'legacy'] as const;
+export const layoutNodeRoleValues = [
+  'background',
+  'content',
+  'block',
+  'element',
+] as const;
+export const layoutAnimationPropertyValues = [
+  'x',
+  'y',
+  'scale',
+  'rotation',
+  'opacity',
+] as const;
+export const layoutKeyframeEasingValues = [
+  'linear',
+  'ease-in',
+  'ease-out',
+  'ease-in-out',
+] as const;
 
 export const LayoutStatusSchema = z.enum(layoutStatusValues);
 export const LayoutOverridePropertySchema = z.enum(
   layoutOverridePropertyValues,
 );
 export const LayoutNodeIdentitySchema = z.enum(layoutNodeIdentityValues);
+export const LayoutNodeRoleSchema = z.enum(layoutNodeRoleValues);
+export const LayoutAnimationPropertySchema = z.enum(
+  layoutAnimationPropertyValues,
+);
+export const LayoutKeyframeEasingSchema = z.enum(
+  layoutKeyframeEasingValues,
+);
 
 const CreationIdSchema = z.string().uuid();
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -135,6 +161,81 @@ export type LayoutVisibilityKeyframe = z.infer<
   typeof LayoutVisibilityKeyframeSchema
 >;
 
+export const LayoutPropertyKeyframeSchema = z
+  .object({
+    timeSeconds: z.number().finite().nonnegative().max(86_400),
+    value: z.number().finite(),
+    easing: LayoutKeyframeEasingSchema.default('ease-in-out'),
+  })
+  .strict();
+
+export type LayoutPropertyKeyframe = z.infer<
+  typeof LayoutPropertyKeyframeSchema
+>;
+
+export const LayoutPropertyTrackSchema = z
+  .object({
+    property: LayoutAnimationPropertySchema,
+    keyframes: z
+      .array(LayoutPropertyKeyframeSchema)
+      .min(1)
+      .max(500),
+  })
+  .strict()
+  .superRefine((track, context) => {
+    for (let index = 0; index < track.keyframes.length; index++) {
+      const keyframe = track.keyframes[index]!;
+      const bounds =
+        track.property === 'scale'
+          ? [0.05, 20]
+          : track.property === 'opacity'
+            ? [0, 1]
+            : track.property === 'rotation'
+              ? [-3_600, 3_600]
+              : [-100_000, 100_000];
+      if (keyframe.value < bounds[0]! || keyframe.value > bounds[1]!) {
+        context.addIssue({
+          code: 'custom',
+          message: `Giá trị keyframe ${track.property} nằm ngoài giới hạn.`,
+          path: ['keyframes', index, 'value'],
+        });
+      }
+      if (
+        index > 0 &&
+        keyframe.timeSeconds <=
+          track.keyframes[index - 1]!.timeSeconds
+      ) {
+        context.addIssue({
+          code: 'custom',
+          message:
+            'Các keyframe thuộc tính phải tăng dần và không được trùng.',
+          path: ['keyframes', index, 'timeSeconds'],
+        });
+      }
+    }
+  });
+
+export type LayoutPropertyTrack = z.infer<
+  typeof LayoutPropertyTrackSchema
+>;
+
+export const LayoutPropertyTracksSchema = z
+  .array(LayoutPropertyTrackSchema)
+  .max(layoutAnimationPropertyValues.length)
+  .superRefine((tracks, context) => {
+    const properties = new Set<string>();
+    for (const [index, track] of tracks.entries()) {
+      if (properties.has(track.property)) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Mỗi thuộc tính chỉ được có một animation track.',
+          path: [index, 'property'],
+        });
+      }
+      properties.add(track.property);
+    }
+  });
+
 export const LayoutVisibilityTrackSchema = z
   .array(LayoutVisibilityKeyframeSchema)
   .max(500)
@@ -162,12 +263,14 @@ export const LayoutNodeOverrideSchema = z
     nodeFingerprint: Sha256Schema,
     patch: LayoutNodePatchObjectSchema,
     visibility: LayoutVisibilityTrackSchema.optional(),
+    animations: LayoutPropertyTracksSchema.optional(),
   })
   .strict()
   .superRefine((override, context) => {
     if (
       Object.values(override.patch).every((value) => value === undefined) &&
-      (override.visibility?.length ?? 0) === 0
+      (override.visibility?.length ?? 0) === 0 &&
+      (override.animations?.length ?? 0) === 0
     ) {
       context.addIssue({
         code: 'custom',
@@ -261,6 +364,7 @@ export const LayoutEditorNodeSchema = z
       .regex(/^[A-Za-z][A-Za-z0-9]*$/),
     parentKey: LayoutNodeKeySchema.nullable(),
     identity: LayoutNodeIdentitySchema,
+    role: LayoutNodeRoleSchema.optional(),
     editableProperties: z
       .array(LayoutOverridePropertySchema)
       .min(1)

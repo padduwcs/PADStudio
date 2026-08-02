@@ -181,6 +181,27 @@ là modifier `hidden`, không xóa JSX nên luôn có thể undo hoặc reset. E
 undo/redo, copy/paste modifier, snap, grid, safe-zone, so sánh bản gốc và preview sạch.
 Timing/beat marker chỉ đọc trong MVP vì thay timing sau Sync có thể phá vỡ narration.
 
+Scene generation hiện hành bắt buộc có một `scene-content-root` trực tiếp trong
+`scene-background`; mỗi cụm visual độc lập nằm trong một container `block-*`. Manifest
+gắn role `background | content | block | element`, runtime tính bounding box hợp nhất
+của hậu duệ để block/toàn cảnh có transform riêng. Hit-test ưu tiên block, double-click
+đi vào phần tử con và Escape đi lên khung cha. Generation cũ không có role tiếp tục dùng
+chế độ legacy, không bị migration suy đoán cấu trúc.
+
+Motion Design và Layout Editor dùng chung timeline editor. Overlay hỗ trợ track số cho
+`x`, `y`, `scale`, `rotation`, `opacity`; mỗi keyframe lưu thời gian cục bộ scene, giá trị
+và easing. Runtime modifier là nguồn nội suy duy nhất cho canvas, hit-test, preview Sync
+và final render. Track animation được compose lên signal gốc thay vì ghi ngược source;
+static patch, visibility track và animation track có vòng đời độc lập. Tại ranh giới
+Motion Design → Sync, thời gian keyframe được scale đúng một lần từ planned duration sang
+synchronized duration; Layout overlay đã lưu không bị scale lặp lại. Timeline là dock
+thuộc editor shell nên vẫn hiện trong focus mode; sidebar chỉ giữ cây layer, còn scene
+strip/scrubber ở dock đảm nhiệm điều hướng để giao diện không có hai bộ chọn scene.
+Workspace editor dùng chung preference cục bộ cho zoom canvas `50%–300%` và kích thước
+ba panel Layers/Thuộc tính/Timeline. Tay nắm là ARIA separator, dùng được bằng pointer,
+phím mũi tên, Enter/Space và Home; nhấp đúp thu gọn hoặc khôi phục. Bộ giới hạn giữ vùng
+canvas tối thiểu, còn breakpoint hẹp bỏ split-resize và quay về bố cục xếp dọc đầy đủ.
+
 Thay đổi không được ghi ngược vào source Sync. Runtime áp modifier tạm thời trước khi
 render/hit-test rồi khôi phục raw signal trong `finally`. Bước render cuối tái sử dụng
 đúng adapter modifier và node fingerprint đã được Layout Editor xác minh. Backend lưu

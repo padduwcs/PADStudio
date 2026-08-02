@@ -18,6 +18,7 @@ import {
 } from './router.ts';
 import {ResponsiveAside} from './ResponsiveAside.tsx';
 import {useAnimationSyncDraft} from './useAnimationSyncDraft.ts';
+import {resolveVoiceVisualSectionPresentation} from './voiceVisualSectionState.ts';
 
 function formatTime(seconds: number) {
   const rounded = Math.max(0, Math.round(seconds));
@@ -108,6 +109,13 @@ export function AnimationSyncPage({projectId}: {projectId: string}) {
       window.setTimeout(() => setCopied(false), 1_500);
     } catch {
       setCopied(false);
+    }
+  }
+
+  async function handleApprove() {
+    const approvedProject = await sync.approve();
+    if (approvedProject) {
+      navigate(projectLayoutPath(approvedProject.id), true);
     }
   }
 
@@ -237,11 +245,6 @@ export function AnimationSyncPage({projectId}: {projectId: string}) {
           </button>
         </div>
       )}
-      {sync.stale && (
-        <div className="outline-alert" role="status">
-          Scene hoặc voice đã thay đổi. Bản đồng bộ hiện tại cần được tạo lại.
-        </div>
-      )}
       {sync.actionError && (
         <div className="outline-alert is-error" role="alert">
           {sync.actionError}
@@ -344,6 +347,29 @@ export function AnimationSyncPage({projectId}: {projectId: string}) {
             </section>
           </ResponsiveAside>
         </div>
+      ) : sync.stale ? (
+        <section className="sync-blocked-card" role="status">
+          <span className="sync-blocked-icon">
+            <ClockIcon />
+          </span>
+          <div>
+            <span className="preview-kicker">Bản đồng bộ cũ đã được khóa</span>
+            <h2>Tạo lại timeline từ scene và voice hiện tại</h2>
+            <p>
+              Generation cũ vẫn được giữ trong project nhưng không mở player
+              hoặc cho phép chốt, tránh review nhầm timing của nguồn trước đó.
+            </p>
+          </div>
+          <button
+            className="submit-button"
+            type="button"
+            disabled={sync.generating || sync.conflict}
+            onClick={() => void sync.generate()}
+          >
+            {sync.generating ? 'Đang đồng bộ lại…' : 'Đồng bộ lại'}
+            {!sync.generating && <SparkIcon />}
+          </button>
+        </section>
       ) : (
         <>
           <section className="sync-preview-review">
@@ -535,7 +561,13 @@ export function AnimationSyncPage({projectId}: {projectId: string}) {
             </summary>
             <div className="sync-section-list">
               {bundle.sections.map((section, sectionIndex) => {
-                const outlineSection = outline.sections[sectionIndex];
+                const sectionPresentation =
+                  resolveVoiceVisualSectionPresentation(
+                    outline.sections,
+                    section.outlineSectionId,
+                    sectionIndex,
+                    section.synchronizedDurationSeconds,
+                  );
                 return (
                   <article
                     className="sync-section-card"
@@ -546,7 +578,12 @@ export function AnimationSyncPage({projectId}: {projectId: string}) {
                         {String(sectionIndex + 1).padStart(2, '0')}
                       </span>
                       <div>
-                        <h3>{outlineSection?.title ?? `Section ${sectionIndex + 1}`}</h3>
+                        <h3>{sectionPresentation.title}</h3>
+                        {!sectionPresentation.belongsToCurrentOutline && (
+                          <span className="voice-visual-stale-section">
+                            Timing từ phiên bản cũ
+                          </span>
+                        )}
                         <p>
                           {formatSeconds(section.plannedDurationSeconds)}
                           {' → '}
@@ -626,7 +663,7 @@ export function AnimationSyncPage({projectId}: {projectId: string}) {
                   if (approved) {
                     navigate(projectLayoutPath(project.id));
                   } else {
-                    void sync.approve();
+                    void handleApprove();
                   }
                 }}
               >

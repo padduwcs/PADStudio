@@ -1,6 +1,7 @@
 import {Player, Stage} from '@motion-canvas/core';
 import {
   applySceneOverrides,
+  animatedPatchAtTime,
   buildModifierIndex,
   editableProperties,
   getOverride,
@@ -9,7 +10,10 @@ import {
   normalizeDocument,
   patchVisibilityDocument,
   clearVisibilityDocument,
+  clearPropertyTrackDocument,
   patchDocument,
+  patchPropertyKeyframeDocument,
+  removePropertyKeyframeDocument,
   resetDocumentNode,
   serializeSignalValue,
   sha256,
@@ -22,10 +26,12 @@ import {
 } from './protocol.js';
 import {
   canonicalizeEditorNodes,
+  blockAncestor,
   chooseEditorNodeHitTarget,
   editorGeometryContainsPoint,
   isEditorNodeTimelineVisible,
   isGeneratedEditorNodeKey,
+  inferEditorNodeRole,
   mergeEditorNodePolicy,
   migrateInternalNodeOverrides,
   resolveLiveEditorNodeTarget,
@@ -255,6 +261,58 @@ function nodeGeometry(node) {
   } catch {
     return null;
   }
+}
+
+function aggregateGeometry(scene, manifestScene, node) {
+  const own = nodeGeometry(node);
+  const manifestNode = manifestScene?.nodes?.find(
+    item => item.key === node?.key,
+  );
+  if (
+    !manifestNode ||
+    !['block', 'content'].includes(manifestNode.role)
+  ) {
+    return own;
+  }
+  const descendants = new Set([manifestNode.key]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const candidate of manifestScene.nodes ?? []) {
+      if (
+        candidate.parentKey &&
+        descendants.has(candidate.parentKey) &&
+        !descendants.has(candidate.key)
+      ) {
+        descendants.add(candidate.key);
+        changed = true;
+      }
+    }
+  }
+  const geometries = [...descendants]
+    .map(key => scene.getNode?.(key))
+    .filter(Boolean)
+    .map(nodeGeometry)
+    .filter(Boolean);
+  if (geometries.length === 0) return own;
+  const points = geometries.flatMap(item => item.corners);
+  const xs = points.map(point => point.x);
+  const ys = points.map(point => point.y);
+  const left = Math.min(...xs);
+  const right = Math.max(...xs);
+  const top = Math.min(...ys);
+  const bottom = Math.max(...ys);
+  const corners = [
+    {x: left, y: top},
+    {x: right, y: top},
+    {x: right, y: bottom},
+    {x: left, y: bottom},
+  ];
+  return {
+    bounds: {x: left, y: top, width: right - left, height: bottom - top},
+    center: {x: (left + right) / 2, y: (top + bottom) / 2},
+    corners,
+  };
 }
 
 function transformPoint(matrix, point) {
@@ -490,9 +548,21 @@ function flattenSceneNodes(scene) {
 
 async function inspectManifestNodes(scene) {
   const entries = flattenSceneNodes(scene);
+  const hasContainerContract = entries.some(
+    ({node}) => String(node?.key ?? '') === 'scene-content-root',
+  );
+  const keysWithChildren = new Set(
+    entries
+      .map(entry => entry.parentKey)
+      .filter(Boolean),
+  );
   return Promise.all(
     entries.map(async ({node, parentKey}) => {
       const editable = editableProperties(node);
+      const role = inferEditorNodeRole(
+        node,
+        keysWithChildren.has(String(node.key ?? '')),
+      );
       return {
         key: node.key,
         fingerprint: await sha256(nodeFingerprintSource(node)),
@@ -502,9 +572,14 @@ async function inspectManifestNodes(scene) {
         identity: isGeneratedEditorNodeKey(node.key)
           ? 'legacy'
           : 'semantic',
+        role,
         editableProperties: editable,
-        lockedProperties: [],
-        lockReason: null,
+        lockedProperties:
+          role === 'background' && hasContainerContract ? editable : [],
+        lockReason:
+          role === 'background' && hasContainerContract
+            ? 'Canvas và background được khóa để giữ đúng khung hình 1080×1920.'
+            : null,
       };
     }),
   );
@@ -578,6 +653,7 @@ async function startEditor(project) {
   let reviewStartedNearBeginning = false;
   let reviewedRevision = -1;
   let selected = null;
+  let enteredContainerKey = null;
   let pendingSelection = null;
   let selectedGeometry = null;
   let dragging = null;
@@ -755,6 +831,14 @@ async function startEditor(project) {
     return scene?.nodes?.find(node => node.key === nodeKey) ?? null;
   }
 
+  function editorNodeGeometry(scene, node) {
+    const info = sceneInfo(scene);
+    const manifestScene = manifest.scenes?.find(
+      item => item.sceneId === info.sceneId,
+    );
+    return aggregateGeometry(scene, manifestScene, node);
+  }
+
   function currentOverride(nodeKey = selected?.nodeKey) {
     if (!nodeKey) return null;
     const info = currentSceneInfo();
@@ -790,12 +874,23 @@ async function startEditor(project) {
       nodeType: manifestNode?.nodeType ?? node.constructor?.name ?? 'Node',
       parentKey: manifestNode?.parentKey ?? node.parent?.()?.key ?? null,
       identity: manifestNode?.identity ?? 'legacy',
+      role:
+        manifestNode?.role ??
+        inferEditorNodeRole(node, (node.children?.() ?? []).length > 0),
       editableProperties: selectionEditableProperties,
       lockedProperties: manifestNode?.lockedProperties ?? [],
       lockReason: manifestNode?.lockReason ?? null,
       editorLocked: patch.editorLocked === true,
       patch,
+      animatedPatch: override
+        ? animatedPatchAtTime(
+            override,
+            sceneTimeSeconds(scene),
+          )
+        : patch,
       visibility: override?.visibility ?? [],
+      animations: override?.animations ?? [],
+      enteredContainerKey,
       userText: isUserTextNodeKey(node.key),
       base: {
         position: signalSnapshot(node, 'position'),
@@ -833,10 +928,12 @@ async function startEditor(project) {
       sceneId: currentSceneInfo().sceneId,
       sceneName: player.playback.currentScene?.name ?? '',
       sceneTimeSeconds: sceneTimeSeconds(player.playback.currentScene),
+      enteredContainerKey,
       dirtyRevision,
       reviewed: reviewedRevision === dirtyRevision,
       view: {...view},
       history: {canUndo: history.length > 0, canRedo: future.length > 0},
+      selection: selectionPayload(),
       ...extra,
     });
   }
@@ -1022,6 +1119,103 @@ async function startEditor(project) {
     );
   }
 
+  function patchSelectionKeyframe(payload = {}) {
+    const property = String(payload.property ?? '');
+    if (
+      dragging ||
+      !selected ||
+      !['x', 'y', 'scale', 'rotation', 'opacity'].includes(property) ||
+      !selectedCanEdit([property])
+    ) {
+      return false;
+    }
+    const selection = selectionPayload();
+    if (!selection?.nodeFingerprint) return false;
+    const fallback =
+      property === 'scale' || property === 'opacity' ? 1 : 0;
+    const value = Number.isFinite(Number(payload.value))
+      ? Number(payload.value)
+      : Number(selection.patch[property] ?? fallback);
+    return replaceDocument(
+      patchPropertyKeyframeDocument(
+        overridesDocument,
+        selected.sceneId,
+        selected.nodeKey,
+        selection.nodeFingerprint,
+        property,
+        Number.isFinite(Number(payload.timeSeconds))
+          ? Number(payload.timeSeconds)
+          : sceneTimeSeconds(player.playback.currentScene),
+        value,
+        payload.easing,
+      ),
+      {reason: `keyframe-${property}`},
+    );
+  }
+
+  function removeSelectionKeyframe(payload = {}) {
+    if (!selected) return false;
+    return replaceDocument(
+      removePropertyKeyframeDocument(
+        overridesDocument,
+        selected.sceneId,
+        selected.nodeKey,
+        String(payload.property ?? ''),
+        Number(payload.timeSeconds),
+      ),
+      {reason: `remove-keyframe-${String(payload.property ?? '')}`},
+    );
+  }
+
+  function clearSelectionPropertyTrack(payload = {}) {
+    if (!selected) return false;
+    return replaceDocument(
+      clearPropertyTrackDocument(
+        overridesDocument,
+        selected.sceneId,
+        selected.nodeKey,
+        String(payload.property ?? ''),
+      ),
+      {reason: `clear-track-${String(payload.property ?? '')}`},
+    );
+  }
+
+  function moveSelectionKeyframe(payload = {}) {
+    if (!selected) return false;
+    const property = String(payload.property ?? '');
+    const fromTimeSeconds = Number(payload.fromTimeSeconds);
+    const toTimeSeconds = Number(payload.toTimeSeconds);
+    const current = currentOverride();
+    const track = current?.animations?.find(
+      item => item.property === property,
+    );
+    const keyframe = track?.keyframes.find(
+      item =>
+        Math.abs(item.timeSeconds - fromTimeSeconds) <= 1 / 240,
+    );
+    if (!keyframe || !Number.isFinite(toTimeSeconds)) return false;
+    const withoutPrevious = removePropertyKeyframeDocument(
+      overridesDocument,
+      selected.sceneId,
+      selected.nodeKey,
+      property,
+      fromTimeSeconds,
+    );
+    return replaceDocument(
+      patchPropertyKeyframeDocument(
+        withoutPrevious,
+        selected.sceneId,
+        selected.nodeKey,
+        current?.nodeFingerprint ?? '',
+        property,
+        toTimeSeconds,
+        keyframe.value,
+        keyframe.easing,
+      ),
+      {reason: `move-keyframe-${property}`},
+    );
+  }
+
   async function addUserText(payload = {}) {
     const scene = player.playback.currentScene;
     const info = currentSceneInfo();
@@ -1071,7 +1265,7 @@ async function startEditor(project) {
     );
     replaceDocument(next, {reason: 'add-text'});
     selected = {sceneId: info.sceneId, nodeKey};
-    selectedGeometry = nodeGeometry(node);
+    selectedGeometry = editorNodeGeometry(scene, node);
     manifestInspectedScenes.delete(info.sceneId);
     await ensureSceneManifest(scene);
     postSelection();
@@ -1143,7 +1337,19 @@ async function startEditor(project) {
         }),
         point,
       );
-      return candidate?.key ?? fallback?.key ?? null;
+      const requestedKey = candidate?.key ?? fallback?.key ?? null;
+      if (!requestedKey) return null;
+      const semanticTargets =
+        editorTargetsByScene.get(info.sceneId)?.nodes ?? [];
+      const block = blockAncestor(semanticTargets, requestedKey);
+      if (
+        block &&
+        block.key !== enteredContainerKey &&
+        requestedKey !== enteredContainerKey
+      ) {
+        return block.key;
+      }
+      return requestedKey;
     });
   }
 
@@ -1156,11 +1362,40 @@ async function startEditor(project) {
         ? requested
         : null;
     selected = node ? {sceneId: info.sceneId, nodeKey: node.key} : null;
-    selectedGeometry = node ? nodeGeometry(node) : null;
+    selectedGeometry = node ? editorNodeGeometry(scene, node) : null;
     refreshButtons();
     player.requestRender();
     if (notify) postSelection();
     return Boolean(node);
+  }
+
+  function enterSelectedContainer() {
+    const payload = selectionPayload();
+    if (!payload || !['block', 'content'].includes(payload.role)) return false;
+    enteredContainerKey = payload.nodeKey;
+    postState();
+    postSelection();
+    return true;
+  }
+
+  function selectParentContainer() {
+    const info = currentSceneInfo();
+    const targets = editorTargetsByScene.get(info.sceneId)?.nodes ?? [];
+    const currentKey = selected?.nodeKey ?? enteredContainerKey;
+    if (!currentKey) return false;
+    const current = targets.find(node => node.key === currentKey);
+    const parent = current?.parentKey
+      ? blockAncestor(targets, current.parentKey) ??
+        targets.find(node => node.key === current.parentKey)
+      : null;
+    enteredContainerKey =
+      parent && ['block', 'content'].includes(parent.role)
+        ? parent.key
+        : null;
+    if (parent) selectNode(parent.key);
+    else selectNode(null);
+    postState();
+    return true;
   }
 
   function timelineVisibility(scene) {
@@ -1264,7 +1499,7 @@ async function startEditor(project) {
         selected = node
           ? {sceneId: info.sceneId, nodeKey: node.key}
           : null;
-        selectedGeometry = node ? nodeGeometry(node) : null;
+        selectedGeometry = node ? editorNodeGeometry(scene, node) : null;
       }
     }
     protocol.post('manifest', {
@@ -1365,7 +1600,7 @@ async function startEditor(project) {
     });
     if (captureSelection && selected && !view.original) {
       const node = scene.getNode?.(selected.nodeKey);
-      if (node) selectedGeometry = nodeGeometry(node);
+      if (node) selectedGeometry = editorNodeGeometry(scene, node);
     }
     return restore;
   }
@@ -1514,7 +1749,7 @@ async function startEditor(project) {
         }
         if (selected && !selectedGeometry) {
           const node = currentScene.getNode?.(selected.nodeKey);
-          if (node) selectedGeometry = nodeGeometry(node);
+          if (node) selectedGeometry = editorNodeGeometry(currentScene, node);
         }
       } finally {
         try {
@@ -1771,13 +2006,19 @@ async function startEditor(project) {
       return {
         parentMatrix:
           node.parent?.()?.worldToLocal?.() ?? new DOMMatrix(),
-        geometry: nodeGeometry(node),
+        geometry: editorNodeGeometry(scene, node),
       };
     });
     if (!dragSnapshot?.geometry) return;
     const parentMatrix = dragSnapshot.parentMatrix;
     const localStart = transformPoint(parentMatrix, point);
-    const current = currentOverride()?.patch ?? {};
+    const currentOverrideValue = currentOverride();
+    const current = currentOverrideValue
+      ? animatedPatchAtTime(
+          currentOverrideValue,
+          sceneTimeSeconds(scene),
+        )
+      : {};
     dragging = {
       mode,
       pointerId: event.pointerId,
@@ -1789,6 +2030,12 @@ async function startEditor(project) {
       parentMatrix,
       startGeometry: deepClone(dragSnapshot.geometry),
       startPatch: deepClone(current),
+      animatedProperties: new Set(
+        (currentOverrideValue?.animations ?? []).map(
+          track => track.property,
+        ),
+      ),
+      sceneTimeSeconds: sceneTimeSeconds(scene),
       startDocument: deepClone(overridesDocument),
       startDirtyRevision: dirtyRevision,
       changed: false,
@@ -1837,13 +2084,32 @@ async function startEditor(project) {
       if (view.snap && !event.altKey) rotation = Math.round(rotation / 5) * 5;
       patch = {rotation};
     }
-    const nextDocument = patchDocument(
+    const mergedPatch = {...dragging.startPatch, ...patch};
+    const staticPatch = Object.fromEntries(
+      Object.entries(mergedPatch).filter(
+        ([property]) => !dragging.animatedProperties.has(property),
+      ),
+    );
+    let nextDocument = patchDocument(
       dragging.startDocument,
       dragging.sceneId,
       dragging.nodeKey,
       dragging.fingerprint,
-      {...dragging.startPatch, ...patch},
+      staticPatch,
     );
+    for (const [property, value] of Object.entries(patch)) {
+      if (!dragging.animatedProperties.has(property)) continue;
+      nextDocument = patchPropertyKeyframeDocument(
+        nextDocument,
+        dragging.sceneId,
+        dragging.nodeKey,
+        dragging.fingerprint,
+        property,
+        dragging.sceneTimeSeconds,
+        value,
+        'ease-in-out',
+      );
+    }
     const changed =
       JSON.stringify(nextDocument) !==
       JSON.stringify(dragging.startDocument);
@@ -1885,6 +2151,17 @@ async function startEditor(project) {
   }
   stage.finalBuffer.addEventListener('pointerup', event => {
     if (dragging?.pointerId === event.pointerId) finishDrag(false);
+  });
+  stage.finalBuffer.addEventListener('dblclick', event => {
+    if (view.clean || view.original) return;
+    event.preventDefault();
+    player.togglePlayback(false);
+    if (enterSelectedContainer()) {
+      const scene = player.playback.currentScene;
+      const point = canvasPoint(event, stage.finalBuffer);
+      const childKey = inspectEditorNodeAt(scene, point);
+      if (childKey && childKey !== enteredContainerKey) selectNode(childKey);
+    }
   });
   stage.finalBuffer.addEventListener('pointercancel', event => {
     if (dragging?.pointerId === event.pointerId) finishDrag(true);
@@ -1956,6 +2233,10 @@ async function startEditor(project) {
       } else {
         selectNode(payload.nodeKey ?? payload.nodeId ?? null);
       }
+    } else if (type === 'enterSelectedContainer') {
+      enterSelectedContainer();
+    } else if (type === 'selectParentContainer') {
+      selectParentContainer();
     } else if (type === 'patch' || type === 'patchSelected') {
       patchSelection(payload.patch ?? payload, {
         reason: 'inspector',
@@ -1970,6 +2251,14 @@ async function startEditor(project) {
       patchSelectionVisibility(payload.hidden === true);
     } else if (type === 'clearVisibilityTrack') {
       clearSelectionVisibility();
+    } else if (type === 'setPropertyKeyframe') {
+      patchSelectionKeyframe(payload);
+    } else if (type === 'removePropertyKeyframe') {
+      removeSelectionKeyframe(payload);
+    } else if (type === 'clearPropertyTrack') {
+      clearSelectionPropertyTrack(payload);
+    } else if (type === 'movePropertyKeyframe') {
+      moveSelectionKeyframe(payload);
     } else if (type === 'deleteSelected') {
       if (selected && isUserTextNodeKey(selected.nodeKey)) {
         resetSelection(true);
@@ -2065,6 +2354,18 @@ async function startEditor(project) {
     } else if (command && event.code === 'KeyS') {
       event.preventDefault();
       protocol.post('shortcut', {action: 'save'});
+    } else if (
+      command &&
+      (event.key === '+' || event.key === '=')
+    ) {
+      event.preventDefault();
+      protocol.post('shortcut', {action: 'zoom-in'});
+    } else if (command && (event.key === '-' || event.key === '_')) {
+      event.preventDefault();
+      protocol.post('shortcut', {action: 'zoom-out'});
+    } else if (command && event.key === '0') {
+      event.preventDefault();
+      protocol.post('shortcut', {action: 'zoom-reset'});
     } else if (!command && event.key === '?') {
       event.preventDefault();
       protocol.post('shortcut', {action: 'help'});
@@ -2103,7 +2404,8 @@ async function startEditor(project) {
       patchSelection({hidden: true}, {reason: 'hide-selected'});
     } else if (event.code === 'Escape') {
       event.preventDefault();
-      selectNode(null);
+      if (enteredContainerKey) selectParentContainer();
+      else selectNode(null);
     } else if (!command && event.code === 'KeyH') {
       event.preventDefault();
       patchSelection(

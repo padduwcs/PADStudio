@@ -384,11 +384,98 @@ function storedMatchesSync(
 }
 
 function normalizeOverrides(overrides: LayoutNodeOverride[]) {
-  return [...overrides].sort(
-    (left, right) =>
-      left.sceneId.localeCompare(right.sceneId) ||
-      left.nodeKey.localeCompare(right.nodeKey),
+  return overrides
+    .map(override => ({
+      ...override,
+      ...(override.animations?.length
+        ? {
+            animations: [...override.animations].sort((left, right) =>
+              left.property.localeCompare(right.property),
+            ),
+          }
+        : {}),
+    }))
+    .sort(
+      (left, right) =>
+        left.sceneId.localeCompare(right.sceneId) ||
+        left.nodeKey.localeCompare(right.nodeKey),
+    );
+}
+
+type LayoutSyncTiming = {
+  sceneId: string;
+  plannedDurationSeconds?: number;
+  synchronizedDurationSeconds?: number;
+  durationSeconds?: number;
+};
+
+function retimeKeyframes<T extends {timeSeconds: number}>(
+  keyframes: T[],
+  ratio: number,
+  maximumSeconds: number,
+) {
+  const byTime = new Map<number, T>();
+  for (const keyframe of keyframes) {
+    const timeSeconds = Number(
+      Math.min(
+        maximumSeconds,
+        Math.max(0, keyframe.timeSeconds * ratio),
+      ).toFixed(3),
+    );
+    byTime.set(timeSeconds, {...keyframe, timeSeconds});
+  }
+  return [...byTime.values()].sort(
+    (left, right) => left.timeSeconds - right.timeSeconds,
   );
+}
+
+export function retimeLayoutOverridesForSync(
+  overrides: LayoutNodeOverride[],
+  sections: LayoutSyncTiming[],
+): LayoutNodeOverride[] {
+  const timingByScene = new Map(
+    sections.map(section => [section.sceneId, section]),
+  );
+  return overrides.map(override => {
+    const timing = timingByScene.get(override.sceneId);
+    const planned = timing?.plannedDurationSeconds;
+    const synchronized =
+      timing?.synchronizedDurationSeconds ?? timing?.durationSeconds;
+    if (
+      !Number.isFinite(planned) ||
+      Number(planned) <= 0 ||
+      !Number.isFinite(synchronized) ||
+      Number(synchronized) <= 0
+    ) {
+      return override;
+    }
+    const maximumSeconds = Number(synchronized);
+    const ratio = maximumSeconds / Number(planned);
+    return {
+      ...override,
+      ...(override.visibility
+        ? {
+            visibility: retimeKeyframes(
+              override.visibility,
+              ratio,
+              maximumSeconds,
+            ),
+          }
+        : {}),
+      ...(override.animations
+        ? {
+            animations: override.animations.map(track => ({
+              ...track,
+              keyframes: retimeKeyframes(
+                track.keyframes,
+                ratio,
+                maximumSeconds,
+              ),
+            })),
+          }
+        : {}),
+    };
+  });
 }
 
 function normalizeEditorManifest(
@@ -444,6 +531,56 @@ function assertNoParentCycles(manifest: LayoutEditorManifest) {
   }
 }
 
+function assertContainerRoles(manifest: LayoutEditorManifest) {
+  for (const scene of manifest.scenes) {
+    const roleAwareNodes = scene.nodes.filter(node => node.role !== undefined);
+    if (roleAwareNodes.length === 0) continue;
+    const byKey = new Map(scene.nodes.map(node => [node.key, node]));
+    const backgrounds = roleAwareNodes.filter(
+      node => node.role === 'background',
+    );
+    const contentRoots = roleAwareNodes.filter(
+      node => node.role === 'content',
+    );
+    // Runtime generations created before the container contract expose inferred
+    // element/background roles but do not have a content root. Keep those
+    // immutable legacy generations editable without pretending they support
+    // block isolation.
+    if (contentRoots.length === 0) continue;
+    if (backgrounds.length !== 1 || contentRoots.length !== 1) {
+      throw new LayoutWorkspaceError(
+        'LAYOUT_MANIFEST_INVALID',
+        `Scene “${scene.filePath}” phải có đúng một background và content frame.`,
+      );
+    }
+    if (contentRoots[0]!.parentKey !== backgrounds[0]!.key) {
+      throw new LayoutWorkspaceError(
+        'LAYOUT_MANIFEST_INVALID',
+        `Content frame của scene “${scene.filePath}” không nằm trong background.`,
+      );
+    }
+    for (const block of roleAwareNodes.filter(node => node.role === 'block')) {
+      const visited = new Set<string>();
+      let parentKey = block.parentKey;
+      let insideContent = false;
+      while (parentKey && !visited.has(parentKey)) {
+        if (parentKey === contentRoots[0]!.key) {
+          insideContent = true;
+          break;
+        }
+        visited.add(parentKey);
+        parentKey = byKey.get(parentKey)?.parentKey ?? null;
+      }
+      if (!insideContent) {
+        throw new LayoutWorkspaceError(
+          'LAYOUT_MANIFEST_INVALID',
+          `Block “${block.key}” không nằm trong content frame.`,
+        );
+      }
+    }
+  }
+}
+
 export function validateLayoutDocuments(
   syncBundle: {
     contentRevision: number;
@@ -475,6 +612,7 @@ export function validateLayoutDocuments(
     syncBundle.sections,
   );
   assertNoParentCycles(normalizedManifest);
+  assertContainerRoles(normalizedManifest);
 
   const expectedSceneIds = new Set(
     syncBundle.sections.map((section) => section.sceneId),
@@ -569,6 +707,14 @@ export function validateLayoutDocuments(
         );
       }
     }
+    for (const track of override.animations ?? []) {
+      if (!editable.has(track.property) || locked.has(track.property)) {
+        throw new LayoutWorkspaceError(
+          'LAYOUT_OVERRIDE_PROPERTY_LOCKED',
+          `Animation “${track.property}” của node “${override.nodeKey}” không thể chỉnh.`,
+        );
+      }
+    }
     const section = sectionsById.get(override.sceneId);
     const sceneDuration =
       section?.synchronizedDurationSeconds ??
@@ -576,13 +722,19 @@ export function validateLayoutDocuments(
       section?.plannedDurationSeconds;
     if (
       Number.isFinite(sceneDuration) &&
-      override.visibility?.some(
+      (override.visibility?.some(
         (keyframe) => keyframe.timeSeconds > Number(sceneDuration) + 1 / 30,
-      )
+      ) ||
+        override.animations?.some((track) =>
+          track.keyframes.some(
+            (keyframe) =>
+              keyframe.timeSeconds > Number(sceneDuration) + 1 / 30,
+          ),
+        ))
     ) {
       throw new LayoutWorkspaceError(
         'LAYOUT_OVERRIDE_TIMING_OUT_OF_RANGE',
-        `Mốc ẩn/hiện của node “${override.nodeKey}” nằm ngoài thời lượng scene.`,
+        `Keyframe của node “${override.nodeKey}” nằm ngoài thời lượng scene.`,
       );
     }
   }
