@@ -218,6 +218,8 @@ test('Codex voice–visual generator ánh xạ kết quả vào đúng section o
     outputSchema?: {
       properties?: {
         sections?: {
+          minItems?: number;
+          maxItems?: number;
           items?: {
             properties?: {
               beats?: {
@@ -235,6 +237,8 @@ test('Codex voice–visual generator ánh xạ kết quả vào đúng section o
   };
   assert.ok(turnParams.outputSchema);
   assertStrictObjectSchemas(turnParams.outputSchema);
+  assert.equal(turnParams.outputSchema.properties?.sections?.minItems, 2);
+  assert.equal(turnParams.outputSchema.properties?.sections?.maxItems, 2);
   const generatedBeatSchema =
     turnParams.outputSchema.properties?.sections?.items?.properties?.beats
       ?.items;
@@ -247,5 +251,13 @@ test('Codex voice–visual generator ánh xạ kết quả vào đúng section o
   assert.equal(
     turnParams.input?.[0]?.text?.includes('targetNarrationTokenCount'),
     true,
+  );
+  assert.match(
+    turnParams.input?.[0]?.text ?? '',
+    /Giữ nguyên chính xác mọi từ, cụm từ, tên riêng, chữ viết tắt và thuật ngữ tiếng Anh/u,
+  );
+  assert.match(
+    turnParams.input?.[0]?.text ?? '',
+    /Binary Search giữ nguyên “Binary Search”, API giữ nguyên “API”/u,
   );
 });

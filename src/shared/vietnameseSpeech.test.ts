@@ -25,6 +25,19 @@ test('phiên âm truy cập mảng và toán tử thay vì gửi ký hiệu thô
   );
 });
 
+test('giữ nguyên từ tiếng Anh và chỉ phiên âm ký hiệu kỹ thuật', () => {
+  assert.equal(
+    toVietnameseSpeechText(
+      'Binary Search dùng API để tìm target trong array[mid] với O(log n).',
+    ),
+    'Binary Search dùng API để tìm target trong array tại chỉ số mid với ô lốc nờ.',
+  );
+  assert.equal(
+    toVietnameseSpeechText('Nếu left <= right thì update cache.'),
+    'Nếu left nhỏ hơn hoặc bằng right thì update cache.',
+  );
+});
+
 test('ưu tiên cách đọc do người dùng chỉnh và có fallback xác định', () => {
   assert.equal(
     speechTextForBeat({voiceover: 'Độ phức tạp là O(n^2).'}),

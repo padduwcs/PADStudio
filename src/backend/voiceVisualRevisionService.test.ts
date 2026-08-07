@@ -8,6 +8,8 @@ import type {
   CodexAppServerNotification,
 } from './codexConnection.ts';
 import {
+  applyVoiceVisualPatch,
+  constrainVoiceVisualPatch,
   createCodexVoiceVisualRevisionService,
 } from './voiceVisualRevisionService.ts';
 import type {
@@ -152,6 +154,32 @@ function content(): VoiceVisualPlanContent {
   };
 }
 
+test('Voice–visual loại bỏ thay đổi ngoài scope trước khi áp dụng', () => {
+  const base = content();
+  const scope = {
+    globalFields: [],
+    beats: [{beatId, fields: ['voiceover' as const]}],
+  };
+  const constrained = constrainVoiceVisualPatch(base, scope, {
+    editSummary: 'Chỉ sửa lời thoại.',
+    voiceDirection: 'Không được phép đổi.',
+    visualDirection: null,
+    beats: [{
+      beatId,
+      voiceover: 'Ta bắt đầu bằng toàn bộ khoảng tìm kiếm có thể chứa đáp án.',
+      spokenVoiceover: 'Giá trị ngoài scope.',
+      visualDescription: 'Giá trị ngoài scope.',
+      animationDescription: null,
+      visualHoldSeconds: null,
+    }],
+  });
+
+  assert.equal(constrained.voiceDirection, null);
+  assert.equal(constrained.beats[0]?.spokenVoiceover, null);
+  assert.equal(constrained.beats[0]?.visualDescription, null);
+  assert.doesNotThrow(() => applyVoiceVisualPatch(base, scope, constrained));
+});
+
 test('Voice–visual tự sửa phản hồi sai schema rồi giữ patch đúng scope', async context => {
   const runtimeDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-voice-revision-test-'),
@@ -200,6 +228,31 @@ test('Voice–visual tự sửa phản hồi sai schema rồi giữ patch đúng
   assert.equal(
     client.calls.filter(call => call.method === 'turn/start').length,
     3,
+  );
+  const editCall = client.calls.filter(
+    call => call.method === 'turn/start',
+  )[0];
+  const editSchema = (editCall?.params as {
+    outputSchema?: {
+      properties?: {
+        beats?: {
+          items?: {required?: string[]; additionalProperties?: boolean};
+        };
+      };
+    };
+  }).outputSchema;
+  assert.ok(
+    editSchema?.properties?.beats?.items?.required?.includes(
+      'spokenVoiceover',
+    ),
+  );
+  assert.equal(
+    editSchema?.properties?.beats?.items?.additionalProperties,
+    false,
+  );
+  assert.match(
+    (editCall?.params as {input?: Array<{text?: string}>}).input?.[0]?.text ?? '',
+    /Giữ nguyên chính xác mọi từ, cụm từ, tên riêng, chữ viết tắt và thuật ngữ tiếng Anh/u,
   );
   const reviewCall = client.calls.filter(
     call => call.method === 'turn/start',

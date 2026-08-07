@@ -26,6 +26,61 @@ const defaultSettings: ElevenLabsVoiceSettings = {
   speed: 1,
 };
 
+interface PendingVoiceGeneration {
+  fingerprint: string;
+  generationId: string;
+}
+
+function pendingGenerationKey(projectId: string) {
+  return `pad-studio:voice-generation:${projectId}`;
+}
+
+function readPendingGeneration(projectId: string): PendingVoiceGeneration | null {
+  try {
+    const source = window.sessionStorage.getItem(
+      pendingGenerationKey(projectId),
+    );
+    if (!source) return null;
+    const value = JSON.parse(source) as Partial<PendingVoiceGeneration>;
+    if (
+      typeof value.fingerprint !== 'string' ||
+      typeof value.generationId !== 'string' ||
+      !/^[0-9a-f-]{36}$/iu.test(value.generationId)
+    ) {
+      window.sessionStorage.removeItem(pendingGenerationKey(projectId));
+      return null;
+    }
+    return {
+      fingerprint: value.fingerprint,
+      generationId: value.generationId,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writePendingGeneration(
+  projectId: string,
+  pending: PendingVoiceGeneration,
+) {
+  try {
+    window.sessionStorage.setItem(
+      pendingGenerationKey(projectId),
+      JSON.stringify(pending),
+    );
+  } catch {
+    // The backend checkpoint still prevents paid chunks from being lost.
+  }
+}
+
+function clearPendingGeneration(projectId: string) {
+  try {
+    window.sessionStorage.removeItem(pendingGenerationKey(projectId));
+  } catch {
+    // sessionStorage may be unavailable in a restricted browser context.
+  }
+}
+
 export interface VoiceDraftConfiguration {
   voiceId: string;
   modelId: string;
@@ -50,10 +105,9 @@ export function useVoiceDraft(projectId: string) {
   const [approving, setApproving] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [libraryMessage, setLibraryMessage] = useState('');
-  const generationRequestRef = useRef<{
-    fingerprint: string;
-    generationId: string;
-  } | null>(null);
+  const generationRequestRef = useRef<PendingVoiceGeneration | null>(
+    readPendingGeneration(projectId),
+  );
   const generatingRef = useRef(false);
   const approvingRef = useRef(false);
 
@@ -134,11 +188,18 @@ export function useVoiceDraft(projectId: string) {
   );
 
   const load = useCallback(async () => {
-    generationRequestRef.current = null;
     setLoadState('loading');
     setLoadError('');
     try {
       const nextProject = await getProject(projectId);
+      if (
+        generationRequestRef.current &&
+        nextProject.voiceBundle?.generation.generationId ===
+          generationRequestRef.current.generationId
+      ) {
+        generationRequestRef.current = null;
+        clearPendingGeneration(projectId);
+      }
       setProject(nextProject);
       setLoadState('ready');
       setCatalogLoading(true);
@@ -289,6 +350,7 @@ export function useVoiceDraft(projectId: string) {
           ? previousRequest.generationId
           : crypto.randomUUID();
       generationRequestRef.current = {fingerprint, generationId};
+      writePendingGeneration(project.id, {fingerprint, generationId});
       const request: GenerateVoice = {
         generationId,
         ...requestConfiguration,
@@ -300,6 +362,7 @@ export function useVoiceDraft(projectId: string) {
       );
       setProject(updated);
       generationRequestRef.current = null;
+      clearPendingGeneration(project.id);
       return updated;
     } catch (error) {
       if (error instanceof ApiRequestError && error.code === 'PROJECT_CONFLICT') {

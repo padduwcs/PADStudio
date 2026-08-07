@@ -132,6 +132,40 @@ export class CodexStructuredGenerationError extends Error {
   }
 }
 
+/**
+ * Codex structured outputs use the strict JSON Schema subset: every property
+ * declared on an object must also be listed in `required`. Zod intentionally
+ * omits optional properties from that list, which makes otherwise useful
+ * nullable patch schemas fail before the model can run. Normalize the schema
+ * at the shared transport boundary so nested objects and future generators
+ * cannot accidentally send an invalid response format.
+ */
+export function strictCodexOutputSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) {
+    return schema.map((item) => strictCodexOutputSchema(item));
+  }
+  if (!schema || typeof schema !== 'object') return schema;
+
+  const source = schema as Record<string, unknown>;
+  const normalized = Object.fromEntries(
+    Object.entries(source).map(([key, value]) => [
+      key,
+      strictCodexOutputSchema(value),
+    ]),
+  ) as Record<string, unknown>;
+  const properties = source.properties;
+  if (
+    properties &&
+    typeof properties === 'object' &&
+    !Array.isArray(properties)
+  ) {
+    normalized.required = Object.keys(properties);
+    normalized.additionalProperties = false;
+  }
+
+  return normalized;
+}
+
 function finalAgentMessage(items: Array<Record<string, unknown>>) {
   let fallback = '';
 
@@ -214,6 +248,7 @@ export async function runCodexStructuredGeneration({
   usage: CodexTokenUsage | null;
 }> {
   await mkdir(runtimeDirectory, {recursive: true});
+  const strictOutputSchema = strictCodexOutputSchema(outputSchema);
 
   let threadId = '';
   let turnId = '';
@@ -308,7 +343,7 @@ export async function runCodexStructuredGeneration({
           sandboxPolicy: {type: 'readOnly'},
           personality: 'none',
           summary: 'none',
-          outputSchema,
+          outputSchema: strictOutputSchema,
           ...(reasoningEffort ? {effort: reasoningEffort} : {}),
         }),
       );

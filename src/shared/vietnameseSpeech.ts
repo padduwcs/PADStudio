@@ -58,10 +58,10 @@ function pronounceArrayAccess(identifier: string, indexes: string) {
 }
 
 /**
- * Converts technical notation into a Vietnamese TTS-oriented transcript while
- * preserving the editorial voiceover separately. The conversion is
- * deterministic so retries, timing estimates and ElevenLabs input stay in
- * sync.
+ * Converts only technical notation into a Vietnamese TTS-oriented transcript.
+ * Plain text, including English words, acronyms and technical terms, is kept
+ * verbatim. The conversion is deterministic so retries, timing estimates and
+ * ElevenLabs input stay in sync.
  */
 export function toVietnameseSpeechText(text: string) {
   return text

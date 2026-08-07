@@ -12,6 +12,7 @@ import {
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {promisify} from 'node:util';
+import {z} from 'zod';
 import {
   calibrationFromActualNarration,
   countNarrationCharacters,
@@ -22,6 +23,7 @@ import type {
   VoiceBundle,
   VoiceSectionAudio,
 } from '../shared/topic.ts';
+import {VoiceBundleSchema} from '../shared/topic.ts';
 import type {
   ElevenLabsAlignment,
   ElevenLabsSectionGeneration,
@@ -36,6 +38,39 @@ const uuidPattern =
 const OUTPUT_SAMPLE_RATE = 48_000;
 const MASTER_AUDIO_PATH = 'audio/narration.wav' as const;
 const MASTER_ALIGNMENT_PATH = 'alignments/narration.json' as const;
+
+const checkpointAlignmentSchema = z
+  .object({
+    characters: z.array(z.string()),
+    characterStartTimesSeconds: z.array(z.number().nonnegative()),
+    characterEndTimesSeconds: z.array(z.number().nonnegative()),
+  })
+  .strict();
+
+const checkpointMetadataSchema = z
+  .object({
+    version: z.literal(1),
+    fingerprint: z.string().regex(/^[0-9a-f]{64}$/u),
+    outputFormat: z.string().min(1),
+    text: z.string().min(1),
+    textStartIndex: z.number().int().nonnegative(),
+    textEndIndex: z.number().int().positive(),
+    alignment: checkpointAlignmentSchema,
+    normalizedAlignment: checkpointAlignmentSchema.nullable(),
+    requestId: z.string().min(1).nullable(),
+    characterCost: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const preparedManifestSchema = z
+  .object({
+    version: z.literal(2),
+    generationId: z.string().regex(uuidPattern),
+    track: VoiceBundleSchema.shape.track,
+    sections: VoiceBundleSchema.shape.sections,
+    requestIds: z.array(z.string().min(1)),
+  })
+  .strict();
 
 export interface GeneratedVoiceChunk {
   outputFormat: string;
@@ -61,6 +96,24 @@ export interface PreparedVoiceWorkspace {
 }
 
 export interface VoiceWorkspace {
+  verifyDependencies?(): Promise<void>;
+  readGenerationChunk?(
+    projectId: string,
+    generationId: string,
+    chunkIndex: number,
+    fingerprint: string,
+  ): Promise<GeneratedVoiceChunk | null>;
+  saveGenerationChunk?(
+    projectId: string,
+    generationId: string,
+    chunkIndex: number,
+    fingerprint: string,
+    chunk: GeneratedVoiceChunk,
+  ): Promise<void>;
+  clearGenerationCheckpoint?(
+    projectId: string,
+    generationId: string,
+  ): Promise<void>;
   prepare(
     projectId: string,
     generationId: string,
@@ -266,6 +319,23 @@ async function probeAudioDuration(ffprobePath: string, audioPath: string) {
   }
 }
 
+async function verifyExecutable(
+  executable: string,
+  code: string,
+  message: string,
+) {
+  try {
+    await execFileAsync(executable, ['-version'], {
+      encoding: 'utf8',
+      timeout: 10_000,
+      maxBuffer: 1024 * 1024,
+      windowsHide: true,
+    });
+  } catch (error) {
+    throw new VoiceWorkspaceError(code, message, {cause: error});
+  }
+}
+
 async function commitWorkspace(stagingDirectory: string, finalDirectory: string) {
   for (let attempt = 0; attempt < 6; attempt += 1) {
     try {
@@ -453,6 +523,181 @@ export function createVoiceWorkspace(
     return path.join(resolvedProjectsDirectory, projectId);
   }
 
+  function assertGenerationId(generationId: string) {
+    if (!uuidPattern.test(generationId)) {
+      throw new VoiceWorkspaceError(
+        'VOICE_WORKSPACE_INVALID',
+        'Generation ID của workspace voice không hợp lệ.',
+      );
+    }
+  }
+
+  function checkpointDirectory(projectId: string, generationId: string) {
+    assertGenerationId(generationId);
+    return path.join(
+      projectDirectory(projectId),
+      'voice',
+      'pending',
+      generationId,
+    );
+  }
+
+  function checkpointChunkDirectory(
+    projectId: string,
+    generationId: string,
+    chunkIndex: number,
+  ) {
+    if (
+      !Number.isSafeInteger(chunkIndex) ||
+      chunkIndex < 0 ||
+      chunkIndex >= pipelineSafetyLimits.maximumVoiceChunks
+    ) {
+      throw new VoiceWorkspaceError(
+        'VOICE_WORKSPACE_INVALID',
+        'Chỉ số continuity group không hợp lệ.',
+      );
+    }
+    return path.join(
+      checkpointDirectory(projectId, generationId),
+      'chunks',
+      String(chunkIndex + 1).padStart(2, '0'),
+    );
+  }
+
+  function assertCheckpointFingerprint(fingerprint: string) {
+    if (!/^[0-9a-f]{64}$/u.test(fingerprint)) {
+      throw new VoiceWorkspaceError(
+        'VOICE_WORKSPACE_INVALID',
+        'Fingerprint continuity group không hợp lệ.',
+      );
+    }
+  }
+
+  async function readGenerationChunk(
+    projectId: string,
+    generationId: string,
+    chunkIndex: number,
+    fingerprint: string,
+  ): Promise<GeneratedVoiceChunk | null> {
+    assertCheckpointFingerprint(fingerprint);
+    const directory = checkpointChunkDirectory(
+      projectId,
+      generationId,
+      chunkIndex,
+    );
+    let metadataSource: string;
+    let audio: Buffer;
+    try {
+      [metadataSource, audio] = await Promise.all([
+        readFile(path.join(directory, 'metadata.json'), 'utf8'),
+        readFile(path.join(directory, 'audio.bin')),
+      ]);
+    } catch (error) {
+      const errorCode =
+        error && typeof error === 'object' && 'code' in error
+          ? String(error.code)
+          : '';
+      if (errorCode === 'ENOENT') return null;
+      throw new VoiceWorkspaceError(
+        'VOICE_GENERATION_CHECKPOINT_READ_FAILED',
+        'Không thể đọc checkpoint audio đã tạo từ ElevenLabs.',
+        {cause: error},
+      );
+    }
+
+    let rawMetadata: unknown;
+    try {
+      rawMetadata = JSON.parse(metadataSource);
+    } catch (error) {
+      throw new VoiceWorkspaceError(
+        'VOICE_GENERATION_CHECKPOINT_INVALID',
+        'Checkpoint audio ElevenLabs không phải JSON hợp lệ.',
+        {cause: error},
+      );
+    }
+    const metadata = checkpointMetadataSchema.safeParse(rawMetadata);
+    if (!metadata.success || audio.byteLength === 0) {
+      throw new VoiceWorkspaceError(
+        'VOICE_GENERATION_CHECKPOINT_INVALID',
+        'Checkpoint audio ElevenLabs không đúng cấu trúc hỗ trợ.',
+        {cause: metadata.success ? undefined : metadata.error},
+      );
+    }
+    if (metadata.data.fingerprint !== fingerprint) {
+      throw new VoiceWorkspaceError(
+        'VOICE_GENERATION_CHECKPOINT_CONFLICT',
+        'Generation ID đã có checkpoint từ một cấu hình voice khác.',
+      );
+    }
+    return {
+      outputFormat: metadata.data.outputFormat,
+      text: metadata.data.text,
+      textStartIndex: metadata.data.textStartIndex,
+      textEndIndex: metadata.data.textEndIndex,
+      generated: {
+        audio,
+        alignment: metadata.data.alignment,
+        normalizedAlignment: metadata.data.normalizedAlignment,
+        requestId: metadata.data.requestId,
+        characterCost: metadata.data.characterCost,
+      },
+    };
+  }
+
+  async function readPreparedWorkspace(
+    finalDirectory: string,
+    generationId: string,
+    narration: GeneratedVoiceNarration,
+  ): Promise<PreparedVoiceWorkspace> {
+    let manifestSource: string;
+    try {
+      manifestSource = await readFile(
+        path.join(finalDirectory, 'manifest.json'),
+        'utf8',
+      );
+    } catch (error) {
+      throw new VoiceWorkspaceError(
+        'VOICE_WORKSPACE_CONFLICT',
+        'Generation voice đã tồn tại nhưng không thể tiếp tục từ manifest.',
+        {cause: error},
+      );
+    }
+    let rawManifest: unknown;
+    try {
+      rawManifest = JSON.parse(manifestSource);
+    } catch (error) {
+      throw new VoiceWorkspaceError(
+        'VOICE_WORKSPACE_CONFLICT',
+        'Manifest của generation voice đã tồn tại không hợp lệ.',
+        {cause: error},
+      );
+    }
+    const manifest = preparedManifestSchema.safeParse(rawManifest);
+    const expectedSourceHash = createHash('sha256')
+      .update(narration.text)
+      .digest('hex');
+    if (
+      !manifest.success ||
+      manifest.data.generationId !== generationId ||
+      manifest.data.track.sourceTextHash !== expectedSourceHash ||
+      manifest.data.track.chunkCount !== narration.chunks.length
+    ) {
+      throw new VoiceWorkspaceError(
+        'VOICE_WORKSPACE_CONFLICT',
+        'Generation voice đã tồn tại nhưng không khớp narration hiện tại.',
+        {cause: manifest.success ? undefined : manifest.error},
+      );
+    }
+    return {
+      workspacePath: `voice/generations/${generationId}`,
+      track: manifest.data.track,
+      sections: manifest.data.sections,
+      totalDurationSeconds: manifest.data.track.durationSeconds,
+      characterCost: manifest.data.track.characterCost,
+      requestIds: manifest.data.requestIds,
+    };
+  }
+
   function resolveBundleDirectory(projectId: string, bundle: VoiceBundle) {
     const root = projectDirectory(projectId);
     const directory = path.resolve(root, bundle.workspacePath);
@@ -466,14 +711,105 @@ export function createVoiceWorkspace(
   }
 
   return {
-    async prepare(projectId, generationId, narration) {
-      assertProjectId(projectId);
-      if (!uuidPattern.test(generationId)) {
-        throw new VoiceWorkspaceError(
-          'VOICE_WORKSPACE_INVALID',
-          'Generation ID của workspace voice không hợp lệ.',
+    async verifyDependencies() {
+      await verifyExecutable(
+        ffmpegPath,
+        'FFMPEG_NOT_AVAILABLE',
+        'Chưa thể tạo voice: không tìm thấy FFmpeg. Hãy cài FFmpeg hoặc cấu hình FFMPEG_PATH; ElevenLabs chưa bị gọi và chưa trừ quota.',
+      );
+      await verifyExecutable(
+        ffprobePath,
+        'FFPROBE_NOT_AVAILABLE',
+        'Chưa thể tạo voice: không tìm thấy FFprobe. Hãy cài FFmpeg đầy đủ hoặc cấu hình FFPROBE_PATH; ElevenLabs chưa bị gọi và chưa trừ quota.',
+      );
+    },
+
+    readGenerationChunk,
+
+    async saveGenerationChunk(
+      projectId,
+      generationId,
+      chunkIndex,
+      fingerprint,
+      chunk,
+    ) {
+      assertCheckpointFingerprint(fingerprint);
+      const existing = await readGenerationChunk(
+        projectId,
+        generationId,
+        chunkIndex,
+        fingerprint,
+      );
+      if (existing) return;
+
+      const finalDirectory = checkpointChunkDirectory(
+        projectId,
+        generationId,
+        chunkIndex,
+      );
+      const parentDirectory = path.dirname(finalDirectory);
+      const stagingDirectory = path.join(
+        parentDirectory,
+        `.staging-${randomUUID()}`,
+      );
+      await mkdir(parentDirectory, {recursive: true});
+      try {
+        await mkdir(stagingDirectory, {recursive: false});
+        await Promise.all([
+          writeFile(path.join(stagingDirectory, 'audio.bin'), chunk.generated.audio),
+          writeFile(
+            path.join(stagingDirectory, 'metadata.json'),
+            `${JSON.stringify(
+              {
+                version: 1,
+                fingerprint,
+                outputFormat: chunk.outputFormat,
+                text: chunk.text,
+                textStartIndex: chunk.textStartIndex,
+                textEndIndex: chunk.textEndIndex,
+                alignment: chunk.generated.alignment,
+                normalizedAlignment: chunk.generated.normalizedAlignment,
+                requestId: chunk.generated.requestId,
+                characterCost: chunk.generated.characterCost,
+              },
+              null,
+              2,
+            )}\n`,
+            'utf8',
+          ),
+        ]);
+        await rename(stagingDirectory, finalDirectory);
+      } catch (error) {
+        const concurrent = await readGenerationChunk(
+          projectId,
+          generationId,
+          chunkIndex,
+          fingerprint,
+        ).catch(() => null);
+        if (!concurrent) {
+          throw new VoiceWorkspaceError(
+            'VOICE_GENERATION_CHECKPOINT_WRITE_FAILED',
+            'Không thể lưu checkpoint audio ElevenLabs trước khi hậu xử lý.',
+            {cause: error},
+          );
+        }
+      } finally {
+        await rm(stagingDirectory, {recursive: true, force: true}).catch(
+          () => undefined,
         );
       }
+    },
+
+    async clearGenerationCheckpoint(projectId, generationId) {
+      await rm(checkpointDirectory(projectId, generationId), {
+        recursive: true,
+        force: true,
+      });
+    },
+
+    async prepare(projectId, generationId, narration) {
+      assertProjectId(projectId);
+      assertGenerationId(generationId);
       validateNarration(narration);
 
       const root = projectDirectory(projectId);
@@ -490,9 +826,10 @@ export function createVoiceWorkspace(
           .then((entry) => entry.isDirectory())
           .catch(() => false)
       ) {
-        throw new VoiceWorkspaceError(
-          'VOICE_WORKSPACE_CONFLICT',
-          'Generation ID này đã có workspace voice.',
+        return readPreparedWorkspace(
+          finalDirectory,
+          generationId,
+          narration,
         );
       }
 

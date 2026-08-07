@@ -23,7 +23,7 @@ import {
   runCodexStructuredGeneration,
 } from './codexStructuredGeneration.ts';
 
-export const OUTLINE_REVISION_PROMPT_VERSION = 'outline-edit-v1';
+export const OUTLINE_REVISION_PROMPT_VERSION = 'outline-edit-v2';
 export const OUTLINE_COHERENCE_PROMPT_VERSION = 'outline-coherence-v1';
 
 const patchOutputSchema = z.toJSONSchema(OutlineAiPatchSchema, {
@@ -101,6 +101,95 @@ function assertAllowed(
     'OUTLINE_PATCH_OUT_OF_SCOPE',
     `AI đã đề xuất thay đổi ngoài phạm vi cho phép: ${fieldDescription}.`,
   );
+}
+
+function sameValue(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+/**
+ * Models sometimes echo protected fields instead of returning null. Remove
+ * those fields deterministically before the strict apply guard runs. The
+ * guard remains in place as the final invariant for every persisted patch.
+ */
+export function constrainOutlinePatch(
+  baseContent: TeachingOutlineContent,
+  scope: OutlineEditScope,
+  patch: OutlineAiPatch,
+): OutlineAiPatch {
+  assertScopeMatchesContent(baseContent, scope);
+  const allowed = scopeMaps(scope);
+  const summary = patch.brief.summary;
+  const assumptions = patch.brief.assumptions;
+  const centralMessage = patch.centralMessage;
+
+  return {
+    ...patch,
+    brief: {
+      summary:
+        summary !== null &&
+        allowed.globalFields.has('brief.summary') &&
+        !sameValue(summary, baseContent.brief.summary)
+          ? summary
+          : null,
+      assumptions:
+        assumptions !== null &&
+        allowed.globalFields.has('brief.assumptions') &&
+        !sameValue(assumptions, baseContent.brief.assumptions)
+          ? assumptions
+          : null,
+    },
+    centralMessage:
+      centralMessage !== null &&
+      allowed.globalFields.has('centralMessage') &&
+      !sameValue(centralMessage, baseContent.centralMessage)
+        ? centralMessage
+        : null,
+    sections: patch.sections.flatMap(sectionPatch => {
+      const baseSection = baseContent.sections.find(
+        section => section.id === sectionPatch.sectionId,
+      );
+      const allowedFields = allowed.sectionFields.get(sectionPatch.sectionId);
+      if (!baseSection || !allowedFields) return [];
+
+      const constrained = {
+        sectionId: sectionPatch.sectionId,
+        title:
+          sectionPatch.title !== null &&
+          allowedFields.has('title') &&
+          !sameValue(sectionPatch.title, baseSection.title)
+            ? sectionPatch.title
+            : null,
+        goal:
+          sectionPatch.goal !== null &&
+          allowedFields.has('goal') &&
+          !sameValue(sectionPatch.goal, baseSection.goal)
+            ? sectionPatch.goal
+            : null,
+        content:
+          sectionPatch.content !== null &&
+          allowedFields.has('content') &&
+          !sameValue(sectionPatch.content, baseSection.content)
+            ? sectionPatch.content
+            : null,
+        estimatedSeconds:
+          sectionPatch.estimatedSeconds !== null &&
+          allowedFields.has('estimatedSeconds') &&
+          !sameValue(
+            sectionPatch.estimatedSeconds,
+            baseSection.estimatedSeconds,
+          )
+            ? sectionPatch.estimatedSeconds
+            : null,
+      };
+      return constrained.title !== null ||
+        constrained.goal !== null ||
+        constrained.content !== null ||
+        constrained.estimatedSeconds !== null
+        ? [constrained]
+        : [];
+    }),
+  };
 }
 
 export function applyOutlinePatch(
@@ -211,6 +300,22 @@ function buildRevisionPrompt(request: OutlineRevisionRequest) {
   ].join('\n');
 }
 
+function buildPatchRepairPrompt(
+  request: OutlineRevisionRequest,
+  invalidResponse: string,
+  issue: string,
+) {
+  return [
+    buildRevisionPrompt(request),
+    'Phản hồi trước không thể áp dụng an toàn. Hãy trả lại đúng một JSON patch đã sửa; không giải thích.',
+    'Mọi trường ngoài editScope và mọi giá trị không đổi phải là null. Không thêm section ngoài editScope.',
+    JSON.stringify({
+      validationIssue: issue,
+      invalidResponse: invalidResponse.slice(0, 20_000),
+    }),
+  ].join('\n');
+}
+
 function buildCoherencePrompt(
   request: OutlineRevisionRequest,
   patch: OutlineAiPatch,
@@ -255,6 +360,56 @@ function mapStructuredError(error: CodexStructuredGenerationError) {
   );
 }
 
+function addUsage(
+  left: CodexTokenUsage | null,
+  right: CodexTokenUsage | null,
+) {
+  if (!left || !right) return left ?? right;
+  return {
+    inputTokens: left.inputTokens + right.inputTokens,
+    cachedInputTokens: left.cachedInputTokens + right.cachedInputTokens,
+    outputTokens: left.outputTokens + right.outputTokens,
+    reasoningOutputTokens:
+      left.reasoningOutputTokens + right.reasoningOutputTokens,
+    totalTokens: left.totalTokens + right.totalTokens,
+  };
+}
+
+function parseAndApplyPatch(
+  responseText: string,
+  request: OutlineRevisionRequest,
+) {
+  let editorJson: unknown;
+  try {
+    const trimmed = responseText.trim();
+    const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/iu);
+    editorJson = JSON.parse(fenced?.[1] ?? trimmed);
+  } catch (error) {
+    throw new OutlineRevisionError(
+      'CODEX_OUTLINE_REVISION_INVALID_RESPONSE',
+      'Codex trả về patch không đúng định dạng.',
+      {cause: error},
+    );
+  }
+  const parsedPatch = OutlineAiPatchSchema.safeParse(editorJson);
+  if (!parsedPatch.success) {
+    throw new OutlineRevisionError(
+      'CODEX_OUTLINE_REVISION_INVALID_RESPONSE',
+      'Codex trả về patch chưa đúng cấu trúc yêu cầu.',
+      {cause: parsedPatch.error},
+    );
+  }
+  const patch = constrainOutlinePatch(
+    request.baseContent,
+    request.scope,
+    parsedPatch.data,
+  );
+  return {
+    patch,
+    content: applyOutlinePatch(request.baseContent, request.scope, patch),
+  };
+}
+
 export function createCodexOutlineRevisionService(
   client: CodexAppServerClient,
   options: {runtimeDirectory?: string; timeoutMs?: number} = {},
@@ -268,7 +423,7 @@ export function createCodexOutlineRevisionService(
     async revise(request) {
       assertScopeMatchesContent(request.baseContent, request.scope);
       try {
-        const editor = await runCodexStructuredGeneration({
+        let editor = await runCodexStructuredGeneration({
           client,
           runtimeDirectory,
           timeoutMs:
@@ -283,73 +438,122 @@ export function createCodexOutlineRevisionService(
           model: request.model,
           reasoningEffort: request.reasoningEffort,
         });
-        let editorJson: unknown;
-        try {
-          editorJson = JSON.parse(editor.responseText);
-        } catch (error) {
-          throw new OutlineRevisionError(
-            'CODEX_OUTLINE_REVISION_INVALID_RESPONSE',
-            'Codex trả về patch không đúng định dạng.',
-            {cause: error},
-          );
-        }
-        const parsedPatch = OutlineAiPatchSchema.safeParse(editorJson);
-        if (!parsedPatch.success) {
-          throw new OutlineRevisionError(
-            'CODEX_OUTLINE_REVISION_INVALID_RESPONSE',
-            'Codex trả về patch chưa đúng cấu trúc yêu cầu.',
-            {cause: parsedPatch.error},
-          );
-        }
-        const content = applyOutlinePatch(
-          request.baseContent,
-          request.scope,
-          parsedPatch.data,
-        );
 
-        const reviewer = await runCodexStructuredGeneration({
-          client,
-          runtimeDirectory,
-          timeoutMs:
-            options.timeoutMs ??
-            codexGenerationTimeoutMs(request.reasoningEffort),
-          outputSchema: coherenceOutputSchema,
-          prompt: buildCoherencePrompt(request, parsedPatch.data, content),
-          baseInstructions:
-            'Bạn kiểm định mạch lạc cho PAD Studio. Không dùng công cụ hoặc đọc tệp. Chỉ trả JSON đúng schema.',
-          developerInstructions:
-            'Review toàn bộ bản đã ghép, không đề xuất viết lại rộng. Phân biệt lỗi thực sự với sở thích diễn đạt.',
-          model: request.model,
-          reasoningEffort: request.reasoningEffort,
-        });
-        let reviewerJson: unknown;
+        let prepared: ReturnType<typeof parseAndApplyPatch>;
         try {
-          reviewerJson = JSON.parse(reviewer.responseText);
+          prepared = parseAndApplyPatch(editor.responseText, request);
         } catch (error) {
-          throw new OutlineRevisionError(
-            'CODEX_OUTLINE_COHERENCE_INVALID_RESPONSE',
-            'Codex trả về kết quả kiểm tra mạch lạc không đúng định dạng.',
-            {cause: error},
-          );
+          if (!(error instanceof OutlineRevisionError)) throw error;
+          const repaired = await runCodexStructuredGeneration({
+            client,
+            runtimeDirectory,
+            timeoutMs:
+              options.timeoutMs ??
+              codexGenerationTimeoutMs(request.reasoningEffort),
+            outputSchema: patchOutputSchema,
+            prompt: buildPatchRepairPrompt(
+              request,
+              editor.responseText,
+              error.message,
+            ),
+            baseInstructions:
+              'Bạn sửa một JSON patch mạch giảng cho PAD Studio. Không dùng công cụ hoặc đọc tệp. Chỉ trả JSON đúng schema.',
+            developerInstructions:
+              'Chỉ sửa patch để có thay đổi thực tế đúng editScope. Mọi phần được bảo vệ phải là null; không mở rộng scope hoặc đổi ID.',
+            model: request.model,
+            reasoningEffort: request.reasoningEffort,
+          });
+          editor = {
+            ...repaired,
+            model: [...new Set([editor.model, repaired.model])]
+              .join(', ')
+              .slice(0, 160),
+            usage: addUsage(editor.usage, repaired.usage),
+          };
+          try {
+            prepared = parseAndApplyPatch(repaired.responseText, request);
+          } catch (repairError) {
+            throw new OutlineRevisionError(
+              'CODEX_OUTLINE_REVISION_REPAIR_FAILED',
+              'Codex chưa tạo được thay đổi hợp lệ đúng phần đã chọn sau lượt tự khắc phục.',
+              {cause: repairError},
+            );
+          }
         }
-        const parsedReview = OutlineCoherenceReviewSchema.safeParse(
-          reviewerJson,
-        );
-        if (!parsedReview.success) {
-          throw new OutlineRevisionError(
-            'CODEX_OUTLINE_COHERENCE_INVALID_RESPONSE',
-            'Kết quả kiểm tra mạch lạc chưa đúng cấu trúc yêu cầu.',
-            {cause: parsedReview.error},
+
+        let coherence: OutlineCoherenceReview;
+        let reviewerUsage: CodexTokenUsage | null = null;
+        try {
+          const reviewer = await runCodexStructuredGeneration({
+            client,
+            runtimeDirectory,
+            timeoutMs:
+              options.timeoutMs ??
+              codexGenerationTimeoutMs(request.reasoningEffort),
+            outputSchema: coherenceOutputSchema,
+            prompt: buildCoherencePrompt(
+              request,
+              prepared.patch,
+              prepared.content,
+            ),
+            baseInstructions:
+              'Bạn kiểm định mạch lạc cho PAD Studio. Không dùng công cụ hoặc đọc tệp. Chỉ trả JSON đúng schema.',
+            developerInstructions:
+              'Review toàn bộ bản đã ghép, không đề xuất viết lại rộng. Phân biệt lỗi thực sự với sở thích diễn đạt.',
+            model: request.model,
+            reasoningEffort: request.reasoningEffort,
+          });
+          const trimmed = reviewer.responseText.trim();
+          const fenced = trimmed.match(
+            /^```(?:json)?\s*([\s\S]*?)\s*```$/iu,
           );
+          const reviewerJson = JSON.parse(fenced?.[1] ?? trimmed) as unknown;
+          const parsedReview = OutlineCoherenceReviewSchema.safeParse(
+            reviewerJson,
+          );
+          if (!parsedReview.success) {
+            throw new OutlineRevisionError(
+              'CODEX_OUTLINE_COHERENCE_INVALID_RESPONSE',
+              'Kết quả kiểm tra mạch lạc chưa đúng cấu trúc yêu cầu.',
+              {cause: parsedReview.error},
+            );
+          }
+          coherence = parsedReview.data;
+          reviewerUsage = reviewer.usage;
+        } catch (error) {
+          if (
+            !(error instanceof OutlineRevisionError) &&
+            !(error instanceof CodexStructuredGenerationError) &&
+            !(error instanceof SyntaxError)
+          ) {
+            throw error;
+          }
+          coherence = {
+            verdict: 'warning',
+            summary:
+              'Patch đã hợp lệ và được áp dụng đúng phạm vi, nhưng lượt kiểm tra mạch lạc tự động chưa hoàn tất.',
+            issues: [{
+              severity: 'warning',
+              category: 'scope',
+              message:
+                'Reviewer Codex tạm thời không phản hồi; candidate vẫn được giữ để bạn không mất phần chỉnh sửa đã sinh.',
+              suggestedFix:
+                'Xem trước candidate và chỉnh tiếp nếu cần kiểm tra thêm.',
+              affectedSectionIds: request.scope.sections.map(
+                item => item.sectionId,
+              ),
+              requiresScopeExpansion: false,
+            }],
+          };
         }
 
         return {
-          patch: parsedPatch.data,
-          content,
-          coherence: parsedReview.data,
+          patch: prepared.patch,
+          content: prepared.content,
+          coherence,
           model: editor.model,
           editorUsage: editor.usage,
-          reviewerUsage: reviewer.usage,
+          reviewerUsage,
         };
       } catch (error) {
         if (error instanceof OutlineRevisionError) throw error;

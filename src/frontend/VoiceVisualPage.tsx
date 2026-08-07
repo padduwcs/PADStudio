@@ -31,6 +31,7 @@ import {useCodexConnection} from './useCodexConnection.ts';
 import {useVoiceVisualDraft} from './useVoiceVisualDraft.ts';
 import {resolveVoiceVisualSectionPresentation} from './voiceVisualSectionState.ts';
 import {prepareVoiceVisualReviewSuggestions} from './voiceVisualReviewSuggestions.ts';
+import {voiceVisualCandidateIsCurrent} from './voiceVisualWorkflowState.ts';
 
 function formatTime(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
@@ -130,6 +131,9 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
     'auto' | 'current' | 'candidate'
   >('auto');
   const [checkpointLabel, setCheckpointLabel] = useState('');
+  const candidateContextCurrent =
+    voiceVisualCandidateIsCurrent(plan.candidate, plan.history) &&
+    plan.saveState === 'saved';
 
   async function handleGenerate(forcedGuidance?: string) {
     if (
@@ -290,7 +294,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
       },
       selection.model,
       selection.reasoningEffort,
-      candidateBaseMode,
+      candidateContextCurrent ? candidateBaseMode : 'current',
     );
     if (created) {
       setGuidance('');
@@ -413,11 +417,16 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
       (total, fields) => total + fields.length,
       0,
     );
-  const candidateReviewable = Boolean(
-    plan.candidate?.decision === 'pending' &&
-      plan.history &&
-      plan.candidate.rootBaseContextHash === plan.history.currentContextHash,
-  );
+  const candidateReviewable = candidateContextCurrent;
+  const contentEditingLocked =
+    plan.stale ||
+    plan.generating ||
+    plan.candidateGenerating ||
+    plan.candidateApplying ||
+    plan.reviewing ||
+    plan.historyBusy ||
+    plan.approving ||
+    plan.saveState === 'conflict';
   const candidateRootArtifact = plan.candidate
     ? plan.history?.versions.find(
         item => item.versionId === plan.candidate?.baseVersionId,
@@ -652,7 +661,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                     </span>
                     <textarea
                       rows={3}
-                      disabled={plan.stale}
+                      disabled={contentEditingLocked}
                       value={draft.voiceDirection}
                       onChange={(event) =>
                         plan.updateDirection(
@@ -678,7 +687,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                     </span>
                     <textarea
                       rows={3}
-                      disabled={plan.stale}
+                      disabled={contentEditingLocked}
                       value={draft.visualDirection}
                       onChange={(event) =>
                         plan.updateDirection(
@@ -761,7 +770,9 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                 <div className="outline-section-controls">
                                   <button
                                     type="button"
-                                    disabled={beatIndex === 0 || plan.stale}
+                                    disabled={
+                                      beatIndex === 0 || contentEditingLocked
+                                    }
                                     aria-label={`Đưa beat ${beatIndex + 1} lên`}
                                     onClick={() =>
                                       plan.moveBeat(
@@ -778,7 +789,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                     disabled={
                                       beatIndex ===
                                         planSection.beats.length - 1 ||
-                                      plan.stale
+                                      contentEditingLocked
                                     }
                                     aria-label={`Đưa beat ${beatIndex + 1} xuống`}
                                     onClick={() =>
@@ -796,7 +807,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                     type="button"
                                     disabled={
                                       planSection.beats.length <= 1 ||
-                                      plan.stale
+                                      contentEditingLocked
                                     }
                                     onClick={() =>
                                       plan.removeBeat(
@@ -841,7 +852,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                   <span>Lời thuyết minh</span>
                                   <textarea
                                     rows={4}
-                                    disabled={plan.stale}
+                                    disabled={contentEditingLocked}
                                     value={beat.voiceover}
                                     onChange={(event) =>
                                       plan.updateBeat(
@@ -857,12 +868,12 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                   <span>
                                     Cách ElevenLabs đọc
                                     <small>
-                                      Đã chuyển ký hiệu và công thức thành âm tiết
+                                      Giữ nguyên tiếng Anh; chỉ chuyển ký hiệu và công thức
                                     </small>
                                   </span>
                                   <textarea
                                     rows={3}
-                                    disabled={plan.stale}
+                                    disabled={contentEditingLocked}
                                     value={speechTextForBeat(beat)}
                                     onChange={(event) =>
                                       plan.updateBeat(
@@ -876,7 +887,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                   {beat.spokenVoiceover && (
                                     <button
                                       type="button"
-                                      disabled={plan.stale}
+                                      disabled={contentEditingLocked}
                                       onClick={() =>
                                         plan.updateBeat(
                                           planSection.outlineSectionId,
@@ -894,7 +905,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                   <span>Visual cần thấy</span>
                                   <textarea
                                     rows={3}
-                                    disabled={plan.stale}
+                                    disabled={contentEditingLocked}
                                     value={beat.visualDescription}
                                     onChange={(event) =>
                                       plan.updateBeat(
@@ -910,7 +921,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                   <span>Chuyển động</span>
                                   <textarea
                                     rows={2}
-                                    disabled={plan.stale}
+                                    disabled={contentEditingLocked}
                                     value={beat.animationDescription}
                                     onChange={(event) =>
                                       plan.updateBeat(
@@ -949,7 +960,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                                       max={
                                         pipelineSafetyLimits.maximumVisualHoldSeconds
                                       }
-                                      disabled={plan.stale}
+                                      disabled={contentEditingLocked}
                                       value={beat.visualHoldSeconds}
                                       onChange={(event) =>
                                         plan.updateBeat(
@@ -977,7 +988,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                             pipelineSafetyLimits.maximumBeatsPerSection ||
                           beatCount >=
                             pipelineSafetyLimits.maximumTotalBeats ||
-                          plan.stale
+                          contentEditingLocked
                         }
                         onClick={() =>
                           plan.addBeat(planSection.outlineSectionId)
@@ -1142,6 +1153,15 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                         </span>
                       </header>
 
+                      {plan.candidate.decision === 'pending' &&
+                        !candidateContextCurrent && (
+                          <div className="outline-alert" role="status">
+                            Candidate này thuộc một bản nền cũ. Bạn vẫn có thể
+                            xem để so sánh, nhưng không thể áp dụng hoặc chỉnh
+                            tiếp lên kế hoạch hiện tại.
+                          </div>
+                        )}
+
                       <span className="voice-visual-auto-review-label">
                         Review tự động sau khi AI chỉnh sửa
                       </span>
@@ -1163,7 +1183,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                           ))}
                         </ul>
                       )}
-                      {plan.candidate.decision === 'pending' &&
+                      {candidateContextCurrent &&
                         plan.candidate.status === 'scope_expansion_required' && (
                           <div className="candidate-scope-expansion">
                             <div>
@@ -1205,7 +1225,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                       )}
 
                       <footer>
-                        {plan.candidate.decision === 'pending' ? (
+                        {candidateContextCurrent ? (
                           <>
                             <button
                               className="ghost-button"
@@ -1218,7 +1238,10 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                             <button
                               className="submit-button"
                               type="button"
-                              disabled={plan.candidateApplying}
+                              disabled={
+                                plan.candidateApplying ||
+                                !candidateContextCurrent
+                              }
                               onClick={() => void handleApplyCandidate()}
                             >
                               {plan.candidateApplying
@@ -1314,7 +1337,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                       ) : (
                         <>
                           <SparkIcon />
-                          {plan.candidate?.decision === 'pending'
+                          {candidateContextCurrent
                             ? candidateBaseMode === 'current'
                               ? 'Tạo candidate từ bản hiện tại'
                               : 'Chỉnh tiếp candidate'
@@ -1513,7 +1536,7 @@ export function VoiceVisualPage({projectId}: {projectId: string}) {
                   plan.generating ||
                   plan.candidateGenerating ||
                   plan.candidateApplying ||
-                  plan.candidate?.decision === 'pending' ||
+                  candidateContextCurrent ||
                   (!approved && plan.stale) ||
                   plan.saveState === 'conflict'
                 }

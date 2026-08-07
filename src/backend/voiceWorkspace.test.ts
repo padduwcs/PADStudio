@@ -203,3 +203,84 @@ test('Voice workspace keeps audio after the final character timestamp', async (c
   );
   assert.equal(prepared.track.durationSeconds, prepared.totalDurationSeconds);
 });
+
+test('Voice workspace giữ checkpoint chunk qua lần khởi động backend khác', async (context) => {
+  const projectsDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-voice-checkpoint-'),
+  );
+  context.after(() =>
+    rm(projectsDirectory, {recursive: true, force: true}),
+  );
+  const projectId = 'voice-checkpoint-test';
+  const generationId = randomUUID();
+  const fingerprint = 'a'.repeat(64);
+  const chunk = narrationFixture().chunks[0]!;
+  const firstWorkspace = createVoiceWorkspace(projectsDirectory);
+
+  await firstWorkspace.saveGenerationChunk!(
+    projectId,
+    generationId,
+    0,
+    fingerprint,
+    chunk,
+  );
+
+  const restartedWorkspace = createVoiceWorkspace(projectsDirectory);
+  const restored = await restartedWorkspace.readGenerationChunk!(
+    projectId,
+    generationId,
+    0,
+    fingerprint,
+  );
+  assert.ok(restored);
+  assert.equal(restored.text, chunk.text);
+  assert.deepEqual(restored.generated.audio, chunk.generated.audio);
+  assert.equal(restored.generated.requestId, chunk.generated.requestId);
+
+  await assert.rejects(
+    () =>
+      restartedWorkspace.readGenerationChunk!(
+        projectId,
+        generationId,
+        0,
+        'b'.repeat(64),
+      ),
+    (error) =>
+      error instanceof VoiceWorkspaceError &&
+      error.code === 'VOICE_GENERATION_CHECKPOINT_CONFLICT',
+  );
+
+  await restartedWorkspace.clearGenerationCheckpoint!(
+    projectId,
+    generationId,
+  );
+  assert.equal(
+    await restartedWorkspace.readGenerationChunk!(
+      projectId,
+      generationId,
+      0,
+      fingerprint,
+    ),
+    null,
+  );
+});
+
+test('Voice workspace phát hiện thiếu FFmpeg trước bước TTS tốn quota', async (context) => {
+  const projectsDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-voice-preflight-'),
+  );
+  context.after(() =>
+    rm(projectsDirectory, {recursive: true, force: true}),
+  );
+  const workspace = createVoiceWorkspace(projectsDirectory, {
+    ffmpegPath: path.join(projectsDirectory, 'ffmpeg-does-not-exist'),
+  });
+
+  await assert.rejects(
+    () => workspace.verifyDependencies!(),
+    (error) =>
+      error instanceof VoiceWorkspaceError &&
+      error.code === 'FFMPEG_NOT_AVAILABLE' &&
+      /chưa bị gọi và chưa trừ quota/iu.test(error.message),
+  );
+});

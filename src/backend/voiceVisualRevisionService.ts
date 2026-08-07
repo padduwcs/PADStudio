@@ -30,7 +30,7 @@ import {
 } from './codexStructuredGeneration.ts';
 
 export const VOICE_VISUAL_REVISION_PROMPT_VERSION =
-  'voice-visual-edit-v2';
+  'voice-visual-edit-v3';
 export const VOICE_VISUAL_COHERENCE_PROMPT_VERSION =
   'voice-visual-coherence-v2';
 const VOICE_VISUAL_CANDIDATE_REVIEW_TIMEOUT_MS = 90_000;
@@ -233,6 +233,84 @@ export function applyVoiceVisualPatch(
   return parsed.data;
 }
 
+/** Enforce edit scope deterministically before accepting an AI patch. */
+export function constrainVoiceVisualPatch(
+  baseContent: VoiceVisualPlanContent,
+  scope: VoiceVisualEditScope,
+  patch: VoiceVisualAiPatch,
+): VoiceVisualAiPatch {
+  assertScopeMatchesContent(baseContent, scope);
+  const allowed = scopeMaps(scope);
+  const baseBeats = new Map(
+    baseContent.sections.flatMap(section =>
+      section.beats.map(beat => [beat.id, beat] as const),
+    ),
+  );
+  const beats: VoiceVisualAiPatch['beats'] = [];
+  const seenBeatIds = new Set<string>();
+
+  for (const beatPatch of patch.beats) {
+    if (seenBeatIds.has(beatPatch.beatId)) continue;
+    seenBeatIds.add(beatPatch.beatId);
+    const baseBeat = baseBeats.get(beatPatch.beatId);
+    const allowedFields = allowed.beatFields.get(beatPatch.beatId);
+    if (!baseBeat || !allowedFields) continue;
+
+    const constrained = {
+      beatId: beatPatch.beatId,
+      voiceover:
+        allowedFields.has('voiceover') &&
+        beatPatch.voiceover !== baseBeat.voiceover
+          ? beatPatch.voiceover
+          : null,
+      spokenVoiceover:
+        allowedFields.has('spokenVoiceover') &&
+        beatPatch.spokenVoiceover !== baseBeat.spokenVoiceover
+          ? beatPatch.spokenVoiceover ?? null
+          : null,
+      visualDescription:
+        allowedFields.has('visualDescription') &&
+        beatPatch.visualDescription !== baseBeat.visualDescription
+          ? beatPatch.visualDescription
+          : null,
+      animationDescription:
+        allowedFields.has('animationDescription') &&
+        beatPatch.animationDescription !== baseBeat.animationDescription
+          ? beatPatch.animationDescription
+          : null,
+      visualHoldSeconds:
+        allowedFields.has('visualHoldSeconds') &&
+        beatPatch.visualHoldSeconds !== baseBeat.visualHoldSeconds
+          ? beatPatch.visualHoldSeconds
+          : null,
+    };
+    if (
+      constrained.voiceover !== null ||
+      constrained.spokenVoiceover !== null ||
+      constrained.visualDescription !== null ||
+      constrained.animationDescription !== null ||
+      constrained.visualHoldSeconds !== null
+    ) {
+      beats.push(constrained);
+    }
+  }
+
+  return {
+    editSummary: patch.editSummary,
+    voiceDirection:
+      allowed.globalFields.has('voiceDirection') &&
+      patch.voiceDirection !== baseContent.voiceDirection
+        ? patch.voiceDirection
+        : null,
+    visualDirection:
+      allowed.globalFields.has('visualDirection') &&
+      patch.visualDirection !== baseContent.visualDirection
+        ? patch.visualDirection
+        : null,
+    beats,
+  };
+}
+
 function promptOutline(outline: TeachingOutline) {
   return {
     centralMessage: outline.centralMessage,
@@ -336,6 +414,57 @@ function parseVoiceVisualPatch(responseText: string) {
   );
 }
 
+type ApplicablePatchResult =
+  | {
+      success: true;
+      patch: VoiceVisualAiPatch;
+      content: VoiceVisualPlanContent;
+    }
+  | {
+      success: false;
+      issues: Array<{path: PropertyKey[]; message: string}>;
+      cause: unknown;
+    };
+
+function applicableVoiceVisualPatch(
+  responseText: string,
+  request: VoiceVisualRevisionRequest,
+): ApplicablePatchResult {
+  try {
+    const parsed = parseVoiceVisualPatch(responseText);
+    if (!parsed.success) {
+      return {
+        success: false,
+        issues: parsed.error.issues,
+        cause: parsed.error,
+      };
+    }
+    const patch = constrainVoiceVisualPatch(
+      request.baseContent,
+      request.scope,
+      parsed.data,
+    );
+    return {
+      success: true,
+      patch,
+      content: applyVoiceVisualPatch(
+        request.baseContent,
+        request.scope,
+        patch,
+      ),
+    };
+  } catch (error) {
+    return {
+      success: false,
+      issues: [{
+        path: [],
+        message: error instanceof Error ? error.message : 'JSON không hợp lệ.',
+      }],
+      cause: error,
+    };
+  }
+}
+
 function addUsage(
   left: CodexTokenUsage | null,
   right: CodexTokenUsage | null,
@@ -365,7 +494,7 @@ function buildRevisionPrompt(request: VoiceVisualRevisionRequest) {
     'Chỉ trả giá trị mới cho đúng trường trong editScope; có thể bỏ hẳn các trường không đổi hoặc đặt chúng là null. Không được patch beat ngoài scope.',
     'Không thêm, xóa, đổi ID, đổi thứ tự beat/section hoặc sửa timingCalibration. Không viết lại phần đang tốt.',
     'Nếu sửa voiceover, câu mới phải nối tự nhiên với beat ngay trước và ngay sau. Nếu sửa visual/animation, phải tiếp tục khớp chính xác với lời kể hiện có.',
-    'Khi sửa voiceover, đồng thời cung cấp spokenVoiceover là cách TTS tiếng Việt cần đọc; phiên âm ký hiệu/công thức như O(n) → “ô nờ”, O(n^2) → “ô nờ bình”, O(log n) → “ô lốc nờ”, a[i] → “a tại chỉ số i”.',
+    'Khi sửa voiceover, đồng thời cung cấp spokenVoiceover là cách ElevenLabs cần đọc. Giữ nguyên chính xác mọi từ, cụm từ, tên riêng, chữ viết tắt và thuật ngữ tiếng Anh; không dịch, không Việt hóa hoặc viết lại chúng theo cách phát âm tiếng Việt. Chỉ phiên âm ký hiệu, công thức, toán tử, truy cập mảng và phần không phải chữ có thể bị đọc sai, như O(n) → “ô nờ”, O(n^2) → “ô nờ bình”, O(log n) → “ô lốc nờ”, a[i] → “a tại chỉ số i”.',
     JSON.stringify({
       topicInput: request.topicInput,
       outline: promptOutline(request.outline),
@@ -566,26 +695,12 @@ export function createCodexVoiceVisualRevisionService(
           model: request.model,
           reasoningEffort: request.reasoningEffort,
         });
-        let parsedPatch:
-          | ReturnType<typeof parseVoiceVisualPatch>
-          | null = null;
-        let initialIssues: Array<{path: PropertyKey[]; message: string}> = [];
-        try {
-          parsedPatch = parseVoiceVisualPatch(editor.responseText);
-          if (!parsedPatch.success) {
-            initialIssues = parsedPatch.error.issues;
-          }
-        } catch (error) {
-          initialIssues = [{
-            path: [],
-            message:
-              error instanceof Error
-                ? error.message
-                : 'JSON không hợp lệ.',
-          }];
-        }
+        let applicable = applicableVoiceVisualPatch(
+          editor.responseText,
+          request,
+        );
 
-        if (!parsedPatch?.success) {
+        if (!applicable.success) {
           const repaired = await runCodexStructuredGeneration({
             client,
             runtimeDirectory,
@@ -596,7 +711,7 @@ export function createCodexVoiceVisualRevisionService(
             prompt: buildPatchRepairPrompt(
               request,
               editor.responseText,
-              initialIssues,
+              applicable.issues,
             ),
             baseInstructions:
               'Bạn sửa một JSON patch voice–visual cho PAD Studio. Không dùng công cụ hoặc đọc tệp. Chỉ trả JSON đúng schema.',
@@ -614,28 +729,19 @@ export function createCodexVoiceVisualRevisionService(
             model: combinedModel,
             usage: combinedUsage,
           };
-          try {
-            parsedPatch = parseVoiceVisualPatch(repaired.responseText);
-          } catch (error) {
-            throw new VoiceVisualRevisionError(
-              'CODEX_VOICE_VISUAL_REVISION_INVALID_RESPONSE',
-              'Codex chưa sửa được patch JSON sau lượt tự khắc phục.',
-              {cause: error},
-            );
-          }
-        }
-        if (!parsedPatch.success) {
-          throw new VoiceVisualRevisionError(
-            'CODEX_VOICE_VISUAL_REVISION_INVALID_RESPONSE',
-            'Codex chưa sửa được cấu trúc patch sau lượt tự khắc phục.',
-            {cause: parsedPatch.error},
+          applicable = applicableVoiceVisualPatch(
+            repaired.responseText,
+            request,
           );
         }
-        const content = applyVoiceVisualPatch(
-          request.baseContent,
-          request.scope,
-          parsedPatch.data,
-        );
+        if (!applicable.success) {
+          throw new VoiceVisualRevisionError(
+            'CODEX_VOICE_VISUAL_REVISION_INVALID_RESPONSE',
+            'Codex chưa tạo được thay đổi hợp lệ trong phạm vi đã chọn sau lượt tự khắc phục.',
+            {cause: applicable.cause},
+          );
+        }
+        const {content, patch} = applicable;
 
         let coherence: VoiceVisualCoherenceReview;
         let reviewerUsage: CodexTokenUsage | null = null;
@@ -648,7 +754,7 @@ export function createCodexVoiceVisualRevisionService(
             content,
             scope: request.scope,
             guidance: request.guidance,
-            patch: parsedPatch.data,
+            patch,
             model: request.model,
             reasoningEffort: request.reasoningEffort,
           });
@@ -680,7 +786,7 @@ export function createCodexVoiceVisualRevisionService(
           }
         }
         return {
-          patch: parsedPatch.data,
+          patch,
           content,
           coherence,
           model: editor.model,

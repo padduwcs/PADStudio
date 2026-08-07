@@ -27,7 +27,7 @@ import {
   runCodexStructuredGeneration,
 } from './codexStructuredGeneration.ts';
 
-export const VOICE_VISUAL_PROMPT_VERSION = 'voice-visual-v5';
+export const VOICE_VISUAL_PROMPT_VERSION = 'voice-visual-v6';
 
 const generatedVoiceVisualSchema = z
   .object({
@@ -65,6 +65,20 @@ const generatedVoiceVisualSchema = z
 const outputJsonSchema = z.toJSONSchema(generatedVoiceVisualSchema, {
   target: 'draft-7',
 });
+
+function outputSchemaForOutline(outline: TeachingOutline) {
+  const schema = structuredClone(outputJsonSchema) as {
+    properties?: {
+      sections?: {minItems?: number; maxItems?: number};
+    };
+  };
+  const sections = schema.properties?.sections;
+  if (sections) {
+    sections.minItems = outline.sections.length;
+    sections.maxItems = outline.sections.length;
+  }
+  return schema;
+}
 
 export interface VoiceVisualGenerationRequest {
   topicInput: TopicInput;
@@ -154,7 +168,7 @@ function buildPrompt(request: VoiceVisualGenerationRequest) {
     'Giữ nguyên số lượng và thứ tự các section của outline; mỗi phần tử output tương ứng đúng một section.',
     `Tự chọn số beat cần thiết cho từng section theo nội dung và targetNarrationTokenCount; mỗi beat chỉ truyền đạt một ý. Không ép vào 1–4 beat. Cầu chì kỹ thuật là ${pipelineSafetyLimits.maximumBeatsPerSection} beat/section và ${pipelineSafetyLimits.maximumTotalBeats} beat/project.`,
     'voiceover là lời kể tự nhiên sẵn sàng cho TTS, không chứa chỉ dẫn sân khấu.',
-    'Mỗi beat phải có spokenVoiceover là cách ElevenLabs cần đọc bằng tiếng Việt: phiên âm ký hiệu, công thức và truy cập mảng thành âm tiết tự nhiên. Ví dụ O(n) → “ô nờ”, O(n^2) → “ô nờ bình”, O(log n) → “ô lốc nờ”, a[i] → “a tại chỉ số i”. Không để ký hiệu kỹ thuật khó đọc trong spokenVoiceover.',
+    'Mỗi beat phải có spokenVoiceover là đúng nội dung voiceover nhưng ở dạng ElevenLabs có thể đọc ổn định. Giữ nguyên chính xác mọi từ, cụm từ, tên riêng, chữ viết tắt và thuật ngữ tiếng Anh; không dịch, không Việt hóa và không viết lại chúng theo cách phát âm tiếng Việt. Chỉ phiên âm ký hiệu, công thức, toán tử, truy cập mảng và phần không phải chữ có thể bị đọc sai thành âm tiết tự nhiên. Ví dụ Binary Search giữ nguyên “Binary Search”, API giữ nguyên “API”; O(n) → “ô nờ”, O(n^2) → “ô nờ bình”, O(log n) → “ô lốc nờ”, a[i] → “a tại chỉ số i”. Không để ký hiệu kỹ thuật khó đọc trong spokenVoiceover.',
     'Viết toàn bộ voiceover như một bài nói liên tục: section sau nối trực tiếp ý và nhịp của section trước, không lặp mở bài, không tự giới thiệu lại và không kết luận riêng từng section.',
     'Bám sát targetNarrationTokenCount của từng section và tổng narrationBudget; đây là ngân sách các đơn vị phân tách bằng khoảng trắng, không phải số từ ngôn ngữ học.',
     'visualDescription mô tả điều người xem cần thấy; animationDescription mô tả thay đổi hoặc chuyển động cụ thể.',
@@ -217,7 +231,7 @@ export function createCodexVoiceVisualGenerator(
           timeoutMs:
             configuredTimeoutMs ??
             codexGenerationTimeoutMs(request.reasoningEffort),
-          outputSchema: outputJsonSchema,
+          outputSchema: outputSchemaForOutline(request.outline),
           prompt: buildPrompt(request),
           baseInstructions:
             'Bạn lập kế hoạch voice–visual cho PAD Studio. Không dùng công cụ hoặc đọc tệp. Chỉ trả JSON đúng schema.',

@@ -2173,6 +2173,14 @@ kbd {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 260px;
   gap: 24px;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.outline-editor-grid.is-stale {
+  opacity: 0.72;
 }
 
 .outline-editor-main {
@@ -2952,8 +2960,24 @@ kbd {
 }
 
 .outline-history-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   color: #9d5248;
   font-size: 10px;
+}
+
+.outline-history-error button {
+  flex: 0 0 auto;
+  padding: 5px 7px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  color: inherit;
+  background: white;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .voice-visual-field-heading {

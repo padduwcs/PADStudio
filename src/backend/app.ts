@@ -3186,6 +3186,18 @@ export function createPadStudioServer(options: AppOptions = {}) {
             'Project chưa có mạch giảng để lưu phiên bản.',
           );
         }
+        if (
+          !sameValue(
+            currentProject.outline.sourceInput,
+            currentProject.topicInput,
+          )
+        ) {
+          throw new RequestBodyError(
+            409,
+            'OUTLINE_OUTDATED',
+            'Đầu vào đã thay đổi. Hãy tạo lại mạch giảng trước khi lưu phiên bản.',
+          );
+        }
         const currentVersions = await outlineHistoryStore.listVersions(
           currentProject.id,
         );
@@ -3245,6 +3257,18 @@ export function createPadStudioServer(options: AppOptions = {}) {
             409,
             'OUTLINE_NOT_READY',
             'Project chưa có mạch giảng để chỉnh sửa.',
+          );
+        }
+        if (
+          !sameValue(
+            currentProject.outline.sourceInput,
+            currentProject.topicInput,
+          )
+        ) {
+          throw new RequestBodyError(
+            409,
+            'OUTLINE_OUTDATED',
+            'Đầu vào đã thay đổi. Hãy tạo lại mạch giảng trước khi yêu cầu AI chỉnh sửa.',
           );
         }
 
@@ -3633,6 +3657,18 @@ export function createPadStudioServer(options: AppOptions = {}) {
             'Không tìm thấy phiên bản cần khôi phục.',
           );
         }
+        if (
+          !sameValue(
+            sourceVersion.artifact.sourceInput,
+            currentProject.topicInput,
+          )
+        ) {
+          throw new RequestBodyError(
+            409,
+            'OUTLINE_VERSION_CONTEXT_MISMATCH',
+            'Phiên bản này thuộc đầu vào cũ. Bạn vẫn có thể so sánh nhưng không thể khôi phục trực tiếp.',
+          );
+        }
         const currentVersion = await outlineHistoryStore.ensureVersion({
           projectId: currentProject.id,
           origin: 'baseline',
@@ -3734,13 +3770,39 @@ export function createPadStudioServer(options: AppOptions = {}) {
           throw new ProjectConflictError(currentProject);
         }
 
-        if (currentProject.outline) {
+        if (
+          currentProject.outline &&
+          sameValue(
+            currentProject.outline.sourceInput,
+            currentProject.topicInput,
+          )
+        ) {
           throw new RequestBodyError(
             409,
             'OUTLINE_CANDIDATE_REQUIRED',
             'Mạch giảng đã tồn tại. Hãy tạo candidate để so sánh thay vì ghi đè trực tiếp.',
           );
         }
+
+        const previousOutline = currentProject.outline;
+        const parentVersion = previousOutline
+          ? await outlineHistoryStore
+              .ensureVersion({
+                projectId: currentProject.id,
+                origin: 'baseline',
+                label: 'Trước khi tạo lại theo đầu vào mới',
+                parentVersionId: null,
+                restoredFromVersionId: null,
+                candidateId: null,
+                projectRevision: currentProject.revision,
+                contentHash: hashOutlineContent(previousOutline),
+                artifact: previousOutline,
+              })
+              .catch(error => {
+                logger.error(error);
+                return null;
+              })
+          : null;
 
         const generationKey = `${currentProject.id}:${parsedRequest.data.generationId}`;
         const fingerprint = JSON.stringify({
@@ -3799,9 +3861,11 @@ export function createPadStudioServer(options: AppOptions = {}) {
           .ensureVersion(
             {
               projectId: updatedProject.id,
-              origin: 'approval',
-              label: 'Đã chốt mạch giảng',
-              parentVersionId: null,
+              origin: 'baseline',
+              label: previousOutline
+                ? 'Tạo lại theo đầu vào mới'
+                : 'Mạch giảng do AI tạo',
+              parentVersionId: parentVersion?.versionId ?? null,
               restoredFromVersionId: null,
               candidateId: null,
               projectRevision: updatedProject.revision,
@@ -3848,6 +3912,18 @@ export function createPadStudioServer(options: AppOptions = {}) {
             409,
             'OUTLINE_NOT_READY',
             'Project chưa có mạch giảng để chỉnh sửa.',
+          );
+        }
+        if (
+          !sameValue(
+            currentProject.outline.sourceInput,
+            currentProject.topicInput,
+          )
+        ) {
+          throw new RequestBodyError(
+            409,
+            'OUTLINE_OUTDATED',
+            'Đầu vào đã thay đổi. Hãy tạo lại mạch giảng thay vì chỉnh bản cũ.',
           );
         }
 
@@ -4969,6 +5045,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
           generationKey,
           fingerprint,
           async () => {
+            // All local tooling must be available before the first paid TTS
+            // request. A missing encoder must never be discovered after
+            // ElevenLabs has already consumed quota.
+            await voiceWorkspace.verifyDependencies?.();
             const resolved =
               await elevenLabsVoiceService.resolveConfiguration({
                 voiceId: parsedRequest.data.voiceId,
@@ -5028,25 +5108,48 @@ export function createPadStudioServer(options: AppOptions = {}) {
                         previousRequestIds: [...previousRequestIds],
                       }),
                 };
-              const chunkGeneration = await generateOnce(
-                voiceSectionGenerations,
-                `${generationKey}:chunk:${index + 1}`,
-                JSON.stringify(chunkRequest),
-                () =>
-                  elevenLabsVoiceService.generateSection(chunkRequest),
-                (error) =>
-                  error instanceof ElevenLabsVoiceError &&
-                  error.code === 'ELEVENLABS_TTS_RESULT_UNKNOWN',
-                pipelineSafetyLimits.maximumVoiceChunks * 2,
-              );
-              if (chunkGeneration.result.requestId) {
-                previousRequestIds.push(chunkGeneration.result.requestId);
-              }
-              generatedChunks.push({
-                ...chunk,
-                outputFormat: resolved.configuration.outputFormat,
-                generated: chunkGeneration.result,
+              const chunkFingerprint = hashJson({
+                chunk,
+                request: chunkRequest,
               });
+              let completedChunk =
+                await voiceWorkspace.readGenerationChunk?.(
+                  currentProject.id,
+                  generationId,
+                  index,
+                  chunkFingerprint,
+                ) ?? null;
+              if (!completedChunk) {
+                const chunkGeneration = await generateOnce(
+                  voiceSectionGenerations,
+                  `${generationKey}:chunk:${index + 1}`,
+                  JSON.stringify(chunkRequest),
+                  () =>
+                    elevenLabsVoiceService.generateSection(chunkRequest),
+                  (error) =>
+                    error instanceof ElevenLabsVoiceError &&
+                    error.code === 'ELEVENLABS_TTS_RESULT_UNKNOWN',
+                  pipelineSafetyLimits.maximumVoiceChunks * 2,
+                );
+                completedChunk = {
+                  ...chunk,
+                  outputFormat: resolved.configuration.outputFormat,
+                  generated: chunkGeneration.result,
+                };
+                await voiceWorkspace.saveGenerationChunk?.(
+                  currentProject.id,
+                  generationId,
+                  index,
+                  chunkFingerprint,
+                  completedChunk,
+                );
+              }
+              if (completedChunk.generated.requestId) {
+                previousRequestIds.push(
+                  completedChunk.generated.requestId,
+                );
+              }
+              generatedChunks.push(completedChunk);
             }
             const prepared = await voiceWorkspace.prepare(
               currentProject.id,
@@ -5100,6 +5203,9 @@ export function createPadStudioServer(options: AppOptions = {}) {
           });
           return;
         }
+        await voiceWorkspace
+          .clearGenerationCheckpoint?.(currentProject.id, generationId)
+          .catch(error => logger.error(error));
         sendProject(response, 200, updatedProject);
         return;
       }
@@ -6535,13 +6641,17 @@ export function createPadStudioServer(options: AppOptions = {}) {
       if (error instanceof VoiceWorkspaceError) {
         sendApiError(
           response,
-          error.code === 'VOICE_WORKSPACE_CONFLICT'
+          error.code === 'VOICE_WORKSPACE_CONFLICT' ||
+            error.code === 'VOICE_GENERATION_CHECKPOINT_CONFLICT'
             ? 409
             : error.code === 'VOICE_ALIGNMENT_INVALID'
               ? 422
               : error.code === 'VOICE_AUDIO_NOT_FOUND'
                 ? 404
-                : 500,
+                : error.code === 'FFMPEG_NOT_AVAILABLE' ||
+                    error.code === 'FFPROBE_NOT_AVAILABLE'
+                  ? 503
+                  : 500,
           {
             code: error.code,
             message: error.message,

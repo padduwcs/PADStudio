@@ -47,7 +47,10 @@ import {
 import type {LayoutWorkspace} from './layoutWorkspace.ts';
 import type {VoiceVisualGenerator} from './voiceVisualGenerator.ts';
 import type {VoiceVisualRevisionService} from './voiceVisualRevisionService.ts';
-import type {VoiceWorkspace} from './voiceWorkspace.ts';
+import type {
+  GeneratedVoiceChunk,
+  VoiceWorkspace,
+} from './voiceWorkspace.ts';
 import type {FinalRenderService} from './finalRenderService.ts';
 import type {CredentialStore} from './credentialStore.ts';
 
@@ -793,6 +796,26 @@ test('API tạo, chỉnh sửa và chốt mạch giảng an toàn', async (conte
   assert.equal(reusedBody.error.code, 'GENERATION_ID_REUSED');
   assert.equal(generationCalls, 1);
 
+  const overwriteCurrentResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"2"',
+      },
+      body: JSON.stringify({
+        generationId: randomUUID(),
+        model: 'model-name',
+        reasoningEffort: 'high',
+      }),
+    },
+  );
+  const overwriteCurrentBody = await overwriteCurrentResponse.json();
+  assert.equal(overwriteCurrentResponse.status, 409);
+  assert.equal(overwriteCurrentBody.error.code, 'OUTLINE_CANDIDATE_REQUIRED');
+  assert.equal(generationCalls, 1);
+
   const generatedOutline = generateBody.project.outline;
   const updateResponse = await fetch(
     `${baseUrl}/api/projects/${project.id}/outline`,
@@ -852,6 +875,43 @@ test('API tạo, chỉnh sửa và chốt mạch giảng an toàn', async (conte
   const outdatedApproveBody = await outdatedApproveResponse.json();
   assert.equal(outdatedApproveResponse.status, 409);
   assert.equal(outdatedApproveBody.error.code, 'OUTLINE_OUTDATED');
+
+  const regenerateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/generate`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': '"5"',
+      },
+      body: JSON.stringify({
+        generationId: randomUUID(),
+        model: 'model-name',
+        reasoningEffort: 'high',
+      }),
+    },
+  );
+  const regenerateBody = await regenerateResponse.json();
+  assert.equal(regenerateResponse.status, 200);
+  assert.equal(regenerateBody.project.revision, 6);
+  assert.equal(regenerateBody.project.outline.status, 'draft');
+  assert.equal(regenerateBody.project.outline.contentRevision, 1);
+  assert.deepEqual(
+    regenerateBody.project.outline.sourceInput,
+    topicUpdateBody.project.topicInput,
+  );
+  assert.equal(generationCalls, 2);
+  const regeneratedHistory = await (
+    await fetch(`${baseUrl}/api/projects/${project.id}/outline/history`)
+  ).json();
+  assert.equal(
+    regeneratedHistory.versions.some(
+      (version: {label: string | null; parentVersionId: string | null}) =>
+        version.label === 'Tạo lại theo đầu vào mới' &&
+        version.parentVersionId !== null,
+    ),
+    true,
+  );
 });
 
 test('API Outline candidate giữ bản hiện tại, áp dụng có kiểm soát và khôi phục copy-forward', async context => {
@@ -1143,6 +1203,45 @@ test('API Outline candidate giữ bản hiện tại, áp dụng có kiểm soá
   const staleApplyBody = await staleApplyResponse.json();
   assert.equal(staleApplyResponse.status, 409);
   assert.equal(staleApplyBody.error.code, 'OUTLINE_CONTEXT_CHANGED');
+
+  const staleCandidateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/candidates`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"5"'},
+      body: JSON.stringify({
+        ...candidateRequest,
+        generationId: randomUUID(),
+      }),
+    },
+  );
+  const staleCandidateBody = await staleCandidateResponse.json();
+  assert.equal(staleCandidateResponse.status, 409);
+  assert.equal(staleCandidateBody.error.code, 'OUTLINE_OUTDATED');
+  assert.equal(revisionCalls, 3);
+
+  const staleUpdateResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline`,
+    {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"5"'},
+      body: JSON.stringify(originalContent),
+    },
+  );
+  const staleUpdateBody = await staleUpdateResponse.json();
+  assert.equal(staleUpdateResponse.status, 409);
+  assert.equal(staleUpdateBody.error.code, 'OUTLINE_OUTDATED');
+
+  const staleRestoreResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/outline/versions/${baselineVersionId}/restore`,
+    {method: 'POST', headers: {'If-Match': '"5"'}},
+  );
+  const staleRestoreBody = await staleRestoreResponse.json();
+  assert.equal(staleRestoreResponse.status, 409);
+  assert.equal(
+    staleRestoreBody.error.code,
+    'OUTLINE_VERSION_CONTEXT_MISMATCH',
+  );
 });
 
 test('API Voice–visual candidate giữ beat ổn định, khóa context và restore copy-forward', async context => {
@@ -2162,6 +2261,7 @@ export default makeScene2D(function* (view) {
     },
   };
   let voiceGenerationCalls = 0;
+  const voiceGenerationEvents: string[] = [];
   const elevenLabsVoiceService: ElevenLabsVoiceService = {
     async getCatalog() {
       return {
@@ -2200,6 +2300,7 @@ export default makeScene2D(function* (view) {
       };
     },
     async generateSection(input) {
+      voiceGenerationEvents.push('tts');
       voiceGenerationCalls += 1;
       const characters = Array.from(input.text);
       return {
@@ -2219,7 +2320,42 @@ export default makeScene2D(function* (view) {
       };
     },
   };
+  let voiceDependencyChecks = 0;
+  let voiceCheckpointWrites = 0;
+  let voiceCheckpointClears = 0;
+  const voiceCheckpoints = new Map<string, GeneratedVoiceChunk>();
   const voiceWorkspace: VoiceWorkspace = {
+    async verifyDependencies() {
+      voiceGenerationEvents.push('preflight');
+      voiceDependencyChecks += 1;
+    },
+    async readGenerationChunk(
+      projectId,
+      generationId,
+      chunkIndex,
+      fingerprint,
+    ) {
+      return voiceCheckpoints.get(
+        `${projectId}:${generationId}:${chunkIndex}:${fingerprint}`,
+      ) ?? null;
+    },
+    async saveGenerationChunk(
+      projectId,
+      generationId,
+      chunkIndex,
+      fingerprint,
+      chunk,
+    ) {
+      voiceCheckpointWrites += 1;
+      voiceCheckpoints.set(
+        `${projectId}:${generationId}:${chunkIndex}:${fingerprint}`,
+        chunk,
+      );
+    },
+    async clearGenerationCheckpoint() {
+      voiceCheckpointClears += 1;
+      voiceCheckpoints.clear();
+    },
     async prepare(_projectId, generationId, narration) {
       const characterStartTimesSeconds: number[] = [];
       const characterEndTimesSeconds: number[] = [];
@@ -2972,6 +3108,10 @@ export default makeScene2D(function* (view) {
     voiceGenerationCalls,
     1,
   );
+  assert.equal(voiceDependencyChecks, 1);
+  assert.equal(voiceCheckpointWrites, 1);
+  assert.equal(voiceCheckpointClears, 1);
+  assert.deepEqual(voiceGenerationEvents, ['preflight', 'tts']);
   assert.equal(
     voiceGenerateBody.project.voiceBundle.track.strategy,
     'single-request',

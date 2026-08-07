@@ -19,6 +19,7 @@ import {
 } from './outlineHistoryStore.ts';
 import {
   applyOutlinePatch,
+  constrainOutlinePatch,
   OutlineRevisionError,
 } from './outlineRevisionService.ts';
 
@@ -120,6 +121,28 @@ test('applyOutlinePatch từ chối thay đổi ngoài phạm vi', () => {
       error instanceof OutlineRevisionError &&
       error.code === 'OUTLINE_PATCH_OUT_OF_SCOPE',
   );
+});
+
+test('constrainOutlinePatch tự loại bỏ thay đổi AI viết ngoài phạm vi', () => {
+  const base = content();
+  const constrained = constrainOutlinePatch(
+    base,
+    scope,
+    patch({
+      brief: {
+        summary: base.brief.summary,
+        assumptions: ['Giả định bị AI tự ý thay đổi.'],
+      },
+      centralMessage: 'Thông điệp bị AI tự ý thay đổi ngoài phạm vi.',
+    }),
+  );
+
+  assert.deepEqual(constrained.brief, {summary: null, assumptions: null});
+  assert.equal(constrained.centralMessage, null);
+  const next = applyOutlinePatch(base, scope, constrained);
+  assert.notEqual(next.sections[0]?.content, base.sections[0]?.content);
+  assert.deepEqual(next.brief, base.brief);
+  assert.equal(next.centralMessage, base.centralMessage);
 });
 
 test('outline history lưu snapshot bất biến, chống trùng baseline và giữ candidate riêng', async context => {

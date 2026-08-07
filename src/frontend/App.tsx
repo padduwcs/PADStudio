@@ -58,6 +58,10 @@ import {
 } from './useTopicDraft.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useOutlineDraft} from './useOutlineDraft.ts';
+import {
+  outlineCandidateMatchesCurrentContext,
+  outlineVersionMatchesTopicInput,
+} from './outlineWorkflowState.ts';
 import {ApiRequestError, generateTopicGuidance} from './api.ts';
 import {useTheme, type PadTheme} from './useTheme.ts';
 
@@ -1366,20 +1370,46 @@ function OutlinePage({projectId}: {projectId: string}) {
     setScopeError('');
   }
 
+  function candidateBelongsToCurrentContext(
+    candidate = outline.candidate,
+  ) {
+    return outlineCandidateMatchesCurrentContext(
+      candidate,
+      outline.history,
+      outline.project,
+      outline.draft,
+    );
+  }
+
   function prepareScopeExpansion() {
     const candidate = outline.candidate;
     const sections = outline.draft?.sections ?? [];
-    if (!candidate || sections.length === 0) return;
+    if (
+      !candidate ||
+      !candidateBelongsToCurrentContext(candidate) ||
+      sections.length === 0
+    ) return;
 
     const validSectionIds = new Set(sections.map(section => section.id));
     const expandedIds = new Set(candidate.scope.sections.map(item => item.sectionId));
+    let expandGlobalFields = false;
+    let expandAllSectionFields = false;
     for (const issue of candidate.coherence.issues) {
       if (!issue.requiresScopeExpansion) continue;
+      if (issue.affectedSectionIds.length === 0) {
+        expandGlobalFields = true;
+      }
       for (const sectionId of issue.affectedSectionIds) {
-        if (validSectionIds.has(sectionId)) expandedIds.add(sectionId);
+        if (!validSectionIds.has(sectionId)) continue;
+        if (expandedIds.has(sectionId)) expandAllSectionFields = true;
+        expandedIds.add(sectionId);
       }
     }
-    if (expandedIds.size === candidate.scope.sections.length) {
+    if (
+      expandedIds.size === candidate.scope.sections.length &&
+      !expandGlobalFields &&
+      !expandAllSectionFields
+    ) {
       const selectedIndexes = sections
         .map((section, index) => expandedIds.has(section.id) ? index : -1)
         .filter(index => index >= 0);
@@ -1396,9 +1426,17 @@ function OutlinePage({projectId}: {projectId: string}) {
     );
     setScopeSectionIds([...expandedIds]);
     setSectionFields(
-      expandedFields.size > 0 ? [...expandedFields] : ['content'],
+      expandAllSectionFields
+        ? ['title', 'goal', 'content', 'estimatedSeconds']
+        : expandedFields.size > 0
+          ? [...expandedFields]
+          : ['content'],
     );
-    setGlobalFields([...candidate.scope.globalFields]);
+    setGlobalFields(
+      expandGlobalFields
+        ? ['brief.summary', 'brief.assumptions', 'centralMessage']
+        : [...candidate.scope.globalFields],
+    );
     const fixes = candidate.coherence.issues
       .filter(issue => issue.requiresScopeExpansion)
       .map(issue => issue.suggestedFix.trim())
@@ -1408,6 +1446,28 @@ function OutlinePage({projectId}: {projectId: string}) {
         'Tiếp tục từ candidate hiện tại, giữ nguyên mọi phần đã tốt và chỉ xử lý các điểm reviewer nêu.',
         ...new Set(fixes),
       ]
+        .join(' '),
+    );
+    setScopeError('');
+  }
+
+  function prepareCandidateFollowUp() {
+    const candidate = outline.candidate;
+    if (!candidate || !candidateBelongsToCurrentContext(candidate)) return;
+    setGlobalFields([...candidate.scope.globalFields]);
+    setScopeSectionIds(
+      candidate.scope.sections.map(section => section.sectionId),
+    );
+    const fields = new Set<OutlineSectionField>(
+      candidate.scope.sections.flatMap(section => section.fields),
+    );
+    setSectionFields(fields.size > 0 ? [...fields] : ['content']);
+    setGuidance(
+      [
+        'Giữ các phần đã tốt trong candidate và sửa các lỗi reviewer đã nêu.',
+        ...candidate.coherence.issues.map(issue => issue.suggestedFix.trim()),
+      ]
+        .filter(Boolean)
         .join(' '),
     );
     setScopeError('');
@@ -1459,13 +1519,37 @@ function OutlinePage({projectId}: {projectId: string}) {
       },
       selection.model,
       selection.reasoningEffort,
-      outline.candidate?.decision === 'pending'
+      outline.candidate?.decision === 'pending' &&
+        candidateBelongsToCurrentContext()
         ? outline.candidate.candidateId
         : undefined,
     );
     if (nextCandidate) {
       setGuidance('');
       setScopeError('');
+    }
+  }
+
+  async function handleRegenerate() {
+    if (
+      outline.generating ||
+      codexConnection.checking ||
+      !codexConnection.generationReady
+    ) return;
+    const connectionStatus = await codexConnection.verify();
+    if (connectionStatus?.state !== 'connected') return;
+    const selection = codexConnection.getGenerationSelection();
+    if (!selection) return;
+
+    const generatedProject = await outline.generate(
+      '',
+      selection.model,
+      selection.reasoningEffort,
+    );
+    if (generatedProject) {
+      setGuidance('');
+      setScopeError('');
+      setSelectedVersion(null);
     }
   }
 
@@ -1484,6 +1568,7 @@ function OutlinePage({projectId}: {projectId: string}) {
   }
 
   async function handleApplyCandidate() {
+    if (!candidateBelongsToCurrentContext()) return;
     if (!confirmDiscardInvalidDraft('Áp dụng candidate')) return;
     await outline.applyCandidate();
   }
@@ -1525,6 +1610,18 @@ function OutlinePage({projectId}: {projectId: string}) {
     project.outline?.status === 'approved' &&
     outline.saveState === 'saved' &&
     !outline.stale;
+  const candidateContextCurrent = candidateBelongsToCurrentContext();
+  const continuingCandidate = Boolean(
+    outline.candidate?.decision === 'pending' && candidateContextCurrent,
+  );
+  const outlineBusy =
+    outline.generating ||
+    outline.candidateGenerating ||
+    outline.candidateApplying ||
+    outline.historyBusy ||
+    outline.approving;
+  const editorLocked =
+    outline.stale || outlineBusy || outline.saveState === 'conflict';
 
   return (
     <div className="outline-workspace">
@@ -1560,8 +1657,22 @@ function OutlinePage({projectId}: {projectId: string}) {
 
       {outline.stale && (
         <div className="outline-alert" role="status">
-          Đầu vào đã thay đổi. Mạch giảng hiện tại cần được tạo lại trước khi
-          chốt.
+          <span>
+            Đầu vào đã thay đổi. Mạch giảng hiện tại cần được tạo lại
+            trước khi chốt.
+          </span>
+          <button
+            type="button"
+            disabled={
+              outline.generating ||
+              codexConnection.checking ||
+              !codexConnection.generationReady ||
+              outline.saveState === 'conflict'
+            }
+            onClick={() => void handleRegenerate()}
+          >
+            {outline.generating ? 'Đang tạo lại…' : 'Tạo lại mạch giảng'}
+          </button>
         </div>
       )}
 
@@ -1691,7 +1802,10 @@ function OutlinePage({projectId}: {projectId: string}) {
         </div>
       ) : (
         <>
-          <div className="outline-editor-grid">
+          <fieldset
+            className={`outline-editor-grid${outline.stale ? ' is-stale' : ''}`}
+            disabled={editorLocked}
+          >
             <div className="outline-editor-main">
               <section className="outline-review-card">
                 <header>
@@ -1917,7 +2031,7 @@ function OutlinePage({projectId}: {projectId: string}) {
                 <div className="outline-ai-revision-heading">
                   <span className="preview-kicker">
                     <SparkIcon />
-                    {outline.candidate?.decision === 'pending'
+                    {continuingCandidate
                       ? 'Chỉnh tiếp đề xuất'
                       : 'Tạo đề xuất AI'}
                   </span>
@@ -1989,7 +2103,7 @@ function OutlinePage({projectId}: {projectId: string}) {
                     rows={3}
                     value={guidance}
                     placeholder={
-                      outline.candidate?.decision === 'pending'
+                      continuingCandidate
                         ? 'Ví dụ: Giữ toàn bộ đề xuất này, chỉ làm câu kết tự nhiên hơn.'
                         : 'Ví dụ: Rút gọn ví dụ nhưng giữ nguyên luận điểm và làm câu chuyển sang ý tiếp theo tự nhiên hơn.'
                     }
@@ -2003,6 +2117,8 @@ function OutlinePage({projectId}: {projectId: string}) {
                     type="button"
                     disabled={
                       outline.candidateGenerating ||
+                      !outline.valid ||
+                      outline.stale ||
                       outline.saveState === 'conflict' ||
                       codexConnection.checking ||
                       !codexConnection.generationReady
@@ -2017,7 +2133,7 @@ function OutlinePage({projectId}: {projectId: string}) {
                     ) : (
                       <>
                         <SparkIcon />
-                        {outline.candidate?.decision === 'pending'
+                        {continuingCandidate
                           ? 'Chỉnh tiếp trên đề xuất'
                           : 'Tạo đề xuất để so sánh'}
                       </>
@@ -2056,6 +2172,14 @@ function OutlinePage({projectId}: {projectId: string}) {
                     </span>
                   </header>
 
+                  {!candidateContextCurrent && (
+                    <div className="outline-alert" role="status">
+                      Đề xuất này thuộc một phiên bản hoặc đầu vào cũ. Bạn có
+                      thể xem so sánh, nhưng cần tạo đề xuất mới từ mạch giảng
+                      hiện tại để chỉnh tiếp hoặc áp dụng.
+                    </div>
+                  )}
+
                   <div className="outline-coherence-summary">
                     <strong>Kiểm tra sau khi ghép với toàn bài</strong>
                     <p>{outline.candidate.coherence.summary}</p>
@@ -2075,6 +2199,7 @@ function OutlinePage({projectId}: {projectId: string}) {
                   </div>
 
                   {outline.candidate.decision === 'pending' &&
+                    candidateContextCurrent &&
                     outline.candidate.status === 'scope_expansion_required' && (
                       <div className="candidate-scope-expansion">
                         <div>
@@ -2094,12 +2219,34 @@ function OutlinePage({projectId}: {projectId: string}) {
                       </div>
                     )}
 
+                  {outline.candidate.decision === 'pending' &&
+                    candidateContextCurrent &&
+                    outline.candidate.status === 'coherence_blocked' && (
+                      <div className="candidate-scope-expansion">
+                        <div>
+                          <strong>Candidate cần một lượt chỉnh tiếp</strong>
+                          <small>
+                            PAD Studio sẽ giữ candidate làm nền và điền sẵn các
+                            góp ý của reviewer để bạn không phải chép lại.
+                          </small>
+                        </div>
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={prepareCandidateFollowUp}
+                        >
+                          Chuẩn bị lượt chỉnh tiếp
+                        </button>
+                      </div>
+                    )}
+
                   <OutlineDiffList
                     changes={outlineDiff(draft, outline.candidate.content)}
                   />
 
                   <footer>
-                    {outline.candidate.decision === 'pending' ? (
+                    {outline.candidate.decision === 'pending' &&
+                    candidateContextCurrent ? (
                       <>
                         <button
                           className="secondary-button"
@@ -2241,7 +2388,15 @@ function OutlinePage({projectId}: {projectId: string}) {
                 </header>
 
                 {outline.historyError && (
-                  <p className="outline-history-error">{outline.historyError}</p>
+                  <div className="outline-history-error" role="alert">
+                    <span>{outline.historyError}</span>
+                    <button
+                      type="button"
+                      onClick={() => void outline.refreshHistory()}
+                    >
+                      Thử tải lại
+                    </button>
+                  </div>
                 )}
 
                 <div className="outline-version-list">
@@ -2249,6 +2404,10 @@ function OutlinePage({projectId}: {projectId: string}) {
                     const isCurrent =
                       JSON.stringify(outlineContentFromArtifact(version.artifact)) ===
                       JSON.stringify(draft);
+                    const versionContextCurrent = outlineVersionMatchesTopicInput(
+                      version,
+                      project.topicInput,
+                    );
                     return (
                       <article
                         key={version.versionId}
@@ -2274,7 +2433,14 @@ function OutlinePage({projectId}: {projectId: string}) {
                               </button>
                               <button
                                 type="button"
-                                disabled={outline.historyBusy}
+                                disabled={
+                                  outline.historyBusy || !versionContextCurrent
+                                }
+                                title={
+                                  versionContextCurrent
+                                    ? undefined
+                                    : 'Phiên bản thuộc đầu vào cũ và chỉ có thể dùng để so sánh.'
+                                }
                                 onClick={() => void handleRestoreVersion(version)}
                               >
                                 Khôi phục
@@ -2346,7 +2512,7 @@ function OutlinePage({projectId}: {projectId: string}) {
                 )}
               </section>
             </aside>
-          </div>
+          </fieldset>
 
           <footer className="outline-final-actions">
             <button
@@ -2368,8 +2534,8 @@ function OutlinePage({projectId}: {projectId: string}) {
                 className="submit-button"
                 type="button"
                 disabled={
-                  outline.approving ||
-                  outline.generating ||
+                  outlineBusy ||
+                  !outline.valid ||
                   (!approved && outline.stale) ||
                   outline.saveState === 'conflict'
                 }

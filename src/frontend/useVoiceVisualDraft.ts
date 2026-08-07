@@ -37,6 +37,8 @@ import {
 } from './api.ts';
 import {recordCodexWaitSample} from './codexWaitEstimate.ts';
 import {ProjectOperationQueue} from './projectOperationQueue.ts';
+import {registerNavigationGuard} from './router.ts';
+import {voiceVisualCandidateIsCurrent} from './voiceVisualWorkflowState.ts';
 
 type LoadState = 'loading' | 'ready' | 'error';
 export type VoiceVisualSaveState =
@@ -209,6 +211,27 @@ export function useVoiceVisualDraft(projectId: string) {
     };
   }, [projectId, reloadKey]);
 
+  const refreshHistory = useCallback(async () => {
+    const currentProject = projectRef.current;
+    if (!currentProject?.voiceVisualPlan || voiceVisualIsStale(currentProject)) {
+      setHistory(null);
+      return null;
+    }
+    try {
+      const loadedHistory = await getVoiceVisualHistory(projectId);
+      setHistory(loadedHistory);
+      setHistoryError('');
+      return loadedHistory;
+    } catch (error) {
+      setHistoryError(
+        error instanceof ApiRequestError
+          ? error.message
+          : 'Không thể tải lịch sử voice–visual.',
+      );
+      return null;
+    }
+  }, [projectId]);
+
   const saveCurrentDraft = useCallback(async () => {
     const session = sessionRef.current;
     const currentProject = projectRef.current;
@@ -228,10 +251,18 @@ export function useVoiceVisualDraft(projectId: string) {
     ) {
       throw new VoiceVisualDraftInvalidError();
     }
+    const adoptNormalizedDraft = (normalized: VoiceVisualPlanContent) => {
+      if (!sameValue(draftRef.current, currentDraft)) return;
+      draftRef.current = normalized;
+      setDraftState(latest =>
+        sameValue(latest, currentDraft) ? normalized : latest,
+      );
+    };
     if (
       currentProject.voiceVisualPlan &&
       sameValue(getPlanContent(currentProject), parsedDraft.data)
     ) {
+      adoptNormalizedDraft(parsedDraft.data);
       return currentProject;
     }
 
@@ -246,6 +277,8 @@ export function useVoiceVisualDraft(projectId: string) {
 
     projectRef.current = updatedProject;
     setProject(updatedProject);
+    const savedContent = getPlanContent(updatedProject);
+    if (savedContent) adoptNormalizedDraft(savedContent);
     return updatedProject;
   }, [projectId]);
 
@@ -303,7 +336,10 @@ export function useVoiceVisualDraft(projectId: string) {
       void operationQueueRef.current
         .enqueue(saveCurrentDraft)
         .then(() => {
-          if (active) setSaveState('saved');
+          if (active) {
+            setSaveState('saved');
+            void refreshHistory();
+          }
         })
         .catch((error) => {
           if (
@@ -337,6 +373,7 @@ export function useVoiceVisualDraft(projectId: string) {
     loadState,
     project,
     reviewing,
+    refreshHistory,
     saveCurrentDraft,
     saveState,
   ]);
@@ -350,9 +387,8 @@ export function useVoiceVisualDraft(projectId: string) {
       draftRef.current = next;
       return next;
     });
-    setStandaloneReview(current =>
-      current?.target === 'current' ? null : current,
-    );
+    setStandaloneReview(null);
+    setCandidate(null);
     setActionError('');
     if (saveState !== 'conflict') setSaveState('idle');
   }
@@ -495,6 +531,19 @@ export function useVoiceVisualDraft(projectId: string) {
     }));
   }
 
+  function candidateIsActionable(
+    targetCandidate: VoiceVisualCandidateRecord | null,
+  ) {
+    const currentProject = projectRef.current;
+    const currentDraft = draftRef.current;
+    return Boolean(
+      voiceVisualCandidateIsCurrent(targetCandidate, history) &&
+        currentProject?.voiceVisualPlan &&
+        currentDraft &&
+        sameValue(getPlanContent(currentProject), currentDraft),
+    );
+  }
+
   async function generate(
     guidance: string,
     model?: string,
@@ -565,8 +614,11 @@ export function useVoiceVisualDraft(projectId: string) {
       draftRef.current = content;
       setProject(updatedProject);
       setDraftState(content);
+      setCandidate(null);
+      setStandaloneReview(null);
       setSaveState('saved');
       generationRequestRef.current = null;
+      await refreshHistory();
       if (reasoningEffort) {
         recordCodexWaitSample({
           model:
@@ -619,13 +671,15 @@ export function useVoiceVisualDraft(projectId: string) {
     setActionError('');
     setHistoryError('');
     try {
+      const candidateCanBeBase = candidateIsActionable(candidate);
       const created = await operationQueueRef.current.enqueue(async () => {
         const currentProject = await saveCurrentDraft();
         const normalizedGuidance = guidance.trim();
         if (!normalizedGuidance) throw new VoiceVisualGuidanceRequiredError();
         const baseCandidateId =
-          baseMode !== 'current' && candidate?.decision === 'pending'
-            ? candidate.candidateId
+          baseMode !== 'current' &&
+          candidateCanBeBase
+            ? candidate?.candidateId
             : undefined;
         if (baseMode === 'candidate' && !baseCandidateId) {
           throw new VoiceVisualCandidateBaseRequiredError();
@@ -661,19 +715,7 @@ export function useVoiceVisualDraft(projectId: string) {
       candidateRequestRef.current = null;
       setCandidate(created);
       setStandaloneReview(null);
-      setHistory(current =>
-        current
-          ? {
-              ...current,
-              candidates: [
-                created,
-                ...current.candidates.filter(
-                  item => item.candidateId !== created.candidateId,
-                ),
-              ],
-            }
-          : current,
-      );
+      await refreshHistory();
       if (reasoningEffort) {
         recordCodexWaitSample({
           model: created.generation.requestedModel ?? model ?? created.generation.model,
@@ -716,7 +758,15 @@ export function useVoiceVisualDraft(projectId: string) {
   ) {
     if (reviewing || saveState === 'conflict') return null;
     const targetCandidate = target === 'candidate' ? candidate : null;
-    if (target === 'candidate' && !targetCandidate) return null;
+    if (
+      target === 'candidate' &&
+      !candidateIsActionable(targetCandidate)
+    ) {
+      setActionError(
+        'Candidate này được tạo từ một bản cũ. Bạn vẫn có thể xem để so sánh, nhưng hãy tạo candidate mới từ bản hiện tại để tiếp tục.',
+      );
+      return null;
+    }
     const startedAt = Date.now();
     setReviewing(true);
     setActionError('');
@@ -795,6 +845,15 @@ export function useVoiceVisualDraft(projectId: string) {
     if (!candidateId || candidateApplying || saveState === 'conflict') {
       return null;
     }
+    if (
+      candidateId === candidate?.candidateId &&
+      !candidateIsActionable(candidate)
+    ) {
+      setActionError(
+        'Candidate này không còn cùng bản nền hiện tại. Hãy tạo candidate mới thay vì áp dụng nội dung cũ.',
+      );
+      return null;
+    }
     setCandidateApplying(true);
     setActionError('');
     try {
@@ -839,16 +898,19 @@ export function useVoiceVisualDraft(projectId: string) {
   }
 
   async function rejectCandidate(candidateId = candidate?.candidateId) {
-    const currentProject = projectRef.current;
-    if (!candidateId || !currentProject || historyBusy) return null;
+    if (!candidateId || !projectRef.current || historyBusy) return null;
     setHistoryBusy(true);
     setHistoryError('');
     try {
-      const rejected = await rejectVoiceVisualCandidate(
-        projectId,
-        candidateId,
-        currentProject.revision,
-      );
+      const rejected = await operationQueueRef.current.enqueue(async () => {
+        const currentProject = projectRef.current;
+        if (!currentProject) throw new VoiceVisualOperationCancelledError();
+        return rejectVoiceVisualCandidate(
+          projectId,
+          candidateId,
+          currentProject.revision,
+        );
+      });
       setHistory(current =>
         current
           ? {
@@ -1010,6 +1072,58 @@ export function useVoiceVisualDraft(projectId: string) {
   const valid = Boolean(
     draft && project?.outline && validationErrors.length === 0,
   );
+  const hasUnsavedChanges = Boolean(
+    project?.voiceVisualPlan &&
+      draft &&
+      !stale &&
+      !sameValue(getPlanContent(project), draft),
+  );
+
+  const flushPendingSave = useCallback(async () => {
+    const currentProject = projectRef.current;
+    const currentDraft = draftRef.current;
+    if (!currentProject?.voiceVisualPlan || !currentDraft) return true;
+    if (voiceVisualIsStale(currentProject)) return true;
+    if (sameValue(getPlanContent(currentProject), currentDraft)) return true;
+    if (!VoiceVisualPlanContentSchema.safeParse(currentDraft).success) {
+      return window.confirm(
+        'Kế hoạch voice–visual đang có nội dung chưa hợp lệ và chưa thể lưu. Rời trang sẽ bỏ các thay đổi này. Bạn có muốn tiếp tục?',
+      );
+    }
+    try {
+      setSaveState('saving');
+      await operationQueueRef.current.enqueue(saveCurrentDraft);
+      setSaveState('saved');
+      return true;
+    } catch (error) {
+      if (error instanceof VoiceVisualOperationCancelledError) return false;
+      setSaveState(
+        error instanceof ApiRequestError && error.code === 'PROJECT_CONFLICT'
+          ? 'conflict'
+          : 'error',
+      );
+      setActionError(
+        error instanceof ApiRequestError
+          ? error.message
+          : 'Không thể lưu kế hoạch voice–visual trước khi rời trang.',
+      );
+      return false;
+    }
+  }, [saveCurrentDraft]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    return registerNavigationGuard(flushPendingSave);
+  }, [flushPendingSave, hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const preventUnsavedUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener('beforeunload', preventUnsavedUnload);
+    return () => window.removeEventListener('beforeunload', preventUnsavedUnload);
+  }, [hasUnsavedChanges]);
 
   return {
     project,
@@ -1044,6 +1158,7 @@ export function useVoiceVisualDraft(projectId: string) {
     rejectCandidate,
     createCheckpoint,
     restoreVersion,
+    refreshHistory,
     selectCandidate: (nextCandidate: VoiceVisualCandidateRecord) => {
       setCandidate(nextCandidate);
       setStandaloneReview(current =>

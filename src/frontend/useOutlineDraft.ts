@@ -31,6 +31,7 @@ import {
 } from './api.ts';
 import {recordCodexWaitSample} from './codexWaitEstimate.ts';
 import {ProjectOperationQueue} from './projectOperationQueue.ts';
+import {registerNavigationGuard} from './router.ts';
 
 type LoadState = 'loading' | 'ready' | 'error';
 export type OutlineSaveState =
@@ -192,10 +193,18 @@ export function useOutlineDraft(projectId: string) {
     if (!parsedDraft.success) {
       throw new OutlineDraftInvalidError();
     }
+    const adoptNormalizedDraft = () => {
+      if (!sameValue(draftRef.current, currentDraft)) return;
+      draftRef.current = parsedDraft.data;
+      setDraftState(latest =>
+        sameValue(latest, currentDraft) ? parsedDraft.data : latest,
+      );
+    };
     if (
       currentProject.outline &&
       sameValue(getOutlineContent(currentProject), parsedDraft.data)
     ) {
+      adoptNormalizedDraft();
       return currentProject;
     }
 
@@ -210,6 +219,7 @@ export function useOutlineDraft(projectId: string) {
 
     projectRef.current = updatedProject;
     setProject(updatedProject);
+    adoptNormalizedDraft();
     return updatedProject;
   }, [projectId]);
 
@@ -244,7 +254,10 @@ export function useOutlineDraft(projectId: string) {
       void operationQueueRef.current
         .enqueue(saveCurrentDraft)
         .then(() => {
-          if (active) setSaveState('saved');
+          if (active) {
+            setSaveState('saved');
+            void refreshHistory();
+          }
         })
         .catch((error) => {
           if (!active || error instanceof OutlineOperationCancelledError) return;
@@ -285,6 +298,7 @@ export function useOutlineDraft(projectId: string) {
       draftRef.current = next;
       return next;
     });
+    setCandidate(null);
     setActionError('');
     if (saveState !== 'conflict') setSaveState('idle');
   }
@@ -419,7 +433,7 @@ export function useOutlineDraft(projectId: string) {
           let currentProject = projectRef.current;
           if (!currentProject) throw new OutlineOperationCancelledError();
 
-          if (draftRef.current) {
+          if (draftRef.current && !outlineIsStale(currentProject)) {
             currentProject = await saveCurrentDraft();
           }
 
@@ -456,7 +470,9 @@ export function useOutlineDraft(projectId: string) {
       setProject(updatedProject);
       setDraftState(content);
       setSaveState('saved');
+      setCandidate(null);
       generationRequestRef.current = null;
+      await refreshHistory();
       if (reasoningEffort) {
         recordCodexWaitSample({
           model:
@@ -592,7 +608,7 @@ export function useOutlineDraft(projectId: string) {
           elapsedMs: Date.now() - startedAt,
         });
       }
-      void refreshHistory();
+      await refreshHistory();
       return nextCandidate;
     } catch (error) {
       const isConflict =
@@ -702,12 +718,16 @@ export function useOutlineDraft(projectId: string) {
     setHistoryBusy(true);
     setActionError('');
     try {
-      const currentProject = projectRef.current;
-      if (!currentProject) throw new OutlineOperationCancelledError();
-      const rejected = await rejectOutlineCandidate(
-        projectId,
-        candidateToReject.candidateId,
-        currentProject.revision,
+      const rejected = await operationQueueRef.current.enqueue(
+        async () => {
+          const currentProject = projectRef.current;
+          if (!currentProject) throw new OutlineOperationCancelledError();
+          return rejectOutlineCandidate(
+            projectId,
+            candidateToReject.candidateId,
+            currentProject.revision,
+          );
+        },
       );
       setCandidate(null);
       setHistory(current =>
@@ -821,6 +841,59 @@ export function useOutlineDraft(projectId: string) {
   const stale = project ? outlineIsStale(project) : false;
   const validationErrors = outlineValidationErrors(draft);
   const valid = Boolean(draft && validationErrors.length === 0);
+  const hasUnsavedChanges = Boolean(
+    loadState === 'ready' &&
+      project?.outline &&
+      draft &&
+      !stale &&
+      !sameValue(getOutlineContent(project), draft),
+  );
+
+  const flushPendingSave = useCallback(async () => {
+    const currentProject = projectRef.current;
+    const currentDraft = draftRef.current;
+    if (!currentProject?.outline || !currentDraft) return true;
+    if (outlineIsStale(currentProject)) return true;
+    if (sameValue(getOutlineContent(currentProject), currentDraft)) return true;
+    if (!TeachingOutlineContentSchema.safeParse(currentDraft).success) {
+      return window.confirm(
+        'Mạch giảng đang có nội dung chưa hợp lệ và chưa thể lưu. Rời trang sẽ bỏ các thay đổi này. Bạn có muốn tiếp tục?',
+      );
+    }
+    try {
+      setSaveState('saving');
+      await operationQueueRef.current.enqueue(saveCurrentDraft);
+      setSaveState('saved');
+      return true;
+    } catch (error) {
+      if (error instanceof OutlineOperationCancelledError) return false;
+      setSaveState(
+        error instanceof ApiRequestError && error.code === 'PROJECT_CONFLICT'
+          ? 'conflict'
+          : 'error',
+      );
+      setActionError(
+        error instanceof ApiRequestError
+          ? error.message
+          : 'Không thể lưu mạch giảng trước khi rời trang.',
+      );
+      return false;
+    }
+  }, [saveCurrentDraft]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    return registerNavigationGuard(flushPendingSave);
+  }, [flushPendingSave, hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const preventUnsavedUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener('beforeunload', preventUnsavedUnload);
+    return () => window.removeEventListener('beforeunload', preventUnsavedUnload);
+  }, [hasUnsavedChanges]);
 
   return {
     project,

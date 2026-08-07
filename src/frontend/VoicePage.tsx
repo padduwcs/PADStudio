@@ -785,6 +785,11 @@ export function VoicePage({projectId}: {projectId: string}) {
                   </>
                 )}
               </button>
+              {voice.actionError && (
+                <p className="voice-player-error" role="alert">
+                  {voice.actionError}
+                </p>
+              )}
               </div>
             </div>
           </section>
