@@ -567,12 +567,36 @@ function createGenerationRequest(): MotionCanvasGenerationRequest {
   };
 
   return {
+    projectId: 'test-project-a',
     generationId: randomUUID(),
     topicInput,
     outline,
     voiceVisualPlan,
   };
 }
+
+test('Motion Canvas cache cô lập scene cùng generation ID giữa các project', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-project-cache-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const client = new FakeCodexClient();
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+    concurrency: 1,
+  });
+  const first = createGenerationRequest();
+  const second = {...first, projectId: 'test-project-b'};
+
+  await generator.generate(first);
+  await generator.generate(second);
+
+  assert.equal(
+    client.calls.filter((call) => call.method === 'turn/start').length,
+    first.outline.sections.length * 2,
+  );
+});
 
 function createSingleSceneGenerationRequest() {
   const request = createGenerationRequest();
@@ -726,6 +750,7 @@ test('Motion Canvas generator ánh xạ scene theo đúng voice–visual', async
   );
 
   const result = await generator.generate({
+    projectId: 'capability-test-project',
     generationId: randomUUID(),
     topicInput: sourceInput,
     outline,

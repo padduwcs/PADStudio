@@ -80,6 +80,8 @@ export interface MotionCanvasSourceScene extends MotionCanvasScene {
 }
 
 export interface MotionCanvasGenerationRequest {
+  /** Project ownership namespace for all in-memory scene generation state. */
+  projectId: string;
   generationId: string;
   model?: string;
   reasoningEffort?: string;
@@ -111,7 +113,7 @@ export interface MotionCanvasGenerator {
     generated: MotionCanvasGenerationResult,
     compilerDiagnostics: string,
   ): MotionCanvasGenerationResult;
-  discardGeneration?(generationId: string): void;
+  discardGeneration?(projectId: string, generationId: string): void;
 }
 
 export class MotionCanvasGenerationError extends Error {
@@ -1523,8 +1525,8 @@ export function createCodexMotionCanvasGenerator(
     return policyPromise;
   }
 
-  function discardGeneration(generationId: string) {
-    const keyPrefix = `${generationId}:`;
+  function discardGeneration(projectId: string, generationId: string) {
+    const keyPrefix = `${projectId}:${generationId}:`;
     for (const key of sceneGenerations.keys()) {
       if (key.startsWith(keyPrefix)) sceneGenerations.delete(key);
     }
@@ -1708,7 +1710,8 @@ export function createCodexMotionCanvasGenerator(
       model: request.model,
       reasoningEffort: request.reasoningEffort,
     });
-    const cacheKey = `${request.generationId}:${outlineSection.id}`;
+    const cacheKey =
+      `${request.projectId}:${request.generationId}:${outlineSection.id}`;
     const existing = sceneGenerations.get(cacheKey);
     if (existing) {
       if (existing.fingerprint !== fingerprint) {
@@ -1930,7 +1933,8 @@ export function createCodexMotionCanvasGenerator(
               .slice(0, 160),
             usage: aggregateUsage(repairs),
           };
-          const cacheKey = `${request.generationId}:${outlineSection.id}`;
+          const cacheKey =
+            `${request.projectId}:${request.generationId}:${outlineSection.id}`;
           sceneGenerations.set(cacheKey, {
             fingerprint: JSON.stringify({
               payload: generationPayload(request, sectionIndex),
@@ -2093,7 +2097,8 @@ export function createCodexMotionCanvasGenerator(
             ? regeneratedAssessment
             : initialAssessment;
           const outlineSection = request.outline.sections[sectionIndex]!;
-          const cacheKey = `${request.generationId}:${outlineSection.id}`;
+          const cacheKey =
+            `${request.projectId}:${request.generationId}:${outlineSection.id}`;
           const cached = sceneGenerations.get(cacheKey);
           if (cached) {
             sceneGenerations.set(cacheKey, {

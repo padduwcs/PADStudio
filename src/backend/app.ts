@@ -2369,6 +2369,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
             .map((scene, index) => selectedSceneIds.has(scene.id) ? index : -1)
             .filter(index => index >= 0);
           const generationRequest = {
+            projectId: currentProject.id,
             generationId,
             model: parsed.data.model,
             reasoningEffort: parsed.data.reasoningEffort,
@@ -2590,7 +2591,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
           reviewerUsage: generation.result.review.usage,
         },
       });
-      motionCanvasGenerator.discardGeneration?.(generationId);
+      motionCanvasGenerator.discardGeneration?.(
+        currentProject.id,
+        generationId,
+      );
       sendJson(response, 201, {candidate});
       return true;
     }
@@ -4547,6 +4551,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
           fingerprint,
           async () => {
             const generationRequest = {
+              projectId: currentProject.id,
               generationId,
               model: parsedRequest.data.model,
               reasoningEffort: parsedRequest.data.reasoningEffort,
@@ -4699,7 +4704,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
           })
           .catch(error => logger.error(error));
 
-        motionCanvasGenerator.discardGeneration?.(generationId);
+        motionCanvasGenerator.discardGeneration?.(
+          currentProject.id,
+          generationId,
+        );
         sendProject(response, 200, updatedProject);
         return;
       }
@@ -5049,8 +5057,17 @@ export function createPadStudioServer(options: AppOptions = {}) {
             // request. A missing encoder must never be discovered after
             // ElevenLabs has already consumed quota.
             await voiceWorkspace.verifyDependencies?.();
+            // A generation can span multiple paid TTS requests. Bind the key
+            // once so another tab changing the integration cannot split a
+            // narration across two ElevenLabs accounts.
+            const generationVoiceService =
+              elevenLabsVoiceService.withApiKey
+                ? elevenLabsVoiceService.withApiKey(
+                    (await storedElevenLabsApiKey()) ?? '',
+                  )
+                : elevenLabsVoiceService;
             const resolved =
-              await elevenLabsVoiceService.resolveConfiguration({
+              await generationVoiceService.resolveConfiguration({
                 voiceId: parsedRequest.data.voiceId,
                 modelId: parsedRequest.data.modelId,
                 outputFormat: parsedRequest.data.outputFormat,
@@ -5125,7 +5142,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
                   `${generationKey}:chunk:${index + 1}`,
                   JSON.stringify(chunkRequest),
                   () =>
-                    elevenLabsVoiceService.generateSection(chunkRequest),
+                    generationVoiceService.generateSection(chunkRequest),
                   (error) =>
                     error instanceof ElevenLabsVoiceError &&
                     error.code === 'ELEVENLABS_TTS_RESULT_UNKNOWN',

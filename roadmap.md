@@ -40,9 +40,9 @@
 1. Sorting as a Problem-Solving Technique — Vì sao sắp xếp giúp bài toán đơn giản hơn? 
 2. Insertion Sort — Sắp xếp chèn
 3. Merge Sort — Sắp xếp trộn						done
-4. Quick Sort — Sắp xếp nhanh						pending
-5. Counting Sort — Sắp xếp đếm						pending
-6. Binary Search — Tìm kiếm nhị phân					
+4. Quick Sort — Sắp xếp nhanh						
+5. Counting Sort — Sắp xếp đếm						
+6. Binary Search — Tìm kiếm nhị phân				done
 7. Boundary Binary Search — Tìm kiếm vị trí biên
 8. Binary Search on Answer — Tìm kiếm nhị phân trên miền đáp án
 9. Quick Select — Tìm phần tử thứ K
@@ -51,9 +51,9 @@
 
 # PHẦN 5. LINEAR DATA STRUCTURES
 
-1. Stack — Ngăn xếp
-2. Queue — Hàng đợi
-3. Deque — Hàng đợi hai đầu
+1. Stack — Ngăn xếp                                 done
+2. Queue — Hàng đợi                                 done
+3. Deque — Hàng đợi hai đầu                         done
 4. Monotonic Stack — Ngăn xếp đơn điệu
 5. Next Greater Element — Phần tử lớn hơn gần nhất
 6. Monotonic Queue — Hàng đợi đơn điệu
@@ -88,7 +88,7 @@
 
 # PHẦN 8. BIT MANIPULATION VÀ BITMASK
 
-1. Binary Representation — Biểu diễn nhị phân
+1. Binary Representation — Biểu diễn nhị phân                               done
 2. Bitwise Operations — Các phép toán trên bit
 3. Set Representation with Bitmask — Biểu diễn tập hợp bằng bitmask
 4. Subset Enumeration with Bitmask — Duyệt tập con bằng bitmask

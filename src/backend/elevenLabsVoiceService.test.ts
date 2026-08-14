@@ -128,6 +128,46 @@ test('ElevenLabs TTS with timestamps gửi cấu hình đầy đủ và đọc r
   assert.equal(result.alignment.characters.join(''), text);
 });
 
+test('ElevenLabs generation binds its key for the full job', async () => {
+  let configuredKey = 'key-at-start';
+  let requestKey = '';
+  const service = createElevenLabsVoiceService({
+    apiKeyProvider: () => configuredKey,
+    retryDelaysMs: [],
+    fetch: async (_input, init) => {
+      requestKey = String(new Headers(init?.headers).get('xi-api-key'));
+      return jsonResponse({
+        audio_base64: Buffer.from('audio-data').toString('base64'),
+        alignment: {
+          characters: ['x'],
+          character_start_times_seconds: [0],
+          character_end_times_seconds: [0.1],
+        },
+      });
+    },
+  });
+  const generationService = service.withApiKey?.('key-at-start');
+  assert.ok(generationService);
+  configuredKey = 'key-replaced-in-another-tab';
+
+  await generationService.generateSection({
+    voiceId: voice.voice_id,
+    modelId: model.model_id,
+    outputFormat: 'mp3_44100_128',
+    text: 'x',
+    settings: {
+      stability: 0.5,
+      similarityBoost: 0.75,
+      style: 0,
+      useSpeakerBoost: true,
+      speed: 1,
+    },
+    seed: null,
+  });
+
+  assert.equal(requestKey, 'key-at-start');
+});
+
 test('ElevenLabs không tự retry POST TTS tốn phí khi phản hồi mơ hồ', async () => {
   let calls = 0;
   const service = createElevenLabsVoiceService({

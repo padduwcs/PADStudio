@@ -1,6 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {
-  CreationIdSchema,
   TopicInputSchema,
   defaultVideoBackground,
   type TopicInput,
@@ -13,19 +12,15 @@ import {
   getProject,
   updateTopicProject,
 } from './api.ts';
+import {
+  clearNewTopicDraft,
+  createNewTopicCreationId,
+  readNewTopicDraft,
+  saveNewTopicDraft,
+} from './newTopicSession.ts';
 import {ProjectOperationQueue} from './projectOperationQueue.ts';
 
-const STORAGE_KEY = 'pad-studio:topic-form:v1';
-const CREATION_ID_KEY = 'pad-studio:topic-creation-id:v1';
-
-export function clearLocalTopicDraft() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(CREATION_ID_KEY);
-  } catch {
-    // Browser draft persistence is best-effort.
-  }
-}
+export {clearNewTopicDraft};
 
 export interface TopicFormState {
   topic: string;
@@ -61,7 +56,7 @@ const initialForm: TopicFormState = {
 
 function loadLocalDraft(): TopicFormState {
   try {
-    const storedValue = localStorage.getItem(STORAGE_KEY);
+    const storedValue = readNewTopicDraft();
     if (!storedValue) return initialForm;
 
     const value = JSON.parse(storedValue) as Partial<TopicFormState>;
@@ -101,20 +96,6 @@ function loadLocalDraft(): TopicFormState {
     };
   } catch {
     return initialForm;
-  }
-}
-
-function getOrCreateCreationId() {
-  try {
-    const storedValue = localStorage.getItem(CREATION_ID_KEY);
-    const storedCreationId = CreationIdSchema.safeParse(storedValue);
-    if (storedCreationId.success) return storedCreationId.data;
-
-    const creationId = crypto.randomUUID();
-    localStorage.setItem(CREATION_ID_KEY, creationId);
-    return creationId;
-  } catch {
-    return crypto.randomUUID();
   }
 }
 
@@ -194,7 +175,7 @@ export function useTopicDraft({
   const projectSessionRef = useRef(0);
   const operationQueueRef = useRef(new ProjectOperationQueue());
   const creationIdRef = useRef<string | null>(
-    projectId ? null : getOrCreateCreationId(),
+    projectId ? null : createNewTopicCreationId(),
   );
 
   const enqueueProjectUpdate = useCallback(
@@ -244,7 +225,7 @@ export function useTopicDraft({
     if (!projectId) {
       setForm(loadLocalDraft());
       setProject(null);
-      creationIdRef.current = getOrCreateCreationId();
+      creationIdRef.current ??= createNewTopicCreationId();
       setLoadState('ready');
       setSaveState('idle');
       return () => {
@@ -282,11 +263,7 @@ export function useTopicDraft({
   useEffect(() => {
     if (projectId || loadState !== 'ready') return;
 
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
-    } catch {
-      // Local draft persistence is a convenience; the form remains usable.
-    }
+    saveNewTopicDraft(JSON.stringify(form));
   }, [form, loadState, projectId]);
 
   useEffect(() => {
@@ -378,18 +355,26 @@ export function useTopicDraft({
     setSubmitState('submitting');
 
     try {
-      const continuedProject = projectId
-        ? await enqueueProjectUpdate({
-            topicInput: parsedInput.data,
-            currentStep: 'outline',
-          })
-        : await createTopicProject({
-            creationId: creationIdRef.current ?? getOrCreateCreationId(),
-            topicInput: parsedInput.data,
-            currentStep: 'outline',
-          });
+      let continuedProject: TopicProject;
+      if (projectId) {
+        continuedProject = await enqueueProjectUpdate({
+          topicInput: parsedInput.data,
+          currentStep: 'outline',
+        });
+      } else {
+        const creationId =
+          creationIdRef.current ?? createNewTopicCreationId();
+        // Preserve the same ID if a network failure leaves the form open and
+        // the user retries. This is idempotency within this tab only.
+        creationIdRef.current = creationId;
+        continuedProject = await createTopicProject({
+          creationId,
+          topicInput: parsedInput.data,
+          currentStep: 'outline',
+        });
+      }
 
-      clearLocalTopicDraft();
+      clearNewTopicDraft();
       creationIdRef.current = null;
       projectRef.current = continuedProject;
       setProject(continuedProject);

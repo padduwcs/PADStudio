@@ -52,7 +52,7 @@ import {
   useAppRoute,
 } from './router.ts';
 import {
-  clearLocalTopicDraft,
+  clearNewTopicDraft,
   type TopicFormState,
   useTopicDraft,
 } from './useTopicDraft.ts';
@@ -2641,7 +2641,7 @@ export default function App() {
   }, [sidebarOpen]);
 
   function handleCreateProject() {
-    clearLocalTopicDraft();
+    clearNewTopicDraft();
     setNewProjectKey((current) => current + 1);
     closeLibrary();
     navigate('/');

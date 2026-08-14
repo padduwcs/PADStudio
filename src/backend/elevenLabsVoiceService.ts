@@ -132,6 +132,8 @@ export interface ElevenLabsSectionGeneration {
 }
 
 export interface ElevenLabsVoiceService {
+  /** Bind a fixed credential for one long-running generation. */
+  withApiKey?(apiKey: string): ElevenLabsVoiceService;
   getCatalog(
     search: string,
     localPresets?: ElevenLabsUsagePreset[],
@@ -517,6 +519,18 @@ export function createElevenLabsVoiceService(
   }
 
   return {
+    withApiKey(apiKey) {
+      return createElevenLabsVoiceService({
+        apiKey,
+        fetch: fetchRequest,
+        timeoutMs,
+        ...(configuredGenerationTimeoutMs === undefined
+          ? {}
+          : {generationTimeoutMs: configuredGenerationTimeoutMs}),
+        retryDelaysMs,
+      });
+    },
+
     async getCatalog(search, localPresets = []) {
       const [voices, models] = await Promise.all([
         readVoices(search.trim()),
