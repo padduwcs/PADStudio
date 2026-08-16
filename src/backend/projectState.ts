@@ -1,0 +1,208 @@
+import type {TopicProject} from '../shared/topic.ts';
+import {
+  finalRenderMatchesLayout,
+  layoutMatchesAnimationSync,
+  sameValue,
+  visualDesignMatchesMotion,
+} from '../shared/projectPipeline.ts';
+import {
+  animationSyncMatchesSources,
+  voiceMatchesPlan,
+} from './projectConsistency.ts';
+
+/**
+ * The only set of project fields that a persistence operation may replace.
+ *
+ * This intentionally models a state transition rather than an arbitrary JSON
+ * merge.  The reconciliation below owns downstream invalidation so callers
+ * cannot accidentally leave an approved artifact attached to changed input.
+ */
+export type ProjectStateChange = {
+  topicInput?: TopicProject['topicInput'];
+  currentStep?: TopicProject['currentStep'];
+  outline?: NonNullable<TopicProject['outline']>;
+  voiceVisualPlan?: NonNullable<TopicProject['voiceVisualPlan']>;
+  motionCanvasBundle?: NonNullable<TopicProject['motionCanvasBundle']>;
+  visualDesignBundle?: TopicProject['visualDesignBundle'];
+  voiceBundle?: NonNullable<TopicProject['voiceBundle']>;
+  animationSyncBundle?: NonNullable<TopicProject['animationSyncBundle']>;
+  layoutBundle?: NonNullable<TopicProject['layoutBundle']>;
+  renderBundle?: NonNullable<TopicProject['renderBundle']>;
+};
+
+export function projectChangeAlreadyApplied(
+  project: TopicProject,
+  change: ProjectStateChange,
+) {
+  return (
+    (change.topicInput === undefined ||
+      sameValue(change.topicInput, project.topicInput)) &&
+    (change.currentStep === undefined ||
+      change.currentStep === project.currentStep) &&
+    (change.outline === undefined || sameValue(change.outline, project.outline)) &&
+    (change.voiceVisualPlan === undefined ||
+      sameValue(change.voiceVisualPlan, project.voiceVisualPlan)) &&
+    (change.motionCanvasBundle === undefined ||
+      sameValue(change.motionCanvasBundle, project.motionCanvasBundle)) &&
+    (change.visualDesignBundle === undefined ||
+      sameValue(change.visualDesignBundle, project.visualDesignBundle)) &&
+    (change.voiceBundle === undefined ||
+      sameValue(change.voiceBundle, project.voiceBundle)) &&
+    (change.animationSyncBundle === undefined ||
+      sameValue(change.animationSyncBundle, project.animationSyncBundle)) &&
+    (change.layoutBundle === undefined ||
+      sameValue(change.layoutBundle, project.layoutBundle)) &&
+    (change.renderBundle === undefined ||
+      sameValue(change.renderBundle, project.renderBundle))
+  );
+}
+
+/**
+ * Applies one logical project change and reconciles every downstream artifact.
+ *
+ * Generated files remain on disk as immutable history; only their eligibility
+ * for the current pipeline changes.  This makes retries and restores safe and
+ * keeps the project's state machine deterministic.
+ */
+export function reconcileProjectState(
+  currentProject: TopicProject,
+  change: ProjectStateChange,
+  updatedAt = new Date().toISOString(),
+): TopicProject {
+  if (projectChangeAlreadyApplied(currentProject, change)) {
+    return currentProject;
+  }
+
+  const topicChanged =
+    change.topicInput !== undefined &&
+    !sameValue(change.topicInput, currentProject.topicInput);
+  const nextOutline =
+    change.outline ??
+    (topicChanged && currentProject.outline
+      ? {...currentProject.outline, status: 'draft' as const}
+      : currentProject.outline);
+  const outlineChanged = !sameValue(nextOutline, currentProject.outline);
+  const nextVoiceVisualPlan =
+    change.voiceVisualPlan ??
+    ((topicChanged || outlineChanged) && currentProject.voiceVisualPlan
+      ? {...currentProject.voiceVisualPlan, status: 'draft' as const}
+      : currentProject.voiceVisualPlan);
+  const voiceVisualContentChanged =
+    nextVoiceVisualPlan?.contentRevision !==
+    currentProject.voiceVisualPlan?.contentRevision;
+  const nextMotionCanvasBundle =
+    change.motionCanvasBundle ??
+    ((topicChanged || outlineChanged || voiceVisualContentChanged) &&
+    currentProject.motionCanvasBundle
+      ? {...currentProject.motionCanvasBundle, status: 'draft' as const}
+      : currentProject.motionCanvasBundle);
+  const motionCanvasChanged = !sameValue(
+    nextMotionCanvasBundle,
+    currentProject.motionCanvasBundle,
+  );
+  const nextVisualDesignBundle =
+    change.visualDesignBundle !== undefined
+      ? change.visualDesignBundle
+      : currentProject.visualDesignBundle &&
+          nextMotionCanvasBundle &&
+          visualDesignMatchesMotion(
+            currentProject.visualDesignBundle,
+            nextMotionCanvasBundle,
+          )
+        ? currentProject.visualDesignBundle
+        : null;
+  const voiceSourceChanged = Boolean(
+    currentProject.voiceBundle &&
+      (!nextVoiceVisualPlan ||
+        !voiceMatchesPlan(currentProject.voiceBundle, nextVoiceVisualPlan)),
+  );
+  const nextVoiceBundle =
+    change.voiceBundle ??
+    ((topicChanged || outlineChanged || voiceSourceChanged) &&
+    currentProject.voiceBundle
+      ? {...currentProject.voiceBundle, status: 'draft' as const}
+      : currentProject.voiceBundle);
+  const voiceChanged = !sameValue(nextVoiceBundle, currentProject.voiceBundle);
+  const syncSourcesChanged = Boolean(
+    currentProject.animationSyncBundle &&
+      (!nextMotionCanvasBundle ||
+        !nextVoiceBundle ||
+        nextMotionCanvasBundle.status !== 'approved' ||
+        nextVoiceBundle.status !== 'approved' ||
+        !animationSyncMatchesSources(
+          currentProject.animationSyncBundle,
+          nextMotionCanvasBundle,
+          nextVoiceBundle,
+          nextVisualDesignBundle,
+        )),
+  );
+  const nextAnimationSyncBundle =
+    change.animationSyncBundle ??
+    (syncSourcesChanged && currentProject.animationSyncBundle
+      ? {...currentProject.animationSyncBundle, status: 'draft' as const}
+      : currentProject.animationSyncBundle);
+  const animationSyncChanged = !sameValue(
+    nextAnimationSyncBundle,
+    currentProject.animationSyncBundle,
+  );
+  const layoutSourceChanged = Boolean(
+    currentProject.layoutBundle &&
+      (!nextAnimationSyncBundle ||
+        nextAnimationSyncBundle.status !== 'approved' ||
+        !layoutMatchesAnimationSync(
+          currentProject.layoutBundle,
+          nextAnimationSyncBundle,
+        )),
+  );
+  const nextLayoutBundle =
+    change.layoutBundle ??
+    (layoutSourceChanged && currentProject.layoutBundle
+      ? {...currentProject.layoutBundle, status: 'draft' as const}
+      : currentProject.layoutBundle);
+  const layoutChanged = !sameValue(nextLayoutBundle, currentProject.layoutBundle);
+  const renderSourceChanged = Boolean(
+    currentProject.renderBundle &&
+      (!nextLayoutBundle ||
+        nextLayoutBundle.status !== 'approved' ||
+        !finalRenderMatchesLayout(currentProject.renderBundle, nextLayoutBundle)),
+  );
+  const nextRenderBundle =
+    change.renderBundle ??
+    (renderSourceChanged ? null : currentProject.renderBundle);
+  const renderChanged = !sameValue(nextRenderBundle, currentProject.renderBundle);
+  const nextCurrentStep =
+    change.currentStep ??
+    (topicChanged
+      ? 'topic'
+      : outlineChanged
+        ? 'outline'
+        : voiceVisualContentChanged
+          ? 'voiceVisual'
+          : motionCanvasChanged
+            ? 'motionCanvas'
+            : voiceChanged
+              ? 'voice'
+              : animationSyncChanged
+                ? 'sync'
+                : layoutChanged
+                  ? 'layout'
+                  : renderChanged
+                    ? 'render'
+                    : currentProject.currentStep);
+
+  return {
+    ...currentProject,
+    ...(change.topicInput ? {topicInput: change.topicInput} : {}),
+    currentStep: nextCurrentStep,
+    outline: nextOutline,
+    voiceVisualPlan: nextVoiceVisualPlan,
+    motionCanvasBundle: nextMotionCanvasBundle,
+    visualDesignBundle: nextVisualDesignBundle,
+    voiceBundle: nextVoiceBundle,
+    animationSyncBundle: nextAnimationSyncBundle,
+    layoutBundle: nextLayoutBundle,
+    renderBundle: nextRenderBundle,
+    revision: currentProject.revision + 1,
+    updatedAt,
+  };
+}

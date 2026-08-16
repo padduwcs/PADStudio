@@ -52,7 +52,12 @@ function shutdownAndExit(
   exitCode = 0,
   options: {drainInFlight?: boolean} = {},
 ) {
-  void shutdown(options).then(() => process.exit(exitCode));
+  void shutdown(options)
+    .catch((error) => {
+      console.error('Không thể đóng PAD Studio sạch sẽ:', error);
+      process.exitCode = 1;
+    })
+    .finally(() => process.exit(process.exitCode ?? exitCode));
 }
 
 if (Number.isInteger(devSupervisorPid) && devSupervisorPid > 0) {

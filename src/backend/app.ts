@@ -226,6 +226,24 @@ import {
   type CredentialStore,
 } from './credentialStore.ts';
 import {
+  createInMemoryGenerationRegistry,
+  GenerationIdReuseError,
+  type GenerationRegistry,
+} from './generationRegistry.ts';
+import {
+  getProjectAnimationSyncRoute,
+  getProjectId,
+  getProjectLayoutRoute,
+  getProjectMotionCanvasHistoryRoute,
+  getProjectMotionCanvasRoute,
+  getProjectOutlineHistoryRoute,
+  getProjectOutlineRoute,
+  getProjectRenderRoute,
+  getProjectVoiceRoute,
+  getProjectVoiceVisualHistoryRoute,
+  getProjectVoiceVisualRoute,
+} from './projectRoutes.ts';
+import {
   createWatermarkAssetStore,
   WatermarkAssetError,
   type WatermarkAssetStore,
@@ -649,246 +667,6 @@ function validationFields(
   return fields;
 }
 
-function getProjectId(pathname: string) {
-  const match = /^\/api\/projects\/([^/]+)$/.exec(pathname);
-  if (!match?.[1]) return null;
-
-  return decodeProjectId(match[1]);
-}
-
-function decodeProjectId(value: string) {
-  try {
-    const projectId = decodeURIComponent(value);
-    return /^[a-z0-9][a-z0-9-]{0,100}$/.test(projectId) ? projectId : null;
-  } catch {
-    return null;
-  }
-}
-
-function getProjectOutlineRoute(pathname: string) {
-  const match =
-    /^\/api\/projects\/([^/]+)\/outline(?:\/(generate|approve))?$/.exec(
-      pathname,
-    );
-  if (!match?.[1]) return null;
-  const projectId = decodeProjectId(match[1]);
-  if (!projectId) return null;
-
-  return {
-    projectId,
-    action: match[2] ?? 'update',
-  } as const;
-}
-
-function getProjectOutlineHistoryRoute(pathname: string) {
-  const match =
-    /^\/api\/projects\/([^/]+)\/outline\/(history|versions|candidates)(?:\/([^/]+)(?:\/(restore|apply|reject))?)?$/.exec(
-      pathname,
-    );
-  if (!match?.[1] || !match[2]) return null;
-  const projectId = decodeProjectId(match[1]);
-  if (!projectId) return null;
-  let recordId: string | null = null;
-  if (match[3]) {
-    try {
-      recordId = decodeURIComponent(match[3]);
-    } catch {
-      return null;
-    }
-    if (!/^[0-9a-f-]{36}$/i.test(recordId)) return null;
-  }
-  return {
-    projectId,
-    resource: match[2] as 'history' | 'versions' | 'candidates',
-    recordId,
-    action:
-      (match[4] as 'restore' | 'apply' | 'reject' | undefined) ?? null,
-  };
-}
-
-function getProjectVoiceVisualRoute(pathname: string) {
-  const match =
-    /^\/api\/projects\/([^/]+)\/voice-visual(?:\/(generate|approve))?$/.exec(
-      pathname,
-    );
-  if (!match?.[1]) return null;
-  const projectId = decodeProjectId(match[1]);
-  if (!projectId) return null;
-
-  return {
-    projectId,
-    action: match[2] ?? 'update',
-  } as const;
-}
-
-function getProjectVoiceVisualHistoryRoute(pathname: string) {
-  const match =
-    /^\/api\/projects\/([^/]+)\/voice-visual\/(history|versions|candidates|reviews)(?:\/([^/]+)(?:\/(restore|apply|reject))?)?$/.exec(
-      pathname,
-    );
-  if (!match?.[1] || !match[2]) return null;
-  const projectId = decodeProjectId(match[1]);
-  if (!projectId) return null;
-  let recordId: string | null = null;
-  if (match[3]) {
-    try {
-      recordId = decodeURIComponent(match[3]);
-    } catch {
-      return null;
-    }
-    if (!/^[0-9a-f-]{36}$/i.test(recordId)) return null;
-  }
-  return {
-    projectId,
-    resource: match[2] as
-      | 'history'
-      | 'versions'
-      | 'candidates'
-      | 'reviews',
-    recordId,
-    action:
-      (match[4] as 'restore' | 'apply' | 'reject' | undefined) ?? null,
-  };
-}
-
-function getProjectMotionCanvasRoute(pathname: string) {
-  const match =
-    /^\/api\/projects\/([^/]+)\/motion-canvas(?:\/(generate|approve|files|preview|design))?$/.exec(
-      pathname,
-    );
-  if (!match?.[1]) return null;
-  const projectId = decodeProjectId(match[1]);
-  if (!projectId) return null;
-
-  return {
-    projectId,
-    action: match[2] ?? 'read',
-  } as const;
-}
-
-function getProjectMotionCanvasHistoryRoute(pathname: string) {
-  const match =
-    /^\/api\/projects\/([^/]+)\/motion-canvas\/(history|versions|candidates)(?:\/([^/]+)(?:\/(restore|apply|reject|preview|files))?)?$/.exec(
-      pathname,
-    );
-  if (!match?.[1] || !match[2]) return null;
-  const projectId = decodeProjectId(match[1]);
-  if (!projectId) return null;
-  let recordId: string | null = null;
-  if (match[3]) {
-    try {
-      recordId = decodeURIComponent(match[3]);
-    } catch {
-      return null;
-    }
-    if (!/^[0-9a-f-]{36}$/i.test(recordId)) return null;
-  }
-  return {
-    projectId,
-    resource: match[2] as 'history' | 'versions' | 'candidates',
-    recordId,
-    action:
-      (match[4] as
-        | 'restore'
-        | 'apply'
-        | 'reject'
-        | 'preview'
-        | 'files'
-        | undefined) ?? null,
-  };
-}
-
-function getProjectVoiceRoute(pathname: string) {
-  const audioMatch =
-    /^\/api\/projects\/([^/]+)\/voice\/audio\/([^/]+)$/.exec(pathname);
-  if (audioMatch?.[1] && audioMatch[2]) {
-    const projectId = decodeProjectId(audioMatch[1]);
-    if (!projectId) return null;
-    try {
-      return {
-        projectId,
-        action: 'audio' as const,
-        outlineSectionId: decodeURIComponent(audioMatch[2]),
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  const match =
-    /^\/api\/projects\/([^/]+)\/voice(?:\/(generate|approve))?$/.exec(
-      pathname,
-    );
-  if (!match?.[1]) return null;
-  const projectId = decodeProjectId(match[1]);
-  if (!projectId) return null;
-  return {
-    projectId,
-    action: (match[2] ?? 'read') as 'generate' | 'approve' | 'read',
-    outlineSectionId: null,
-  };
-}
-
-function getProjectAnimationSyncRoute(pathname: string) {
-  const match =
-    /^\/api\/projects\/([^/]+)\/sync(?:\/(generate|approve|files|audio|preview))?$/.exec(
-      pathname,
-    );
-  if (!match?.[1]) return null;
-  const projectId = decodeProjectId(match[1]);
-  if (!projectId) return null;
-
-  return {
-    projectId,
-    action: (match[2] ?? 'read') as
-      | 'generate'
-      | 'approve'
-      | 'files'
-      | 'audio'
-      | 'preview'
-      | 'read',
-  };
-}
-
-function getProjectLayoutRoute(pathname: string) {
-  const match =
-    /^\/api\/projects\/([^/]+)\/layout(?:\/(commit|approve|files|preview))?$/.exec(
-      pathname,
-    );
-  if (!match?.[1]) return null;
-  const projectId = decodeProjectId(match[1]);
-  if (!projectId) return null;
-
-  return {
-    projectId,
-    action: (match[2] ?? 'read') as
-      | 'commit'
-      | 'approve'
-      | 'files'
-      | 'preview'
-      | 'read',
-  };
-}
-
-function getProjectRenderRoute(pathname: string) {
-  const match =
-    /^\/api\/projects\/([^/]+)\/render(?:\/(generate|status|video|watermark))?$/.exec(
-      pathname,
-    );
-  if (!match?.[1]) return null;
-  const projectId = decodeProjectId(match[1]);
-  if (!projectId) return null;
-  return {
-    projectId,
-    action: (match[2] ?? 'read') as
-      | 'generate'
-      | 'status'
-      | 'video'
-      | 'watermark'
-      | 'read',
-  };
-}
-
 function outlineContent(outline: TeachingOutline) {
   return {
     brief: outline.brief,
@@ -1114,7 +892,16 @@ async function serveFrontend(
   frontendDirectory: string,
 ) {
   const requestUrl = new URL(request.url ?? '/', 'http://localhost');
-  const requestedPath = decodeURIComponent(requestUrl.pathname);
+  let requestedPath: string;
+  try {
+    requestedPath = decodeURIComponent(requestUrl.pathname);
+  } catch {
+    sendApiError(response, 404, {
+      code: 'NOT_FOUND',
+      message: 'KhÃ´ng tÃ¬m tháº¥y tÃ i nguyÃªn.',
+    });
+    return;
+  }
   const relativePath =
     requestedPath === '/' ? 'index.html' : requestedPath.replace(/^\/+/, '');
   const candidatePath = path.resolve(frontendDirectory, relativePath);
@@ -1137,6 +924,16 @@ async function serveFrontend(
     const fileStats = await stat(filePath);
     if (!fileStats.isFile()) throw new Error('Not a file');
   } catch {
+    // A SPA route has no extension.  Returning index.html for a missing
+    // hashed JS/CSS asset produces a misleading 200 response and leaves the
+    // browser with an opaque module MIME error after a deployment.
+    if (path.extname(relativePath)) {
+      sendApiError(response, 404, {
+        code: 'NOT_FOUND',
+        message: 'KhÃ´ng tÃ¬m tháº¥y tÃ i nguyÃªn.',
+      });
+      return;
+    }
     filePath = path.join(frontendRoot, 'index.html');
   }
 
@@ -1156,7 +953,9 @@ async function serveFrontend(
       return;
     }
 
-    createReadStream(filePath).pipe(response);
+    const stream = createReadStream(filePath);
+    stream.on('error', error => response.destroy(error));
+    stream.pipe(response);
   } catch {
     const fallback = await readFile(
       new URL('../../README.md', import.meta.url),
@@ -1284,69 +1083,30 @@ export function createPadStudioServer(options: AppOptions = {}) {
       logger: options.logger,
     });
   const logger = options.logger ?? console;
-  type GenerationCacheEntry<Result> = {
-    fingerprint: string;
-    promise: Promise<{result: Result; generatedAt: string}>;
-    settled: boolean;
-  };
-  const outlineGenerations = new Map<
-    string,
-    GenerationCacheEntry<OutlineGenerationResult>
-  >();
-  const topicGuidanceGenerations = new Map<
-    string,
-    GenerationCacheEntry<TopicGuidanceGenerationResult>
-  >();
-  const outlineCandidateGenerations = new Map<
-    string,
-    GenerationCacheEntry<OutlineRevisionResult>
-  >();
-  const voiceVisualGenerations = new Map<
-    string,
-    GenerationCacheEntry<VoiceVisualGenerationResult>
-  >();
-  const voiceVisualCandidateGenerations = new Map<
-    string,
-    GenerationCacheEntry<VoiceVisualRevisionResult>
-  >();
-  const voiceVisualReviewGenerations = new Map<
-    string,
-    GenerationCacheEntry<VoiceVisualReviewResult>
-  >();
-  const motionCanvasGenerations = new Map<
-    string,
-    GenerationCacheEntry<{
-      generated: MotionCanvasGenerationResult;
-      prepared: PreparedMotionCanvasWorkspace;
-    }>
-  >();
-  const motionCanvasCandidateGenerations = new Map<
-    string,
-    GenerationCacheEntry<{
-      generated: MotionCanvasGenerationResult;
-      prepared: PreparedMotionCanvasWorkspace;
-      review: MotionCanvasRevisionReviewResult;
-    }>
-  >();
-  const voiceGenerations = new Map<
-    string,
-    GenerationCacheEntry<{
-      configuration: VoiceBundle['configuration'];
-      prepared: PreparedVoiceWorkspace;
-    }>
-  >();
-  const voiceSectionGenerations = new Map<
-    string,
-    GenerationCacheEntry<ElevenLabsSectionGeneration>
-  >();
-  const animationSyncGenerations = new Map<
-    string,
-    GenerationCacheEntry<PreparedAnimationSyncWorkspace>
-  >();
-  const layoutGenerations = new Map<
-    string,
-    GenerationCacheEntry<PreparedLayoutWorkspace>
-  >();
+  const outlineGenerations = createInMemoryGenerationRegistry<OutlineGenerationResult>();
+  const topicGuidanceGenerations = createInMemoryGenerationRegistry<TopicGuidanceGenerationResult>();
+  const outlineCandidateGenerations = createInMemoryGenerationRegistry<OutlineRevisionResult>();
+  const voiceVisualGenerations = createInMemoryGenerationRegistry<VoiceVisualGenerationResult>();
+  const voiceVisualCandidateGenerations = createInMemoryGenerationRegistry<VoiceVisualRevisionResult>();
+  const voiceVisualReviewGenerations = createInMemoryGenerationRegistry<VoiceVisualReviewResult>();
+  const motionCanvasGenerations = createInMemoryGenerationRegistry<{
+    generated: MotionCanvasGenerationResult;
+    prepared: PreparedMotionCanvasWorkspace;
+  }>();
+  const motionCanvasCandidateGenerations = createInMemoryGenerationRegistry<{
+    generated: MotionCanvasGenerationResult;
+    prepared: PreparedMotionCanvasWorkspace;
+    review: MotionCanvasRevisionReviewResult;
+  }>();
+  const voiceGenerations = createInMemoryGenerationRegistry<{
+    configuration: VoiceBundle['configuration'];
+    prepared: PreparedVoiceWorkspace;
+  }>();
+  const voiceSectionGenerations = createInMemoryGenerationRegistry<ElevenLabsSectionGeneration>(
+    pipelineSafetyLimits.maximumVoiceChunks * 2,
+  );
+  const animationSyncGenerations = createInMemoryGenerationRegistry<PreparedAnimationSyncWorkspace>();
+  const layoutGenerations = createInMemoryGenerationRegistry<PreparedLayoutWorkspace>();
   const finalRenderCommits = new Set<Promise<void>>();
 
   async function commitFinalRenderBundle(
@@ -1398,55 +1158,25 @@ export function createPadStudioServer(options: AppOptions = {}) {
   }
 
   function generateOnce<Result>(
-    generations: Map<string, GenerationCacheEntry<Result>>,
+    generations: GenerationRegistry<Result>,
     key: string,
     fingerprint: string,
     operation: () => Promise<Result>,
     retainFailure: (error: unknown) => boolean = () => false,
-    maximumEntries = 50,
+    _maximumEntries = 50,
   ) {
-    const existing = generations.get(key);
-    if (existing) {
-      if (existing.fingerprint !== fingerprint) {
+    try {
+      return generations.run(key, fingerprint, operation, {retainFailure});
+    } catch (error) {
+      if (error instanceof GenerationIdReuseError) {
         throw new RequestBodyError(
           409,
           'GENERATION_ID_REUSED',
           'Generation ID đã được dùng với nội dung khác.',
         );
       }
-      return existing.promise;
+      throw error;
     }
-
-    const promise = operation().then((result) => ({
-      result,
-      generatedAt: new Date().toISOString(),
-    }));
-    const entry = {fingerprint, promise, settled: false};
-    generations.set(key, entry);
-    void promise.then(
-      () => {
-        entry.settled = true;
-      },
-      () => {
-        entry.settled = true;
-      },
-    );
-    void promise.catch((error) => {
-      if (retainFailure(error)) return;
-      if (generations.get(key)?.promise === promise) {
-        generations.delete(key);
-      }
-    });
-
-    if (generations.size > maximumEntries) {
-      const oldestSettled = [...generations.entries()].find(
-        ([candidateKey, candidate]) =>
-          candidateKey !== key && candidate.settled,
-      )?.[0];
-      if (oldestSettled) generations.delete(oldestSettled);
-    }
-
-    return promise;
   }
 
   async function handleVoiceVisualHistoryRoute(
@@ -5177,11 +4907,9 @@ export function createPadStudioServer(options: AppOptions = {}) {
               },
             );
             const chunkKeyPrefix = `${generationKey}:chunk:`;
-            for (const key of voiceSectionGenerations.keys()) {
-              if (key.startsWith(chunkKeyPrefix)) {
-                voiceSectionGenerations.delete(key);
-              }
-            }
+            voiceSectionGenerations.clearMatching((key) =>
+              key.startsWith(chunkKeyPrefix),
+            );
             return {
               configuration: resolved.configuration,
               prepared,

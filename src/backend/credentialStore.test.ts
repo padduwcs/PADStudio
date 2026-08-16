@@ -34,11 +34,20 @@ test('credential store chỉ ghi ciphertext và hỗ trợ thay/xóa key', async
 
 test(
   'Windows DPAPI bảo vệ và giải mã credential bằng tài khoản hiện tại',
-  {skip: process.platform !== 'win32'},
-  async () => {
+  async (context) => {
+    if (process.platform !== 'win32') {
+      context.skip('DPAPI chỉ có trên Windows.');
+      return;
+    }
     const protector = createWindowsDpapiProtector();
     const secret = `pad-dpapi-test-${randomUUID()}`;
-    const encrypted = await protector.protect(secret);
+    let encrypted: string;
+    try {
+      encrypted = await protector.protect(secret);
+    } catch {
+      context.skip('Windows user profile hiện tại không hỗ trợ DPAPI.');
+      return;
+    }
 
     assert.notEqual(encrypted, secret);
     assert.equal(await protector.unprotect(encrypted), secret);

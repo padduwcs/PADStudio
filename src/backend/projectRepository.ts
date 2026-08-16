@@ -17,14 +17,10 @@ import {
   type TopicProject,
 } from '../shared/topic.ts';
 import {
-  finalRenderMatchesLayout,
-  layoutMatchesAnimationSync,
-  visualDesignMatchesMotion,
-} from '../shared/projectPipeline.ts';
-import {
-  animationSyncMatchesSources,
-  voiceMatchesPlan,
-} from './projectConsistency.ts';
+  projectChangeAlreadyApplied,
+  reconcileProjectState,
+  type ProjectStateChange,
+} from './projectState.ts';
 
 function toSlug(value: string) {
   return value
@@ -52,24 +48,11 @@ export interface ProjectRepository {
   getProject(projectId: string): Promise<TopicProject | null>;
   updateProject(
     projectId: string,
-    update: ProjectRepositoryUpdate,
+    update: ProjectStateChange,
     expectedRevision: number,
   ): Promise<TopicProject | null>;
   deleteProject(projectId: string, expectedRevision: number): Promise<boolean>;
 }
-
-type ProjectRepositoryUpdate = {
-  topicInput?: TopicProject['topicInput'];
-  currentStep?: TopicProject['currentStep'];
-  outline?: NonNullable<TopicProject['outline']>;
-  voiceVisualPlan?: NonNullable<TopicProject['voiceVisualPlan']>;
-  motionCanvasBundle?: NonNullable<TopicProject['motionCanvasBundle']>;
-  visualDesignBundle?: TopicProject['visualDesignBundle'];
-  voiceBundle?: NonNullable<TopicProject['voiceBundle']>;
-  animationSyncBundle?: NonNullable<TopicProject['animationSyncBundle']>;
-  layoutBundle?: NonNullable<TopicProject['layoutBundle']>;
-  renderBundle?: NonNullable<TopicProject['renderBundle']>;
-};
 
 function isValidProjectId(projectId: string) {
   return /^[a-z0-9][a-z0-9-]{0,100}$/.test(projectId);
@@ -281,204 +264,6 @@ export function createFileProjectRepository(
     };
   }
 
-  function updateAlreadyApplied(
-    project: TopicProject,
-    update: ProjectRepositoryUpdate,
-  ) {
-    return (
-      (update.topicInput === undefined ||
-        JSON.stringify(update.topicInput) ===
-          JSON.stringify(project.topicInput)) &&
-      (update.currentStep === undefined ||
-        update.currentStep === project.currentStep) &&
-      (update.outline === undefined ||
-        JSON.stringify(update.outline) === JSON.stringify(project.outline)) &&
-      (update.voiceVisualPlan === undefined ||
-        JSON.stringify(update.voiceVisualPlan) ===
-          JSON.stringify(project.voiceVisualPlan)) &&
-      (update.motionCanvasBundle === undefined ||
-        JSON.stringify(update.motionCanvasBundle) ===
-          JSON.stringify(project.motionCanvasBundle)) &&
-      (update.visualDesignBundle === undefined ||
-        JSON.stringify(update.visualDesignBundle) ===
-          JSON.stringify(project.visualDesignBundle)) &&
-      (update.voiceBundle === undefined ||
-        JSON.stringify(update.voiceBundle) ===
-          JSON.stringify(project.voiceBundle)) &&
-      (update.animationSyncBundle === undefined ||
-        JSON.stringify(update.animationSyncBundle) ===
-          JSON.stringify(project.animationSyncBundle)) &&
-      (update.layoutBundle === undefined ||
-        JSON.stringify(update.layoutBundle) ===
-          JSON.stringify(project.layoutBundle)) &&
-      (update.renderBundle === undefined ||
-        JSON.stringify(update.renderBundle) ===
-          JSON.stringify(project.renderBundle))
-    );
-  }
-
-  async function applyUpdate(
-    currentProject: TopicProject,
-    update: ProjectRepositoryUpdate,
-  ) {
-    if (updateAlreadyApplied(currentProject, update)) {
-      return currentProject;
-    }
-
-    const topicChanged =
-      update.topicInput !== undefined &&
-      JSON.stringify(update.topicInput) !==
-        JSON.stringify(currentProject.topicInput);
-    const nextOutline =
-      update.outline ??
-      (topicChanged && currentProject.outline
-        ? {...currentProject.outline, status: 'draft' as const}
-        : currentProject.outline);
-    const outlineChanged =
-      JSON.stringify(nextOutline) !== JSON.stringify(currentProject.outline);
-    const nextVoiceVisualPlan =
-      update.voiceVisualPlan ??
-      ((topicChanged || outlineChanged) && currentProject.voiceVisualPlan
-        ? {...currentProject.voiceVisualPlan, status: 'draft' as const}
-        : currentProject.voiceVisualPlan);
-    const voiceVisualContentChanged =
-      nextVoiceVisualPlan?.contentRevision !==
-      currentProject.voiceVisualPlan?.contentRevision;
-    const nextMotionCanvasBundle =
-      update.motionCanvasBundle ??
-      ((topicChanged || outlineChanged || voiceVisualContentChanged) &&
-      currentProject.motionCanvasBundle
-        ? {...currentProject.motionCanvasBundle, status: 'draft' as const}
-        : currentProject.motionCanvasBundle);
-    const motionCanvasChanged =
-      JSON.stringify(nextMotionCanvasBundle) !==
-      JSON.stringify(currentProject.motionCanvasBundle);
-    const nextVisualDesignBundle =
-      update.visualDesignBundle !== undefined
-        ? update.visualDesignBundle
-        : currentProject.visualDesignBundle &&
-            nextMotionCanvasBundle &&
-            visualDesignMatchesMotion(
-              currentProject.visualDesignBundle,
-              nextMotionCanvasBundle,
-            )
-          ? currentProject.visualDesignBundle
-          : null;
-    const voiceSourceChanged = Boolean(
-      currentProject.voiceBundle &&
-        (!nextVoiceVisualPlan ||
-          !voiceMatchesPlan(
-            currentProject.voiceBundle,
-            nextVoiceVisualPlan,
-          )),
-    );
-    const nextVoiceBundle =
-      update.voiceBundle ??
-      ((topicChanged || outlineChanged || voiceSourceChanged) &&
-      currentProject.voiceBundle
-        ? {...currentProject.voiceBundle, status: 'draft' as const}
-        : currentProject.voiceBundle);
-    const voiceChanged =
-      JSON.stringify(nextVoiceBundle) !==
-      JSON.stringify(currentProject.voiceBundle);
-    const syncSourcesChanged = Boolean(
-      currentProject.animationSyncBundle &&
-        (!nextMotionCanvasBundle ||
-          !nextVoiceBundle ||
-          nextMotionCanvasBundle.status !== 'approved' ||
-          nextVoiceBundle.status !== 'approved' ||
-          !animationSyncMatchesSources(
-            currentProject.animationSyncBundle,
-            nextMotionCanvasBundle,
-            nextVoiceBundle,
-            nextVisualDesignBundle,
-          )),
-    );
-    const nextAnimationSyncBundle =
-      update.animationSyncBundle ??
-      (syncSourcesChanged && currentProject.animationSyncBundle
-        ? {
-            ...currentProject.animationSyncBundle,
-            status: 'draft' as const,
-          }
-        : currentProject.animationSyncBundle);
-    const animationSyncChanged =
-      JSON.stringify(nextAnimationSyncBundle) !==
-      JSON.stringify(currentProject.animationSyncBundle);
-    const layoutSourceChanged = Boolean(
-      currentProject.layoutBundle &&
-        (!nextAnimationSyncBundle ||
-          nextAnimationSyncBundle.status !== 'approved' ||
-          !layoutMatchesAnimationSync(
-            currentProject.layoutBundle,
-            nextAnimationSyncBundle,
-          )),
-    );
-    const nextLayoutBundle =
-      update.layoutBundle ??
-      (layoutSourceChanged && currentProject.layoutBundle
-        ? {
-            ...currentProject.layoutBundle,
-            status: 'draft' as const,
-          }
-        : currentProject.layoutBundle);
-    const layoutChanged =
-      JSON.stringify(nextLayoutBundle) !==
-      JSON.stringify(currentProject.layoutBundle);
-    const renderSourceChanged = Boolean(
-      currentProject.renderBundle &&
-        (!nextLayoutBundle ||
-          nextLayoutBundle.status !== 'approved' ||
-          !finalRenderMatchesLayout(
-            currentProject.renderBundle,
-            nextLayoutBundle,
-          )),
-    );
-    const nextRenderBundle =
-      update.renderBundle ??
-      (renderSourceChanged ? null : currentProject.renderBundle);
-    const renderChanged =
-      JSON.stringify(nextRenderBundle) !==
-      JSON.stringify(currentProject.renderBundle);
-    const nextCurrentStep =
-      update.currentStep ??
-      (topicChanged
-        ? 'topic'
-        : outlineChanged
-          ? 'outline'
-            : voiceVisualContentChanged
-              ? 'voiceVisual'
-              : motionCanvasChanged
-                ? 'motionCanvas'
-                : voiceChanged
-                  ? 'voice'
-                  : animationSyncChanged
-                    ? 'sync'
-                    : layoutChanged
-                      ? 'layout'
-                      : renderChanged
-                        ? 'render'
-                        : currentProject.currentStep);
-    const project: TopicProject = {
-      ...currentProject,
-      ...(update.topicInput ? {topicInput: update.topicInput} : {}),
-      currentStep: nextCurrentStep,
-      outline: nextOutline,
-      voiceVisualPlan: nextVoiceVisualPlan,
-      motionCanvasBundle: nextMotionCanvasBundle,
-      visualDesignBundle: nextVisualDesignBundle,
-      voiceBundle: nextVoiceBundle,
-      animationSyncBundle: nextAnimationSyncBundle,
-      layoutBundle: nextLayoutBundle,
-      renderBundle: nextRenderBundle,
-      revision: currentProject.revision + 1,
-      updatedAt: new Date().toISOString(),
-    };
-
-    await writeProject(project);
-    return project;
-  }
-
   return {
     async createTopicProject(request) {
       return runSerialized(`creation:${request.creationId}`, async () => {
@@ -499,7 +284,7 @@ export function createFileProjectRepository(
               currentStep: request.currentStep,
             };
 
-            if (updateAlreadyApplied(currentProject, requestedState)) {
+            if (projectChangeAlreadyApplied(currentProject, requestedState)) {
               return currentProject;
             }
 
@@ -547,7 +332,7 @@ export function createFileProjectRepository(
         if (currentProject.revision !== expectedRevision) {
           if (
             expectedRevision < currentProject.revision &&
-            updateAlreadyApplied(currentProject, update)
+            projectChangeAlreadyApplied(currentProject, update)
           ) {
             return currentProject;
           }
@@ -555,7 +340,9 @@ export function createFileProjectRepository(
           throw new ProjectConflictError(currentProject);
         }
 
-        return applyUpdate(currentProject, update);
+        const project = reconcileProjectState(currentProject, update);
+        await writeProject(project);
+        return project;
       });
     },
 

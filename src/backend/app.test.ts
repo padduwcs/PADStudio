@@ -159,6 +159,21 @@ async function createProject(
   return {project: body.project, request};
 }
 
+test('frontend chỉ fallback SPA cho route, không trả HTML cho asset thiếu', async (context) => {
+  const {baseUrl} = await startTestApp(context);
+
+  const route = await fetch(`${baseUrl}/projects/example/topic`);
+  assert.equal(route.status, 200);
+  assert.match(route.headers.get('content-type') ?? '', /^text\/html/);
+
+  const missingAsset = await fetch(`${baseUrl}/assets/missing-client-hash.js`);
+  assert.equal(missingAsset.status, 404);
+  assert.match(
+    missingAsset.headers.get('content-type') ?? '',
+    /^application\/json/,
+  );
+});
+
 test('backend cleanup chờ final render dừng xong và có tính idempotent', async () => {
   const projectsDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-studio-cleanup-test-'),

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {
   mkdir,
@@ -22,6 +23,17 @@ import {
 } from './animationSyncWorkspace.ts';
 import {createAnimationSyncPreviewService} from './animationSyncPreviewService.ts';
 import {animationSyncWorkspaceSourceHash} from './layoutWorkspace.ts';
+
+const ffmpegAvailable = (() => {
+  try {
+    return spawnSync(process.env.FFMPEG_PATH ?? 'ffmpeg', ['-version'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    }).status === 0;
+  } catch {
+    return false;
+  }
+})();
 
 function wavSilence(durationSeconds: number, sampleRate = 16_000) {
   const samples = Math.round(durationSeconds * sampleRate);
@@ -61,7 +73,7 @@ export default makeScene2D(function* (view) {
 `;
 }
 
-test('Animation sync tạo track WAV và time-event theo voice thật', async (context) => {
+test('Animation sync tạo track WAV và time-event theo voice thật', {skip: !ffmpegAvailable}, async (context) => {
   const projectsDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-studio-sync-workspace-'),
   );

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp, readFile, rm} from 'node:fs/promises';
 import os from 'node:os';
@@ -10,6 +11,17 @@ import {
   VoiceWorkspaceError,
   type GeneratedVoiceNarration,
 } from './voiceWorkspace.ts';
+
+const ffmpegAvailable = (() => {
+  try {
+    return spawnSync(process.env.FFMPEG_PATH ?? 'ffmpeg', ['-version'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    }).status === 0;
+  } catch {
+    return false;
+  }
+})();
 
 function rawPcm(durationSeconds: number, sampleRate = 44_100) {
   return Buffer.alloc(Math.ceil(durationSeconds * sampleRate) * 2);
@@ -77,7 +89,7 @@ function narrationFixture(audioTailSeconds = 0): GeneratedVoiceNarration {
   };
 }
 
-test('Voice workspace lưu master narration, alignment global và timing section bất biến', async (context) => {
+test('Voice workspace lưu master narration, alignment global và timing section bất biến', {skip: !ffmpegAvailable}, async (context) => {
   const projectsDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-studio-voice-workspace-'),
   );
@@ -176,7 +188,7 @@ test('Voice workspace lưu master narration, alignment global và timing section
   );
 });
 
-test('Voice workspace keeps audio after the final character timestamp', async (context) => {
+test('Voice workspace keeps audio after the final character timestamp', {skip: !ffmpegAvailable}, async (context) => {
   const projectsDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-studio-voice-tail-'),
   );

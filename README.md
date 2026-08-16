@@ -4,6 +4,9 @@
 
 Ứng dụng hướng đến việc giải thích thuật toán và cấu trúc dữ liệu cho người mới học bằng hình ảnh logic, dễ hiểu và đồng bộ chính xác với lời thuyết minh. Video tập trung vào bản chất của kiến thức, không hiển thị code và không phụ thuộc vào caption.
 
+Tài liệu kiến trúc, luồng dữ liệu, quy tắc pipeline và hướng dẫn phát triển được
+ghi trong [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## Quy trình chính
 
 ```text
