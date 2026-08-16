@@ -9,6 +9,14 @@ import {
   VisualDesignBundleSchema,
 } from './layout.ts';
 import {FinalRenderBundleSchema} from './render.ts';
+import {
+  RenderProfileSchema,
+  VideoFrameSchema,
+} from './videoFormat.ts';
+import {
+  PronunciationReviewSchema,
+  PronunciationRuleSchema,
+} from './pronunciation.ts';
 
 export * from './layout.ts';
 export * from './render.ts';
@@ -36,7 +44,7 @@ export const voiceVisualStatusValues = ['draft', 'approved'] as const;
 export const motionCanvasStatusValues = ['draft', 'approved'] as const;
 export const voiceStatusValues = ['draft', 'approved'] as const;
 export const animationSyncStatusValues = ['draft', 'approved'] as const;
-export const currentProjectVersion = 14 as const;
+export const currentProjectVersion = 15 as const;
 
 export const videoBackgroundModeValues = [
   'light',
@@ -54,6 +62,41 @@ export const VideoBackgroundSchema = z
   })
   .strict();
 export type VideoBackground = z.infer<typeof VideoBackgroundSchema>;
+
+export const NarrationDocumentSchema = z
+  .object({
+    sourceText: z.string().trim().min(1).max(1_500_000),
+    projectRules: z.array(PronunciationRuleSchema).max(2_000).default([]),
+    review: PronunciationReviewSchema.nullable().default(null),
+    approvedSourceHash: z.string().regex(/^[a-f0-9]{64}$/).nullable().default(null),
+    approvedAt: z.string().datetime().nullable().default(null),
+  })
+  .strict();
+
+export type NarrationDocument = z.infer<typeof NarrationDocumentSchema>;
+
+export const SaveNarrationSchema = z
+  .object({
+    sourceText: z.string().trim().min(1).max(1_500_000),
+    projectRules: z.array(PronunciationRuleSchema).max(2_000).default([]),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.projectRules.some(rule => rule.scope === 'library')) {
+      context.addIssue({
+        code: 'custom',
+        path: ['projectRules'],
+        message: 'Quy tắc dùng chung phải được lưu trong pronunciation library.',
+      });
+    }
+  });
+
+export const ApproveNarrationSchema = z
+  .object({
+    sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+    rulesHash: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict();
 
 export function videoBackgroundTone(
   background: Pick<VideoBackground, 'color'>,
@@ -95,6 +138,8 @@ export const TopicInputSchema = z
       .trim()
       .optional(),
     background: VideoBackgroundSchema.default(defaultVideoBackground),
+    /** The composition frame; omitted legacy projects remain vertical. */
+    videoFrame: VideoFrameSchema.optional(),
     audience: z.enum(audienceValues),
     duration: z.enum(durationValues),
     targetDurationMinutes: z
@@ -1006,7 +1051,11 @@ const topicProjectV13Schema = topicProjectV12Schema
 
 export const TopicProjectSchema = topicProjectV13Schema
   .omit({version: true})
-  .extend({version: z.literal(currentProjectVersion)})
+  .extend({
+    version: z.literal(currentProjectVersion),
+    narration: NarrationDocumentSchema.nullable().optional(),
+    renderProfile: RenderProfileSchema.optional(),
+  })
   .strict();
 
 export type TopicProject = z.infer<typeof TopicProjectSchema>;

@@ -25,9 +25,9 @@ function pronounceComplexityExpression(expression: string) {
     .replace(/\s+/gu, ' ');
 
   if (/^n\s*(?:\^?\s*2|²)$/u.test(compact)) return 'nờ bình';
-  if (/^(?:log\s*n|logn)$/u.test(compact)) return 'lốc nờ';
+  if (/^(?:log\s*n|logn)$/u.test(compact)) return 'lô-ga-rít nờ';
   if (/^n\s*(?:\*|×)?\s*(?:log\s*n|logn)$/u.test(compact)) {
-    return 'nờ nhân lốc nờ';
+    return 'nờ nhân lô-ga-rít nờ';
   }
   if (/^1$/u.test(compact)) return 'một';
   if (/^n$/u.test(compact)) return 'nờ';
@@ -37,7 +37,7 @@ function pronounceComplexityExpression(expression: string) {
 
 function pronounceMathExpression(value: string) {
   return value
-    .replace(/log\s*n/giu, 'lốc nờ')
+    .replace(/log\s*n/giu, 'lô-ga-rít nờ')
     .replace(/\bn\s*(?:\^\s*2|²)\b/giu, 'nờ bình')
     .replace(/\bn\b/giu, 'nờ')
     .replace(/\s*(?:\*|×)\s*/gu, ' nhân ')

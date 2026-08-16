@@ -13,6 +13,7 @@ import {z} from 'zod';
 import {
   ApproveLayoutSchema,
   CommitLayoutSchema,
+  ApproveNarrationSchema,
   CreateTopicProjectSchema,
   GenerateTopicGuidanceSchema,
   GenerateFinalRenderSchema,
@@ -21,6 +22,7 @@ import {
   GenerateTeachingOutlineSchema,
   GenerateVoiceSchema,
   GenerateVoiceVisualPlanSchema,
+  SaveNarrationSchema,
   TeachingOutlineContentSchema,
   UpdateProjectSchema,
   VoiceVisualPlanContentSchema,
@@ -35,6 +37,10 @@ import {
   type VoiceVisualPlan,
   type VoiceVisualPlanContent,
 } from '../shared/topic.ts';
+import {
+  applyPronunciationPatches,
+  normalizePronunciation,
+} from '../shared/pronunciation.ts';
 import {
   CreateOutlineCandidateSchema,
   CreateOutlineCheckpointSchema,
@@ -236,6 +242,7 @@ import {
   getProjectLayoutRoute,
   getProjectMotionCanvasHistoryRoute,
   getProjectMotionCanvasRoute,
+  getProjectNarrationRoute,
   getProjectOutlineHistoryRoute,
   getProjectOutlineRoute,
   getProjectRenderRoute,
@@ -243,6 +250,14 @@ import {
   getProjectVoiceVisualHistoryRoute,
   getProjectVoiceVisualRoute,
 } from './projectRoutes.ts';
+import {
+  createPronunciationRuleStore,
+  type PronunciationRuleStore,
+} from './pronunciationRuleStore.ts';
+import {
+  createCodexPronunciationAuditService,
+  type PronunciationAuditService,
+} from './pronunciationAudit.ts';
 import {
   createWatermarkAssetStore,
   WatermarkAssetError,
@@ -259,6 +274,13 @@ const CodexApiKeyLoginSchema = z
   .strict();
 const ElevenLabsApiKeySchema = z
   .object({apiKey: z.string().trim().min(1).max(512)})
+  .strict();
+const AuditNarrationSchema = z
+  .object({
+    generationId: z.string().uuid(),
+    model: z.string().trim().min(1).max(160).optional(),
+    reasoningEffort: z.string().trim().min(1).max(80).optional(),
+  })
   .strict();
 
 const contentTypes: Record<string, string> = {
@@ -302,6 +324,8 @@ interface AppOptions {
   layoutPreviewService?: LayoutPreviewService;
   finalRenderService?: FinalRenderService;
   watermarkAssetStore?: WatermarkAssetStore;
+  pronunciationRuleStore?: PronunciationRuleStore;
+  pronunciationAuditService?: PronunciationAuditService;
   logger?: Pick<Console, 'error' | 'info'>;
 }
 
@@ -1001,7 +1025,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
     !options.voiceVisualGenerator ||
     !options.voiceVisualRevisionService ||
     !options.motionCanvasGenerator ||
-    !options.motionCanvasRevisionReviewService
+    !options.motionCanvasRevisionReviewService ||
+    !options.pronunciationAuditService
       ? new StdioCodexAppServerClient()
       : null;
   const codexConnection =
@@ -1075,6 +1100,12 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const watermarkAssetStore =
     options.watermarkAssetStore ??
     createWatermarkAssetStore(projectsDirectory);
+  const pronunciationRuleStore =
+    options.pronunciationRuleStore ??
+    createPronunciationRuleStore(path.resolve(projectsDirectory, '..'));
+  const pronunciationAuditService =
+    options.pronunciationAuditService ??
+    createCodexPronunciationAuditService(sharedCodexClient!);
   const finalRenderService =
     options.finalRenderService ??
     createFinalRenderService(projectsDirectory, {
@@ -6101,6 +6132,187 @@ export function createPadStudioServer(options: AppOptions = {}) {
             ETag: `"${currentProject.renderBundle.validation.videoHash}"`,
           },
         );
+        return;
+      }
+
+      const narrationRoute = getProjectNarrationRoute(requestUrl.pathname);
+
+      if (narrationRoute && request.method === 'GET') {
+        const currentProject = await repository.getProject(narrationRoute.projectId);
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        const libraryRules = await pronunciationRuleStore.list();
+        sendJson(response, 200, {
+          narration: currentProject.narration ?? null,
+          libraryRules,
+        });
+        return;
+      }
+
+      if (narrationRoute?.action === 'read' && request.method === 'PUT') {
+        const expectedRevision = readExpectedRevision(request);
+        const parsed = SaveNarrationSchema.safeParse(await readJsonBody(request));
+        if (!parsed.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Lời thoại hoặc quy tắc phát âm chưa hợp lệ.',
+            fields: validationFields(parsed.error.issues),
+          });
+          return;
+        }
+        const currentProject = await repository.getProject(narrationRoute.projectId);
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        if (currentProject.revision !== expectedRevision) {
+          throw new ProjectConflictError(currentProject);
+        }
+        const libraryRules = await pronunciationRuleStore.list();
+        const allRules = [...libraryRules, ...parsed.data.projectRules];
+        const review = {
+          sourceText: parsed.data.sourceText,
+          normalizedText: normalizePronunciation(parsed.data.sourceText, allRules),
+          rules: allRules,
+          aiPatches: [],
+          sourceHash: hashJson(parsed.data.sourceText),
+          rulesHash: hashJson(allRules),
+          reviewedAt: null,
+        };
+        const project = await repository.updateProject(
+          currentProject.id,
+          {
+            narration: {
+              sourceText: parsed.data.sourceText,
+              projectRules: parsed.data.projectRules,
+              review,
+              approvedSourceHash: null,
+              approvedAt: null,
+            },
+          },
+          expectedRevision,
+        );
+        if (!project) throw new Error('Project vừa biến mất khi lưu lời thoại.');
+        sendProject(response, 200, project);
+        return;
+      }
+
+      if (narrationRoute?.action === 'audit' && request.method === 'POST') {
+        const expectedRevision = readExpectedRevision(request);
+        const parsed = AuditNarrationSchema.safeParse(await readJsonBody(request));
+        if (!parsed.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Yêu cầu AI rà soát cách đọc chưa hợp lệ.',
+            fields: validationFields(parsed.error.issues),
+          });
+          return;
+        }
+        const currentProject = await repository.getProject(narrationRoute.projectId);
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        if (currentProject.revision !== expectedRevision) {
+          throw new ProjectConflictError(currentProject);
+        }
+        const narration = currentProject.narration;
+        if (!narration?.review) {
+          throw new RequestBodyError(
+            409,
+            'NARRATION_NOT_READY',
+            'Hãy lưu lời thoại trước khi yêu cầu AI rà soát.',
+          );
+        }
+        const audit = await pronunciationAuditService.audit({
+          sourceText: narration.sourceText,
+          normalizedText: narration.review.normalizedText,
+          rules: narration.review.rules,
+          model: parsed.data.model,
+          reasoningEffort: parsed.data.reasoningEffort,
+        });
+        const reviewedSource = applyPronunciationPatches(
+          narration.sourceText,
+          audit.patches,
+        );
+        const nextReview = {
+          ...narration.review,
+          normalizedText: normalizePronunciation(reviewedSource, narration.review.rules),
+          aiPatches: audit.patches,
+          reviewedAt: null,
+        };
+        const project = await repository.updateProject(
+          currentProject.id,
+          {
+            narration: {
+              ...narration,
+              review: nextReview,
+              approvedSourceHash: null,
+              approvedAt: null,
+            },
+          },
+          expectedRevision,
+        );
+        if (!project) throw new Error('Project vừa biến mất khi rà soát lời thoại.');
+        sendProject(response, 200, project);
+        return;
+      }
+
+      if (narrationRoute?.action === 'approve' && request.method === 'POST') {
+        const expectedRevision = readExpectedRevision(request);
+        const parsed = ApproveNarrationSchema.safeParse(await readJsonBody(request));
+        if (!parsed.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Snapshot lời thoại cần duyệt không hợp lệ.',
+            fields: validationFields(parsed.error.issues),
+          });
+          return;
+        }
+        const currentProject = await repository.getProject(narrationRoute.projectId);
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        const narration = currentProject.narration;
+        if (!narration?.review ||
+          narration.review.sourceHash !== parsed.data.sourceHash ||
+          narration.review.rulesHash !== parsed.data.rulesHash) {
+          throw new RequestBodyError(
+            409,
+            'NARRATION_REVIEW_STALE',
+            'Bản đọc hoặc từ điển đã thay đổi. Hãy kiểm tra lại trước khi duyệt.',
+          );
+        }
+        const approvedAt = new Date().toISOString();
+        const project = await repository.updateProject(
+          currentProject.id,
+          {
+            narration: {
+              ...narration,
+              review: {...narration.review, reviewedAt: approvedAt},
+              approvedSourceHash: narration.review.sourceHash,
+              approvedAt,
+            },
+          },
+          expectedRevision,
+        );
+        if (!project) throw new Error('Project vừa biến mất khi duyệt lời thoại.');
+        sendProject(response, 200, project);
         return;
       }
 

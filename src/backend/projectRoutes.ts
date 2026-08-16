@@ -139,3 +139,8 @@ export const getProjectRenderRoute = (pathname: string) =>
   simpleRoute(pathname, /^\/api\/projects\/([^/]+)\/render(?:\/(generate|status|video|watermark))?$/, 'read') as
     | {projectId: string; action: 'generate' | 'status' | 'video' | 'watermark' | 'read'}
     | null;
+
+export const getProjectNarrationRoute = (pathname: string) =>
+  simpleRoute(pathname, /^\/api\/projects\/([^/]+)\/narration(?:\/(approve|audit))?$/, 'read') as
+    | {projectId: string; action: 'approve' | 'audit' | 'read'}
+    | null;

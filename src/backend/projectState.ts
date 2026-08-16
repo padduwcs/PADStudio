@@ -28,6 +28,8 @@ export type ProjectStateChange = {
   animationSyncBundle?: NonNullable<TopicProject['animationSyncBundle']>;
   layoutBundle?: NonNullable<TopicProject['layoutBundle']>;
   renderBundle?: NonNullable<TopicProject['renderBundle']>;
+  narration?: NonNullable<TopicProject['narration']> | null;
+  renderProfile?: NonNullable<TopicProject['renderProfile']>;
 };
 
 export function projectChangeAlreadyApplied(
@@ -53,7 +55,11 @@ export function projectChangeAlreadyApplied(
     (change.layoutBundle === undefined ||
       sameValue(change.layoutBundle, project.layoutBundle)) &&
     (change.renderBundle === undefined ||
-      sameValue(change.renderBundle, project.renderBundle))
+      sameValue(change.renderBundle, project.renderBundle)) &&
+    (change.narration === undefined ||
+      sameValue(change.narration, project.narration)) &&
+    (change.renderProfile === undefined ||
+      sameValue(change.renderProfile, project.renderProfile))
   );
 }
 
@@ -75,7 +81,13 @@ export function reconcileProjectState(
 
   const topicChanged =
     change.topicInput !== undefined &&
-    !sameValue(change.topicInput, currentProject.topicInput);
+      !sameValue(change.topicInput, currentProject.topicInput);
+  const narrationChanged =
+    change.narration !== undefined &&
+    !sameValue(change.narration, currentProject.narration);
+  const renderProfileChanged =
+    change.renderProfile !== undefined &&
+    !sameValue(change.renderProfile, currentProject.renderProfile);
   const nextOutline =
     change.outline ??
     (topicChanged && currentProject.outline
@@ -84,7 +96,7 @@ export function reconcileProjectState(
   const outlineChanged = !sameValue(nextOutline, currentProject.outline);
   const nextVoiceVisualPlan =
     change.voiceVisualPlan ??
-    ((topicChanged || outlineChanged) && currentProject.voiceVisualPlan
+    ((topicChanged || narrationChanged || outlineChanged) && currentProject.voiceVisualPlan
       ? {...currentProject.voiceVisualPlan, status: 'draft' as const}
       : currentProject.voiceVisualPlan);
   const voiceVisualContentChanged =
@@ -92,7 +104,7 @@ export function reconcileProjectState(
     currentProject.voiceVisualPlan?.contentRevision;
   const nextMotionCanvasBundle =
     change.motionCanvasBundle ??
-    ((topicChanged || outlineChanged || voiceVisualContentChanged) &&
+    ((topicChanged || narrationChanged || outlineChanged || voiceVisualContentChanged) &&
     currentProject.motionCanvasBundle
       ? {...currentProject.motionCanvasBundle, status: 'draft' as const}
       : currentProject.motionCanvasBundle);
@@ -118,7 +130,7 @@ export function reconcileProjectState(
   );
   const nextVoiceBundle =
     change.voiceBundle ??
-    ((topicChanged || outlineChanged || voiceSourceChanged) &&
+    ((topicChanged || narrationChanged || outlineChanged || voiceSourceChanged) &&
     currentProject.voiceBundle
       ? {...currentProject.voiceBundle, status: 'draft' as const}
       : currentProject.voiceBundle);
@@ -172,7 +184,7 @@ export function reconcileProjectState(
   const renderChanged = !sameValue(nextRenderBundle, currentProject.renderBundle);
   const nextCurrentStep =
     change.currentStep ??
-    (topicChanged
+    (topicChanged || narrationChanged || renderProfileChanged
       ? 'topic'
       : outlineChanged
         ? 'outline'
@@ -192,7 +204,9 @@ export function reconcileProjectState(
 
   return {
     ...currentProject,
-    ...(change.topicInput ? {topicInput: change.topicInput} : {}),
+      ...(change.topicInput ? {topicInput: change.topicInput} : {}),
+      ...(change.narration !== undefined ? {narration: change.narration} : {}),
+      ...(change.renderProfile ? {renderProfile: change.renderProfile} : {}),
     currentStep: nextCurrentStep,
     outline: nextOutline,
     voiceVisualPlan: nextVoiceVisualPlan,

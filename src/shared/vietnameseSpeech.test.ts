@@ -9,9 +9,9 @@ test('phiên âm độ phức tạp thuật toán cho TTS tiếng Việt', () =>
   assert.equal(toVietnameseSpeechText('O(n)'), 'ô nờ');
   assert.equal(toVietnameseSpeechText('O(n^2)'), 'ô nờ bình');
   assert.equal(toVietnameseSpeechText('O(n²)'), 'ô nờ bình');
-  assert.equal(toVietnameseSpeechText('O(logn)'), 'ô lốc nờ');
-  assert.equal(toVietnameseSpeechText('O(log n)'), 'ô lốc nờ');
-  assert.equal(toVietnameseSpeechText('O(n log n)'), 'ô nờ nhân lốc nờ');
+  assert.equal(toVietnameseSpeechText('O(logn)'), 'ô lô-ga-rít nờ');
+  assert.equal(toVietnameseSpeechText('O(log n)'), 'ô lô-ga-rít nờ');
+  assert.equal(toVietnameseSpeechText('O(n log n)'), 'ô nờ nhân lô-ga-rít nờ');
 });
 
 test('phiên âm truy cập mảng và toán tử thay vì gửi ký hiệu thô sang TTS', () => {
@@ -30,7 +30,7 @@ test('giữ nguyên từ tiếng Anh và chỉ phiên âm ký hiệu kỹ thuậ
     toVietnameseSpeechText(
       'Binary Search dùng API để tìm target trong array[mid] với O(log n).',
     ),
-    'Binary Search dùng API để tìm target trong array tại chỉ số mid với ô lốc nờ.',
+    'Binary Search dùng API để tìm target trong array tại chỉ số mid với ô lô-ga-rít nờ.',
   );
   assert.equal(
     toVietnameseSpeechText('Nếu left <= right thì update cache.'),
