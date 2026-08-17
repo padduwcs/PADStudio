@@ -150,7 +150,10 @@ export function useFinalRender(projectId: string) {
     const nextGenerationId = crypto.randomUUID();
     const queuedAt = new Date().toISOString();
     const totalFrames = Math.ceil(
-      (currentProject.layoutBundle?.totalDurationSeconds ?? 0) * 30,
+      (currentProject.layoutBundle?.totalDurationSeconds ?? 0) *
+        (currentProject.renderProfile?.frame.fps ??
+          currentProject.topicInput.videoFrame?.fps ??
+          30),
     ) + 1;
     renderingRef.current = true;
     setGenerationId(nextGenerationId);

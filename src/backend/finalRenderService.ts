@@ -35,6 +35,10 @@ import type {
   LayoutBundle,
 } from '../shared/topic.ts';
 import {
+  defaultRenderProfile,
+  type RenderProfile,
+} from '../shared/videoFormat.ts';
+import {
   createLayoutWorkspace,
   LayoutWorkspaceError,
   type LayoutWorkspace,
@@ -46,14 +50,9 @@ import {
 } from './watermarkAssetStore.ts';
 
 const execFileAsync = promisify(execFile);
-const FPS = 30;
-const WIDTH = 1080;
-const HEIGHT = 1920;
-const CRF = 18;
-const PRESET = 'medium' as const;
+const DEFAULT_FPS = 30;
 const MAX_FRAME_BYTES = 32 * 1024 * 1024;
 const MAX_STATUS_BYTES = 64 * 1024;
-const BROWSER_SEGMENT_FRAMES = FPS * 60;
 const RENDER_MANIFEST_FILE = 'manifest.json';
 const VIDEO_FILE = 'video.mp4' as const;
 const RENDER_JOBS_DIRECTORY = 'jobs';
@@ -69,7 +68,7 @@ export interface RenderFrameTiming {
 
 export function estimateRenderFrameCount(
   targetDurationSeconds: number,
-  fps = FPS,
+  fps = DEFAULT_FPS,
 ): number {
   return Math.ceil(targetDurationSeconds * fps) + 1;
 }
@@ -77,7 +76,7 @@ export function estimateRenderFrameCount(
 export function inspectRenderFrameTiming(
   renderedFrameCount: number,
   targetDurationSeconds: number,
-  fps = FPS,
+  fps = DEFAULT_FPS,
 ): RenderFrameTiming {
   const estimatedFrameCount = estimateRenderFrameCount(
     targetDurationSeconds,
@@ -201,6 +200,7 @@ interface RenderBridge {
   name: string;
   durationSeconds: number;
   rangeFrames: [number, number];
+  frame: RenderProfile['frame'];
   overrides: Awaited<ReturnType<LayoutWorkspace['readOverrides']>>;
   editorManifest: Awaited<
     ReturnType<LayoutWorkspace['readEditorManifest']>
@@ -231,6 +231,7 @@ export interface FinalRenderService {
     contentRevision: number,
     syncBundle: AnimationSyncBundle,
     layoutBundle: LayoutBundle,
+    renderProfile?: RenderProfile,
   ): Promise<FinalRenderBundle>;
   getStatus(
     projectId: string,
@@ -473,7 +474,17 @@ function ffprobeExecutable(ffmpegPath: string, configured?: string) {
   return path.join(path.dirname(ffmpegPath), `ffprobe${extension}`);
 }
 
-async function probeVideo(ffprobePath: string, videoPath: string) {
+function encodingForQuality(quality: RenderProfile['quality']) {
+  if (quality === 'fast') return {crf: 23, preset: 'veryfast' as const};
+  if (quality === 'high') return {crf: 16, preset: 'slow' as const};
+  return {crf: 18, preset: 'medium' as const};
+}
+
+async function probeVideo(
+  ffprobePath: string,
+  videoPath: string,
+  frame: RenderProfile['frame'],
+) {
   let stdout: string;
   try {
     ({stdout} = await execFileAsync(
@@ -519,8 +530,8 @@ async function probeVideo(ffprobePath: string, videoPath: string) {
   if (
     !Number.isFinite(result.durationSeconds) ||
     result.durationSeconds <= 0 ||
-    result.width !== WIDTH ||
-    result.height !== HEIGHT ||
+    result.width !== frame.width ||
+    result.height !== frame.height ||
     result.videoCodec !== 'h264' ||
     result.audioCodec !== 'aac' ||
     result.pixelFormat !== 'yuv420p'
@@ -866,9 +877,9 @@ export function createFinalRenderService(
                 name: bridge.name,
                 durationSeconds: bridge.durationSeconds,
                 rangeFrames: bridge.rangeFrames,
-                fps: FPS,
-                width: WIDTH,
-                height: HEIGHT,
+                fps: bridge.frame.fps,
+                width: bridge.frame.width,
+                height: bridge.frame.height,
                 overrides: bridge.overrides,
                 editorManifest: bridge.editorManifest,
                 watermark: bridge.watermark,
@@ -955,6 +966,7 @@ export function createFinalRenderService(
     targetDirectory: string,
     requestHash: string,
     generationId: string,
+    frame: RenderProfile['frame'],
   ) {
     const targetEntry = await lstat(targetDirectory).catch(error => {
       if (
@@ -989,7 +1001,7 @@ export function createFinalRenderService(
       ) {
         throw new Error('video mismatch');
       }
-      await probeVideo(ffprobePath, videoPath);
+      await probeVideo(ffprobePath, videoPath, frame);
       return parsed;
     } catch (error) {
       throw new FinalRenderError(
@@ -1006,7 +1018,11 @@ export function createFinalRenderService(
     contentRevision: number,
     syncBundle: AnimationSyncBundle,
     layoutBundle: LayoutBundle,
+    renderProfile: RenderProfile,
   ) {
+    const frame = renderProfile.frame;
+    const encoding = encodingForQuality(renderProfile.quality);
+    const browserSegmentFrames = frame.fps * 60;
     if (closed) {
       throw new FinalRenderError('FINAL_RENDER_CLOSED', 'Bộ dựng video đang đóng.');
     }
@@ -1044,11 +1060,11 @@ export function createFinalRenderService(
     }
     const targetDurationSeconds = layoutBundle.totalDurationSeconds;
     const sourceTimingToleranceSeconds = finalRenderTimingToleranceSeconds(
-      FPS,
+      frame.fps,
       layoutBundle.totalDurationSeconds,
     );
     const outputPaddingSeconds =
-      sourceTimingToleranceSeconds + 2 / FPS;
+      sourceTimingToleranceSeconds + 2 / frame.fps;
     const watermark = layoutBundle.renderSettings.watermark;
     const watermarkImage =
       watermark.type === 'image'
@@ -1069,11 +1085,11 @@ export function createFinalRenderService(
           sourceWorkspaceHash: verified.sourceWorkspaceHash,
           durationSeconds: layoutBundle.totalDurationSeconds,
           watermark,
-          width: WIDTH,
-          height: HEIGHT,
-          fps: FPS,
-          crf: CRF,
-          preset: PRESET,
+          width: frame.width,
+          height: frame.height,
+          fps: frame.fps,
+          crf: encoding.crf,
+          preset: encoding.preset,
         }),
       ),
     );
@@ -1103,7 +1119,12 @@ export function createFinalRenderService(
     if (!isInside(projectDirectory, targetDirectory)) {
       throw new FinalRenderError('FINAL_RENDER_INVALID', 'Đường dẫn render không an toàn.');
     }
-    const existing = await verifyExisting(targetDirectory, requestHash, generationId);
+    const existing = await verifyExisting(
+      targetDirectory,
+      requestHash,
+      generationId,
+      frame,
+    );
     if (existing) {
       updateStatus(projectId, generationId, {
         state: 'completed',
@@ -1129,6 +1150,7 @@ export function createFinalRenderService(
     const copiedProjectFile = path.join(copiedWorkspace, projectRelativePath);
     const estimatedTotalFrames = estimateRenderFrameCount(
       layoutBundle.totalDurationSeconds,
+      frame.fps,
     );
     await mkdir(path.dirname(copiedWorkspace), {recursive: true});
     await mkdir(stagingDirectory, {recursive: true});
@@ -1196,7 +1218,7 @@ export function createFinalRenderService(
           '-f',
           'image2pipe',
           '-framerate',
-          String(FPS),
+          String(frame.fps),
           '-vcodec',
           'png',
           '-i',
@@ -1210,15 +1232,15 @@ export function createFinalRenderService(
           '-c:v',
           'libx264',
           '-preset',
-          PRESET,
+          encoding.preset,
           '-crf',
-          String(CRF),
+          String(encoding.crf),
           '-pix_fmt',
           'yuv420p',
           '-vf',
           `tpad=stop_mode=clone:stop_duration=${outputPaddingSeconds.toFixed(6)}`,
           '-r',
-          String(FPS),
+          String(frame.fps),
           '-c:a',
           'aac',
           '-b:a',
@@ -1282,9 +1304,10 @@ export function createFinalRenderService(
         name: `pad-studio-${projectId}`,
         durationSeconds: layoutBundle.totalDurationSeconds,
         rangeFrames: [0, Math.min(
-          BROWSER_SEGMENT_FRAMES - 1,
+          browserSegmentFrames - 1,
           estimatedTotalFrames - 1,
         )],
+        frame,
         overrides: verified.overrides,
         editorManifest: verified.editorManifest,
         watermark,
@@ -1415,7 +1438,7 @@ export function createFinalRenderService(
       while (framesReceived < estimatedTotalFrames) {
         const segmentStartFrame = framesReceived;
         const segmentEndFrame = Math.min(
-          segmentStartFrame + BROWSER_SEGMENT_FRAMES - 1,
+          segmentStartFrame + browserSegmentFrames - 1,
           estimatedTotalFrames - 1,
         );
         bridge.rangeFrames = [segmentStartFrame, segmentEndFrame];
@@ -1513,6 +1536,7 @@ export function createFinalRenderService(
       const renderedFrameTiming = inspectRenderFrameTiming(
         framesReceived,
         layoutBundle.totalDurationSeconds,
+        frame.fps,
       );
       if (!renderedFrameTiming.matches) {
         throw new FinalRenderError(
@@ -1529,9 +1553,9 @@ export function createFinalRenderService(
       ffmpeg.stdin?.end();
       await ffmpegExit;
       ffmpeg = null;
-      const probe = await probeVideo(ffprobePath, outputVideo);
+      const probe = await probeVideo(ffprobePath, outputVideo, frame);
       const outputTimingToleranceSeconds =
-        finalRenderTimingToleranceSeconds(FPS, targetDurationSeconds);
+        finalRenderTimingToleranceSeconds(frame.fps, targetDurationSeconds);
       if (
         Math.abs(probe.durationSeconds - targetDurationSeconds) >
         outputTimingToleranceSeconds
@@ -1551,9 +1575,9 @@ export function createFinalRenderService(
         sourceLayoutSourceHash: layoutBundle.validation.sourceHash,
         workspacePath: `renders/generations/${generationId}`,
         videoFile: VIDEO_FILE,
-        width: WIDTH,
-        height: HEIGHT,
-        fps: FPS,
+        width: frame.width,
+        height: frame.height,
+        fps: frame.fps,
         watermark,
         durationSeconds: targetDurationSeconds,
         fileSizeBytes: videoStat.size,
@@ -1562,8 +1586,8 @@ export function createFinalRenderService(
           videoCodec: 'h264',
           audioCodec: 'aac',
           pixelFormat: 'yuv420p',
-          crf: CRF,
-          preset: PRESET,
+          crf: encoding.crf,
+          preset: encoding.preset,
         },
         validation: {
           validatedAt,
@@ -1658,6 +1682,7 @@ export function createFinalRenderService(
       contentRevision,
       syncBundle,
       layoutBundle,
+      renderProfile = defaultRenderProfile,
     ) {
       assertProjectId(projectId);
       assertGenerationId(generationId);
@@ -1667,6 +1692,7 @@ export function createFinalRenderService(
       const now = new Date().toISOString();
       const totalFrames = estimateRenderFrameCount(
         layoutBundle.totalDurationSeconds,
+        renderProfile.frame.fps,
       );
       statuses.set(
         key,
@@ -1693,6 +1719,7 @@ export function createFinalRenderService(
             contentRevision,
             syncBundle,
             layoutBundle,
+            renderProfile,
           ),
         )
         .then(async bundle => {

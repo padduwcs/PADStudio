@@ -146,8 +146,8 @@ export const getProjectNarrationRoute = (pathname: string) =>
     | null;
 
 export const getProjectProductionRoute = (pathname: string) =>
-  simpleRoute(pathname, /^\/api\/projects\/([^/]+)\/production\/prepare$/, 'prepare') as
-    | {projectId: string; action: 'prepare'}
+  simpleRoute(pathname, /^\/api\/projects\/([^/]+)\/production\/(prepare|output)$/, 'prepare') as
+    | {projectId: string; action: 'prepare' | 'output'}
     | null;
 
 export function getPronunciationLibraryRuleRoute(pathname: string) {

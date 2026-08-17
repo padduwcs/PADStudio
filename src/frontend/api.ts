@@ -308,6 +308,27 @@ export async function prepareDirectProduction(
   return getProjectPayload(payload);
 }
 
+export async function prepareProjectOutput(
+  projectId: string,
+  request: {generationId: string},
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/production/output`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
 type LibraryPronunciationRuleInput = Omit<PronunciationRule, 'id' | 'scope'>;
 
 export async function saveLibraryPronunciationRule(

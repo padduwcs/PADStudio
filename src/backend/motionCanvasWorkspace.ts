@@ -22,12 +22,10 @@ import {
   type MotionCanvasBundle,
   type MotionCanvasScene,
 } from '../shared/topic.ts';
+import {defaultVideoFrame, type VideoFrame} from '../shared/videoFormat.ts';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import {
-  MOTION_CANVAS_FPS,
-  MOTION_CANVAS_HEIGHT,
   MOTION_CANVAS_VERSION,
-  MOTION_CANVAS_WIDTH,
   validateMotionCanvasRuntimeSafety,
   type MotionCanvasSourceScene,
 } from './motionCanvasGenerator.ts';
@@ -57,6 +55,7 @@ export interface MotionCanvasWorkspace {
     projectId: string,
     generationId: string,
     scenes: MotionCanvasSourceScene[],
+    frame?: VideoFrame,
   ): Promise<PreparedMotionCanvasWorkspace>;
   readFiles(
     projectId: string,
@@ -130,22 +129,22 @@ function projectSource(scenes: MotionCanvasSourceScene[]) {
   ].join('\n');
 }
 
-function projectMetaSource() {
+function projectMetaSource(frame: VideoFrame) {
   return `${JSON.stringify(
     {
       version: 1,
       shared: {
         background: 'rgb(17,31,27)',
         range: [0, null],
-        size: {x: MOTION_CANVAS_WIDTH, y: MOTION_CANVAS_HEIGHT},
+        size: {x: frame.width, y: frame.height},
         audioOffset: 0,
       },
       preview: {
-        fps: MOTION_CANVAS_FPS,
+        fps: frame.fps,
         resolutionScale: 0.5,
       },
       rendering: {
-        fps: MOTION_CANVAS_FPS,
+        fps: frame.fps,
         resolutionScale: 1,
         colorSpace: 'srgb',
         fileType: 'image/png',
@@ -386,7 +385,7 @@ export function createMotionCanvasWorkspace(
   }
 
   return {
-    async prepare(projectId, generationId, scenes) {
+    async prepare(projectId, generationId, scenes, frame = defaultVideoFrame) {
       assertProjectId(projectId);
       if (!uuidPattern.test(generationId)) {
         throw new MotionCanvasWorkspaceError(
@@ -478,7 +477,7 @@ export function createMotionCanvasWorkspace(
 
       const files: MotionCanvasWorkspaceFile[] = [
         {path: 'src/project.ts', source: projectSource(normalizedScenes)},
-        {path: 'src/project.meta', source: projectMetaSource()},
+        {path: 'src/project.meta', source: projectMetaSource(frame)},
         {
           path: 'src/motion-canvas.d.ts',
           source: `declare module '*?scene' {

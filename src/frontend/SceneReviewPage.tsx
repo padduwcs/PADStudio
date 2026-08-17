@@ -4,10 +4,11 @@ import {
   approveAnimationSync,
   generateAnimationSync,
   getProject,
+  prepareProjectOutput,
 } from './api.ts';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {MotionDesignEditor} from './MotionDesignEditor.tsx';
-import {navigate, projectProductionPath} from './router.ts';
+import {navigate, projectProductionPath, projectRenderPath} from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useMotionCanvasDraft} from './useMotionCanvasDraft.ts';
 
@@ -69,6 +70,11 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
       if (current.animationSyncBundle?.status !== 'approved') {
         current = await approveAnimationSync(current.id, current.revision);
       }
+      current = await prepareProjectOutput(
+        current.id,
+        {generationId: crypto.randomUUID()},
+        current.revision,
+      );
       setCompletionMessage('Scene đã được chốt và đồng bộ tự động với audio thật.');
       motion.reload();
     } catch (error) {

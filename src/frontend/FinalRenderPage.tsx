@@ -1,4 +1,5 @@
 import {AdaptiveHeading} from './AdaptiveText.tsx';
+import {defaultVideoFrame} from '../shared/videoFormat.ts';
 import {
   ArrowLeftIcon,
   CheckIcon,
@@ -7,7 +8,7 @@ import {
   SparkIcon,
 } from './icons.tsx';
 import {finalRenderVideoUrl} from './api.ts';
-import {navigate, projectLayoutPath} from './router.ts';
+import {navigate, projectLayoutPath, projectSceneReviewPath} from './router.ts';
 import {useFinalRender} from './useFinalRender.ts';
 
 function formatTime(seconds: number) {
@@ -62,11 +63,14 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
   }
 
   const {project, status} = render;
+  const isDirect = project.outline?.generation.promptVersion === 'direct-narration-v1' &&
+    project.voiceVisualPlan?.generation.promptVersion === 'direct-narration-v1';
   const diagnostic = status?.state === 'failed'
     ? status.diagnostic ?? null
     : null;
   const layout = project.layoutBundle;
   const bundle = project.renderBundle;
+  const frame = bundle ?? project.renderProfile?.frame ?? project.topicInput.videoFrame ?? defaultVideoFrame;
   if (!render.prerequisitesReady || !layout) {
     return (
       <div className="page-state is-error" role="alert">
@@ -74,9 +78,11 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
         <p>Hãy lưu, xem lại và chốt Layout hiện hành trước khi xuất video cuối.</p>
         <button
           type="button"
-          onClick={() => navigate(projectLayoutPath(project.id))}
+          onClick={() => navigate(
+            isDirect ? projectSceneReviewPath(project.id) : projectLayoutPath(project.id),
+          )}
         >
-          Về Layout Editor
+          {isDirect ? 'Về chỉnh scene' : 'Về Layout Editor'}
         </button>
       </div>
     );
@@ -103,15 +109,16 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
           {render.ready ? 'Video cuối đã sẵn sàng.' : 'Đóng gói bài giảng thành video hoàn chỉnh.'}
         </AdaptiveHeading>
         <p>
-          Motion Canvas dựng đúng Layout đã chốt, sau đó FFmpeg ghép master narration
-          và kiểm tra lại codec, kích thước lẫn thời lượng trước khi bàn giao.
+          {isDirect
+            ? 'Hệ thống dựng scene đã chốt, ghép master narration và kiểm tra lại codec, kích thước lẫn thời lượng trước khi bàn giao.'
+            : 'Motion Canvas dựng đúng Layout đã chốt, sau đó FFmpeg ghép master narration và kiểm tra lại codec, kích thước lẫn thời lượng trước khi bàn giao.'}
         </p>
       </header>
 
       <section className="render-summary" aria-label="Cấu hình video">
         <div>
           <LayersIcon />
-          <span><small>Khung hình</small><strong>1080 × 1920</strong></span>
+          <span><small>Khung hình</small><strong>{frame.width} × {frame.height}</strong></span>
         </div>
         <div>
           <ClockIcon />
@@ -119,7 +126,7 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
         </div>
         <div>
           <SparkIcon />
-          <span><small>Đầu ra</small><strong>MP4 · H.264 · 30 fps</strong></span>
+          <span><small>Đầu ra</small><strong>MP4 · H.264 · {frame.fps} fps</strong></span>
         </div>
       </section>
 
@@ -190,8 +197,9 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
             <span className="preview-kicker">Nguồn đã khóa</span>
             <h2>Sẵn sàng dựng bản cuối</h2>
             <p>
-              Render dùng chính master narration và Layout generation đã duyệt.
-              Video được lưu riêng theo generation nên không ghi đè bản cũ.
+              {isDirect
+                ? 'Render dùng chính master narration và scene bạn đã chốt. Video được lưu riêng theo generation nên không ghi đè bản cũ.'
+                : 'Render dùng chính master narration và Layout generation đã duyệt. Video được lưu riêng theo generation nên không ghi đè bản cũ.'}
             </p>
             <div className="render-submit-stack">
               <button
@@ -258,12 +266,14 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
           className="secondary-button"
           type="button"
           disabled={render.rendering}
-          onClick={() => navigate(projectLayoutPath(project.id))}
+          onClick={() => navigate(
+            isDirect ? projectSceneReviewPath(project.id) : projectLayoutPath(project.id),
+          )}
         >
           <ArrowLeftIcon />
-          Xem lại Layout
+          {isDirect ? 'Xem lại scene' : 'Xem lại Layout'}
         </button>
-        <span>{render.ready ? 'Artifact đã được hash và kiểm tra bằng ffprobe' : 'Layout đã duyệt · sẵn sàng xuất bản'}</span>
+        <span>{render.ready ? 'Artifact đã được hash và kiểm tra bằng ffprobe' : isDirect ? 'Scene đã chốt · sẵn sàng xuất bản' : 'Layout đã duyệt · sẵn sàng xuất bản'}</span>
       </footer>
     </div>
   );

@@ -61,8 +61,11 @@ import {
 import type {ElevenLabsUsagePreset} from '../shared/elevenLabs.ts';
 import {
   CommitVisualDesignSchema,
+  defaultLayoutRenderSettings,
   LayoutBundleSchema,
+  type LayoutEditorManifest,
 } from '../shared/layout.ts';
+import {defaultVideoFrame, type VideoFrame} from '../shared/videoFormat.ts';
 import {
   animationSyncPrerequisitesAreReady,
   finalRenderIsReady,
@@ -153,10 +156,7 @@ import {
 } from './outlineHistoryStore.ts';
 import {
   createCodexMotionCanvasGenerator,
-  MOTION_CANVAS_FPS,
-  MOTION_CANVAS_HEIGHT,
   MOTION_CANVAS_PROMPT_VERSION,
-  MOTION_CANVAS_WIDTH,
   MotionCanvasGenerationError,
   type MotionCanvasGenerationResult,
   type MotionCanvasGenerator,
@@ -717,6 +717,23 @@ function outlineContent(outline: TeachingOutline) {
     brief: outline.brief,
     centralMessage: outline.centralMessage,
     sections: outline.sections,
+  };
+}
+
+function projectVideoFrame(project: Pick<TopicProject, 'topicInput' | 'renderProfile'>) {
+  return project.renderProfile?.frame ?? project.topicInput.videoFrame ?? defaultVideoFrame;
+}
+
+function workspaceVideoFrame(
+  width: number,
+  height: number,
+  fps: number,
+): VideoFrame {
+  return {
+    aspectRatio: 'custom' as const,
+    width,
+    height,
+    fps: fps === 24 || fps === 60 ? fps : 30,
   };
 }
 
@@ -2156,6 +2173,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
             model: parsed.data.model,
             reasoningEffort: parsed.data.reasoningEffort,
             topicInput: currentProject.topicInput,
+            videoFrame: projectVideoFrame(currentProject),
             outline,
             voiceVisualPlan,
             sectionIndexes,
@@ -2198,6 +2216,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
                 currentProject.id,
                 generationId,
                 mergedSources,
+                projectVideoFrame(currentProject),
               );
             } catch (error) {
               if (
@@ -2310,9 +2329,9 @@ export function createPadStudioServer(options: AppOptions = {}) {
         sourceVoiceVisualContentRevision: voiceVisualPlan.contentRevision,
         workspacePath: prepared.workspacePath,
         projectFile: prepared.projectFile,
-        width: MOTION_CANVAS_WIDTH,
-        height: MOTION_CANVAS_HEIGHT,
-        fps: MOTION_CANVAS_FPS,
+        width: projectVideoFrame(currentProject).width,
+        height: projectVideoFrame(currentProject).height,
+        fps: projectVideoFrame(currentProject).fps,
         ...(prepared.scenes.every(scene => scene.timingEvents?.length)
           ? {timingContractVersion: 1 as const}
           : {}),
@@ -2561,6 +2580,11 @@ export function createPadStudioServer(options: AppOptions = {}) {
         currentProject.id,
         restoreGenerationId,
         sources,
+        workspaceVideoFrame(
+          sourceVersion.artifact.width,
+          sourceVersion.artifact.height,
+          sourceVersion.artifact.fps,
+        ),
       );
       const restoredBundle: MotionCanvasBundle = {
         ...sourceVersion.artifact,
@@ -4348,6 +4372,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
               model: parsedRequest.data.model,
               reasoningEffort: parsedRequest.data.reasoningEffort,
               topicInput: currentProject.topicInput,
+              videoFrame: projectVideoFrame(currentProject),
               outline,
               voiceVisualPlan,
               guidance: parsedRequest.data.guidance,
@@ -4364,6 +4389,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
                   currentProject.id,
                   generationId,
                   generated.scenes,
+                  projectVideoFrame(currentProject),
                 );
               } catch (error) {
                 if (
@@ -4430,9 +4456,9 @@ export function createPadStudioServer(options: AppOptions = {}) {
             voiceVisualPlan.contentRevision,
           workspacePath: preparedWorkspace.workspacePath,
           projectFile: preparedWorkspace.projectFile,
-          width: MOTION_CANVAS_WIDTH,
-          height: MOTION_CANVAS_HEIGHT,
-          fps: MOTION_CANVAS_FPS,
+          width: projectVideoFrame(currentProject).width,
+          height: projectVideoFrame(currentProject).height,
+          fps: projectVideoFrame(currentProject).fps,
           ...(preparedWorkspace.scenes.every(
             (scene) => scene.timingEvents?.length,
           )
@@ -6060,6 +6086,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
           (existingRender?.contentRevision ?? 0) + 1,
           sync,
           layout,
+          currentProject.renderProfile ?? {
+            frame: currentProject.topicInput.videoFrame ?? defaultVideoFrame,
+            quality: 'standard',
+          },
         );
         const commitOperation = renderOperation
           .then(async renderBundle => {
@@ -6497,6 +6527,104 @@ export function createPadStudioServer(options: AppOptions = {}) {
           expectedRevision,
         );
         if (!project) throw new Error('Project vừa biến mất khi chuẩn bị sản xuất.');
+        sendProject(response, 200, project);
+        return;
+      }
+
+      if (productionRoute?.action === 'output' && request.method === 'POST') {
+        const expectedRevision = readExpectedRevision(request);
+        const parsed = PrepareDirectProductionSchema.safeParse(
+          await readJsonBody(request),
+        );
+        if (!parsed.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Yêu cầu chuẩn bị đầu ra chưa hợp lệ.',
+            fields: validationFields(parsed.error.issues),
+          });
+          return;
+        }
+        const currentProject = await repository.getProject(productionRoute.projectId);
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        const sync = currentProject.animationSyncBundle;
+        if (!isDirectNarrationPlan(currentProject.outline, currentProject.voiceVisualPlan) ||
+          !sync || sync.status !== 'approved' ||
+          !animationSyncPrerequisitesAreReady(currentProject)) {
+          throw new RequestBodyError(
+            409,
+            'OUTPUT_PREREQUISITES_NOT_APPROVED',
+            'Hãy chốt scene và hoàn tất đồng bộ audio trước khi chuẩn bị đầu ra.',
+          );
+        }
+        if (currentProject.layoutBundle?.status === 'approved' &&
+          layoutMatchesAnimationSync(currentProject.layoutBundle, sync)) {
+          sendProject(response, 200, currentProject);
+          return;
+        }
+        if (currentProject.revision !== expectedRevision) {
+          throw new ProjectConflictError(currentProject);
+        }
+        const generationId = parsed.data.generationId.toLowerCase();
+        const editorManifest: LayoutEditorManifest = {
+          version: 1,
+          sourceAnimationSyncGenerationId: sync.generation.generationId,
+          sourceAnimationSyncContentRevision: sync.contentRevision,
+          sourceAnimationSyncSourceHash: sync.validation.sourceHash,
+          scenes: sync.sections.map(section => ({
+            sceneId: section.sceneId,
+            filePath: section.filePath,
+            nodes: [],
+          })),
+        };
+        const prepared = await layoutWorkspace.prepare(
+          currentProject.id,
+          generationId,
+          sync,
+          [],
+          editorManifest,
+          currentProject.layoutBundle?.generation.generationId ?? null,
+        );
+        const layoutBundle = LayoutBundleSchema.parse({
+          status: 'approved',
+          contentRevision: (currentProject.layoutBundle?.contentRevision ?? 0) + 1,
+          sourceAnimationSyncContentRevision: sync.contentRevision,
+          sourceAnimationSyncGenerationId: sync.generation.generationId,
+          sourceAnimationSyncSourceHash: sync.validation.sourceHash,
+          workspacePath: prepared.workspacePath,
+          sourceWorkspacePath: prepared.sourceWorkspacePath,
+          projectFile: prepared.projectFile,
+          audioFile: prepared.audioFile,
+          overridesFile: prepared.overridesFile,
+          manifestFile: prepared.manifestFile,
+          overrideContractVersion: prepared.overrideContractVersion,
+          renderSettings: defaultLayoutRenderSettings,
+          totalDurationSeconds: prepared.totalDurationSeconds,
+          scenes: prepared.scenes,
+          validation: prepared.validation,
+          generation: {
+            generationId,
+            provider: 'local',
+            tool: 'layout-editor',
+            generatedAt: prepared.validation.validatedAt,
+          },
+        });
+        await layoutWorkspace.verify(currentProject.id, sync, layoutBundle);
+        const renderProfile = currentProject.renderProfile ?? {
+          frame: currentProject.topicInput.videoFrame ?? defaultVideoFrame,
+          quality: 'standard' as const,
+        };
+        const project = await repository.updateProject(
+          currentProject.id,
+          {layoutBundle, renderProfile, currentStep: 'render'},
+          expectedRevision,
+        );
+        if (!project) throw new Error('Project vừa biến mất khi chuẩn bị đầu ra.');
         sendProject(response, 200, project);
         return;
       }

@@ -10,6 +10,7 @@ import type {
   TopicInput,
   VoiceVisualPlan,
 } from '../shared/topic.ts';
+import {defaultVideoFrame, type VideoFrame} from '../shared/videoFormat.ts';
 import {videoBackgroundTone} from '../shared/topic.ts';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import type {CodexAppServerClient} from './codexConnection.ts';
@@ -23,7 +24,7 @@ import {
   normalizeMotionCanvasColorFormats,
 } from './motionCanvasSourceCompatibility.ts';
 
-export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v9';
+export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v10';
 export const MOTION_CANVAS_VERSION = '3.17.2';
 export const MOTION_CANVAS_WIDTH = 1080;
 export const MOTION_CANVAS_HEIGHT = 1920;
@@ -86,6 +87,8 @@ export interface MotionCanvasGenerationRequest {
   model?: string;
   reasoningEffort?: string;
   topicInput: TopicInput;
+  /** The project frame is chosen by the user; legacy callers may omit it. */
+  videoFrame?: VideoFrame;
   outline: TeachingOutline;
   voiceVisualPlan: VoiceVisualPlan;
   sectionIndexes?: number[];
@@ -339,6 +342,7 @@ function generationPayload(
   request: MotionCanvasGenerationRequest,
   sectionIndex: number,
 ) {
+  const frame = request.videoFrame ?? request.topicInput.videoFrame ?? defaultVideoFrame;
   const outlineSection = request.outline.sections[sectionIndex];
   const voiceVisualSection =
     request.voiceVisualPlan.sections[sectionIndex];
@@ -386,9 +390,9 @@ function generationPayload(
       })),
     },
     canvas: {
-      width: MOTION_CANVAS_WIDTH,
-      height: MOTION_CANVAS_HEIGHT,
-      fps: MOTION_CANVAS_FPS,
+      width: frame.width,
+      height: frame.height,
+      fps: frame.fps,
       defaultFontFamily: MOTION_CANVAS_DEFAULT_FONT_FAMILY,
     },
     designBrief: sceneDesignBrief(request, sectionIndex),

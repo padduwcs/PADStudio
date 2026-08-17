@@ -53,10 +53,14 @@ test('pronunciation library route only accepts a stable UUID rule identity', () 
   );
 });
 
-test('direct production route accepts only its explicit prepare action', () => {
+test('direct production route accepts only its explicit actions', () => {
   assert.deepEqual(
     getProjectProductionRoute(`/api/projects/${projectId}/production/prepare`),
     {projectId, action: 'prepare'},
+  );
+  assert.deepEqual(
+    getProjectProductionRoute(`/api/projects/${projectId}/production/output`),
+    {projectId, action: 'output'},
   );
   assert.equal(
     getProjectProductionRoute(`/api/projects/${projectId}/production`),

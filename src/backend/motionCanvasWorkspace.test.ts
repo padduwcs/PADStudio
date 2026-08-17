@@ -75,6 +75,7 @@ test('Motion Canvas workspace ghi generation bất biến và kiểm tra TypeScr
     projectId,
     generationId,
     scenes,
+    {aspectRatio: 'landscape', width: 1920, height: 1080, fps: 24},
   );
 
   assert.equal(
@@ -94,6 +95,20 @@ test('Motion Canvas workspace ghi generation bất biến và kiểm tra TypeScr
   );
   assert.match(projectSource, /makeProject/);
   assert.match(projectSource, /01-scene-1\?scene/);
+  const projectMeta = JSON.parse(
+    await readFile(
+      path.join(
+        projectsDirectory,
+        projectId,
+        prepared.workspacePath,
+        'src/project.meta',
+      ),
+      'utf8',
+    ),
+  );
+  assert.deepEqual(projectMeta.shared.size, {x: 1920, y: 1080});
+  assert.equal(projectMeta.preview.fps, 24);
+  assert.equal(projectMeta.rendering.fps, 24);
   const sceneMeta = JSON.parse(
     await readFile(
       path.join(

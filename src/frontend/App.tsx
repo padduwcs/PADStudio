@@ -51,6 +51,7 @@ import {
   projectNarrationPath,
   projectOutlinePath,
   projectProductionPath,
+  projectRenderPath,
   projectSceneReviewPath,
   projectStepPath,
   projectTopicPath,
@@ -2603,7 +2604,7 @@ export default function App() {
       : route.name === 'project-narration'
       ? 1
       : route.name === 'project-render'
-      ? 7
+      ? 4
       : route.name === 'project-layout'
       ? 6
       : route.name === 'project-sync'
@@ -2700,7 +2701,7 @@ export default function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onSelectStep={(stepIndex) => {
-          if (!activeProjectId || stepIndex > 3) return;
+          if (!activeProjectId || stepIndex > 4) return;
           navigate(
             stepIndex === 0
               ? projectTopicPath(activeProjectId)
@@ -2708,7 +2709,9 @@ export default function App() {
                 ? projectNarrationPath(activeProjectId)
                 : stepIndex === 2
                   ? projectProductionPath(activeProjectId)
-                  : projectSceneReviewPath(activeProjectId),
+                  : stepIndex === 3
+                    ? projectSceneReviewPath(activeProjectId)
+                    : projectRenderPath(activeProjectId),
           );
         }}
       />
