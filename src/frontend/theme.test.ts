@@ -60,6 +60,7 @@ test('theme integration luôn được nạp sau stylesheet của mọi workflow
       './sync.css',
       './layout.css',
       './render.css',
+      './content.css',
     ],
   );
 });

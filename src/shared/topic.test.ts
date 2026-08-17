@@ -20,6 +20,29 @@ import {
   VoiceVisualBeatSchema,
 } from './topic.ts';
 
+test('new project input stores narration and defaults legacy planning hints', () => {
+  const request = CreateTopicProjectSchema.parse({
+    creationId: '00000000-0000-4000-8000-000000000002',
+    currentStep: 'topic',
+    narrationSourceText: '  Đây là lời thoại gốc do người dùng chuẩn bị.  ',
+    topicInput: {
+      topic: 'Giải thích tìm kiếm nhị phân bằng một ví dụ trực quan',
+      background: {mode: 'custom', color: '#112233'},
+      videoFrame: {
+        aspectRatio: 'landscape',
+        width: 1920,
+        height: 1080,
+        fps: 60,
+      },
+    },
+  });
+
+  assert.equal(request.narrationSourceText, 'Đây là lời thoại gốc do người dùng chuẩn bị.');
+  assert.equal(request.topicInput.audience, 'beginner');
+  assert.equal(request.topicInput.duration, 'standard');
+  assert.equal(request.topicInput.videoFrame?.aspectRatio, 'landscape');
+});
+
 test('TopicInputSchema chuẩn hóa khoảng trắng ở đầu và cuối', () => {
   const result = TopicInputSchema.parse({
     topic: '  Tìm kiếm nhị phân  ',

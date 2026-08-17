@@ -1,0 +1,26 @@
+.content-workspace { width: min(980px, 100%); margin: 10px auto 48px; }
+.content-heading { max-width: 720px; margin-bottom: 28px; }
+.content-heading > span { color: var(--orange); font-size: .75rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.content-heading h1 { margin: 8px 0 12px; color: var(--ink); font-family: Georgia, 'Times New Roman', serif; font-size: clamp(2.2rem, 5vw, 4rem); font-weight: 500; letter-spacing: -.04em; line-height: 1; }
+.content-heading p { margin: 0; color: var(--ink-soft); line-height: 1.6; }
+.content-form { display: grid; gap: 20px; padding: clamp(20px, 4vw, 38px); border: 1px solid var(--line); border-radius: 24px; background: var(--paper); box-shadow: var(--shadow); }
+.content-field { display: grid; gap: 8px; color: var(--ink); font-weight: 700; }
+.content-field small, .content-field em { color: var(--ink-soft); font-size: .8rem; font-style: normal; font-weight: 450; line-height: 1.45; }
+.content-field textarea { width: 100%; resize: vertical; padding: 13px 15px; border: 1px solid var(--line-strong); border-radius: 12px; color: var(--ink); background: var(--control-bg); line-height: 1.55; }
+.content-field textarea:focus { border-color: var(--green-700); box-shadow: 0 0 0 3px rgba(36,95,77,.12); outline: 0; }
+.narration-input { min-height: 260px; font-family: inherit; }
+.content-settings { display: grid; grid-template-columns: minmax(190px, .7fr) minmax(0, 1.3fr); gap: 18px; padding-top: 4px; }
+.color-field > div { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 10px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--control-bg); }
+.color-field input { width: 34px; height: 30px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.color-field code { font-size: .9rem; font-weight: 600; }
+.frame-field { min-width: 0; padding: 0; border: 0; }
+.frame-field legend { padding: 0; margin-bottom: 8px; }
+.frame-presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.frame-presets button { padding: 9px 11px; border: 1px solid var(--line-strong); border-radius: 10px; color: var(--ink-soft); background: var(--control-bg); cursor: pointer; font-size: .82rem; font-weight: 650; }
+.frame-presets button.is-selected { border-color: var(--green-700); color: var(--green-700); background: var(--green-100); }
+.frame-details { display: flex; align-items: center; gap: 14px; margin-top: 10px; color: var(--ink-soft); font-size: .8rem; font-weight: 500; }
+.frame-details select, .frame-details input { margin-left: 5px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--control-bg); }
+.frame-details input { width: 76px; }
+.content-actions { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-top: 6px; }
+.content-actions p { margin: 0; color: var(--ink-soft); font-size: .8rem; line-height: 1.45; }
+@media (max-width: 680px) { .content-settings { grid-template-columns: 1fr; } .content-actions { align-items: stretch; flex-direction: column; } .content-actions .submit-button { width: 100%; } }

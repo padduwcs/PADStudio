@@ -138,10 +138,12 @@ export const TopicInputSchema = z
       .trim()
       .optional(),
     background: VideoBackgroundSchema.default(defaultVideoBackground),
-    /** The composition frame; omitted legacy projects remain vertical. */
+    /** New projects always provide a frame; it stays optional for legacy artifacts. */
     videoFrame: VideoFrameSchema.optional(),
-    audience: z.enum(audienceValues),
-    duration: z.enum(durationValues),
+    // These remain internal compatibility hints for artifacts created by the
+    // previous workflow. They are deliberately not required from new users.
+    audience: z.enum(audienceValues).default('beginner'),
+    duration: z.enum(durationValues).default('standard'),
     targetDurationMinutes: z
       .number()
       .finite()
@@ -1373,7 +1375,10 @@ export const CreateTopicProjectSchema = z
   .object({
     creationId: CreationIdSchema,
     topicInput: TopicInputSchema,
-    currentStep: z.literal('outline'),
+    // Optional only for compatibility with callers from the former workflow.
+    // The current content screen always requires a non-empty narration.
+    narrationSourceText: z.string().trim().min(1).max(1_500_000).optional(),
+    currentStep: z.union([z.literal('topic'), z.literal('outline')]),
   })
   .strict();
 
@@ -1382,7 +1387,7 @@ export type CreateTopicProject = z.infer<typeof CreateTopicProjectSchema>;
 export const UpdateProjectSchema = z
   .object({
     topicInput: TopicInputSchema.optional(),
-    currentStep: z.literal('outline').optional(),
+    currentStep: z.union([z.literal('topic'), z.literal('outline')]).optional(),
   })
   .strict()
   .refine(

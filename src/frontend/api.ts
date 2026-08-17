@@ -21,6 +21,7 @@ import type {
   GenerateVoiceVisualPlan,
   ProjectListIssue,
   MotionCanvasBundle,
+  NarrationDocument,
   TeachingOutlineContent,
   TopicProject,
   TopicGuidanceGenerationResponse,
@@ -201,6 +202,27 @@ export async function updateTopicProject(
   });
   const payload = await readPayload<{project: TopicProject}>(response);
 
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function saveProjectNarration(
+  projectId: string,
+  request: Pick<NarrationDocument, 'sourceText' | 'projectRules'>,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/narration`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
   assertSuccessful(response, payload);
   return getProjectPayload(payload);
 }

@@ -267,6 +267,8 @@ export function createFileProjectRepository(
   return {
     async createTopicProject(request) {
       return runSerialized(`creation:${request.creationId}`, async () => {
+        const narrationSourceText =
+          request.narrationSourceText ?? request.topicInput.topic;
         const {projects} = await listProjectRecords();
         const existingProject = projects.find(
           (project) => project.creationId === request.creationId,
@@ -282,6 +284,13 @@ export function createFileProjectRepository(
             const requestedState = {
               topicInput: request.topicInput,
               currentStep: request.currentStep,
+              narration: {
+                sourceText: narrationSourceText,
+                projectRules: [],
+                review: null,
+                approvedSourceHash: null,
+                approvedAt: null,
+              },
             };
 
             if (projectChangeAlreadyApplied(currentProject, requestedState)) {
@@ -301,6 +310,13 @@ export function createFileProjectRepository(
           status: 'draft',
           currentStep: request.currentStep,
           topicInput: request.topicInput,
+          narration: {
+            sourceText: narrationSourceText,
+            projectRules: [],
+            review: null,
+            approvedSourceHash: null,
+            approvedAt: null,
+          },
           outline: null,
           voiceVisualPlan: null,
           motionCanvasBundle: null,

@@ -41,6 +41,7 @@ import {
   XIcon,
 } from './icons.tsx';
 import {ProjectLibrary} from './ProjectLibrary.tsx';
+import {ContentPage} from './ContentPage.tsx';
 import {RouteErrorBoundary} from './RouteErrorBoundary.tsx';
 import {
   navigate,
@@ -103,6 +104,14 @@ const pipelineSteps: ReadonlyArray<{
   {id: 'layout', label: 'Layout Editor'},
   {id: 'render', label: 'Render cuối'},
 ];
+
+const workflowSteps = [
+  'Nội dung',
+  'Cách đọc',
+  'Audio & scene',
+  'Chỉnh scene',
+  'Xuất video',
+] as const;
 
 const topicSuggestions = [
   'Tìm kiếm nhị phân',
@@ -220,7 +229,7 @@ function PipelineSidebar({
   open: boolean;
   onClose: () => void;
   onOpenProjects: () => void;
-  onSelectStep: (step: ProjectStep) => void;
+  onSelectStep: (stepIndex: number) => void;
   theme: PadTheme;
   onToggleTheme: () => void;
 }) {
@@ -266,17 +275,17 @@ function PipelineSidebar({
 
       <div className="sidebar-heading">
         <span>Quy trình sản xuất</span>
-        <strong>{String(activeStep + 1).padStart(2, '0')} / 08</strong>
+        <strong>{String(Math.min(activeStep + 1, workflowSteps.length)).padStart(2, '0')} / 05</strong>
       </div>
 
       <nav aria-label="Các bước sản xuất video">
         <ol className="pipeline-list">
-          {pipelineSteps.map((step, index) => {
-            const unavailable = !hasProject && step.id !== 'topic';
+          {workflowSteps.map((label, index) => {
+            const unavailable = !hasProject || index > 0;
             return (
             <li
               className={index === activeStep ? 'is-active' : ''}
-              key={step.id}
+              key={label}
             >
               <button
                 className="pipeline-step-button"
@@ -286,20 +295,20 @@ function PipelineSidebar({
                 title={
                   unavailable
                     ? 'Hãy lưu chủ đề để mở các bước còn lại.'
-                    : `Mở ${step.label}`
+                    : `Mở ${label}`
                 }
                 onClick={() => {
                   if (index === activeStep) {
                     onClose();
                     return;
                   }
-                  onSelectStep(step.id);
+                  onSelectStep(index);
                 }}
               >
                 <span className="step-index">
                   {String(index + 1).padStart(2, '0')}
                 </span>
-                <span className="step-name">{step.label}</span>
+                <span className="step-name">{label}</span>
               </button>
             </li>
             );
@@ -369,9 +378,9 @@ function MobileHeader({
         >
           {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
         </button>
-        <span>Bước {activeStep + 1} / 8</span>
+        <span>Bước {Math.min(activeStep + 1, workflowSteps.length)} / 5</span>
         <span className="mobile-progress-track">
-          <span style={{width: `${((activeStep + 1) / 8) * 100}%`}} />
+          <span style={{width: `${(Math.min(activeStep + 1, workflowSteps.length) / workflowSteps.length) * 100}%`}} />
         </span>
       </div>
     </header>
@@ -2675,9 +2684,9 @@ export default function App() {
         onOpenProjects={openLibrary}
         theme={theme}
         onToggleTheme={toggleTheme}
-        onSelectStep={(step) => {
-          if (!activeProjectId) return;
-          navigate(projectStepPath(activeProjectId, step));
+        onSelectStep={(stepIndex) => {
+          if (!activeProjectId || stepIndex !== 0) return;
+          navigate(projectTopicPath(activeProjectId));
         }}
       />
       <button
@@ -2724,21 +2733,10 @@ export default function App() {
               }
             >
               {route.name === 'new-topic' && (
-                <TopicPage
-                  autosavePaused={libraryOpen}
-                  onContinue={(project) =>
-                    navigate(projectOutlinePath(project.id), true)
-                  }
-                />
+                <ContentPage />
               )}
               {route.name === 'project-topic' && (
-                <TopicPage
-                  projectId={route.projectId}
-                  autosavePaused={libraryOpen}
-                  onContinue={(project) =>
-                    navigate(projectOutlinePath(project.id), true)
-                  }
-                />
+                <ContentPage projectId={route.projectId} />
               )}
               {route.name === 'project-outline' && (
                 <OutlinePage projectId={route.projectId} />
