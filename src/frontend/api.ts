@@ -61,6 +61,9 @@ import type {
   MotionCanvasHistoryResponse,
   MotionCanvasVersionRecord,
 } from '../shared/motionCanvasHistory.ts';
+import type {
+  PronunciationRule,
+} from '../shared/pronunciation.ts';
 
 export class ApiRequestError extends Error {
   readonly code: string;
@@ -225,6 +228,96 @@ export async function saveProjectNarration(
   const payload = await readPayload<{project: TopicProject}>(response);
   assertSuccessful(response, payload);
   return getProjectPayload(payload);
+}
+
+export async function getProjectNarration(projectId: string) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/narration`,
+  );
+  const payload = await readPayload<{
+    narration: NarrationDocument | null;
+    libraryRules: PronunciationRule[];
+  }>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('narration' in payload) || !('libraryRules' in payload)) {
+    throw new ApiRequestError('Phản hồi lời thoại không hợp lệ.', 'INVALID_RESPONSE');
+  }
+  return payload;
+}
+
+export async function auditProjectNarration(
+  projectId: string,
+  request: {generationId: string; model?: string; reasoningEffort?: string},
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/narration/audit`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function approveProjectNarration(
+  projectId: string,
+  request: {sourceHash: string; rulesHash: string},
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/narration/approve`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+type LibraryPronunciationRuleInput = Omit<PronunciationRule, 'id' | 'scope'>;
+
+export async function saveLibraryPronunciationRule(
+  input: LibraryPronunciationRuleInput,
+  ruleId?: string,
+) {
+  const response = await fetch(
+    ruleId
+      ? `/api/pronunciation/rules/${encodeURIComponent(ruleId)}`
+      : '/api/pronunciation/rules',
+    {
+      method: ruleId ? 'PUT' : 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(input),
+    },
+  );
+  const payload = await readPayload<{rule: PronunciationRule}>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('rule' in payload)) {
+    throw new ApiRequestError('Phản hồi từ điển không hợp lệ.', 'INVALID_RESPONSE');
+  }
+  return payload.rule;
+}
+
+export async function deleteLibraryPronunciationRule(ruleId: string) {
+  const response = await fetch(
+    `/api/pronunciation/rules/${encodeURIComponent(ruleId)}`,
+    {method: 'DELETE'},
+  );
+  const payload = await readPayload<object>(response);
+  assertSuccessful(response, payload);
 }
 
 export async function generateTeachingOutline(

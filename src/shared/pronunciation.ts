@@ -107,3 +107,20 @@ export function applyPronunciationPatches(
     sourceText,
   );
 }
+
+/**
+ * Creates the exact text sent to TTS. AI patches are constrained to source
+ * spans, then the same deterministic dictionary pass is applied as usual.
+ */
+export function reviewedPronunciationText(
+  sourceText: string,
+  rules: readonly PronunciationRule[],
+  aiPatches: readonly PronunciationPatch[] = [],
+) {
+  return normalizePronunciation(
+    aiPatches.length > 0
+      ? applyPronunciationPatches(sourceText, aiPatches)
+      : sourceText,
+    rules,
+  );
+}

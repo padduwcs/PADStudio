@@ -23,4 +23,5 @@
 .frame-details input { width: 76px; }
 .content-actions { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-top: 6px; }
 .content-actions p { margin: 0; color: var(--ink-soft); font-size: .8rem; line-height: 1.45; }
+.content-action-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 @media (max-width: 680px) { .content-settings { grid-template-columns: 1fr; } .content-actions { align-items: stretch; flex-direction: column; } .content-actions .submit-button { width: 100%; } }

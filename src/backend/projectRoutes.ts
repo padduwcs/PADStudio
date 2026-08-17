@@ -144,3 +144,15 @@ export const getProjectNarrationRoute = (pathname: string) =>
   simpleRoute(pathname, /^\/api\/projects\/([^/]+)\/narration(?:\/(approve|audit))?$/, 'read') as
     | {projectId: string; action: 'approve' | 'audit' | 'read'}
     | null;
+
+export function getPronunciationLibraryRuleRoute(pathname: string) {
+  const match = /^\/api\/pronunciation\/rules(?:\/([^/]+))?$/.exec(pathname);
+  if (!match) return null;
+  if (!match[1]) return {ruleId: null};
+  try {
+    const ruleId = decodeURIComponent(match[1]);
+    return /^[0-9a-f-]{36}$/i.test(ruleId) ? {ruleId} : null;
+  } catch {
+    return null;
+  }
+}

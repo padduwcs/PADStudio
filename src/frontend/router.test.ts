@@ -13,6 +13,10 @@ test('parseRoute đọc route project hợp lệ', () => {
     name: 'project-topic',
     projectId: 'du-an-01',
   });
+  assert.deepEqual(parseRoute('/projects/du-an-01/narration'), {
+    name: 'project-narration',
+    projectId: 'du-an-01',
+  });
   assert.deepEqual(parseRoute('/projects/du-an-01/outline/'), {
     name: 'project-outline',
     projectId: 'du-an-01',

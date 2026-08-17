@@ -16,7 +16,7 @@ import {
   updateTopicProject,
 } from './api.ts';
 import {createNewTopicCreationId} from './newTopicSession.ts';
-import {navigate, projectTopicPath} from './router.ts';
+import {navigate, projectNarrationPath, projectTopicPath} from './router.ts';
 
 type ContentForm = {
   topic: string;
@@ -198,7 +198,10 @@ export function ContentPage({projectId}: {projectId?: string}) {
         {error && <p className="submit-error" role="alert">{error}</p>}
         <footer className="content-actions">
           <p>{state === 'saved' ? 'Đã lưu. Bước tiếp theo sẽ là duyệt cách đọc.' : 'Lời thoại được lưu cục bộ trong project của bạn.'}</p>
-          <button className="submit-button" type="submit" disabled={state === 'saving'}>{state === 'saving' ? 'Đang lưu…' : project ? 'Lưu đầu vào' : 'Tạo project'}</button>
+          <div className="content-action-buttons">
+            <button className="submit-button" type="submit" disabled={state === 'saving'}>{state === 'saving' ? 'Đang lưu…' : project ? 'Lưu đầu vào' : 'Tạo project'}</button>
+            {project && <button className="secondary-button" type="button" onClick={() => navigate(projectNarrationPath(project.id))}>Chuẩn hóa cách đọc</button>}
+          </div>
         </footer>
       </form>
     </main>

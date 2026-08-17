@@ -53,6 +53,7 @@ import type {
 } from './voiceWorkspace.ts';
 import type {FinalRenderService} from './finalRenderService.ts';
 import type {CredentialStore} from './credentialStore.ts';
+import type {PronunciationAuditService} from './pronunciationAudit.ts';
 
 const topicInput = {
   topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
@@ -97,6 +98,7 @@ async function startTestApp(
     layoutWorkspace?: LayoutWorkspace;
     layoutPreviewService?: LayoutPreviewService;
     finalRenderService?: FinalRenderService;
+    pronunciationAuditService?: PronunciationAuditService;
   } = {},
 ) {
   const projectsDirectory = await mkdtemp(
@@ -124,6 +126,7 @@ async function startTestApp(
     layoutWorkspace: options.layoutWorkspace,
     layoutPreviewService: options.layoutPreviewService,
     finalRenderService: options.finalRenderService,
+    pronunciationAuditService: options.pronunciationAuditService,
     logger: {info() {}, error() {}},
   });
 
@@ -158,6 +161,90 @@ async function createProject(
   assert.equal(response.status, 201);
   return {project: body.project, request};
 }
+
+test('pronunciation review locks the audited snapshot and keeps a reusable library', async (context) => {
+  const pronunciationAuditService: PronunciationAuditService = {
+    async audit(request) {
+      const start = request.sourceText.indexOf('f(x)');
+      return {
+        model: 'test-model',
+        usage: null,
+        patches: [{
+          start,
+          end: start + 4,
+          source: 'f(x)',
+          spoken: 'ép của x',
+          reason: 'Ký hiệu hàm số',
+          suggestedRule: null,
+        }],
+      };
+    },
+  };
+  const {baseUrl} = await startTestApp(context, {pronunciationAuditService});
+  const {project} = await createProject(baseUrl, createRequest({
+    currentStep: 'topic',
+    narrationSourceText: 'Ta xét f(x).',
+  }));
+  const addLibrary = await fetch(`${baseUrl}/api/pronunciation/rules`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      source: 'logarithm',
+      spoken: 'lô-ga-rít',
+      origin: 'user',
+      caseSensitive: false,
+    }),
+  });
+  assert.equal(addLibrary.status, 201);
+
+  const savedResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/narration`,
+    {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"1"'},
+      body: JSON.stringify({sourceText: 'Ta xét f(x).', projectRules: []}),
+    },
+  );
+  assert.equal(savedResponse.status, 200);
+  const saved = (await savedResponse.json()) as {project: TopicProject};
+  const oldSourceHash = saved.project.narration!.review!.sourceHash;
+
+  const auditResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/narration/audit`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"2"'},
+      body: JSON.stringify({generationId: randomUUID()}),
+    },
+  );
+  assert.equal(auditResponse.status, 200);
+  const audited = (await auditResponse.json()) as {project: TopicProject};
+  const review = audited.project.narration!.review!;
+  assert.equal(review.normalizedText, 'Ta xét ép của x.');
+  assert.notEqual(review.sourceHash, oldSourceHash);
+
+  const staleApprove = await fetch(
+    `${baseUrl}/api/projects/${project.id}/narration/approve`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"3"'},
+      body: JSON.stringify({sourceHash: oldSourceHash, rulesHash: review.rulesHash}),
+    },
+  );
+  assert.equal(staleApprove.status, 409);
+
+  const approveResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/narration/approve`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"3"'},
+      body: JSON.stringify({sourceHash: review.sourceHash, rulesHash: review.rulesHash}),
+    },
+  );
+  assert.equal(approveResponse.status, 200);
+  const approved = (await approveResponse.json()) as {project: TopicProject};
+  assert.equal(approved.project.narration!.approvedSourceHash, review.sourceHash);
+});
 
 test('frontend chỉ fallback SPA cho route, không trả HTML cho asset thiếu', async (context) => {
   const {baseUrl} = await startTestApp(context);

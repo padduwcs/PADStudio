@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   getProjectMotionCanvasHistoryRoute,
+  getPronunciationLibraryRuleRoute,
   getProjectRenderRoute,
   getProjectVoiceRoute,
 } from './projectRoutes.ts';
@@ -35,4 +36,18 @@ test('project route parsers reject malformed URL encoding', () => {
     projectId,
     action: 'status',
   });
+});
+
+test('pronunciation library route only accepts a stable UUID rule identity', () => {
+  assert.deepEqual(getPronunciationLibraryRuleRoute('/api/pronunciation/rules'), {
+    ruleId: null,
+  });
+  assert.deepEqual(
+    getPronunciationLibraryRuleRoute(`/api/pronunciation/rules/${recordId}`),
+    {ruleId: recordId},
+  );
+  assert.equal(
+    getPronunciationLibraryRuleRoute('/api/pronunciation/rules/not-an-id'),
+    null,
+  );
 });

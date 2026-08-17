@@ -42,10 +42,12 @@ import {
 } from './icons.tsx';
 import {ProjectLibrary} from './ProjectLibrary.tsx';
 import {ContentPage} from './ContentPage.tsx';
+import {NarrationPage} from './NarrationPage.tsx';
 import {RouteErrorBoundary} from './RouteErrorBoundary.tsx';
 import {
   navigate,
   navigateDiscardingPendingChanges,
+  projectNarrationPath,
   projectOutlinePath,
   projectStepPath,
   projectTopicPath,
@@ -281,7 +283,7 @@ function PipelineSidebar({
       <nav aria-label="Các bước sản xuất video">
         <ol className="pipeline-list">
           {workflowSteps.map((label, index) => {
-            const unavailable = !hasProject || index > 0;
+            const unavailable = !hasProject || index > 1;
             return (
             <li
               className={index === activeStep ? 'is-active' : ''}
@@ -2587,7 +2589,9 @@ export default function App() {
   const [newProjectKey, setNewProjectKey] = useState(0);
   const [projectReloadKey, setProjectReloadKey] = useState(0);
   const activeStep =
-    route.name === 'project-render'
+    route.name === 'project-narration'
+      ? 1
+      : route.name === 'project-render'
       ? 7
       : route.name === 'project-layout'
       ? 6
@@ -2597,7 +2601,7 @@ export default function App() {
       ? 4
       : route.name === 'project-motion-canvas'
       ? 3
-      : route.name === 'project-voice-visual'
+            : route.name === 'project-voice-visual'
       ? 2
       : route.name === 'project-outline'
         ? 1
@@ -2685,8 +2689,12 @@ export default function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onSelectStep={(stepIndex) => {
-          if (!activeProjectId || stepIndex !== 0) return;
-          navigate(projectTopicPath(activeProjectId));
+          if (!activeProjectId || stepIndex > 1) return;
+          navigate(
+            stepIndex === 0
+              ? projectTopicPath(activeProjectId)
+              : projectNarrationPath(activeProjectId),
+          );
         }}
       />
       <button
@@ -2737,6 +2745,9 @@ export default function App() {
               )}
               {route.name === 'project-topic' && (
                 <ContentPage projectId={route.projectId} />
+              )}
+              {route.name === 'project-narration' && (
+                <NarrationPage projectId={route.projectId} />
               )}
               {route.name === 'project-outline' && (
                 <OutlinePage projectId={route.projectId} />

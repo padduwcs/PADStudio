@@ -1,0 +1,49 @@
+.pronunciation-workspace { width: min(1240px, 100%); margin: 8px auto 48px; }
+.pronunciation-heading { max-width: 760px; margin-bottom: 28px; }
+.pronunciation-heading > span { color: var(--orange); font-size: .75rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.pronunciation-heading h1 { margin: 8px 0 12px; color: var(--ink); font-family: Georgia, 'Times New Roman', serif; font-size: clamp(2.2rem, 5vw, 4rem); font-weight: 500; letter-spacing: -.04em; line-height: 1; }
+.pronunciation-heading p, .pronunciation-dictionary > header p { margin: 0; color: var(--ink-soft); line-height: 1.55; }
+.pronunciation-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(330px, .85fr); gap: 20px; align-items: start; }
+.pronunciation-preview-card, .pronunciation-dictionary, .pronunciation-codex { padding: clamp(20px, 3vw, 30px); border: 1px solid var(--line); border-radius: 22px; background: var(--paper); box-shadow: var(--shadow-sm); }
+.pronunciation-preview-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.pronunciation-preview-card h2 { margin: 5px 0 0; color: var(--ink); font-size: 1.25rem; }
+.approved-badge { display: inline-flex; align-items: center; gap: 5px; color: var(--success); font-size: .78rem; font-weight: 750; white-space: nowrap; }
+.approved-badge svg { width: 17px; }
+.pronunciation-preview { min-height: 280px; margin-top: 20px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; color: var(--ink); background: var(--surface); font-size: 1.02rem; line-height: 1.8; white-space: pre-wrap; }
+.pronunciation-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.pronunciation-actions button { display: inline-flex; align-items: center; gap: 6px; }
+.pronunciation-actions svg { width: 16px; }
+.pronunciation-message { margin: 14px 0 0; color: var(--success); font-size: .86rem; line-height: 1.45; }
+.ai-patches { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.ai-patches > strong { color: var(--ink); font-size: .9rem; }
+.ai-patches ul { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+.ai-patches li { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 10px; border-radius: 10px; background: var(--surface); font-size: .82rem; }
+.ai-patches code { color: var(--orange); }
+.ai-patches small { flex-basis: 100%; color: var(--ink-soft); }
+.ai-patches button, .text-button { padding: 0; border: 0; color: var(--green-700); background: none; cursor: pointer; font-size: .78rem; font-weight: 700; }
+.pronunciation-dictionary { display: grid; gap: 18px; }
+.rule-editor { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.rule-editor label { display: grid; gap: 5px; color: var(--ink-soft); font-size: .75rem; font-weight: 700; }
+.rule-editor input, .rule-editor select { min-width: 0; padding: 9px 10px; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--ink); background: var(--control-bg); }
+.rule-editor-actions { display: flex; align-items: end; gap: 10px; }
+.rule-editor-actions > label { flex: 1; }
+.rule-editor-actions button { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.rule-editor-actions svg { width: 14px; }
+.pronunciation-rule-list { display: grid; gap: 8px; }
+.pronunciation-rule-list header { display: flex; justify-content: space-between; color: var(--ink); font-size: .86rem; }
+.pronunciation-rule-list header span { display: grid; min-width: 20px; height: 20px; place-items: center; border-radius: 10px; color: var(--ink-soft); background: var(--surface-soft); font-size: .72rem; }
+.pronunciation-rule-list > p { margin: 0; color: var(--ink-soft); font-size: .8rem; }
+.pronunciation-rule-list ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.pronunciation-rule-list li { display: flex; align-items: stretch; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: var(--control-bg); }
+.rule-main { display: flex; flex: 1; min-width: 0; align-items: center; gap: 7px; padding: 9px; border: 0; color: var(--ink); background: transparent; cursor: pointer; text-align: left; }
+.rule-main code { overflow: hidden; color: var(--orange); text-overflow: ellipsis; white-space: nowrap; }
+.rule-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .78rem; }
+.rule-main span { color: var(--ink-soft); }
+.rule-remove { width: 35px; border: 0; border-left: 1px solid var(--line); color: var(--ink-soft); background: transparent; cursor: pointer; }
+.rule-remove:hover { color: var(--danger); background: var(--orange-soft); }
+.rule-remove svg { width: 15px; }
+.pronunciation-codex { margin-top: 20px; }
+.pronunciation-codex summary { cursor: pointer; color: var(--ink-soft); font-size: .86rem; font-weight: 700; }
+.pronunciation-codex[open] summary { margin-bottom: 16px; }
+@media (max-width: 860px) { .pronunciation-layout { grid-template-columns: 1fr; } }
+@media (max-width: 520px) { .rule-editor-actions { align-items: stretch; flex-direction: column; } .pronunciation-actions > button { width: 100%; justify-content: center; } }

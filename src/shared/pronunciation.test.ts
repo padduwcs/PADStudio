@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   applyPronunciationPatches,
   normalizePronunciation,
+  reviewedPronunciationText,
   validatePronunciationPatches,
   type PronunciationRule,
 } from './pronunciation.ts';
@@ -37,4 +38,8 @@ test('AI pronunciation patches are span-bound and cannot rewrite narration freel
   assert.equal(validatePronunciationPatches(source, patches), true);
   assert.equal(applyPronunciationPatches(source, patches), 'Ta xét ép của x.');
   assert.equal(validatePronunciationPatches(source, [{...patches[0]!, start: 0}]), false);
+  assert.equal(
+    reviewedPronunciationText(source, [], patches),
+    'Ta xét ép của x.',
+  );
 });

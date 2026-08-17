@@ -38,8 +38,8 @@ import {
   type VoiceVisualPlanContent,
 } from '../shared/topic.ts';
 import {
-  applyPronunciationPatches,
-  normalizePronunciation,
+  PronunciationRuleSchema,
+  reviewedPronunciationText,
 } from '../shared/pronunciation.ts';
 import {
   CreateOutlineCandidateSchema,
@@ -243,6 +243,7 @@ import {
   getProjectMotionCanvasHistoryRoute,
   getProjectMotionCanvasRoute,
   getProjectNarrationRoute,
+  getPronunciationLibraryRuleRoute,
   getProjectOutlineHistoryRoute,
   getProjectOutlineRoute,
   getProjectRenderRoute,
@@ -282,6 +283,16 @@ const AuditNarrationSchema = z
     reasoningEffort: z.string().trim().min(1).max(80).optional(),
   })
   .strict();
+const LibraryPronunciationRuleInputSchema = PronunciationRuleSchema
+  .omit({id: true, scope: true})
+  .strict();
+
+function narrationReviewSourceHash(
+  sourceText: string,
+  aiPatches: unknown,
+) {
+  return hashJson({sourceText, aiPatches});
+}
 
 const contentTypes: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
@@ -1102,7 +1113,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
     createWatermarkAssetStore(projectsDirectory);
   const pronunciationRuleStore =
     options.pronunciationRuleStore ??
-    createPronunciationRuleStore(path.resolve(projectsDirectory, '..'));
+    createPronunciationRuleStore(projectsDirectory);
   const pronunciationAuditService =
     options.pronunciationAuditService ??
     createCodexPronunciationAuditService(sharedCodexClient!);
@@ -6135,9 +6146,71 @@ export function createPadStudioServer(options: AppOptions = {}) {
         return;
       }
 
+      const pronunciationLibraryRoute = getPronunciationLibraryRuleRoute(
+        requestUrl.pathname,
+      );
+
+      if (pronunciationLibraryRoute?.ruleId === null && request.method === 'GET') {
+        sendJson(response, 200, {rules: await pronunciationRuleStore.list()});
+        return;
+      }
+
+      if (pronunciationLibraryRoute?.ruleId === null && request.method === 'POST') {
+        const parsed = LibraryPronunciationRuleInputSchema.safeParse(
+          await readJsonBody(request),
+        );
+        if (!parsed.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Quy tắc từ điển dùng chung chưa hợp lệ.',
+            fields: validationFields(parsed.error.issues),
+          });
+          return;
+        }
+        const rule = await pronunciationRuleStore.save(parsed.data);
+        sendJson(response, 201, {rule});
+        return;
+      }
+
+      if (pronunciationLibraryRoute?.ruleId && request.method === 'PUT') {
+        const parsed = LibraryPronunciationRuleInputSchema.safeParse(
+          await readJsonBody(request),
+        );
+        if (!parsed.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Quy tắc từ điển dùng chung chưa hợp lệ.',
+            fields: validationFields(parsed.error.issues),
+          });
+          return;
+        }
+        const rule = await pronunciationRuleStore.save({
+          ...parsed.data,
+          id: pronunciationLibraryRoute.ruleId,
+        });
+        sendJson(response, 200, {rule});
+        return;
+      }
+
+      if (pronunciationLibraryRoute?.ruleId && request.method === 'DELETE') {
+        const removed = await pronunciationRuleStore.remove(
+          pronunciationLibraryRoute.ruleId,
+        );
+        if (!removed) {
+          sendApiError(response, 404, {
+            code: 'PRONUNCIATION_RULE_NOT_FOUND',
+            message: 'Không tìm thấy quy tắc từ điển dùng chung.',
+          });
+          return;
+        }
+        response.writeHead(204, {'Cache-Control': 'no-store'});
+        response.end();
+        return;
+      }
+
       const narrationRoute = getProjectNarrationRoute(requestUrl.pathname);
 
-      if (narrationRoute && request.method === 'GET') {
+      if (narrationRoute?.action === 'read' && request.method === 'GET') {
         const currentProject = await repository.getProject(narrationRoute.projectId);
         if (!currentProject) {
           sendApiError(response, 404, {
@@ -6180,10 +6253,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
         const allRules = [...libraryRules, ...parsed.data.projectRules];
         const review = {
           sourceText: parsed.data.sourceText,
-          normalizedText: normalizePronunciation(parsed.data.sourceText, allRules),
+          normalizedText: reviewedPronunciationText(parsed.data.sourceText, allRules),
           rules: allRules,
           aiPatches: [],
-          sourceHash: hashJson(parsed.data.sourceText),
+          sourceHash: narrationReviewSourceHash(parsed.data.sourceText, []),
           rulesHash: hashJson(allRules),
           reviewedAt: null,
         };
@@ -6242,14 +6315,18 @@ export function createPadStudioServer(options: AppOptions = {}) {
           model: parsed.data.model,
           reasoningEffort: parsed.data.reasoningEffort,
         });
-        const reviewedSource = applyPronunciationPatches(
-          narration.sourceText,
-          audit.patches,
-        );
         const nextReview = {
           ...narration.review,
-          normalizedText: normalizePronunciation(reviewedSource, narration.review.rules),
+          normalizedText: reviewedPronunciationText(
+            narration.sourceText,
+            narration.review.rules,
+            audit.patches,
+          ),
           aiPatches: audit.patches,
+          sourceHash: narrationReviewSourceHash(
+            narration.sourceText,
+            audit.patches,
+          ),
           reviewedAt: null,
         };
         const project = await repository.updateProject(
@@ -6289,9 +6366,16 @@ export function createPadStudioServer(options: AppOptions = {}) {
           return;
         }
         const narration = currentProject.narration;
+        const currentRulesHash = narration
+          ? hashJson([
+              ...(await pronunciationRuleStore.list()),
+              ...narration.projectRules,
+            ])
+          : null;
         if (!narration?.review ||
           narration.review.sourceHash !== parsed.data.sourceHash ||
-          narration.review.rulesHash !== parsed.data.rulesHash) {
+          narration.review.rulesHash !== parsed.data.rulesHash ||
+          narration.review.rulesHash !== currentRulesHash) {
           throw new RequestBodyError(
             409,
             'NARRATION_REVIEW_STALE',

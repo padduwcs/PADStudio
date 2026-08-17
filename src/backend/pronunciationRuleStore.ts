@@ -25,6 +25,13 @@ function canonicalRules(rules: readonly PronunciationRule[]) {
 export function createPronunciationRuleStore(rootDirectory: string): PronunciationRuleStore {
   const directory = path.join(rootDirectory, '.pad-studio');
   const filePath = path.join(directory, FILE_NAME);
+  let pendingWrite: Promise<void> = Promise.resolve();
+
+  function serialize<Result>(operation: () => Promise<Result>) {
+    const result = pendingWrite.then(operation);
+    pendingWrite = result.then(() => undefined, () => undefined);
+    return result;
+  }
 
   async function readRules() {
     try {
@@ -58,23 +65,27 @@ export function createPronunciationRuleStore(rootDirectory: string): Pronunciati
   return {
     list: readRules,
     async save(input) {
-      const rule = PronunciationRuleSchema.parse({
-        ...input,
-        id: input.id ?? randomUUID(),
-        scope: 'library',
+      return serialize(async () => {
+        const rule = PronunciationRuleSchema.parse({
+          ...input,
+          id: input.id ?? randomUUID(),
+          scope: 'library',
+        });
+        const current = await readRules();
+        const next = current.filter(item => item.id !== rule.id);
+        next.push(rule);
+        await writeRules(next);
+        return rule;
       });
-      const current = await readRules();
-      const next = current.filter(item => item.id !== rule.id);
-      next.push(rule);
-      await writeRules(next);
-      return rule;
     },
     async remove(ruleId) {
-      const current = await readRules();
-      const next = current.filter(rule => rule.id !== ruleId);
-      if (next.length === current.length) return false;
-      await writeRules(next);
-      return true;
+      return serialize(async () => {
+        const current = await readRules();
+        const next = current.filter(rule => rule.id !== ruleId);
+        if (next.length === current.length) return false;
+        await writeRules(next);
+        return true;
+      });
     },
   };
 }
