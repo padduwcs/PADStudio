@@ -251,7 +251,7 @@ export function projectVoiceVisualPath(projectId: string) {
 }
 
 export function projectMotionCanvasPath(projectId: string) {
-  return `/projects/${encodeURIComponent(projectId)}/motion-canvas`;
+  return projectSceneReviewPath(projectId);
 }
 
 export function projectVoicePath(projectId: string) {

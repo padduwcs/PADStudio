@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   speechTextForBeat,
+  textEncodingIssue,
   toVietnameseSpeechText,
 } from './vietnameseSpeech.ts';
 
@@ -50,4 +51,10 @@ test('ưu tiên cách đọc do người dùng chỉnh và có fallback xác đ�
     }),
     'Độ phức tạp là ô nờ bình phương.',
   );
+});
+
+test('chặn văn bản mất dấu do lỗi mã hóa trước khi gửi TTS', () => {
+  assert.equal(textEncodingIssue('Vì sao thuật toán này nhanh?'), null);
+  assert.match(textEncodingIssue('V? sao thu?ng nhanh hơn?') ?? '', /mất/i);
+  assert.match(textEncodingIssue('Lời thoại có �.') ?? '', /mã hóa/i);
 });

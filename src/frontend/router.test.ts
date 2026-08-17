@@ -76,7 +76,7 @@ test('projectStepPath ánh xạ tập trung các bước đã hỗ trợ', () =>
   );
   assert.equal(
     projectStepPath('du an', 'motionCanvas'),
-    '/projects/du%20an/motion-canvas',
+    '/projects/du%20an/scene-review',
   );
   assert.equal(
     projectStepPath('du an', 'voice'),

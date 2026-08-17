@@ -3,6 +3,21 @@ export interface SpeechReadyBeat {
   spokenVoiceover?: string;
 }
 
+/**
+ * A TTS request cannot recover Vietnamese diacritics that were already
+ * replaced during copy/paste or an incorrect text encoding. Catch the common
+ * lossy forms before a paid request is sent to ElevenLabs.
+ */
+export function textEncodingIssue(text: string) {
+  if (text.includes('\uFFFD')) {
+    return 'Văn bản có ký tự thay thế �, thường do lỗi mã hóa.';
+  }
+  if (/\p{L}\?\p{L}/u.test(text)) {
+    return 'Văn bản có dấu ? nằm giữa một từ, thường do dấu tiếng Việt đã bị mất khi sao chép.';
+  }
+  return null;
+}
+
 const vietnameseLetterNames: Record<string, string> = {
   n: 'nờ',
 };

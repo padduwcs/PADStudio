@@ -80,10 +80,6 @@ const SceneReviewPage = lazy(async () => {
   const module = await import('./SceneReviewPage.tsx');
   return {default: module.SceneReviewPage};
 });
-const MotionCanvasPage = lazy(async () => {
-  const module = await import('./MotionCanvasPage.tsx');
-  return {default: module.MotionCanvasPage};
-});
 const VoicePage = lazy(async () => {
   const module = await import('./VoicePage.tsx');
   return {default: module.VoicePage};
@@ -2780,7 +2776,7 @@ export default function App() {
                 <VoiceVisualPage projectId={route.projectId} />
               )}
               {route.name === 'project-motion-canvas' && (
-                <MotionCanvasPage projectId={route.projectId} />
+                <SceneReviewPage projectId={route.projectId} />
               )}
               {route.name === 'project-voice' && (
                 <VoicePage projectId={route.projectId} />

@@ -239,7 +239,10 @@ import {
   type VoiceWorkspace,
 } from './voiceWorkspace.ts';
 import {plannedBeatDurationSeconds} from '../shared/narrationTiming.ts';
-import {speechTextForBeat} from '../shared/vietnameseSpeech.ts';
+import {
+  speechTextForBeat,
+  textEncodingIssue,
+} from '../shared/vietnameseSpeech.ts';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import {
   createDefaultCredentialStore,
@@ -4935,6 +4938,14 @@ export function createPadStudioServer(options: AppOptions = {}) {
         }
 
         const narrationSource = buildNarrationSource(plan);
+        const encodingIssue = textEncodingIssue(narrationSource.text);
+        if (encodingIssue) {
+          throw new RequestBodyError(
+            422,
+            'NARRATION_TEXT_ENCODING_INVALID',
+            `${encodingIssue} Hãy quay lại bước duyệt cách đọc và sửa lời thoại trước khi tạo audio.`,
+          );
+        }
         const generationKey = `${currentProject.id}:${generationId}`;
         const fingerprint = JSON.stringify({
           narrationRevision: plan.narrationRevision,
@@ -6379,9 +6390,23 @@ export function createPadStudioServer(options: AppOptions = {}) {
         }
         const libraryRules = await pronunciationRuleStore.list();
         const allRules = [...libraryRules, ...parsed.data.projectRules];
+        const normalizedText = reviewedPronunciationText(
+          parsed.data.sourceText,
+          allRules,
+        );
+        const encodingIssue =
+          textEncodingIssue(parsed.data.sourceText) ??
+          textEncodingIssue(normalizedText);
+        if (encodingIssue) {
+          throw new RequestBodyError(
+            422,
+            'NARRATION_TEXT_ENCODING_INVALID',
+            `${encodingIssue} Hãy dán lại lời thoại đúng Unicode trước khi duyệt.`,
+          );
+        }
         const review = {
           sourceText: parsed.data.sourceText,
-          normalizedText: reviewedPronunciationText(parsed.data.sourceText, allRules),
+          normalizedText,
           rules: allRules,
           aiPatches: [],
           sourceHash: narrationReviewSourceHash(parsed.data.sourceText, []),

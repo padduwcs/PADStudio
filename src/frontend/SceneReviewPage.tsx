@@ -8,7 +8,13 @@ import {
 } from './api.ts';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {MotionDesignEditor} from './MotionDesignEditor.tsx';
-import {navigate, projectProductionPath, projectRenderPath} from './router.ts';
+import {
+  navigate,
+  projectProductionPath,
+  projectRenderPath,
+  projectVoicePath,
+  projectVoiceVisualPath,
+} from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useMotionCanvasDraft} from './useMotionCanvasDraft.ts';
 
@@ -46,19 +52,27 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
     if (candidate) setGuidance('');
   }
 
-  async function approveAndSynchronize() {
+  async function approveAndContinue() {
     if (syncing) return;
     setSyncing(true);
     setCompletionMessage('');
     try {
       let current = await getProject(projectId);
-      if (!current.motionCanvasBundle || !current.voiceBundle) {
-        throw new Error('Audio hoặc scene hiện tại chưa sẵn sàng.');
+      if (!current.motionCanvasBundle) {
+        throw new Error('Scene hiện tại chưa sẵn sàng.');
       }
       if (current.motionCanvasBundle.status !== 'approved') {
         const approved = await motion.approve();
         if (!approved) throw new Error('Không thể chốt scene hiện tại.');
         current = approved;
+      }
+      if (!isDirect(current)) {
+        setCompletionMessage('Scene đã được chốt. Tiếp tục tạo voice ElevenLabs.');
+        navigate(projectVoicePath(current.id));
+        return;
+      }
+      if (!current.voiceBundle) {
+        throw new Error('Audio hiện tại chưa sẵn sàng.');
       }
       if (!current.animationSyncBundle || animationSyncIsStale(current)) {
         current = await generateAnimationSync(
@@ -88,7 +102,8 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
   if (!motion.project || motion.loadState === 'error') return <div className="page-state is-error" role="alert"><strong>Không thể mở scene</strong><p>{motion.loadError}</p></div>;
   const project = motion.project;
   const bundle = project.motionCanvasBundle;
-  if (!isDirect(project) || !bundle) return <div className="page-state is-error" role="alert"><strong>Scene chưa sẵn sàng</strong><p>Hãy tạo audio và scene từ bản voice đã duyệt trước.</p><button type="button" onClick={() => navigate(projectProductionPath(projectId))}>Quay lại Audio & scene</button></div>;
+  if (!bundle) return <div className="page-state is-error" role="alert"><strong>Scene chưa sẵn sàng</strong><p>Hãy hoàn tất bước sinh scene trước khi review.</p><button type="button" onClick={() => navigate(isDirect(project) ? projectProductionPath(projectId) : projectVoiceVisualPath(projectId))}>Quay lại bước trước</button></div>;
+  const direct = isDirect(project);
   const synchronized = project.animationSyncBundle?.status === 'approved' && !animationSyncIsStale(project);
 
   return (
@@ -112,7 +127,7 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
         <aside className="scene-review-side"><CodexConnectionCard connection={codex} task="motionCanvas" workUnits={selectedSceneIds.length || bundle.scenes.length} /><p>Bạn cũng có thể chỉnh trực tiếp màu sắc, chữ, vị trí và chuyển động ở editor bên dưới.</p></aside>
       </div>
       <MotionDesignEditor motionCanvas={motion} />
-      <footer className="scene-review-footer"><div><strong>{synchronized ? 'Đã đồng bộ' : 'Chốt scene để tự động đồng bộ'}</strong><p>{completionMessage || 'Khi chốt, hệ thống dùng timing audio thật để đồng bộ ngay; không có bước review đồng bộ riêng.'}</p></div><button className="submit-button" type="button" disabled={syncing || synchronized || motion.candidate?.decision === 'pending'} onClick={() => void approveAndSynchronize()}>{syncing ? 'Đang chốt và đồng bộ…' : synchronized ? 'Đã hoàn tất' : 'Chốt scene & đồng bộ audio'}</button></footer>
+      <footer className="scene-review-footer"><div><strong>{direct ? synchronized ? 'Đã đồng bộ' : 'Chốt scene để tự động đồng bộ' : 'Chốt scene để tạo voice'}</strong><p>{completionMessage || (direct ? 'Khi chốt, hệ thống dùng timing audio thật để đồng bộ ngay; không có bước review đồng bộ riêng.' : 'Scene đã được review trong cùng màn hình này. Sau khi chốt, bạn sẽ tiếp tục tạo voice ElevenLabs.')}</p></div><button className="submit-button" type="button" disabled={syncing || (direct && synchronized) || motion.candidate?.decision === 'pending'} onClick={() => void approveAndContinue()}>{syncing ? direct ? 'Đang chốt và đồng bộ…' : 'Đang chốt…' : direct ? synchronized ? 'Đã hoàn tất' : 'Chốt scene & đồng bộ audio' : 'Chốt scene & tạo voice'}</button></footer>
     </main>
   );
 }
