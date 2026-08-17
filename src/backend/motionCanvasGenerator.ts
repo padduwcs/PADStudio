@@ -24,7 +24,7 @@ import {
   normalizeMotionCanvasColorFormats,
 } from './motionCanvasSourceCompatibility.ts';
 
-export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v10';
+export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v11';
 export const MOTION_CANVAS_VERSION = '3.17.2';
 export const MOTION_CANVAS_WIDTH = 1080;
 export const MOTION_CANVAS_HEIGHT = 1920;
@@ -310,6 +310,7 @@ function sceneDesignBrief(
   request: MotionCanvasGenerationRequest,
   sectionIndex: number,
 ) {
+  const frame = request.videoFrame ?? request.topicInput.videoFrame ?? defaultVideoFrame;
   const section = request.outline.sections[sectionIndex]!;
   const beats = request.voiceVisualPlan.sections[sectionIndex]!.beats;
   const previous = request.outline.sections[sectionIndex - 1];
@@ -334,7 +335,7 @@ function sceneDesignBrief(
         'Mỗi beat phải tạo một thay đổi thị giác có ý nghĩa; tái sử dụng hệ node chung nhưng không được để các beat sau chỉ đổi text hoặc màu.',
     },
     composition:
-      'Duy trì một visual anchor xuyên scene, phân cấp foreground/midground/background và chừa safe margin cho khung dọc.',
+      `Duy trì một visual anchor xuyên scene, phân cấp foreground/midground/background và chừa safe margin trong khung ${frame.width}x${frame.height}.`,
   };
 }
 
@@ -431,7 +432,7 @@ function buildPrompt(
     `Mặc định mọi Txt phải dùng fontFamily={${JSON.stringify(MOTION_CANVAS_DEFAULT_FONT_FAMILY)}}. Chỉ đặt font khác khi góp ý người dùng hoặc visualDirection yêu cầu rõ ràng.`,
     'Giá trị flex dùng kebab-case như space-between, không dùng spaceBetween.',
     'Scene phải tự chứa toàn bộ node và animation, chạy độc lập và không import file tương đối.',
-    'Thiết kế cho khung dọc 1080x1920, ưu tiên hình khối, vị trí, màu và chuyển động để giải thích bản chất.',
+    'Thiết kế đúng theo canvas trong JSON. Mọi kích thước, tọa độ và safe margin phải tỷ lệ với canvas.width/canvas.height; tuyệt đối không mặc định hoặc hard-code bố cục 1080x1920. scene-background phải phủ đúng canvas, còn mọi nội dung phải nằm trong vùng nhìn của canvas đã yêu cầu.',
     'Trước khi viết source, tự lập blueprint ngắn trong suy luận gồm visual anchor, vai trò từng node và thay đổi chính của từng beat; không xuất blueprint ra JSON.',
     'Tuân thủ designBrief. Chất lượng và mật độ visual của scene sau phải ngang scene đầu: mỗi beat cần một thay đổi hình học/chuyển động có ý nghĩa, không được chỉ đổi text hoặc màu ở các beat cuối.',
     'Giữ một visual anchor xuyên scene để mạch hình ảnh liền lạc, nhưng mỗi beat phải tiến triển trạng thái rõ ràng thay vì thay toàn bộ bố cục.',
@@ -1232,6 +1233,7 @@ function fallbackSceneSource(
   request: MotionCanvasGenerationRequest,
   sectionIndex: number,
 ) {
+  const frame = request.videoFrame ?? request.topicInput.videoFrame ?? defaultVideoFrame;
   const outlineSection = request.outline.sections[sectionIndex]!;
   const beats = request.voiceVisualPlan.sections[sectionIndex]!.beats;
   const background = request.topicInput.background;
@@ -1239,10 +1241,26 @@ function fallbackSceneSource(
   const foreground = backgroundTone === 'light' ? '#18342C' : '#F3F7F4';
   const trackColor = backgroundTone === 'light' ? '#D7E1DB' : '#365149';
   const colors = ['#51B68E', '#ED8F67', '#71A7E8', '#D8B85A'];
+  // Keep the recovery path safe for every user-selected frame, including square
+  // and landscape canvases. These ratios intentionally reproduce the previous
+  // portrait composition without leaking 1080x1920 assumptions into output.
+  const titleY = -Math.round(frame.height * 0.3385);
+  const titleWidth = Math.round(frame.width * 0.815);
+  const titleFontSize = Math.max(26, Math.round(frame.width * 0.061));
+  const cardWidth = Math.round(frame.width * 0.796);
+  const cardHeight = Math.max(96, Math.round(frame.height * 0.271));
+  const cardRadius = Math.max(18, Math.round(frame.width * 0.048));
+  const cardPadding = Math.max(20, Math.round(frame.width * 0.059));
+  const labelWidth = Math.round(frame.width * 0.676);
+  const labelFontSize = Math.max(24, Math.round(frame.width * 0.044));
+  const progressY = Math.round(frame.height * 0.3385);
+  const progressWidth = Math.round(frame.width * 0.704);
+  const progressHeight = Math.max(8, Math.round(frame.height * 0.0094));
+  const progressRadius = Math.max(4, Math.round(progressHeight / 2));
   const beatBlocks = beats.map((beat, beatIndex) => {
     const number = beatIndex + 1;
     const description = beat.visualDescription.replace(/\s+/g, ' ').trim().slice(0, 110);
-    const progress = Math.round(((beatIndex + 1) / beats.length) * 760);
+    const progress = Math.round(((beatIndex + 1) / beats.length) * progressWidth);
     const color = colors[beatIndex % colors.length]!;
     return `  yield* waitUntil('beat:${beat.id}:start');
   const beatDuration${number} = useDuration('beat:${beat.id}:end');
@@ -1264,15 +1282,15 @@ export default makeScene2D(function* (view) {
   const progressFill = createRef<Rect>();
 
   view.add(
-    <Rect key="scene-background" width={1080} height={1920} fill={${JSON.stringify(background.color)}}>
+    <Rect key="scene-background" width={${frame.width}} height={${frame.height}} fill={${JSON.stringify(background.color)}}>
       <Layout key="scene-content-root">
-        <Layout key="block-scene-heading" y={-650}>
+        <Layout key="block-scene-heading" y={${titleY}}>
           <Txt
             key="scene-heading"
             text={${JSON.stringify(outlineSection.title.slice(0, 80))}}
-            width={880}
+            width={${titleWidth}}
             fill={${JSON.stringify(foreground)}}
-            fontSize={66}
+            fontSize={${titleFontSize}}
             fontWeight={700}
             textAlign={'center'}
           />
@@ -1280,34 +1298,34 @@ export default makeScene2D(function* (view) {
         <Rect
           key="block-concept-card"
           ref={conceptCard}
-          width={860}
-          height={520}
-          radius={52}
+          width={${cardWidth}}
+          height={${cardHeight}}
+          radius={${cardRadius}}
           fill={'#51B68E'}
-          padding={64}
+          padding={${cardPadding}}
         >
         <Txt
           key="concept-label"
           ref={conceptLabel}
           text={'Đang chuẩn bị visual…'}
-          width={730}
+          width={${labelWidth}}
           fill={'#10231D'}
-          fontSize={48}
+          fontSize={${labelFontSize}}
           fontWeight={650}
           textAlign={'center'}
         />
         </Rect>
-        <Layout key="block-progress-track" y={650}>
-          <Rect key="progress-track" width={760} height={18} radius={9} fill={${JSON.stringify(trackColor)}}>
+        <Layout key="block-progress-track" y={${progressY}}>
+          <Rect key="progress-track" width={${progressWidth}} height={${progressHeight}} radius={${progressRadius}} fill={${JSON.stringify(trackColor)}}>
             <Rect
               key="progress-fill"
               ref={progressFill}
               width={0}
-              height={18}
-              radius={9}
+              height={${progressHeight}}
+              radius={${progressRadius}}
               fill={${JSON.stringify(foreground)}}
               offsetX={-1}
-              x={-380}
+              x={${-Math.round(progressWidth / 2)}}
             />
           </Rect>
         </Layout>

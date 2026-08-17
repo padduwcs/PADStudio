@@ -845,7 +845,15 @@ test('Motion Canvas generator hoàn tất bằng fallback an toàn khi cả lư�
     runtimeDirectory,
     timeoutMs: 1_000,
   });
-  const request = createSingleSceneGenerationRequest();
+  const request = {
+    ...createSingleSceneGenerationRequest(),
+    videoFrame: {
+      aspectRatio: 'square' as const,
+      width: 480,
+      height: 480,
+      fps: 24 as const,
+    },
+  };
 
   const result = await generator.generate(request);
 
@@ -854,6 +862,8 @@ test('Motion Canvas generator hoàn tất bằng fallback an toàn khi cả lư�
     result.scenes[0]!.source,
     /fontFamily=\{"Times New Roman, Times, serif"\}/u,
   );
+  assert.match(result.scenes[0]!.source, /width=\{480\} height=\{480\}/u);
+  assert.doesNotMatch(result.scenes[0]!.source, /1080|1920/u);
   validateMotionCanvasSceneSource(result.scenes[0]!.source);
   validateMotionCanvasTimingContract(
     result.scenes[0]!.source,
