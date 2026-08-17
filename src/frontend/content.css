@@ -24,6 +24,11 @@
 .color-field code { font-size: .9rem; font-weight: 600; }
 .frame-field { min-width: 0; padding: 0; border: 0; }
 .frame-field legend { padding: 0; margin-bottom: 8px; }
+.duration-field { grid-column: 1 / -1; min-width: 0; padding: 0; border: 0; }
+.duration-field legend { padding: 0; margin-bottom: 8px; }
+.custom-duration-control { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; color: var(--ink-soft); font-size: .82rem; font-weight: 500; }
+.custom-duration-control input { width: 76px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); background: var(--control-bg); }
+.custom-duration-control small { flex-basis: 100%; }
 .frame-presets { display: flex; flex-wrap: wrap; gap: 8px; }
 .frame-presets button { padding: 9px 11px; border: 1px solid var(--line-strong); border-radius: 10px; color: var(--ink-soft); background: var(--control-bg); cursor: pointer; font-size: .82rem; font-weight: 650; }
 .frame-presets button.is-selected { border-color: var(--green-700); color: var(--green-700); background: var(--green-100); }

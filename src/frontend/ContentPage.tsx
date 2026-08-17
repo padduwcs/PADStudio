@@ -2,12 +2,14 @@ import {type FormEvent, useEffect, useRef, useState} from 'react';
 import {
   TopicInputSchema,
   defaultVideoBackground,
+  type TopicInput,
   type TopicProject,
 } from '../shared/topic.ts';
 import {
   defaultVideoFrame,
   type VideoFrame,
 } from '../shared/videoFormat.ts';
+import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import {
   ApiRequestError,
   createTopicProject,
@@ -26,6 +28,8 @@ type ContentForm = {
   narrationSourceText: string;
   backgroundColor: string;
   frame: VideoFrame;
+  duration: TopicInput['duration'];
+  targetDurationMinutes: number;
 };
 
 const framePresets: Array<{label: string; frame: VideoFrame}> = [
@@ -40,12 +44,24 @@ const framePresets: Array<{label: string; frame: VideoFrame}> = [
   },
 ];
 
+const durationOptions: Array<{
+  value: TopicInput['duration'];
+  label: string;
+}> = [
+  {value: 'concise', label: 'Ngắn gọn · 1–2 phút'},
+  {value: 'standard', label: 'Tiêu chuẩn · 3–5 phút'},
+  {value: 'deep', label: 'Chuyên sâu · 6–8 phút'},
+  {value: 'custom', label: 'Tùy chỉnh'},
+];
+
 function initialForm(project?: TopicProject): ContentForm {
   return {
     topic: project?.topicInput.topic ?? '',
     narrationSourceText: project?.narration?.sourceText ?? '',
     backgroundColor: project?.topicInput.background.color ?? defaultVideoBackground.color,
     frame: project?.topicInput.videoFrame ?? defaultVideoFrame,
+    duration: project?.topicInput.duration ?? 'standard',
+    targetDurationMinutes: project?.topicInput.targetDurationMinutes ?? 10,
   };
 }
 
@@ -57,6 +73,9 @@ function buildTopicInput(form: ContentForm) {
       color: form.backgroundColor,
     },
     videoFrame: form.frame,
+    duration: form.duration,
+    targetDurationMinutes:
+      form.duration === 'custom' ? form.targetDurationMinutes : undefined,
   });
 }
 
@@ -251,6 +270,14 @@ export function ContentPage({projectId}: {projectId?: string}) {
               {form.frame.aspectRatio === 'custom' ? <><label>Rộng <input type="number" min={480} max={3840} step={2} value={form.frame.width} onChange={event => update('frame', {...form.frame, width: event.currentTarget.valueAsNumber})} /></label><span>×</span><label>Cao <input type="number" min={480} max={3840} step={2} value={form.frame.height} onChange={event => update('frame', {...form.frame, height: event.currentTarget.valueAsNumber})} /></label></> : <span>{form.frame.width} × {form.frame.height}</span>}
               <label>FPS <select value={form.frame.fps} onChange={event => update('frame', {...form.frame, fps: Number(event.currentTarget.value) as VideoFrame['fps']})}><option value={24}>24</option><option value={30}>30</option><option value={60}>60</option></select></label>
             </div>
+          </fieldset>
+          <fieldset className="content-field duration-field">
+            <legend>Thời lượng lời thoại</legend>
+            <div className="frame-presets">
+              {durationOptions.map(option => <button key={option.value} type="button" className={form.duration === option.value ? 'is-selected' : ''} onClick={() => update('duration', option.value)}>{option.label}</button>)}
+            </div>
+            {form.duration === 'custom' && <label className="custom-duration-control">Mục tiêu <input type="number" min={pipelineSafetyLimits.minimumCustomDurationMinutes} max={pipelineSafetyLimits.maximumCustomDurationMinutes} step="0.1" value={Number.isFinite(form.targetDurationMinutes) ? form.targetDurationMinutes : ''} onChange={event => update('targetDurationMinutes', event.currentTarget.valueAsNumber)} /> phút <small>Mục tiêu linh hoạt ±15% để lời thoại tự nhiên.</small></label>}
+            <small>AI dùng thời lượng này để điều chỉnh độ dài và nhịp của bản nháp.</small>
           </fieldset>
         </div>
         {error && <p className="submit-error" role="alert">{error}</p>}
