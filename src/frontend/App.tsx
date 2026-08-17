@@ -51,6 +51,7 @@ import {
   projectNarrationPath,
   projectOutlinePath,
   projectProductionPath,
+  projectSceneReviewPath,
   projectStepPath,
   projectTopicPath,
   projectVoiceVisualPath,
@@ -73,6 +74,10 @@ import {useTheme, type PadTheme} from './useTheme.ts';
 const VoiceVisualPage = lazy(async () => {
   const module = await import('./VoiceVisualPage.tsx');
   return {default: module.VoiceVisualPage};
+});
+const SceneReviewPage = lazy(async () => {
+  const module = await import('./SceneReviewPage.tsx');
+  return {default: module.SceneReviewPage};
 });
 const MotionCanvasPage = lazy(async () => {
   const module = await import('./MotionCanvasPage.tsx');
@@ -285,7 +290,7 @@ function PipelineSidebar({
       <nav aria-label="Các bước sản xuất video">
         <ol className="pipeline-list">
           {workflowSteps.map((label, index) => {
-            const unavailable = !hasProject || index > 2;
+            const unavailable = !hasProject || index > 3;
             return (
             <li
               className={index === activeStep ? 'is-active' : ''}
@@ -2591,7 +2596,9 @@ export default function App() {
   const [newProjectKey, setNewProjectKey] = useState(0);
   const [projectReloadKey, setProjectReloadKey] = useState(0);
   const activeStep =
-    route.name === 'project-production'
+    route.name === 'project-scene-review'
+      ? 3
+      : route.name === 'project-production'
       ? 2
       : route.name === 'project-narration'
       ? 1
@@ -2693,13 +2700,15 @@ export default function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onSelectStep={(stepIndex) => {
-          if (!activeProjectId || stepIndex > 2) return;
+          if (!activeProjectId || stepIndex > 3) return;
           navigate(
             stepIndex === 0
               ? projectTopicPath(activeProjectId)
               : stepIndex === 1
                 ? projectNarrationPath(activeProjectId)
-                : projectProductionPath(activeProjectId),
+                : stepIndex === 2
+                  ? projectProductionPath(activeProjectId)
+                  : projectSceneReviewPath(activeProjectId),
           );
         }}
       />
@@ -2757,6 +2766,9 @@ export default function App() {
               )}
               {route.name === 'project-production' && (
                 <ProductionPage projectId={route.projectId} />
+              )}
+              {route.name === 'project-scene-review' && (
+                <SceneReviewPage projectId={route.projectId} />
               )}
               {route.name === 'project-outline' && (
                 <OutlinePage projectId={route.projectId} />

@@ -11,6 +11,7 @@ import './render.css';
 import './content.css';
 import './pronunciation.css';
 import './production.css';
+import './sceneReview.css';
 import './theme.css';
 import {initializeTheme} from './useTheme.ts';
 

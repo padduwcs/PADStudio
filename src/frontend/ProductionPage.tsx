@@ -12,7 +12,7 @@ import {
 } from './api.ts';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {ElevenLabsConnectionCard} from './ElevenLabsConnectionCard.tsx';
-import {navigate, projectNarrationPath} from './router.ts';
+import {navigate, projectNarrationPath, projectSceneReviewPath} from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useElevenLabsConnection} from './useElevenLabsConnection.ts';
 
@@ -164,7 +164,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
           <div className="production-result"><strong>{sceneReady ? 'Scene đã sinh' : 'Sẵn sàng phân tích trực tiếp'}</strong><p>{sceneReady ? `${project.motionCanvasBundle!.scenes.length} scene đã chờ bạn review và chỉnh sửa.` : 'Không tạo outline hoặc voice–visual riêng cho người dùng.'}</p></div>
         </section>
       </div>
-      <footer className="production-footer"><div><strong>{sceneReady ? 'Hoàn tất lượt tạo' : audioReady ? 'Audio đã sẵn sàng, tiếp tục sinh scene' : 'Sẵn sàng sản xuất'}</strong><p>{message || 'Mỗi dịch vụ chỉ được gọi khi phần trước đã sẵn sàng.'}</p></div><button className="submit-button" type="button" disabled={state === 'working' || sceneReady || (!audioReady && (!eleven.connected || !voiceId || !modelId))} onClick={() => void runProduction()}>{state === 'working' ? 'Đang xử lý…' : sceneReady ? 'Đã tạo xong' : audioReady ? 'Sinh scene' : 'Tạo audio và scene'}</button></footer>
+      <footer className="production-footer"><div><strong>{sceneReady ? 'Scene đã sẵn sàng review' : audioReady ? 'Audio đã sẵn sàng, tiếp tục sinh scene' : 'Sẵn sàng sản xuất'}</strong><p>{message || 'Mỗi dịch vụ chỉ được gọi khi phần trước đã sẵn sàng.'}</p></div>{sceneReady ? <button className="submit-button" type="button" onClick={() => navigate(projectSceneReviewPath(project.id))}>Review & chỉnh scene</button> : <button className="submit-button" type="button" disabled={state === 'working' || (!audioReady && (!eleven.connected || !voiceId || !modelId))} onClick={() => void runProduction()}>{state === 'working' ? 'Đang xử lý…' : audioReady ? 'Sinh scene' : 'Tạo audio và scene'}</button>}</footer>
     </main>
   );
 }

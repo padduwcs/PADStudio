@@ -4987,7 +4987,10 @@ export function createPadStudioServer(options: AppOptions = {}) {
         );
 
         const voiceBundle: VoiceBundle = {
-          status: 'draft',
+          // Narration-first projects have exactly one human voice gate: the
+          // reviewed pronunciation snapshot. Audio is a deterministic output
+          // of that snapshot, so it must not introduce a second approval.
+          status: directNarration ? 'approved' : 'draft',
           contentRevision:
             (currentProject.voiceBundle?.contentRevision ?? 0) + 1,
           sourceNarrationRevision: plan.narrationRevision,

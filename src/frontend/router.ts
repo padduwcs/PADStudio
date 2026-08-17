@@ -95,6 +95,7 @@ export type AppRoute =
   | {name: 'project-topic'; projectId: string}
   | {name: 'project-narration'; projectId: string}
   | {name: 'project-production'; projectId: string}
+  | {name: 'project-scene-review'; projectId: string}
   | {name: 'project-outline'; projectId: string}
   | {name: 'project-voice-visual'; projectId: string}
   | {name: 'project-motion-canvas'; projectId: string}
@@ -135,6 +136,13 @@ export function parseRoute(pathname: string): AppRoute {
     const projectId = decodeProjectId(productionMatch[1]);
     if (!projectId) return {name: 'new-topic'};
     return {name: 'project-production', projectId};
+  }
+
+  const sceneReviewMatch = /^\/projects\/([^/]+)\/scene-review\/?$/.exec(pathname);
+  if (sceneReviewMatch?.[1]) {
+    const projectId = decodeProjectId(sceneReviewMatch[1]);
+    if (!projectId) return {name: 'new-topic'};
+    return {name: 'project-scene-review', projectId};
   }
 
   const outlineMatch = /^\/projects\/([^/]+)\/outline\/?$/.exec(pathname);
@@ -232,6 +240,10 @@ export function projectNarrationPath(projectId: string) {
 
 export function projectProductionPath(projectId: string) {
   return `/projects/${encodeURIComponent(projectId)}/production`;
+}
+
+export function projectSceneReviewPath(projectId: string) {
+  return `/projects/${encodeURIComponent(projectId)}/scene-review`;
 }
 
 export function projectVoiceVisualPath(projectId: string) {
