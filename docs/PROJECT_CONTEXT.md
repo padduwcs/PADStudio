@@ -1,299 +1,59 @@
-# PAD Studio — Project Context
+# PAD Studio — Bối cảnh sản phẩm
 
-Tài liệu này lưu bối cảnh và định hướng lâu dài của PAD Studio. Agent nên đọc tài liệu này trước khi đề xuất kiến trúc, triển khai tính năng hoặc tạo nội dung cho project.
+## Mục tiêu
 
-## PAD Studio là gì?
+PAD Studio giúp tạo video giải thích ngắn từ nội dung học. Sản phẩm cần rõ ràng, ít thao tác và để người dùng tập trung vào nội dung thay vì điều phối nhiều công cụ.
 
-**PAD Studio — Precise Animated Demonstration Studio** là ứng dụng web chạy cục bộ, hỗ trợ bán tự động quá trình sản xuất video giảng giải trực quan bằng animation.
+## Trải nghiệm cốt lõi
 
-Project hướng đến việc kết hợp khả năng lập kế hoạch của AI, scene được tạo bằng code, voice tổng hợp và công cụ chỉnh sửa trực quan. Người dùng giữ quyền review và điều chỉnh ở các bước quan trọng.
+Luồng chính có năm bước: **Nội dung → Cách đọc → Giọng đọc & scene → Chỉnh scene → Xuất video**.
 
-PAD Studio không phải công cụ tạo video hoàn toàn tự động từ một prompt. Đây là một studio có AI hỗ trợ, trong đó chất lượng giảng giải và độ chính xác vẫn do người dùng kiểm soát.
+Giọng được tạo trước. Từ narration đó, hệ thống sinh scene và đồng bộ thời lượng. Ở bước chỉnh scene, người dùng chỉ thấy **một editor**: visual, timeline và audio chạy cùng playhead. Họ sửa các điểm lệch, thêm/bớt nội dung hoặc watermark, sau đó xuất video.
 
-## Trọng tâm nội dung
+## Nguyên tắc UX
 
-Giai đoạn đầu tập trung vào:
+- Đưa lựa chọn quan trọng lên sớm; không yêu cầu người dùng đồng bộ lại một cách thủ công khi hệ thống đã có đủ dữ liệu.
+- Mỗi bước chỉ có một mục đích và một CTA chính.
+- Mặc định tốt hơn nhiều tuỳ chọn. Chỉ hiện điều khiển nâng cao khi việc đó cần thiết.
+- Preview phải phản ánh kết quả xuất: đúng scene, lời đọc, thời lượng và watermark.
+- Thông báo lỗi cần nêu việc người dùng có thể làm tiếp theo; không làm mất dữ liệu đang nhập.
+- Giao diện tiếng Việt, ngắn gọn, nhất quán về thuật ngữ và font.
 
-- Thuật toán và cấu trúc dữ liệu.
-- Người mới học hoặc chưa có mô hình tư duy rõ về chủ đề.
-- Video giải thích bản chất bằng hình ảnh logic và trực quan.
+## Dữ liệu và các bất biến
 
-Video không hiển thị source code và không phụ thuộc vào caption để truyền đạt nội dung chính. Voice và animation là hai phương tiện giải thích trung tâm.
+- Project là nguồn sự thật cho toàn bộ tiến trình và artefact.
+- Quy tắc phát âm có phạm vi `project` hoặc `global`; lưu ngay khi thêm/sửa/xoá thành công.
+- Narration là nguồn thời gian cho scene. Khi narration thay đổi, các artefact phụ thuộc phải được làm mới hoặc đánh dấu cần tạo lại.
+- Chỉ tồn tại một timeline chỉnh scene đang hoạt động cho một project. Audio phải theo playhead của timeline đó.
+- Watermark thuộc cấu hình render, được preview tại editor và phải đi vào file xuất.
+- Render hoàn tất chỉ khi file video được xác thực có video H.264 và audio AAC.
 
-## Nguyên tắc giảng giải
+## Bản đồ kỹ thuật ngắn
 
-- Giải thích bản chất và trực giác trước khi đi vào chi tiết.
-- Mỗi hình ảnh phải có vai trò truyền đạt thông tin, không chỉ để trang trí.
-- Chia kiến thức thành các bước vừa đủ để người mới có thể theo dõi.
-- Voice nói đến đâu, visual cần hỗ trợ đúng ý ở thời điểm đó.
-- Tránh đưa quá nhiều đối tượng, chuyển động hoặc ý tưởng lên màn hình cùng lúc.
-- Ưu tiên sự rõ ràng và chính xác hơn hiệu ứng phức tạp.
-- AI tạo đề xuất; người dùng review và quyết định nội dung cuối cùng.
+| Khu vực | Vai trò |
+| --- | --- |
+| `src/frontend` | React UI, router, trạng thái workflow, editor và API client. |
+| `src/backend` | HTTP routes, project state, ElevenLabs, generation, workspace, render. |
+| `src/shared` | Schema, pipeline, timing, phát âm và quy tắc video dùng chung. |
+| `motion-canvas-runtime` | Runtime render/preview cho Motion Canvas. |
+| `docs/ARCHITECTURE.md` | Quyết định kiến trúc, adapter và ràng buộc chi tiết. |
 
-## Quy trình sản xuất định hướng
+Media và workspace là dữ liệu runtime. Chúng không phải asset nguồn để đưa vào git. Secret chỉ tồn tại ở backend qua biến môi trường.
 
-```text
-Nhập chủ đề
-→ AI phân tích và tạo mạch giảng
-→ Người dùng review nội dung
-→ AI tạo kế hoạch voice–visual
-→ Người dùng review kịch bản
-→ Codex sinh scene Motion Canvas
-→ Người dùng review scene
-→ ElevenLabs tạo voice
-→ Đồng bộ animation theo voice
-→ Người dùng chỉnh bằng Layout Editor
-→ Render video cuối
+## Quy tắc phát triển
+
+- Giữ UI tối giản; tránh tạo thêm màn hình hoặc preview song song khi một editor đã đáp ứng đủ.
+- Sửa state tại nguồn và để pipeline invalidation rõ ràng; không vá bằng dữ liệu tạm ở frontend.
+- Bảo toàn dữ liệu người dùng khi API lỗi hoặc chuyển bước không hợp lệ.
+- Với API tính phí, không retry mù quáng sau timeout hay ngắt kết nối mơ hồ.
+- Khi thêm tính năng render, kiểm tra cả preview lẫn artefact MP4 cuối cùng.
+- Ưu tiên test unit/integration cho flow thay đổi và chạy build trước khi bàn giao.
+
+## Kiểm chứng tối thiểu
+
+```powershell
+npm test
+npm run build
 ```
 
-Quy trình có thể được điều chỉnh trong quá trình phát triển, nhưng cần giữ các điểm review trước những bước tốn chi phí hoặc khó sửa.
-
-## Mạch giảng và kế hoạch voice–visual
-
-Hai lớp kế hoạch cần được phân biệt:
-
-- **Mạch giảng** xác định nội dung cần giải thích, thứ tự các ý và mô hình tư duy muốn xây dựng cho người xem.
-- **Kế hoạch voice–visual** xác định lời thuyết minh, hình ảnh tương ứng, hành động animation và timing của từng ý.
-
-Một hình ảnh đẹp nhưng không hỗ trợ đúng mạch giảng không được xem là kết quả tốt. Tương tự, voice đúng nội dung nhưng không có visual đồng bộ cũng chưa đạt mục tiêu của PAD Studio.
-
-Triển khai đầu tiên dùng `codex app-server` để đọc toàn bộ đầu vào, tạo bản tóm
-tắt cách AI hiểu yêu cầu và đề xuất mạch giảng có cấu trúc. Nội dung người dùng
-nhập luôn được giữ nguyên; kết quả AI là bản nháp riêng, có thể chỉnh tay hoặc
-yêu cầu AI làm lại và chỉ trở thành đầu vào cho voice–visual sau khi người dùng
-chốt. Provider cụ thể có thể thay đổi về sau mà không làm thay đổi ranh giới
-review này.
-
-Bước voice–visual hiện chia từng ý đã chốt thành các beat có bốn phần: lời
-thuyết minh, visual cần thấy, chuyển động và thời lượng. Lời đọc phải được viết
-như một bài nói xuyên suốt: section sau tiếp tục nhịp và ý của section trước,
-không chào lại, không mở bài hoặc kết luận nhỏ lặp lại. Thứ tự section tiếp tục
-theo mạch giảng; người dùng chỉ sắp xếp beat bên trong từng section để không vô
-tình thay đổi logic giảng giải.
-
-Thời lượng video được dẫn dắt bởi narration, không bởi độ dài animation mà AI
-tự đoán. Outline phân bổ ngân sách theo lựa chọn nhanh hoặc mục tiêu phút tùy chỉnh,
-rồi chuyển thành word budget cho từng section. AI viết nội dung trong ngân sách đó; PAD Studio
-tính duration beat từ số từ và số ký tự, cộng thêm `visualHoldSeconds` do người
-dùng chủ động đặt. Khi đã có voice thật, tốc độ đọc đo từ alignment của cùng
-voice/model/speed được dùng để hiệu chỉnh những kế hoạch mới. Timing bắt đầu
-được tính nối tiếp từ duration, không lưu hai loại mốc có thể mâu thuẫn. AI tạo
-bản nháp có cấu trúc, còn người dùng chỉnh sửa và chốt trước khi hệ thống sinh
-scene hoặc gọi dịch vụ voice.
-
-Hiện tại Codex sinh một scene cho mỗi section từ kế hoạch đã chốt. Các section
-được tách thành những Codex turn độc lập và chạy song song có giới hạn. Pipeline
-theo model mặc định của Codex catalog, chọn mức reasoning chất lượng cao khi
-capability cho phép (`medium` cho lượt dựng đầy đủ) và tự lùi về default hợp lệ
-thay vì phụ thuộc tên model.
-
-Source scene được kiểm tra cú pháp, policy và timing contract trước khi ghi workspace.
-Đầu ra sai được sửa một lần theo diagnostics, rồi sinh sạch từ context gốc một lần;
-nếu cả hai vẫn sai, fallback cục bộ hợp lệ hoàn tất riêng section đó. Luồng này có
-trần số lượt gọi rõ ràng, trong khi timeout/kết nối vẫn được báo thật để retry chỉ
-chạy lại scene chưa hoàn tất.
-
-Kết quả được giới hạn bằng structured output và chính sách source, sau đó phải
-biên dịch TypeScript thành công trước khi trở thành bản nháp có thể review.
-Retry giữ lại scene đã thành công và chỉ chạy lại scene chưa hoàn tất. Mỗi lần
-sinh được lưu thành workspace bất biến riêng trong
-project; thay đổi mạch giảng hoặc kế hoạch voice–visual làm scene downstream
-trở thành dữ liệu cũ và buộc sinh lại. Người dùng vẫn là người chốt scene trước
-bước sản xuất tiếp theo.
-
-## Master narration
-
-Voice là một track toàn bài, không phải tập hợp file section. PAD Studio ghép
-nguyên văn toàn bộ beat bằng các ranh giới xuống dòng ổn định và ưu tiên gửi
-trong một request ElevenLabs để cùng một lần suy diễn quyết định voice,
-prosody và nhịp đọc từ đầu đến cuối. Nếu giới hạn ký tự của model bắt buộc phải
-chia, hệ thống chọn số continuity group tối thiểu tại ranh giới beat/section an
-toàn; model có capability phù hợp nhận context và request ID trước đó.
-
-Các chunk thô và alignment gốc vẫn được giữ trong generation bất biến để chẩn
-đoán. FFmpeg trim từng chunk theo alignment rồi tạo
-`voice/.../audio/narration.wav`; alignment toàn bài lưu chỉ số ký tự và thời
-gian global của section/beat. UI chỉ có một master player. Thao tác “nghe
-section” seek một khoảng trên cùng track, không phát một file TTS độc lập.
-
-Narration có `narrationRevision` riêng. Chỉnh lời hoặc cấu trúc beat làm voice
-trở thành cũ; chỉ chỉnh visual/animation giữ nguyên narration revision và không
-buộc tiêu credit để tạo lại audio. Project schema v7 dùng audio theo section
-được nâng lên v8 bằng cách giữ nội dung nhưng yêu cầu tạo lại voice/sync, vì
-không thể biến các lần suy diễn cũ thành một giọng liên tục một cách trung thực.
-
-## Đồng bộ animation theo voice
-
-Bước đồng bộ hiện hành là một phép biến đổi cục bộ, xác định và không gọi thêm
-AI hoặc ElevenLabs. Đầu vào bắt buộc là Motion Canvas và voice cùng tham chiếu
-kế hoạch voice–visual hiện hành, đều đã được người dùng chốt. Mỗi scene mới có
-timing contract v1 với đúng cặp event `beat:<beat-id>:start/end`; alignment voice
-thật thay các mốc dự kiến trong file `.meta`, còn source scene tiếp tục lấy thời
-lượng bằng `useDuration`.
-
-Trong source, mốc start được đăng ký bởi `waitUntil(start)` và mốc end bởi
-`useDuration(end)`; không đăng ký lại end bằng `waitUntil`. Scene lưu
-`beatEndTime` và chờ phần thời gian còn lại sau visual, bảo đảm duration runtime
-khớp narration trong sai số một frame. Visual node phải được khai báo JSX tường
-minh với semantic key duy nhất; generator từ chối map/loop và constructor tạo node.
-Workspace Sync giữ nguyên semantic key hợp lệ, chỉ prefix key legacy/dynamic. Với
-generation timing v1 đời đầu, Sync tiếp tục chuẩn hóa lỗi tương thích trên bản sao
-để player không gặp duplicate event/node key hoặc kết thúc beat sớm, còn source
-Motion Canvas gốc vẫn bất biến.
-
-Mỗi generation đồng bộ được lưu bất biến tại
-`projects/<project-id>/sync/generations/<generation-id>/`. Workspace chứa bản
-sao scene, metadata timing thật, bản chuẩn hóa của master track tại
-`audio/narration.wav` và `project.ts` đã gắn audio. Sync không ghép lại theo
-section và không gọi AI/ElevenLabs. Trước khi được đưa ra review, workspace phải
-biên dịch TypeScript thành công và thời lượng audio phải khớp tổng timing voice
-trong sai số tối đa một frame. Scene và voice nguồn không bị sửa hoặc ghi đè.
-
-Review đồng bộ lấy player animation + narration làm bề mặt chính, không lấy
-timeline làm đại diện cho trải nghiệm video. Backend dựng một Motion Canvas
-player chỉ-đọc, cục bộ và tạm thời cho đúng generation; UI nhúng player này để
-play/pause, tua, mute và xem toàn màn hình. Timeline section/beat vẫn còn nhưng
-được thu gọn dưới dạng dữ liệu chẩn đoán. Nút chốt chỉ mở sau khi đúng iframe,
-origin và generation báo render sẵn sàng, rồi người dùng thực sự bấm phát. Motion Canvas
-có thể tự chuẩn hóa file `.meta` khi nạp project, nên preview backend, lệnh `sync:serve`
-và validator stage Sync luôn chạy trên bản sao tạm copy-on-write. Vite cache và output
-preview cũng nằm trong session tạm; generation nguồn không bị ghi ngược chỉ vì được xem.
-
-Bundle đồng bộ lưu revision của cả hai nguồn cùng mapping section/scene/beat.
-Nếu scene, event hoặc timing voice thay đổi, bundle tự trở thành draft cũ và
-không thể chốt cho đến khi đồng bộ lại. Workspace legacy chưa có timing contract
-v1 phải sinh lại Motion Canvas; hệ thống không suy đoán timing từ code cũ.
-
-## Scene và component
-
-Mỗi video có scene và component riêng để có thể tùy biến theo cách giải thích của chủ đề đó. Không nên ép mọi video phụ thuộc vào một thư viện component dùng chung quá sớm.
-
-Code scene đã sinh nằm trong
-`projects/<project-id>/motion-canvas/generations/<generation-id>/`, tách khỏi
-code của Studio nhưng vẫn thuộc project và được quản lý cùng metadata video.
-
-## Layout Editor
-
-Layout Editor là bước 07, chỉ mở từ một generation Sync đã chốt và còn hiện hành.
-Người dùng chỉnh trực tiếp node Motion Canvas bằng kéo vị trí, scale, xoay, opacity,
-fill/stroke, độ dày viền, thứ tự layer, khóa thao tác và ẩn/khôi phục. Delete trong MVP
-là modifier `hidden`, không xóa JSX nên luôn có thể undo hoặc reset. Editor còn có
-undo/redo, copy/paste modifier, snap, grid, safe-zone, so sánh bản gốc và preview sạch.
-Timing/beat marker chỉ đọc trong MVP vì thay timing sau Sync có thể phá vỡ narration.
-
-Scene generation hiện hành bắt buộc có một `scene-content-root` trực tiếp trong
-`scene-background`; mỗi cụm visual độc lập nằm trong một container `block-*`. Manifest
-gắn role `background | content | block | element`, runtime tính bounding box hợp nhất
-của hậu duệ để block/toàn cảnh có transform riêng. Hit-test ưu tiên block, double-click
-đi vào phần tử con và Escape đi lên khung cha. Generation cũ không có role tiếp tục dùng
-chế độ legacy, không bị migration suy đoán cấu trúc.
-
-Motion Design và Layout Editor dùng chung timeline editor. Overlay hỗ trợ track số cho
-`x`, `y`, `scale`, `rotation`, `opacity`; mỗi keyframe lưu thời gian cục bộ scene, giá trị
-và easing. Runtime modifier là nguồn nội suy duy nhất cho canvas, hit-test, preview Sync
-và final render. Track animation được compose lên signal gốc thay vì ghi ngược source;
-static patch, visibility track và animation track có vòng đời độc lập. Tại ranh giới
-Motion Design → Sync, thời gian keyframe được scale đúng một lần từ planned duration sang
-synchronized duration; Layout overlay đã lưu không bị scale lặp lại. Timeline là dock
-thuộc editor shell nên vẫn hiện trong focus mode; sidebar chỉ giữ cây layer, còn scene
-strip/scrubber ở dock đảm nhiệm điều hướng để giao diện không có hai bộ chọn scene.
-Workspace editor dùng chung preference cục bộ cho zoom canvas `50%–300%` và kích thước
-ba panel Layers/Thuộc tính/Timeline. Tay nắm là ARIA separator, dùng được bằng pointer,
-phím mũi tên, Enter/Space và Home; nhấp đúp thu gọn hoặc khôi phục. Bộ giới hạn giữ vùng
-canvas tối thiểu, còn breakpoint hẹp bỏ split-resize và quay về bố cục xếp dọc đầy đủ.
-
-Thay đổi không được ghi ngược vào source Sync. Runtime áp modifier tạm thời trước khi
-render/hit-test rồi khôi phục raw signal trong `finally`. Bước render cuối tái sử dụng
-đúng adapter modifier và node fingerprint đã được Layout Editor xác minh. Backend lưu
-mỗi lần tự lưu thành overlay bất biến tại
-`projects/<project-id>/layout/generations/<generation-id>/`, gồm `overrides.json`,
-`editor-manifest.json` và manifest kiểm tra toàn vẹn. Overlay tham chiếu workspace Sync
-nguồn thay vì sao chép scene hoặc audio.
-
-Manifest node được runtime phát hiện trong đúng preview session, giới hạn kích thước và
-khóa bằng scene ID, node key, fingerprint, Sync generation/content revision/source hash.
-Preview, commit và approve dùng chung một verifier artifact: re-hash toàn bộ source Sync,
-khóa symlink và đối chiếu strict manifest/hash của overlay trước khi sử dụng.
-Sync preview và Layout preview đều sao chép workspace đã verify sang session tạm, từ chối
-symlink/junction rồi chỉ cho Motion Canvas thao tác trên bản sao. Cách này giữ cả source,
-audio và metadata timing của generation gốc thực sự bất biến trong lúc review/chỉnh sửa.
-Sync manifest v1 và v2 đều được re-hash ngay khi mở và trước mọi lần preview/chốt.
-Generation lịch sử có source không còn khớp hash đã chốt sẽ bị từ chối và phải
-Đồng bộ lại trước khi vào Layout.
-Node semantic có key rõ ràng là đường dài; generation cũ dùng auto-key chỉ được áp modifier
-trong đúng source generation/fingerprint và không tự carry-forward. Commit yêu cầu
-`If-Match`, base generation, source generation và session nonce; chốt chỉ mở sau khi
-runtime sẵn sàng, manifest đã lưu, modifier đã validate và người dùng đã phát/review đúng
-revision hiện tại.
-
-Editor bổ sung cho code chứ không thay thế logic scene. Codex vẫn sinh và sửa cấu trúc,
-animation hoặc nội dung phức tạp; Layout Editor xử lý các tinh chỉnh trực quan an toàn.
-
-## Final render
-
-Final render là bước 08 và chỉ nhận Layout hiện hành đã chốt cùng bản Sync nguồn đã chốt.
-Backend xác minh lại toàn bộ hash của workspace, sao chép nguồn sang workspace tạm
-copy-on-write rồi chạy Motion Canvas trong Chrome/Edge headless. Từng frame PNG được
-stream tuần tự vào FFmpeg qua `image2pipe`; hệ thống không ghi hàng nghìn frame tạm.
-Master narration được ghép làm audio AAC, còn hình được mã hóa H.264 `yuv420p`, CRF 18,
-đúng kích thước và fps của project với metadata fast-start.
-
-Sau khi dựng, FFprobe phải xác nhận codec, pixel format, kích thước và thời lượng. Video
-được hash trước khi manifest và `video.mp4` được đổi tên nguyên tử vào
-`projects/<project-id>/renders/generations/<generation-id>/`. Các generation không ghi
-đè nhau; thay đổi Layout làm render cũ mất tính hiện hành. API hỗ trợ trạng thái theo
-frame, HTTP Range để phát trong trình duyệt và tải MP4 mà không nạp cả file vào RAM.
-
-## Vai trò của các thành phần
-
-- **AI**: phân tích chủ đề, đề xuất mạch giảng và lập kế hoạch voice–visual.
-- **Người dùng**: review nội dung, quyết định cách giảng, chỉnh layout và timing.
-- **Codex**: cung cấp model cho mạch giảng, kế hoạch voice–visual và sinh code
-  scene Motion Canvas qua app-server; tiếp tục hỗ trợ sửa scene, triển khai và
-  bảo trì project.
-- **Motion Canvas**: nền tảng tạo animation bằng code.
-- **ElevenLabs**: tạo voice phục vụ video.
-- **PAD Studio**: kết nối các bước trên thành một quy trình sản xuất nhất quán.
-
-Các dịch vụ hoặc công nghệ cụ thể có thể thay đổi. Vai trò và ranh giới trách nhiệm quan trọng hơn tên công cụ.
-
-## Nguyên tắc phát triển
-
-- Giữ giải pháp gọn và dễ hiểu.
-- Xây theo nhu cầu thực tế của pipeline, tránh tổng quát hóa quá sớm.
-- Ưu tiên hoàn thiện một luồng sản xuất xuyên suốt trước khi mở rộng.
-- Tách nội dung, voice, visual, layout và timing đủ rõ để có thể chỉnh độc lập.
-- Không để thay đổi của video mới vô tình làm hỏng video đã hoàn thiện.
-- Những quyết định ảnh hưởng đến workflow hoặc chất lượng giảng giải cần được người dùng review.
-- Cấu trúc kỹ thuật phải phục vụ việc sản xuất video, không trở thành mục tiêu tự thân.
-
-Các ranh giới kỹ thuật đang bảo vệ những nguyên tắc trên:
-
-- API cập nhật project tổng quát chỉ được sửa đầu vào chủ đề và quay về bước
-  outline. Mọi artifact downstream phải đi qua endpoint chuyên biệt có kiểm tra
-  revision, nguồn hiện hành và review gate; không mở rộng generic update để
-  triển khai nhanh một bước mới.
-- Trạng thái `ready`/`stale` và phép đối chiếu section/beat/event dùng predicate
-  chung ở `src/shared/projectPipeline.ts`. Backend bổ sung kiểm tra hash narration
-  khi quyết định voice có còn đúng nguồn hay không.
-- Các giới hạn cấu trúc là cầu chì, không phải preset nội dung: tối đa 64 section,
-  64 beat/section, 512 beat toàn bài và thời lượng tùy chỉnh 0,5–180 phút. JSON
-  request bị giới hạn ở 16 MiB và tiếp tục phải qua schema strict để long-form
-  không bị từ chối giả trong khi payload bất thường vẫn bị chặn.
-- `npm run validate` là quality gate cục bộ chuẩn. CI chạy cùng gate trên
-  Node.js 24/Ubuntu 24.04, cài FFmpeg tường minh và smoke-test player bằng
-  trình duyệt headless; không gọi dịch vụ live hoặc tiêu quota.
-- Audio `.wav`/`.mp3`/`.pcm`/`.opus` mới được lưu bằng Git LFS. Mười file audio
-  legacy đã pin blob theo chính sách forward-only; chỉ migration riêng mới được
-  thay đổi lịch sử hoặc chuyển các blob cũ.
-
-## Cách agent sử dụng tài liệu này
-
-Khi làm việc với PAD Studio, agent cần:
-
-1. Dùng tài liệu này làm bối cảnh chung trước khi đưa ra đề xuất.
-2. Ưu tiên mục tiêu giảng giải trực quan và đồng bộ voice–visual.
-3. Không mặc định tự động hóa hoàn toàn các bước cần con người đánh giá.
-4. Không thiết kế hệ thống phức tạp hơn nhu cầu hiện tại nếu chưa có lý do rõ ràng.
-5. Phân biệt code của Studio với scene, component và tài nguyên thuộc từng video.
-6. Hỏi hoặc nêu rõ giả định khi một quyết định có thể làm thay đổi định hướng sản phẩm.
+Dùng `npm run validate` trước các thay đổi lớn hoặc release. Với ElevenLabs/Codex thật, dùng project ngắn để kiểm tra end-to-end và giữ chi phí ở mức thấp.

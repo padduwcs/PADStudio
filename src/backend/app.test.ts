@@ -101,6 +101,7 @@ async function startTestApp(
     layoutPreviewService?: LayoutPreviewService;
     finalRenderService?: FinalRenderService;
     pronunciationAuditService?: PronunciationAuditService;
+    frontendDirectory?: string;
   } = {},
 ) {
   const projectsDirectory = await mkdtemp(
@@ -130,6 +131,7 @@ async function startTestApp(
     layoutPreviewService: options.layoutPreviewService,
     finalRenderService: options.finalRenderService,
     pronunciationAuditService: options.pronunciationAuditService,
+    frontendDirectory: options.frontendDirectory,
     logger: {info() {}, error() {}},
   });
 
@@ -268,7 +270,13 @@ test('pronunciation review locks the audited snapshot and keeps a reusable libra
 });
 
 test('frontend chỉ fallback SPA cho route, không trả HTML cho asset thiếu', async (context) => {
-  const {baseUrl} = await startTestApp(context);
+  const frontendDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-frontend-test-'),
+  );
+  await writeFile(path.join(frontendDirectory, 'index.html'), '<!doctype html>');
+  context.after(() => rm(frontendDirectory, {recursive: true, force: true}));
+
+  const {baseUrl} = await startTestApp(context, {frontendDirectory});
 
   const route = await fetch(`${baseUrl}/projects/example/topic`);
   assert.equal(route.status, 200);
