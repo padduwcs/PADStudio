@@ -90,6 +90,20 @@ function isPresetFrame(frame: VideoFrame) {
   return framePresets.some(preset => sameFrame(frame, preset.frame));
 }
 
+function codexAccountLabel(connection: ReturnType<typeof useCodexConnection>) {
+  if (connection.checking) return 'Đang kiểm tra kết nối Codex';
+  if (connection.status?.state !== 'connected') return 'Codex chưa kết nối';
+  const account = connection.status.account;
+  const accountLabel = account.type === 'chatgpt'
+    ? account.email || 'Tài khoản ChatGPT'
+    : 'OpenAI API key';
+  const model = (
+    connection.selectedModelSummary?.displayName ?? connection.selectedModel
+  ) || 'Chưa chọn model';
+  const reasoning = connection.selectedReasoningEffort || 'Chưa chọn reasoning';
+  return `Đã kết nối: ${accountLabel} · ${model} · ${reasoning}`;
+}
+
 export function ContentPage({projectId}: {projectId?: string}) {
   const [project, setProject] = useState<TopicProject | null>(null);
   const [form, setForm] = useState<ContentForm>(() => initialForm());
@@ -102,6 +116,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
   const [narrationGenerationError, setNarrationGenerationError] = useState('');
   const creationId = useRef(createNewTopicCreationId());
   const codex = useCodexConnection();
+  const aiConnectionLabel = codexAccountLabel(codex);
 
   useEffect(() => {
     if (!projectId) {
@@ -246,7 +261,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
           <span>Lời thoại gốc</span>
           <small>Đây là nội dung bạn muốn nói. Bước tiếp theo chỉ chuẩn hóa cách ElevenLabs đọc nó.</small>
           <details className="content-narration-assist">
-            <summary><strong>Chưa có lời thoại? Tạo nháp bằng AI</strong><small>Tùy chọn — nếu đã chuẩn bị kỹ, chỉ cần dán lời thoại của bạn và bỏ qua phần này.</small></summary>
+            <summary><span><strong>Chưa có lời thoại? Tạo nháp bằng AI</strong><small>Tùy chọn — nếu đã chuẩn bị kỹ, chỉ cần dán lời thoại của bạn và bỏ qua phần này.</small></span><em className={codex.status?.state === 'connected' ? 'is-connected' : ''}>{aiConnectionLabel}</em></summary>
             <label><span>Gợi ý cho AI <small>Không bắt buộc</small></span><textarea rows={3} value={narrationGuidance} disabled={narrationGenerating} placeholder="Ví dụ: giải thích cho người mới, ưu tiên ví dụ đời thường, khoảng ba phút." onChange={event => setNarrationGuidance(event.currentTarget.value)} /></label>
             <CodexConnectionCard connection={codex} task="narration" />
             <button className="secondary-button" type="button" disabled={narrationGenerating || !codex.generationReady || form.topic.trim().length < 6} onClick={() => void createNarrationDraft()}>{narrationGenerating ? 'Đang soạn lời thoại…' : form.narrationSourceText.trim() ? 'Tạo bản nháp thay thế' : 'Để AI soạn lời thoại'}</button>

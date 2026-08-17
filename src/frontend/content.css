@@ -10,8 +10,11 @@
 .content-field textarea:focus { border-color: var(--green-700); box-shadow: 0 0 0 3px rgba(36,95,77,.12); outline: 0; }
 .narration-input { min-height: 260px; font-family: inherit; }
 .content-narration-assist { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--green-100) 42%, var(--paper)); }
-.content-narration-assist > summary { display: grid; gap: 4px; color: var(--ink); cursor: pointer; }
+.content-narration-assist > summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; color: var(--ink); cursor: pointer; }
 .content-narration-assist > summary::marker { color: var(--green-700); }
+.content-narration-assist > summary > span { display: grid; gap: 4px; }
+.content-narration-assist > summary em { color: var(--ink-soft); font-size: .75rem; font-style: normal; font-weight: 550; line-height: 1.35; text-align: right; }
+.content-narration-assist > summary em.is-connected { color: var(--green-700); }
 .content-narration-assist strong { color: var(--ink); }
 .content-narration-assist small { color: var(--ink-soft); font-size: .8rem; font-weight: 450; line-height: 1.45; }
 .content-narration-assist > label { display: grid; gap: 7px; color: var(--ink); font-size: .86rem; }
@@ -38,4 +41,4 @@
 .content-actions { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-top: 6px; }
 .content-actions p { margin: 0; color: var(--ink-soft); font-size: .8rem; line-height: 1.45; }
 .content-action-buttons { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
-@media (max-width: 680px) { .content-settings { grid-template-columns: 1fr; } .content-actions { align-items: stretch; flex-direction: column; } .content-actions .submit-button { width: 100%; } }
+@media (max-width: 680px) { .content-settings { grid-template-columns: 1fr; } .content-actions { align-items: stretch; flex-direction: column; } .content-actions .submit-button { width: 100%; } .content-narration-assist > summary { align-items: flex-start; flex-direction: column; } .content-narration-assist > summary em { text-align: left; } }
