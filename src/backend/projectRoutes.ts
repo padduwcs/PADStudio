@@ -145,6 +145,11 @@ export const getProjectNarrationRoute = (pathname: string) =>
     | {projectId: string; action: 'approve' | 'audit' | 'read'}
     | null;
 
+export const getProjectProductionRoute = (pathname: string) =>
+  simpleRoute(pathname, /^\/api\/projects\/([^/]+)\/production\/prepare$/, 'prepare') as
+    | {projectId: string; action: 'prepare'}
+    | null;
+
 export function getPronunciationLibraryRuleRoute(pathname: string) {
   const match = /^\/api\/pronunciation\/rules(?:\/([^/]+))?$/.exec(pathname);
   if (!match) return null;

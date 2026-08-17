@@ -16,7 +16,7 @@ import {
 } from './api.ts';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {CheckIcon, PlusIcon, SparkIcon, TrashIcon} from './icons.tsx';
-import {navigate, projectTopicPath} from './router.ts';
+import {navigate, projectProductionPath, projectTopicPath} from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 
 type RuleDraft = {
@@ -257,6 +257,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
             <button className="secondary-button" type="button" disabled={!needsSave || state === 'saving' || state === 'auditing'} onClick={() => void saveSnapshot()}>{state === 'saving' ? 'Đang cập nhật…' : 'Cập nhật bản đọc'}</button>
             <button className="secondary-button" type="button" disabled={state === 'auditing' || state === 'saving'} onClick={() => void runAudit()}>{state === 'auditing' ? 'AI đang rà soát…' : <><SparkIcon /> Rà soát bằng AI</>}</button>
             <button className="submit-button" type="button" disabled={needsSave || state === 'approving'} onClick={() => void approve()}>{state === 'approving' ? 'Đang duyệt…' : 'Duyệt voice'}</button>
+            {approved && <button className="secondary-button" type="button" onClick={() => navigate(projectProductionPath(projectId))}>Tạo audio & scene</button>}
           </div>
           {message && <p className={state === 'error' ? 'submit-error' : 'pronunciation-message'} role={state === 'error' ? 'alert' : 'status'}>{message}</p>}
           {narration.review?.aiPatches.length ? <section className="ai-patches"><strong>AI vừa lưu ý</strong><ul>{narration.review.aiPatches.map(patch => <li key={`${patch.start}-${patch.end}`}><code>{patch.source}</code><span>→ {patch.spoken}</span><small>{patch.reason}</small>{patch.suggestedRule && <button type="button" onClick={() => setDraft({id: null, scope: 'project', source: patch.suggestedRule!.source, spoken: patch.suggestedRule!.spoken})}>Dùng làm quy tắc</button>}</li>)}</ul></section> : null}

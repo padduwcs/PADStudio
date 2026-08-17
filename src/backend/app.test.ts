@@ -244,6 +244,24 @@ test('pronunciation review locks the audited snapshot and keeps a reusable libra
   assert.equal(approveResponse.status, 200);
   const approved = (await approveResponse.json()) as {project: TopicProject};
   assert.equal(approved.project.narration!.approvedSourceHash, review.sourceHash);
+
+  const prepareResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/production/prepare`,
+    {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'If-Match': '"4"'},
+      body: JSON.stringify({generationId: randomUUID()}),
+    },
+  );
+  assert.equal(prepareResponse.status, 200);
+  const prepared = (await prepareResponse.json()) as {project: TopicProject};
+  assert.equal(prepared.project.outline?.status, 'approved');
+  assert.equal(prepared.project.voiceVisualPlan?.status, 'approved');
+  assert.equal(
+    prepared.project.voiceVisualPlan?.sections.flatMap(section => section.beats)
+      .map(beat => beat.spokenVoiceover).join(' '),
+    review.normalizedText,
+  );
 });
 
 test('frontend chỉ fallback SPA cho route, không trả HTML cho asset thiếu', async (context) => {

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   getProjectMotionCanvasHistoryRoute,
+  getProjectProductionRoute,
   getPronunciationLibraryRuleRoute,
   getProjectRenderRoute,
   getProjectVoiceRoute,
@@ -48,6 +49,17 @@ test('pronunciation library route only accepts a stable UUID rule identity', () 
   );
   assert.equal(
     getPronunciationLibraryRuleRoute('/api/pronunciation/rules/not-an-id'),
+    null,
+  );
+});
+
+test('direct production route accepts only its explicit prepare action', () => {
+  assert.deepEqual(
+    getProjectProductionRoute(`/api/projects/${projectId}/production/prepare`),
+    {projectId, action: 'prepare'},
+  );
+  assert.equal(
+    getProjectProductionRoute(`/api/projects/${projectId}/production`),
     null,
   );
 });

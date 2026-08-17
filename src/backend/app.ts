@@ -186,6 +186,12 @@ import {
   splitNarrationSource,
 } from './narrationSource.ts';
 import {
+  createDirectNarrationArtifacts,
+  directNarrationMatchesSource,
+  directPlanMatchesNarration,
+  isDirectNarrationPlan,
+} from './directNarrationPlan.ts';
+import {
   createFileProjectRepository,
   ProjectConflictError,
   ProjectDataError,
@@ -243,6 +249,7 @@ import {
   getProjectMotionCanvasHistoryRoute,
   getProjectMotionCanvasRoute,
   getProjectNarrationRoute,
+  getProjectProductionRoute,
   getPronunciationLibraryRuleRoute,
   getProjectOutlineHistoryRoute,
   getProjectOutlineRoute,
@@ -282,6 +289,9 @@ const AuditNarrationSchema = z
     model: z.string().trim().min(1).max(160).optional(),
     reasoningEffort: z.string().trim().min(1).max(80).optional(),
   })
+  .strict();
+const PrepareDirectProductionSchema = z
+  .object({generationId: z.string().uuid()})
   .strict();
 const LibraryPronunciationRuleInputSchema = PronunciationRuleSchema
   .omit({id: true, scope: true})
@@ -4250,6 +4260,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
 
         const outline = currentProject.outline;
         const voiceVisualPlan = currentProject.voiceVisualPlan;
+        const directNarration = isDirectNarrationPlan(outline, voiceVisualPlan);
         if (
           !outline ||
           outline.status !== 'approved' ||
@@ -4258,7 +4269,16 @@ export function createPadStudioServer(options: AppOptions = {}) {
           voiceVisualPlan.status !== 'approved' ||
           voiceVisualPlan.sourceOutlineContentRevision !==
             outline.contentRevision ||
-          !voiceVisualMatchesOutline(voiceVisualPlan, outline)
+          !voiceVisualMatchesOutline(voiceVisualPlan, outline) ||
+          (directNarration &&
+            (!currentProject.voiceBundle ||
+              !currentProject.narration?.review ||
+              currentProject.narration.approvedSourceHash !==
+                currentProject.narration.review.sourceHash ||
+              !directNarrationMatchesSource(
+                currentProject.narration,
+                voiceVisualPlan,
+              )))
         ) {
           throw new RequestBodyError(
             409,
@@ -4792,19 +4812,26 @@ export function createPadStudioServer(options: AppOptions = {}) {
         const outline = currentProject.outline;
         const plan = currentProject.voiceVisualPlan;
         const motionBundle = currentProject.motionCanvasBundle;
+        const narration = currentProject.narration;
+        const directNarration = isDirectNarrationPlan(outline, plan);
         if (
           !outline ||
           outline.status !== 'approved' ||
           !plan ||
           plan.status !== 'approved' ||
-          !motionBundle ||
-          motionBundle.status !== 'approved' ||
           !sameValue(outline.sourceInput, currentProject.topicInput) ||
           plan.sourceOutlineContentRevision !== outline.contentRevision ||
-          motionBundle.sourceVoiceVisualContentRevision !==
-            plan.contentRevision ||
           !voiceVisualMatchesOutline(plan, outline) ||
-          !motionCanvasMatchesOutline(motionBundle, outline)
+          (directNarration
+            ? !narration?.review ||
+              narration.approvedSourceHash !== narration.review.sourceHash ||
+              !narration.approvedAt ||
+              !directNarrationMatchesSource(narration, plan)
+            : !motionBundle ||
+              motionBundle.status !== 'approved' ||
+              motionBundle.sourceVoiceVisualContentRevision !==
+                plan.contentRevision ||
+              !motionCanvasMatchesOutline(motionBundle, outline))
         ) {
           throw new RequestBodyError(
             409,
@@ -6396,6 +6423,77 @@ export function createPadStudioServer(options: AppOptions = {}) {
           expectedRevision,
         );
         if (!project) throw new Error('Project vừa biến mất khi duyệt lời thoại.');
+        sendProject(response, 200, project);
+        return;
+      }
+
+      const productionRoute = getProjectProductionRoute(requestUrl.pathname);
+      if (productionRoute?.action === 'prepare' && request.method === 'POST') {
+        const expectedRevision = readExpectedRevision(request);
+        const parsed = PrepareDirectProductionSchema.safeParse(
+          await readJsonBody(request),
+        );
+        if (!parsed.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Yêu cầu chuẩn bị sản xuất chưa hợp lệ.',
+            fields: validationFields(parsed.error.issues),
+          });
+          return;
+        }
+        const currentProject = await repository.getProject(productionRoute.projectId);
+        if (!currentProject) {
+          sendApiError(response, 404, {
+            code: 'PROJECT_NOT_FOUND',
+            message: 'Không tìm thấy project.',
+          });
+          return;
+        }
+        if (directPlanMatchesNarration(currentProject)) {
+          sendProject(response, 200, currentProject);
+          return;
+        }
+        if (currentProject.revision !== expectedRevision) {
+          throw new ProjectConflictError(currentProject);
+        }
+        const narration = currentProject.narration;
+        if (!narration?.review ||
+          narration.approvedSourceHash !== narration.review.sourceHash ||
+          !narration.approvedAt) {
+          throw new RequestBodyError(
+            409,
+            'NARRATION_NOT_APPROVED',
+            'Hãy duyệt bản cách đọc hiện tại trước khi tạo audio.',
+          );
+        }
+        let artifacts;
+        try {
+          artifacts = createDirectNarrationArtifacts({
+            topicInput: currentProject.topicInput,
+            narration,
+            generationId: parsed.data.generationId.toLowerCase(),
+            now: new Date().toISOString(),
+            previousPlan: currentProject.voiceVisualPlan,
+          });
+        } catch (error) {
+          throw new RequestBodyError(
+            422,
+            'DIRECT_NARRATION_INVALID',
+            error instanceof Error
+              ? error.message
+              : 'Không thể chia lời thoại để tạo audio.',
+          );
+        }
+        const project = await repository.updateProject(
+          currentProject.id,
+          {
+            outline: artifacts.outline,
+            voiceVisualPlan: artifacts.voiceVisualPlan,
+            currentStep: 'voice',
+          },
+          expectedRevision,
+        );
+        if (!project) throw new Error('Project vừa biến mất khi chuẩn bị sản xuất.');
         sendProject(response, 200, project);
         return;
       }

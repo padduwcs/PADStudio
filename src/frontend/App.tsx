@@ -43,12 +43,14 @@ import {
 import {ProjectLibrary} from './ProjectLibrary.tsx';
 import {ContentPage} from './ContentPage.tsx';
 import {NarrationPage} from './NarrationPage.tsx';
+import {ProductionPage} from './ProductionPage.tsx';
 import {RouteErrorBoundary} from './RouteErrorBoundary.tsx';
 import {
   navigate,
   navigateDiscardingPendingChanges,
   projectNarrationPath,
   projectOutlinePath,
+  projectProductionPath,
   projectStepPath,
   projectTopicPath,
   projectVoiceVisualPath,
@@ -283,7 +285,7 @@ function PipelineSidebar({
       <nav aria-label="Các bước sản xuất video">
         <ol className="pipeline-list">
           {workflowSteps.map((label, index) => {
-            const unavailable = !hasProject || index > 1;
+            const unavailable = !hasProject || index > 2;
             return (
             <li
               className={index === activeStep ? 'is-active' : ''}
@@ -2589,7 +2591,9 @@ export default function App() {
   const [newProjectKey, setNewProjectKey] = useState(0);
   const [projectReloadKey, setProjectReloadKey] = useState(0);
   const activeStep =
-    route.name === 'project-narration'
+    route.name === 'project-production'
+      ? 2
+      : route.name === 'project-narration'
       ? 1
       : route.name === 'project-render'
       ? 7
@@ -2689,11 +2693,13 @@ export default function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onSelectStep={(stepIndex) => {
-          if (!activeProjectId || stepIndex > 1) return;
+          if (!activeProjectId || stepIndex > 2) return;
           navigate(
             stepIndex === 0
               ? projectTopicPath(activeProjectId)
-              : projectNarrationPath(activeProjectId),
+              : stepIndex === 1
+                ? projectNarrationPath(activeProjectId)
+                : projectProductionPath(activeProjectId),
           );
         }}
       />
@@ -2748,6 +2754,9 @@ export default function App() {
               )}
               {route.name === 'project-narration' && (
                 <NarrationPage projectId={route.projectId} />
+              )}
+              {route.name === 'project-production' && (
+                <ProductionPage projectId={route.projectId} />
               )}
               {route.name === 'project-outline' && (
                 <OutlinePage projectId={route.projectId} />
