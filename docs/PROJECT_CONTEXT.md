@@ -236,7 +236,7 @@ Backend xác minh lại toàn bộ hash của workspace, sao chép nguồn sang 
 copy-on-write rồi chạy Motion Canvas trong Chrome/Edge headless. Từng frame PNG được
 stream tuần tự vào FFmpeg qua `image2pipe`; hệ thống không ghi hàng nghìn frame tạm.
 Master narration được ghép làm audio AAC, còn hình được mã hóa H.264 `yuv420p`, CRF 18,
-30 fps ở khung dọc 1080×1920 với metadata fast-start.
+đúng kích thước và fps của project với metadata fast-start.
 
 Sau khi dựng, FFprobe phải xác nhận codec, pixel format, kích thước và thời lượng. Video
 được hash trước khi manifest và `video.mp4` được đổi tên nguyên tử vào

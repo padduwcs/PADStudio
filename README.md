@@ -142,7 +142,7 @@ Vertical slice đầu tiên đã có thể chạy:
   được re-hash; artifact lịch sử không còn khớp hash phải Đồng bộ và chốt lại trước khi
   mở Layout.
 - Render trực tiếp từng frame Motion Canvas vào FFmpeg, ghép với master narration và
-  xuất MP4 dọc 1080×1920, 30 fps, H.264/AAC. Trước khi render có thể chọn tốc độ
+  xuất MP4 H.264/AAC theo đúng kích thước, tỷ lệ và fps đã chọn cho project. Trước khi render có thể chọn tốc độ
   0,25×–4×, xem trước thời lượng dự kiến và thêm watermark chữ/PNG/JPEG/WebP với
   opacity, vị trí, kích thước tùy chỉnh. Audio đổi tốc độ nhưng giữ cao độ.
   Output được hash, kiểm tra codec, kích thước và thời lượng trước khi ghi vào

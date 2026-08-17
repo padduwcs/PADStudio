@@ -13,6 +13,13 @@ import {finalRenderTimingToleranceSeconds} from './render.ts';
 
 const TIMING_TOLERANCE_SECONDS = 0.001;
 
+export function isDirectNarrationProject(project: TopicProject): boolean {
+  return (
+    project.outline?.generation.promptVersion === 'direct-narration-v1' &&
+    project.voiceVisualPlan?.generation.promptVersion === 'direct-narration-v1'
+  );
+}
+
 export function sameValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }

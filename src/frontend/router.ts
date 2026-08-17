@@ -1,5 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
-import type {ProjectStep} from '../shared/topic.ts';
+import {isDirectNarrationProject} from '../shared/projectPipeline.ts';
+import type {ProjectStep, TopicProject} from '../shared/topic.ts';
 
 type NavigationGuard = () => boolean | Promise<boolean>;
 
@@ -281,8 +282,56 @@ const projectStepPaths = {
   render: projectRenderPath,
 } satisfies Record<ProjectStep, (projectId: string) => string>;
 
+const projectStepLabels = {
+  topic: 'Bước 01 · Chủ đề',
+  outline: 'Bước 02 · Mạch giảng',
+  voiceVisual: 'Bước 03 · Voice–visual',
+  motionCanvas: 'Bước 04 · Motion Canvas',
+  voice: 'Bước 05 · ElevenLabs Voice',
+  sync: 'Bước 06 · Đồng bộ animation',
+  layout: 'Bước 07 · Layout Editor',
+  render: 'Bước 08 · Render cuối',
+} satisfies Record<ProjectStep, string>;
+
+const directProjectStepLabels = {
+  topic: 'Bước 01 · Nội dung',
+  outline: 'Bước 02 · Cách đọc',
+  voiceVisual: 'Bước 03 · Giọng đọc & scene',
+  voice: 'Bước 03 · Giọng đọc & scene',
+  motionCanvas: 'Bước 04 · Chỉnh scene',
+  sync: 'Bước 05 · Xuất video',
+  layout: 'Bước 05 · Xuất video',
+  render: 'Bước 05 · Xuất video',
+} satisfies Record<ProjectStep, string>;
+
 export function projectStepPath(projectId: string, step: ProjectStep) {
   return projectStepPaths[step](projectId);
+}
+
+export function projectStepLabel(step: ProjectStep, direct = false) {
+  return direct ? directProjectStepLabels[step] : projectStepLabels[step];
+}
+
+export function projectResumePath(project: TopicProject) {
+  if (!isDirectNarrationProject(project)) {
+    return projectStepPath(project.id, project.currentStep);
+  }
+  switch (project.currentStep) {
+    case 'topic':
+      return projectTopicPath(project.id);
+    case 'outline':
+      return projectNarrationPath(project.id);
+    case 'voiceVisual':
+    case 'voice':
+      return projectProductionPath(project.id);
+    case 'motionCanvas':
+      return projectSceneReviewPath(project.id);
+    case 'sync':
+      return projectSceneReviewPath(project.id);
+    case 'layout':
+    case 'render':
+      return projectRenderPath(project.id);
+  }
 }
 
 export function useAppRoute() {

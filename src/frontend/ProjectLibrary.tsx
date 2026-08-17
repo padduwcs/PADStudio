@@ -3,6 +3,7 @@ import type {
   ProjectListIssue,
   TopicProject,
 } from '../shared/topic.ts';
+import {isDirectNarrationProject} from '../shared/projectPipeline.ts';
 import {ApiRequestError, deleteProject, listProjects} from './api.ts';
 import {
   ArrowRightIcon,
@@ -12,6 +13,7 @@ import {
   TrashIcon,
   XIcon,
 } from './icons.tsx';
+import {projectStepLabel} from './router.ts';
 
 const durationLabels: Record<TopicProject['topicInput']['duration'], string> = {
   concise: '1–2 phút',
@@ -241,17 +243,10 @@ export function ProjectLibrary({
                   onClick={() => onOpenProject(project)}
                 >
                   <span className="project-step">
-                    {project.currentStep === 'sync'
-                      ? 'Bước 06 · Đồng bộ animation'
-                      : project.currentStep === 'voice'
-                      ? 'Bước 05 · ElevenLabs Voice'
-                      : project.currentStep === 'motionCanvas'
-                      ? 'Bước 04 · Motion Canvas'
-                      : project.currentStep === 'voiceVisual'
-                      ? 'Bước 03 · Voice–visual'
-                      : project.currentStep === 'outline'
-                        ? 'Bước 02 · Mạch giảng'
-                        : 'Bước 01 · Chủ đề'}
+                    {projectStepLabel(
+                      project.currentStep,
+                      isDirectNarrationProject(project),
+                    )}
                   </span>
                   <strong>{project.topicInput.topic}</strong>
                   <span className="project-meta">

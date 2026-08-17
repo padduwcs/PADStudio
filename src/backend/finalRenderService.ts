@@ -263,6 +263,84 @@ export class FinalRenderError extends Error {
   }
 }
 
+type PendingRenderFrame<T> = {
+  body: T;
+  resolve: () => void;
+  reject: (error: Error) => void;
+};
+
+/**
+ * Canvas encoding completes asynchronously, so adjacent frames can arrive at
+ * the bridge out of order even though Motion Canvas rendered them in order.
+ * Keep the encoder input strictly ordered without dropping valid frames.
+ */
+export function createOrderedFrameWriter<T>(
+  write: (frame: number, body: T) => Promise<void>,
+  firstFrame = 0,
+) {
+  let nextFrame = firstFrame;
+  let terminalError: Error | null = null;
+  let draining: Promise<void> | null = null;
+  const pending = new Map<number, PendingRenderFrame<T>>();
+
+  function sequenceError(frame: number) {
+    return new FinalRenderError(
+      'FINAL_RENDER_FRAME_SEQUENCE_INVALID',
+      `Frame ${frame} được gửi lặp hoặc đã quá thứ tự (đang chờ ${nextFrame}).`,
+    );
+  }
+
+  function rejectPending(error: Error) {
+    for (const entry of pending.values()) entry.reject(error);
+    pending.clear();
+  }
+
+  async function drain() {
+    while (!terminalError) {
+      const entry = pending.get(nextFrame);
+      if (!entry) return;
+      pending.delete(nextFrame);
+      try {
+        await write(nextFrame, entry.body);
+        entry.resolve();
+        nextFrame += 1;
+      } catch (error) {
+        terminalError = error instanceof Error
+          ? error
+          : new Error('Không thể ghi frame render.');
+        entry.reject(terminalError);
+        rejectPending(terminalError);
+        throw terminalError;
+      }
+    }
+  }
+
+  function scheduleDrain() {
+    if (draining || terminalError) return;
+    draining = drain().finally(() => {
+      draining = null;
+      if (!terminalError && pending.has(nextFrame)) scheduleDrain();
+    });
+    void draining.catch(() => {});
+  }
+
+  return {
+    writeFrame(frame: number, body: T) {
+      if (terminalError) return Promise.reject(terminalError);
+      if (frame < nextFrame || pending.has(frame)) {
+        return Promise.reject(sequenceError(frame));
+      }
+      return new Promise<void>((resolve, reject) => {
+        pending.set(frame, {body, resolve, reject});
+        scheduleDrain();
+      });
+    },
+    get nextFrame() {
+      return nextFrame;
+    },
+  };
+}
+
 function canonicalValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalValue);
   if (value && typeof value === 'object') {
@@ -538,7 +616,7 @@ async function probeVideo(
   ) {
     throw new FinalRenderError(
       'FINAL_RENDER_VALIDATION_FAILED',
-      'Video cuối không đạt hợp đồng MP4 H.264/AAC 1080×1920.',
+      `Video cuối không đạt hợp đồng MP4 H.264/AAC ${frame.width}×${frame.height}.`,
     );
   }
   return result;
@@ -1195,6 +1273,29 @@ export function createFinalRenderService(
     const ffmpegErrors: string[] = [];
     const browserErrors: string[] = [];
     let framesReceived = 0;
+    const orderedFrameWriter = createOrderedFrameWriter(
+      async (_frame, body: Buffer) => {
+        if (!ffmpeg?.stdin || ffmpeg.stdin.destroyed) {
+          throw new FinalRenderError(
+            'FINAL_RENDER_ENCODER_STOPPED',
+            'FFmpeg đã dừng trước khi nhận đủ frame.',
+          );
+        }
+        if (!ffmpeg.stdin.write(body)) {
+          await once(ffmpeg.stdin, 'drain');
+        }
+        framesReceived += 1;
+        updateStatus(projectId, generationId, {
+          state: 'rendering',
+          renderedFrames: framesReceived,
+          progress: Math.min(
+            0.94,
+            0.04 + (framesReceived / estimatedTotalFrames) * 0.9,
+          ),
+          message: `Đang dựng frame ${framesReceived.toLocaleString('vi-VN')}/${estimatedTotalFrames.toLocaleString('vi-VN')} dự kiến…`,
+        });
+      },
+    );
 
     try {
       await copyPreviewWorkspace(
@@ -1313,31 +1414,13 @@ export function createFinalRenderService(
         watermark,
         watermarkImage,
         async writeFrame(frame, body) {
-          if (frame !== framesReceived) {
+          if (frame >= estimatedTotalFrames) {
             throw new FinalRenderError(
               'FINAL_RENDER_FRAME_SEQUENCE_INVALID',
-              `Frame ${frame} đến sai thứ tự (đang chờ ${framesReceived}).`,
+              `Frame ${frame} vượt phạm vi render 0–${estimatedTotalFrames - 1}.`,
             );
           }
-          if (!ffmpeg?.stdin || ffmpeg.stdin.destroyed) {
-            throw new FinalRenderError(
-              'FINAL_RENDER_ENCODER_STOPPED',
-              'FFmpeg đã dừng trước khi nhận đủ frame.',
-            );
-          }
-          if (!ffmpeg.stdin.write(body)) {
-            await once(ffmpeg.stdin, 'drain');
-          }
-          framesReceived += 1;
-          updateStatus(projectId, generationId, {
-            state: 'rendering',
-            renderedFrames: framesReceived,
-            progress: Math.min(
-              0.94,
-              0.04 + (framesReceived / estimatedTotalFrames) * 0.9,
-            ),
-            message: `Đang dựng frame ${framesReceived.toLocaleString('vi-VN')}/${estimatedTotalFrames.toLocaleString('vi-VN')} dự kiến…`,
-          });
+          await orderedFrameWriter.writeFrame(frame, body);
         },
         complete() {
           completeRender();
@@ -1374,6 +1457,9 @@ export function createFinalRenderService(
         optimizeDeps: {
           noDiscovery: true,
           include: [
+            '@motion-canvas/core',
+            '@motion-canvas/2d',
+            '@preact/signals-core',
             'chroma-js',
             'parse-svg-path',
             'mathjax-full/js/adaptors/liteAdaptor',
@@ -1385,6 +1471,11 @@ export function createFinalRenderService(
           ],
         },
         resolve: {
+          dedupe: [
+            '@motion-canvas/core',
+            '@motion-canvas/2d',
+            '@preact/signals-core',
+          ],
           alias: {
             '@motion-canvas/core': path.join(repositoryRoot, 'node_modules', '@motion-canvas', 'core'),
             '@motion-canvas/2d': path.join(repositoryRoot, 'node_modules', '@motion-canvas', '2d'),

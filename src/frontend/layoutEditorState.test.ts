@@ -8,6 +8,7 @@ import type {
 import {
   parseRuntimeNodeVisibility,
   resolveLayoutEditorManifest,
+  runtimeManifestRequiresSave,
   timelineVisibleEditorNodes,
 } from './layoutEditorState.ts';
 
@@ -88,5 +89,20 @@ test('Layout từ chối visibility runtime sai cấu trúc', () => {
       hiddenNodeCount: 1,
     }),
     null,
+  );
+});
+
+test('mở Layout đã duyệt không tự lưu manifest và làm mất bản render', () => {
+  assert.equal(
+    runtimeManifestRequiresSave('null', '{"version":1}', 'approved'),
+    false,
+  );
+  assert.equal(
+    runtimeManifestRequiresSave('null', '{"version":1}', 'draft'),
+    true,
+  );
+  assert.equal(
+    runtimeManifestRequiresSave('{"version":1}', '{"version":1}', 'draft'),
+    false,
   );
 });

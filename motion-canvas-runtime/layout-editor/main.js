@@ -556,32 +556,39 @@ async function inspectManifestNodes(scene) {
       .map(entry => entry.parentKey)
       .filter(Boolean),
   );
+  // Capture every signal-backed value synchronously while scene.execute()
+  // keeps Motion Canvas' context active. Hashing is asynchronous; evaluating
+  // another signal after that await would run outside the scene context.
+  const snapshots = entries.map(({node, parentKey}) => {
+    const editable = editableProperties(node);
+    const role = inferEditorNodeRole(
+      node,
+      keysWithChildren.has(String(node.key ?? '')),
+    );
+    return {
+      key: node.key,
+      fingerprintSource: nodeFingerprintSource(node),
+      label: sceneNodeLabel(node),
+      nodeType: (node.constructor?.name || 'Node').slice(0, 80),
+      parentKey,
+      identity: isGeneratedEditorNodeKey(node.key)
+        ? 'legacy'
+        : 'semantic',
+      role,
+      editableProperties: editable,
+      lockedProperties:
+        role === 'background' && hasContainerContract ? editable : [],
+      lockReason:
+        role === 'background' && hasContainerContract
+          ? 'Canvas và background được khóa để giữ đúng kích thước khung hình.'
+          : null,
+    };
+  });
   return Promise.all(
-    entries.map(async ({node, parentKey}) => {
-      const editable = editableProperties(node);
-      const role = inferEditorNodeRole(
-        node,
-        keysWithChildren.has(String(node.key ?? '')),
-      );
-      return {
-        key: node.key,
-        fingerprint: await sha256(nodeFingerprintSource(node)),
-        label: sceneNodeLabel(node),
-        nodeType: (node.constructor?.name || 'Node').slice(0, 80),
-        parentKey,
-        identity: isGeneratedEditorNodeKey(node.key)
-          ? 'legacy'
-          : 'semantic',
-        role,
-        editableProperties: editable,
-        lockedProperties:
-          role === 'background' && hasContainerContract ? editable : [],
-        lockReason:
-          role === 'background' && hasContainerContract
-            ? 'Canvas và background được khóa để giữ đúng khung hình 1080×1920.'
-            : null,
-      };
-    }),
+    snapshots.map(async ({fingerprintSource, ...snapshot}) => ({
+      ...snapshot,
+      fingerprint: await sha256(fingerprintSource),
+    })),
   );
 }
 
@@ -798,6 +805,7 @@ async function startEditor(project) {
   player.deactivate();
 
   function reportError(error, phase = 'runtime') {
+    console.error('[PAD layout editor]', phase, error);
     const message =
       error instanceof Error ? error.message : String(error || 'Lỗi không rõ.');
     ui.errorPanel.hidden = false;
@@ -822,6 +830,12 @@ async function startEditor(project) {
 
   function currentSceneInfo() {
     return sceneInfo(player.playback.currentScene);
+  }
+
+  function executeInScene(scene, callback) {
+    return typeof scene?.execute === 'function'
+      ? scene.execute(callback)
+      : callback();
   }
 
   function currentManifestNode(nodeKey = selected?.nodeKey) {
@@ -1416,7 +1430,7 @@ async function startEditor(project) {
   }
 
   function postTimelineVisibility(scene) {
-    const payload = timelineVisibility(scene);
+    const payload = executeInScene(scene, () => timelineVisibility(scene));
     if (!payload) return;
     const signature = `${payload.sceneId}\u0000${payload.visibleNodeKeys.join('\u0000')}`;
     if (signature === lastVisibilitySignature) return;
@@ -1446,17 +1460,15 @@ async function startEditor(project) {
     // before discovery. This also makes reload/reconnect sessions produce the
     // same fingerprint and prevents a valid saved text node from becoming an
     // orphaned override.
-    reconcileUserTextNodes(scene, overridesDocument, {
-      sceneId: info.sceneId,
-    });
     // Signal getters in generated scenes may depend on Motion Canvas' active
     // scene context. Manifest discovery runs after recalculation, so explicitly
     // restore that context while taking the synchronous node snapshots.
-    const discoveredNodes = await (
-      typeof scene?.execute === 'function'
-        ? scene.execute(() => inspectManifestNodes(scene))
-        : inspectManifestNodes(scene)
-    );
+    const discoveredNodes = await executeInScene(scene, () => {
+      reconcileUserTextNodes(scene, overridesDocument, {
+        sceneId: info.sceneId,
+      });
+      return inspectManifestNodes(scene);
+    });
     const canonical = canonicalizeEditorNodes(discoveredNodes);
     const previousScene = manifest.scenes?.find(
       item => item.sceneId === info.sceneId,
@@ -1495,11 +1507,13 @@ async function startEditor(project) {
     if (selected?.sceneId === info.sceneId) {
       const canonicalKey = canonical.aliases.get(selected.nodeKey);
       if (canonicalKey) {
-        const node = resolveLiveEditorNode(scene, canonicalKey);
-        selected = node
-          ? {sceneId: info.sceneId, nodeKey: node.key}
-          : null;
-        selectedGeometry = node ? editorNodeGeometry(scene, node) : null;
+        executeInScene(scene, () => {
+          const node = resolveLiveEditorNode(scene, canonicalKey);
+          selected = node
+            ? {sceneId: info.sceneId, nodeKey: node.key}
+            : null;
+          selectedGeometry = node ? editorNodeGeometry(scene, node) : null;
+        });
       }
     }
     protocol.post('manifest', {
@@ -1574,41 +1588,43 @@ async function startEditor(project) {
   }
 
   function applyForRender(scene, captureSelection = false) {
-    const info = sceneInfo(scene);
-    reconcileUserTextNodes(scene, overridesDocument, {
-      sceneId: info.sceneId,
+    return executeInScene(scene, () => {
+      const info = sceneInfo(scene);
+      reconcileUserTextNodes(scene, overridesDocument, {
+        sceneId: info.sceneId,
+      });
+      const manifestScene = manifest.scenes?.find(
+        item => item.sceneId === info.sceneId,
+      );
+      const fingerprints = new Map(
+        (manifestScene?.nodes ?? []).map(node => [node.key, node.fingerprint]),
+      );
+      const verifiedDocument = {
+        ...overridesDocument,
+        overrides: overridesDocument.overrides.filter(
+          override =>
+            override.sceneId !== info.sceneId ||
+            isUserTextNodeKey(override.nodeKey) ||
+            fingerprints.get(override.nodeKey) === override.nodeFingerprint,
+        ),
+      };
+      const restore = applySceneOverrides(scene, verifiedDocument, {
+        sceneId: info.sceneId,
+        original: view.original,
+        timeSeconds: sceneTimeSeconds(scene),
+      });
+      if (captureSelection && selected && !view.original) {
+        const node = scene.getNode?.(selected.nodeKey);
+        if (node) selectedGeometry = editorNodeGeometry(scene, node);
+      }
+      return () => executeInScene(scene, restore);
     });
-    const manifestScene = manifest.scenes?.find(
-      item => item.sceneId === info.sceneId,
-    );
-    const fingerprints = new Map(
-      (manifestScene?.nodes ?? []).map(node => [node.key, node.fingerprint]),
-    );
-    const verifiedDocument = {
-      ...overridesDocument,
-      overrides: overridesDocument.overrides.filter(
-        override =>
-          override.sceneId !== info.sceneId ||
-          isUserTextNodeKey(override.nodeKey) ||
-          fingerprints.get(override.nodeKey) === override.nodeFingerprint,
-      ),
-    };
-    const restore = applySceneOverrides(scene, verifiedDocument, {
-      sceneId: info.sceneId,
-      original: view.original,
-      timeSeconds: sceneTimeSeconds(scene),
-    });
-    if (captureSelection && selected && !view.original) {
-      const node = scene.getNode?.(selected.nodeKey);
-      if (node) selectedGeometry = editorNodeGeometry(scene, node);
-    }
-    return restore;
   }
 
   function withApplied(scene, callback) {
     const restore = applyForRender(scene, false);
     try {
-      return callback();
+      return executeInScene(scene, callback);
     } finally {
       restore();
     }
@@ -1628,14 +1644,13 @@ async function startEditor(project) {
   disposers.push(
     project.logger.onLogged.subscribe(payload => {
       if (payload?.level !== 'error') return;
-      reportError(
-        new Error(
-          typeof payload.message === 'string'
-            ? payload.message
-            : 'Motion Canvas báo lỗi.',
-        ),
-        'motion-canvas',
+      const error = new Error(
+        typeof payload.message === 'string'
+          ? payload.message
+          : 'Motion Canvas báo lỗi.',
       );
+      if (typeof payload.stack === 'string') error.stack = payload.stack;
+      reportError(error, 'motion-canvas');
     }),
   );
 
@@ -1748,8 +1763,10 @@ async function startEditor(project) {
           }
         }
         if (selected && !selectedGeometry) {
-          const node = currentScene.getNode?.(selected.nodeKey);
-          if (node) selectedGeometry = editorNodeGeometry(currentScene, node);
+          executeInScene(currentScene, () => {
+            const node = currentScene.getNode?.(selected.nodeKey);
+            if (node) selectedGeometry = editorNodeGeometry(currentScene, node);
+          });
         }
       } finally {
         try {

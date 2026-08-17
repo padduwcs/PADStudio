@@ -4,6 +4,8 @@ import {
   navigate,
   navigateDiscardingPendingChanges,
   parseRoute,
+  projectResumePath,
+  projectStepLabel,
   projectStepPath,
   registerNavigationGuard,
 } from './router.ts';
@@ -93,6 +95,35 @@ test('projectStepPath ánh xạ tập trung các bước đã hỗ trợ', () =>
   assert.equal(
     projectStepPath('du an', 'render'),
     '/projects/du%20an/render',
+  );
+});
+
+test('projectStepLabel không gắn nhầm project Layout hoặc Render về bước đầu', () => {
+  assert.equal(projectStepLabel('topic'), 'Bước 01 · Chủ đề');
+  assert.equal(projectStepLabel('layout'), 'Bước 07 · Layout Editor');
+  assert.equal(projectStepLabel('render'), 'Bước 08 · Render cuối');
+  assert.equal(projectStepLabel('render', true), 'Bước 05 · Xuất video');
+});
+
+test('projectResumePath đưa project lời thoại thẳng về đúng luồng 5 bước', () => {
+  const directProject = {
+    id: 'du-an-truc-tiep',
+    currentStep: 'voice',
+    outline: {generation: {promptVersion: 'direct-narration-v1'}},
+    voiceVisualPlan: {generation: {promptVersion: 'direct-narration-v1'}},
+  } as unknown as import('../shared/topic.ts').TopicProject;
+
+  assert.equal(
+    projectResumePath(directProject),
+    '/projects/du-an-truc-tiep/production',
+  );
+  assert.equal(
+    projectResumePath({...directProject, currentStep: 'sync'}),
+    '/projects/du-an-truc-tiep/scene-review',
+  );
+  assert.equal(
+    projectResumePath({...directProject, currentStep: 'render'}),
+    '/projects/du-an-truc-tiep/render',
   );
 });
 

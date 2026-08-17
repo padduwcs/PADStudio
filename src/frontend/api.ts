@@ -42,6 +42,7 @@ import type {
   LayoutBundle,
   LayoutEditorManifest,
   LayoutOverridesDocument,
+  LayoutRenderSettings,
 } from '../shared/layout.ts';
 import type {
   CreateOutlineCandidate,
@@ -331,7 +332,7 @@ export async function prepareDirectProduction(
 
 export async function prepareProjectOutput(
   projectId: string,
-  request: {generationId: string},
+  request: {generationId: string; renderSettings?: LayoutRenderSettings},
   expectedRevision: number,
 ) {
   const response = await fetch(

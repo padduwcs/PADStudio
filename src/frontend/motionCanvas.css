@@ -379,6 +379,24 @@
   background: #0a1512;
 }
 
+.motion-design-watermark {
+  position: absolute;
+  z-index: 4;
+  left: var(--watermark-x);
+  top: var(--watermark-y);
+  max-width: 88%;
+  opacity: var(--watermark-opacity);
+  pointer-events: none;
+  font-size: var(--watermark-size);
+  font-weight: 700;
+  line-height: 1.1;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .55);
+  transform: translate(-50%, -50%);
+}
+
+.motion-design-watermark.is-image { width: var(--watermark-width); }
+.motion-design-watermark.is-image img { display: block; width: 100%; height: auto; }
+
 .motion-design-state {
   position: absolute;
   z-index: 2;

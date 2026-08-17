@@ -10,6 +10,7 @@ import {
   type VideoFrame,
 } from '../shared/videoFormat.ts';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
+import {textEncodingIssue} from '../shared/vietnameseSpeech.ts';
 import {
   ApiRequestError,
   createTopicProject,
@@ -193,13 +194,20 @@ export function ContentPage({projectId}: {projectId?: string}) {
   async function submit(event: FormEvent) {
     event.preventDefault();
     const topicInput = buildTopicInput(form);
-    if (!topicInput.success || !form.narrationSourceText.trim()) {
+    const encodingIssue =
+      textEncodingIssue(form.topic) ??
+      textEncodingIssue(form.narrationSourceText);
+    if (!topicInput.success || !form.narrationSourceText.trim() || encodingIssue) {
       const invalidTopicMessage = topicInput.success
         ? 'Thông tin đầu vào chưa hợp lệ.'
         : topicInput.error.issues[0]?.message ?? 'Thông tin đầu vào chưa hợp lệ.';
-      setError(!form.narrationSourceText.trim()
-        ? 'Hãy nhập lời thoại trước khi lưu project.'
-        : invalidTopicMessage);
+      setError(
+        encodingIssue
+          ? `${encodingIssue} Hãy dán lại nội dung đúng Unicode trước khi lưu.`
+          : !form.narrationSourceText.trim()
+            ? 'Hãy nhập lời thoại trước khi lưu project.'
+            : invalidTopicMessage,
+      );
       setState('error');
       return;
     }

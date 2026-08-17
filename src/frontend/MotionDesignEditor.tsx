@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
 } from 'react';
 import {
@@ -54,6 +55,7 @@ import {
   ProfessionalTimeline,
   type EditorTimelineScene,
 } from './ProfessionalTimeline.tsx';
+import type {RenderWatermark} from '../shared/render.ts';
 
 const PROTOCOL_SOURCE = 'pad-studio-layout-editor';
 const PROTOCOL_VERSION = 1;
@@ -95,6 +97,7 @@ interface RuntimeState {
   duration: number;
   fps: number;
   paused: boolean;
+  muted?: boolean;
   sceneId: string;
   sceneName: string;
   sceneTimeSeconds?: number;
@@ -292,13 +295,20 @@ function TextEditor({
 
 export function MotionDesignEditor({
   motionCanvas,
+  narrationAudioUrl = '',
+  watermark = {type: 'none'},
+  watermarkImageUrl = '',
 }: {
   motionCanvas: MotionCanvasController;
+  narrationAudioUrl?: string;
+  watermark?: RenderWatermark;
+  watermarkImageUrl?: string;
 }) {
   const {editorRef, focusMode, toggleFocusMode} =
     useEditorFocusMode<HTMLElement>();
   const editorWorkspace = useEditorWorkspaceLayout(editorRef);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const narrationAudioRef = useRef<HTMLAudioElement | null>(null);
   const manifestStoredRef = useRef(false);
   const pendingOverridesRef = useRef<LayoutOverridesDocument['overrides'] | null>(null);
   const saveChainRef = useRef(Promise.resolve());
@@ -511,6 +521,38 @@ export function MotionDesignEditor({
     };
   }, [motionCanvas.previewState, motionCanvas.previewUrl, requestReady, runtimeError, runtimeReady]);
 
+  // The editor remains the single canvas. Its player is the source of truth for
+  // playhead position; this track simply follows it so visual edits are always
+  // reviewed against the real ElevenLabs narration.
+  useEffect(() => {
+    const audio = narrationAudioRef.current;
+    if (!audio || !narrationAudioUrl || !runtimeState) return;
+    const expectedTime = Math.max(0, runtimeState.frame / Math.max(1, runtimeState.fps));
+    if (Math.abs(audio.currentTime - expectedTime) > 0.16) {
+      audio.currentTime = expectedTime;
+    }
+    audio.muted = Boolean(runtimeState.muted);
+    if (runtimeState.paused) {
+      audio.pause();
+    } else if (audio.paused) {
+      void audio.play().catch(() => undefined);
+    }
+  }, [narrationAudioUrl, runtimeState?.fps, runtimeState?.frame, runtimeState?.muted, runtimeState?.paused]);
+
+  function toggleSynchronizedPlayback() {
+    if (!runtimeState) return;
+    const audio = narrationAudioRef.current;
+    if (runtimeState.paused && audio && narrationAudioUrl) {
+      const expectedTime = Math.max(0, runtimeState.frame / Math.max(1, runtimeState.fps));
+      if (Math.abs(audio.currentTime - expectedTime) > 0.16) audio.currentTime = expectedTime;
+      void audio.play().catch(() => undefined);
+      sendCommand('play');
+      return;
+    }
+    audio?.pause();
+    sendCommand('pause');
+  }
+
   const scenes = useMemo(() => {
     if (!motion) return [];
     const manifestById = new Map(manifest?.scenes.map((scene) => [scene.sceneId, scene]));
@@ -715,9 +757,9 @@ export function MotionDesignEditor({
         <div>
           <span className="preview-kicker">Visual editor</span>
           <h2>Chỉnh scene</h2>
-          <p>
-            Chọn layer trên canvas hoặc bảng Layers; scene và thời gian nằm ở timeline bên dưới.
-          </p>
+          <p>{narrationAudioUrl
+            ? 'Phát hình và giọng ElevenLabs cùng lúc; chọn layer trên canvas hoặc bảng Layers để chỉnh.'
+            : 'Chọn layer trên canvas hoặc bảng Layers; bản đồng bộ giọng sẽ xuất hiện ngay khi sẵn sàng.'}</p>
         </div>
         <span className={`draft-status${motionCanvas.designSaveState === 'saved' ? ' is-saved' : ''}`}>
           <span />
@@ -840,6 +882,7 @@ export function MotionDesignEditor({
         <EditorResizeHandle panel="left" controller={editorWorkspace} />
 
         <div className="layout-preview-column">
+          {narrationAudioUrl && <audio ref={narrationAudioRef} src={narrationAudioUrl} preload="auto" />}
           <div className="layout-preview-frame motion-design-frame">
             {motionCanvas.previewState === 'loading' && (
               <div className="layout-preview-state" role="status">
@@ -880,9 +923,12 @@ export function MotionDesignEditor({
                 <button className="secondary-button" type="button" onClick={motionCanvas.retryPreview}>Mở lại</button>
               </div>
             )}
+            {watermark.type === 'text' && <div className="motion-design-watermark" style={{'--watermark-x': `${watermark.xPercent}%`, '--watermark-y': `${watermark.yPercent}%`, '--watermark-opacity': watermark.opacity, '--watermark-size': `${watermark.fontSize}px`, color: watermark.color} as CSSProperties}>{watermark.text}</div>}
+            {watermark.type === 'image' && watermarkImageUrl && <div className="motion-design-watermark is-image" style={{'--watermark-x': `${watermark.xPercent}%`, '--watermark-y': `${watermark.yPercent}%`, '--watermark-opacity': watermark.opacity, '--watermark-width': `${watermark.widthPercent}%`} as CSSProperties}><img src={watermarkImageUrl} alt="Watermark" /></div>}
           </div>
           <div className="layout-command-bar">
             <div className="layout-command-group">
+              {narrationAudioUrl && <button type="button" className="motion-design-playback" disabled={!runtimeReady || !runtimeState} onClick={toggleSynchronizedPlayback}>{runtimeState?.paused ? 'Phát hình + tiếng' : 'Tạm dừng'}</button>}
               <button
                 type="button"
                 title="Thêm text vào scene hiện tại"

@@ -71,6 +71,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
   const [state, setState] = useState<'loading' | 'ready' | 'saving' | 'auditing' | 'approving' | 'error'>('loading');
   const [message, setMessage] = useState('');
   const [snapshotDirty, setSnapshotDirty] = useState(false);
+  const [ruleSaving, setRuleSaving] = useState(false);
   const codex = useCodexConnection();
 
   useEffect(() => {
@@ -119,6 +120,17 @@ export function NarrationPage({projectId}: {projectId: string}) {
     setNarration(nextProject.narration ?? null);
     setProjectRules(nextProject.narration?.projectRules ?? []);
     setSnapshotDirty(false);
+  }
+
+  async function persistProjectRules(nextRules: PronunciationRule[]) {
+    if (!project || !narration) throw new Error('Không tìm thấy bản đọc của project.');
+    const saved = await saveProjectNarration(
+      project.id,
+      {sourceText: narration.sourceText, projectRules: nextRules},
+      project.revision,
+    );
+    installProject(saved);
+    return saved;
   }
 
   async function saveSnapshot() {
@@ -203,39 +215,51 @@ export function NarrationPage({projectId}: {projectId: string}) {
       setMessage('Mỗi quy tắc cần có phần gốc và cách đọc.');
       return;
     }
+    const ruleDraft = {...draft, source, spoken};
     const input = {source, spoken, origin: 'user' as const, caseSensitive: false};
+    setRuleSaving(true);
+    setMessage('');
     try {
-      if (draft.scope === 'library') {
-        const saved = await saveLibraryPronunciationRule(input, draft.id ?? undefined);
+      if (ruleDraft.scope === 'library') {
+        const saved = await saveLibraryPronunciationRule(input, ruleDraft.id ?? undefined);
         setLibraryRules(current => [...current.filter(rule => rule.id !== saved.id), saved]);
+        setSnapshotDirty(true);
       } else {
         const saved: PronunciationRule = {
           ...input,
-          id: draft.id ?? crypto.randomUUID(),
+          id: ruleDraft.id ?? crypto.randomUUID(),
           scope: 'project',
         };
-        setProjectRules(current => [...current.filter(rule => rule.id !== saved.id), saved]);
+        const nextRules = [...projectRules.filter(rule => rule.id !== saved.id), saved];
+        await persistProjectRules(nextRules);
       }
-      setSnapshotDirty(true);
       setDraft(emptyRule);
-      setMessage('Từ điển đã đổi; preview được cập nhật ngay. Hãy lưu bản đọc khi sẵn sàng.');
+      setMessage(ruleDraft.scope === 'project'
+        ? 'Đã lưu quy tắc vào project và cập nhật bản đọc.'
+        : 'Đã lưu quy tắc dùng chung. Preview được cập nhật ngay.');
     } catch (reason) {
       setMessage(reason instanceof ApiRequestError ? reason.message : 'Không thể lưu quy tắc từ điển.');
+    } finally {
+      setRuleSaving(false);
     }
   }
 
   async function removeRule(rule: PronunciationRule) {
+    setRuleSaving(true);
+    setMessage('');
     try {
       if (rule.scope === 'library') {
         await deleteLibraryPronunciationRule(rule.id);
         setLibraryRules(current => current.filter(item => item.id !== rule.id));
+        setSnapshotDirty(true);
       } else {
-        setProjectRules(current => current.filter(item => item.id !== rule.id));
+        await persistProjectRules(projectRules.filter(item => item.id !== rule.id));
       }
-      setSnapshotDirty(true);
       if (draft.id === rule.id) setDraft(emptyRule);
     } catch (reason) {
       setMessage(reason instanceof ApiRequestError ? reason.message : 'Không thể xóa quy tắc.');
+    } finally {
+      setRuleSaving(false);
     }
   }
 
@@ -265,9 +289,9 @@ export function NarrationPage({projectId}: {projectId: string}) {
         <aside className="pronunciation-dictionary">
           <header><span className="preview-kicker">Từ điển cách đọc</span><p>Sửa ở đây, preview thay đổi ngay. “Dùng chung” sẽ xuất hiện ở các project sau.</p></header>
           <div className="rule-editor">
-            <label><span>Văn bản gốc</span><input value={draft.source} placeholder="Ví dụ: logarithm, O(n), a[i]" onChange={event => setDraft(current => ({...current, source: event.currentTarget.value}))} /></label>
-            <label><span>Cách ElevenLabs đọc</span><input value={draft.spoken} placeholder="Ví dụ: lô-ga-rít" onChange={event => setDraft(current => ({...current, spoken: event.currentTarget.value}))} /></label>
-            <div className="rule-editor-actions"><label><span>Phạm vi</span><select value={draft.scope} disabled={Boolean(draft.id)} onChange={event => setDraft(current => ({...current, scope: event.currentTarget.value as RuleDraft['scope']}))}><option value="project">Project này</option><option value="library">Dùng chung</option></select></label><button type="button" className="secondary-button" onClick={() => void saveRule()}><PlusIcon /> {draft.id ? 'Lưu quy tắc' : 'Thêm quy tắc'}</button></div>
+            <label><span>Văn bản gốc</span><input value={draft.source} maxLength={300} disabled={ruleSaving} placeholder="Ví dụ: logarithm, O(n), a[i]" onChange={event => { const source = event.currentTarget.value; setDraft(current => ({...current, source})); }} /></label>
+            <label><span>Cách ElevenLabs đọc</span><input value={draft.spoken} maxLength={600} disabled={ruleSaving} placeholder="Ví dụ: lô-ga-rít" onChange={event => { const spoken = event.currentTarget.value; setDraft(current => ({...current, spoken})); }} /></label>
+            <div className="rule-editor-actions"><label><span>Phạm vi</span><select value={draft.scope} disabled={Boolean(draft.id) || ruleSaving} onChange={event => { const scope = event.currentTarget.value as RuleDraft['scope']; setDraft(current => ({...current, scope})); }}><option value="project">Project này</option><option value="library">Dùng chung</option></select></label><button type="button" className="secondary-button" disabled={ruleSaving || !draft.source.trim() || !draft.spoken.trim()} onClick={() => void saveRule()}><PlusIcon /> {ruleSaving ? 'Đang lưu…' : draft.id ? 'Lưu quy tắc' : 'Thêm quy tắc'}</button></div>
             {draft.id && <button type="button" className="text-button" onClick={() => setDraft(emptyRule)}>Hủy chỉnh sửa</button>}
           </div>
           <RuleList title="Project này" rules={projectRules} onEdit={rule => setDraft({id: rule.id, scope: 'project', source: rule.source, spoken: rule.spoken})} onRemove={rule => void removeRule(rule)} />

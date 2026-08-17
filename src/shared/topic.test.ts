@@ -43,6 +43,32 @@ test('new project input stores narration and defaults legacy planning hints', ()
   assert.equal(request.topicInput.videoFrame?.aspectRatio, 'landscape');
 });
 
+test('new project input chặn topic và lời thoại đã mất dấu do lỗi mã hóa', () => {
+  const base = {
+    creationId: '00000000-0000-4000-8000-000000000002',
+    currentStep: 'topic' as const,
+    topicInput: {
+      topic: 'Giải thích tìm kiếm nhị phân',
+      background: {mode: 'custom' as const, color: '#112233'},
+    },
+  };
+  const brokenNarration = CreateTopicProjectSchema.safeParse({
+    ...base,
+    narrationSourceText: 'V? sao thu?ng nhanh hon khi chia đôi dữ liệu?',
+  });
+  const brokenTopic = UpdateProjectSchema.safeParse({
+    topicInput: {...base.topicInput, topic: 'V� sao tìm kiếm nhanh?'},
+  });
+
+  assert.equal(brokenNarration.success, false);
+  assert.deepEqual(
+    brokenNarration.error?.issues[0]?.path,
+    ['narrationSourceText'],
+  );
+  assert.equal(brokenTopic.success, false);
+  assert.deepEqual(brokenTopic.error?.issues[0]?.path, ['topicInput', 'topic']);
+});
+
 test('TopicInputSchema chuẩn hóa khoảng trắng ở đầu và cuối', () => {
   const result = TopicInputSchema.parse({
     topic: '  Tìm kiếm nhị phân  ',
@@ -576,6 +602,17 @@ test('parseTopicProject migrates v8 and v9 without widening historical step enum
     mode: 'dark',
     color: '#10231D',
   });
+  const migratedVersionFourteen = parseTopicProject({
+    ...versionEight,
+    version: 14,
+    currentStep: 'render',
+    layoutBundle: null,
+    renderBundle: null,
+    visualDesignBundle: null,
+  });
+  assert.equal(migratedVersionFourteen.version, currentProjectVersion);
+  assert.equal(migratedVersionFourteen.currentStep, 'render');
+  assert.equal(migratedVersionFourteen.narration, undefined);
   assert.throws(() =>
     parseTopicProject({...versionEight, currentStep: 'layout'}),
   );

@@ -64,6 +64,7 @@ import {
   CommitVisualDesignSchema,
   defaultLayoutRenderSettings,
   LayoutBundleSchema,
+  LayoutRenderSettingsSchema,
   type LayoutEditorManifest,
 } from '../shared/layout.ts';
 import {defaultVideoFrame, type VideoFrame} from '../shared/videoFormat.ts';
@@ -302,7 +303,10 @@ const AuditNarrationSchema = z
   })
   .strict();
 const PrepareDirectProductionSchema = z
-  .object({generationId: z.string().uuid()})
+  .object({
+    generationId: z.string().uuid(),
+    renderSettings: LayoutRenderSettingsSchema.optional(),
+  })
   .strict();
 const LibraryPronunciationRuleInputSchema = PronunciationRuleSchema
   .omit({id: true, scope: true})
@@ -6646,6 +6650,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
           return;
         }
         const sync = currentProject.animationSyncBundle;
+        const renderSettings =
+          parsed.data.renderSettings ?? defaultLayoutRenderSettings;
         if (!isDirectNarrationPlan(currentProject.outline, currentProject.voiceVisualPlan) ||
           !sync || sync.status !== 'approved' ||
           !animationSyncPrerequisitesAreReady(currentProject)) {
@@ -6657,6 +6663,24 @@ export function createPadStudioServer(options: AppOptions = {}) {
         }
         if (currentProject.layoutBundle?.status === 'approved' &&
           layoutMatchesAnimationSync(currentProject.layoutBundle, sync)) {
+          if (!sameValue(currentProject.layoutBundle.renderSettings, renderSettings)) {
+            if (currentProject.revision !== expectedRevision) {
+              throw new ProjectConflictError(currentProject);
+            }
+            const project = await repository.updateProject(
+              currentProject.id,
+              {
+                layoutBundle: {
+                  ...currentProject.layoutBundle,
+                  renderSettings,
+                },
+              },
+              expectedRevision,
+            );
+            if (!project) throw new Error('Project vừa biến mất khi lưu watermark.');
+            sendProject(response, 200, project);
+            return;
+          }
           sendProject(response, 200, currentProject);
           return;
         }
@@ -6696,7 +6720,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
           overridesFile: prepared.overridesFile,
           manifestFile: prepared.manifestFile,
           overrideContractVersion: prepared.overrideContractVersion,
-          renderSettings: defaultLayoutRenderSettings,
+          renderSettings,
           totalDurationSeconds: prepared.totalDurationSeconds,
           scenes: prepared.scenes,
           validation: prepared.validation,

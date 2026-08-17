@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  createOrderedFrameWriter,
   createFinalRenderService,
   inspectRenderFrameTiming,
 } from './finalRenderService.ts';
@@ -19,6 +20,21 @@ test('ước tính frame giữ quy ước endpoint của Motion Canvas', () => {
   assert.equal(timing.estimatedFrameCount, 31);
   assert.equal(timing.encodedDurationSeconds, 31 / 30);
   assert.equal(timing.matches, true);
+});
+
+test('bộ ghi frame giữ thứ tự khi canvas mã hóa frame liền kề lệch nhau', async () => {
+  const written: number[] = [];
+  const writer = createOrderedFrameWriter(async frame => {
+    written.push(frame);
+  });
+
+  const second = writer.writeFrame(1, Buffer.from('second'));
+  const first = writer.writeFrame(0, Buffer.from('first'));
+  const third = writer.writeFrame(2, Buffer.from('third'));
+  await Promise.all([first, second, third]);
+
+  assert.deepEqual(written, [0, 1, 2]);
+  assert.equal(writer.nextFrame, 3);
 });
 
 test('chấp nhận sai số kết thúc scene nhỏ hơn một phần frame', () => {

@@ -50,6 +50,7 @@ import {
 import {
   parseRuntimeNodeVisibility,
   resolveLayoutEditorManifest,
+  runtimeManifestRequiresSave,
   timelineVisibleEditorNodes,
   type RuntimeNodeVisibility,
 } from './layoutEditorState.ts';
@@ -949,10 +950,11 @@ export function LayoutEditorPage({projectId}: {projectId: string}) {
           );
           latestRuntimeManifestSignatureRef.current =
             runtimeManifestSignature;
-          if (
-            runtimeManifestSignature !==
-            persistedManifestSignatureRef.current
-          ) {
+          if (runtimeManifestRequiresSave(
+            persistedManifestSignatureRef.current,
+            runtimeManifestSignature,
+            projectRef.current?.layoutBundle?.status ?? null,
+          )) {
             manifestSaveRequiredRef.current = true;
             setManifestSaveRequired(true);
           }

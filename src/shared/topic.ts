@@ -17,6 +17,7 @@ import {
   PronunciationReviewSchema,
   PronunciationRuleSchema,
 } from './pronunciation.ts';
+import {textEncodingIssue} from './vietnameseSpeech.ts';
 
 export * from './layout.ts';
 export * from './render.ts';
@@ -1091,7 +1092,12 @@ const topicProjectV13Schema = topicProjectV12Schema
   .extend({version: z.literal(13)})
   .strict();
 
-export const TopicProjectSchema = topicProjectV13Schema
+const topicProjectV14Schema = topicProjectV13Schema
+  .omit({version: true})
+  .extend({version: z.literal(14)})
+  .strict();
+
+export const TopicProjectSchema = topicProjectV14Schema
   .omit({version: true})
   .extend({
     version: z.literal(currentProjectVersion),
@@ -1242,6 +1248,16 @@ export function parseTopicProject(value: unknown): TopicProject {
       ? currentProject.data
       : inheritRenderSettings(currentProject.data);
     return bindLegacyVisualDesignSource(withRenderSettings);
+  }
+
+  const versionFourteenProject = topicProjectV14Schema.safeParse(
+    normalizedValue,
+  );
+  if (versionFourteenProject.success) {
+    return bindLegacyVisualDesignSource(inheritRenderSettings({
+      ...versionFourteenProject.data,
+      version: currentProjectVersion,
+    }));
   }
 
   const versionThirteenProject = topicProjectV13Schema.safeParse(
@@ -1420,7 +1436,27 @@ export const CreateTopicProjectSchema = z
     narrationSourceText: z.string().trim().min(1).max(1_500_000).optional(),
     currentStep: z.union([z.literal('topic'), z.literal('outline')]),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    const topicIssue = textEncodingIssue(value.topicInput.topic);
+    if (topicIssue) {
+      context.addIssue({
+        code: 'custom',
+        path: ['topicInput', 'topic'],
+        message: topicIssue,
+      });
+    }
+    if (value.narrationSourceText) {
+      const narrationIssue = textEncodingIssue(value.narrationSourceText);
+      if (narrationIssue) {
+        context.addIssue({
+          code: 'custom',
+          path: ['narrationSourceText'],
+          message: narrationIssue,
+        });
+      }
+    }
+  });
 
 export type CreateTopicProject = z.infer<typeof CreateTopicProjectSchema>;
 
@@ -1435,7 +1471,18 @@ export const UpdateProjectSchema = z
       value.topicInput !== undefined ||
       value.currentStep !== undefined,
     'Cần có ít nhất một thay đổi.',
-  );
+  )
+  .superRefine((value, context) => {
+    if (!value.topicInput) return;
+    const issue = textEncodingIssue(value.topicInput.topic);
+    if (issue) {
+      context.addIssue({
+        code: 'custom',
+        path: ['topicInput', 'topic'],
+        message: issue,
+      });
+    }
+  });
 
 export type UpdateProject = z.infer<typeof UpdateProjectSchema>;
 

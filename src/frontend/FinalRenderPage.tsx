@@ -1,5 +1,6 @@
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {defaultVideoFrame} from '../shared/videoFormat.ts';
+import {isDirectNarrationProject} from '../shared/projectPipeline.ts';
 import {
   ArrowLeftIcon,
   CheckIcon,
@@ -63,8 +64,7 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
   }
 
   const {project, status} = render;
-  const isDirect = project.outline?.generation.promptVersion === 'direct-narration-v1' &&
-    project.voiceVisualPlan?.generation.promptVersion === 'direct-narration-v1';
+  const isDirect = isDirectNarrationProject(project);
   const diagnostic = status?.state === 'failed'
     ? status.diagnostic ?? null
     : null;
@@ -101,7 +101,7 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
     <div className="render-workspace">
       <header className="outline-heading render-heading">
         <div className="eyebrow">
-          <span>Bước 08</span>
+          <span>{isDirect ? 'Bước 05' : 'Bước 08'}</span>
           <span className="eyebrow-line" />
           Final render
         </div>

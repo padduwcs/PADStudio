@@ -54,6 +54,7 @@ import {
   projectRenderPath,
   projectSceneReviewPath,
   projectStepPath,
+  projectResumePath,
   projectTopicPath,
   projectVoiceVisualPath,
   useAppRoute,
@@ -114,7 +115,7 @@ const pipelineSteps: ReadonlyArray<{
 const workflowSteps = [
   'Nội dung',
   'Cách đọc',
-  'Audio & scene',
+  'Giọng đọc & scene',
   'Chỉnh scene',
   'Xuất video',
 ] as const;
@@ -2671,7 +2672,7 @@ export default function App() {
   function handleOpenProject(project: TopicProject) {
     setProjectReloadKey((current) => current + 1);
     closeLibrary();
-    navigate(projectStepPath(project.id, project.currentStep));
+    navigate(projectResumePath(project));
   }
 
   function handleEditProject(project: TopicProject) {

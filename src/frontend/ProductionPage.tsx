@@ -2,7 +2,13 @@ import {useEffect, useMemo, useState} from 'react';
 import type {ElevenLabsCatalog} from '../shared/elevenLabs.ts';
 import type {TopicProject} from '../shared/topic.ts';
 import {
+  animationSyncIsStale,
+  isDirectNarrationProject,
+} from '../shared/projectPipeline.ts';
+import {
   ApiRequestError,
+  approveMotionCanvas,
+  generateAnimationSync,
   generateMotionCanvas,
   generateVoice,
   getElevenLabsCatalog,
@@ -28,11 +34,6 @@ function newGenerationId() {
   return crypto.randomUUID();
 }
 
-function isDirect(project: TopicProject) {
-  return project.outline?.generation.promptVersion === 'direct-narration-v1' &&
-    project.voiceVisualPlan?.generation.promptVersion === 'direct-narration-v1';
-}
-
 export function ProductionPage({projectId}: {projectId: string}) {
   const [project, setProject] = useState<TopicProject | null>(null);
   const [catalog, setCatalog] = useState<ElevenLabsCatalog | null>(null);
@@ -49,6 +50,10 @@ export function ProductionPage({projectId}: {projectId: string}) {
       .then(value => {
         if (!active) return;
         setProject(value);
+        if (value.voiceBundle) {
+          setVoiceId(value.voiceBundle.configuration.voiceId);
+          setModelId(value.voiceBundle.configuration.modelId);
+        }
         setState('ready');
       })
       .catch(error => {
@@ -87,8 +92,71 @@ export function ProductionPage({projectId}: {projectId: string}) {
     () => catalog?.models.find(item => item.modelId === modelId) ?? null,
     [catalog, modelId],
   );
-  const audioReady = Boolean(project?.voiceBundle && isDirect(project));
-  const sceneReady = Boolean(project?.motionCanvasBundle && isDirect(project));
+  const audioReady = Boolean(project?.voiceBundle && isDirectNarrationProject(project));
+  const sceneReady = Boolean(project?.motionCanvasBundle && isDirectNarrationProject(project));
+  const syncReady = Boolean(
+    project?.animationSyncBundle &&
+      isDirectNarrationProject(project) &&
+      !animationSyncIsStale(project),
+  );
+  const voiceSelectionChanged = Boolean(
+    project?.voiceBundle &&
+      (project.voiceBundle.configuration.voiceId !== voiceId ||
+        project.voiceBundle.configuration.modelId !== modelId),
+  );
+
+  async function generateSelectedAudio(current: TopicProject) {
+    const connected = await eleven.verify();
+    if (connected?.state !== 'connected') {
+      throw new Error('Hãy kết nối ElevenLabs trước khi tạo audio.');
+    }
+    if (!voiceId || !modelId) {
+      throw new Error('Hãy chọn voice và model tiếng Việt của ElevenLabs.');
+    }
+    setMessage('ElevenLabs đang tạo audio từ bản cách đọc đã duyệt…');
+    return generateVoice(current.id, {
+      generationId: newGenerationId(),
+      voiceId,
+      modelId,
+      outputFormat: 'mp3_44100_128',
+      settings: {
+        ...defaultSettings,
+        style: selectedModel?.canUseStyle ? defaultSettings.style : 0,
+        useSpeakerBoost: Boolean(selectedModel?.canUseSpeakerBoost),
+      },
+      seed: null,
+    }, current.revision);
+  }
+
+  async function regenerateAudio() {
+    if (!project || state === 'working' || !voiceId || !modelId) return;
+    const confirmed = window.confirm(
+      'Tạo lại audio sẽ dùng quota ElevenLabs và làm bản đồng bộ/render cũ hết hiệu lực. Tiếp tục?',
+    );
+    if (!confirmed) return;
+    setState('working');
+    setMessage('');
+    try {
+      let current = project;
+      if (!isDirectNarrationProject(current)) {
+        setMessage('Đang cố định lời thoại đã duyệt cho audio…');
+        current = await prepareDirectProduction(
+          current.id,
+          {generationId: newGenerationId()},
+          current.revision,
+        );
+      }
+      current = await generateSelectedAudio(current);
+      setProject(current);
+      setVoiceId(current.voiceBundle!.configuration.voiceId);
+      setModelId(current.voiceBundle!.configuration.modelId);
+      setMessage('Audio mới đã sẵn sàng. Scene hiện tại được giữ lại; đồng bộ và render sẽ được tạo lại ở các bước sau.');
+      setState('ready');
+    } catch (error) {
+      setState('error');
+      setMessage(error instanceof ApiRequestError || error instanceof Error ? error.message : 'Không thể tạo lại audio.');
+    }
+  }
 
   async function runProduction() {
     if (!project || state === 'working') return;
@@ -96,32 +164,13 @@ export function ProductionPage({projectId}: {projectId: string}) {
     setMessage('');
     try {
       let current = project;
-      if (!isDirect(current)) {
+      if (!isDirectNarrationProject(current)) {
         setMessage('Đang cố định lời thoại đã duyệt cho audio…');
         current = await prepareDirectProduction(current.id, {generationId: newGenerationId()}, current.revision);
         setProject(current);
       }
       if (!current.voiceBundle) {
-        const connected = await eleven.verify();
-        if (connected?.state !== 'connected') {
-          throw new Error('Hãy kết nối ElevenLabs trước khi tạo audio.');
-        }
-        if (!voiceId || !modelId) {
-          throw new Error('Hãy chọn voice và model tiếng Việt của ElevenLabs.');
-        }
-        setMessage('ElevenLabs đang tạo audio từ bản voice đã duyệt…');
-        current = await generateVoice(current.id, {
-          generationId: newGenerationId(),
-          voiceId,
-          modelId,
-          outputFormat: 'mp3_44100_128',
-          settings: {
-            ...defaultSettings,
-            style: selectedModel?.canUseStyle ? defaultSettings.style : 0,
-            useSpeakerBoost: Boolean(selectedModel?.canUseSpeakerBoost),
-          },
-          seed: null,
-        }, current.revision);
+        current = await generateSelectedAudio(current);
         setProject(current);
       }
       if (!current.motionCanvasBundle) {
@@ -136,7 +185,24 @@ export function ProductionPage({projectId}: {projectId: string}) {
         }, current.revision);
         setProject(current);
       }
-      setMessage('Audio và scene đã sẵn sàng để sang bước chỉnh scene.');
+      if (!current.motionCanvasBundle) {
+        throw new Error('Scene vừa sinh không có dữ liệu hợp lệ để đồng bộ.');
+      }
+      if (current.motionCanvasBundle.status !== 'approved') {
+        setMessage('Đang khóa bản scene nền để ghép timing audio…');
+        current = await approveMotionCanvas(current.id, current.revision);
+        setProject(current);
+      }
+      if (!current.animationSyncBundle || animationSyncIsStale(current)) {
+        setMessage('Đang đồng bộ scene theo timing thật của giọng đọc…');
+        current = await generateAnimationSync(
+          current.id,
+          {generationId: newGenerationId()},
+          current.revision,
+        );
+        setProject(current);
+      }
+      setMessage('Audio và scene đã đồng bộ, sẵn sàng để kiểm tra và chỉnh lệch.');
       setState('ready');
     } catch (error) {
       setState('error');
@@ -151,20 +217,97 @@ export function ProductionPage({projectId}: {projectId: string}) {
   const firstSection = project.voiceBundle?.sections[0];
   return (
     <main className="production-workspace">
-      <header className="production-heading"><span>Bước 03 · Audio & scene</span><h1>Tạo audio rồi sinh scene trực tiếp</h1><p>Hệ thống chỉ dùng đúng snapshot voice đã duyệt. Codex nhận lời thoại đó để dựng scene; bạn sẽ chỉnh scene ở bước kế tiếp.</p></header>
+      <header className="production-heading">
+        <span>Bước 03 · Giọng đọc & scene</span>
+        <h1>Chọn giọng ElevenLabs rồi sinh scene</h1>
+        <p>Chọn voice và model tiếng Việt cho bản cách đọc đã duyệt. Codex dùng cùng lời thoại đó để dựng scene ở bước kế tiếp.</p>
+      </header>
       <div className="production-grid">
         <section className="production-card">
-          <header><span>ElevenLabs</span><h2>Audio tiếng Việt</h2></header>
+          <header>
+            <span>ElevenLabs</span>
+            <h2>Giọng đọc tiếng Việt</h2>
+          </header>
           <ElevenLabsConnectionCard connection={eleven} />
-          {audioReady ? <div className="production-result"><strong>Audio đã tạo</strong><p>{project.voiceBundle!.configuration.voiceName} · {Math.round(project.voiceBundle!.totalDurationSeconds)} giây</p>{firstSection && <audio controls src={voiceAudioUrl(project.id, firstSection.outlineSectionId, project.voiceBundle!.generation.generationId)} />}</div> : <div className="production-fields"><label><span>Voice</span><select value={voiceId} onChange={event => setVoiceId(event.currentTarget.value)} disabled={!eleven.connected}><option value="">Chọn voice</option>{catalog?.voices.map(voice => <option value={voice.voiceId} key={voice.voiceId}>{voice.name}</option>)}</select></label><label><span>Model tiếng Việt</span><select value={modelId} onChange={event => setModelId(event.currentTarget.value)} disabled={!eleven.connected}><option value="">Chọn model</option>{catalog?.models.filter(model => model.languages.includes('vi')).map(model => <option value={model.modelId} key={model.modelId}>{model.name}</option>)}</select></label></div>}
+          <div className="production-fields">
+            <label>
+              <span>Voice</span>
+              <select
+                value={voiceId}
+                onChange={event => setVoiceId(event.currentTarget.value)}
+                disabled={!eleven.connected || state === 'working'}
+              >
+                <option value="">Chọn voice</option>
+                {project.voiceBundle && !catalog?.voices.some(voice => voice.voiceId === project.voiceBundle!.configuration.voiceId) && (
+                  <option value={project.voiceBundle.configuration.voiceId}>
+                    {project.voiceBundle.configuration.voiceName} (đang dùng)
+                  </option>
+                )}
+                {catalog?.voices.map(voice => <option value={voice.voiceId} key={voice.voiceId}>{voice.name}</option>)}
+              </select>
+            </label>
+            <label>
+              <span>Model tiếng Việt</span>
+              <select
+                value={modelId}
+                onChange={event => setModelId(event.currentTarget.value)}
+                disabled={!eleven.connected || state === 'working'}
+              >
+                <option value="">Chọn model</option>
+                {project.voiceBundle && !catalog?.models.some(model => model.modelId === project.voiceBundle!.configuration.modelId) && (
+                  <option value={project.voiceBundle.configuration.modelId}>
+                    {project.voiceBundle.configuration.modelName} (đang dùng)
+                  </option>
+                )}
+                {catalog?.models.filter(model => model.languages.includes('vi')).map(model => <option value={model.modelId} key={model.modelId}>{model.name}</option>)}
+              </select>
+            </label>
+          </div>
+          {audioReady && (
+            <>
+              <div className={`production-selection-note${voiceSelectionChanged ? ' is-changed' : ''}`}>
+                <span>{voiceSelectionChanged ? 'Lựa chọn mới chưa áp dụng' : 'Đang dùng lựa chọn này'}</span>
+                <button
+                  type="button"
+                  onClick={() => void regenerateAudio()}
+                  disabled={!eleven.connected || !voiceId || !modelId || state === 'working'}
+                >
+                  {state === 'working' ? 'Đang tạo…' : voiceSelectionChanged ? 'Đổi giọng & tạo lại' : 'Tạo lại audio'}
+                </button>
+              </div>
+              <div className="production-result">
+                <strong>Audio đã tạo</strong>
+                <p>{project.voiceBundle!.configuration.voiceName} · {Math.round(project.voiceBundle!.totalDurationSeconds)} giây</p>
+                {firstSection && <audio controls src={voiceAudioUrl(project.id, firstSection.outlineSectionId, project.voiceBundle!.generation.generationId)} />}
+              </div>
+            </>
+          )}
         </section>
         <section className="production-card">
-          <header><span>Codex</span><h2>Scene theo lời thoại</h2></header>
+          <header>
+            <span>Codex</span>
+            <h2>Scene đã khớp giọng đọc</h2>
+          </header>
           <CodexConnectionCard connection={codex} task="motionCanvas" />
-          <div className="production-result"><strong>{sceneReady ? 'Scene đã sinh' : 'Sẵn sàng phân tích trực tiếp'}</strong><p>{sceneReady ? `${project.motionCanvasBundle!.scenes.length} scene đã chờ bạn review và chỉnh sửa.` : 'Không tạo outline hoặc voice–visual riêng cho người dùng.'}</p></div>
+          <div className="production-result">
+            <strong>{syncReady ? 'Scene và audio đã đồng bộ' : sceneReady ? 'Scene cần đồng bộ lại' : 'Sẵn sàng phân tích trực tiếp'}</strong>
+            <p>{syncReady ? `${project.motionCanvasBundle!.scenes.length} scene đã được ánh xạ theo timing giọng đọc thật.` : sceneReady ? 'Bấm đồng bộ để cập nhật scene theo audio hiện tại.' : 'Codex sinh scene, sau đó hệ thống tự ghép timing ElevenLabs.'}</p>
+          </div>
         </section>
       </div>
-      <footer className="production-footer"><div><strong>{sceneReady ? 'Scene đã sẵn sàng review' : audioReady ? 'Audio đã sẵn sàng, tiếp tục sinh scene' : 'Sẵn sàng sản xuất'}</strong><p>{message || 'Mỗi dịch vụ chỉ được gọi khi phần trước đã sẵn sàng.'}</p></div>{sceneReady ? <button className="submit-button" type="button" onClick={() => navigate(projectSceneReviewPath(project.id))}>Review & chỉnh scene</button> : <button className="submit-button" type="button" disabled={state === 'working' || (!audioReady && (!eleven.connected || !voiceId || !modelId))} onClick={() => void runProduction()}>{state === 'working' ? 'Đang xử lý…' : audioReady ? 'Sinh scene' : 'Tạo audio và scene'}</button>}</footer>
+      <footer className="production-footer">
+        <div>
+          <strong>{syncReady ? 'Bản đồng bộ đã sẵn sàng chỉnh' : sceneReady ? 'Scene cần đồng bộ với audio' : audioReady ? 'Audio đã sẵn sàng, tiếp tục sinh scene' : 'Sẵn sàng sản xuất'}</strong>
+          <p>{message || 'Mỗi dịch vụ chỉ được gọi khi phần trước đã sẵn sàng.'}</p>
+        </div>
+        {syncReady ? (
+          <button className="submit-button" type="button" onClick={() => navigate(projectSceneReviewPath(project.id))}>Review & chỉnh scene</button>
+        ) : (
+          <button className="submit-button" type="button" disabled={state === 'working' || (!audioReady && (!eleven.connected || !voiceId || !modelId))} onClick={() => void runProduction()}>
+            {state === 'working' ? 'Đang xử lý…' : sceneReady ? 'Đồng bộ lại scene' : audioReady ? 'Sinh scene & đồng bộ' : 'Tạo audio, scene & đồng bộ'}
+          </button>
+        )}
+      </footer>
     </main>
   );
 }

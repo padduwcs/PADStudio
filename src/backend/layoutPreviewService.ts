@@ -896,6 +896,9 @@ export function createLayoutPreviewService(
         optimizeDeps: {
           noDiscovery: true,
           include: [
+            '@motion-canvas/core',
+            '@motion-canvas/2d',
+            '@preact/signals-core',
             'chroma-js',
             'parse-svg-path',
             'mathjax-full/js/adaptors/liteAdaptor',
@@ -907,6 +910,11 @@ export function createLayoutPreviewService(
           ],
         },
         resolve: {
+          dedupe: [
+            '@motion-canvas/core',
+            '@motion-canvas/2d',
+            '@preact/signals-core',
+          ],
           alias: {
             '@motion-canvas/core': path.join(
               repositoryRoot,

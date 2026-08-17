@@ -66,3 +66,19 @@ export function resolveLayoutEditorManifest(
   }
   return null;
 }
+
+/**
+ * A runtime manifest is discovery metadata, not a visual edit. Opening an
+ * approved Layout must remain read-only until the user changes the document.
+ * Draft layouts still persist their first complete manifest for review.
+ */
+export function runtimeManifestRequiresSave(
+  persistedSignature: string,
+  runtimeSignature: string,
+  layoutStatus: 'draft' | 'approved' | null,
+) {
+  return (
+    runtimeSignature !== persistedSignature &&
+    layoutStatus !== 'approved'
+  );
+}
