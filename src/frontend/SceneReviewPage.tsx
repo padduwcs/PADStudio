@@ -28,6 +28,38 @@ import {
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useMotionCanvasDraft} from './useMotionCanvasDraft.ts';
 
+function defaultWatermark(type: RenderWatermark['type']): RenderWatermark {
+  if (type === 'text') return {type, text: 'Tên kênh', opacity: 0.35, xPercent: 88, yPercent: 92, fontSize: 42, color: '#ffffff'};
+  if (type === 'image') return {type, assetId: '', opacity: 0.35, xPercent: 88, yPercent: 92, widthPercent: 22, tintColor: '#FFFFFF', tintStrength: 0};
+  return {type: 'none'};
+}
+
+function WatermarkSettings({
+  watermark,
+  uploading,
+  error,
+  onChange,
+  onUpload,
+}: {
+  watermark: RenderWatermark;
+  uploading: boolean;
+  error: string;
+  onChange: (watermark: RenderWatermark) => void;
+  onUpload: (file: File) => void;
+}) {
+  const label = watermark.type === 'none' ? 'Không dùng' : watermark.type === 'text' ? 'Chữ' : 'Ảnh';
+  return <details className="scene-review-watermark" open>
+    <summary><span>Đầu ra</span><strong>Watermark</strong><small>{label}</small></summary>
+    <div>
+      <label><span>Loại</span><select value={watermark.type} onChange={event => onChange(defaultWatermark(event.currentTarget.value as RenderWatermark['type']))}><option value="none">Không dùng</option><option value="text">Chữ</option><option value="image">Ảnh</option></select></label>
+      {watermark.type === 'text' && <><label><span>Nội dung</span><input value={watermark.text} onChange={event => onChange({...watermark, text: event.currentTarget.value})} placeholder="Tên kênh" /></label><label><span>Màu</span><input type="color" value={watermark.color} onChange={event => onChange({...watermark, color: event.currentTarget.value})} /></label></>}
+      {watermark.type === 'image' && <label><span>Ảnh PNG, JPEG hoặc WebP</span><input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) onUpload(file); }} /><small>{uploading ? 'Đang tải ảnh…' : watermark.assetId ? 'Ảnh đã sẵn sàng.' : 'Chưa chọn ảnh.'}</small></label>}
+      {watermark.type !== 'none' && <><label><span>Độ mờ</span><input type="range" min={0} max={1} step={0.05} value={watermark.opacity} onChange={event => onChange({...watermark, opacity: Number(event.currentTarget.value)})} /></label><label><span>Vị trí ngang</span><input type="range" min={0} max={100} step={1} value={watermark.xPercent} onChange={event => onChange({...watermark, xPercent: Number(event.currentTarget.value)})} /></label><label><span>Vị trí dọc</span><input type="range" min={0} max={100} step={1} value={watermark.yPercent} onChange={event => onChange({...watermark, yPercent: Number(event.currentTarget.value)})} /></label></>}
+      {error && <p className="submit-error" role="alert">{error}</p>}
+    </div>
+  </details>;
+}
+
 export function SceneReviewPage({projectId}: {projectId: string}) {
   const motion = useMotionCanvasDraft(projectId);
   const codex = useCodexConnection();
@@ -162,15 +194,6 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
     if (candidate) setGuidance('');
   }
 
-  function selectWatermarkType(type: RenderWatermark['type']) {
-    setWatermarkUploadError('');
-    setWatermark(type === 'text'
-      ? {type: 'text', text: 'Tên kênh', opacity: 0.35, xPercent: 88, yPercent: 92, fontSize: 42, color: '#ffffff'}
-      : type === 'image'
-        ? {type: 'image', assetId: '', opacity: 0.35, xPercent: 88, yPercent: 92, widthPercent: 22, tintColor: '#FFFFFF', tintStrength: 0}
-        : {type: 'none'});
-  }
-
   function uploadWatermark(file: File) {
     setWatermarkUploading(true);
     setWatermarkUploadError('');
@@ -265,7 +288,7 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
           <button className="secondary-button" type="button" disabled={motion.candidateGenerating || selectedSceneIds.length === 0 || guidance.trim().length < 3 || !codex.generationReady} onClick={() => void createCandidate()}>{motion.candidateGenerating ? 'Đang tạo candidate…' : 'Tạo candidate để so sánh'}</button>
           {motion.candidate && <section className="scene-review-candidate"><strong>Candidate mới</strong><p>{motion.candidate.coherence.summary}</p>{motion.candidatePreviewState === 'ready' && motion.candidatePreviewUrl && <iframe title="Preview candidate scene" src={motion.candidatePreviewUrl} />}{motion.candidate.decision === 'pending' && <div><button type="button" disabled={motion.candidateApplying || motion.candidate.status === 'coherence_blocked' || motion.candidate.status === 'scope_expansion_required'} onClick={() => void motion.applyCandidate()}>Áp dụng candidate</button><button type="button" disabled={motion.historyBusy} onClick={() => void motion.rejectCandidate()}>Bỏ candidate</button></div>}</section>}
         </section>
-        <aside className="scene-review-side"><CodexConnectionCard connection={codex} task="motionCanvas" workUnits={selectedSceneIds.length || bundle.scenes.length} /><details className="scene-review-watermark" open><summary><span>Đầu ra</span><strong>Watermark</strong><small>{watermark.type === 'none' ? 'Không dùng' : watermark.type === 'text' ? 'Chữ' : 'Ảnh'}</small></summary><div><label><span>Loại</span><select value={watermark.type} onChange={event => selectWatermarkType(event.currentTarget.value as RenderWatermark['type'])}><option value="none">Không dùng</option><option value="text">Chữ</option><option value="image">Ảnh</option></select></label>{watermark.type === 'text' && <><label><span>Nội dung</span><input value={watermark.text} onChange={event => setWatermark({...watermark, text: event.currentTarget.value})} placeholder="Tên kênh" /></label><label><span>Màu</span><input type="color" value={watermark.color} onChange={event => setWatermark({...watermark, color: event.currentTarget.value})} /></label></>}{watermark.type === 'image' && <label><span>Ảnh PNG, JPEG hoặc WebP</span><input type="file" accept="image/png,image/jpeg,image/webp" disabled={watermarkUploading} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) uploadWatermark(file); }} /><small>{watermarkUploading ? 'Đang tải ảnh…' : watermark.assetId ? 'Ảnh đã sẵn sàng.' : 'Chưa chọn ảnh.'}</small></label>}{watermark.type !== 'none' && <><label><span>Độ mờ</span><input type="range" min={0} max={1} step={0.05} value={watermark.opacity} onChange={event => setWatermark({...watermark, opacity: Number(event.currentTarget.value)})} /></label><label><span>Vị trí ngang</span><input type="range" min={0} max={100} step={1} value={watermark.xPercent} onChange={event => setWatermark({...watermark, xPercent: Number(event.currentTarget.value)})} /></label><label><span>Vị trí dọc</span><input type="range" min={0} max={100} step={1} value={watermark.yPercent} onChange={event => setWatermark({...watermark, yPercent: Number(event.currentTarget.value)})} /></label></>}{watermarkUploadError && <p className="submit-error" role="alert">{watermarkUploadError}</p>}</div></details><p>Bạn cũng có thể chỉnh trực tiếp màu sắc, chữ, vị trí và chuyển động ở editor bên dưới.</p></aside>
+        <aside className="scene-review-side"><CodexConnectionCard connection={codex} task="motionCanvas" workUnits={selectedSceneIds.length || bundle.scenes.length} /><WatermarkSettings watermark={watermark} uploading={watermarkUploading} error={watermarkUploadError} onChange={next => { setWatermarkUploadError(''); setWatermark(next); }} onUpload={uploadWatermark} /><p>Bạn cũng có thể chỉnh trực tiếp màu sắc, chữ, vị trí và chuyển động ở editor bên dưới.</p></aside>
       </div>
       <MotionDesignEditor motionCanvas={motion} narrationAudioUrl={narrationAudioUrl} watermark={watermark} watermarkImageUrl={watermarkImageUrl} />
       <footer className="scene-review-footer"><div><strong>{direct ? exportReady ? 'Sẵn sàng xuất video' : autoSyncing ? 'Đang cập nhật hình và tiếng' : synchronized ? 'Hình và tiếng đã đồng bộ' : 'Thay đổi sẽ được đồng bộ lại' : 'Chốt scene để tạo voice'}</strong><p>{completionMessage || (direct ? 'Hoàn tất sẽ chốt scene, cập nhật đồng bộ nếu cần và chuẩn bị đầu ra tự động.' : 'Scene đã được review trong cùng màn hình này. Sau khi chốt, bạn sẽ tiếp tục tạo voice ElevenLabs.')}</p></div><button className="submit-button" type="button" disabled={syncing || autoSyncing || !watermarkValid || motion.candidate?.decision === 'pending'} onClick={() => exportReady ? navigate(projectRenderPath(project.id)) : void approveAndContinue()}>{syncing ? direct ? 'Đang chuẩn bị đầu ra…' : 'Đang chốt…' : autoSyncing ? 'Đang cập nhật preview…' : direct ? exportReady ? 'Xuất video' : 'Hoàn tất & xuất video' : 'Chốt scene & tạo voice'}</button></footer>
