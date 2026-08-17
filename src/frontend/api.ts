@@ -14,6 +14,8 @@ import type {
   AnimationSyncBundle,
   CreateTopicProject,
   GenerateTopicGuidance,
+  GenerateNarrationDraft,
+  NarrationDraftGenerationResponse,
   GenerateAnimationSync,
   GenerateMotionCanvas,
   GenerateTeachingOutline,
@@ -155,6 +157,25 @@ export async function generateTopicGuidance(
   if (!payload || !('suggestion' in payload) || !('generation' in payload)) {
     throw new ApiRequestError(
       'Phản hồi đề xuất định hướng không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload;
+}
+
+export async function generateNarrationDraft(
+  request: GenerateNarrationDraft,
+) {
+  const response = await fetch('/api/narration-drafts/generate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(request),
+  });
+  const payload = await readPayload<NarrationDraftGenerationResponse>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('draft' in payload) || !('generation' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi tạo lời thoại không hợp lệ.',
       'INVALID_RESPONSE',
     );
   }

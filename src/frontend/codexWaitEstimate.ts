@@ -1,4 +1,5 @@
 export type CodexGenerationTask =
+  | 'narration'
   | 'outline'
   | 'voiceVisual'
   | 'motionCanvas';
@@ -23,6 +24,7 @@ const taskBaselines: Record<
   CodexGenerationTask,
   {minimumMs: number; maximumMs: number}
 > = {
+  narration: {minimumMs: 15_000, maximumMs: 90_000},
   outline: {minimumMs: 20_000, maximumMs: 120_000},
   voiceVisual: {minimumMs: 30_000, maximumMs: 180_000},
   motionCanvas: {minimumMs: 45_000, maximumMs: 240_000},
@@ -57,7 +59,7 @@ function historyKey(
 
 function workloadFactor(task: CodexGenerationTask, workUnits: number) {
   const units = Math.max(1, Math.min(80, Math.floor(workUnits) || 1));
-  if (task === 'outline') return 1;
+  if (task === 'outline' || task === 'narration') return 1;
   if (task === 'voiceVisual') return Math.min(1.8, 0.9 + units * 0.1);
 
   // Motion scenes run four at a time. Extra batches extend wall-clock time,

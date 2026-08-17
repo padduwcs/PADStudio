@@ -11,12 +11,15 @@ import {
 import {
   ApiRequestError,
   createTopicProject,
+  generateNarrationDraft,
   getProject,
   saveProjectNarration,
   updateTopicProject,
 } from './api.ts';
+import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {createNewTopicCreationId} from './newTopicSession.ts';
 import {navigate, projectNarrationPath, projectTopicPath} from './router.ts';
+import {useCodexConnection} from './useCodexConnection.ts';
 
 type ContentForm = {
   topic: string;
@@ -75,7 +78,11 @@ export function ContentPage({projectId}: {projectId?: string}) {
     projectId ? 'loading' : 'ready',
   );
   const [error, setError] = useState('');
+  const [narrationGuidance, setNarrationGuidance] = useState('');
+  const [narrationGenerating, setNarrationGenerating] = useState(false);
+  const [narrationGenerationError, setNarrationGenerationError] = useState('');
   const creationId = useRef(createNewTopicCreationId());
+  const codex = useCodexConnection();
 
   useEffect(() => {
     if (!projectId) {
@@ -103,6 +110,50 @@ export function ContentPage({projectId}: {projectId?: string}) {
     setForm(current => ({...current, [key]: value}));
     setError('');
     if (state === 'saved') setState('ready');
+  }
+
+  async function createNarrationDraft() {
+    if (narrationGenerating) return;
+    const topicInput = buildTopicInput(form);
+    if (!topicInput.success) {
+      setNarrationGenerationError(
+        topicInput.error.issues[0]?.message ?? 'Thông tin đầu vào chưa hợp lệ.',
+      );
+      return;
+    }
+    if (
+      form.narrationSourceText.trim() &&
+      !window.confirm('Thay lời thoại hiện tại bằng bản nháp mới? Bạn có thể hủy để giữ nguyên.')
+    ) return;
+    setNarrationGenerating(true);
+    setNarrationGenerationError('');
+    try {
+      const status = await codex.verify();
+      if (status?.state !== 'connected') {
+        throw new Error('Hãy kết nối Codex trước khi tạo lời thoại.');
+      }
+      const selection = codex.getGenerationSelection();
+      if (!selection) {
+        throw new Error('Hãy chọn model và mức reasoning trước khi tạo lời thoại.');
+      }
+      const response = await generateNarrationDraft({
+        generationId: crypto.randomUUID(),
+        topicInput: topicInput.data,
+        ...(narrationGuidance.trim()
+          ? {userGuidance: narrationGuidance.trim()}
+          : {}),
+        ...selection,
+      });
+      update('narrationSourceText', response.draft.text);
+    } catch (reason) {
+      setNarrationGenerationError(
+        reason instanceof ApiRequestError || reason instanceof Error
+          ? reason.message
+          : 'Không thể tạo lời thoại lúc này.',
+      );
+    } finally {
+      setNarrationGenerating(false);
+    }
   }
 
   async function submit(event: FormEvent) {
@@ -165,19 +216,26 @@ export function ContentPage({projectId}: {projectId?: string}) {
       <header className="content-heading">
         <span>Bước 01 · Nội dung gốc</span>
         <h1>{projectId ? 'Chỉnh đầu vào video' : 'Bắt đầu từ nội dung của bạn'}</h1>
-        <p>Chỉ cần chủ đề, background, khung hình và lời thoại. Hệ thống sẽ không tự viết lại lời thoại này.</p>
+        <p>Chỉ cần chủ đề, background, khung hình và lời thoại. Bạn có thể tự chuẩn bị, hoặc dùng AI tạo một bản nháp rồi chỉnh theo ý mình.</p>
       </header>
       <form className="content-form" onSubmit={submit} noValidate>
-        <label className="content-field">
+        <section className="content-field">
           <span>Chủ đề</span>
           <textarea autoFocus rows={2} value={form.topic} placeholder="Ví dụ: Vì sao tìm kiếm nhị phân nhanh hơn?" onChange={event => update('topic', event.currentTarget.value)} />
-        </label>
-        <label className="content-field">
+        </section>
+        <section className="content-field">
           <span>Lời thoại gốc</span>
           <small>Đây là nội dung bạn muốn nói. Bước tiếp theo chỉ chuẩn hóa cách ElevenLabs đọc nó.</small>
+          <details className="content-narration-assist">
+            <summary><strong>Chưa có lời thoại? Tạo nháp bằng AI</strong><small>Tùy chọn — nếu đã chuẩn bị kỹ, chỉ cần dán lời thoại của bạn và bỏ qua phần này.</small></summary>
+            <label><span>Gợi ý cho AI <small>Không bắt buộc</small></span><textarea rows={3} value={narrationGuidance} disabled={narrationGenerating} placeholder="Ví dụ: giải thích cho người mới, ưu tiên ví dụ đời thường, khoảng ba phút." onChange={event => setNarrationGuidance(event.currentTarget.value)} /></label>
+            <CodexConnectionCard connection={codex} task="narration" />
+            <button className="secondary-button" type="button" disabled={narrationGenerating || !codex.generationReady || form.topic.trim().length < 6} onClick={() => void createNarrationDraft()}>{narrationGenerating ? 'Đang soạn lời thoại…' : form.narrationSourceText.trim() ? 'Tạo bản nháp thay thế' : 'Để AI soạn lời thoại'}</button>
+            {narrationGenerationError && <p className="field-error" role="alert">{narrationGenerationError}</p>}
+          </details>
           <textarea className="narration-input" rows={15} value={form.narrationSourceText} placeholder="Dán hoặc viết toàn bộ lời thoại tại đây…" onChange={event => update('narrationSourceText', event.currentTarget.value)} />
           <em>{form.narrationSourceText.trim().length.toLocaleString('vi-VN')} ký tự</em>
-        </label>
+        </section>
         <div className="content-settings">
           <label className="content-field color-field">
             <span>Background</span>

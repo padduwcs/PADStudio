@@ -15,6 +15,7 @@ import {
   CommitLayoutSchema,
   ApproveNarrationSchema,
   CreateTopicProjectSchema,
+  GenerateNarrationDraftSchema,
   GenerateTopicGuidanceSchema,
   GenerateFinalRenderSchema,
   GenerateAnimationSyncSchema,
@@ -132,6 +133,13 @@ import {
   type TopicGuidanceGenerationResult,
   type TopicGuidanceGenerator,
 } from './topicGuidanceGenerator.ts';
+import {
+  createCodexNarrationDraftGenerator,
+  NARRATION_DRAFT_PROMPT_VERSION,
+  NarrationDraftGenerationError,
+  type NarrationDraftGenerationResult,
+  type NarrationDraftGenerator,
+} from './narrationDraftGenerator.ts';
 import {
   createCodexOutlineGenerator,
   OutlineGenerationError,
@@ -329,6 +337,7 @@ interface AppOptions {
   ) => ElevenLabsConnectionService;
   outlineGenerator?: OutlineGenerator;
   topicGuidanceGenerator?: TopicGuidanceGenerator;
+  narrationDraftGenerator?: NarrationDraftGenerator;
   outlineRevisionService?: OutlineRevisionService;
   outlineHistoryStore?: OutlineHistoryStore;
   voiceVisualGenerator?: VoiceVisualGenerator;
@@ -1058,6 +1067,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const sharedCodexClient: CodexAppServerClient | null =
     !options.codexConnection ||
     !options.topicGuidanceGenerator ||
+    !options.narrationDraftGenerator ||
     !options.outlineGenerator ||
     !options.outlineRevisionService ||
     !options.voiceVisualGenerator ||
@@ -1085,6 +1095,9 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const topicGuidanceGenerator =
     options.topicGuidanceGenerator ??
     createCodexTopicGuidanceGenerator(sharedCodexClient!);
+  const narrationDraftGenerator =
+    options.narrationDraftGenerator ??
+    createCodexNarrationDraftGenerator(sharedCodexClient!);
   const outlineRevisionService =
     options.outlineRevisionService ??
     createCodexOutlineRevisionService(sharedCodexClient!);
@@ -1154,6 +1167,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const logger = options.logger ?? console;
   const outlineGenerations = createInMemoryGenerationRegistry<OutlineGenerationResult>();
   const topicGuidanceGenerations = createInMemoryGenerationRegistry<TopicGuidanceGenerationResult>();
+  const narrationDraftGenerations = createInMemoryGenerationRegistry<NarrationDraftGenerationResult>();
   const outlineCandidateGenerations = createInMemoryGenerationRegistry<OutlineRevisionResult>();
   const voiceVisualGenerations = createInMemoryGenerationRegistry<VoiceVisualGenerationResult>();
   const voiceVisualCandidateGenerations = createInMemoryGenerationRegistry<VoiceVisualRevisionResult>();
@@ -2762,6 +2776,60 @@ export function createPadStudioServer(options: AppOptions = {}) {
             ...(model ? {requestedModel: model} : {}),
             ...(reasoningEffort ? {reasoningEffort} : {}),
             promptVersion: TOPIC_GUIDANCE_PROMPT_VERSION,
+            generatedAt: generated.generatedAt,
+            usage: generated.result.usage,
+          },
+        });
+        return;
+      }
+
+      if (
+        requestUrl.pathname === '/api/narration-drafts/generate' &&
+        request.method === 'POST'
+      ) {
+        const body = await readJsonBody(request);
+        const parsedRequest = GenerateNarrationDraftSchema.safeParse(body);
+        if (!parsedRequest.success) {
+          sendApiError(response, 422, {
+            code: 'VALIDATION_ERROR',
+            message: 'Thông tin để tạo lời thoại chưa hợp lệ.',
+            fields: validationFields(parsedRequest.error.issues),
+          });
+          return;
+        }
+        const {
+          generationId,
+          topicInput,
+          userGuidance,
+          model,
+          reasoningEffort,
+        } = parsedRequest.data;
+        const fingerprint = JSON.stringify({
+          topicInput,
+          userGuidance: userGuidance ?? null,
+          model: model ?? null,
+          reasoningEffort: reasoningEffort ?? null,
+        });
+        const generated = await generateOnce(
+          narrationDraftGenerations,
+          generationId,
+          fingerprint,
+          () => narrationDraftGenerator.generate({
+            topicInput,
+            ...(userGuidance ? {userGuidance} : {}),
+            ...(model ? {model} : {}),
+            ...(reasoningEffort ? {reasoningEffort} : {}),
+          }),
+        );
+        sendJson(response, 200, {
+          draft: generated.result.draft,
+          generation: {
+            generationId,
+            provider: 'codex',
+            model: generated.result.model,
+            ...(model ? {requestedModel: model} : {}),
+            ...(reasoningEffort ? {reasoningEffort} : {}),
+            promptVersion: NARRATION_DRAFT_PROMPT_VERSION,
             generatedAt: generated.generatedAt,
             usage: generated.result.usage,
           },
@@ -6740,6 +6808,14 @@ export function createPadStudioServer(options: AppOptions = {}) {
       }
 
       if (error instanceof TopicGuidanceGenerationError) {
+        sendApiError(response, 503, {
+          code: error.code,
+          message: error.message,
+        });
+        return;
+      }
+
+      if (error instanceof NarrationDraftGenerationError) {
         sendApiError(response, 503, {
           code: error.code,
           message: error.message,

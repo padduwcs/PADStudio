@@ -317,6 +317,46 @@ export type GenerateTopicGuidance = z.infer<
   typeof GenerateTopicGuidanceSchema
 >;
 
+export const NarrationDraftSchema = z
+  .object({
+    text: z.string().trim().min(40).max(1_500_000),
+  })
+  .strict();
+
+export type NarrationDraft = z.infer<typeof NarrationDraftSchema>;
+
+export const GenerateNarrationDraftSchema = z
+  .object({
+    generationId: CreationIdSchema,
+    topicInput: TopicInputSchema,
+    userGuidance: z
+      .string()
+      .trim()
+      .transform((value) => value || undefined)
+      .optional(),
+    model: z.string().trim().min(1).max(160).optional(),
+    reasoningEffort: CodexReasoningEffortSchema.optional(),
+  })
+  .strict();
+
+export type GenerateNarrationDraft = z.infer<
+  typeof GenerateNarrationDraftSchema
+>;
+
+export interface NarrationDraftGenerationResponse {
+  draft: NarrationDraft;
+  generation: {
+    generationId: string;
+    provider: 'codex';
+    model: string;
+    requestedModel?: string;
+    reasoningEffort?: string;
+    promptVersion: string;
+    generatedAt: string;
+    usage: CodexTokenUsage | null;
+  };
+}
+
 export const TeachingOutlineSchema = TeachingOutlineContentSchema.extend({
   status: z.enum(outlineStatusValues),
   contentRevision: z.number().int().positive(),

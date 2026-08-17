@@ -33,6 +33,7 @@ import type {ElevenLabsConnectionService} from './elevenLabsConnection.ts';
 import type {ElevenLabsVoiceService} from './elevenLabsVoiceService.ts';
 import type {OutlineGenerator} from './outlineGenerator.ts';
 import type {TopicGuidanceGenerator} from './topicGuidanceGenerator.ts';
+import type {NarrationDraftGenerator} from './narrationDraftGenerator.ts';
 import type {OutlineRevisionService} from './outlineRevisionService.ts';
 import type {MotionCanvasGenerator} from './motionCanvasGenerator.ts';
 import {
@@ -86,6 +87,7 @@ async function startTestApp(
     ) => ElevenLabsConnectionService;
     outlineGenerator?: OutlineGenerator;
     topicGuidanceGenerator?: TopicGuidanceGenerator;
+    narrationDraftGenerator?: NarrationDraftGenerator;
     outlineRevisionService?: OutlineRevisionService;
     voiceVisualGenerator?: VoiceVisualGenerator;
     voiceVisualRevisionService?: VoiceVisualRevisionService;
@@ -113,6 +115,7 @@ async function startTestApp(
     elevenLabsConnectionFactory: options.elevenLabsConnectionFactory,
     outlineGenerator: options.outlineGenerator,
     topicGuidanceGenerator: options.topicGuidanceGenerator,
+    narrationDraftGenerator: options.narrationDraftGenerator,
     outlineRevisionService: options.outlineRevisionService,
     voiceVisualGenerator: options.voiceVisualGenerator,
     voiceVisualRevisionService: options.voiceVisualRevisionService,
@@ -491,6 +494,49 @@ test('API đề xuất định hướng chủ đề idempotent và không tự g
   });
   assert.equal(reused.status, 409);
   assert.equal((await reused.json()).error.code, 'GENERATION_ID_REUSED');
+});
+
+test('API tạo lời thoại nháp là idempotent và không tự ghi vào project', async context => {
+  let generationCalls = 0;
+  const narrationDraftGenerator: NarrationDraftGenerator = {
+    async generate(request) {
+      generationCalls += 1;
+      assert.equal(request.topicInput.topic, topicInput.topic);
+      assert.equal(request.userGuidance, 'Ưu tiên ví dụ mảng đã sắp xếp.');
+      return {
+        draft: {
+          text: 'Hãy hình dung bạn đang tìm một số trong danh bạ đã được sắp xếp. Thay vì xem từng tên, ta nhìn vào giữa danh sách rồi quyết định bỏ đi một nửa không thể chứa kết quả. Lặp lại cách đó, vùng tìm kiếm thu hẹp rất nhanh.',
+        },
+        model: 'gpt-test',
+        usage: null,
+      };
+    },
+  };
+  const {baseUrl} = await startTestApp(context, {narrationDraftGenerator});
+  const generationId = randomUUID();
+  const request = {
+    generationId,
+    topicInput,
+    userGuidance: '  Ưu tiên ví dụ mảng đã sắp xếp.  ',
+    model: 'gpt-test',
+    reasoningEffort: 'medium',
+  };
+  const first = await fetch(`${baseUrl}/api/narration-drafts/generate`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(request),
+  });
+  const firstBody = await first.json();
+  assert.equal(first.status, 200);
+  assert.match(firstBody.draft.text, /danh bạ/u);
+
+  const retry = await fetch(`${baseUrl}/api/narration-drafts/generate`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(request),
+  });
+  assert.equal(retry.status, 200);
+  assert.equal(generationCalls, 1);
 });
 
 test('API ElevenLabs trả trạng thái từ phép xác minh live', async (context) => {
