@@ -39,7 +39,10 @@ jobs:
         run: npm ci
 
       - name: Install FFmpeg
-        timeout-minutes: 5
+        # Ubuntu mirror metadata can occasionally take longer than five
+        # minutes on GitHub-hosted runners; this is infrastructure setup, not
+        # a product-test budget.
+        timeout-minutes: 12
         run: |
           if ! command -v ffmpeg >/dev/null 2>&1; then
             sudo apt-get update
