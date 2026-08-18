@@ -7,7 +7,6 @@ import {
 import {
   ApiRequestError,
   approveAnimationSync,
-  approveMotionCanvas,
   generateAnimationSync,
   getAnimationSyncPreview,
   getProject,

@@ -52,8 +52,7 @@ import {
 } from './layoutPreviewService.ts';
 import {
   createLayoutWorkspace,
-  type LayoutWorkspace,
-  type PreparedLayoutWorkspace
+  type LayoutWorkspace
 } from './layoutWorkspace.ts';
 import {
   createCodexMotionCanvasGenerator,
@@ -252,7 +251,6 @@ export function createAppContext(options: AppOptions = {}) {
     pipelineSafetyLimits.maximumVoiceChunks * 2,
   );
   const animationSyncGenerations = createInMemoryGenerationRegistry<PreparedAnimationSyncWorkspace>();
-  const layoutGenerations = createInMemoryGenerationRegistry<PreparedLayoutWorkspace>();
   const finalRenderCommits = new Set<Promise<void>>();
 
   async function commitFinalRenderBundle(
@@ -325,7 +323,7 @@ export function createAppContext(options: AppOptions = {}) {
     }
   }
 
-  return {options, storedElevenLabsApiKey, projectsDirectory, frontendDirectory, repository, credentialStore, sharedCodexClient, codexConnection, elevenLabsConnection, elevenLabsVoiceService, elevenLabsConnectionFactory, narrationDraftGenerator, motionCanvasGenerator, motionCanvasWorkspace, motionCanvasHistoryStore, motionCanvasRevisionReviewService, voiceWorkspace, animationSyncWorkspace, animationSyncPreviewService, layoutWorkspace, layoutPreviewService, watermarkAssetStore, pronunciationRuleStore, pronunciationAuditService, finalRenderService, runtimeDiagnostics, logger, narrationDraftGenerations, motionCanvasGenerations, motionCanvasCandidateGenerations, voiceGenerations, voiceSectionGenerations, animationSyncGenerations, layoutGenerations, finalRenderCommits, commitFinalRenderBundle, trackFinalRenderCommit, generateOnce};
+  return {options, storedElevenLabsApiKey, projectsDirectory, frontendDirectory, repository, credentialStore, sharedCodexClient, codexConnection, elevenLabsConnection, elevenLabsVoiceService, elevenLabsConnectionFactory, narrationDraftGenerator, motionCanvasGenerator, motionCanvasWorkspace, motionCanvasHistoryStore, motionCanvasRevisionReviewService, voiceWorkspace, animationSyncWorkspace, animationSyncPreviewService, layoutWorkspace, layoutPreviewService, watermarkAssetStore, pronunciationRuleStore, pronunciationAuditService, finalRenderService, runtimeDiagnostics, logger, narrationDraftGenerations, motionCanvasGenerations, motionCanvasCandidateGenerations, voiceGenerations, voiceSectionGenerations, animationSyncGenerations, finalRenderCommits, commitFinalRenderBundle, trackFinalRenderCommit, generateOnce};
 }
 
 export type AppContext = ReturnType<typeof createAppContext>;

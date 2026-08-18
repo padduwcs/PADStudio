@@ -1,5 +1,23 @@
 # PAD Studio
 
+## Workflow hiện tại
+
+PAD Studio chỉ có đúng năm trang theo thứ tự: **Nội dung → Cách đọc → Sản xuất
+→ Chỉnh scene → Xuất video**.
+
+1. **Nội dung** — tạo hoặc chỉnh sửa nguồn nội dung của project.
+2. **Cách đọc** — duyệt lời thoại và quy tắc phát âm riêng/dùng chung.
+3. **Sản xuất** — tạo giọng đọc và scene Motion Canvas từ kế hoạch nội bộ.
+4. **Chỉnh scene** — đồng bộ narration với animation và duyệt bố cục hình ảnh.
+5. **Xuất video** — render và tải MP4 cuối cùng.
+
+`TeachingOutline` và `VoiceVisualPlan` là artifact nội bộ được tạo theo cách xác
+định; chúng không phải các bước giao diện bổ sung.
+
+Dùng `npm run doctor` để kiểm tra điều kiện chạy production/render mà không sửa
+máy. Trên máy phát triển không có FFmpeg, FFprobe hoặc browser, dùng
+`npm run doctor -- --allow-missing-runtime` để kiểm tra source và cấu hình.
+
 PAD Studio biến nội dung học thành video ngắn có lời đọc, hình minh hoạ động và bản xuất sẵn dùng. Ứng dụng ưu tiên một quy trình liền mạch: tạo giọng trước, sinh cảnh đã khớp lời, rồi chỉ chỉnh những chỗ cần thiết.
 
 ## Luồng sử dụng

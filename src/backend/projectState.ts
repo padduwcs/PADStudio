@@ -87,9 +87,6 @@ export function reconcileProjectState(
   const narrationChanged =
     change.narration !== undefined &&
     !sameValue(change.narration, currentProject.narration);
-  const renderProfileChanged =
-    change.renderProfile !== undefined &&
-    !sameValue(change.renderProfile, currentProject.renderProfile);
   const nextOutline =
     change.outline ??
     (topicChanged && currentProject.outline
@@ -110,10 +107,6 @@ export function reconcileProjectState(
     currentProject.motionCanvasBundle
       ? {...currentProject.motionCanvasBundle, status: 'draft' as const}
       : currentProject.motionCanvasBundle);
-  const motionCanvasChanged = !sameValue(
-    nextMotionCanvasBundle,
-    currentProject.motionCanvasBundle,
-  );
   const nextVisualDesignBundle =
     change.visualDesignBundle !== undefined
       ? change.visualDesignBundle
@@ -140,7 +133,6 @@ export function reconcileProjectState(
     currentProject.voiceBundle
       ? {...currentProject.voiceBundle, status: 'draft' as const}
       : currentProject.voiceBundle);
-  const voiceChanged = !sameValue(nextVoiceBundle, currentProject.voiceBundle);
   const syncSourcesChanged = Boolean(
     currentProject.animationSyncBundle &&
       (!nextMotionCanvasBundle ||
@@ -159,10 +151,6 @@ export function reconcileProjectState(
     (syncSourcesChanged && currentProject.animationSyncBundle
       ? {...currentProject.animationSyncBundle, status: 'draft' as const}
       : currentProject.animationSyncBundle);
-  const animationSyncChanged = !sameValue(
-    nextAnimationSyncBundle,
-    currentProject.animationSyncBundle,
-  );
   const layoutSourceChanged = Boolean(
     currentProject.layoutBundle &&
       (visualDesignChanged ||
@@ -178,7 +166,6 @@ export function reconcileProjectState(
     (layoutSourceChanged && currentProject.layoutBundle
       ? null
       : currentProject.layoutBundle);
-  const layoutChanged = !sameValue(nextLayoutBundle, currentProject.layoutBundle);
   const renderSourceChanged = Boolean(
     currentProject.renderBundle &&
       (!nextLayoutBundle ||
@@ -188,7 +175,6 @@ export function reconcileProjectState(
   const nextRenderBundle =
     change.renderBundle ??
     (renderSourceChanged ? null : currentProject.renderBundle);
-  const renderChanged = !sameValue(nextRenderBundle, currentProject.renderBundle);
   const reconciled = {
     ...currentProject,
       ...(change.topicInput ? {topicInput: change.topicInput} : {}),

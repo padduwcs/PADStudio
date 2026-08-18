@@ -11,7 +11,6 @@ import type {
 } from '../shared/elevenLabs.ts';
 import type {
   ApiErrorPayload,
-  AnimationSyncBundle,
   CreateTopicProject,
   GenerateNarrationDraft,
   NarrationDraftGenerationResponse,
@@ -21,10 +20,8 @@ import type {
   ProjectListIssue,
   MotionCanvasBundle,
   NarrationDocument,
-  TeachingOutlineContent,
   TopicProject,
   UpdateProject,
-  VoiceVisualPlanContent,
 } from '../shared/topic.ts';
 import type {
   FinalRenderJobStatus,
