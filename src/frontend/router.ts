@@ -1,5 +1,4 @@
 import {useEffect, useRef, useState} from 'react';
-import {isDirectNarrationProject} from '../shared/projectPipeline.ts';
 import type {ProjectStep, TopicProject} from '../shared/topic.ts';
 
 type NavigationGuard = () => boolean | Promise<boolean>;
@@ -11,17 +10,9 @@ let bypassNextPopStateGuard = false;
 let currentHistoryIndex: number | null = null;
 
 function readHistoryIndex(value: unknown) {
-  if (
-    !value ||
-    typeof value !== 'object' ||
-    Array.isArray(value)
-  ) {
-    return null;
-  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const index = (value as Record<string, unknown>)[HISTORY_INDEX_KEY];
-  return typeof index === 'number' &&
-    Number.isSafeInteger(index) &&
-    index >= 0
+  return typeof index === 'number' && Number.isSafeInteger(index) && index >= 0
     ? index
     : null;
 }
@@ -29,9 +20,7 @@ function readHistoryIndex(value: unknown) {
 function historyStateWithIndex(index: number) {
   const current = window.history.state;
   return {
-    ...(current &&
-    typeof current === 'object' &&
-    !Array.isArray(current)
+    ...(current && typeof current === 'object' && !Array.isArray(current)
       ? current
       : {}),
     [HISTORY_INDEX_KEY]: index,
@@ -43,10 +32,7 @@ function ensureCurrentHistoryIndex() {
   const stored = readHistoryIndex(window.history.state);
   currentHistoryIndex = stored ?? 0;
   if (stored === null) {
-    window.history.replaceState(
-      historyStateWithIndex(currentHistoryIndex),
-      '',
-    );
+    window.history.replaceState(historyStateWithIndex(currentHistoryIndex), '');
   }
   return currentHistoryIndex;
 }
@@ -92,40 +78,23 @@ export function registerNavigationGuard(guard: NavigationGuard) {
 }
 
 export type AppRoute =
-  | {name: 'new-topic'}
-  | {name: 'project-topic'; projectId: string}
-  | {name: 'project-narration'; projectId: string}
+  | {name: 'new-project'}
+  | {name: 'project-content'; projectId: string}
+  | {name: 'project-pronunciation'; projectId: string}
   | {name: 'project-production'; projectId: string}
-  | {name: 'project-scene-review'; projectId: string}
-  | {name: 'project-outline'; projectId: string}
-  | {name: 'project-voice-visual'; projectId: string}
-  | {name: 'project-motion-canvas'; projectId: string}
-  | {name: 'project-voice'; projectId: string}
-  | {name: 'project-sync'; projectId: string}
-  | {name: 'project-layout'; projectId: string}
+  | {name: 'project-scenes'; projectId: string}
   | {name: 'project-render'; projectId: string};
 
 export type WorkflowStepIndex = 0 | 1 | 2 | 3 | 4;
 
 export function workflowStepIndex(route: Pick<AppRoute, 'name'>): WorkflowStepIndex {
   switch (route.name) {
-    case 'project-narration':
-    case 'project-outline':
-      return 1;
-    case 'project-production':
-    case 'project-voice-visual':
-    case 'project-voice':
-      return 2;
-    case 'project-scene-review':
-    case 'project-motion-canvas':
-    case 'project-sync':
-    case 'project-layout':
-      return 3;
-    case 'project-render':
-      return 4;
-    case 'new-topic':
-    case 'project-topic':
-      return 0;
+    case 'project-pronunciation': return 1;
+    case 'project-production': return 2;
+    case 'project-scenes': return 3;
+    case 'project-render': return 4;
+    case 'new-project':
+    case 'project-content': return 0;
   }
 }
 
@@ -137,103 +106,23 @@ function decodeProjectId(value: string) {
   }
 }
 
+function projectRoute(pathname: string, segment: string, name: Exclude<AppRoute['name'], 'new-project'>) {
+  const match = new RegExp(`^/projects/([^/]+)/${segment}/?$`).exec(pathname);
+  if (!match?.[1]) return null;
+  const projectId = decodeProjectId(match[1]);
+  return projectId
+    ? {name, projectId} as AppRoute
+    : {name: 'new-project'} as AppRoute;
+}
+
 export function parseRoute(pathname: string): AppRoute {
-  const topicMatch = /^\/projects\/([^/]+)\/topic\/?$/.exec(pathname);
-  if (topicMatch?.[1]) {
-    const projectId = decodeProjectId(topicMatch[1]);
-    if (!projectId) return {name: 'new-topic'};
-
-    return {
-      name: 'project-topic',
-      projectId,
-    };
-  }
-
-  const narrationMatch = /^\/projects\/([^/]+)\/narration\/?$/.exec(pathname);
-  if (narrationMatch?.[1]) {
-    const projectId = decodeProjectId(narrationMatch[1]);
-    if (!projectId) return {name: 'new-topic'};
-    return {name: 'project-narration', projectId};
-  }
-
-  const productionMatch = /^\/projects\/([^/]+)\/production\/?$/.exec(pathname);
-  if (productionMatch?.[1]) {
-    const projectId = decodeProjectId(productionMatch[1]);
-    if (!projectId) return {name: 'new-topic'};
-    return {name: 'project-production', projectId};
-  }
-
-  const sceneReviewMatch = /^\/projects\/([^/]+)\/scene-review\/?$/.exec(pathname);
-  if (sceneReviewMatch?.[1]) {
-    const projectId = decodeProjectId(sceneReviewMatch[1]);
-    if (!projectId) return {name: 'new-topic'};
-    return {name: 'project-scene-review', projectId};
-  }
-
-  const outlineMatch = /^\/projects\/([^/]+)\/outline\/?$/.exec(pathname);
-  if (outlineMatch?.[1]) {
-    const projectId = decodeProjectId(outlineMatch[1]);
-    if (!projectId) return {name: 'new-topic'};
-
-    return {
-      name: 'project-outline',
-      projectId,
-    };
-  }
-
-  const voiceVisualMatch =
-    /^\/projects\/([^/]+)\/voice-visual\/?$/.exec(pathname);
-  if (voiceVisualMatch?.[1]) {
-    const projectId = decodeProjectId(voiceVisualMatch[1]);
-    if (!projectId) return {name: 'new-topic'};
-
-    return {
-      name: 'project-voice-visual',
-      projectId,
-    };
-  }
-
-  const motionCanvasMatch =
-    /^\/projects\/([^/]+)\/motion-canvas\/?$/.exec(pathname);
-  if (motionCanvasMatch?.[1]) {
-    const projectId = decodeProjectId(motionCanvasMatch[1]);
-    if (!projectId) return {name: 'new-topic'};
-
-    return {
-      name: 'project-motion-canvas',
-      projectId,
-    };
-  }
-
-  const voiceMatch = /^\/projects\/([^/]+)\/voice\/?$/.exec(pathname);
-  if (voiceMatch?.[1]) {
-    const projectId = decodeProjectId(voiceMatch[1]);
-    if (!projectId) return {name: 'new-topic'};
-    return {name: 'project-voice', projectId};
-  }
-
-  const syncMatch = /^\/projects\/([^/]+)\/sync\/?$/.exec(pathname);
-  if (syncMatch?.[1]) {
-    const projectId = decodeProjectId(syncMatch[1]);
-    if (!projectId) return {name: 'new-topic'};
-    return {name: 'project-sync', projectId};
-  }
-
-  const layoutMatch = /^\/projects\/([^/]+)\/layout\/?$/.exec(pathname);
-  if (layoutMatch?.[1]) {
-    const projectId = decodeProjectId(layoutMatch[1]);
-    if (!projectId) return {name: 'new-topic'};
-    return {name: 'project-layout', projectId};
-  }
-
-  const renderMatch = /^\/projects\/([^/]+)\/render\/?$/.exec(pathname);
-  if (renderMatch?.[1]) {
-    const projectId = decodeProjectId(renderMatch[1]);
-    if (!projectId) return {name: 'new-topic'};
-    return {name: 'project-render', projectId};
-  }
-
-  return {name: 'new-topic'};
+  if (pathname === '/' || pathname === '') return {name: 'new-project'};
+  return projectRoute(pathname, 'content', 'project-content') ??
+    projectRoute(pathname, 'pronunciation', 'project-pronunciation') ??
+    projectRoute(pathname, 'production', 'project-production') ??
+    projectRoute(pathname, 'scenes', 'project-scenes') ??
+    projectRoute(pathname, 'render', 'project-render') ??
+    {name: 'new-project'};
 }
 
 export function navigate(pathname: string, replace = false) {
@@ -244,143 +133,60 @@ export function navigate(pathname: string, replace = false) {
   commitNavigation(pathname, replace);
 }
 
-export function navigateDiscardingPendingChanges(
-  pathname: string,
-  replace = false,
-) {
+export function navigateDiscardingPendingChanges(pathname: string, replace = false) {
   commitNavigation(pathname, replace);
 }
 
-export function projectTopicPath(projectId: string) {
-  return `/projects/${encodeURIComponent(projectId)}/topic`;
+function projectPath(projectId: string, page: string) {
+  return `/projects/${encodeURIComponent(projectId)}/${page}`;
 }
 
-export function projectOutlinePath(projectId: string) {
-  return `/projects/${encodeURIComponent(projectId)}/outline`;
+export function projectContentPath(projectId: string) { return projectPath(projectId, 'content'); }
+export function projectPronunciationPath(projectId: string) { return projectPath(projectId, 'pronunciation'); }
+export function projectProductionPath(projectId: string) { return projectPath(projectId, 'production'); }
+export function projectScenesPath(projectId: string) { return projectPath(projectId, 'scenes'); }
+export function projectRenderPath(projectId: string) { return projectPath(projectId, 'render'); }
+
+export function projectWorkflowPath(projectId: string, step: WorkflowStepIndex) {
+  const path = [
+    projectContentPath,
+    projectPronunciationPath,
+    projectProductionPath,
+    projectScenesPath,
+    projectRenderPath,
+  ][step]!;
+  return path(projectId);
 }
 
-export function projectNarrationPath(projectId: string) {
-  return `/projects/${encodeURIComponent(projectId)}/narration`;
-}
-
-export function projectProductionPath(projectId: string) {
-  return `/projects/${encodeURIComponent(projectId)}/production`;
-}
-
-export function projectSceneReviewPath(projectId: string) {
-  return `/projects/${encodeURIComponent(projectId)}/scene-review`;
-}
-
-export function projectVoiceVisualPath(projectId: string) {
-  return `/projects/${encodeURIComponent(projectId)}/voice-visual`;
-}
-
-export function projectMotionCanvasPath(projectId: string) {
-  return projectSceneReviewPath(projectId);
-}
-
-export function projectVoicePath(projectId: string) {
-  return `/projects/${encodeURIComponent(projectId)}/voice`;
-}
-
-export function projectSyncPath(projectId: string) {
-  return `/projects/${encodeURIComponent(projectId)}/sync`;
-}
-
-export function projectLayoutPath(projectId: string) {
-  return `/projects/${encodeURIComponent(projectId)}/layout`;
-}
-
-export function projectRenderPath(projectId: string) {
-  return `/projects/${encodeURIComponent(projectId)}/render`;
-}
-
-export function projectWorkflowPath(
-  projectId: string,
-  step: WorkflowStepIndex,
-) {
+function workflowStepForProjectStep(step: ProjectStep): WorkflowStepIndex {
   switch (step) {
-    case 0:
-      return projectTopicPath(projectId);
-    case 1:
-      return projectNarrationPath(projectId);
-    case 2:
-      return projectProductionPath(projectId);
-    case 3:
-      return projectSceneReviewPath(projectId);
-    case 4:
-      return projectRenderPath(projectId);
+    case 'content': return 0;
+    case 'pronunciation': return 1;
+    case 'production': return 2;
+    case 'scenes': return 3;
+    case 'render': return 4;
   }
 }
 
-const projectStepPaths = {
-  topic: projectTopicPath,
-  outline: projectOutlinePath,
-  voiceVisual: projectVoiceVisualPath,
-  motionCanvas: projectMotionCanvasPath,
-  voice: projectVoicePath,
-  sync: projectSyncPath,
-  layout: projectLayoutPath,
-  render: projectRenderPath,
-} satisfies Record<ProjectStep, (projectId: string) => string>;
+const workflowStepLabels = [
+  'Bước 01 · Nội dung',
+  'Bước 02 · Cách đọc',
+  'Bước 03 · Giọng đọc & scene',
+  'Bước 04 · Chỉnh scene',
+  'Bước 05 · Xuất video',
+] as const;
 
-const projectStepLabels = {
-  topic: 'Bước 01 · Chủ đề',
-  outline: 'Bước 02 · Mạch giảng',
-  voiceVisual: 'Bước 03 · Voice–visual',
-  motionCanvas: 'Bước 04 · Motion Canvas',
-  voice: 'Bước 05 · ElevenLabs Voice',
-  sync: 'Bước 06 · Đồng bộ animation',
-  layout: 'Bước 07 · Layout Editor',
-  render: 'Bước 08 · Render cuối',
-} satisfies Record<ProjectStep, string>;
-
-const directProjectStepLabels = {
-  topic: 'Bước 01 · Nội dung',
-  outline: 'Bước 02 · Cách đọc',
-  voiceVisual: 'Bước 03 · Giọng đọc & scene',
-  voice: 'Bước 03 · Giọng đọc & scene',
-  motionCanvas: 'Bước 04 · Chỉnh scene',
-  sync: 'Bước 05 · Xuất video',
-  layout: 'Bước 05 · Xuất video',
-  render: 'Bước 05 · Xuất video',
-} satisfies Record<ProjectStep, string>;
-
-export function projectStepPath(projectId: string, step: ProjectStep) {
-  return projectStepPaths[step](projectId);
-}
-
-export function projectStepLabel(step: ProjectStep, direct = false) {
-  return direct ? directProjectStepLabels[step] : projectStepLabels[step];
+export function projectStepLabel(step: ProjectStep) {
+  return workflowStepLabels[workflowStepForProjectStep(step)];
 }
 
 export function projectResumePath(project: TopicProject) {
-  if (!isDirectNarrationProject(project)) {
-    return projectStepPath(project.id, project.currentStep);
-  }
-  switch (project.currentStep) {
-    case 'topic':
-      return projectTopicPath(project.id);
-    case 'outline':
-      return projectNarrationPath(project.id);
-    case 'voiceVisual':
-    case 'voice':
-      return projectProductionPath(project.id);
-    case 'motionCanvas':
-      return projectSceneReviewPath(project.id);
-    case 'sync':
-      return projectSceneReviewPath(project.id);
-    case 'layout':
-    case 'render':
-      return projectRenderPath(project.id);
-  }
+  return projectWorkflowPath(project.id, workflowStepForProjectStep(project.currentStep));
 }
 
 export function useAppRoute() {
   const initialHistoryIndex = ensureCurrentHistoryIndex();
-  const [route, setRoute] = useState<AppRoute>(() =>
-    parseRoute(window.location.pathname),
-  );
+  const [route, setRoute] = useState<AppRoute>(() => parseRoute(window.location.pathname));
   const currentPathRef = useRef(window.location.pathname);
   const currentIndexRef = useRef(initialHistoryIndex);
 
@@ -403,31 +209,18 @@ export function useAppRoute() {
 
     const updateRoute = (event: PopStateEvent) => {
       const requestedPath = window.location.pathname;
-      const requestedIndex =
-        readHistoryIndex(event.state) ??
-        readHistoryIndex(window.history.state);
+      const requestedIndex = readHistoryIndex(event.state) ?? readHistoryIndex(window.history.state);
       if (bypassNextPopStateGuard) {
         bypassNextPopStateGuard = false;
-        publishRoute(
-          requestedPath,
-          requestedIndex ?? ensureCurrentHistoryIndex(),
-        );
+        publishRoute(requestedPath, requestedIndex ?? ensureCurrentHistoryIndex());
         return;
       }
       if (pendingPopNavigation) {
         const pending = pendingPopNavigation;
-        if (
-          pending.phase === 'restoring' &&
-          requestedIndex === currentIndexRef.current
-        ) {
+        if (pending.phase === 'restoring' && requestedIndex === currentIndexRef.current) {
           void pending.allowed.then((allowed) => {
-            if (
-              pendingPopNavigation !== pending ||
-              pending.requestRevision !== navigationRequestRevision
-            ) {
-              if (pendingPopNavigation === pending) {
-                pendingPopNavigation = null;
-              }
+            if (pendingPopNavigation !== pending || pending.requestRevision !== navigationRequestRevision) {
+              if (pendingPopNavigation === pending) pendingPopNavigation = null;
               return;
             }
             if (!allowed) {
@@ -439,22 +232,14 @@ export function useAppRoute() {
           });
           return;
         }
-        if (
-          pending.phase === 'navigating' &&
-          requestedIndex === pending.targetIndex
-        ) {
+        if (pending.phase === 'navigating' && requestedIndex === pending.targetIndex) {
           pendingPopNavigation = null;
           publishRoute(pending.targetPath, pending.targetIndex);
           return;
         }
         pendingPopNavigation = null;
       }
-      if (
-        navigationGuards.size > 0 &&
-        requestedPath !== currentPathRef.current &&
-        requestedIndex !== null &&
-        requestedIndex !== currentIndexRef.current
-      ) {
+      if (navigationGuards.size > 0 && requestedPath !== currentPathRef.current && requestedIndex !== null && requestedIndex !== currentIndexRef.current) {
         const delta = requestedIndex - currentIndexRef.current;
         const requestRevision = ++navigationRequestRevision;
         pendingPopNavigation = {
@@ -468,10 +253,7 @@ export function useAppRoute() {
         window.history.go(-delta);
         return;
       }
-      publishRoute(
-        requestedPath,
-        requestedIndex ?? currentIndexRef.current,
-      );
+      publishRoute(requestedPath, requestedIndex ?? currentIndexRef.current);
     };
     window.addEventListener('popstate', updateRoute);
     return () => window.removeEventListener('popstate', updateRoute);

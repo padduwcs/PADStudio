@@ -19,7 +19,7 @@ import {CheckIcon, PlusIcon, SparkIcon, TrashIcon} from './icons.tsx';
 import {
   navigate,
   projectProductionPath,
-  projectTopicPath,
+  projectContentPath,
   registerNavigationGuard,
 } from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
@@ -324,7 +324,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
   }
 
   if (state === 'loading') return <div className="page-state" role="status"><span className="spinner dark" /><strong>Đang mở cách đọc…</strong></div>;
-  if (!narration) return <div className="page-state is-error" role="alert"><strong>Project chưa có lời thoại</strong><p>Hãy quay lại bước nội dung để nhập lời thoại gốc.</p><button type="button" onClick={() => navigate(projectTopicPath(projectId))}>Quay lại nội dung</button></div>;
+  if (!narration) return <div className="page-state is-error" role="alert"><strong>Project chưa có lời thoại</strong><p>Hãy quay lại bước nội dung để nhập lời thoại gốc.</p><button type="button" onClick={() => navigate(projectContentPath(projectId))}>Quay lại nội dung</button></div>;
 
   return (
     <main className="pronunciation-workspace">

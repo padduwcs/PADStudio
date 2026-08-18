@@ -95,7 +95,7 @@ test('schema final render dùng cùng dung sai cho kết quả ffprobe', () => {
   };
 
   assert.equal(FinalRenderBundleSchema.safeParse(bundle).success, true);
-  const migrated = FinalRenderBundleSchema.parse({
+  const legacyBundle = {
     ...bundle,
     playbackRate: 1.25,
     sourceDurationSeconds: 256.5,
@@ -107,16 +107,8 @@ test('schema final render dùng cùng dung sai cho kết quả ffprobe', () => {
       fontSize: 32,
       color: '#ffffff',
     },
-  });
-  assert.deepEqual(migrated.watermark, {
-    type: 'text',
-    text: 'Legacy',
-    opacity: 0.2,
-    xPercent: 92,
-    yPercent: 92,
-    fontSize: 32,
-    color: '#ffffff',
-  });
+  };
+  assert.equal(FinalRenderBundleSchema.safeParse(legacyBundle).success, false);
   const migratedImage = FinalRenderBundleSchema.parse({
     ...bundle,
     watermark: {
@@ -138,7 +130,6 @@ test('schema final render dùng cùng dung sai cho kết quả ffprobe', () => {
     tintColor: '#FFFFFF',
     tintStrength: 0,
   });
-  assert.equal('playbackRate' in migrated, false);
   assert.equal(
     FinalRenderBundleSchema.safeParse({
       ...bundle,

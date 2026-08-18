@@ -29,23 +29,20 @@ export const durationValues = [
   'deep',
   'custom',
 ] as const;
-const projectStepV8Values = [
-  'topic',
-  'outline',
-  'voiceVisual',
-  'motionCanvas',
-  'voice',
-  'sync',
+export const projectStepValues = [
+  'content',
+  'pronunciation',
+  'production',
+  'scenes',
+  'render',
 ] as const;
-const projectStepV9Values = [...projectStepV8Values, 'layout'] as const;
-export const projectStepValues = [...projectStepV9Values, 'render'] as const;
 export const projectStatusValues = ['draft'] as const;
 export const outlineStatusValues = ['draft', 'approved'] as const;
 export const voiceVisualStatusValues = ['draft', 'approved'] as const;
 export const motionCanvasStatusValues = ['draft', 'approved'] as const;
 export const voiceStatusValues = ['draft', 'approved'] as const;
 export const animationSyncStatusValues = ['draft', 'approved'] as const;
-export const currentProjectVersion = 15 as const;
+export const currentProjectVersion = 16 as const;
 
 export const videoBackgroundModeValues = [
   'light',
@@ -118,8 +115,6 @@ export function videoBackgroundTone(
 }
 
 export const ProjectStepSchema = z.enum(projectStepValues);
-const ProjectStepV8Schema = z.enum(projectStepV8Values);
-const ProjectStepV9Schema = z.enum(projectStepV9Values);
 export type ProjectStep = z.infer<typeof ProjectStepSchema>;
 export const ProjectStatusSchema = z.enum(projectStatusValues);
 export const CreationIdSchema = z.string().uuid();
@@ -139,10 +134,7 @@ export const TopicInputSchema = z
       .trim()
       .optional(),
     background: VideoBackgroundSchema.default(defaultVideoBackground),
-    /** New projects always provide a frame; it stays optional for legacy artifacts. */
-    videoFrame: VideoFrameSchema.optional(),
-    // These remain internal compatibility hints for artifacts created by the
-    // previous workflow. They are deliberately not required from new users.
+    videoFrame: VideoFrameSchema,
     audience: z.enum(audienceValues).default('beginner'),
     duration: z.enum(durationValues).default('standard'),
     targetDurationMinutes: z
@@ -300,23 +292,25 @@ export const CodexReasoningEffortSchema = z
   .trim()
   .regex(/^[a-z][a-z0-9_-]{0,39}$/);
 
-export const GenerateTopicGuidanceSchema = z
-  .object({
+const ArtifactGenerationSchema = z.discriminatedUnion('provider', [
+  z.object({
     generationId: CreationIdSchema,
-    topicInput: TopicInputSchema,
-    userGuidance: z
-      .string()
-      .trim()
-      .transform((value) => value || undefined)
-      .optional(),
-    model: z.string().trim().min(1).max(160).optional(),
+    provider: z.literal('codex'),
+    model: z.string().min(1).max(160),
+    requestedModel: z.string().min(1).max(160).optional(),
     reasoningEffort: CodexReasoningEffortSchema.optional(),
-  })
-  .strict();
-
-export type GenerateTopicGuidance = z.infer<
-  typeof GenerateTopicGuidanceSchema
->;
+    promptVersion: z.string().min(1).max(40),
+    generatedAt: z.string().datetime(),
+    usage: CodexTokenUsageSchema.nullable(),
+  }).strict(),
+  z.object({
+    generationId: CreationIdSchema,
+    provider: z.literal('local'),
+    tool: z.literal('narration-structure'),
+    algorithmVersion: z.string().min(1).max(40),
+    generatedAt: z.string().datetime(),
+  }).strict(),
+]);
 
 export const NarrationDraftSchema = z
   .object({
@@ -362,18 +356,9 @@ export const TeachingOutlineSchema = TeachingOutlineContentSchema.extend({
   status: z.enum(outlineStatusValues),
   contentRevision: z.number().int().positive(),
   sourceInput: TopicInputSchema,
-  generation: z
-    .object({
-      generationId: CreationIdSchema,
-      provider: z.literal('codex'),
-      model: z.string().min(1).max(160),
-      requestedModel: z.string().min(1).max(160).optional(),
-      reasoningEffort: CodexReasoningEffortSchema.optional(),
-      promptVersion: z.string().min(1).max(40),
-      generatedAt: z.string().datetime(),
-      usage: CodexTokenUsageSchema.nullable(),
-    })
-    .strict(),
+  sourceNarrationHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  sourceNarrationRevision: z.number().int().positive().optional(),
+  generation: ArtifactGenerationSchema,
 }).strict();
 
 export type TeachingOutline = z.infer<typeof TeachingOutlineSchema>;
@@ -494,18 +479,9 @@ export const VoiceVisualPlanSchema = VoiceVisualPlanContentSchema.extend({
   contentRevision: z.number().int().positive(),
   narrationRevision: z.number().int().positive().default(1),
   sourceOutlineContentRevision: z.number().int().positive(),
-  generation: z
-    .object({
-      generationId: CreationIdSchema,
-      provider: z.literal('codex'),
-      model: z.string().min(1).max(160),
-      requestedModel: z.string().min(1).max(160).optional(),
-      reasoningEffort: CodexReasoningEffortSchema.optional(),
-      promptVersion: z.string().min(1).max(40),
-      generatedAt: z.string().datetime(),
-      usage: CodexTokenUsageSchema.nullable(),
-    })
-    .strict(),
+  sourceNarrationHash: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  sourceNarrationRevision: z.number().int().positive().optional(),
+  generation: ArtifactGenerationSchema,
 }).strict();
 
 export type VoiceVisualPlan = z.infer<typeof VoiceVisualPlanSchema>;
@@ -654,61 +630,6 @@ export const VoiceBeatTimingSchema = z
       value.endSeconds >= value.startSeconds,
     'Timing của beat không hợp lệ.',
   );
-
-const LegacyVoiceSectionAudioSchema = z
-  .object({
-    outlineSectionId: z.string().uuid(),
-    audioPath: z
-      .string()
-      .regex(
-        /^audio\/[0-9]{2}-[0-9a-f-]{36}\.(mp3|wav|pcm|opus)$/,
-        'Đường dẫn audio của section không hợp lệ.',
-      ),
-    alignmentPath: z
-      .string()
-      .regex(
-        /^alignments\/[0-9]{2}-[0-9a-f-]{36}\.json$/,
-        'Đường dẫn alignment của section không hợp lệ.',
-      ),
-    durationSeconds: z.number().positive(),
-    characterCost: z.number().int().nonnegative(),
-    requestId: z.string().trim().min(1).max(200).nullable(),
-    sourceTextHash: z.string().regex(/^[a-f0-9]{64}$/),
-    beats: z
-      .array(VoiceBeatTimingSchema)
-      .min(pipelineSafetyLimits.minimumBeatsPerSection)
-      .max(pipelineSafetyLimits.maximumBeatsPerSection),
-  })
-  .strict();
-
-const LegacyVoiceBundleSchema = z
-  .object({
-    status: z.enum(voiceStatusValues),
-    contentRevision: z.number().int().positive(),
-    sourceVoiceVisualContentRevision: z.number().int().positive(),
-    workspacePath: z
-      .string()
-      .regex(
-        /^voice\/generations\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-        'Đường dẫn workspace voice không hợp lệ.',
-      ),
-    configuration: VoiceConfigurationSchema,
-    sections: z
-      .array(LegacyVoiceSectionAudioSchema)
-      .min(pipelineSafetyLimits.minimumSections)
-      .max(pipelineSafetyLimits.maximumSections),
-    totalDurationSeconds: z.number().positive(),
-    generation: z
-      .object({
-        generationId: CreationIdSchema,
-        provider: z.literal('elevenlabs'),
-        generatedAt: z.string().datetime(),
-        characterCost: z.number().int().nonnegative(),
-        requestIds: z.array(z.string().trim().min(1).max(200)).max(10),
-      })
-      .strict(),
-  })
-  .strict();
 
 export const VoiceNarrationTrackSchema = z
   .object({
@@ -950,491 +871,46 @@ export type AnimationSyncBundle = z.infer<
   typeof AnimationSyncBundleSchema
 >;
 
-const topicProjectV1Schema = z
+export const TopicProjectSchema = z
   .object({
     id: z.string(),
-    version: z.literal(1),
-    status: ProjectStatusSchema,
-    currentStep: ProjectStepV8Schema,
-    topicInput: TopicInputSchema,
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
-  })
-  .strict();
-
-const topicProjectV2Schema = z
-  .object({
-    id: z.string(),
-    version: z.literal(2),
+    version: z.literal(currentProjectVersion),
     revision: z.number().int().positive(),
     creationId: CreationIdSchema.nullable(),
     status: ProjectStatusSchema,
-    currentStep: ProjectStepV8Schema,
+    currentStep: ProjectStepSchema,
     topicInput: TopicInputSchema,
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
-  })
-  .strict();
-
-const topicProjectV3Schema = z
-  .object({
-    id: z.string(),
-    version: z.literal(3),
-    revision: z.number().int().positive(),
-    creationId: CreationIdSchema.nullable(),
-    status: ProjectStatusSchema,
-    currentStep: z.enum(['topic', 'outline']),
-    topicInput: TopicInputSchema,
-    outline: TeachingOutlineSchema.nullable(),
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
-  })
-  .strict();
-
-const topicProjectV4Schema = z
-  .object({
-    id: z.string(),
-    version: z.literal(4),
-    revision: z.number().int().positive(),
-    creationId: CreationIdSchema.nullable(),
-    status: ProjectStatusSchema,
-    currentStep: z.enum(['topic', 'outline', 'voiceVisual']),
-    topicInput: TopicInputSchema,
+    narration: NarrationDocumentSchema.nullable(),
     outline: TeachingOutlineSchema.nullable(),
     voiceVisualPlan: VoiceVisualPlanSchema.nullable(),
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
-  })
-  .strict();
-
-const topicProjectV5Schema = topicProjectV4Schema
-  .omit({version: true})
-  .extend({
-    version: z.literal(5),
-    currentStep: z.enum(['topic', 'outline', 'voiceVisual', 'motionCanvas']),
     motionCanvasBundle: MotionCanvasBundleSchema.nullable(),
-  })
-  .strict();
-
-const topicProjectV6Schema = topicProjectV5Schema
-  .omit({version: true, currentStep: true})
-  .extend({
-    version: z.literal(6),
-    currentStep: z.enum([
-      'topic',
-      'outline',
-      'voiceVisual',
-      'motionCanvas',
-      'voice',
-    ]),
-    voiceBundle: LegacyVoiceBundleSchema.nullable(),
-  })
-  .strict();
-
-const topicProjectV7Schema = topicProjectV6Schema
-  .omit({version: true, currentStep: true})
-  .extend({
-    version: z.literal(7),
-    currentStep: ProjectStepV8Schema,
-    animationSyncBundle: AnimationSyncBundleSchema.nullable(),
-  })
-  .strict();
-
-const topicProjectV8Schema = topicProjectV7Schema
-  .omit({
-    version: true,
-    voiceBundle: true,
-    animationSyncBundle: true,
-  })
-  .extend({
-    version: z.literal(8),
+    visualDesignBundle: VisualDesignBundleSchema.nullable(),
     voiceBundle: VoiceBundleSchema.nullable(),
     animationSyncBundle: AnimationSyncBundleSchema.nullable(),
-  })
-  .strict();
-
-const topicProjectV9Schema = topicProjectV8Schema
-  .omit({
-    version: true,
-    currentStep: true,
-  })
-  .extend({
-    version: z.literal(9),
-    currentStep: ProjectStepV9Schema,
     layoutBundle: LayoutBundleSchema.nullable(),
-  })
-  .strict();
-
-const topicProjectV10Schema = topicProjectV9Schema
-  .omit({version: true, currentStep: true})
-  .extend({
-    version: z.literal(10),
-    currentStep: ProjectStepSchema,
     renderBundle: FinalRenderBundleSchema.nullable(),
-  })
-  .strict();
-
-const topicProjectV11Schema = topicProjectV10Schema
-  .omit({version: true})
-  .extend({
-    version: z.literal(11),
-    visualDesignBundle: VisualDesignBundleSchema.nullable(),
-  })
-  .strict();
-
-const topicProjectV12Schema = topicProjectV11Schema
-  .omit({version: true})
-  .extend({version: z.literal(12)})
-  .strict();
-
-const topicProjectV13Schema = topicProjectV12Schema
-  .omit({version: true})
-  .extend({version: z.literal(13)})
-  .strict();
-
-const topicProjectV14Schema = topicProjectV13Schema
-  .omit({version: true})
-  .extend({version: z.literal(14)})
-  .strict();
-
-export const TopicProjectSchema = topicProjectV14Schema
-  .omit({version: true})
-  .extend({
-    version: z.literal(currentProjectVersion),
-    narration: NarrationDocumentSchema.nullable().optional(),
     renderProfile: RenderProfileSchema.optional(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
   })
   .strict();
 
 export type TopicProject = z.infer<typeof TopicProjectSchema>;
 
-function inheritRenderSettings(
-  project: TopicProject,
-): TopicProject {
-  if (!project.layoutBundle || !project.renderBundle) return project;
-  return {
-    ...project,
-    layoutBundle: {
-      ...project.layoutBundle,
-      renderSettings: {
-        watermark: project.renderBundle.watermark,
-      },
-    },
-  };
-}
-
-const legacyWatermarkCoordinates = {
-  'top-left': {xPercent: 8, yPercent: 8},
-  'top-right': {xPercent: 92, yPercent: 8},
-  'bottom-left': {xPercent: 8, yPercent: 92},
-  'bottom-right': {xPercent: 92, yPercent: 92},
-  center: {xPercent: 50, yPercent: 50},
-} as const;
-
-function isUnknownRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
-}
-
-function normalizeLegacyWatermark(value: unknown) {
-  if (!isUnknownRecord(value) || value.type === 'none') return value;
-  const position =
-    typeof value.position === 'string' &&
-    value.position in legacyWatermarkCoordinates
-      ? legacyWatermarkCoordinates[
-          value.position as keyof typeof legacyWatermarkCoordinates
-        ]
-      : legacyWatermarkCoordinates['bottom-right'];
-  const watermark: Record<string, unknown> = {...value};
-  delete watermark.position;
-  return {
-    ...watermark,
-    ...(value.type === 'image'
-      ? {
-          tintColor:
-            typeof value.tintColor === 'string'
-              ? value.tintColor
-              : '#FFFFFF',
-          tintStrength:
-            typeof value.tintStrength === 'number'
-              ? value.tintStrength
-              : 0,
-        }
-      : {}),
-    xPercent:
-      typeof value.xPercent === 'number'
-        ? value.xPercent
-        : position.xPercent,
-    yPercent:
-      typeof value.yPercent === 'number'
-        ? value.yPercent
-        : position.yPercent,
-  };
-}
-
-function normalizeLegacyRenderConfiguration(value: unknown) {
-  if (!isUnknownRecord(value)) return value;
-  const normalized: Record<string, unknown> = {...value};
-  if (isUnknownRecord(value.layoutBundle)) {
-    const layoutBundle: Record<string, unknown> = {...value.layoutBundle};
-    if (isUnknownRecord(value.layoutBundle.renderSettings)) {
-      const renderSettings: Record<string, unknown> = {
-        ...value.layoutBundle.renderSettings,
-      };
-      delete renderSettings.playbackRate;
-      layoutBundle.renderSettings = {
-        ...renderSettings,
-        watermark: normalizeLegacyWatermark(renderSettings.watermark),
-      };
-    }
-    normalized.layoutBundle = layoutBundle;
-  }
-  if (isUnknownRecord(value.renderBundle)) {
-    const renderBundle: Record<string, unknown> = {...value.renderBundle};
-    delete renderBundle.playbackRate;
-    delete renderBundle.sourceDurationSeconds;
-    normalized.renderBundle = {
-      ...renderBundle,
-      watermark: normalizeLegacyWatermark(renderBundle.watermark),
-    };
-  }
-  return normalized;
-}
-
-function bindLegacyVisualDesignSource(
-  project: TopicProject,
-): TopicProject {
-  const sync = project.animationSyncBundle;
-  if (!sync || sync.sourceVisualDesignContentRevision !== undefined) {
-    return project;
-  }
-  const design = project.visualDesignBundle;
-  const motion = project.motionCanvasBundle;
-  const designMatchesMotion = Boolean(
-    design &&
-    motion &&
-    design.sourceMotionCanvasGenerationId ===
-      motion.generation.generationId &&
-    design.sourceMotionCanvasContentRevision === motion.contentRevision &&
-    design.sourceMotionCanvasSourceHash === motion.validation.sourceHash,
-  );
-  return {
-    ...project,
-    animationSyncBundle: {
-      ...sync,
-      status: design ? 'draft' : sync.status,
-      sourceVisualDesignContentRevision: designMatchesMotion
-        ? design!.contentRevision
-        : null,
-    },
-  };
-}
-
 export function parseTopicProject(value: unknown): TopicProject {
-  const normalizedValue = normalizeLegacyRenderConfiguration(value);
-  const currentProject = TopicProjectSchema.safeParse(normalizedValue);
+  const currentProject = TopicProjectSchema.safeParse(value);
   if (currentProject.success) {
-    const rawLayout =
-      normalizedValue &&
-      typeof normalizedValue === 'object' &&
-      'layoutBundle' in normalizedValue
-        ? normalizedValue.layoutBundle
-        : null;
-    const explicitlyStored = Boolean(
-      rawLayout &&
-      typeof rawLayout === 'object' &&
-      'renderSettings' in rawLayout,
-    );
-    const withRenderSettings = explicitlyStored
-      ? currentProject.data
-      : inheritRenderSettings(currentProject.data);
-    return bindLegacyVisualDesignSource(withRenderSettings);
-  }
-
-  const versionFourteenProject = topicProjectV14Schema.safeParse(
-    normalizedValue,
-  );
-  if (versionFourteenProject.success) {
-    return bindLegacyVisualDesignSource(inheritRenderSettings({
-      ...versionFourteenProject.data,
-      version: currentProjectVersion,
-    }));
-  }
-
-  const versionThirteenProject = topicProjectV13Schema.safeParse(
-    normalizedValue,
-  );
-  if (versionThirteenProject.success) {
-    return bindLegacyVisualDesignSource(inheritRenderSettings({
-      ...versionThirteenProject.data,
-      version: currentProjectVersion,
-    }));
-  }
-
-  const versionTwelveProject = topicProjectV12Schema.safeParse(
-    normalizedValue,
-  );
-  if (versionTwelveProject.success) {
-    return bindLegacyVisualDesignSource(inheritRenderSettings({
-      ...versionTwelveProject.data,
-      version: currentProjectVersion,
-    }));
-  }
-
-  const versionElevenProject = topicProjectV11Schema.safeParse(normalizedValue);
-  if (versionElevenProject.success) {
-    return bindLegacyVisualDesignSource(inheritRenderSettings({
-      ...versionElevenProject.data,
-      version: currentProjectVersion,
-    }));
-  }
-
-  const versionTenProject = topicProjectV10Schema.safeParse(normalizedValue);
-  if (versionTenProject.success) {
-    return bindLegacyVisualDesignSource(inheritRenderSettings({
-      ...versionTenProject.data,
-      version: currentProjectVersion,
-      visualDesignBundle: null,
-    }));
-  }
-
-  const versionNineProject = topicProjectV9Schema.safeParse(normalizedValue);
-  if (versionNineProject.success) {
-    return {
-      ...versionNineProject.data,
-      version: currentProjectVersion,
-      renderBundle: null,
-      visualDesignBundle: null,
-    };
-  }
-
-  const versionEightProject = topicProjectV8Schema.safeParse(normalizedValue);
-  if (versionEightProject.success) {
-    return {
-      ...versionEightProject.data,
-      version: currentProjectVersion,
-      layoutBundle: null,
-      renderBundle: null,
-      visualDesignBundle: null,
-    };
-  }
-
-  const versionSevenProject = topicProjectV7Schema.safeParse(normalizedValue);
-  if (versionSevenProject.success) {
-    return {
-      ...versionSevenProject.data,
-      version: currentProjectVersion,
-      currentStep:
-        versionSevenProject.data.currentStep === 'sync'
-          ? 'voice'
-          : versionSevenProject.data.currentStep,
-      voiceBundle: null,
-      animationSyncBundle: null,
-      layoutBundle: null,
-      renderBundle: null,
-      visualDesignBundle: null,
-    };
-  }
-
-  const versionSixProject = topicProjectV6Schema.safeParse(normalizedValue);
-  if (versionSixProject.success) {
-    return {
-      ...versionSixProject.data,
-      version: currentProjectVersion,
-      voiceBundle: null,
-      animationSyncBundle: null,
-      layoutBundle: null,
-      renderBundle: null,
-      visualDesignBundle: null,
-    };
-  }
-
-  const versionFiveProject = topicProjectV5Schema.safeParse(normalizedValue);
-  if (versionFiveProject.success) {
-    return {
-      ...versionFiveProject.data,
-      version: currentProjectVersion,
-      voiceBundle: null,
-      animationSyncBundle: null,
-      layoutBundle: null,
-      renderBundle: null,
-      visualDesignBundle: null,
-    };
-  }
-
-  const versionFourProject = topicProjectV4Schema.safeParse(normalizedValue);
-  if (versionFourProject.success) {
-    return {
-      ...versionFourProject.data,
-      version: currentProjectVersion,
-      motionCanvasBundle: null,
-      voiceBundle: null,
-      animationSyncBundle: null,
-      layoutBundle: null,
-      renderBundle: null,
-      visualDesignBundle: null,
-    };
-  }
-
-  const versionThreeProject = topicProjectV3Schema.safeParse(normalizedValue);
-  if (versionThreeProject.success) {
-    return {
-      ...versionThreeProject.data,
-      version: currentProjectVersion,
-      voiceVisualPlan: null,
-      motionCanvasBundle: null,
-      voiceBundle: null,
-      animationSyncBundle: null,
-      layoutBundle: null,
-      renderBundle: null,
-      visualDesignBundle: null,
-    };
-  }
-
-  const versionTwoProject = topicProjectV2Schema.safeParse(normalizedValue);
-  if (versionTwoProject.success) {
-    return {
-      ...versionTwoProject.data,
-      version: currentProjectVersion,
-      outline: null,
-      voiceVisualPlan: null,
-      motionCanvasBundle: null,
-      voiceBundle: null,
-      animationSyncBundle: null,
-      layoutBundle: null,
-      renderBundle: null,
-      visualDesignBundle: null,
-    };
-  }
-
-  const legacyProject = topicProjectV1Schema.safeParse(normalizedValue);
-  if (legacyProject.success) {
-    return {
-      ...legacyProject.data,
-      version: currentProjectVersion,
-      revision: 1,
-      creationId: null,
-      outline: null,
-      voiceVisualPlan: null,
-      motionCanvasBundle: null,
-      voiceBundle: null,
-      animationSyncBundle: null,
-      layoutBundle: null,
-      renderBundle: null,
-      visualDesignBundle: null,
-    };
+    return currentProject.data;
   }
 
   throw currentProject.error;
-}
 
+}
 export const CreateTopicProjectSchema = z
   .object({
     creationId: CreationIdSchema,
     topicInput: TopicInputSchema,
-    // Optional only for compatibility with callers from the former workflow.
-    // The current content screen always requires a non-empty narration.
-    narrationSourceText: z.string().trim().min(1).max(1_500_000).optional(),
-    currentStep: z.union([z.literal('topic'), z.literal('outline')]),
+    narrationSourceText: z.string().trim().min(1).max(1_500_000),
   })
   .strict()
   .superRefine((value, context) => {
@@ -1463,13 +939,10 @@ export type CreateTopicProject = z.infer<typeof CreateTopicProjectSchema>;
 export const UpdateProjectSchema = z
   .object({
     topicInput: TopicInputSchema.optional(),
-    currentStep: z.union([z.literal('topic'), z.literal('outline')]).optional(),
   })
   .strict()
   .refine(
-    (value) =>
-      value.topicInput !== undefined ||
-      value.currentStep !== undefined,
+    (value) => value.topicInput !== undefined,
     'Cần có ít nhất một thay đổi.',
   )
   .superRefine((value, context) => {
@@ -1485,38 +958,6 @@ export const UpdateProjectSchema = z
   });
 
 export type UpdateProject = z.infer<typeof UpdateProjectSchema>;
-
-export const GenerateTeachingOutlineSchema = z
-  .object({
-    generationId: CreationIdSchema,
-    model: z.string().trim().min(1).max(160).optional(),
-    reasoningEffort: CodexReasoningEffortSchema.optional(),
-    guidance: z
-      .string()
-      .trim()
-      .optional(),
-  })
-  .strict();
-
-export type GenerateTeachingOutline = z.infer<
-  typeof GenerateTeachingOutlineSchema
->;
-
-export const GenerateVoiceVisualPlanSchema = z
-  .object({
-    generationId: CreationIdSchema,
-    model: z.string().trim().min(1).max(160).optional(),
-    reasoningEffort: CodexReasoningEffortSchema.optional(),
-    guidance: z
-      .string()
-      .trim()
-      .optional(),
-  })
-  .strict();
-
-export type GenerateVoiceVisualPlan = z.infer<
-  typeof GenerateVoiceVisualPlanSchema
->;
 
 export const GenerateMotionCanvasSchema = z
   .object({

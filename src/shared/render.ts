@@ -89,58 +89,6 @@ export type FinalRenderDiagnostic = z.infer<
   typeof FinalRenderDiagnosticSchema
 >;
 
-function normalizeLegacyFinalRenderBundle(value: unknown) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
-  const bundle: Record<string, unknown> = {...value};
-  delete bundle.playbackRate;
-  delete bundle.sourceDurationSeconds;
-  const watermark = bundle.watermark;
-  if (
-    watermark &&
-    typeof watermark === 'object' &&
-    !Array.isArray(watermark) &&
-    'type' in watermark &&
-    watermark.type !== 'none'
-  ) {
-    const legacy = {...watermark} as Record<string, unknown>;
-    const coordinates =
-      legacy.position === 'top-left'
-        ? {xPercent: 8, yPercent: 8}
-        : legacy.position === 'top-right'
-          ? {xPercent: 92, yPercent: 8}
-          : legacy.position === 'bottom-left'
-            ? {xPercent: 8, yPercent: 92}
-            : legacy.position === 'center'
-              ? {xPercent: 50, yPercent: 50}
-              : {xPercent: 92, yPercent: 92};
-    delete legacy.position;
-    bundle.watermark = {
-      ...legacy,
-      ...(legacy.type === 'image'
-        ? {
-            tintColor:
-              typeof legacy.tintColor === 'string'
-                ? legacy.tintColor
-                : '#FFFFFF',
-            tintStrength:
-              typeof legacy.tintStrength === 'number'
-                ? legacy.tintStrength
-                : 0,
-          }
-        : {}),
-      xPercent:
-        typeof legacy.xPercent === 'number'
-          ? legacy.xPercent
-          : coordinates.xPercent,
-      yPercent:
-        typeof legacy.yPercent === 'number'
-          ? legacy.yPercent
-          : coordinates.yPercent,
-    };
-  }
-  return bundle;
-}
-
 const FinalRenderBundleValueSchema = z
   .object({
     status: z.enum(finalRenderStatusValues),
@@ -224,10 +172,7 @@ const FinalRenderBundleValueSchema = z
     }
   });
 
-export const FinalRenderBundleSchema = z.preprocess(
-  normalizeLegacyFinalRenderBundle,
-  FinalRenderBundleValueSchema,
-);
+export const FinalRenderBundleSchema = FinalRenderBundleValueSchema;
 
 export type FinalRenderBundle = z.infer<typeof FinalRenderBundleSchema>;
 

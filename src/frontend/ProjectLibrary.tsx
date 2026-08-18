@@ -3,7 +3,6 @@ import type {
   ProjectListIssue,
   TopicProject,
 } from '../shared/topic.ts';
-import {isDirectNarrationProject} from '../shared/projectPipeline.ts';
 import {ApiRequestError, deleteProject, listProjects} from './api.ts';
 import {
   ArrowRightIcon,
@@ -243,10 +242,7 @@ export function ProjectLibrary({
                   onClick={() => onOpenProject(project)}
                 >
                   <span className="project-step">
-                    {projectStepLabel(
-                      project.currentStep,
-                      isDirectNarrationProject(project),
-                    )}
+                    {projectStepLabel(project.currentStep)}
                   </span>
                   <strong>{project.topicInput.topic}</strong>
                   <span className="project-meta">

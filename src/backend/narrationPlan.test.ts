@@ -2,15 +2,15 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {createHash} from 'node:crypto';
 import {
-  createDirectNarrationArtifacts,
-  directNarrationMatchesSource,
-  directPlanMatchesNarration,
-} from './directNarrationPlan.ts';
+  createNarrationArtifacts,
+  narrationPlanMatchesReviewedNarration,
+  narrationArtifactsMatchReview,
+} from './narrationPlan.ts';
 import type {NarrationDocument} from '../shared/topic.ts';
 
 const sourceHash = createHash('sha256').update('review').digest('hex');
 
-test('direct narration artifacts preserve the reviewed words without an authored outline', () => {
+test('narration artifacts preserve the reviewed words without authored planning', () => {
   const narration: NarrationDocument = {
     sourceText: 'Bản gốc.',
     projectRules: [],
@@ -26,10 +26,11 @@ test('direct narration artifacts preserve the reviewed words without an authored
     approvedSourceHash: sourceHash,
     approvedAt: '2026-01-01T00:00:00.000Z',
   };
-  const {outline, voiceVisualPlan} = createDirectNarrationArtifacts({
+  const {outline, voiceVisualPlan} = createNarrationArtifacts({
     topicInput: {
       topic: 'Độ phức tạp thuật toán',
       background: {mode: 'dark', color: '#10231D'},
+      videoFrame: {aspectRatio: 'portrait', width: 1080, height: 1920, fps: 30},
       audience: 'beginner',
       duration: 'standard',
     },
@@ -46,8 +47,8 @@ test('direct narration artifacts preserve the reviewed words without an authored
       .map(beat => beat.spokenVoiceover).join(' '),
     narration.review!.normalizedText,
   );
-  assert.equal(directNarrationMatchesSource(narration, voiceVisualPlan), true);
-  assert.equal(directPlanMatchesNarration({
+  assert.equal(narrationPlanMatchesReviewedNarration(narration, voiceVisualPlan), true);
+  assert.equal(narrationArtifactsMatchReview({
     outline,
     voiceVisualPlan,
     narration,

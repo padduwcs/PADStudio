@@ -2,7 +2,6 @@ import {useEffect, useState} from 'react';
 import {RenderWatermarkSchema, type RenderWatermark} from '../shared/render.ts';
 import {
   animationSyncIsStale,
-  isDirectNarrationProject,
   layoutIsReady,
 } from '../shared/projectPipeline.ts';
 import {
@@ -22,8 +21,6 @@ import {
   navigate,
   projectProductionPath,
   projectRenderPath,
-  projectVoicePath,
-  projectVoiceVisualPath,
 } from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useMotionCanvasDraft} from './useMotionCanvasDraft.ts';
@@ -153,11 +150,6 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
         if (!approved) throw new Error('Không thể chốt scene hiện tại.');
         current = approved;
       }
-      if (!isDirectNarrationProject(current)) {
-        setCompletionMessage('Scene đã được chốt. Tiếp tục tạo voice ElevenLabs.');
-        navigate(projectVoicePath(current.id));
-        return;
-      }
       if (!current.voiceBundle) {
         throw new Error('Audio hiện tại chưa sẵn sàng.');
       }
@@ -189,8 +181,7 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
   if (!motion.project || motion.loadState === 'error') return <div className="page-state is-error" role="alert"><strong>Không thể mở scene</strong><p>{motion.loadError}</p></div>;
   const project = motion.project;
   const bundle = project.motionCanvasBundle;
-  if (!bundle) return <div className="page-state is-error" role="alert"><strong>Scene chưa sẵn sàng</strong><p>Hãy hoàn tất bước sinh scene trước khi review.</p><button type="button" onClick={() => navigate(isDirectNarrationProject(project) ? projectProductionPath(projectId) : projectVoiceVisualPath(projectId))}>Quay lại bước trước</button></div>;
-  const direct = isDirectNarrationProject(project);
+  if (!bundle) return <div className="page-state is-error" role="alert"><strong>Scene chưa sẵn sàng</strong><p>Hãy hoàn tất bước sinh scene trước khi review.</p><button type="button" onClick={() => navigate(projectProductionPath(projectId))}>Quay lại bước trước</button></div>;
   const synchronized = Boolean(project.animationSyncBundle && !animationSyncIsStale(project));
   const outputReady = layoutIsReady(project);
   let narrationAudioUrl = '';
@@ -227,7 +218,7 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
         <aside className="scene-review-side"><CodexConnectionCard connection={codex} task="motionCanvas" workUnits={selectedSceneIds.length || bundle.scenes.length} /><WatermarkSettings watermark={watermark} uploading={watermarkUploading} error={watermarkUploadError} onChange={next => { setWatermarkUploadError(''); setWatermark(next); }} onUpload={uploadWatermark} /><p>Bạn cũng có thể chỉnh trực tiếp màu sắc, chữ, vị trí và chuyển động ở editor bên dưới.</p></aside>
       </div>
       <MotionDesignEditor motionCanvas={motion} narrationAudioUrl={narrationAudioUrl} watermark={watermark} watermarkImageUrl={watermarkImageUrl} />
-      <footer className="scene-review-footer"><div><strong>{direct ? exportReady ? 'Sẵn sàng xuất video' : synchronized ? 'Chỉnh sửa hình đã lưu' : 'Hình và tiếng đã đồng bộ' : 'Chốt scene để tạo voice'}</strong><p>{completionMessage || (direct ? 'Các chỉnh sửa hình được giữ riêng; voice và timing đã chốt không bị tạo lại.' : 'Scene đã được review trong cùng màn hình này. Sau khi chốt, bạn sẽ tiếp tục tạo voice ElevenLabs.')}</p></div><button className="submit-button" type="button" disabled={syncing || !watermarkValid || motion.candidate?.decision === 'pending'} onClick={() => exportReady ? navigate(projectRenderPath(project.id)) : void approveAndContinue()}>{syncing ? direct ? 'Đang chuẩn bị đầu ra…' : 'Đang chốt…' : direct ? exportReady ? 'Xuất video' : 'Hoàn tất & xuất video' : 'Chốt scene & tạo voice'}</button></footer>
+      <footer className="scene-review-footer"><div><strong>{exportReady ? 'Sẵn sàng xuất video' : synchronized ? 'Chỉnh sửa hình đã lưu' : 'Hình và tiếng đã đồng bộ'}</strong><p>{completionMessage || 'Các chỉnh sửa hình được giữ riêng; voice và timing đã chốt không bị tạo lại.'}</p></div><button className="submit-button" type="button" disabled={syncing || !watermarkValid || motion.candidate?.decision === 'pending'} onClick={() => exportReady ? navigate(projectRenderPath(project.id)) : void approveAndContinue()}>{syncing ? 'Đang chuẩn bị đầu ra…' : exportReady ? 'Xuất video' : 'Hoàn tất & xuất video'}</button></footer>
     </main>
   );
 }

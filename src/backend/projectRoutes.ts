@@ -40,46 +40,6 @@ export function getProjectId(pathname: string) {
   return match?.[1] ? decodeProjectId(match[1]) : null;
 }
 
-export function getProjectOutlineRoute(pathname: string) {
-  const match = /^\/api\/projects\/([^/]+)\/outline(?:\/(generate|approve))?$/.exec(pathname);
-  const projectId = match?.[1] ? decodeProjectId(match[1]) : null;
-  return projectId ? {projectId, action: match?.[2] ?? 'update'} : null;
-}
-
-export function getProjectOutlineHistoryRoute(pathname: string) {
-  return routeWithRecord(
-    pathname,
-    /^\/api\/projects\/([^/]+)\/outline\/(history|versions|candidates)(?:\/([^/]+)(?:\/(restore|apply|reject))?)?$/,
-    ['history', 'versions', 'candidates'],
-    ['restore', 'apply', 'reject'],
-  ) as {
-    projectId: string;
-    resource: 'history' | 'versions' | 'candidates';
-    recordId: string | null;
-    action: 'restore' | 'apply' | 'reject' | null;
-  } | null;
-}
-
-export function getProjectVoiceVisualRoute(pathname: string) {
-  const match = /^\/api\/projects\/([^/]+)\/voice-visual(?:\/(generate|approve))?$/.exec(pathname);
-  const projectId = match?.[1] ? decodeProjectId(match[1]) : null;
-  return projectId ? {projectId, action: match?.[2] ?? 'update'} : null;
-}
-
-export function getProjectVoiceVisualHistoryRoute(pathname: string) {
-  return routeWithRecord(
-    pathname,
-    /^\/api\/projects\/([^/]+)\/voice-visual\/(history|versions|candidates|reviews)(?:\/([^/]+)(?:\/(restore|apply|reject))?)?$/,
-    ['history', 'versions', 'candidates', 'reviews'],
-    ['restore', 'apply', 'reject'],
-  ) as {
-    projectId: string;
-    resource: 'history' | 'versions' | 'candidates' | 'reviews';
-    recordId: string | null;
-    action: 'restore' | 'apply' | 'reject' | null;
-  } | null;
-}
-
 export function getProjectMotionCanvasRoute(pathname: string) {
   const match = /^\/api\/projects\/([^/]+)\/motion-canvas(?:\/(generate|approve|files|preview|design))?$/.exec(pathname);
   const projectId = match?.[1] ? decodeProjectId(match[1]) : null;
@@ -112,10 +72,10 @@ export function getProjectVoiceRoute(pathname: string) {
       return null;
     }
   }
-  const match = /^\/api\/projects\/([^/]+)\/voice(?:\/(generate|approve))?$/.exec(pathname);
+  const match = /^\/api\/projects\/([^/]+)\/voice\/generate$/.exec(pathname);
   const projectId = match?.[1] ? decodeProjectId(match[1]) : null;
   return projectId
-    ? {projectId, action: (match?.[2] ?? 'read') as 'generate' | 'approve' | 'read', outlineSectionId: null}
+    ? {projectId, action: 'generate' as const, outlineSectionId: null}
     : null;
 }
 
@@ -126,18 +86,13 @@ function simpleRoute(pathname: string, expression: RegExp, readAction: string) {
 }
 
 export const getProjectAnimationSyncRoute = (pathname: string) =>
-  simpleRoute(pathname, /^\/api\/projects\/([^/]+)\/sync(?:\/(generate|approve|files|audio|preview))?$/, 'read') as
-    | {projectId: string; action: 'generate' | 'approve' | 'files' | 'audio' | 'preview' | 'read'}
-    | null;
-
-export const getProjectLayoutRoute = (pathname: string) =>
-  simpleRoute(pathname, /^\/api\/projects\/([^/]+)\/layout(?:\/(commit|approve|files|preview))?$/, 'read') as
-    | {projectId: string; action: 'commit' | 'approve' | 'files' | 'preview' | 'read'}
+  simpleRoute(pathname, /^\/api\/projects\/([^/]+)\/sync\/(generate|approve|preview)$/, 'generate') as
+    | {projectId: string; action: 'generate' | 'approve' | 'preview'}
     | null;
 
 export const getProjectRenderRoute = (pathname: string) =>
-  simpleRoute(pathname, /^\/api\/projects\/([^/]+)\/render(?:\/(generate|status|video|watermark))?$/, 'read') as
-    | {projectId: string; action: 'generate' | 'status' | 'video' | 'watermark' | 'read'}
+  simpleRoute(pathname, /^\/api\/projects\/([^/]+)\/render\/(generate|status|video|watermark)$/, 'generate') as
+    | {projectId: string; action: 'generate' | 'status' | 'video' | 'watermark'}
     | null;
 
 export const getProjectNarrationRoute = (pathname: string) =>

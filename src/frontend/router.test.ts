@@ -4,53 +4,34 @@ import {
   navigate,
   navigateDiscardingPendingChanges,
   parseRoute,
+  projectContentPath,
+  projectProductionPath,
+  projectPronunciationPath,
+  projectRenderPath,
   projectResumePath,
+  projectScenesPath,
   projectStepLabel,
-  projectStepPath,
   projectWorkflowPath,
   registerNavigationGuard,
   workflowStepIndex,
 } from './router.ts';
 
-test('parseRoute đọc route project hợp lệ', () => {
-  assert.deepEqual(parseRoute('/projects/du-an-01/topic'), {
-    name: 'project-topic',
+test('parseRoute chỉ nhận năm URL workflow hiện tại', () => {
+  assert.deepEqual(parseRoute('/'), {name: 'new-project'});
+  assert.deepEqual(parseRoute('/projects/du-an-01/content'), {
+    name: 'project-content',
     projectId: 'du-an-01',
   });
-  assert.deepEqual(parseRoute('/projects/du-an-01/narration'), {
-    name: 'project-narration',
+  assert.deepEqual(parseRoute('/projects/du-an-01/pronunciation/'), {
+    name: 'project-pronunciation',
     projectId: 'du-an-01',
   });
   assert.deepEqual(parseRoute('/projects/du-an-01/production'), {
     name: 'project-production',
     projectId: 'du-an-01',
   });
-  assert.deepEqual(parseRoute('/projects/du-an-01/scene-review'), {
-    name: 'project-scene-review',
-    projectId: 'du-an-01',
-  });
-  assert.deepEqual(parseRoute('/projects/du-an-01/outline/'), {
-    name: 'project-outline',
-    projectId: 'du-an-01',
-  });
-  assert.deepEqual(parseRoute('/projects/du-an-01/voice-visual'), {
-    name: 'project-voice-visual',
-    projectId: 'du-an-01',
-  });
-  assert.deepEqual(parseRoute('/projects/du-an-01/motion-canvas'), {
-    name: 'project-motion-canvas',
-    projectId: 'du-an-01',
-  });
-  assert.deepEqual(parseRoute('/projects/du-an-01/voice'), {
-    name: 'project-voice',
-    projectId: 'du-an-01',
-  });
-  assert.deepEqual(parseRoute('/projects/du-an-01/sync'), {
-    name: 'project-sync',
-    projectId: 'du-an-01',
-  });
-  assert.deepEqual(parseRoute('/projects/du-an-01/layout'), {
-    name: 'project-layout',
+  assert.deepEqual(parseRoute('/projects/du-an-01/scenes'), {
+    name: 'project-scenes',
     projectId: 'du-an-01',
   });
   assert.deepEqual(parseRoute('/projects/du-an-01/render'), {
@@ -59,120 +40,52 @@ test('parseRoute đọc route project hợp lệ', () => {
   });
 });
 
-test('parseRoute không crash với URL encoding hỏng', () => {
-  assert.deepEqual(parseRoute('/projects/%E0%A4%A/topic'), {
-    name: 'new-topic',
-  });
+test('URL legacy và encoding lỗi đều quay về màn tạo project', () => {
+  assert.deepEqual(parseRoute('/projects/du-an-01/topic'), {name: 'new-project'});
+  assert.deepEqual(parseRoute('/projects/du-an-01/scene-review'), {name: 'new-project'});
+  assert.deepEqual(parseRoute('/projects/%E0%A4%A/content'), {name: 'new-project'});
 });
 
-test('projectStepPath ánh xạ tập trung các bước đã hỗ trợ', () => {
-  assert.equal(
-    projectStepPath('du an', 'topic'),
-    '/projects/du%20an/topic',
-  );
-  assert.equal(
-    projectStepPath('du an', 'outline'),
-    '/projects/du%20an/outline',
-  );
-  assert.equal(
-    projectStepPath('du an', 'voiceVisual'),
-    '/projects/du%20an/voice-visual',
-  );
-  assert.equal(
-    projectStepPath('du an', 'motionCanvas'),
-    '/projects/du%20an/scene-review',
-  );
-  assert.equal(
-    projectStepPath('du an', 'voice'),
-    '/projects/du%20an/voice',
-  );
-  assert.equal(
-    projectStepPath('du an', 'sync'),
-    '/projects/du%20an/sync',
-  );
-  assert.equal(
-    projectStepPath('du an', 'layout'),
-    '/projects/du%20an/layout',
-  );
-  assert.equal(
-    projectStepPath('du an', 'render'),
-    '/projects/du%20an/render',
-  );
-});
-
-test('projectStepLabel không gắn nhầm project Layout hoặc Render về bước đầu', () => {
-  assert.equal(projectStepLabel('topic'), 'Bước 01 · Chủ đề');
-  assert.equal(projectStepLabel('layout'), 'Bước 07 · Layout Editor');
-  assert.equal(projectStepLabel('render'), 'Bước 08 · Render cuối');
-  assert.equal(projectStepLabel('render', true), 'Bước 05 · Xuất video');
-});
-
-test('projectResumePath đưa project lời thoại thẳng về đúng luồng 5 bước', () => {
-  const directProject = {
-    id: 'du-an-truc-tiep',
-    currentStep: 'voice',
-    outline: {generation: {promptVersion: 'direct-narration-v1'}},
-    voiceVisualPlan: {generation: {promptVersion: 'direct-narration-v1'}},
-  } as unknown as import('../shared/topic.ts').TopicProject;
-
-  assert.equal(
-    projectResumePath(directProject),
-    '/projects/du-an-truc-tiep/production',
-  );
-  assert.equal(
-    projectResumePath({...directProject, currentStep: 'sync'}),
-    '/projects/du-an-truc-tiep/scene-review',
-  );
-  assert.equal(
-    projectResumePath({...directProject, currentStep: 'render'}),
-    '/projects/du-an-truc-tiep/render',
-  );
-});
-
-test('workflow 5 bước gom cả route mới và route legacy về đúng điểm điều hướng', () => {
+test('path helper và chỉ số workflow dùng đúng năm bước', () => {
   const projectId = 'du an';
-  assert.equal(projectWorkflowPath(projectId, 0), '/projects/du%20an/topic');
-  assert.equal(projectWorkflowPath(projectId, 1), '/projects/du%20an/narration');
-  assert.equal(projectWorkflowPath(projectId, 2), '/projects/du%20an/production');
-  assert.equal(projectWorkflowPath(projectId, 3), '/projects/du%20an/scene-review');
-  assert.equal(projectWorkflowPath(projectId, 4), '/projects/du%20an/render');
-
-  assert.equal(workflowStepIndex({name: 'project-topic'}), 0);
-  assert.equal(workflowStepIndex({name: 'project-outline'}), 1);
-  assert.equal(workflowStepIndex({name: 'project-voice'}), 2);
-  assert.equal(workflowStepIndex({name: 'project-layout'}), 3);
+  assert.equal(projectContentPath(projectId), '/projects/du%20an/content');
+  assert.equal(projectPronunciationPath(projectId), '/projects/du%20an/pronunciation');
+  assert.equal(projectProductionPath(projectId), '/projects/du%20an/production');
+  assert.equal(projectScenesPath(projectId), '/projects/du%20an/scenes');
+  assert.equal(projectRenderPath(projectId), '/projects/du%20an/render');
+  assert.equal(projectWorkflowPath(projectId, 0), projectContentPath(projectId));
+  assert.equal(projectWorkflowPath(projectId, 4), projectRenderPath(projectId));
+  assert.equal(workflowStepIndex({name: 'project-content'}), 0);
+  assert.equal(workflowStepIndex({name: 'project-pronunciation'}), 1);
+  assert.equal(workflowStepIndex({name: 'project-production'}), 2);
+  assert.equal(workflowStepIndex({name: 'project-scenes'}), 3);
   assert.equal(workflowStepIndex({name: 'project-render'}), 4);
 });
 
-test('navigate chờ navigation guard và không rời trang khi lưu thất bại', async () => {
-  const windowDescriptor = Object.getOwnPropertyDescriptor(
-    globalThis,
-    'window',
-  );
-  const popStateDescriptor = Object.getOwnPropertyDescriptor(
-    globalThis,
-    'PopStateEvent',
-  );
+test('resume ánh xạ trực tiếp state workflow hiện tại', () => {
+  const project = {id: 'du-an', currentStep: 'production'} as unknown as import('../shared/topic.ts').TopicProject;
+  assert.equal(projectResumePath(project), '/projects/du-an/production');
+  assert.equal(projectResumePath({...project, currentStep: 'render'}), '/projects/du-an/render');
+  assert.equal(projectStepLabel('render'), 'Bước 05 · Xuất video');
+});
+
+test('navigate chờ navigation guard và có thể bỏ qua guard khi cần', async () => {
+  const windowDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const popStateDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'PopStateEvent');
   const navigations: Array<{path: string; replace: boolean}> = [];
   let historyState: unknown = null;
   Object.defineProperty(globalThis, 'window', {
     configurable: true,
     value: {
       history: {
-        get state() {
-          return historyState;
-        },
+        get state() { return historyState; },
         pushState: (state: unknown, _title: string, path?: string) => {
           historyState = state;
-          if (path !== undefined) {
-            navigations.push({path, replace: false});
-          }
+          if (path !== undefined) navigations.push({path, replace: false});
         },
         replaceState: (state: unknown, _title: string, path?: string) => {
           historyState = state;
-          if (path !== undefined) {
-            navigations.push({path, replace: true});
-          }
+          if (path !== undefined) navigations.push({path, replace: true});
         },
       },
       dispatchEvent: () => true,
@@ -192,37 +105,21 @@ test('navigate chờ navigation guard và không rời trang khi lưu thất b�
   let unregister = registerNavigationGuard(() => false);
   try {
     navigate('/blocked');
-    await new Promise<void>((resolve) => setImmediate(resolve));
+    await new Promise<void>(resolve => setImmediate(resolve));
     assert.deepEqual(navigations, []);
-
     navigateDiscardingPendingChanges('/deleted');
-    assert.deepEqual(navigations, [
-      {path: '/deleted', replace: false},
-    ]);
+    assert.deepEqual(navigations, [{path: '/deleted', replace: false}]);
     navigations.length = 0;
-
     unregister();
     unregister = registerNavigationGuard(async () => true);
     navigate('/saved');
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.deepEqual(navigations, [
-      {path: '/saved', replace: false},
-    ]);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.deepEqual(navigations, [{path: '/saved', replace: false}]);
   } finally {
     unregister();
-    if (windowDescriptor) {
-      Object.defineProperty(globalThis, 'window', windowDescriptor);
-    } else {
-      delete (globalThis as {window?: unknown}).window;
-    }
-    if (popStateDescriptor) {
-      Object.defineProperty(
-        globalThis,
-        'PopStateEvent',
-        popStateDescriptor,
-      );
-    } else {
-      delete (globalThis as {PopStateEvent?: unknown}).PopStateEvent;
-    }
+    if (windowDescriptor) Object.defineProperty(globalThis, 'window', windowDescriptor);
+    else delete (globalThis as {window?: unknown}).window;
+    if (popStateDescriptor) Object.defineProperty(globalThis, 'PopStateEvent', popStateDescriptor);
+    else delete (globalThis as {PopStateEvent?: unknown}).PopStateEvent;
   }
 });

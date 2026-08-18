@@ -3,7 +3,6 @@ import type {ElevenLabsCatalog} from '../shared/elevenLabs.ts';
 import type {TopicProject} from '../shared/topic.ts';
 import {
   animationSyncIsStale,
-  isDirectNarrationProject,
 } from '../shared/projectPipeline.ts';
 import {
   ApiRequestError,
@@ -13,12 +12,12 @@ import {
   generateVoice,
   getElevenLabsCatalog,
   getProject,
-  prepareDirectProduction,
+  prepareNarrationProduction,
   voiceAudioUrl,
 } from './api.ts';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {ElevenLabsConnectionCard} from './ElevenLabsConnectionCard.tsx';
-import {navigate, projectNarrationPath, projectSceneReviewPath} from './router.ts';
+import {navigate, projectPronunciationPath, projectScenesPath} from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useElevenLabsConnection} from './useElevenLabsConnection.ts';
 import {RuntimeDiagnosticsCard} from './RuntimeDiagnosticsCard.tsx';
@@ -93,12 +92,10 @@ export function ProductionPage({projectId}: {projectId: string}) {
     () => catalog?.models.find(item => item.modelId === modelId) ?? null,
     [catalog, modelId],
   );
-  const audioReady = Boolean(project?.voiceBundle && isDirectNarrationProject(project));
-  const sceneReady = Boolean(project?.motionCanvasBundle && isDirectNarrationProject(project));
+  const audioReady = Boolean(project?.voiceBundle);
+  const sceneReady = Boolean(project?.motionCanvasBundle);
   const syncReady = Boolean(
-    project?.animationSyncBundle &&
-      isDirectNarrationProject(project) &&
-      !animationSyncIsStale(project),
+    project?.animationSyncBundle && !animationSyncIsStale(project),
   );
   const voiceSelectionChanged = Boolean(
     project?.voiceBundle &&
@@ -139,14 +136,12 @@ export function ProductionPage({projectId}: {projectId: string}) {
     setMessage('');
     try {
       let current = project;
-      if (!isDirectNarrationProject(current)) {
-        setMessage('Đang cố định lời thoại đã duyệt cho audio…');
-        current = await prepareDirectProduction(
-          current.id,
-          {generationId: newGenerationId()},
-          current.revision,
-        );
-      }
+      setMessage('Đang chuẩn bị cấu trúc scene từ lời thoại đã duyệt…');
+      current = await prepareNarrationProduction(
+        current.id,
+        {generationId: newGenerationId()},
+        current.revision,
+      );
       current = await generateSelectedAudio(current);
       setProject(current);
       setVoiceId(current.voiceBundle!.configuration.voiceId);
@@ -165,11 +160,9 @@ export function ProductionPage({projectId}: {projectId: string}) {
     setMessage('');
     try {
       let current = project;
-      if (!isDirectNarrationProject(current)) {
-        setMessage('Đang cố định lời thoại đã duyệt cho audio…');
-        current = await prepareDirectProduction(current.id, {generationId: newGenerationId()}, current.revision);
-        setProject(current);
-      }
+      setMessage('Đang chuẩn bị cấu trúc scene từ lời thoại đã duyệt…');
+      current = await prepareNarrationProduction(current.id, {generationId: newGenerationId()}, current.revision);
+      setProject(current);
       if (!current.voiceBundle) {
         current = await generateSelectedAudio(current);
         setProject(current);
@@ -213,7 +206,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
 
   if (state === 'loading') return <div className="page-state" role="status"><span className="spinner dark" /><strong>Đang mở bước audio và scene…</strong></div>;
   if (!project) return <div className="page-state is-error" role="alert"><strong>Không thể mở project</strong><p>{message}</p></div>;
-  if (!narrationApproved) return <div className="page-state is-error" role="alert"><strong>Voice chưa được duyệt</strong><p>Chỉ bản cách đọc đã duyệt mới được gửi tới ElevenLabs.</p><button type="button" onClick={() => navigate(projectNarrationPath(projectId))}>Quay lại duyệt voice</button></div>;
+  if (!narrationApproved) return <div className="page-state is-error" role="alert"><strong>Voice chưa được duyệt</strong><p>Chỉ bản cách đọc đã duyệt mới được gửi tới ElevenLabs.</p><button type="button" onClick={() => navigate(projectPronunciationPath(projectId))}>Quay lại duyệt voice</button></div>;
 
   const firstSection = project.voiceBundle?.sections[0];
   return (
@@ -303,7 +296,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
           <p>{message || 'Mỗi dịch vụ chỉ được gọi khi phần trước đã sẵn sàng.'}</p>
         </div>
         {syncReady ? (
-          <button className="submit-button" type="button" onClick={() => navigate(projectSceneReviewPath(project.id))}>Review & chỉnh scene</button>
+          <button className="submit-button" type="button" onClick={() => navigate(projectScenesPath(project.id))}>Review & chỉnh scene</button>
         ) : (
           <button className="submit-button" type="button" disabled={state === 'working' || (!audioReady && (!eleven.connected || !voiceId || !modelId))} onClick={() => void runProduction()}>
             {state === 'working' ? 'Đang xử lý…' : sceneReady ? 'Đồng bộ lại scene' : audioReady ? 'Sinh scene & đồng bộ' : 'Tạo audio, scene & đồng bộ'}

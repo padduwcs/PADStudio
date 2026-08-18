@@ -13,13 +13,6 @@ import {finalRenderTimingToleranceSeconds} from './render.ts';
 
 const TIMING_TOLERANCE_SECONDS = 0.001;
 
-export function isDirectNarrationProject(project: TopicProject): boolean {
-  return (
-    project.outline?.generation.promptVersion === 'direct-narration-v1' &&
-    project.voiceVisualPlan?.generation.promptVersion === 'direct-narration-v1'
-  );
-}
-
 export function sameValue(left: unknown, right: unknown): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
@@ -405,4 +398,24 @@ export function finalRenderIsReady(project: TopicProject): boolean {
 
 export function finalRenderIsStale(project: TopicProject): boolean {
   return Boolean(project.renderBundle && !finalRenderIsCurrent(project));
+}
+
+/** The product workflow owns resume state; artifacts remain implementation detail. */
+export function nextWorkflowStep(project: TopicProject): TopicProject['currentStep'] {
+  const narration = project.narration;
+  const narrationApproved = Boolean(
+    narration?.review &&
+      narration.approvedAt &&
+      narration.approvedSourceHash === narration.review.sourceHash,
+  );
+  if (!narrationApproved) return 'pronunciation';
+
+  const productionReady = Boolean(
+    project.voiceBundle?.status === 'approved' &&
+      project.motionCanvasBundle?.status === 'approved' &&
+      project.animationSyncBundle?.status === 'approved' &&
+      !animationSyncIsStale(project),
+  );
+  if (!productionReady) return 'production';
+  return layoutIsReady(project) ? 'render' : 'scenes';
 }

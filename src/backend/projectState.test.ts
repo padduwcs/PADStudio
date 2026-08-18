@@ -15,11 +15,11 @@ function projectFixture(): TopicProject {
   };
   return {
     id: 'binary-search-20260101-12345678',
-    version: 9,
+    version: 16,
     revision: 7,
     creationId: null,
     status: 'draft',
-    currentStep: 'outline',
+    currentStep: 'pronunciation',
     topicInput,
     outline: {
       status: 'approved',
@@ -43,9 +43,9 @@ function projectFixture(): TopicProject {
 
 test('project state keeps an already-applied command idempotent', () => {
   const project = projectFixture();
-  assert.equal(projectChangeAlreadyApplied(project, {currentStep: 'outline'}), true);
+  assert.equal(projectChangeAlreadyApplied(project, {}), true);
   assert.strictEqual(
-    reconcileProjectState(project, {currentStep: 'outline'}),
+    reconcileProjectState(project, {}),
     project,
   );
 });
@@ -60,7 +60,7 @@ test('project state invalidates downstream outline on topic input change', () =>
   );
 
   assert.equal(next.revision, 8);
-  assert.equal(next.currentStep, 'topic');
+  assert.equal(next.currentStep, 'pronunciation');
   assert.equal(next.outline?.status, 'draft');
   assert.deepEqual(next.topicInput, topicInput);
   assert.equal(next.updatedAt, '2026-01-02T00:00:00.000Z');

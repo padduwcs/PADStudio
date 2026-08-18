@@ -9,7 +9,6 @@ import {
   finalRenderIsStale,
   finalRenderMatchesLayout,
   finalRenderPrerequisitesAreReady,
-  isDirectNarrationProject,
   layoutIsCurrent,
   layoutIsReady,
   layoutIsStale,
@@ -29,28 +28,6 @@ import {
   voiceVisualMatchesOutline,
 } from './projectPipeline.ts';
 import type {TopicProject} from './topic.ts';
-
-test('nhận diện project lời thoại trực tiếp từ cùng một helper', () => {
-  const project = {
-    outline: {generation: {promptVersion: 'direct-narration-v1'}},
-    voiceVisualPlan: {generation: {promptVersion: 'direct-narration-v1'}},
-  } as unknown as TopicProject;
-
-  assert.equal(isDirectNarrationProject(project), true);
-  assert.equal(
-    isDirectNarrationProject({
-      ...project,
-      voiceVisualPlan: {
-        ...project.voiceVisualPlan!,
-        generation: {
-          ...project.voiceVisualPlan!.generation,
-          promptVersion: 'voice-visual-v1',
-        },
-      },
-    }),
-    false,
-  );
-});
 
 const OUTLINE_IDS = [
   '10000000-0000-4000-8000-000000000001',

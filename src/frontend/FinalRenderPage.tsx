@@ -1,6 +1,5 @@
 import {AdaptiveHeading} from './AdaptiveText.tsx';
 import {defaultVideoFrame} from '../shared/videoFormat.ts';
-import {isDirectNarrationProject} from '../shared/projectPipeline.ts';
 import {
   ArrowLeftIcon,
   CheckIcon,
@@ -9,7 +8,7 @@ import {
   SparkIcon,
 } from './icons.tsx';
 import {finalRenderVideoUrl} from './api.ts';
-import {navigate, projectLayoutPath, projectSceneReviewPath} from './router.ts';
+import {navigate, projectScenesPath} from './router.ts';
 import {useFinalRender} from './useFinalRender.ts';
 
 function formatTime(seconds: number) {
@@ -64,7 +63,6 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
   }
 
   const {project, status} = render;
-  const isDirect = isDirectNarrationProject(project);
   const diagnostic = status?.state === 'failed'
     ? status.diagnostic ?? null
     : null;
@@ -74,15 +72,15 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
   if (!render.prerequisitesReady || !layout) {
     return (
       <div className="page-state is-error" role="alert">
-        <strong>Layout chưa sẵn sàng để render</strong>
-        <p>Hãy lưu, xem lại và chốt Layout hiện hành trước khi xuất video cuối.</p>
+        <strong>Scene chưa sẵn sàng để render</strong>
+        <p>Hãy lưu, xem lại và chốt scene hiện hành trước khi xuất video cuối.</p>
         <button
           type="button"
           onClick={() => navigate(
-            isDirect ? projectSceneReviewPath(project.id) : projectLayoutPath(project.id),
+            projectScenesPath(project.id),
           )}
         >
-          {isDirect ? 'Về chỉnh scene' : 'Về Layout Editor'}
+          Về chỉnh scene
         </button>
       </div>
     );
@@ -101,7 +99,7 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
     <div className="render-workspace">
       <header className="outline-heading render-heading">
         <div className="eyebrow">
-          <span>{isDirect ? 'Bước 05' : 'Bước 08'}</span>
+          <span>Bước 05</span>
           <span className="eyebrow-line" />
           Final render
         </div>
@@ -109,9 +107,7 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
           {render.ready ? 'Video cuối đã sẵn sàng.' : 'Đóng gói bài giảng thành video hoàn chỉnh.'}
         </AdaptiveHeading>
         <p>
-          {isDirect
-            ? 'Hệ thống dựng scene đã chốt, ghép master narration và kiểm tra lại codec, kích thước lẫn thời lượng trước khi bàn giao.'
-            : 'Motion Canvas dựng đúng Layout đã chốt, sau đó FFmpeg ghép master narration và kiểm tra lại codec, kích thước lẫn thời lượng trước khi bàn giao.'}
+          Hệ thống dựng scene đã chốt, ghép master narration và kiểm tra lại codec, kích thước lẫn thời lượng trước khi bàn giao.
         </p>
       </header>
 
@@ -197,9 +193,7 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
             <span className="preview-kicker">Nguồn đã khóa</span>
             <h2>Sẵn sàng dựng bản cuối</h2>
             <p>
-              {isDirect
-                ? 'Render dùng chính master narration và scene bạn đã chốt. Video được lưu riêng theo generation nên không ghi đè bản cũ.'
-                : 'Render dùng chính master narration và Layout generation đã duyệt. Video được lưu riêng theo generation nên không ghi đè bản cũ.'}
+              Render dùng chính master narration và scene bạn đã chốt. Video được lưu riêng theo generation nên không ghi đè bản cũ.
             </p>
             <div className="render-submit-stack">
               <button
@@ -267,13 +261,13 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
           type="button"
           disabled={render.rendering}
           onClick={() => navigate(
-            isDirect ? projectSceneReviewPath(project.id) : projectLayoutPath(project.id),
+            projectScenesPath(project.id),
           )}
         >
           <ArrowLeftIcon />
-          {isDirect ? 'Xem lại scene' : 'Xem lại Layout'}
+          Xem lại scene
         </button>
-        <span>{render.ready ? 'Artifact đã được hash và kiểm tra bằng ffprobe' : isDirect ? 'Scene đã chốt · sẵn sàng xuất bản' : 'Layout đã duyệt · sẵn sàng xuất bản'}</span>
+        <span>{render.ready ? 'Artifact đã được hash và kiểm tra bằng ffprobe' : 'Scene đã chốt · sẵn sàng xuất bản'}</span>
       </footer>
     </div>
   );

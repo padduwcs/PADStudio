@@ -12,7 +12,11 @@ import {
   MotionCanvasBundleSchema,
   type MotionCanvasBundle,
 } from '../shared/topic.ts';
-import {hashJson} from './outlineHistoryStore.ts';
+import {createHash} from 'node:crypto';
+
+export function hashJson(value: unknown) {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex');
+}
 
 const versionManifestSchema = MotionCanvasVersionRecordSchema.omit({
   artifact: true,

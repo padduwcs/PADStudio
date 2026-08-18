@@ -11,8 +11,7 @@ import type {
   VoiceVisualPlan,
 } from '../shared/topic.ts';
 
-/** Metadata marker for the slim, narration-first production path. */
-export const DIRECT_NARRATION_PROMPT_VERSION = 'direct-narration-v1';
+export const NARRATION_STRUCTURE_VERSION = 'narration-structure-v1';
 
 const targetBeatCharacters = 520;
 const beatsPerSection = 8;
@@ -46,7 +45,7 @@ export function splitReviewedNarration(text: string) {
   }
   if (current) chunks.push(current);
 
-  // Legacy scene artifacts require at least 12 characters per beat. Joining a
+  // Scene artifacts require at least 12 characters per beat. Joining a
   // short lead-in to its successor preserves every reviewed word and avoids a
   // synthetic filler sentence.
   const merged: string[] = [];
@@ -66,29 +65,28 @@ export function splitReviewedNarration(text: string) {
   return merged;
 }
 
-export function isDirectNarrationPlan(
+export function narrationArtifactsAreCurrent(
   outline: TeachingOutline | null | undefined,
   plan: VoiceVisualPlan | null | undefined,
 ) {
   return Boolean(
-    outline?.generation.promptVersion === DIRECT_NARRATION_PROMPT_VERSION &&
-      plan?.generation.promptVersion === DIRECT_NARRATION_PROMPT_VERSION,
+    outline?.status === 'approved' && plan?.status === 'approved',
   );
 }
 
-export function directPlanMatchesNarration(
+export function narrationArtifactsMatchReview(
   project: Pick<TopicProject, 'outline' | 'voiceVisualPlan' | 'narration'>,
 ) {
   return Boolean(
-    project.narration?.review &&
+      project.narration?.review &&
       project.narration.approvedSourceHash === project.narration.review.sourceHash &&
-      isDirectNarrationPlan(project.outline, project.voiceVisualPlan) &&
-      project.outline?.generation.requestedModel === project.narration.approvedSourceHash &&
-      project.voiceVisualPlan?.generation.requestedModel === project.narration.approvedSourceHash,
+      narrationArtifactsAreCurrent(project.outline, project.voiceVisualPlan) &&
+      project.voiceVisualPlan !== null &&
+      narrationPlanMatchesReviewedNarration(project.narration, project.voiceVisualPlan),
   );
 }
 
-export function directNarrationMatchesSource(
+export function narrationPlanMatchesReviewedNarration(
   narration: NarrationDocument,
   plan: VoiceVisualPlan,
 ) {
@@ -99,7 +97,7 @@ export function directNarrationMatchesSource(
   return compactWhitespace(planText) === compactWhitespace(narration.review?.normalizedText ?? '');
 }
 
-export function createDirectNarrationArtifacts({
+export function createNarrationArtifacts({
   topicInput,
   narration,
   generationId,
@@ -171,10 +169,9 @@ export function createDirectNarrationArtifacts({
   const narrationRevision = (previousPlan?.narrationRevision ?? 0) + 1;
   const generation = {
     generationId,
-    provider: 'codex' as const,
-    model: 'internal-narration-structure',
-    requestedModel: review.sourceHash,
-    promptVersion: DIRECT_NARRATION_PROMPT_VERSION,
+    provider: 'local' as const,
+    tool: 'narration-structure' as const,
+    algorithmVersion: NARRATION_STRUCTURE_VERSION,
     generatedAt: now,
     usage: null,
   };
@@ -188,6 +185,8 @@ export function createDirectNarrationArtifacts({
     status: 'approved',
     contentRevision: (previousPlan?.sourceOutlineContentRevision ?? 0) + 1,
     sourceInput: topicInput,
+    sourceNarrationHash: review.sourceHash,
+    sourceNarrationRevision: narrationRevision,
     generation,
   };
   return {
@@ -208,6 +207,8 @@ export function createDirectNarrationArtifacts({
       contentRevision: (previousPlan?.contentRevision ?? 0) + 1,
       narrationRevision,
       sourceOutlineContentRevision: outline.contentRevision,
+      sourceNarrationHash: review.sourceHash,
+      sourceNarrationRevision: narrationRevision,
       generation,
     },
   };

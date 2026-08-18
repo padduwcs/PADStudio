@@ -10,7 +10,6 @@ export type StorageLike = Pick<
 >;
 
 const SESSION_DRAFT_KEY = 'pad-studio:topic-form:v2';
-const LEGACY_SHARED_DRAFT_KEY = 'pad-studio:topic-form:v1';
 
 function browserStorage(kind: 'localStorage' | 'sessionStorage') {
   try {
@@ -22,13 +21,10 @@ function browserStorage(kind: 'localStorage' | 'sessionStorage') {
 }
 
 /**
- * Reads the tab-owned draft. The legacy v1 draft is imported once so an
- * upgrade does not discard an existing unsaved form; it is immediately
- * removed from shared storage so later tabs cannot adopt it.
+ * Reads the tab-owned draft only.
  */
 export function readNewTopicDraft(
   sessionStorage: StorageLike | null = browserStorage('sessionStorage'),
-  localStorage: StorageLike | null = browserStorage('localStorage'),
 ) {
   if (!sessionStorage) return null;
 
@@ -36,12 +32,7 @@ export function readNewTopicDraft(
     const current = sessionStorage.getItem(SESSION_DRAFT_KEY);
     if (current) return current;
 
-    const legacy = localStorage?.getItem(LEGACY_SHARED_DRAFT_KEY) ?? null;
-    if (!legacy) return null;
-
-    sessionStorage.setItem(SESSION_DRAFT_KEY, legacy);
-    localStorage?.removeItem(LEGACY_SHARED_DRAFT_KEY);
-    return legacy;
+    return null;
   } catch {
     return null;
   }

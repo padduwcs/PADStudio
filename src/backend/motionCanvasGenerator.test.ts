@@ -499,6 +499,7 @@ function createGenerationRequest(): MotionCanvasGenerationRequest {
   const topicInput = {
     topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
     background: {mode: 'dark' as const, color: '#10231D'},
+    videoFrame: {aspectRatio: 'portrait' as const, width: 1080, height: 1920, fps: 30 as const},
     audience: 'beginner' as const,
     duration: 'concise' as const,
   };
@@ -668,6 +669,7 @@ test('Motion Canvas generator ánh xạ scene theo đúng voice–visual', async
   const sourceInput = {
     topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
     background: {mode: 'dark' as const, color: '#10231D'},
+    videoFrame: {aspectRatio: 'portrait' as const, width: 1080, height: 1920, fps: 30 as const},
     audience: 'beginner' as const,
     duration: 'concise' as const,
   };

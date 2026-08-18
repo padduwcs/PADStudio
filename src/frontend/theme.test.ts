@@ -54,10 +54,7 @@ test('theme integration luôn được nạp sau stylesheet của mọi workflow
     cssImports.slice(0, -1),
     [
       './styles.css',
-      './voiceVisual.css',
       './motionCanvas.css',
-      './voice.css',
-      './sync.css',
       './layout.css',
       './render.css',
       './content.css',
@@ -98,12 +95,7 @@ test('dark mode bao phủ các surface độc lập của toàn bộ pipeline', 
   );
   const criticalSurfaces = [
     '.topic-ai-guidance',
-    '.outline-section-card',
-    '.voice-visual-beat',
-    '.voice-config-heading',
-    '.voice-search',
     '.motion-canvas-command',
-    '.sync-flow-visual',
     '.layout-output-settings',
     '.layout-inspector',
     '.layout-shortcut-dialog',

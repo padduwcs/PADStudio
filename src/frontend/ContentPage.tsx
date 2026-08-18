@@ -23,8 +23,8 @@ import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {createNewTopicCreationId} from './newTopicSession.ts';
 import {
   navigate,
-  projectNarrationPath,
-  projectTopicPath,
+  projectPronunciationPath,
+  projectContentPath,
   registerNavigationGuard,
 } from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
@@ -302,13 +302,12 @@ export function ContentPage({projectId}: {projectId?: string}) {
           creationId: creationId.current,
           topicInput: topicInput.data,
           narrationSourceText: form.narrationSourceText.trim(),
-          currentStep: 'topic',
         });
       } else {
         const topicChanged = JSON.stringify(topicInput.data) !== JSON.stringify(project.topicInput);
         const narrationChanged = form.narrationSourceText.trim() !== project.narration?.sourceText;
         saved = topicChanged
-          ? await updateTopicProject(project.id, {topicInput: topicInput.data, currentStep: 'topic'}, project.revision)
+          ? await updateTopicProject(project.id, {topicInput: topicInput.data}, project.revision)
           : project;
         // Keep the latest revision locally before the separate narration
         // write. If that request is interrupted, retry remains conflict-safe.
@@ -328,7 +327,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
       setState('saved');
       if (!project) {
         skipNextNavigationGuardRef.current = true;
-        navigate(projectTopicPath(saved.id), true);
+        navigate(projectContentPath(saved.id), true);
       }
     } catch (reason) {
       setState('error');
@@ -395,7 +394,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
           <p>{state === 'saved' ? 'Đã lưu. Bước tiếp theo sẽ là duyệt cách đọc.' : 'Lời thoại được lưu cục bộ trong project của bạn.'}</p>
           <div className="content-action-buttons">
             <button className="submit-button" type="submit" disabled={state === 'saving'}>{state === 'saving' ? 'Đang lưu…' : project ? 'Lưu đầu vào' : 'Tạo project'}</button>
-            {project && <button className="secondary-button" type="button" onClick={() => navigate(projectNarrationPath(project.id))}>Chuẩn hóa cách đọc</button>}
+            {project && <button className="secondary-button" type="button" onClick={() => navigate(projectPronunciationPath(project.id))}>Chuẩn hóa cách đọc</button>}
           </div>
         </footer>
       </form>

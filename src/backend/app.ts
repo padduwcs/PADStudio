@@ -16,13 +16,10 @@ import {
   ApproveNarrationSchema,
   CreateTopicProjectSchema,
   GenerateNarrationDraftSchema,
-  GenerateTopicGuidanceSchema,
   GenerateFinalRenderSchema,
   GenerateAnimationSyncSchema,
   GenerateMotionCanvasSchema,
-  GenerateTeachingOutlineSchema,
   GenerateVoiceSchema,
-  GenerateVoiceVisualPlanSchema,
   SaveNarrationSchema,
   TeachingOutlineContentSchema,
   UpdateProjectSchema,
@@ -42,18 +39,6 @@ import {
   PronunciationRuleSchema,
   reviewedPronunciationText,
 } from '../shared/pronunciation.ts';
-import {
-  CreateOutlineCandidateSchema,
-  CreateOutlineCheckpointSchema,
-  type OutlineCandidateRecord,
-} from '../shared/outlineHistory.ts';
-import {
-  CreateVoiceVisualCandidateSchema,
-  CreateVoiceVisualCheckpointSchema,
-  CreateVoiceVisualReviewSchema,
-  type VoiceVisualCandidateRecord,
-  type VoiceVisualReviewRecord,
-} from '../shared/voiceVisualHistory.ts';
 import {
   CreateMotionCanvasCandidateSchema,
   CreateMotionCanvasCheckpointSchema,
@@ -132,41 +117,12 @@ import {
   type ElevenLabsVoiceService,
 } from './elevenLabsVoiceService.ts';
 import {
-  createCodexTopicGuidanceGenerator,
-  TOPIC_GUIDANCE_PROMPT_VERSION,
-  TopicGuidanceGenerationError,
-  type TopicGuidanceGenerationResult,
-  type TopicGuidanceGenerator,
-} from './topicGuidanceGenerator.ts';
-import {
   createCodexNarrationDraftGenerator,
   NARRATION_DRAFT_PROMPT_VERSION,
   NarrationDraftGenerationError,
   type NarrationDraftGenerationResult,
   type NarrationDraftGenerator,
 } from './narrationDraftGenerator.ts';
-import {
-  createCodexOutlineGenerator,
-  OutlineGenerationError,
-  OUTLINE_PROMPT_VERSION,
-  type OutlineGenerationResult,
-  type OutlineGenerator,
-} from './outlineGenerator.ts';
-import {
-  createCodexOutlineRevisionService,
-  OUTLINE_REVISION_PROMPT_VERSION,
-  OutlineRevisionError,
-  type OutlineRevisionResult,
-  type OutlineRevisionService,
-} from './outlineRevisionService.ts';
-import {
-  createFileOutlineHistoryStore,
-  hashJson,
-  hashOutlineContent,
-  OutlineHistoryStoreError,
-  outlineContent as versionedOutlineContent,
-  type OutlineHistoryStore,
-} from './outlineHistoryStore.ts';
 import {
   createCodexMotionCanvasGenerator,
   MOTION_CANVAS_PROMPT_VERSION,
@@ -177,6 +133,7 @@ import {
 } from './motionCanvasGenerator.ts';
 import {
   createFileMotionCanvasHistoryStore,
+  hashJson,
   hashMotionCanvasBundle,
   MotionCanvasHistoryStoreError,
   type MotionCanvasHistoryStore,
@@ -199,11 +156,11 @@ import {
   splitNarrationSource,
 } from './narrationSource.ts';
 import {
-  createDirectNarrationArtifacts,
-  directNarrationMatchesSource,
-  directPlanMatchesNarration,
-  isDirectNarrationPlan,
-} from './directNarrationPlan.ts';
+  createNarrationArtifacts,
+  narrationArtifactsMatchReview,
+  narrationArtifactsAreCurrent,
+  narrationPlanMatchesReviewedNarration,
+} from './narrationPlan.ts';
 import {
   createFileProjectRepository,
   ProjectConflictError,
@@ -214,29 +171,6 @@ import {
   animationSyncMatchesSources,
   voiceMatchesPlan,
 } from './projectConsistency.ts';
-import {
-  createCodexVoiceVisualGenerator,
-  VoiceVisualGenerationError,
-  VOICE_VISUAL_PROMPT_VERSION,
-  type VoiceVisualGenerationResult,
-  type VoiceVisualGenerator,
-} from './voiceVisualGenerator.ts';
-import {
-  createCodexVoiceVisualRevisionService,
-  VOICE_VISUAL_COHERENCE_PROMPT_VERSION,
-  VOICE_VISUAL_REVISION_PROMPT_VERSION,
-  VoiceVisualRevisionError,
-  type VoiceVisualReviewResult,
-  type VoiceVisualRevisionResult,
-  type VoiceVisualRevisionService,
-} from './voiceVisualRevisionService.ts';
-import {
-  createFileVoiceVisualHistoryStore,
-  hashVoiceVisualContent,
-  versionedVoiceVisualContent,
-  VoiceVisualHistoryStoreError,
-  type VoiceVisualHistoryStore,
-} from './voiceVisualHistoryStore.ts';
 import {
   createVoiceWorkspace,
   type PreparedVoiceWorkspace,
@@ -261,18 +195,13 @@ import {
 import {
   getProjectAnimationSyncRoute,
   getProjectId,
-  getProjectLayoutRoute,
   getProjectMotionCanvasHistoryRoute,
   getProjectMotionCanvasRoute,
   getProjectNarrationRoute,
   getProjectProductionRoute,
   getPronunciationLibraryRuleRoute,
-  getProjectOutlineHistoryRoute,
-  getProjectOutlineRoute,
   getProjectRenderRoute,
   getProjectVoiceRoute,
-  getProjectVoiceVisualHistoryRoute,
-  getProjectVoiceVisualRoute,
 } from './projectRoutes.ts';
 import {
   createPronunciationRuleStore,
@@ -306,7 +235,7 @@ const AuditNarrationSchema = z
     reasoningEffort: z.string().trim().min(1).max(80).optional(),
   })
   .strict();
-const PrepareDirectProductionSchema = z
+const PrepareNarrationProductionSchema = z
   .object({
     generationId: z.string().uuid(),
     renderSettings: LayoutRenderSettingsSchema.optional(),
@@ -346,14 +275,7 @@ interface AppOptions {
   elevenLabsConnectionFactory?: (
     apiKey: string,
   ) => ElevenLabsConnectionService;
-  outlineGenerator?: OutlineGenerator;
-  topicGuidanceGenerator?: TopicGuidanceGenerator;
   narrationDraftGenerator?: NarrationDraftGenerator;
-  outlineRevisionService?: OutlineRevisionService;
-  outlineHistoryStore?: OutlineHistoryStore;
-  voiceVisualGenerator?: VoiceVisualGenerator;
-  voiceVisualRevisionService?: VoiceVisualRevisionService;
-  voiceVisualHistoryStore?: VoiceVisualHistoryStore;
   motionCanvasGenerator?: MotionCanvasGenerator;
   motionCanvasWorkspace?: MotionCanvasWorkspace;
   motionCanvasHistoryStore?: MotionCanvasHistoryStore;
@@ -1078,12 +1000,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
   }
   const sharedCodexClient: CodexAppServerClient | null =
     !options.codexConnection ||
-    !options.topicGuidanceGenerator ||
     !options.narrationDraftGenerator ||
-    !options.outlineGenerator ||
-    !options.outlineRevisionService ||
-    !options.voiceVisualGenerator ||
-    !options.voiceVisualRevisionService ||
     !options.motionCanvasGenerator ||
     !options.motionCanvasRevisionReviewService ||
     !options.pronunciationAuditService
@@ -1101,30 +1018,9 @@ export function createPadStudioServer(options: AppOptions = {}) {
   const elevenLabsConnectionFactory =
     options.elevenLabsConnectionFactory ??
     ((apiKey: string) => createElevenLabsConnectionService({apiKey}));
-  const outlineGenerator =
-    options.outlineGenerator ??
-    createCodexOutlineGenerator(sharedCodexClient!);
-  const topicGuidanceGenerator =
-    options.topicGuidanceGenerator ??
-    createCodexTopicGuidanceGenerator(sharedCodexClient!);
   const narrationDraftGenerator =
     options.narrationDraftGenerator ??
     createCodexNarrationDraftGenerator(sharedCodexClient!);
-  const outlineRevisionService =
-    options.outlineRevisionService ??
-    createCodexOutlineRevisionService(sharedCodexClient!);
-  const outlineHistoryStore =
-    options.outlineHistoryStore ??
-    createFileOutlineHistoryStore(projectsDirectory);
-  const voiceVisualGenerator =
-    options.voiceVisualGenerator ??
-    createCodexVoiceVisualGenerator(sharedCodexClient!);
-  const voiceVisualRevisionService =
-    options.voiceVisualRevisionService ??
-    createCodexVoiceVisualRevisionService(sharedCodexClient!);
-  const voiceVisualHistoryStore =
-    options.voiceVisualHistoryStore ??
-    createFileVoiceVisualHistoryStore(projectsDirectory);
   const motionCanvasGenerator =
     options.motionCanvasGenerator ??
     createCodexMotionCanvasGenerator(sharedCodexClient!, {
@@ -1183,13 +1079,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
       elevenLabsConnection,
     });
   const logger = options.logger ?? console;
-  const outlineGenerations = createInMemoryGenerationRegistry<OutlineGenerationResult>();
-  const topicGuidanceGenerations = createInMemoryGenerationRegistry<TopicGuidanceGenerationResult>();
   const narrationDraftGenerations = createInMemoryGenerationRegistry<NarrationDraftGenerationResult>();
-  const outlineCandidateGenerations = createInMemoryGenerationRegistry<OutlineRevisionResult>();
-  const voiceVisualGenerations = createInMemoryGenerationRegistry<VoiceVisualGenerationResult>();
-  const voiceVisualCandidateGenerations = createInMemoryGenerationRegistry<VoiceVisualRevisionResult>();
-  const voiceVisualReviewGenerations = createInMemoryGenerationRegistry<VoiceVisualReviewResult>();
   const motionCanvasGenerations = createInMemoryGenerationRegistry<{
     generated: MotionCanvasGenerationResult;
     prepared: PreparedMotionCanvasWorkspace;
@@ -1239,7 +1129,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
       try {
         await repository.updateProject(
           latestProject.id,
-          {renderBundle, currentStep: 'render'},
+          {renderBundle},
           latestProject.revision,
         );
         return true;
@@ -1278,627 +1168,6 @@ export function createPadStudioServer(options: AppOptions = {}) {
       }
       throw error;
     }
-  }
-
-  async function handleVoiceVisualHistoryRoute(
-    route: NonNullable<ReturnType<typeof getProjectVoiceVisualHistoryRoute>>,
-    request: IncomingMessage,
-    response: ServerResponse,
-    requestUrl: URL,
-  ) {
-    const currentProject = await repository.getProject(route.projectId);
-    if (!currentProject) {
-      sendApiError(response, 404, {
-        code: 'PROJECT_NOT_FOUND',
-        message: 'Không tìm thấy project.',
-      });
-      return true;
-    }
-    const plan = currentProject.voiceVisualPlan;
-    const outline = currentProject.outline;
-    if (!plan) {
-      throw new RequestBodyError(
-        409,
-        'VOICE_VISUAL_NOT_READY',
-        'Project chưa có kế hoạch voice–visual để quản lý phiên bản.',
-      );
-    }
-    if (
-      !outline ||
-      outline.status !== 'approved' ||
-      !sameValue(outline.sourceInput, currentProject.topicInput) ||
-      plan.sourceOutlineContentRevision !== outline.contentRevision ||
-      !voiceVisualMatchesOutline(plan, outline)
-    ) {
-      throw new RequestBodyError(
-        409,
-        'VOICE_VISUAL_OUTDATED',
-        'Kế hoạch voice–visual không còn khớp mạch giảng hiện tại.',
-      );
-    }
-
-    const currentContent = versionedVoiceVisualContent(plan);
-    const currentContentHash = hashVoiceVisualContent(currentContent);
-    const currentContextHash = voiceVisualContextHash(
-      currentProject,
-      currentContent,
-    );
-
-    if (
-      route.resource === 'history' &&
-      !route.recordId &&
-      request.method === 'GET'
-    ) {
-      await voiceVisualHistoryStore.ensureVersion({
-        projectId: currentProject.id,
-        origin: 'baseline',
-        label: 'Bản hiện tại',
-        parentVersionId: null,
-        restoredFromVersionId: null,
-        candidateId: null,
-        projectRevision: currentProject.revision,
-        contentHash: currentContentHash,
-        artifact: plan,
-      });
-      const [versions, candidates] = await Promise.all([
-        voiceVisualHistoryStore.listVersions(currentProject.id),
-        voiceVisualHistoryStore.listCandidates(currentProject.id),
-      ]);
-      const requestedLimit = Number(requestUrl.searchParams.get('limit') ?? '50');
-      const limit = Number.isSafeInteger(requestedLimit)
-        ? Math.max(1, Math.min(100, requestedLimit))
-        : 50;
-      sendJson(response, 200, {
-        versions: versions.slice(0, limit),
-        candidates: candidates.slice(0, limit),
-        currentContentHash,
-        currentContextHash,
-      });
-      return true;
-    }
-    const expectedRevision = readExpectedRevision(request);
-    if (currentProject.revision !== expectedRevision) {
-      throw new ProjectConflictError(currentProject);
-    }
-
-    if (
-      route.resource === 'reviews' &&
-      !route.recordId &&
-      request.method === 'POST'
-    ) {
-      const body = await readJsonBody(request);
-      const parsedRequest = CreateVoiceVisualReviewSchema.safeParse(body);
-      if (!parsedRequest.success) {
-        sendApiError(response, 422, {
-          code: 'VALIDATION_ERROR',
-          message: 'Yêu cầu review voice–visual chưa hợp lệ.',
-          fields: validationFields(parsedRequest.error.issues),
-        });
-        return true;
-      }
-
-      let targetContentHash = currentContentHash;
-      let rootContextHash = currentContextHash;
-      let reviewRequest: Parameters<VoiceVisualRevisionService['review']>[0] = {
-        target: 'current',
-        topicInput: currentProject.topicInput,
-        outline,
-        content: currentContent,
-        model: parsedRequest.data.model,
-        reasoningEffort: parsedRequest.data.reasoningEffort,
-      };
-      if (parsedRequest.data.candidateId) {
-        const targetCandidate = await voiceVisualHistoryStore.getCandidate(
-          currentProject.id,
-          parsedRequest.data.candidateId,
-        );
-        if (!targetCandidate) {
-          throw new RequestBodyError(
-            404,
-            'VOICE_VISUAL_CANDIDATE_NOT_FOUND',
-            'Không tìm thấy candidate cần review.',
-          );
-        }
-        if (targetCandidate.rootBaseContextHash !== currentContextHash) {
-          throw new RequestBodyError(
-            409,
-            'VOICE_VISUAL_CONTEXT_CHANGED',
-            'Candidate không còn dựa trên kế hoạch hiện tại.',
-          );
-        }
-        let baseContent: VoiceVisualPlanContent | null = null;
-        if (targetCandidate.parentCandidateId) {
-          const parentCandidate = await voiceVisualHistoryStore.getCandidate(
-            currentProject.id,
-            targetCandidate.parentCandidateId,
-          );
-          baseContent = parentCandidate?.content ?? null;
-        } else {
-          const baseVersion = await voiceVisualHistoryStore.getVersion(
-            currentProject.id,
-            targetCandidate.baseVersionId,
-          );
-          baseContent = baseVersion
-            ? versionedVoiceVisualContent(baseVersion.artifact)
-            : null;
-        }
-        if (!baseContent) {
-          throw new RequestBodyError(
-            409,
-            'VOICE_VISUAL_BASE_VERSION_MISSING',
-            'Không còn dữ liệu nền để review candidate này.',
-          );
-        }
-        targetContentHash = targetCandidate.candidateContentHash;
-        rootContextHash = targetCandidate.rootBaseContextHash;
-        reviewRequest = {
-          target: 'candidate',
-          topicInput: currentProject.topicInput,
-          outline,
-          baseContent,
-          content: targetCandidate.content,
-          scope: targetCandidate.scope,
-          guidance: targetCandidate.guidance,
-          patch: targetCandidate.patch,
-          model: parsedRequest.data.model,
-          reasoningEffort: parsedRequest.data.reasoningEffort,
-        };
-      }
-
-      const requestFingerprint = hashJson({
-        projectId: currentProject.id,
-        targetContentHash,
-        rootContextHash,
-        request: parsedRequest.data,
-      });
-      const generation = await generateOnce(
-        voiceVisualReviewGenerations,
-        `${currentProject.id}:${parsedRequest.data.reviewId}`,
-        requestFingerprint,
-        () => voiceVisualRevisionService.review(reviewRequest),
-      );
-      const review: VoiceVisualReviewRecord = {
-        reviewId: parsedRequest.data.reviewId,
-        projectId: currentProject.id,
-        createdAt: generation.generatedAt,
-        target: parsedRequest.data.candidateId ? 'candidate' : 'current',
-        targetCandidateId: parsedRequest.data.candidateId ?? null,
-        targetContentHash,
-        rootContextHash,
-        reviewedProjectRevision: currentProject.revision,
-        coherence: generation.result.coherence,
-        generation: {
-          provider: 'codex',
-          model: generation.result.model,
-          requestedModel: parsedRequest.data.model ?? null,
-          reasoningEffort: parsedRequest.data.reasoningEffort ?? null,
-          promptVersion: VOICE_VISUAL_COHERENCE_PROMPT_VERSION,
-          generatedAt: generation.generatedAt,
-          usage: generation.result.usage,
-        },
-      };
-      sendJson(response, 201, {review});
-      return true;
-    }
-
-    if (
-      route.resource === 'versions' &&
-      !route.recordId &&
-      request.method === 'POST'
-    ) {
-      const body = await readJsonBody(request);
-      const parsedRequest = CreateVoiceVisualCheckpointSchema.safeParse(body);
-      if (!parsedRequest.success) {
-        sendApiError(response, 422, {
-          code: 'VALIDATION_ERROR',
-          message: 'Thông tin phiên bản voice–visual chưa hợp lệ.',
-          fields: validationFields(parsedRequest.error.issues),
-        });
-        return true;
-      }
-      const versions = await voiceVisualHistoryStore.listVersions(
-        currentProject.id,
-      );
-      const parent = versions.find(
-        version => version.contentHash === currentContentHash,
-      );
-      const version = await voiceVisualHistoryStore.ensureVersion(
-        {
-          projectId: currentProject.id,
-          origin: 'manual_checkpoint',
-          label: parsedRequest.data.label ?? 'Phiên bản đã lưu',
-          parentVersionId: parent?.versionId ?? null,
-          restoredFromVersionId: null,
-          candidateId: null,
-          projectRevision: currentProject.revision,
-          contentHash: currentContentHash,
-          artifact: plan,
-        },
-        {force: true},
-      );
-      sendJson(response, 201, {version});
-      return true;
-    }
-
-    if (
-      route.resource === 'candidates' &&
-      !route.recordId &&
-      request.method === 'POST'
-    ) {
-      const body = await readJsonBody(request);
-      const parsedRequest = CreateVoiceVisualCandidateSchema.safeParse(body);
-      if (!parsedRequest.success) {
-        sendApiError(response, 422, {
-          code: 'VALIDATION_ERROR',
-          message: 'Yêu cầu chỉnh voice–visual chưa hợp lệ.',
-          fields: validationFields(parsedRequest.error.issues),
-        });
-        return true;
-      }
-
-      let baseContent = currentContent;
-      let baseVersion = await voiceVisualHistoryStore.ensureVersion({
-        projectId: currentProject.id,
-        origin: 'baseline',
-        label: 'Trước chỉnh sửa AI',
-        parentVersionId: null,
-        restoredFromVersionId: null,
-        candidateId: null,
-        projectRevision: currentProject.revision,
-        contentHash: currentContentHash,
-        artifact: plan,
-      });
-      let parentCandidate: VoiceVisualCandidateRecord | null = null;
-      if (parsedRequest.data.baseCandidateId) {
-        parentCandidate = await voiceVisualHistoryStore.getCandidate(
-          currentProject.id,
-          parsedRequest.data.baseCandidateId,
-        );
-        if (!parentCandidate) {
-          throw new RequestBodyError(
-            404,
-            'VOICE_VISUAL_CANDIDATE_NOT_FOUND',
-            'Không tìm thấy đề xuất dùng làm nền chỉnh tiếp.',
-          );
-        }
-        if (parentCandidate.decision !== 'pending') {
-          throw new RequestBodyError(
-            409,
-            'VOICE_VISUAL_CANDIDATE_ALREADY_DECIDED',
-            'Chỉ có thể chỉnh tiếp một candidate đang chờ review.',
-          );
-        }
-        if (parentCandidate.rootBaseContextHash !== currentContextHash) {
-          throw new RequestBodyError(
-            409,
-            'VOICE_VISUAL_CONTEXT_CHANGED',
-            'Mạch giảng hoặc kế hoạch nền đã thay đổi. Hãy tạo đề xuất mới.',
-          );
-        }
-        const storedBaseVersion = await voiceVisualHistoryStore.getVersion(
-          currentProject.id,
-          parentCandidate.baseVersionId,
-        );
-        if (!storedBaseVersion) {
-          throw new RequestBodyError(
-            409,
-            'VOICE_VISUAL_BASE_VERSION_MISSING',
-            'Phiên bản nền của đề xuất không còn khả dụng.',
-          );
-        }
-        baseVersion = storedBaseVersion;
-        baseContent = parentCandidate.content;
-      }
-
-      const baseContextHash = voiceVisualContextHash(
-        currentProject,
-        baseContent,
-      );
-      const requestFingerprint = hashJson({
-        projectId: currentProject.id,
-        baseContentHash: hashVoiceVisualContent(baseContent),
-        baseContextHash,
-        request: parsedRequest.data,
-      });
-      const existingCandidate = await voiceVisualHistoryStore.getCandidate(
-        currentProject.id,
-        parsedRequest.data.generationId,
-      );
-      if (existingCandidate) {
-        if (existingCandidate.requestFingerprint !== requestFingerprint) {
-          throw new RequestBodyError(
-            409,
-            'GENERATION_ID_REUSED',
-            'Generation ID đã được dùng với nội dung khác.',
-          );
-        }
-        sendJson(response, 200, {candidate: existingCandidate});
-        return true;
-      }
-
-      const generation = await generateOnce(
-        voiceVisualCandidateGenerations,
-        `${currentProject.id}:${parsedRequest.data.generationId}`,
-        requestFingerprint,
-        () =>
-          voiceVisualRevisionService.revise({
-            topicInput: currentProject.topicInput,
-            outline,
-            baseContent,
-            scope: parsedRequest.data.scope,
-            guidance: parsedRequest.data.guidance,
-            model: parsedRequest.data.model,
-            reasoningEffort: parsedRequest.data.reasoningEffort,
-          }),
-      );
-      const coherence = generation.result.coherence;
-      const status =
-        coherence.verdict === 'needs_scope_expansion' ||
-        coherence.issues.some(issue => issue.requiresScopeExpansion)
-          ? 'scope_expansion_required'
-          : coherence.issues.some(issue => issue.severity === 'error')
-            ? 'coherence_blocked'
-            : coherence.verdict === 'warning' || coherence.issues.length > 0
-              ? 'coherence_warning'
-              : 'ready';
-      const candidate = await voiceVisualHistoryStore.saveCandidate({
-        candidateId: parsedRequest.data.generationId,
-        projectId: currentProject.id,
-        createdAt: generation.generatedAt,
-        status,
-        decision: 'pending',
-        decidedAt: null,
-        appliedVersionId: null,
-        baseVersionId: baseVersion.versionId,
-        parentCandidateId: parentCandidate?.candidateId ?? null,
-        rootBaseContentHash:
-          parentCandidate?.rootBaseContentHash ?? currentContentHash,
-        baseContentHash: hashVoiceVisualContent(baseContent),
-        rootBaseContextHash:
-          parentCandidate?.rootBaseContextHash ?? currentContextHash,
-        baseContextHash,
-        baseProjectRevision: currentProject.revision,
-        candidateContentHash: hashVoiceVisualContent(generation.result.content),
-        requestFingerprint,
-        guidance: parsedRequest.data.guidance,
-        scope: parsedRequest.data.scope,
-        patch: generation.result.patch,
-        content: generation.result.content,
-        coherence,
-        generation: {
-          provider: 'codex',
-          model: generation.result.model,
-          requestedModel: parsedRequest.data.model ?? null,
-          reasoningEffort: parsedRequest.data.reasoningEffort ?? null,
-          promptVersion: VOICE_VISUAL_REVISION_PROMPT_VERSION,
-          generatedAt: generation.generatedAt,
-          editorUsage: generation.result.editorUsage,
-          reviewerUsage: generation.result.reviewerUsage,
-        },
-      });
-      sendJson(response, 201, {candidate});
-      return true;
-    }
-
-    if (
-      route.resource === 'candidates' &&
-      route.recordId &&
-      route.action === 'reject' &&
-      request.method === 'POST'
-    ) {
-      const candidate = await voiceVisualHistoryStore.setCandidateDecision(
-        currentProject.id,
-        route.recordId,
-        'rejected',
-      );
-      sendJson(response, 200, {candidate});
-      return true;
-    }
-
-    if (
-      route.resource === 'candidates' &&
-      route.recordId &&
-      route.action === 'apply' &&
-      request.method === 'POST'
-    ) {
-      const candidate = await voiceVisualHistoryStore.getCandidate(
-        currentProject.id,
-        route.recordId,
-      );
-      if (!candidate) {
-        throw new RequestBodyError(
-          404,
-          'VOICE_VISUAL_CANDIDATE_NOT_FOUND',
-          'Không tìm thấy đề xuất chỉnh sửa.',
-        );
-      }
-      if (candidate.decision === 'rejected') {
-        throw new RequestBodyError(
-          409,
-          'VOICE_VISUAL_CANDIDATE_REJECTED',
-          'Đề xuất này đã bị từ chối và chỉ còn trong lịch sử.',
-        );
-      }
-      if (
-        candidate.decision === 'accepted' &&
-        currentContentHash === candidate.candidateContentHash
-      ) {
-        sendProject(response, 200, currentProject);
-        return true;
-      }
-      if (candidate.decision === 'accepted') {
-        throw new RequestBodyError(
-          409,
-          'VOICE_VISUAL_CANDIDATE_ALREADY_ACCEPTED',
-          'Đề xuất này đã được áp dụng trước đó.',
-        );
-      }
-      // Coherence review is advisory. Applying a reviewed candidate is an
-      // explicit user decision; only structural and stale-context guards below
-      // may prevent that decision from being persisted.
-      if (candidate.rootBaseContextHash !== currentContextHash) {
-        throw new RequestBodyError(
-          409,
-          'VOICE_VISUAL_CONTEXT_CHANGED',
-          'Mạch giảng hoặc kế hoạch nền đã thay đổi kể từ lúc tạo đề xuất.',
-        );
-      }
-
-      const nextContent = candidate.content;
-      const nextPlan: VoiceVisualPlan = {
-        ...nextContent,
-        status: 'draft',
-        contentRevision: plan.contentRevision + 1,
-        narrationRevision: nextNarrationRevision(plan, nextContent),
-        sourceOutlineContentRevision: outline.contentRevision,
-        generation: {
-          generationId: candidate.candidateId,
-          provider: 'codex',
-          model: candidate.generation.model,
-          ...(candidate.generation.requestedModel
-            ? {requestedModel: candidate.generation.requestedModel}
-            : {}),
-          ...(candidate.generation.reasoningEffort
-            ? {reasoningEffort: candidate.generation.reasoningEffort}
-            : {}),
-          promptVersion: candidate.generation.promptVersion,
-          generatedAt: candidate.generation.generatedAt,
-          usage: candidate.generation.editorUsage,
-        },
-      };
-      const updatedProject = await repository.updateProject(
-        currentProject.id,
-        {voiceVisualPlan: nextPlan, currentStep: 'voiceVisual'},
-        expectedRevision,
-      );
-      if (!updatedProject) {
-        sendApiError(response, 404, {
-          code: 'PROJECT_NOT_FOUND',
-          message: 'Không tìm thấy project.',
-        });
-        return true;
-      }
-      const version = await voiceVisualHistoryStore
-        .ensureVersion(
-          {
-            projectId: updatedProject.id,
-            origin: 'ai_candidate',
-            label: candidate.patch.editSummary,
-            parentVersionId: candidate.baseVersionId,
-            restoredFromVersionId: null,
-            candidateId: candidate.candidateId,
-            projectRevision: updatedProject.revision,
-            contentHash: hashVoiceVisualContent(nextPlan),
-            artifact: nextPlan,
-          },
-          {force: true},
-        )
-        .catch(error => {
-          logger.error(error);
-          return null;
-        });
-      await voiceVisualHistoryStore
-        .setCandidateDecision(
-          updatedProject.id,
-          candidate.candidateId,
-          'accepted',
-          version?.versionId ?? null,
-        )
-        .catch(error => logger.error(error));
-      sendJson(
-        response,
-        200,
-        {project: updatedProject, version},
-        {ETag: `"${updatedProject.revision}"`},
-      );
-      return true;
-    }
-
-    if (
-      route.resource === 'versions' &&
-      route.recordId &&
-      route.action === 'restore' &&
-      request.method === 'POST'
-    ) {
-      const sourceVersion = await voiceVisualHistoryStore.getVersion(
-        currentProject.id,
-        route.recordId,
-      );
-      if (!sourceVersion) {
-        throw new RequestBodyError(
-          404,
-          'VOICE_VISUAL_VERSION_NOT_FOUND',
-          'Không tìm thấy phiên bản cần khôi phục.',
-        );
-      }
-      if (
-        sourceVersion.artifact.sourceOutlineContentRevision !==
-        outline.contentRevision
-      ) {
-        throw new RequestBodyError(
-          409,
-          'VOICE_VISUAL_VERSION_OUTDATED',
-          'Phiên bản này thuộc một mạch giảng cũ nên không thể khôi phục trực tiếp.',
-        );
-      }
-      const currentVersion = await voiceVisualHistoryStore.ensureVersion({
-        projectId: currentProject.id,
-        origin: 'baseline',
-        label: 'Trước khi khôi phục',
-        parentVersionId: null,
-        restoredFromVersionId: null,
-        candidateId: null,
-        projectRevision: currentProject.revision,
-        contentHash: currentContentHash,
-        artifact: plan,
-      });
-      const restoredContent = versionedVoiceVisualContent(
-        sourceVersion.artifact,
-      );
-      const restoredPlan: VoiceVisualPlan = {
-        ...sourceVersion.artifact,
-        ...restoredContent,
-        status: 'draft',
-        contentRevision: plan.contentRevision + 1,
-        narrationRevision: nextNarrationRevision(plan, restoredContent),
-        sourceOutlineContentRevision: outline.contentRevision,
-      };
-      const updatedProject = await repository.updateProject(
-        currentProject.id,
-        {voiceVisualPlan: restoredPlan, currentStep: 'voiceVisual'},
-        expectedRevision,
-      );
-      if (!updatedProject) {
-        sendApiError(response, 404, {
-          code: 'PROJECT_NOT_FOUND',
-          message: 'Không tìm thấy project.',
-        });
-        return true;
-      }
-      const version = await voiceVisualHistoryStore.ensureVersion(
-        {
-          projectId: updatedProject.id,
-          origin: 'restore',
-          label: `Khôi phục từ ${sourceVersion.label ?? 'phiên bản cũ'}`,
-          parentVersionId: currentVersion.versionId,
-          restoredFromVersionId: sourceVersion.versionId,
-          candidateId: null,
-          projectRevision: updatedProject.revision,
-          contentHash: hashVoiceVisualContent(restoredPlan),
-          artifact: restoredPlan,
-        },
-        {force: true},
-      );
-      sendJson(
-        response,
-        200,
-        {project: updatedProject, version},
-        {ETag: `"${updatedProject.revision}"`},
-      );
-      return true;
-    }
-
-    return false;
   }
 
   async function handleMotionCanvasHistoryRoute(
@@ -2515,7 +1784,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
       };
       const updatedProject = await repository.updateProject(
         currentProject.id,
-        {motionCanvasBundle: nextBundle, currentStep: 'motionCanvas'},
+        {motionCanvasBundle: nextBundle},
         expectedRevision,
       );
       if (!updatedProject) {
@@ -2636,7 +1905,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
       };
       const updatedProject = await repository.updateProject(
         currentProject.id,
-        {motionCanvasBundle: restoredBundle, currentStep: 'motionCanvas'},
+        {motionCanvasBundle: restoredBundle},
         expectedRevision,
       );
       if (!updatedProject) {
@@ -2752,62 +2021,6 @@ export function createPadStudioServer(options: AppOptions = {}) {
         const models = await codexConnection.listModels();
         response.setHeader('Cache-Control', 'no-store');
         sendJson(response, 200, {models});
-        return;
-      }
-
-      if (
-        requestUrl.pathname === '/api/topic-guidance/generate' &&
-        request.method === 'POST'
-      ) {
-        const body = await readJsonBody(request);
-        const parsedRequest = GenerateTopicGuidanceSchema.safeParse(body);
-        if (!parsedRequest.success) {
-          sendApiError(response, 422, {
-            code: 'VALIDATION_ERROR',
-            message: 'Thông tin để đề xuất định hướng chưa hợp lệ.',
-            fields: validationFields(parsedRequest.error.issues),
-          });
-          return;
-        }
-
-        const {
-          generationId,
-          topicInput,
-          userGuidance,
-          model,
-          reasoningEffort,
-        } = parsedRequest.data;
-        const fingerprint = JSON.stringify({
-          topicInput,
-          userGuidance: userGuidance ?? null,
-          model: model ?? null,
-          reasoningEffort: reasoningEffort ?? null,
-        });
-        const generated = await generateOnce(
-          topicGuidanceGenerations,
-          generationId,
-          fingerprint,
-          () =>
-            topicGuidanceGenerator.generate({
-              topicInput,
-              ...(userGuidance ? {userGuidance} : {}),
-              ...(model ? {model} : {}),
-              ...(reasoningEffort ? {reasoningEffort} : {}),
-            }),
-        );
-        sendJson(response, 200, {
-          suggestion: generated.result.suggestion,
-          generation: {
-            generationId,
-            provider: 'codex',
-            model: generated.result.model,
-            ...(model ? {requestedModel: model} : {}),
-            ...(reasoningEffort ? {reasoningEffort} : {}),
-            promptVersion: TOPIC_GUIDANCE_PROMPT_VERSION,
-            generatedAt: generated.generatedAt,
-            usage: generated.result.usage,
-          },
-        });
         return;
       }
 
@@ -2960,18 +2173,6 @@ export function createPadStudioServer(options: AppOptions = {}) {
         return;
       }
 
-      if (
-        requestUrl.pathname ===
-          '/api/integrations/elevenlabs/shared-voices' &&
-        request.method === 'GET'
-      ) {
-        const result = await elevenLabsVoiceService.searchSharedVoices(
-          requestUrl.searchParams.get('search')?.trim() ?? '',
-        );
-        sendJson(response, 200, {result});
-        return;
-      }
-
       if (requestUrl.pathname === '/api/projects' && request.method === 'GET') {
         const projectList = await repository.listProjects();
         sendJson(response, 200, projectList);
@@ -2993,1323 +2194,6 @@ export function createPadStudioServer(options: AppOptions = {}) {
 
         const project = await repository.createTopicProject(parsedInput.data);
         sendProject(response, 201, project);
-        return;
-      }
-
-      const outlineHistoryRoute = getProjectOutlineHistoryRoute(
-        requestUrl.pathname,
-      );
-
-      if (
-        outlineHistoryRoute?.resource === 'history' &&
-        !outlineHistoryRoute.recordId &&
-        request.method === 'GET'
-      ) {
-        const currentProject = await repository.getProject(
-          outlineHistoryRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        if (!currentProject.outline) {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_NOT_READY',
-            'Project chưa có mạch giảng để quản lý phiên bản.',
-          );
-        }
-        await outlineHistoryStore.ensureVersion({
-          projectId: currentProject.id,
-          origin: 'baseline',
-          label: 'Bản hiện tại',
-          parentVersionId: null,
-          restoredFromVersionId: null,
-          candidateId: null,
-          projectRevision: currentProject.revision,
-          contentHash: hashOutlineContent(currentProject.outline),
-          artifact: currentProject.outline,
-        });
-        const [versions, candidates] = await Promise.all([
-          outlineHistoryStore.listVersions(currentProject.id),
-          outlineHistoryStore.listCandidates(currentProject.id),
-        ]);
-        const requestedLimit = Number(
-          requestUrl.searchParams.get('limit') ?? '50',
-        );
-        const historyLimit = Number.isSafeInteger(requestedLimit)
-          ? Math.max(1, Math.min(100, requestedLimit))
-          : 50;
-        sendJson(response, 200, {
-          versions: versions.slice(0, historyLimit),
-          candidates: candidates.slice(0, historyLimit),
-          currentContentHash: hashOutlineContent(currentProject.outline),
-          currentContextHash: outlineContextHash(
-            currentProject.topicInput,
-            outlineContent(currentProject.outline),
-            currentProject.outline.sourceInput,
-          ),
-        });
-        return;
-      }
-
-      if (
-        outlineHistoryRoute?.resource === 'versions' &&
-        !outlineHistoryRoute.recordId &&
-        request.method === 'POST'
-      ) {
-        const expectedRevision = readExpectedRevision(request);
-        const body = await readJsonBody(request);
-        const parsedRequest = CreateOutlineCheckpointSchema.safeParse(body);
-        if (!parsedRequest.success) {
-          sendApiError(response, 422, {
-            code: 'VALIDATION_ERROR',
-            message: 'Thông tin phiên bản chưa hợp lệ.',
-            fields: validationFields(parsedRequest.error.issues),
-          });
-          return;
-        }
-        const currentProject = await repository.getProject(
-          outlineHistoryRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        if (currentProject.revision !== expectedRevision) {
-          throw new ProjectConflictError(currentProject);
-        }
-        if (!currentProject.outline) {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_NOT_READY',
-            'Project chưa có mạch giảng để lưu phiên bản.',
-          );
-        }
-        if (
-          !sameValue(
-            currentProject.outline.sourceInput,
-            currentProject.topicInput,
-          )
-        ) {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_OUTDATED',
-            'Đầu vào đã thay đổi. Hãy tạo lại mạch giảng trước khi lưu phiên bản.',
-          );
-        }
-        const currentVersions = await outlineHistoryStore.listVersions(
-          currentProject.id,
-        );
-        const parent = currentVersions.find(
-          version =>
-            version.contentHash === hashOutlineContent(currentProject.outline!),
-        );
-        const version = await outlineHistoryStore.ensureVersion(
-          {
-            projectId: currentProject.id,
-            origin: 'manual_checkpoint',
-            label: parsedRequest.data.label ?? 'Phiên bản đã lưu',
-            parentVersionId: parent?.versionId ?? null,
-            restoredFromVersionId: null,
-            candidateId: null,
-            projectRevision: currentProject.revision,
-            contentHash: hashOutlineContent(currentProject.outline),
-            artifact: currentProject.outline,
-          },
-          {force: true},
-        );
-        sendJson(response, 201, {version});
-        return;
-      }
-
-      if (
-        outlineHistoryRoute?.resource === 'candidates' &&
-        !outlineHistoryRoute.recordId &&
-        request.method === 'POST'
-      ) {
-        const expectedRevision = readExpectedRevision(request);
-        const body = await readJsonBody(request);
-        const parsedRequest = CreateOutlineCandidateSchema.safeParse(body);
-        if (!parsedRequest.success) {
-          sendApiError(response, 422, {
-            code: 'VALIDATION_ERROR',
-            message: 'Yêu cầu chỉnh mạch giảng chưa hợp lệ.',
-            fields: validationFields(parsedRequest.error.issues),
-          });
-          return;
-        }
-        const currentProject = await repository.getProject(
-          outlineHistoryRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        if (currentProject.revision !== expectedRevision) {
-          throw new ProjectConflictError(currentProject);
-        }
-        if (!currentProject.outline) {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_NOT_READY',
-            'Project chưa có mạch giảng để chỉnh sửa.',
-          );
-        }
-        if (
-          !sameValue(
-            currentProject.outline.sourceInput,
-            currentProject.topicInput,
-          )
-        ) {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_OUTDATED',
-            'Đầu vào đã thay đổi. Hãy tạo lại mạch giảng trước khi yêu cầu AI chỉnh sửa.',
-          );
-        }
-
-        const currentContentHash = hashOutlineContent(currentProject.outline);
-        const currentContextHash = outlineContextHash(
-          currentProject.topicInput,
-          outlineContent(currentProject.outline),
-          currentProject.outline.sourceInput,
-        );
-        let baseContent = versionedOutlineContent(currentProject.outline);
-        let baseVersion = await outlineHistoryStore.ensureVersion({
-          projectId: currentProject.id,
-          origin: 'baseline',
-          label: 'Trước chỉnh sửa AI',
-          parentVersionId: null,
-          restoredFromVersionId: null,
-          candidateId: null,
-          projectRevision: currentProject.revision,
-          contentHash: currentContentHash,
-          artifact: currentProject.outline,
-        });
-        let parentCandidate: OutlineCandidateRecord | null = null;
-        if (parsedRequest.data.baseCandidateId) {
-          parentCandidate = await outlineHistoryStore.getCandidate(
-            currentProject.id,
-            parsedRequest.data.baseCandidateId,
-          );
-          if (!parentCandidate) {
-            throw new RequestBodyError(
-              404,
-              'OUTLINE_CANDIDATE_NOT_FOUND',
-              'Không tìm thấy đề xuất dùng làm nền chỉnh tiếp.',
-            );
-          }
-          if (parentCandidate.decision !== 'pending') {
-            throw new RequestBodyError(
-              409,
-              'OUTLINE_CANDIDATE_ALREADY_DECIDED',
-              'Chỉ có thể chỉnh tiếp một candidate đang chờ review.',
-            );
-          }
-          if (
-            !parentCandidate.rootBaseContextHash ||
-            parentCandidate.rootBaseContextHash !== currentContextHash
-          ) {
-            throw new RequestBodyError(
-              409,
-              'OUTLINE_CONTEXT_CHANGED',
-              'Chủ đề hoặc mạch giảng nền đã thay đổi. Hãy tạo đề xuất mới từ phiên bản hiện tại.',
-            );
-          }
-          const storedBaseVersion = await outlineHistoryStore.getVersion(
-            currentProject.id,
-            parentCandidate.baseVersionId,
-          );
-          if (!storedBaseVersion) {
-            throw new RequestBodyError(
-              409,
-              'OUTLINE_BASE_VERSION_MISSING',
-              'Phiên bản nền của đề xuất không còn khả dụng.',
-            );
-          }
-          baseVersion = storedBaseVersion;
-          baseContent = parentCandidate.content;
-        }
-
-        const requestFingerprint = hashJson({
-          projectId: currentProject.id,
-          baseContentHash: hashOutlineContent(baseContent),
-          baseContextHash: outlineContextHash(
-            currentProject.topicInput,
-            baseContent,
-            currentProject.outline.sourceInput,
-          ),
-          request: parsedRequest.data,
-        });
-        const existingCandidate = await outlineHistoryStore.getCandidate(
-          currentProject.id,
-          parsedRequest.data.generationId,
-        );
-        if (existingCandidate) {
-          if (existingCandidate.requestFingerprint !== requestFingerprint) {
-            throw new RequestBodyError(
-              409,
-              'GENERATION_ID_REUSED',
-              'Generation ID đã được dùng với nội dung khác.',
-            );
-          }
-          sendJson(response, 200, {candidate: existingCandidate});
-          return;
-        }
-
-        const generation = await generateOnce(
-          outlineCandidateGenerations,
-          `${currentProject.id}:${parsedRequest.data.generationId}`,
-          requestFingerprint,
-          () =>
-            outlineRevisionService.revise({
-              topicInput: currentProject.topicInput,
-              baseContent,
-              scope: parsedRequest.data.scope,
-              guidance: parsedRequest.data.guidance,
-              model: parsedRequest.data.model,
-              reasoningEffort: parsedRequest.data.reasoningEffort,
-            }),
-        );
-        const coherence = generation.result.coherence;
-        const status =
-          coherence.verdict === 'needs_scope_expansion' ||
-          coherence.issues.some(issue => issue.requiresScopeExpansion)
-            ? 'scope_expansion_required'
-            : coherence.issues.some(issue => issue.severity === 'error')
-              ? 'coherence_blocked'
-              : coherence.verdict === 'warning' || coherence.issues.length > 0
-                ? 'coherence_warning'
-                : 'ready';
-        const candidate = await outlineHistoryStore.saveCandidate({
-          candidateId: parsedRequest.data.generationId,
-          projectId: currentProject.id,
-          createdAt: generation.generatedAt,
-          status,
-          decision: 'pending',
-          decidedAt: null,
-          appliedVersionId: null,
-          baseVersionId: baseVersion.versionId,
-          parentCandidateId: parentCandidate?.candidateId ?? null,
-          rootBaseContentHash:
-            parentCandidate?.rootBaseContentHash ?? currentContentHash,
-          baseContentHash: hashOutlineContent(baseContent),
-          rootBaseContextHash:
-            parentCandidate?.rootBaseContextHash ?? currentContextHash,
-          baseContextHash: outlineContextHash(
-            currentProject.topicInput,
-            baseContent,
-            currentProject.outline.sourceInput,
-          ),
-          baseProjectRevision: currentProject.revision,
-          candidateContentHash: hashOutlineContent(generation.result.content),
-          requestFingerprint,
-          guidance: parsedRequest.data.guidance,
-          scope: parsedRequest.data.scope,
-          patch: generation.result.patch,
-          content: generation.result.content,
-          coherence,
-          generation: {
-            provider: 'codex',
-            model: generation.result.model,
-            requestedModel: parsedRequest.data.model ?? null,
-            reasoningEffort: parsedRequest.data.reasoningEffort ?? null,
-            promptVersion: OUTLINE_REVISION_PROMPT_VERSION,
-            generatedAt: generation.generatedAt,
-            editorUsage: generation.result.editorUsage,
-            reviewerUsage: generation.result.reviewerUsage,
-          },
-        });
-        sendJson(response, 201, {candidate});
-        return;
-      }
-
-      if (
-        outlineHistoryRoute?.resource === 'candidates' &&
-        outlineHistoryRoute.recordId &&
-        outlineHistoryRoute.action === 'reject' &&
-        request.method === 'POST'
-      ) {
-        const expectedRevision = readExpectedRevision(request);
-        const currentProject = await repository.getProject(
-          outlineHistoryRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        if (currentProject.revision !== expectedRevision) {
-          throw new ProjectConflictError(currentProject);
-        }
-        const candidate = await outlineHistoryStore.setCandidateDecision(
-          currentProject.id,
-          outlineHistoryRoute.recordId,
-          'rejected',
-        );
-        sendJson(response, 200, {candidate});
-        return;
-      }
-
-      if (
-        outlineHistoryRoute?.resource === 'candidates' &&
-        outlineHistoryRoute.recordId &&
-        outlineHistoryRoute.action === 'apply' &&
-        request.method === 'POST'
-      ) {
-        const expectedRevision = readExpectedRevision(request);
-        const currentProject = await repository.getProject(
-          outlineHistoryRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        if (currentProject.revision !== expectedRevision) {
-          throw new ProjectConflictError(currentProject);
-        }
-        if (!currentProject.outline) {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_NOT_READY',
-            'Project chưa có mạch giảng để áp dụng đề xuất.',
-          );
-        }
-        const candidate = await outlineHistoryStore.getCandidate(
-          currentProject.id,
-          outlineHistoryRoute.recordId,
-        );
-        if (!candidate) {
-          throw new RequestBodyError(
-            404,
-            'OUTLINE_CANDIDATE_NOT_FOUND',
-            'Không tìm thấy đề xuất chỉnh sửa.',
-          );
-        }
-        if (candidate.decision === 'rejected') {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_CANDIDATE_REJECTED',
-            'Đề xuất này đã được giữ lại trong lịch sử nhưng không còn chờ áp dụng.',
-          );
-        }
-        const currentContentHash = hashOutlineContent(currentProject.outline);
-        if (
-          candidate.decision === 'accepted' &&
-          currentContentHash === candidate.candidateContentHash
-        ) {
-          sendJson(response, 200, {project: currentProject});
-          return;
-        }
-        if (candidate.decision === 'accepted') {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_CANDIDATE_ALREADY_ACCEPTED',
-            'Đề xuất này đã được áp dụng trước đó.',
-          );
-        }
-        if (
-          candidate.status === 'scope_expansion_required' ||
-          candidate.status === 'coherence_blocked'
-        ) {
-          throw new RequestBodyError(
-            409,
-            candidate.status === 'scope_expansion_required'
-              ? 'OUTLINE_SCOPE_EXPANSION_REQUIRED'
-              : 'OUTLINE_COHERENCE_BLOCKED',
-            candidate.status === 'scope_expansion_required'
-              ? 'Đề xuất cần mở rộng phạm vi và chỉnh tiếp trước khi áp dụng.'
-              : 'Đề xuất còn lỗi mạch lạc nghiêm trọng và cần chỉnh tiếp trước khi áp dụng.',
-          );
-        }
-        const currentContextHash = outlineContextHash(
-          currentProject.topicInput,
-          outlineContent(currentProject.outline),
-          currentProject.outline.sourceInput,
-        );
-        if (
-          !candidate.rootBaseContextHash ||
-          currentContextHash !== candidate.rootBaseContextHash
-        ) {
-          throw new RequestBodyError(
-            409,
-            candidate.rootBaseContextHash
-              ? 'OUTLINE_CONTEXT_CHANGED'
-              : 'OUTLINE_CANDIDATE_CONTEXT_UPGRADE_REQUIRED',
-            candidate.rootBaseContextHash
-              ? 'Chủ đề hoặc mạch giảng nền đã thay đổi kể từ lúc tạo đề xuất. Hãy tạo lại từ context hiện tại.'
-              : 'Đề xuất cũ thiếu khóa context mới và cần được tạo lại trước khi áp dụng.',
-          );
-        }
-
-        const outline: TeachingOutline = {
-          ...candidate.content,
-          status: 'draft',
-          contentRevision: currentProject.outline.contentRevision + 1,
-          sourceInput: currentProject.outline.sourceInput,
-          generation: {
-            generationId: candidate.candidateId,
-            provider: 'codex',
-            model: candidate.generation.model,
-            ...(candidate.generation.requestedModel
-              ? {requestedModel: candidate.generation.requestedModel}
-              : {}),
-            ...(candidate.generation.reasoningEffort
-              ? {reasoningEffort: candidate.generation.reasoningEffort}
-              : {}),
-            promptVersion: candidate.generation.promptVersion,
-            generatedAt: candidate.generation.generatedAt,
-            usage: candidate.generation.editorUsage,
-          },
-        };
-        const updatedProject = await repository.updateProject(
-          currentProject.id,
-          {outline},
-          expectedRevision,
-        );
-        if (!updatedProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        const version = await outlineHistoryStore
-          .ensureVersion(
-            {
-              projectId: updatedProject.id,
-              origin: 'ai_candidate',
-              label: candidate.patch.editSummary,
-              parentVersionId: candidate.baseVersionId,
-              restoredFromVersionId: null,
-              candidateId: candidate.candidateId,
-              projectRevision: updatedProject.revision,
-              contentHash: hashOutlineContent(outline),
-              artifact: outline,
-            },
-            {force: true},
-          )
-          .catch(error => {
-            logger.error(error);
-            return null;
-          });
-        await outlineHistoryStore
-          .setCandidateDecision(
-            updatedProject.id,
-            candidate.candidateId,
-            'accepted',
-            version?.versionId ?? null,
-          )
-          .catch(error => logger.error(error));
-        sendJson(
-          response,
-          200,
-          {project: updatedProject, version},
-          {ETag: `"${updatedProject.revision}"`},
-        );
-        return;
-      }
-
-      if (
-        outlineHistoryRoute?.resource === 'versions' &&
-        outlineHistoryRoute.recordId &&
-        outlineHistoryRoute.action === 'restore' &&
-        request.method === 'POST'
-      ) {
-        const expectedRevision = readExpectedRevision(request);
-        const currentProject = await repository.getProject(
-          outlineHistoryRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        if (currentProject.revision !== expectedRevision) {
-          throw new ProjectConflictError(currentProject);
-        }
-        if (!currentProject.outline) {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_NOT_READY',
-            'Project chưa có mạch giảng để khôi phục.',
-          );
-        }
-        const sourceVersion = await outlineHistoryStore.getVersion(
-          currentProject.id,
-          outlineHistoryRoute.recordId,
-        );
-        if (!sourceVersion) {
-          throw new RequestBodyError(
-            404,
-            'OUTLINE_VERSION_NOT_FOUND',
-            'Không tìm thấy phiên bản cần khôi phục.',
-          );
-        }
-        if (
-          !sameValue(
-            sourceVersion.artifact.sourceInput,
-            currentProject.topicInput,
-          )
-        ) {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_VERSION_CONTEXT_MISMATCH',
-            'Phiên bản này thuộc đầu vào cũ. Bạn vẫn có thể so sánh nhưng không thể khôi phục trực tiếp.',
-          );
-        }
-        const currentVersion = await outlineHistoryStore.ensureVersion({
-          projectId: currentProject.id,
-          origin: 'baseline',
-          label: 'Trước khi khôi phục',
-          parentVersionId: null,
-          restoredFromVersionId: null,
-          candidateId: null,
-          projectRevision: currentProject.revision,
-          contentHash: hashOutlineContent(currentProject.outline),
-          artifact: currentProject.outline,
-        });
-        const outline: TeachingOutline = {
-          ...sourceVersion.artifact,
-          status: 'draft',
-          contentRevision: currentProject.outline.contentRevision + 1,
-        };
-        const updatedProject = await repository.updateProject(
-          currentProject.id,
-          {outline},
-          expectedRevision,
-        );
-        if (!updatedProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        const version = await outlineHistoryStore
-          .ensureVersion(
-            {
-              projectId: updatedProject.id,
-              origin: 'restore',
-              label: `Khôi phục từ ${sourceVersion.label ?? 'phiên bản cũ'}`,
-              parentVersionId: currentVersion.versionId,
-              restoredFromVersionId: sourceVersion.versionId,
-              candidateId: null,
-              projectRevision: updatedProject.revision,
-              contentHash: hashOutlineContent(outline),
-              artifact: outline,
-            },
-            {force: true},
-          )
-          .catch(error => {
-            logger.error(error);
-            return null;
-          });
-        sendJson(
-          response,
-          200,
-          {project: updatedProject, version},
-          {ETag: `"${updatedProject.revision}"`},
-        );
-        return;
-      }
-
-      const outlineRoute = getProjectOutlineRoute(requestUrl.pathname);
-
-      if (
-        outlineRoute?.action === 'generate' &&
-        request.method === 'POST'
-      ) {
-        const expectedRevision = readExpectedRevision(request);
-        const body = await readJsonBody(request);
-        const parsedRequest = GenerateTeachingOutlineSchema.safeParse(body);
-
-        if (!parsedRequest.success) {
-          sendApiError(response, 422, {
-            code: 'VALIDATION_ERROR',
-            message: 'Yêu cầu tạo mạch giảng chưa hợp lệ.',
-            fields: validationFields(parsedRequest.error.issues),
-          });
-          return;
-        }
-        const currentProject = await repository.getProject(
-          outlineRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-
-        if (
-          currentProject.outline?.generation.generationId ===
-          parsedRequest.data.generationId
-        ) {
-          assertSameCodexGenerationSelection(
-            currentProject.outline.generation,
-            parsedRequest.data,
-          );
-          sendProject(response, 200, currentProject);
-          return;
-        }
-
-        if (currentProject.revision !== expectedRevision) {
-          throw new ProjectConflictError(currentProject);
-        }
-
-        if (
-          currentProject.outline &&
-          sameValue(
-            currentProject.outline.sourceInput,
-            currentProject.topicInput,
-          )
-        ) {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_CANDIDATE_REQUIRED',
-            'Mạch giảng đã tồn tại. Hãy tạo candidate để so sánh thay vì ghi đè trực tiếp.',
-          );
-        }
-
-        const previousOutline = currentProject.outline;
-        const parentVersion = previousOutline
-          ? await outlineHistoryStore
-              .ensureVersion({
-                projectId: currentProject.id,
-                origin: 'baseline',
-                label: 'Trước khi tạo lại theo đầu vào mới',
-                parentVersionId: null,
-                restoredFromVersionId: null,
-                candidateId: null,
-                projectRevision: currentProject.revision,
-                contentHash: hashOutlineContent(previousOutline),
-                artifact: previousOutline,
-              })
-              .catch(error => {
-                logger.error(error);
-                return null;
-              })
-          : null;
-
-        const generationKey = `${currentProject.id}:${parsedRequest.data.generationId}`;
-        const fingerprint = JSON.stringify({
-          topicInput: currentProject.topicInput,
-          model: parsedRequest.data.model,
-          reasoningEffort: parsedRequest.data.reasoningEffort,
-          guidance: parsedRequest.data.guidance,
-          currentOutline: parsedRequest.data.guidance
-            ? currentProject.outline
-            : undefined,
-        });
-        const generation = await generateOnce(
-          outlineGenerations,
-          generationKey,
-          fingerprint,
-          () =>
-            outlineGenerator.generate({
-              topicInput: currentProject.topicInput,
-              model: parsedRequest.data.model,
-              reasoningEffort: parsedRequest.data.reasoningEffort,
-              guidance: parsedRequest.data.guidance,
-              currentOutline: currentProject.outline ?? undefined,
-            }),
-        );
-        const outline: TeachingOutline = {
-          ...generation.result.content,
-          status: 'draft',
-          contentRevision: 1,
-          sourceInput: currentProject.topicInput,
-          generation: {
-            generationId: parsedRequest.data.generationId,
-            provider: 'codex',
-            model: generation.result.model,
-            requestedModel: parsedRequest.data.model,
-            reasoningEffort: parsedRequest.data.reasoningEffort,
-            promptVersion: OUTLINE_PROMPT_VERSION,
-            generatedAt: generation.generatedAt,
-            usage: generation.result.usage,
-          },
-        };
-        const updatedProject = await repository.updateProject(
-          currentProject.id,
-          {outline},
-          expectedRevision,
-        );
-
-        if (!updatedProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-
-        await outlineHistoryStore
-          .ensureVersion(
-            {
-              projectId: updatedProject.id,
-              origin: 'baseline',
-              label: previousOutline
-                ? 'Tạo lại theo đầu vào mới'
-                : 'Mạch giảng do AI tạo',
-              parentVersionId: parentVersion?.versionId ?? null,
-              restoredFromVersionId: null,
-              candidateId: null,
-              projectRevision: updatedProject.revision,
-              contentHash: hashOutlineContent(outline),
-              artifact: outline,
-            },
-            {force: true},
-          )
-          .catch(error => logger.error(error));
-
-        sendProject(response, 200, updatedProject);
-        return;
-      }
-
-      if (
-        outlineRoute?.action === 'update' &&
-        request.method === 'PUT'
-      ) {
-        const expectedRevision = readExpectedRevision(request);
-        const body = await readJsonBody(request);
-        const parsedContent = TeachingOutlineContentSchema.safeParse(body);
-
-        if (!parsedContent.success) {
-          sendApiError(response, 422, {
-            code: 'VALIDATION_ERROR',
-            message: 'Mạch giảng chưa hợp lệ.',
-            fields: validationFields(parsedContent.error.issues),
-          });
-          return;
-        }
-
-        const currentProject = await repository.getProject(
-          outlineRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        if (!currentProject.outline) {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_NOT_READY',
-            'Project chưa có mạch giảng để chỉnh sửa.',
-          );
-        }
-        if (
-          !sameValue(
-            currentProject.outline.sourceInput,
-            currentProject.topicInput,
-          )
-        ) {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_OUTDATED',
-            'Đầu vào đã thay đổi. Hãy tạo lại mạch giảng thay vì chỉnh bản cũ.',
-          );
-        }
-
-        const unchanged = sameValue(
-          outlineContent(currentProject.outline),
-          parsedContent.data,
-        );
-        const outline: TeachingOutline = unchanged
-          ? currentProject.outline
-          : {
-              ...parsedContent.data,
-              status: 'draft',
-              contentRevision: currentProject.outline.contentRevision + 1,
-              sourceInput: currentProject.outline.sourceInput,
-              generation: currentProject.outline.generation,
-            };
-        const updatedProject = await repository.updateProject(
-          currentProject.id,
-          {outline},
-          expectedRevision,
-        );
-
-        if (!updatedProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-
-        sendProject(response, 200, updatedProject);
-        return;
-      }
-
-      if (
-        outlineRoute?.action === 'approve' &&
-        request.method === 'POST'
-      ) {
-        const expectedRevision = readExpectedRevision(request);
-        const currentProject = await repository.getProject(
-          outlineRoute.projectId,
-        );
-
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        if (!currentProject.outline) {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_NOT_READY',
-            'Hãy tạo mạch giảng trước khi chốt.',
-          );
-        }
-        if (
-          !sameValue(
-            currentProject.outline.sourceInput,
-            currentProject.topicInput,
-          )
-        ) {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_OUTDATED',
-            'Đầu vào đã thay đổi. Hãy tạo lại mạch giảng trước khi chốt.',
-          );
-        }
-
-        const outline: TeachingOutline = {
-          ...currentProject.outline,
-          status: 'approved',
-        };
-        const updatedProject = await repository.updateProject(
-          currentProject.id,
-          {outline, currentStep: 'voiceVisual'},
-          expectedRevision,
-        );
-
-        if (!updatedProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-
-        sendProject(response, 200, updatedProject);
-        return;
-      }
-
-      const voiceVisualHistoryRoute = getProjectVoiceVisualHistoryRoute(
-        requestUrl.pathname,
-      );
-      if (
-        voiceVisualHistoryRoute &&
-        (await handleVoiceVisualHistoryRoute(
-          voiceVisualHistoryRoute,
-          request,
-          response,
-          requestUrl,
-        ))
-      ) {
-        return;
-      }
-
-      const voiceVisualRoute = getProjectVoiceVisualRoute(
-        requestUrl.pathname,
-      );
-
-      if (
-        voiceVisualRoute?.action === 'generate' &&
-        request.method === 'POST'
-      ) {
-        const expectedRevision = readExpectedRevision(request);
-        const body = await readJsonBody(request);
-        const parsedRequest = GenerateVoiceVisualPlanSchema.safeParse(body);
-
-        if (!parsedRequest.success) {
-          sendApiError(response, 422, {
-            code: 'VALIDATION_ERROR',
-            message: 'Yêu cầu tạo kế hoạch voice–visual chưa hợp lệ.',
-            fields: validationFields(parsedRequest.error.issues),
-          });
-          return;
-        }
-
-        const currentProject = await repository.getProject(
-          voiceVisualRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-
-        if (
-          currentProject.voiceVisualPlan?.generation.generationId ===
-          parsedRequest.data.generationId
-        ) {
-          assertSameCodexGenerationSelection(
-            currentProject.voiceVisualPlan.generation,
-            parsedRequest.data,
-          );
-          sendProject(response, 200, currentProject);
-          return;
-        }
-
-        if (currentProject.revision !== expectedRevision) {
-          throw new ProjectConflictError(currentProject);
-        }
-
-        const outline = currentProject.outline;
-        if (!outline || outline.status !== 'approved') {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_NOT_APPROVED',
-            'Hãy chốt mạch giảng trước khi tạo kế hoạch voice–visual.',
-          );
-        }
-        if (!sameValue(outline.sourceInput, currentProject.topicInput)) {
-          throw new RequestBodyError(
-            409,
-            'OUTLINE_OUTDATED',
-            'Đầu vào đã thay đổi. Hãy tạo lại và chốt mạch giảng trước.',
-          );
-        }
-
-        const currentPlanUsable = Boolean(
-          currentProject.voiceVisualPlan &&
-            currentProject.voiceVisualPlan.sourceOutlineContentRevision ===
-              outline.contentRevision &&
-            voiceVisualMatchesOutline(
-              currentProject.voiceVisualPlan,
-              outline,
-            ),
-        );
-        if (currentPlanUsable) {
-          throw new RequestBodyError(
-            409,
-            'VOICE_VISUAL_CANDIDATE_REQUIRED',
-            'Kế hoạch voice–visual đã tồn tại. Hãy tạo candidate có phạm vi để so sánh thay vì ghi đè trực tiếp.',
-          );
-        }
-        if (
-          parsedRequest.data.guidance &&
-          currentProject.voiceVisualPlan &&
-          !currentPlanUsable
-        ) {
-          throw new RequestBodyError(
-            409,
-            'VOICE_VISUAL_OUTDATED',
-            'Mạch giảng đã thay đổi. Hãy tạo lại kế hoạch trước khi góp ý.',
-          );
-        }
-
-        const generationKey = `${currentProject.id}:${parsedRequest.data.generationId}`;
-        const currentPlan =
-          parsedRequest.data.guidance && currentPlanUsable
-            ? currentProject.voiceVisualPlan ?? undefined
-            : undefined;
-        const timingCalibration =
-          currentPlan?.timingCalibration ??
-          (await preferredNarrationCalibration(repository));
-        const fingerprint = JSON.stringify({
-          topicInput: currentProject.topicInput,
-          model: parsedRequest.data.model,
-          reasoningEffort: parsedRequest.data.reasoningEffort,
-          outline: outlineContent(outline),
-          outlineContentRevision: outline.contentRevision,
-          guidance: parsedRequest.data.guidance,
-          currentPlan: currentPlan
-            ? voiceVisualContent(currentPlan)
-            : undefined,
-          timingCalibration,
-        });
-        const generation = await generateOnce(
-          voiceVisualGenerations,
-          generationKey,
-          fingerprint,
-          () =>
-            voiceVisualGenerator.generate({
-              topicInput: currentProject.topicInput,
-              outline,
-              model: parsedRequest.data.model,
-              reasoningEffort: parsedRequest.data.reasoningEffort,
-              timingCalibration,
-              guidance: parsedRequest.data.guidance,
-              currentPlan,
-            }),
-        );
-        const generatedContent = normalizedVoiceVisualContent(
-          generation.result.content,
-        );
-        const voiceVisualPlan: VoiceVisualPlan = {
-          ...generatedContent,
-          status: 'draft',
-          contentRevision:
-            (currentProject.voiceVisualPlan?.contentRevision ?? 0) + 1,
-          narrationRevision: nextNarrationRevision(
-            currentProject.voiceVisualPlan,
-            generatedContent,
-          ),
-          sourceOutlineContentRevision: outline.contentRevision,
-          generation: {
-            generationId: parsedRequest.data.generationId,
-            provider: 'codex',
-            model: generation.result.model,
-            requestedModel: parsedRequest.data.model,
-            reasoningEffort: parsedRequest.data.reasoningEffort,
-            promptVersion: VOICE_VISUAL_PROMPT_VERSION,
-            generatedAt: generation.generatedAt,
-            usage: generation.result.usage,
-          },
-        };
-        if (currentProject.voiceVisualPlan) {
-          await voiceVisualHistoryStore
-            .ensureVersion({
-              projectId: currentProject.id,
-              origin: 'baseline',
-              label: 'Trước khi tạo lại theo mạch giảng mới',
-              parentVersionId: null,
-              restoredFromVersionId: null,
-              candidateId: null,
-              projectRevision: currentProject.revision,
-              contentHash: hashVoiceVisualContent(
-                currentProject.voiceVisualPlan,
-              ),
-              artifact: currentProject.voiceVisualPlan,
-            })
-            .catch(error => logger.error(error));
-        }
-        const updatedProject = await repository.updateProject(
-          currentProject.id,
-          {voiceVisualPlan, currentStep: 'voiceVisual'},
-          expectedRevision,
-        );
-
-        if (!updatedProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-
-        await voiceVisualHistoryStore
-          .ensureVersion({
-            projectId: updatedProject.id,
-            origin: 'baseline',
-            label: 'Bản voice–visual vừa tạo',
-            parentVersionId: null,
-            restoredFromVersionId: null,
-            candidateId: null,
-            projectRevision: updatedProject.revision,
-            contentHash: hashVoiceVisualContent(voiceVisualPlan),
-            artifact: voiceVisualPlan,
-          })
-          .catch(error => logger.error(error));
-
-        sendProject(response, 200, updatedProject);
-        return;
-      }
-
-      if (
-        voiceVisualRoute?.action === 'update' &&
-        request.method === 'PUT'
-      ) {
-        const expectedRevision = readExpectedRevision(request);
-        const body = await readJsonBody(request);
-        const parsedContent = VoiceVisualPlanContentSchema.safeParse(body);
-
-        if (!parsedContent.success) {
-          sendApiError(response, 422, {
-            code: 'VALIDATION_ERROR',
-            message: 'Kế hoạch voice–visual chưa hợp lệ.',
-            fields: validationFields(parsedContent.error.issues),
-          });
-          return;
-        }
-
-        const currentProject = await repository.getProject(
-          voiceVisualRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        if (!currentProject.voiceVisualPlan) {
-          throw new RequestBodyError(
-            409,
-            'VOICE_VISUAL_NOT_READY',
-            'Project chưa có kế hoạch voice–visual để chỉnh sửa.',
-          );
-        }
-        const outline = currentProject.outline;
-        if (
-          !outline ||
-          outline.status !== 'approved' ||
-          !sameValue(outline.sourceInput, currentProject.topicInput) ||
-          currentProject.voiceVisualPlan.sourceOutlineContentRevision !==
-            outline.contentRevision
-        ) {
-          throw new RequestBodyError(
-            409,
-            'VOICE_VISUAL_OUTDATED',
-            'Mạch giảng đã thay đổi. Hãy tạo lại kế hoạch voice–visual.',
-          );
-        }
-        const normalizedContent = normalizedVoiceVisualContent(
-          parsedContent.data,
-        );
-        if (!voiceVisualMatchesOutline(normalizedContent, outline)) {
-          throw new RequestBodyError(
-            422,
-            'VOICE_VISUAL_OUTLINE_MISMATCH',
-            'Kế hoạch voice–visual không bao phủ đúng mạch giảng hiện tại.',
-          );
-        }
-
-        const unchanged = sameValue(
-          voiceVisualContent(currentProject.voiceVisualPlan),
-          normalizedContent,
-        );
-        const voiceVisualPlan: VoiceVisualPlan = unchanged
-          ? currentProject.voiceVisualPlan
-          : {
-              ...normalizedContent,
-              status: 'draft',
-              contentRevision:
-                currentProject.voiceVisualPlan.contentRevision + 1,
-              narrationRevision: nextNarrationRevision(
-                currentProject.voiceVisualPlan,
-                normalizedContent,
-              ),
-              sourceOutlineContentRevision:
-                currentProject.voiceVisualPlan
-                  .sourceOutlineContentRevision,
-              generation: currentProject.voiceVisualPlan.generation,
-            };
-        const updatedProject = await repository.updateProject(
-          currentProject.id,
-          {voiceVisualPlan, currentStep: 'voiceVisual'},
-          expectedRevision,
-        );
-
-        if (!updatedProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-
-        sendProject(response, 200, updatedProject);
-        return;
-      }
-
-      if (
-        voiceVisualRoute?.action === 'approve' &&
-        request.method === 'POST'
-      ) {
-        const expectedRevision = readExpectedRevision(request);
-        const currentProject = await repository.getProject(
-          voiceVisualRoute.projectId,
-        );
-
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        const outline = currentProject.outline;
-        const voiceVisualPlan = currentProject.voiceVisualPlan;
-        if (!voiceVisualPlan) {
-          throw new RequestBodyError(
-            409,
-            'VOICE_VISUAL_NOT_READY',
-            'Hãy tạo kế hoạch voice–visual trước khi chốt.',
-          );
-        }
-        if (
-          !outline ||
-          outline.status !== 'approved' ||
-          !sameValue(outline.sourceInput, currentProject.topicInput) ||
-          voiceVisualPlan.sourceOutlineContentRevision !==
-            outline.contentRevision ||
-          !voiceVisualMatchesOutline(voiceVisualPlan, outline)
-        ) {
-          throw new RequestBodyError(
-            409,
-            'VOICE_VISUAL_OUTDATED',
-            'Mạch giảng đã thay đổi. Hãy tạo lại kế hoạch voice–visual trước khi chốt.',
-          );
-        }
-
-        const approvedPlan: VoiceVisualPlan = {
-          ...voiceVisualPlan,
-          status: 'approved',
-        };
-        const updatedProject = await repository.updateProject(
-          currentProject.id,
-          {voiceVisualPlan: approvedPlan, currentStep: 'motionCanvas'},
-          expectedRevision,
-        );
-
-        if (!updatedProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-
-        await voiceVisualHistoryStore
-          .ensureVersion(
-            {
-              projectId: updatedProject.id,
-              origin: 'approval',
-              label: 'Đã chốt voice–visual',
-              parentVersionId: null,
-              restoredFromVersionId: null,
-              candidateId: null,
-              projectRevision: updatedProject.revision,
-              contentHash: hashVoiceVisualContent(approvedPlan),
-              artifact: approvedPlan,
-            },
-            {force: true},
-          )
-          .catch(error => logger.error(error));
-
-        sendProject(response, 200, updatedProject);
         return;
       }
 
@@ -4380,7 +2264,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
 
         const outline = currentProject.outline;
         const voiceVisualPlan = currentProject.voiceVisualPlan;
-        const directNarration = isDirectNarrationPlan(outline, voiceVisualPlan);
+        const narrationArtifacts = narrationArtifactsAreCurrent(outline, voiceVisualPlan);
         if (
           !outline ||
           outline.status !== 'approved' ||
@@ -4390,12 +2274,12 @@ export function createPadStudioServer(options: AppOptions = {}) {
           voiceVisualPlan.sourceOutlineContentRevision !==
             outline.contentRevision ||
           !voiceVisualMatchesOutline(voiceVisualPlan, outline) ||
-          (directNarration &&
+          (narrationArtifacts &&
             (!currentProject.voiceBundle ||
               !currentProject.narration?.review ||
               currentProject.narration.approvedSourceHash !==
                 currentProject.narration.review.sourceHash ||
-              !directNarrationMatchesSource(
+              !narrationPlanMatchesReviewedNarration(
                 currentProject.narration,
                 voiceVisualPlan,
               )))
@@ -4592,7 +2476,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
         }
         const updatedProject = await repository.updateProject(
           currentProject.id,
-          {motionCanvasBundle, currentStep: 'motionCanvas'},
+          {motionCanvasBundle},
           expectedRevision,
         );
 
@@ -4859,7 +2743,6 @@ export function createPadStudioServer(options: AppOptions = {}) {
           currentProject.id,
           {
             motionCanvasBundle: approvedBundle,
-            currentStep: 'voice',
           },
           expectedRevision,
         );
@@ -4935,7 +2818,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
         const plan = currentProject.voiceVisualPlan;
         const motionBundle = currentProject.motionCanvasBundle;
         const narration = currentProject.narration;
-        const directNarration = isDirectNarrationPlan(outline, plan);
+        const narrationArtifacts = narrationArtifactsAreCurrent(outline, plan);
         if (
           !outline ||
           outline.status !== 'approved' ||
@@ -4944,12 +2827,12 @@ export function createPadStudioServer(options: AppOptions = {}) {
           !sameValue(outline.sourceInput, currentProject.topicInput) ||
           plan.sourceOutlineContentRevision !== outline.contentRevision ||
           !voiceVisualMatchesOutline(plan, outline) ||
-          (directNarration
-            ? !narration?.review ||
+          (!narrationArtifacts ||
+            !narration?.review ||
               narration.approvedSourceHash !== narration.review.sourceHash ||
               !narration.approvedAt ||
-              !directNarrationMatchesSource(narration, plan)
-            : !motionBundle ||
+              !narrationPlanMatchesReviewedNarration(narration, plan) ||
+              !motionBundle ||
               motionBundle.status !== 'approved' ||
               motionBundle.sourceVoiceVisualContentRevision !==
                 plan.contentRevision ||
@@ -5120,7 +3003,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
           // Narration-first projects have exactly one human voice gate: the
           // reviewed pronunciation snapshot. Audio is a deterministic output
           // of that snapshot, so it must not introduce a second approval.
-          status: directNarration ? 'approved' : 'draft',
+          status: 'approved',
           contentRevision:
             (currentProject.voiceBundle?.contentRevision ?? 0) + 1,
           sourceNarrationRevision: plan.narrationRevision,
@@ -5140,7 +3023,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
         };
         const updatedProject = await repository.updateProject(
           currentProject.id,
-          {voiceBundle, currentStep: 'voice'},
+        {voiceBundle},
           expectedRevision,
         );
         if (!updatedProject) {
@@ -5206,58 +3089,6 @@ export function createPadStudioServer(options: AppOptions = {}) {
             ETag: `"${currentProject.voiceBundle.generation.generationId}:${voiceRoute.outlineSectionId}"`,
           },
         );
-        return;
-      }
-
-      if (
-        voiceRoute?.action === 'approve' &&
-        request.method === 'POST'
-      ) {
-        const expectedRevision = readExpectedRevision(request);
-        const currentProject = await repository.getProject(
-          voiceRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        if (currentProject.revision !== expectedRevision) {
-          throw new ProjectConflictError(currentProject);
-        }
-        const plan = currentProject.voiceVisualPlan;
-        const bundle = currentProject.voiceBundle;
-        if (
-          !plan ||
-          plan.status !== 'approved' ||
-          !bundle ||
-          !voicePrerequisitesAreReady(currentProject) ||
-          !voiceMatchesPlan(bundle, plan)
-        ) {
-          throw new RequestBodyError(
-            409,
-            'VOICE_OUTDATED',
-            'Voice chưa có hoặc không còn khớp với lời đọc đã chốt.',
-          );
-        }
-        const updatedProject = await repository.updateProject(
-          currentProject.id,
-          {
-            voiceBundle: {...bundle, status: 'approved'},
-            currentStep: 'sync',
-          },
-          expectedRevision,
-        );
-        if (!updatedProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        sendProject(response, 200, updatedProject);
         return;
       }
 
@@ -5391,7 +3222,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
         };
         const updatedProject = await repository.updateProject(
           currentProject.id,
-          {animationSyncBundle, currentStep: 'sync'},
+        {animationSyncBundle},
           expectedRevision,
         );
         if (!updatedProject) {
@@ -5476,84 +3307,6 @@ export function createPadStudioServer(options: AppOptions = {}) {
       }
 
       if (
-        animationSyncRoute?.action === 'files' &&
-        request.method === 'GET'
-      ) {
-        const currentProject = await repository.getProject(
-          animationSyncRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        if (!currentProject.animationSyncBundle) {
-          throw new RequestBodyError(
-            409,
-            'ANIMATION_SYNC_NOT_READY',
-            'Project chưa có workspace đồng bộ.',
-          );
-        }
-        const files = await animationSyncWorkspace.readFiles(
-          currentProject.id,
-          currentProject.animationSyncBundle,
-        );
-        sendJson(response, 200, {
-          bundle: currentProject.animationSyncBundle,
-          files,
-          serveCommand: `npm run sync:serve -- --project ${currentProject.id}`,
-        });
-        return;
-      }
-
-      if (
-        animationSyncRoute?.action === 'audio' &&
-        request.method === 'GET'
-      ) {
-        const currentProject = await repository.getProject(
-          animationSyncRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        const bundle = currentProject.animationSyncBundle;
-        if (!bundle) {
-          throw new RequestBodyError(
-            404,
-            'ANIMATION_SYNC_AUDIO_NOT_FOUND',
-            'Project chưa có narration đã đồng bộ.',
-          );
-        }
-        const requestedGeneration =
-          requestUrl.searchParams.get('generation');
-        if (
-          requestedGeneration &&
-          requestedGeneration !== bundle.generation.generationId
-        ) {
-          throw new RequestBodyError(
-            404,
-            'ANIMATION_SYNC_GENERATION_NOT_FOUND',
-            'Generation đồng bộ được yêu cầu không còn là bản hiện tại.',
-          );
-        }
-        const audio = await animationSyncWorkspace.readAudio(
-          currentProject.id,
-          bundle,
-        );
-        sendMediaBuffer(request, response, audio, 'audio/wav', {
-          'Cache-Control': 'private, max-age=31536000, immutable',
-          ETag: `"${bundle.generation.generationId}"`,
-        });
-        return;
-      }
-
-      if (
         animationSyncRoute?.action === 'approve' &&
         request.method === 'POST'
       ) {
@@ -5598,453 +3351,6 @@ export function createPadStudioServer(options: AppOptions = {}) {
           currentProject.id,
           {
             animationSyncBundle: {...bundle, status: 'approved'},
-            currentStep: 'layout',
-          },
-          expectedRevision,
-        );
-        if (!updatedProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        sendProject(response, 200, updatedProject);
-        return;
-      }
-
-      const layoutRoute = getProjectLayoutRoute(requestUrl.pathname);
-
-      if (
-        layoutRoute?.action === 'read' &&
-        request.method === 'GET'
-      ) {
-        const currentProject = await repository.getProject(
-          layoutRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        const sync = currentProject.animationSyncBundle;
-        if (!sync || !layoutPrerequisitesAreReady(currentProject)) {
-          throw new RequestBodyError(
-            409,
-            'LAYOUT_PREREQUISITES_NOT_APPROVED',
-            'Hãy chốt bản đồng bộ hiện hành trước khi mở Layout Editor.',
-          );
-        }
-
-        const bundle = currentProject.layoutBundle;
-        const bundleIsCurrent = Boolean(
-          bundle && layoutMatchesAnimationSync(bundle, sync),
-        );
-        const overrides =
-          bundle && bundleIsCurrent
-            ? await layoutWorkspace.readOverrides(
-                currentProject.id,
-                bundle,
-              )
-            : {
-                version: 1 as const,
-                sourceAnimationSyncGenerationId:
-                  sync.generation.generationId,
-                sourceAnimationSyncContentRevision:
-                  sync.contentRevision,
-                sourceAnimationSyncSourceHash:
-                  sync.validation.sourceHash,
-                overrides:
-                  currentProject.motionCanvasBundle &&
-                  currentProject.visualDesignBundle &&
-                  visualDesignMatchesMotion(
-                    currentProject.visualDesignBundle,
-                    currentProject.motionCanvasBundle,
-                  )
-                    ? retimeLayoutOverridesForSync(
-                        currentProject.visualDesignBundle.overrides,
-                        sync.sections,
-                      )
-                    : [],
-              };
-        const manifest =
-          bundle && bundleIsCurrent
-            ? await layoutWorkspace.readEditorManifest(
-                currentProject.id,
-                bundle,
-              )
-            : null;
-        sendJson(response, 200, {bundle, overrides, manifest});
-        return;
-      }
-
-      if (
-        layoutRoute?.action === 'preview' &&
-        request.method === 'GET'
-      ) {
-        const currentProject = await repository.getProject(
-          layoutRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        const sync = currentProject.animationSyncBundle;
-        if (!sync || !layoutPrerequisitesAreReady(currentProject)) {
-          throw new RequestBodyError(
-            409,
-            'LAYOUT_PREREQUISITES_NOT_APPROVED',
-            'Hãy chốt bản đồng bộ hiện hành trước khi mở Layout Editor.',
-          );
-        }
-        const requestedGeneration =
-          requestUrl.searchParams.get('generation');
-        if (!requestedGeneration) {
-          throw new RequestBodyError(
-            400,
-            'LAYOUT_SOURCE_GENERATION_REQUIRED',
-            'Cần chỉ rõ generation đồng bộ nguồn của Layout Editor.',
-          );
-        }
-        if (requestedGeneration !== sync.generation.generationId) {
-          throw new RequestBodyError(
-            404,
-            'LAYOUT_SOURCE_GENERATION_NOT_FOUND',
-            'Generation đồng bộ được yêu cầu không còn là bản hiện hành.',
-          );
-        }
-        const currentLayout =
-          currentProject.layoutBundle &&
-          layoutMatchesAnimationSync(
-            currentProject.layoutBundle,
-            sync,
-          )
-            ? currentProject.layoutBundle
-            : null;
-        const preview = await layoutPreviewService.start(
-          currentProject.id,
-          sync,
-          currentLayout,
-          {
-            parentOrigin: requestParentOrigin(request),
-            initialOverrides:
-              !currentLayout &&
-              currentProject.motionCanvasBundle &&
-              currentProject.visualDesignBundle &&
-              visualDesignMatchesMotion(
-                currentProject.visualDesignBundle,
-                currentProject.motionCanvasBundle,
-              )
-                ? retimeLayoutOverridesForSync(
-                    currentProject.visualDesignBundle.overrides,
-                    sync.sections,
-                  )
-                : [],
-          },
-        );
-        sendJson(response, 200, {preview});
-        return;
-      }
-
-      if (
-        layoutRoute?.action === 'commit' &&
-        request.method === 'POST'
-      ) {
-        const expectedRevision = readExpectedRevision(request);
-        const body = await readJsonBody(request);
-        const parsedRequest = CommitLayoutSchema.safeParse(body);
-        if (!parsedRequest.success) {
-          sendApiError(response, 422, {
-            code: 'VALIDATION_ERROR',
-            message: 'Danh sách chỉnh sửa Layout chưa hợp lệ.',
-            fields: validationFields(parsedRequest.error.issues),
-          });
-          return;
-        }
-        const requestData = parsedRequest.data;
-        const generationId = requestData.generationId.toLowerCase();
-        const currentProject = await repository.getProject(
-          layoutRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        const normalizedOverrides = [...requestData.overrides].sort(
-          (left, right) =>
-            left.sceneId.localeCompare(right.sceneId) ||
-            left.nodeKey.localeCompare(right.nodeKey),
-        );
-        const currentLayout = currentProject.layoutBundle;
-        if (
-          currentLayout?.generation.generationId === generationId
-        ) {
-          const stored = await layoutWorkspace.readOverrides(
-            currentProject.id,
-            currentLayout,
-          );
-          if (
-            currentLayout.sourceAnimationSyncGenerationId !==
-              requestData.sourceAnimationSyncGenerationId ||
-            !sameValue(stored.overrides, normalizedOverrides) ||
-            !sameValue(
-              currentLayout.renderSettings,
-              requestData.renderSettings,
-            )
-          ) {
-            throw new RequestBodyError(
-              409,
-              'GENERATION_ID_REUSED',
-              'Generation ID đã được dùng với một Layout khác.',
-            );
-          }
-          sendProject(response, 200, currentProject);
-          return;
-        }
-        if (currentProject.revision !== expectedRevision) {
-          throw new ProjectConflictError(currentProject);
-        }
-        const sync = currentProject.animationSyncBundle;
-        if (!sync || !layoutPrerequisitesAreReady(currentProject)) {
-          throw new RequestBodyError(
-            409,
-            'LAYOUT_PREREQUISITES_NOT_APPROVED',
-            'Hãy chốt bản đồng bộ hiện hành trước khi lưu Layout.',
-          );
-        }
-        if (
-          requestData.sourceAnimationSyncGenerationId !==
-          sync.generation.generationId
-        ) {
-          throw new RequestBodyError(
-            409,
-            'LAYOUT_SOURCE_OUTDATED',
-            'Bản đồng bộ nguồn đã thay đổi. Hãy tải lại Layout Editor.',
-          );
-        }
-        if (
-          requestData.baseGenerationId !==
-          (currentLayout?.generation.generationId ?? null)
-        ) {
-          throw new RequestBodyError(
-            409,
-            'LAYOUT_BASE_GENERATION_CONFLICT',
-            'Layout nền đã thay đổi. Hãy tải lại trước khi lưu.',
-          );
-        }
-
-        const editorManifest = layoutPreviewService.getManifest(
-          currentProject.id,
-          requestData.sessionNonce,
-          sync.generation.generationId,
-        );
-        const sourceWorkspaceHash =
-          layoutPreviewService.getSourceWorkspaceHash(
-            currentProject.id,
-            requestData.sessionNonce,
-            sync.generation.generationId,
-          );
-        const generationKey = `${currentProject.id}:${generationId}`;
-        const fingerprint = JSON.stringify({
-          sourceAnimationSyncGenerationId:
-            sync.generation.generationId,
-          sourceAnimationSyncContentRevision: sync.contentRevision,
-          sourceAnimationSyncSourceHash: sync.validation.sourceHash,
-          sourceWorkspaceHash,
-          baseGenerationId: requestData.baseGenerationId,
-          overrides: normalizedOverrides,
-          renderSettings: requestData.renderSettings,
-          editorManifest,
-        });
-        const generation = await generateOnce(
-          layoutGenerations,
-          generationKey,
-          fingerprint,
-          () =>
-            layoutWorkspace.prepare(
-              currentProject.id,
-              generationId,
-              sync,
-              normalizedOverrides,
-              editorManifest,
-              requestData.baseGenerationId,
-              sourceWorkspaceHash,
-            ),
-        );
-        const prepared = generation.result;
-        const layoutBundleValue: LayoutBundle = {
-          status: 'draft',
-          contentRevision:
-            (currentLayout?.contentRevision ?? 0) + 1,
-          sourceAnimationSyncContentRevision: sync.contentRevision,
-          sourceAnimationSyncGenerationId:
-            sync.generation.generationId,
-          sourceAnimationSyncSourceHash: sync.validation.sourceHash,
-          workspacePath: prepared.workspacePath,
-          sourceWorkspacePath: prepared.sourceWorkspacePath,
-          projectFile: prepared.projectFile,
-          audioFile: prepared.audioFile,
-          overridesFile: prepared.overridesFile,
-          manifestFile: prepared.manifestFile,
-          overrideContractVersion:
-            prepared.overrideContractVersion,
-          renderSettings: requestData.renderSettings,
-          totalDurationSeconds: prepared.totalDurationSeconds,
-          scenes: prepared.scenes,
-          validation: prepared.validation,
-          generation: {
-            generationId,
-            provider: 'local',
-            tool: 'layout-editor',
-            generatedAt: prepared.validation.validatedAt,
-          },
-        };
-        const parsedLayoutBundle =
-          LayoutBundleSchema.safeParse(layoutBundleValue);
-        if (!parsedLayoutBundle.success) {
-          throw new LayoutWorkspaceError(
-            'LAYOUT_WORKSPACE_INTEGRITY_FAILED',
-            'Layout workspace đã chuẩn bị không tạo được bundle hợp lệ.',
-            {cause: parsedLayoutBundle.error},
-          );
-        }
-        const layoutBundle = parsedLayoutBundle.data;
-        await layoutWorkspace.verify(
-          currentProject.id,
-          sync,
-          layoutBundle,
-        );
-        const updatedProject = await repository.updateProject(
-          currentProject.id,
-          {layoutBundle, currentStep: 'layout'},
-          expectedRevision,
-        );
-        if (!updatedProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        sendProject(response, 200, updatedProject);
-        return;
-      }
-
-      if (
-        layoutRoute?.action === 'files' &&
-        request.method === 'GET'
-      ) {
-        const currentProject = await repository.getProject(
-          layoutRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        if (!currentProject.layoutBundle) {
-          throw new RequestBodyError(
-            409,
-            'LAYOUT_NOT_READY',
-            'Project chưa có Layout workspace.',
-          );
-        }
-        const files = await layoutWorkspace.readFiles(
-          currentProject.id,
-          currentProject.layoutBundle,
-        );
-        sendJson(response, 200, {
-          bundle: currentProject.layoutBundle,
-          files,
-        });
-        return;
-      }
-
-      if (
-        layoutRoute?.action === 'approve' &&
-        request.method === 'POST'
-      ) {
-        const expectedRevision = readExpectedRevision(request);
-        const body = await readJsonBody(request);
-        const parsedRequest = ApproveLayoutSchema.safeParse(body);
-        if (!parsedRequest.success) {
-          sendApiError(response, 422, {
-            code: 'VALIDATION_ERROR',
-            message: 'Yêu cầu chốt Layout chưa hợp lệ.',
-            fields: validationFields(parsedRequest.error.issues),
-          });
-          return;
-        }
-        const currentProject = await repository.getProject(
-          layoutRoute.projectId,
-        );
-        if (!currentProject) {
-          sendApiError(response, 404, {
-            code: 'PROJECT_NOT_FOUND',
-            message: 'Không tìm thấy project.',
-          });
-          return;
-        }
-        const requestedGenerationId =
-          parsedRequest.data.generationId.toLowerCase();
-        const sync = currentProject.animationSyncBundle;
-        const bundle = currentProject.layoutBundle;
-        const alreadyApproved =
-          currentProject.revision > expectedRevision &&
-          bundle?.status === 'approved' &&
-          bundle.generation.generationId === requestedGenerationId;
-        if (
-          currentProject.revision !== expectedRevision &&
-          !alreadyApproved
-        ) {
-          throw new ProjectConflictError(currentProject);
-        }
-        if (
-          !sync ||
-          !bundle ||
-          !layoutPrerequisitesAreReady(currentProject) ||
-          !layoutMatchesAnimationSync(bundle, sync)
-        ) {
-          throw new RequestBodyError(
-            409,
-            'LAYOUT_OUTDATED',
-            'Layout chưa có hoặc không còn khớp bản đồng bộ hiện hành.',
-          );
-        }
-        if (
-          requestedGenerationId !==
-          bundle.generation.generationId
-        ) {
-          throw new RequestBodyError(
-            409,
-            'LAYOUT_GENERATION_OUTDATED',
-            'Layout generation cần chốt không còn là bản hiện hành.',
-          );
-        }
-        await layoutWorkspace.verify(
-          currentProject.id,
-          sync,
-          bundle,
-        );
-        if (alreadyApproved) {
-          sendProject(response, 200, currentProject);
-          return;
-        }
-        const updatedProject = await repository.updateProject(
-          currentProject.id,
-          {
-            layoutBundle: {...bundle, status: 'approved'},
-            currentStep: 'render',
           },
           expectedRevision,
         );
@@ -6581,7 +3887,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
       const productionRoute = getProjectProductionRoute(requestUrl.pathname);
       if (productionRoute?.action === 'prepare' && request.method === 'POST') {
         const expectedRevision = readExpectedRevision(request);
-        const parsed = PrepareDirectProductionSchema.safeParse(
+        const parsed = PrepareNarrationProductionSchema.safeParse(
           await readJsonBody(request),
         );
         if (!parsed.success) {
@@ -6600,7 +3906,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
           });
           return;
         }
-        if (directPlanMatchesNarration(currentProject)) {
+        if (narrationArtifactsMatchReview(currentProject)) {
           sendProject(response, 200, currentProject);
           return;
         }
@@ -6619,7 +3925,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
         }
         let artifacts;
         try {
-          artifacts = createDirectNarrationArtifacts({
+          artifacts = createNarrationArtifacts({
             topicInput: currentProject.topicInput,
             narration,
             generationId: parsed.data.generationId.toLowerCase(),
@@ -6629,7 +3935,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
         } catch (error) {
           throw new RequestBodyError(
             422,
-            'DIRECT_NARRATION_INVALID',
+            'NARRATION_STRUCTURE_INVALID',
             error instanceof Error
               ? error.message
               : 'Không thể chia lời thoại để tạo audio.',
@@ -6640,7 +3946,6 @@ export function createPadStudioServer(options: AppOptions = {}) {
           {
             outline: artifacts.outline,
             voiceVisualPlan: artifacts.voiceVisualPlan,
-            currentStep: 'voice',
           },
           expectedRevision,
         );
@@ -6651,7 +3956,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
 
       if (productionRoute?.action === 'output' && request.method === 'POST') {
         const expectedRevision = readExpectedRevision(request);
-        const parsed = PrepareDirectProductionSchema.safeParse(
+        const parsed = PrepareNarrationProductionSchema.safeParse(
           await readJsonBody(request),
         );
         if (!parsed.success) {
@@ -6673,7 +3978,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
         const sync = currentProject.animationSyncBundle;
         const renderSettings =
           parsed.data.renderSettings ?? defaultLayoutRenderSettings;
-        if (!isDirectNarrationPlan(currentProject.outline, currentProject.voiceVisualPlan) ||
+        if (!narrationArtifactsAreCurrent(currentProject.outline, currentProject.voiceVisualPlan) ||
           !sync || sync.status !== 'approved' ||
           !animationSyncPrerequisitesAreReady(currentProject)) {
           throw new RequestBodyError(
@@ -6804,7 +4109,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
         };
         const project = await repository.updateProject(
           currentProject.id,
-          {layoutBundle, renderProfile, currentStep: 'render'},
+          {layoutBundle, renderProfile},
           expectedRevision,
         );
         if (!project) throw new Error('Project vừa biến mất khi chuẩn bị đầu ra.');
@@ -6922,119 +4227,11 @@ export function createPadStudioServer(options: AppOptions = {}) {
         return;
       }
 
-      if (error instanceof TopicGuidanceGenerationError) {
-        sendApiError(response, 503, {
-          code: error.code,
-          message: error.message,
-        });
-        return;
-      }
-
       if (error instanceof NarrationDraftGenerationError) {
         sendApiError(response, 503, {
           code: error.code,
           message: error.message,
         });
-        return;
-      }
-
-      if (error instanceof OutlineGenerationError) {
-        sendApiError(response, 503, {
-          code: error.code,
-          message: error.message,
-        });
-        return;
-      }
-
-      if (error instanceof OutlineRevisionError) {
-        const conflictCodes = new Set([
-          'OUTLINE_SCOPE_STALE',
-          'OUTLINE_BASE_CHANGED',
-        ]);
-        const validationCodes = new Set([
-          'OUTLINE_PATCH_OUT_OF_SCOPE',
-          'OUTLINE_PATCH_INVALID',
-          'OUTLINE_PATCH_EMPTY',
-          'CODEX_OUTLINE_REVISION_INVALID_RESPONSE',
-          'CODEX_OUTLINE_COHERENCE_INVALID_RESPONSE',
-        ]);
-        sendApiError(
-          response,
-          conflictCodes.has(error.code)
-            ? 409
-            : validationCodes.has(error.code)
-              ? 422
-              : 503,
-          {code: error.code, message: error.message},
-        );
-        return;
-      }
-
-      if (error instanceof OutlineHistoryStoreError) {
-        const conflictCodes = new Set([
-          'OUTLINE_CANDIDATE_ID_REUSED',
-          'OUTLINE_CANDIDATE_ALREADY_DECIDED',
-          'OUTLINE_HISTORY_IMMUTABLE_CONFLICT',
-        ]);
-        sendApiError(
-          response,
-          error.code === 'OUTLINE_CANDIDATE_NOT_FOUND'
-            ? 404
-            : conflictCodes.has(error.code)
-              ? 409
-              : 422,
-          {code: error.code, message: error.message},
-        );
-        return;
-      }
-
-      if (error instanceof VoiceVisualGenerationError) {
-        sendApiError(response, 503, {
-          code: error.code,
-          message: error.message,
-        });
-        return;
-      }
-
-      if (error instanceof VoiceVisualRevisionError) {
-        const conflictCodes = new Set([
-          'VOICE_VISUAL_SCOPE_STALE',
-          'VOICE_VISUAL_BASE_CHANGED',
-        ]);
-        const validationCodes = new Set([
-          'VOICE_VISUAL_PATCH_OUT_OF_SCOPE',
-          'VOICE_VISUAL_PATCH_INVALID',
-          'VOICE_VISUAL_PATCH_EMPTY',
-          'CODEX_VOICE_VISUAL_REVISION_INVALID_RESPONSE',
-          'CODEX_VOICE_VISUAL_COHERENCE_INVALID_RESPONSE',
-        ]);
-        sendApiError(
-          response,
-          conflictCodes.has(error.code)
-            ? 409
-            : validationCodes.has(error.code)
-              ? 422
-              : 503,
-          {code: error.code, message: error.message},
-        );
-        return;
-      }
-
-      if (error instanceof VoiceVisualHistoryStoreError) {
-        const conflictCodes = new Set([
-          'VOICE_VISUAL_CANDIDATE_ID_REUSED',
-          'VOICE_VISUAL_CANDIDATE_ALREADY_DECIDED',
-          'VOICE_VISUAL_HISTORY_IMMUTABLE_CONFLICT',
-        ]);
-        sendApiError(
-          response,
-          error.code === 'VOICE_VISUAL_CANDIDATE_NOT_FOUND'
-            ? 404
-            : conflictCodes.has(error.code)
-              ? 409
-              : 422,
-          {code: error.code, message: error.message},
-        );
         return;
       }
 

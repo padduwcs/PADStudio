@@ -2,6 +2,7 @@ import type {TopicProject} from '../shared/topic.ts';
 import {
   finalRenderMatchesLayout,
   layoutMatchesAnimationSync,
+  nextWorkflowStep,
   sameValue,
   visualDesignMatchesMotion,
 } from '../shared/projectPipeline.ts';
@@ -19,7 +20,6 @@ import {
  */
 export type ProjectStateChange = {
   topicInput?: TopicProject['topicInput'];
-  currentStep?: TopicProject['currentStep'];
   outline?: NonNullable<TopicProject['outline']>;
   voiceVisualPlan?: NonNullable<TopicProject['voiceVisualPlan']>;
   motionCanvasBundle?: NonNullable<TopicProject['motionCanvasBundle']>;
@@ -39,8 +39,6 @@ export function projectChangeAlreadyApplied(
   return (
     (change.topicInput === undefined ||
       sameValue(change.topicInput, project.topicInput)) &&
-    (change.currentStep === undefined ||
-      change.currentStep === project.currentStep) &&
     (change.outline === undefined || sameValue(change.outline, project.outline)) &&
     (change.voiceVisualPlan === undefined ||
       sameValue(change.voiceVisualPlan, project.voiceVisualPlan)) &&
@@ -187,32 +185,12 @@ export function reconcileProjectState(
     change.renderBundle ??
     (renderSourceChanged ? null : currentProject.renderBundle);
   const renderChanged = !sameValue(nextRenderBundle, currentProject.renderBundle);
-  const nextCurrentStep =
-    change.currentStep ??
-    (topicChanged || narrationChanged || renderProfileChanged
-      ? 'topic'
-      : outlineChanged
-        ? 'outline'
-        : voiceVisualContentChanged
-          ? 'voiceVisual'
-          : motionCanvasChanged
-            ? 'motionCanvas'
-            : voiceChanged
-              ? 'voice'
-              : animationSyncChanged
-                ? 'sync'
-                : layoutChanged
-                  ? 'layout'
-                  : renderChanged
-                    ? 'render'
-                    : currentProject.currentStep);
-
-  return {
+  const reconciled = {
     ...currentProject,
       ...(change.topicInput ? {topicInput: change.topicInput} : {}),
       ...(change.narration !== undefined ? {narration: change.narration} : {}),
       ...(change.renderProfile ? {renderProfile: change.renderProfile} : {}),
-    currentStep: nextCurrentStep,
+    currentStep: currentProject.currentStep,
     outline: nextOutline,
     voiceVisualPlan: nextVoiceVisualPlan,
     motionCanvasBundle: nextMotionCanvasBundle,
@@ -223,5 +201,9 @@ export function reconcileProjectState(
     renderBundle: nextRenderBundle,
     revision: currentProject.revision + 1,
     updatedAt,
+  };
+  return {
+    ...reconciled,
+    currentStep: nextWorkflowStep(reconciled),
   };
 }

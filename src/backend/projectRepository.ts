@@ -283,7 +283,6 @@ export function createFileProjectRepository(
 
             const requestedState = {
               topicInput: request.topicInput,
-              currentStep: request.currentStep,
               narration: {
                 sourceText: narrationSourceText,
                 projectRules: [],
@@ -308,7 +307,7 @@ export function createFileProjectRepository(
           revision: 1,
           creationId: request.creationId,
           status: 'draft',
-          currentStep: request.currentStep,
+          currentStep: 'pronunciation',
           topicInput: request.topicInput,
           narration: {
             sourceText: narrationSourceText,

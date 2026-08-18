@@ -33,9 +33,8 @@ test('nháp v1 dùng chung chỉ được chuyển một lần vào tab đang m�
   const sharedLegacy = memoryStorage();
   sharedLegacy.setItem('pad-studio:topic-form:v1', '{"topic":"Heap"}');
 
-  assert.equal(readNewTopicDraft(session, sharedLegacy), '{"topic":"Heap"}');
-  assert.equal(sharedLegacy.getItem('pad-studio:topic-form:v1'), null);
-  assert.equal(readNewTopicDraft(session, sharedLegacy), '{"topic":"Heap"}');
+  assert.equal(readNewTopicDraft(session), null);
+  assert.equal(sharedLegacy.getItem('pad-studio:topic-form:v1'), '{"topic":"Heap"}');
 });
 
 test('mỗi form mới nhận creation ID riêng nhưng caller có thể giữ ID để retry', () => {
