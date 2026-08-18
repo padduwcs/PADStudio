@@ -10,7 +10,7 @@ import type {NarrationDocument} from '../shared/topic.ts';
 
 const sourceHash = createHash('sha256').update('review').digest('hex');
 
-test('narration artifacts preserve the reviewed words without authored planning', () => {
+test('semantic plan preserves reviewed words while adding meaningful visual blueprint', () => {
   const narration: NarrationDocument = {
     sourceText: 'Bản gốc.',
     projectRules: [],
@@ -48,6 +48,12 @@ test('narration artifacts preserve the reviewed words without authored planning'
     narration.review!.normalizedText,
   );
   assert.equal(narrationPlanMatchesReviewedNarration(narration, voiceVisualPlan), true);
+  assert.ok(outline.sections.every(section => !/^Đoạn\s+\d+$/u.test(section.title)));
+  assert.ok(outline.sections.every(section => !section.goal.includes('đúng nội dung')));
+  assert.ok(voiceVisualPlan.visualBible?.visualAnchor.includes('Độ phức tạp'));
+  assert.ok(voiceVisualPlan.sections.every(section => section.beats.every(beat =>
+    Boolean(beat.visualPurpose && beat.visualDescription && beat.animationDescription),
+  )));
   assert.equal(narrationArtifactsMatchReview({
     outline,
     voiceVisualPlan,

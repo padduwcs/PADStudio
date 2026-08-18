@@ -7,6 +7,7 @@ import {
 } from '../shared/projectPipeline.ts';
 import {
   type FinalRenderBundle,
+  type MotionCanvasBundle,
   type VoiceBundle
 } from '../shared/topic.ts';
 import {
@@ -237,6 +238,7 @@ export function createAppContext(options: AppOptions = {}) {
   const motionCanvasGenerations = createInMemoryGenerationRegistry<{
     generated: MotionCanvasGenerationResult;
     prepared: PreparedMotionCanvasWorkspace;
+    generationDiagnostics: NonNullable<MotionCanvasBundle['generationDiagnostics']>;
   }>();
   const motionCanvasCandidateGenerations = createInMemoryGenerationRegistry<{
     generated: MotionCanvasGenerationResult;

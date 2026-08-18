@@ -19,6 +19,7 @@ import {
 import type {AnimationSyncBundle} from '../shared/topic.ts';
 import {
   LayoutPreviewError,
+  assertLayoutManifestHasEditableNodes,
   createLayoutPreviewService,
   layoutPreviewSlotKey,
 } from './layoutPreviewService.ts';
@@ -326,6 +327,22 @@ declare type Callback = (...args: any[]) => void;
     overrides,
   };
 }
+
+test('Layout runtime từ chối manifest không có node chỉnh sửa được', async context => {
+  const fixture = await createFixture();
+  context.after(() => rm(fixture.projectsDirectory, {recursive: true, force: true}));
+  const emptyManifest: LayoutEditorManifest = {
+    ...fixture.manifest,
+    scenes: fixture.manifest.scenes.map(scene => ({...scene, nodes: []})),
+  };
+
+  assert.throws(
+    () => assertLayoutManifestHasEditableNodes(emptyManifest),
+    (error: unknown) =>
+      error instanceof LayoutPreviewError &&
+      error.code === 'LAYOUT_PREVIEW_NO_EDITABLE_NODES',
+  );
+});
 
 function layoutBundle(
   generationId: string,

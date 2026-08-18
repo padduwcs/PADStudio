@@ -364,6 +364,7 @@ function generationPayload(
       centralMessage: request.outline.centralMessage,
       voiceDirection: request.voiceVisualPlan.voiceDirection,
       visualDirection: request.voiceVisualPlan.visualDirection,
+      visualBible: request.voiceVisualPlan.visualBible,
       flow: request.outline.sections.map((section) => ({
         title: section.title,
         goal: section.goal,
@@ -385,10 +386,12 @@ function generationPayload(
           endEvent: `beat:${beat.id}:end`,
         },
         voiceover: beat.voiceover,
+        visualPurpose: beat.visualPurpose,
         visualDescription: beat.visualDescription,
         animationDescription: beat.animationDescription,
         durationSeconds: beat.durationSeconds,
       })),
+      stateHandoff: voiceVisualSection.stateHandoff,
     },
     canvas: {
       width: frame.width,
@@ -414,6 +417,7 @@ function buildPrompt(
   sectionIndex: number,
 ) {
   return [
+    'Structural attachment invariant: inside the default makeScene2D generator, call view.add(<SceneTree />) exactly once as a direct statement. Its argument must be the actual JSX scene tree, with exactly one key="scene-background" containing key="scene-content-root". Never yield or yield* JSX, view.add, or node.add, and never leave a JSX tree unattached.',
     'Sinh đúng một scene Motion Canvas TypeScript/TSX cho section trong JSON sau.',
     'Trả object gồm name và source. Source phải export default makeScene2D(function* (view) {...}).',
     'Chỉ import từ @motion-canvas/2d hoặc @motion-canvas/core; không dùng package, asset, mạng, filesystem hay API trình duyệt khác.',
@@ -456,6 +460,7 @@ function buildRepairPrompt(
   compilerDiagnostics: string,
 ) {
   return [
+    'Structural attachment invariant: preserve or restore exactly one direct view.add(<SceneTree />) statement inside the default makeScene2D generator. The attached JSX tree must contain exactly one key="scene-background" with key="scene-content-root" nested inside it. Never yield or yield* JSX, view.add, or node.add, and do not leave JSX unattached.',
     'Sửa scene Motion Canvas sau để TypeScript biên dịch thành công.',
     'Giữ nguyên ý nghĩa visual, thứ tự beat và tổng timing. Chỉ thay đổi những phần cần để sửa lỗi và làm API đúng.',
     'Trả object gồm name và source; source là mã thuần, không dùng Markdown fence.',
@@ -489,6 +494,7 @@ function buildRegenerationPrompt(
 ) {
   return [
     buildPrompt(request, sectionIndex),
+    'Re-check the structural attachment invariant: the only scene tree must be passed directly to view.add(<SceneTree />), never yielded or left unattached.',
     'Lượt trước không vượt qua validation. Hãy sinh lại toàn bộ source từ đầu, không sao chép hoặc chắp vá source lỗi.',
     `Diagnostics cần tránh trong bản mới:\n${diagnostics}`,
   ].join('\n');
@@ -1004,10 +1010,7 @@ export function validateMotionCanvasTimingContract(
   }
 }
 
-export function validateMotionCanvasBackground(
-  source: string,
-  requiredColor: string,
-) {
+function attachedSceneTreeNodes(source: string) {
   const sourceFile = ts.createSourceFile(
     'generated-scene.tsx',
     source,
@@ -1015,6 +1018,105 @@ export function validateMotionCanvasBackground(
     true,
     ts.ScriptKind.TSX,
   );
+  const sceneExports = sourceFile.statements.filter(
+    (statement): statement is ts.ExportAssignment =>
+      ts.isExportAssignment(statement) && !statement.isExportEquals,
+  );
+  const sceneFactory = sceneExports[0]?.expression;
+  const sceneFactoryArgument =
+    sceneFactory && ts.isCallExpression(sceneFactory)
+      ? sceneFactory.arguments[0]
+      : undefined;
+  if (
+    sceneExports.length !== 1 ||
+    !sceneFactory ||
+    !ts.isCallExpression(sceneFactory) ||
+    !ts.isIdentifier(sceneFactory.expression) ||
+    sceneFactory.expression.text !== 'makeScene2D' ||
+    sceneFactory.arguments.length !== 1 ||
+    !sceneFactoryArgument ||
+    !ts.isFunctionExpression(sceneFactoryArgument)
+  ) {
+    throw new MotionCanvasGenerationError(
+      'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+      'Scene must export exactly one default makeScene2D(function* (view) {...}) generator.',
+    );
+  }
+
+  const generator = sceneFactoryArgument;
+  const viewParameter = generator.parameters[0]?.name;
+  if (
+    !generator.asteriskToken ||
+    generator.parameters.length !== 1 ||
+    !viewParameter ||
+    !ts.isIdentifier(viewParameter)
+  ) {
+    throw new MotionCanvasGenerationError(
+      'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+      'The default Motion Canvas scene must be a function* with exactly one view parameter.',
+    );
+  }
+
+  const viewName = viewParameter.text;
+  const viewAddCalls: ts.CallExpression[] = [];
+  function collectViewAddCalls(node: ts.Node) {
+    if (node !== generator && ts.isFunctionLike(node)) return;
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === viewName &&
+      node.expression.name.text === 'add'
+    ) {
+      viewAddCalls.push(node);
+    }
+    ts.forEachChild(node, collectViewAddCalls);
+  }
+  collectViewAddCalls(generator.body);
+
+  const viewAdd = viewAddCalls[0];
+  if (
+    viewAddCalls.length !== 1 ||
+    !viewAdd ||
+    !ts.isExpressionStatement(viewAdd.parent) ||
+    viewAdd.parent.expression !== viewAdd ||
+    viewAdd.parent.parent !== generator.body
+  ) {
+    throw new MotionCanvasGenerationError(
+      'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+      'The scene generator must contain exactly one direct view.add(<SceneTree />) statement.',
+    );
+  }
+  const sceneTree = viewAdd?.arguments[0];
+  if (
+    viewAdd.arguments.length !== 1 ||
+    !sceneTree ||
+    !ts.isJsxElement(sceneTree)
+  ) {
+    throw new MotionCanvasGenerationError(
+      'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+      'view.add must receive exactly one statically visible JSX scene tree.',
+    );
+  }
+
+  const attachedNodes = new Set<
+    ts.JsxOpeningElement | ts.JsxSelfClosingElement
+  >();
+  function collectAttachedNodes(node: ts.Node) {
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      attachedNodes.add(node);
+    }
+    ts.forEachChild(node, collectAttachedNodes);
+  }
+  collectAttachedNodes(sceneTree);
+  return {sourceFile, attachedNodes};
+}
+
+export function validateMotionCanvasBackground(
+  source: string,
+  requiredColor: string,
+) {
+  const {sourceFile, attachedNodes} = attachedSceneTreeNodes(source);
   const backgroundColors: string[] = [];
 
   function staticAttribute(
@@ -1046,8 +1148,8 @@ export function validateMotionCanvasBackground(
 
   function visit(node: ts.Node) {
     if (
-      ts.isJsxOpeningElement(node) ||
-      ts.isJsxSelfClosingElement(node)
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      attachedNodes.has(node)
     ) {
       if (staticAttribute(node, 'key') === 'scene-background') {
         const color = staticAttribute(node, 'fill');
@@ -1060,6 +1162,7 @@ export function validateMotionCanvasBackground(
 
   const backgroundColor = backgroundColors.at(-1);
   if (
+    backgroundColors.length !== 1 ||
     backgroundColor?.toLocaleLowerCase('en-US') !==
     requiredColor.toLocaleLowerCase('en-US')
   ) {
@@ -1071,13 +1174,7 @@ export function validateMotionCanvasBackground(
 }
 
 export function validateMotionCanvasContainerContract(source: string) {
-  const sourceFile = ts.createSourceFile(
-    'generated-scene.tsx',
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX,
-  );
+  const {sourceFile, attachedNodes} = attachedSceneTreeNodes(source);
   const nodes: Array<{key: string; parentKey: string | null}> = [];
 
   function staticKey(
@@ -1123,8 +1220,8 @@ export function validateMotionCanvasContainerContract(source: string) {
 
   function visit(node: ts.Node) {
     if (
-      ts.isJsxOpeningElement(node) ||
-      ts.isJsxSelfClosingElement(node)
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      attachedNodes.has(node)
     ) {
       const key = staticKey(node);
       if (key) nodes.push({key, parentKey: parentKey(node)});
@@ -1135,6 +1232,9 @@ export function validateMotionCanvasContainerContract(source: string) {
 
   const contentRoots = nodes.filter(
     node => node.key === 'scene-content-root',
+  );
+  const backgrounds = nodes.filter(
+    node => node.key === 'scene-background',
   );
   const blockKeys = new Set(
     nodes
@@ -1178,6 +1278,7 @@ export function validateMotionCanvasContainerContract(source: string) {
   );
 
   if (
+    backgrounds.length !== 1 ||
     contentRoots.length !== 1 ||
     contentRoots[0]!.parentKey !== 'scene-background' ||
     blockKeys.size === 0 ||
@@ -1452,10 +1553,9 @@ export function createCodexMotionCanvasGenerator(
     1,
     Math.min(4, Math.floor(options.concurrency ?? 2)),
   );
-  const qualityRetryLimit = Math.max(
-    0,
-    Math.min(8, Math.floor(options.qualityRetryLimit ?? 4)),
-  );
+  // Structural richness is telemetry only. It is not actionable evidence that
+  // a semantic blueprint failed, so it must never spend an extra AI turn.
+  const qualityRetryLimit = 0;
   const sceneGenerations = new Map<
     string,
     {
@@ -1612,22 +1712,48 @@ export function createCodexMotionCanvasGenerator(
     };
   }
 
+  function validateSceneSourceContracts(
+    request: MotionCanvasGenerationRequest,
+    sectionIndex: number,
+    source: string,
+  ) {
+    validateMotionCanvasSceneSource(source);
+    validateMotionCanvasBackground(
+      source,
+      request.topicInput.background.color,
+    );
+    validateMotionCanvasContainerContract(source);
+    validateMotionCanvasTimingContract(
+      source,
+      request.voiceVisualPlan.sections[sectionIndex]!.beats,
+    );
+  }
+
   function validateSceneResult(
     request: MotionCanvasGenerationRequest,
     sectionIndex: number,
     result: GeneratedSceneResult,
   ) {
-    validateMotionCanvasSceneSource(result.scene.source);
-    validateMotionCanvasBackground(
-      result.scene.source,
-      request.topicInput.background.color,
-    );
-    validateMotionCanvasContainerContract(result.scene.source);
-    validateMotionCanvasTimingContract(
-      result.scene.source,
-      request.voiceVisualPlan.sections[sectionIndex]!.beats,
-    );
+    validateSceneSourceContracts(request, sectionIndex, result.scene.source);
     return result;
+  }
+
+  function validateAcceptedScenes(
+    request: MotionCanvasGenerationRequest,
+    scenes: MotionCanvasSourceScene[],
+  ) {
+    for (const scene of scenes) {
+      const sectionIndex = request.outline.sections.findIndex(
+        section => section.id === scene.outlineSectionId,
+      );
+      if (sectionIndex < 0) {
+        throw new MotionCanvasGenerationError(
+          'CODEX_MOTION_CANVAS_INVALID_REQUEST',
+          'Accepted scene no longer matches the teaching outline.',
+        );
+      }
+      validateSceneSourceContracts(request, sectionIndex, scene.source);
+    }
   }
 
   function isRecoverableSceneOutputError(error: unknown) {
@@ -1939,14 +2065,10 @@ export function createCodexMotionCanvasGenerator(
         };
         repairs.push(candidate);
         try {
-          validateMotionCanvasSceneSource(candidate.scene.source);
-          validateMotionCanvasBackground(
+          validateSceneSourceContracts(
+            request,
+            sectionIndex,
             candidate.scene.source,
-            request.topicInput.background.color,
-          );
-          validateMotionCanvasTimingContract(
-            candidate.scene.source,
-            request.voiceVisualPlan.sections[sectionIndex]!.beats,
           );
           const result: GeneratedSceneResult = {
             ...candidate,
@@ -2216,6 +2338,7 @@ export function createCodexMotionCanvasGenerator(
           repairedScenes[sectionIndex] = repair.scene;
         }
       }
+      validateAcceptedScenes(request, repairedScenes);
       const models = [
         ...new Set([
           generated.model,
@@ -2250,17 +2373,10 @@ export function createCodexMotionCanvasGenerator(
           name: `${scene.name} · safe fallback`.slice(0, 120),
           source: fallbackSceneSource(request, sectionIndex),
         };
-        validateMotionCanvasSceneSource(fallback.source);
-        validateMotionCanvasBackground(
-          fallback.source,
-          request.topicInput.background.color,
-        );
-        validateMotionCanvasTimingContract(
-          fallback.source,
-          request.voiceVisualPlan.sections[sectionIndex]!.beats,
-        );
+        validateSceneSourceContracts(request, sectionIndex, fallback.source);
         return fallback;
       });
+      validateAcceptedScenes(request, fallbackScenes);
       return {
         scenes: fallbackScenes,
         model: `${generated.model}, local-safe-fallback`.slice(0, 160),

@@ -319,7 +319,12 @@ function validateManifestEnvelope(
       {cause: parsed.success ? undefined : parsed.error},
     );
   }
-  return normalizeManifest(parsed.data, entry.manifestSeed);
+  const normalized = normalizeManifest(parsed.data, entry.manifestSeed);
+  // This is the first point where the runtime has supplied its complete,
+  // source-bound node discovery result. Do not let an empty editor proceed to
+  // an apparently editable scene.
+  assertLayoutManifestHasEditableNodes(normalized);
+  return normalized;
 }
 
 function normalizeManifest(
@@ -367,6 +372,24 @@ function normalizeManifest(
       };
     }),
   };
+}
+
+export function assertLayoutManifestHasEditableNodes(
+  manifest: LayoutEditorManifest,
+) {
+  const emptyScenes = manifest.scenes.filter(scene =>
+    !scene.nodes.some(node =>
+      node.editableProperties.some(
+        property => !node.lockedProperties.includes(property),
+      ),
+    ),
+  );
+  if (emptyScenes.length > 0) {
+    throw new LayoutPreviewError(
+      'LAYOUT_PREVIEW_NO_EDITABLE_NODES',
+      `Layout runtime không tìm thấy node có thể chỉnh ở scene: ${emptyScenes.map(scene => scene.filePath).join(', ')}. Hãy sinh lại scene hoặc sửa runtime manifest trước khi tiếp tục.`,
+    );
+  }
 }
 
 function isTextCapabilityUpgrade(

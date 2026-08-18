@@ -68,6 +68,7 @@ export function voiceVisualContent(plan: VoiceVisualPlan) {
   return {
     voiceDirection: plan.voiceDirection,
     visualDirection: plan.visualDirection,
+    visualBible: plan.visualBible,
     timingCalibration: plan.timingCalibration,
     sections: plan.sections,
   };

@@ -85,6 +85,28 @@ test('schema final render dùng cùng dung sai cho kết quả ffprobe', () => {
       videoHash: 'c'.repeat(64),
       renderedFrameCount: 6_153,
       probedDurationSeconds: 205.1,
+      visual: {
+        backgroundColor: '#10231D',
+        sampleCount: 1,
+        scenes: [{
+          sceneId: '30000000-0000-4000-8000-000000000003',
+          sampleFrames: [12],
+          viableSampleCount: 1,
+          samples: [{
+            frame: 12,
+            timeSeconds: 0.4,
+            sceneId: '30000000-0000-4000-8000-000000000003',
+            backgroundColor: '#10231D',
+            totalPixels: 2_073_600,
+            opaquePixels: 2_073_600,
+            backgroundPixels: 2_061_600,
+            contentPixels: 12_000,
+            contentRatio: 0.01,
+            dominantColorRatio: 0.8,
+            verdict: 'viable',
+          }],
+        }],
+      },
     },
     generation: {
       generationId: '20000000-0000-4000-8000-000000000002',
@@ -94,7 +116,9 @@ test('schema final render dùng cùng dung sai cho kết quả ffprobe', () => {
     },
   };
 
-  assert.equal(FinalRenderBundleSchema.safeParse(bundle).success, true);
+  const parsed = FinalRenderBundleSchema.safeParse(bundle);
+  assert.equal(parsed.success, true);
+  if (parsed.success) assert.equal(parsed.data.validation.visual?.sampleCount, 1);
   const legacyBundle = {
     ...bundle,
     playbackRate: 1.25,

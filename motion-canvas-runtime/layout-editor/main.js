@@ -1548,7 +1548,10 @@ async function startEditor(project) {
         }),
       });
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        const failure = await response.json().catch(() => null);
+        throw new Error(
+          failure?.error?.message || `HTTP ${response.status}`,
+        );
       }
       protocol.post('manifest', {
         status: 'stored',

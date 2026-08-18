@@ -74,6 +74,39 @@ export const FinalRenderDiagnosticLogSchema = z
   })
   .strict();
 
+export const FinalRenderVisualSampleSchema = z
+  .object({
+    frame: z.number().int().nonnegative(),
+    timeSeconds: z.number().nonnegative().finite(),
+    sceneId: z.string().uuid(),
+    backgroundColor: z.string().regex(/^#[0-9A-F]{6}$/).nullable(),
+    totalPixels: z.number().int().positive(),
+    opaquePixels: z.number().int().nonnegative(),
+    backgroundPixels: z.number().int().nonnegative(),
+    contentPixels: z.number().int().nonnegative(),
+    contentRatio: z.number().min(0).max(1),
+    dominantColorRatio: z.number().min(0).max(1),
+    verdict: z.enum(['viable', 'transparent', 'uniform', 'insufficient-content']),
+  })
+  .strict();
+
+export const FinalRenderVisualValidationSchema = z
+  .object({
+    backgroundColor: z.string().regex(/^#[0-9A-F]{6}$/).nullable(),
+    sampleCount: z.number().int().nonnegative().max(200),
+    scenes: z.array(z.object({
+      sceneId: z.string().uuid(),
+      sampleFrames: z.array(z.number().int().nonnegative()).min(1).max(3),
+      viableSampleCount: z.number().int().nonnegative().max(3),
+      samples: z.array(FinalRenderVisualSampleSchema).max(3),
+    }).strict()).min(1).max(100),
+  })
+  .strict();
+
+export type FinalRenderVisualValidation = z.infer<
+  typeof FinalRenderVisualValidationSchema
+>;
+
 export const FinalRenderDiagnosticSchema = z
   .object({
     stage: z.enum(finalRenderDiagnosticStageValues),
@@ -82,6 +115,7 @@ export const FinalRenderDiagnosticSchema = z
     sceneName: z.string().trim().min(1).max(200).nullable(),
     timeSeconds: z.number().nonnegative().finite().nullable(),
     logs: z.array(FinalRenderDiagnosticLogSchema).max(8),
+    visual: FinalRenderVisualValidationSchema.nullable().optional(),
   })
   .strict();
 
@@ -133,6 +167,7 @@ const FinalRenderBundleValueSchema = z
         videoHash: Sha256Schema,
         renderedFrameCount: z.number().int().positive(),
         probedDurationSeconds: z.number().positive(),
+        visual: FinalRenderVisualValidationSchema.optional(),
       })
       .strict(),
     generation: z

@@ -337,19 +337,30 @@ test('Motion Canvas tự sinh lại scene tụt richness và chỉ nhận bản 
     concurrency: 1,
   });
   const request = createGenerationRequest();
+  request.voiceVisualPlan.visualBible = {
+    palette: {background: '#10231D', surface: '#173B31', primary: '#51B68E', accent: '#F5C451', text: '#F7FBF8'},
+    typographyScale: {title: 88, label: 42, body: 34},
+    shapeLanguage: 'Rounded cards around a shared anchor.',
+    diagramLanguage: 'A visible relationship diagram for each beat.',
+    motionTempo: 'One purposeful change per beat.',
+    transitionConvention: 'Keep the anchor at each boundary.',
+    visualAnchor: 'The shared search-range anchor.',
+  };
+  request.voiceVisualPlan.sections.forEach(section => {
+    section.stateHandoff = {incoming: 'Keep the anchor.', outgoing: 'Pass the anchor forward.'};
+    section.beats.forEach(beat => { beat.visualPurpose = 'Show the currently relevant search range.'; });
+  });
   const generated = await generator.generate(request);
 
   assert.equal(
     client.calls.filter((call) => call.method === 'turn/start').length,
-    3,
+    2,
   );
-  assert.ok(
-    assessMotionCanvasSceneQuality(generated.scenes[1]!.source, 1)
-      .richnessPerBeat >
-      assessMotionCanvasSceneQuality(timedSceneSource([
-        request.voiceVisualPlan.sections[1]!.beats[0]!.id,
-      ]), 1).richnessPerBeat,
-  );
+  assert.equal(generated.scenes.length, 2);
+  const firstPrompt = JSON.stringify(client.calls.find(call => call.method === 'turn/start')?.params);
+  assert.match(firstPrompt, /visualBible/);
+  assert.match(firstPrompt, /visualPurpose/);
+  assert.match(firstPrompt, /stateHandoff/);
 });
 
 class FakeCodexClient implements CodexAppServerClient {
@@ -596,6 +607,90 @@ test('Motion Canvas cache cô lập scene cùng generation ID giữa các projec
   assert.equal(
     client.calls.filter((call) => call.method === 'turn/start').length,
     first.outline.sections.length * 2,
+  );
+});
+
+test('Motion Canvas structural attachment contract rejects yielded or detached JSX trees', () => {
+  const beatId = randomUUID();
+  const yieldedTree = richTimedSceneSource([beatId])
+    .replace('  view.add(\n', '  yield (\n')
+    .replace(
+      '    <Rect key="scene-background"',
+      '    <Layout key="scene-background"',
+    )
+    .replace('    </Rect>,\n  );', '    </Layout>\n  );');
+  const detachedTree = timedSceneSource([beatId])
+    .replace('  view.add(\n', '  const sceneTree = (\n')
+    .replace('    </Rect>,\n  );', '    </Rect>\n  );');
+
+  for (const source of [yieldedTree, detachedTree]) {
+    assert.doesNotThrow(() => validateMotionCanvasSceneSource(source));
+    assert.throws(
+      () => validateMotionCanvasContainerContract(source),
+      (error: unknown) =>
+        error instanceof MotionCanvasGenerationError &&
+        error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE' &&
+        /view\.add/u.test(error.message),
+    );
+  }
+});
+
+test('Motion Canvas structural attachment contract rejects content root sibling of background', () => {
+  const beatId = randomUUID();
+  const siblingTree = timedSceneSource([beatId])
+    .replace(
+      '    <Rect key="scene-background"',
+      '    <Layout key="block-scene-shell">\n      <Rect key="scene-background"',
+    )
+    .replace(
+      '      <Layout key="scene-content-root">',
+      '      </Rect>\n      <Layout key="scene-content-root">',
+    )
+    .replace('    </Rect>,\n  );', '    </Layout>,\n  );');
+
+  assert.doesNotThrow(() => validateMotionCanvasSceneSource(siblingTree));
+  assert.throws(
+    () => validateMotionCanvasContainerContract(siblingTree),
+    (error: unknown) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+  );
+});
+
+test('Motion Canvas public repair applies the container contract', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-repair-container-contract-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const client = new FakeCodexClient(
+    false,
+    undefined,
+    false,
+    (turnNumber, beatIds) =>
+      turnNumber === 2
+        ? timedSceneSource(beatIds).replace(
+            'key="scene-content-root"',
+            'key="detached-content-root"',
+          )
+        : timedSceneSource(beatIds),
+  );
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+  });
+  const request = createSingleSceneGenerationRequest();
+  const generated = await generator.generate(request);
+  if (!generator.repair) throw new Error('Expected public repair support.');
+
+  await assert.rejects(
+    generator.repair(
+      request,
+      generated,
+      `${generated.scenes[0]!.filePath}(12,3): error TS9999`,
+    ),
+    (error: unknown) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
   );
 });
 
@@ -867,6 +962,8 @@ test('Motion Canvas generator hoàn tất bằng fallback an toàn khi cả lư�
   assert.match(result.scenes[0]!.source, /width=\{480\} height=\{480\}/u);
   assert.doesNotMatch(result.scenes[0]!.source, /1080|1920/u);
   validateMotionCanvasSceneSource(result.scenes[0]!.source);
+  validateMotionCanvasBackground(result.scenes[0]!.source, '#10231D');
+  validateMotionCanvasContainerContract(result.scenes[0]!.source);
   validateMotionCanvasTimingContract(
     result.scenes[0]!.source,
     request.voiceVisualPlan.sections[0]!.beats,

@@ -48,6 +48,11 @@ import {
   createWatermarkAssetStore,
   type WatermarkAssetStore,
 } from './watermarkAssetStore.ts';
+import {
+  createVisualViabilitySampler,
+  parseHexColor,
+  type VisualViabilityValidation,
+} from './visualViability.ts';
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_FPS = 30;
@@ -206,6 +211,7 @@ interface RenderBridge {
     ReturnType<LayoutWorkspace['readEditorManifest']>
   >;
   watermark: RenderWatermark;
+  backgroundColor: string | null;
   watermarkImage: {
     value: Buffer;
     contentType: 'image/png' | 'image/jpeg' | 'image/webp';
@@ -232,6 +238,7 @@ export interface FinalRenderService {
     syncBundle: AnimationSyncBundle,
     layoutBundle: LayoutBundle,
     renderProfile?: RenderProfile,
+    configuredBackgroundColor?: string,
   ): Promise<FinalRenderBundle>;
   getStatus(
     projectId: string,
@@ -496,6 +503,47 @@ function backendRenderDiagnostic(
       },
     ],
   });
+}
+
+function visualValidationDiagnostic(
+  visual: VisualViabilityValidation,
+): FinalRenderDiagnostic {
+  const failedScene = visual.scenes.find(scene => scene.viableSampleCount === 0);
+  const failedSample = failedScene?.samples[0] ?? null;
+  const timestamp = failedSample?.timeSeconds ?? null;
+  return FinalRenderDiagnosticSchema.parse({
+    stage: 'finalizing',
+    frame: failedSample?.frame ?? null,
+    sceneFrame: null,
+    sceneName: failedScene?.sceneId ?? null,
+    timeSeconds: timestamp,
+    logs: [{
+      level: 'error',
+      message: failedScene
+        ? `Scene ${failedScene.sceneId} không có sample pixel đủ nội dung.`
+        : 'Không thể xác minh pixel của final render.',
+      remarks: failedSample
+        ? `frame=${failedSample.frame}; opaque=${failedSample.opaquePixels}/${failedSample.totalPixels}; background=${failedSample.backgroundPixels}; content=${failedSample.contentPixels}; verdict=${failedSample.verdict}`
+        : 'Không có sample pixel runtime.',
+      stack: null,
+    }],
+    visual,
+  });
+}
+
+export function assertFinalRenderVisualViability(
+  visual: VisualViabilityValidation,
+) {
+  if (
+    visual.sampleCount === 0 ||
+    visual.scenes.some(scene => scene.viableSampleCount === 0)
+  ) {
+    throw new FinalRenderError(
+      'FINAL_RENDER_VISUAL_VALIDATION_FAILED',
+      'Video cuối không có nội dung pixel đủ rõ ở toàn bộ scene đã lấy mẫu.',
+      {diagnostic: visualValidationDiagnostic(visual)},
+    );
+  }
 }
 
 function diagnosticStageForErrorCode(
@@ -1108,6 +1156,7 @@ export function createFinalRenderService(
     syncBundle: AnimationSyncBundle,
     layoutBundle: LayoutBundle,
     renderProfile: RenderProfile,
+    configuredBackgroundColor?: string,
   ) {
     const frame = renderProfile.frame;
     const encoding = encodingForQuality(renderProfile.quality);
@@ -1155,6 +1204,9 @@ export function createFinalRenderService(
     const outputPaddingSeconds =
       sourceTimingToleranceSeconds + 2 / frame.fps;
     const watermark = layoutBundle.renderSettings.watermark;
+    const backgroundColor = parseHexColor(configuredBackgroundColor)
+      ? configuredBackgroundColor!.toUpperCase()
+      : null;
     const watermarkImage =
       watermark.type === 'image'
         ? await watermarkAssets.read(
@@ -1174,6 +1226,7 @@ export function createFinalRenderService(
           sourceWorkspaceHash: verified.sourceWorkspaceHash,
           durationSeconds: layoutBundle.totalDurationSeconds,
           watermark,
+          backgroundColor,
           width: frame.width,
           height: frame.height,
           fps: frame.fps,
@@ -1284,12 +1337,36 @@ export function createFinalRenderService(
     const ffmpegErrors: string[] = [];
     const browserErrors: string[] = [];
     let framesReceived = 0;
+    const visualSampler = createVisualViabilitySampler({
+      sections: syncBundle.sections.map(section => ({
+        sceneId: section.sceneId,
+        durationSeconds: section.synchronizedDurationSeconds,
+      })),
+      fps: frame.fps,
+      backgroundColor,
+    });
     const orderedFrameWriter = createOrderedFrameWriter(
-      async (_frame, body: Buffer) => {
+      async (renderedFrame, body: Buffer) => {
         if (!ffmpeg?.stdin || ffmpeg.stdin.destroyed) {
           throw new FinalRenderError(
             'FINAL_RENDER_ENCODER_STOPPED',
             'FFmpeg đã dừng trước khi nhận đủ frame.',
+          );
+        }
+        try {
+          visualSampler.inspect(renderedFrame, body);
+        } catch (error) {
+          throw new FinalRenderError(
+            'FINAL_RENDER_VISUAL_VALIDATION_FAILED',
+            'Không thể phân tích pixel của frame Motion Canvas.',
+            {
+              cause: error,
+              diagnostic: backendRenderDiagnostic(
+                'motion-canvas',
+                error instanceof Error ? error.message : 'Frame pixel không hợp lệ.',
+                {frame: renderedFrame, timeSeconds: renderedFrame / frame.fps},
+              ),
+            },
           );
         }
         if (!ffmpeg.stdin.write(body)) {
@@ -1423,6 +1500,7 @@ export function createFinalRenderService(
         overrides: verified.overrides,
         editorManifest: verified.editorManifest,
         watermark,
+        backgroundColor,
         watermarkImage,
         async writeFrame(frame, body) {
           if (frame >= estimatedTotalFrames) {
@@ -1646,6 +1724,8 @@ export function createFinalRenderService(
           `Motion Canvas xuất ${framesReceived} frame (${renderedFrameTiming.encodedDurationSeconds.toFixed(3)} giây), lệch ${Math.abs(renderedFrameTiming.differenceSeconds).toFixed(3)} giây so với Layout ${layoutBundle.totalDurationSeconds.toFixed(3)} giây và vượt dung sai ${renderedFrameTiming.toleranceSeconds.toFixed(3)} giây.`,
         );
       }
+      const visualValidation = visualSampler.result();
+      assertFinalRenderVisualViability(visualValidation);
       updateStatus(projectId, generationId, {
         state: 'finalizing',
         progress: 0.95,
@@ -1697,6 +1777,7 @@ export function createFinalRenderService(
           videoHash: await fileSha256(outputVideo),
           renderedFrameCount: framesReceived,
           probedDurationSeconds: probe.durationSeconds,
+          visual: visualValidation,
         },
         generation: {
           generationId,
@@ -1785,6 +1866,7 @@ export function createFinalRenderService(
       syncBundle,
       layoutBundle,
       renderProfile = defaultRenderProfile,
+      configuredBackgroundColor,
     ) {
       assertProjectId(projectId);
       assertGenerationId(generationId);
@@ -1822,6 +1904,7 @@ export function createFinalRenderService(
             syncBundle,
             layoutBundle,
             renderProfile,
+            configuredBackgroundColor,
           ),
         )
         .then(async bundle => {

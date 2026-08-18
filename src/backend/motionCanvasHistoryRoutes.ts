@@ -13,6 +13,7 @@ import {
   sameValue
 } from '../shared/projectPipeline.ts';
 import {
+  MotionCanvasBundleSchema,
   type MotionCanvasBundle
 } from '../shared/topic.ts';
 import {
@@ -464,8 +465,10 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
                   outlineSectionId: scene.outlineSectionId,
                   name: scene.name,
                   changed,
-                  sourceExcerpt:
-                    changed ? scene.source.slice(0, 24_000) : '',
+                  // Reviewer receives real sources for the changed scene and
+                  // its adjacent boundary scenes; it must not infer coherence
+                  // from an empty excerpt or node density.
+                  sourceExcerpt: scene.source.slice(0, 24_000),
                 };
               }),
               model: parsed.data.model,
@@ -504,6 +507,8 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
       const prepared = generation.result.prepared;
       const candidateBundle: MotionCanvasBundle = {
         status: 'draft',
+        technicalReadyAt: new Date().toISOString(),
+        generationDiagnostics: [{stage: 'generate', attempt: 0, reason: 'Candidate passed source attachment/container/timing policy and workspace/compiler preparation.', outcome: 'passed'}],
         contentRevision: bundle.contentRevision + 1,
         sourceVoiceVisualContentRevision: voiceVisualPlan.contentRevision,
         workspacePath: prepared.workspacePath,
@@ -554,7 +559,11 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
           parentCandidate?.rootBaseContextHash ?? currentContextHash,
         baseContextHash,
         baseProjectRevision: currentProject.revision,
-        candidateContentHash: hashMotionCanvasBundle(candidateBundle),
+        // Hash the persisted schema-normalized artifact, not the pre-parse
+        // object, so optional legacy fields cannot invalidate its own record.
+        candidateContentHash: hashMotionCanvasBundle(
+          MotionCanvasBundleSchema.parse(candidateBundle),
+        ),
         requestFingerprint,
         guidance: parsed.data.guidance,
         scope: parsed.data.scope,

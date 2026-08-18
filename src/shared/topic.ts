@@ -379,6 +379,12 @@ export const VoiceVisualBeatSchema = z
       .string()
       .trim()
       .min(12, 'Mô tả visual của beat cần rõ hơn.'),
+    visualPurpose: z
+      .string()
+      .trim()
+      .min(12, 'Visual purpose must be specific.')
+      .max(500)
+      .optional(),
     animationDescription: z
       .string()
       .trim()
@@ -411,6 +417,13 @@ export type VoiceVisualBeat = z.infer<typeof VoiceVisualBeatSchema>;
 export const VoiceVisualSectionSchema = z
   .object({
     outlineSectionId: z.string().uuid(),
+    stateHandoff: z
+      .object({
+        incoming: z.string().trim().min(3).max(500).nullable(),
+        outgoing: z.string().trim().min(3).max(500).nullable(),
+      })
+      .strict()
+      .optional(),
     beats: z
       .array(VoiceVisualBeatSchema)
       .min(
@@ -434,6 +447,29 @@ export const VoiceVisualPlanContentSchema = z
       .string()
       .trim()
       .min(6, 'Định hướng hình ảnh cần rõ hơn.'),
+    visualBible: z
+      .object({
+        palette: z.object({
+          background: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+          surface: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+          primary: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+          accent: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+          text: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+        }).strict(),
+        typographyScale: z.object({
+          title: z.number().int().min(24).max(240),
+          label: z.number().int().min(16).max(160),
+          body: z.number().int().min(14).max(120),
+        }).strict(),
+        shapeLanguage: z.string().trim().min(12).max(600),
+        diagramLanguage: z.string().trim().min(12).max(600),
+        motionTempo: z.string().trim().min(12).max(600),
+        transitionConvention: z.string().trim().min(12).max(600),
+        visualAnchor: z.string().trim().min(12).max(600),
+      })
+      .strict()
+      // Legacy plans may omit this field; new planners always write it.
+      .optional(),
     timingCalibration: z
       .object({
         source: z.enum(['default', 'voice-history']),
@@ -545,6 +581,15 @@ export const MotionCanvasBundleSchema = z
     height: z.number().int().min(480).max(3840),
     fps: z.number().int().min(1).max(120),
     timingContractVersion: z.literal(1).optional(),
+    /** Passed Motion Canvas source policy and workspace/compiler preparation only. */
+    technicalReadyAt: z.string().datetime().nullable().optional(),
+    /** Bounded, actionable generation diagnostics; never used as an approval signal. */
+    generationDiagnostics: z.array(z.object({
+      stage: z.enum(['generate', 'repair', 'fallback', 'coherence']),
+      attempt: z.number().int().nonnegative(),
+      reason: z.string().trim().min(3).max(4_000),
+      outcome: z.enum(['passed', 'failed', 'used_fallback', 'skipped']),
+    }).strict()).max(32).optional(),
     scenes: z
       .array(MotionCanvasSceneSchema)
       .min(

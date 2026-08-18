@@ -97,6 +97,7 @@ function buildPrompt(request: MotionCanvasRevisionReviewRequest) {
       },
       voiceVisual: {
         visualDirection: request.voiceVisualPlan.visualDirection,
+        visualBible: request.voiceVisualPlan.visualBible,
         sections: request.voiceVisualPlan.sections
           .map((section, index) => ({
             index,
@@ -108,6 +109,7 @@ function buildPrompt(request: MotionCanvasRevisionReviewRequest) {
                 ? 'boundary'
                 : 'unchanged',
             outlineSectionId: section.outlineSectionId,
+            stateHandoff: section.stateHandoff,
             beats: section.beats,
           }))
           .filter(section => relevantIndexes.has(section.index)),

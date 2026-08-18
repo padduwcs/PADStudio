@@ -202,6 +202,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
           let prepared: PreparedMotionCanvasWorkspace | null = null;
           let repairAttempts = 0;
           let fallbackAttempted = false;
+          const generationDiagnostics: NonNullable<MotionCanvasBundle['generationDiagnostics']> = [];
           while (!prepared) {
             try {
               prepared = await motionCanvasWorkspace.prepare(
@@ -219,6 +220,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                 repairAttempts < 1
               ) {
                 repairAttempts += 1;
+                generationDiagnostics.push({stage: 'repair', attempt: repairAttempts, reason: error.details.slice(0, 4_000), outcome: 'failed'});
                 try {
                   generated = await motionCanvasGenerator.repair(
                     generationRequest,
@@ -233,6 +235,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                     throw repairError;
                   }
                   fallbackAttempted = true;
+                  generationDiagnostics.push({stage: 'fallback', attempt: 1, reason: repairError instanceof Error ? repairError.message.slice(0, 4_000) : 'Repair failed after actionable workspace diagnostics.', outcome: 'used_fallback'});
                   generated = motionCanvasGenerator.recover(
                     generationRequest,
                     generated,
@@ -252,6 +255,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                 !fallbackAttempted
               ) {
                 fallbackAttempted = true;
+                generationDiagnostics.push({stage: 'fallback', attempt: 1, reason: error.details.slice(0, 4_000), outcome: 'used_fallback'});
                 generated = motionCanvasGenerator.recover(
                   generationRequest,
                   generated,
@@ -262,12 +266,15 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
               throw error;
             }
           }
-          return {generated, prepared};
+          generationDiagnostics.push({stage: 'generate', attempt: 0, reason: 'Source attachment/container/timing policy and workspace/compiler preparation passed.', outcome: 'passed'});
+          return {generated, prepared, generationDiagnostics};
         },
       );
       const preparedWorkspace = generation.result.prepared;
       const motionCanvasBundle: MotionCanvasBundle = {
         status: 'draft',
+        technicalReadyAt: new Date().toISOString(),
+        generationDiagnostics: generation.result.generationDiagnostics,
         contentRevision:
           (currentProject.motionCanvasBundle?.contentRevision ?? 0) + 1,
         sourceVoiceVisualContentRevision:

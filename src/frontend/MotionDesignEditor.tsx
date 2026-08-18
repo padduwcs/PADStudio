@@ -462,6 +462,14 @@ export function MotionDesignEditor({
           parsedManifest.data.sourceAnimationSyncContentRevision === contentRevision &&
           parsedManifest.data.sourceAnimationSyncSourceHash === sourceHash;
         if (validManifest) setManifest(parsedManifest.data);
+        if (payload.status === 'error') {
+          setRuntimeError(
+            typeof payload.message === 'string'
+              ? payload.message
+              : 'Runtime không tìm thấy node chỉnh sửa được.',
+          );
+          return;
+        }
         if (payload.status === 'stored' && payload.complete === true) {
           if (!validManifest) {
             setRuntimeError('Node map không khớp scene Motion Canvas hiện hành.');

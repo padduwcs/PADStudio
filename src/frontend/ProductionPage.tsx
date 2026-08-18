@@ -6,7 +6,6 @@ import {
 } from '../shared/projectPipeline.ts';
 import {
   ApiRequestError,
-  approveMotionCanvas,
   generateAnimationSync,
   generateMotionCanvas,
   generateVoice,
@@ -183,9 +182,9 @@ export function ProductionPage({projectId}: {projectId: string}) {
         throw new Error('Scene vừa sinh không có dữ liệu hợp lệ để đồng bộ.');
       }
       if (current.motionCanvasBundle.status !== 'approved') {
-        setMessage('Đang khóa bản scene nền để ghép timing audio…');
-        current = await approveMotionCanvas(current.id, current.revision);
-        setProject(current);
+        setMessage('Scene đã qua kiểm tra source/workspace nhưng chưa được bạn duyệt. Mở preview ở bước Scenes để xác nhận trước khi đồng bộ audio. Pixel được kiểm tra ở Final Render; manifest layout được kiểm tra trong Layout Preview.');
+        setState('ready');
+        return;
       }
       if (!current.animationSyncBundle || animationSyncIsStale(current)) {
         setMessage('Đang đồng bộ scene theo timing thật của giọng đọc…');
@@ -297,6 +296,8 @@ export function ProductionPage({projectId}: {projectId: string}) {
         </div>
         {syncReady ? (
           <button className="submit-button" type="button" onClick={() => navigate(projectScenesPath(project.id))}>Review & chỉnh scene</button>
+        ) : sceneReady && project.motionCanvasBundle?.status !== 'approved' ? (
+          <button className="submit-button" type="button" onClick={() => navigate(projectScenesPath(project.id))}>Xem preview & duyệt scene</button>
         ) : (
           <button className="submit-button" type="button" disabled={state === 'working' || (!audioReady && (!eleven.connected || !voiceId || !modelId))} onClick={() => void runProduction()}>
             {state === 'working' ? 'Đang xử lý…' : sceneReady ? 'Đồng bộ lại scene' : audioReady ? 'Sinh scene & đồng bộ' : 'Tạo audio, scene & đồng bộ'}

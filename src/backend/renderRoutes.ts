@@ -167,6 +167,7 @@ export function createRenderRouteHandler(context: RenderRouteContext): ApiRouteH
           frame: currentProject.topicInput.videoFrame ?? defaultVideoFrame,
           quality: 'standard',
         },
+        currentProject.topicInput.background.color,
       );
       const commitOperation = renderOperation
         .then(async renderBundle => {

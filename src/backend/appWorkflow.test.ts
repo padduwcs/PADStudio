@@ -224,6 +224,16 @@ async function toScenes(baseUrl: string) {
   let project = await prepare(baseUrl);
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/voice/generate`, voiceRequest(randomUUID())));
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/generate`, {generationId: randomUUID()}));
+  assert.equal(project.motionCanvasBundle!.status, 'draft');
+  assert.ok(project.motionCanvasBundle!.technicalReadyAt);
+  const generationDiagnostic = project.motionCanvasBundle!.generationDiagnostics?.find(
+    diagnostic => diagnostic.stage === 'generate',
+  );
+  assert.ok(generationDiagnostic);
+  assert.doesNotMatch(generationDiagnostic!.reason, /pixel|layout/iu);
+  assert.equal('visual' in project.motionCanvasBundle!.validation, false);
+  const blockedSync = await request(baseUrl, project, 'POST', `/api/projects/${project.id}/sync/generate`, {generationId: randomUUID()});
+  assert.equal(blockedSync.status, 409);
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/approve`, {}));
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/sync/generate`, {generationId: randomUUID()}));
   return projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/sync/approve`, {}));
