@@ -910,6 +910,41 @@ test('Layout workspace chặn fingerprint và thuộc tính không được ch�
   );
 });
 
+test('Layout workspace dùng lại chỉnh sửa hình đã được editor xác nhận khi xuất trực tiếp', async (context) => {
+  const fixture = await createFixture();
+  context.after(() =>
+    rm(fixture.projectsDirectory, {recursive: true, force: true}),
+  );
+  const workspace = createLayoutWorkspace(fixture.projectsDirectory);
+
+  const prepared = await workspace.prepare(
+    fixture.projectId,
+    randomUUID(),
+    fixture.syncBundle,
+    [
+      {
+        ...fixture.overrides[0]!,
+        nodeFingerprint: sha256('direct-scene-editor-fingerprint'),
+      },
+    ],
+    {
+      ...fixture.manifest,
+      scenes: fixture.manifest.scenes.map((scene) => ({
+        ...scene,
+        nodes: scene.nodes
+          .filter((node) => node.key === fixture.overrides[0]!.nodeKey)
+          .map((node) => ({
+            ...node,
+            fingerprint: sha256('direct-scene-editor-fingerprint'),
+          })),
+      })),
+    },
+    null,
+  );
+
+  assert.match(prepared.workspacePath, /^layout\/generations\//);
+});
+
 test('Layout workspace và preview từ chối source Sync đã bị thay đổi', async (context) => {
   const fixture = await createFixture();
   context.after(() =>

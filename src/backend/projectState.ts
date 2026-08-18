@@ -123,6 +123,10 @@ export function reconcileProjectState(
           )
         ? currentProject.visualDesignBundle
         : null;
+  const visualDesignChanged = !sameValue(
+    nextVisualDesignBundle,
+    currentProject.visualDesignBundle,
+  );
   const voiceSourceChanged = Boolean(
     currentProject.voiceBundle &&
       (!nextVoiceVisualPlan ||
@@ -159,7 +163,8 @@ export function reconcileProjectState(
   );
   const layoutSourceChanged = Boolean(
     currentProject.layoutBundle &&
-      (!nextAnimationSyncBundle ||
+      (visualDesignChanged ||
+        !nextAnimationSyncBundle ||
         nextAnimationSyncBundle.status !== 'approved' ||
         !layoutMatchesAnimationSync(
           currentProject.layoutBundle,
@@ -169,7 +174,7 @@ export function reconcileProjectState(
   const nextLayoutBundle =
     change.layoutBundle ??
     (layoutSourceChanged && currentProject.layoutBundle
-      ? {...currentProject.layoutBundle, status: 'draft' as const}
+      ? null
       : currentProject.layoutBundle);
   const layoutChanged = !sameValue(nextLayoutBundle, currentProject.layoutBundle);
   const renderSourceChanged = Boolean(

@@ -472,8 +472,8 @@ test('sync predicates compare every revision, section, event and voice time', ()
   designed.visualDesignBundle.contentRevision += 1;
   assert.equal(
     animationSyncIsStale(designed),
-    true,
-    'editing visual design after Sync invalidates the downstream source',
+    false,
+    'visual overrides do not change the locked voice-to-scene timing',
   );
 
   const cases: Array<{

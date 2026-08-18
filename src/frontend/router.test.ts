@@ -7,7 +7,9 @@ import {
   projectResumePath,
   projectStepLabel,
   projectStepPath,
+  projectWorkflowPath,
   registerNavigationGuard,
+  workflowStepIndex,
 } from './router.ts';
 
 test('parseRoute đọc route project hợp lệ', () => {
@@ -125,6 +127,21 @@ test('projectResumePath đưa project lời thoại thẳng về đúng luồng 
     projectResumePath({...directProject, currentStep: 'render'}),
     '/projects/du-an-truc-tiep/render',
   );
+});
+
+test('workflow 5 bước gom cả route mới và route legacy về đúng điểm điều hướng', () => {
+  const projectId = 'du an';
+  assert.equal(projectWorkflowPath(projectId, 0), '/projects/du%20an/topic');
+  assert.equal(projectWorkflowPath(projectId, 1), '/projects/du%20an/narration');
+  assert.equal(projectWorkflowPath(projectId, 2), '/projects/du%20an/production');
+  assert.equal(projectWorkflowPath(projectId, 3), '/projects/du%20an/scene-review');
+  assert.equal(projectWorkflowPath(projectId, 4), '/projects/du%20an/render');
+
+  assert.equal(workflowStepIndex({name: 'project-topic'}), 0);
+  assert.equal(workflowStepIndex({name: 'project-outline'}), 1);
+  assert.equal(workflowStepIndex({name: 'project-voice'}), 2);
+  assert.equal(workflowStepIndex({name: 'project-layout'}), 3);
+  assert.equal(workflowStepIndex({name: 'project-render'}), 4);
 });
 
 test('navigate chờ navigation guard và không rời trang khi lưu thất bại', async () => {

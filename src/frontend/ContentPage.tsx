@@ -21,8 +21,18 @@ import {
 } from './api.ts';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {createNewTopicCreationId} from './newTopicSession.ts';
-import {navigate, projectNarrationPath, projectTopicPath} from './router.ts';
+import {
+  navigate,
+  projectNarrationPath,
+  projectTopicPath,
+  registerNavigationGuard,
+} from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
+import {
+  clearPageDraft,
+  readPageDraft,
+  savePageDraft,
+} from './pageDraft.ts';
 
 type ContentForm = {
   topic: string;
@@ -31,6 +41,11 @@ type ContentForm = {
   frame: VideoFrame;
   duration: TopicInput['duration'];
   targetDurationMinutes: number;
+};
+
+type ContentPageDraft = {
+  form: ContentForm;
+  narrationGuidance: string;
 };
 
 const framePresets: Array<{label: string; frame: VideoFrame}> = [
@@ -64,6 +79,23 @@ function initialForm(project?: TopicProject): ContentForm {
     duration: project?.topicInput.duration ?? 'standard',
     targetDurationMinutes: project?.topicInput.targetDurationMinutes ?? 10,
   };
+}
+
+function isContentPageDraft(value: ContentPageDraft | null): value is ContentPageDraft {
+  return Boolean(
+    value &&
+      typeof value.narrationGuidance === 'string' &&
+      value.form &&
+      typeof value.form.topic === 'string' &&
+      typeof value.form.narrationSourceText === 'string' &&
+      typeof value.form.backgroundColor === 'string' &&
+      typeof value.form.duration === 'string' &&
+      typeof value.form.targetDurationMinutes === 'number' &&
+      value.form.frame &&
+      typeof value.form.frame.width === 'number' &&
+      typeof value.form.frame.height === 'number' &&
+      typeof value.form.frame.fps === 'number',
+  );
 }
 
 function buildTopicInput(form: ContentForm) {
@@ -116,13 +148,18 @@ export function ContentPage({projectId}: {projectId?: string}) {
   const [narrationGenerating, setNarrationGenerating] = useState(false);
   const [narrationGenerationError, setNarrationGenerationError] = useState('');
   const creationId = useRef(createNewTopicCreationId());
+  const skipNextNavigationGuardRef = useRef(false);
   const codex = useCodexConnection();
   const aiConnectionLabel = codexAccountLabel(codex);
 
   useEffect(() => {
     if (!projectId) {
+      const storedDraft = readPageDraft<ContentPageDraft>('content');
       setProject(null);
-      setForm(initialForm());
+      setForm(isContentPageDraft(storedDraft) ? storedDraft.form : initialForm());
+      setNarrationGuidance(
+        isContentPageDraft(storedDraft) ? storedDraft.narrationGuidance : '',
+      );
       setState('ready');
       return;
     }
@@ -130,8 +167,12 @@ export function ContentPage({projectId}: {projectId?: string}) {
     setState('loading');
     void getProject(projectId).then((loaded) => {
       if (!active) return;
+      const storedDraft = readPageDraft<ContentPageDraft>('content', projectId);
       setProject(loaded);
-      setForm(initialForm(loaded));
+      setForm(isContentPageDraft(storedDraft) ? storedDraft.form : initialForm(loaded));
+      setNarrationGuidance(
+        isContentPageDraft(storedDraft) ? storedDraft.narrationGuidance : '',
+      );
       setState('ready');
     }).catch((reason) => {
       if (!active) return;
@@ -140,6 +181,47 @@ export function ContentPage({projectId}: {projectId?: string}) {
     });
     return () => { active = false; };
   }, [projectId]);
+
+  const savedForm = initialForm(project ?? undefined);
+  const hasUnsavedChanges =
+    state !== 'loading' &&
+    (JSON.stringify(form) !== JSON.stringify(savedForm) ||
+      narrationGuidance.trim().length > 0);
+
+  useEffect(() => {
+    if (state === 'loading') return;
+    if (!hasUnsavedChanges) {
+      clearPageDraft('content', projectId);
+      return;
+    }
+    savePageDraft(
+      'content',
+      {form, narrationGuidance} satisfies ContentPageDraft,
+      projectId,
+    );
+  }, [form, hasUnsavedChanges, narrationGuidance, projectId, state]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    return registerNavigationGuard(() => {
+      if (skipNextNavigationGuardRef.current) {
+        skipNextNavigationGuardRef.current = false;
+        return true;
+      }
+      return window.confirm(
+        'Nội dung đang nhập chưa được lưu vào project. Bản nháp đã được giữ trong tab này. Bạn có muốn rời trang?',
+      );
+    });
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const preventUnsavedUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener('beforeunload', preventUnsavedUnload);
+    return () => window.removeEventListener('beforeunload', preventUnsavedUnload);
+  }, [hasUnsavedChanges]);
 
   function update<K extends keyof ContentForm>(key: K, value: ContentForm[K]) {
     setForm(current => ({...current, [key]: value}));
@@ -222,7 +304,6 @@ export function ContentPage({projectId}: {projectId?: string}) {
           narrationSourceText: form.narrationSourceText.trim(),
           currentStep: 'topic',
         });
-        navigate(projectTopicPath(saved.id), true);
       } else {
         const topicChanged = JSON.stringify(topicInput.data) !== JSON.stringify(project.topicInput);
         const narrationChanged = form.narrationSourceText.trim() !== project.narration?.sourceText;
@@ -240,9 +321,15 @@ export function ContentPage({projectId}: {projectId?: string}) {
           );
         }
       }
+      clearPageDraft('content', projectId);
       setProject(saved);
       setForm(initialForm(saved));
+      setNarrationGuidance('');
       setState('saved');
+      if (!project) {
+        skipNextNavigationGuardRef.current = true;
+        navigate(projectTopicPath(saved.id), true);
+      }
     } catch (reason) {
       setState('error');
       setError(reason instanceof ApiRequestError ? reason.message : 'Không thể lưu project lúc này.');

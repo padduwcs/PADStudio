@@ -105,6 +105,30 @@ export type AppRoute =
   | {name: 'project-layout'; projectId: string}
   | {name: 'project-render'; projectId: string};
 
+export type WorkflowStepIndex = 0 | 1 | 2 | 3 | 4;
+
+export function workflowStepIndex(route: Pick<AppRoute, 'name'>): WorkflowStepIndex {
+  switch (route.name) {
+    case 'project-narration':
+    case 'project-outline':
+      return 1;
+    case 'project-production':
+    case 'project-voice-visual':
+    case 'project-voice':
+      return 2;
+    case 'project-scene-review':
+    case 'project-motion-canvas':
+    case 'project-sync':
+    case 'project-layout':
+      return 3;
+    case 'project-render':
+      return 4;
+    case 'new-topic':
+    case 'project-topic':
+      return 0;
+  }
+}
+
 function decodeProjectId(value: string) {
   try {
     return decodeURIComponent(value);
@@ -269,6 +293,24 @@ export function projectLayoutPath(projectId: string) {
 
 export function projectRenderPath(projectId: string) {
   return `/projects/${encodeURIComponent(projectId)}/render`;
+}
+
+export function projectWorkflowPath(
+  projectId: string,
+  step: WorkflowStepIndex,
+) {
+  switch (step) {
+    case 0:
+      return projectTopicPath(projectId);
+    case 1:
+      return projectNarrationPath(projectId);
+    case 2:
+      return projectProductionPath(projectId);
+    case 3:
+      return projectSceneReviewPath(projectId);
+    case 4:
+      return projectRenderPath(projectId);
+  }
 }
 
 const projectStepPaths = {

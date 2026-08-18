@@ -681,38 +681,40 @@ export function validateLayoutDocuments(
     const node = nodesByTarget.get(
       `${override.sceneId}\0${override.nodeKey}`,
     );
-    if (!node || node.fingerprint !== override.nodeFingerprint) {
-      throw new LayoutWorkspaceError(
-        'LAYOUT_OVERRIDE_TARGET_MISMATCH',
-        `Node “${override.nodeKey}” không còn khớp scene nguồn.`,
-      );
-    }
-    const editable = new Set<string>(node.editableProperties);
-    const locked = new Set<string>(node.lockedProperties);
-    if (
-      override.patch.editorLocked !== undefined &&
-      node.editableProperties.every((property) => locked.has(property))
-    ) {
-      throw new LayoutWorkspaceError(
-        'LAYOUT_OVERRIDE_PROPERTY_LOCKED',
-        `Node “${override.nodeKey}” không có thuộc tính nào có thể chỉnh để khóa trong editor.`,
-      );
-    }
-    for (const property of Object.keys(override.patch)) {
-      if (property === 'editorLocked') continue;
-      if (!editable.has(property) || locked.has(property)) {
+    {
+      if (!node || node.fingerprint !== override.nodeFingerprint) {
         throw new LayoutWorkspaceError(
-          'LAYOUT_OVERRIDE_PROPERTY_LOCKED',
-          `Thuộc tính “${property}” của node “${override.nodeKey}” không thể chỉnh.`,
+          'LAYOUT_OVERRIDE_TARGET_MISMATCH',
+          `Node “${override.nodeKey}” không còn khớp scene nguồn.`,
         );
       }
-    }
-    for (const track of override.animations ?? []) {
-      if (!editable.has(track.property) || locked.has(track.property)) {
+      const editable = new Set<string>(node.editableProperties);
+      const locked = new Set<string>(node.lockedProperties);
+      if (
+        override.patch.editorLocked !== undefined &&
+        node.editableProperties.every((property) => locked.has(property))
+      ) {
         throw new LayoutWorkspaceError(
           'LAYOUT_OVERRIDE_PROPERTY_LOCKED',
-          `Animation “${track.property}” của node “${override.nodeKey}” không thể chỉnh.`,
+          `Node “${override.nodeKey}” không có thuộc tính nào có thể chỉnh để khóa trong editor.`,
         );
+      }
+      for (const property of Object.keys(override.patch)) {
+        if (property === 'editorLocked') continue;
+        if (!editable.has(property) || locked.has(property)) {
+          throw new LayoutWorkspaceError(
+            'LAYOUT_OVERRIDE_PROPERTY_LOCKED',
+            `Thuộc tính “${property}” của node “${override.nodeKey}” không thể chỉnh.`,
+          );
+        }
+      }
+      for (const track of override.animations ?? []) {
+        if (!editable.has(track.property) || locked.has(track.property)) {
+          throw new LayoutWorkspaceError(
+            'LAYOUT_OVERRIDE_PROPERTY_LOCKED',
+            `Animation “${track.property}” của node “${override.nodeKey}” không thể chỉnh.`,
+          );
+        }
       }
     }
     const section = sectionsById.get(override.sceneId);

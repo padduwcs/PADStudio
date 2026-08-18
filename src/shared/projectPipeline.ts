@@ -196,7 +196,7 @@ export function animationSyncMatchesSourcesStructure(
     'contentRevision' | 'timingContractVersion' | 'scenes'
   >,
   voice: Pick<VoiceBundle, 'contentRevision' | 'sections'>,
-  visualDesign: Pick<
+  _visualDesign: Pick<
     NonNullable<TopicProject['visualDesignBundle']>,
     'contentRevision'
   > | null = null,
@@ -205,10 +205,6 @@ export function animationSyncMatchesSourcesStructure(
     motion.timingContractVersion === 1 &&
     bundle.sourceMotionCanvasContentRevision === motion.contentRevision &&
     bundle.sourceVoiceContentRevision === voice.contentRevision &&
-    (visualDesign
-      ? bundle.sourceVisualDesignContentRevision ===
-        visualDesign.contentRevision
-      : bundle.sourceVisualDesignContentRevision == null) &&
     bundle.sections.length === motion.scenes.length &&
     bundle.sections.length === voice.sections.length &&
     bundle.sections.every((section, sectionIndex) => {

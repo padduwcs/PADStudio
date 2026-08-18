@@ -516,7 +516,7 @@ function diagnosticStageForErrorCode(
   return 'preparing';
 }
 
-function findBrowserExecutable(configured?: string) {
+export function findBrowserExecutable(configured?: string) {
   const candidates = [
     configured,
     process.env.PAD_RENDER_BROWSER_PATH,
@@ -550,6 +550,32 @@ function ffprobeExecutable(ffmpegPath: string, configured?: string) {
   }
   const extension = path.extname(ffmpegPath);
   return path.join(path.dirname(ffmpegPath), `ffprobe${extension}`);
+}
+
+export function resolveFinalRenderExecutables(options: {
+  browserPath?: string;
+  ffmpegPath?: string;
+  ffprobePath?: string;
+} = {}) {
+  const browserPath = findBrowserExecutable(options.browserPath);
+  const ffmpegPath =
+    (
+      options.ffmpegPath ??
+      process.env.PAD_FFMPEG_PATH ??
+      process.env.FFMPEG_PATH ??
+      ''
+    ).trim() || 'ffmpeg';
+  const configuredFfprobe = (
+    options.ffprobePath ??
+    process.env.PAD_FFPROBE_PATH ??
+    process.env.FFPROBE_PATH ??
+    ''
+  ).trim();
+  return {
+    browserPath,
+    ffmpegPath,
+    ffprobePath: ffprobeExecutable(ffmpegPath, configuredFfprobe || undefined),
+  };
 }
 
 function encodingForQuality(quality: RenderProfile['quality']) {
@@ -667,23 +693,8 @@ export function createFinalRenderService(
     'render',
     'editor.js',
   );
-  const browserPath = findBrowserExecutable(options.browserPath);
-  const ffmpegPath =
-    (
-      options.ffmpegPath ??
-      process.env.PAD_FFMPEG_PATH ??
-      process.env.FFMPEG_PATH ??
-      ''
-    ).trim() || 'ffmpeg';
-  const configuredFfprobe = (
-    options.ffprobePath ??
-    process.env.PAD_FFPROBE_PATH ??
-    process.env.FFPROBE_PATH ??
-    ''
-  ).trim();
-  const ffprobePath = ffprobeExecutable(
-    ffmpegPath,
-    configuredFfprobe || undefined,
+  const {browserPath, ffmpegPath, ffprobePath} = resolveFinalRenderExecutables(
+    options,
   );
   const logger = options.logger ?? console;
   const statuses = new Map<string, FinalRenderJobStatus>();

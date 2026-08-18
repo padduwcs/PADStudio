@@ -3,6 +3,7 @@ import type {
   CodexLoginStart,
   CodexModelSummary,
 } from '../shared/codex.ts';
+import type {RuntimeDiagnostics} from '../shared/runtimeDiagnostics.ts';
 import type {
   ElevenLabsCatalog,
   ElevenLabsConnectionStatus,
@@ -229,6 +230,19 @@ export async function updateTopicProject(
 
   assertSuccessful(response, payload);
   return getProjectPayload(payload);
+}
+
+export async function getRuntimeDiagnostics() {
+  const response = await fetch('/api/runtime/diagnostics');
+  const payload = await readPayload<{diagnostics: RuntimeDiagnostics}>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('diagnostics' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi kiểm tra môi trường không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.diagnostics;
 }
 
 export async function saveProjectNarration(

@@ -21,6 +21,7 @@ import {ElevenLabsConnectionCard} from './ElevenLabsConnectionCard.tsx';
 import {navigate, projectNarrationPath, projectSceneReviewPath} from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useElevenLabsConnection} from './useElevenLabsConnection.ts';
+import {RuntimeDiagnosticsCard} from './RuntimeDiagnosticsCard.tsx';
 
 const defaultSettings = {
   stability: 0.5,
@@ -295,6 +296,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
           </div>
         </section>
       </div>
+      <RuntimeDiagnosticsCard />
       <footer className="production-footer">
         <div>
           <strong>{syncReady ? 'Bản đồng bộ đã sẵn sàng chỉnh' : sceneReady ? 'Scene cần đồng bộ với audio' : audioReady ? 'Audio đã sẵn sàng, tiếp tục sinh scene' : 'Sẵn sàng sản xuất'}</strong>

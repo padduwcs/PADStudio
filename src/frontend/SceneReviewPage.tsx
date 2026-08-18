@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useState} from 'react';
 import {RenderWatermarkSchema, type RenderWatermark} from '../shared/render.ts';
 import {
   animationSyncIsStale,
@@ -70,11 +70,9 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
   const [syncPreviewState, setSyncPreviewState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [syncPreviewUrl, setSyncPreviewUrl] = useState('');
   const [syncPreviewError, setSyncPreviewError] = useState('');
-  const [autoSyncing, setAutoSyncing] = useState(false);
   const [watermark, setWatermark] = useState<RenderWatermark>({type: 'none'});
   const [watermarkUploading, setWatermarkUploading] = useState(false);
   const [watermarkUploadError, setWatermarkUploadError] = useState('');
-  const autoSyncedRevision = useRef<number | null>(null);
   const syncGenerationId = motion.project?.animationSyncBundle?.generation.generationId ?? '';
   const syncPreviewIsCurrent = Boolean(
     motion.project?.animationSyncBundle &&
@@ -110,68 +108,6 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
       });
     return () => { active = false; };
   }, [projectId, syncGenerationId, syncPreviewIsCurrent]);
-
-  // Chỉnh trực tiếp trong editor chỉ tạo visual override. Khi người dùng dừng
-  // chỉnh, cập nhật preview hình + tiếng ngay tại đây thay vì đẩy họ sang một
-  // bước Sync riêng. Đây là tác vụ cục bộ, không gọi Codex hay ElevenLabs.
-  useEffect(() => {
-    const current = motion.project;
-    const needsRefresh = Boolean(
-      current &&
-        isDirectNarrationProject(current) &&
-        current.motionCanvasBundle &&
-        current.voiceBundle &&
-        (!current.animationSyncBundle || animationSyncIsStale(current)) &&
-        motion.candidate?.decision !== 'pending',
-    );
-    if (
-      !needsRefresh ||
-      !current ||
-      autoSyncing ||
-      autoSyncedRevision.current === current.revision
-    ) {
-      return;
-    }
-    let active = true;
-    const scheduledRevision = current.revision;
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        autoSyncedRevision.current = scheduledRevision;
-        setAutoSyncing(true);
-        try {
-          let latest = await getProject(projectId);
-          if (
-            !isDirectNarrationProject(latest) ||
-            !latest.motionCanvasBundle ||
-            !latest.voiceBundle ||
-            (latest.animationSyncBundle && !animationSyncIsStale(latest))
-          ) {
-            return;
-          }
-          if (latest.motionCanvasBundle?.status !== 'approved') {
-            latest = await approveMotionCanvas(latest.id, latest.revision);
-          }
-          latest = await generateAnimationSync(
-            latest.id,
-            {generationId: crypto.randomUUID()},
-            latest.revision,
-          );
-          if (!active) return;
-          setCompletionMessage('Preview hình + tiếng đã được cập nhật theo chỉnh sửa mới.');
-          motion.reload();
-        } catch (error) {
-          if (!active) return;
-          setCompletionMessage(error instanceof Error ? error.message : 'Không thể cập nhật preview hình + tiếng.');
-        } finally {
-          if (active) setAutoSyncing(false);
-        }
-      })();
-    }, 900);
-    return () => {
-      active = false;
-      window.clearTimeout(timer);
-    };
-  }, [autoSyncing, motion.candidate?.decision, motion.project, motion.reload, projectId]);
 
   function toggle(sceneId: string) {
     setSelectedSceneIds(current => current.includes(sceneId)
@@ -279,7 +215,7 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
     <main className="scene-review-workspace">
       <header className="scene-review-heading"><span>Bước 04 · Chỉnh scene</span><h1>Chỉnh scene theo giọng đọc</h1><p>Một editor duy nhất: phát hình và tiếng cùng lúc, rồi chỉ sửa các điểm còn lệch. Thay đổi sẽ được đồng bộ lại trước khi xuất video.</p></header>
       {motion.actionError && <p className="submit-error" role="alert">{motion.actionError}</p>}
-      {(autoSyncing || syncPreviewState === 'loading' || syncPreviewState === 'error') && <p className={syncPreviewState === 'error' ? 'submit-error' : 'scene-review-sync-status'} role={syncPreviewState === 'error' ? 'alert' : 'status'}>{syncPreviewState === 'error' ? `${syncPreviewError} Editor vẫn sẵn sàng để chỉnh hình.` : autoSyncing ? 'Đang cập nhật hình và tiếng theo chỉnh sửa mới…' : 'Đang nối giọng ElevenLabs vào editor…'}</p>}
+      {(syncPreviewState === 'loading' || syncPreviewState === 'error') && <p className={syncPreviewState === 'error' ? 'submit-error' : 'scene-review-sync-status'} role={syncPreviewState === 'error' ? 'alert' : 'status'}>{syncPreviewState === 'error' ? `${syncPreviewError} Editor vẫn sẵn sàng để chỉnh hình.` : 'Đang nối giọng ElevenLabs vào editor…'}</p>}
       <div className="scene-review-grid">
         <section className="scene-review-card">
           <header><span>Chỉnh bằng AI</span><h2>Chỉ sửa scene bạn chọn</h2></header>
@@ -291,7 +227,7 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
         <aside className="scene-review-side"><CodexConnectionCard connection={codex} task="motionCanvas" workUnits={selectedSceneIds.length || bundle.scenes.length} /><WatermarkSettings watermark={watermark} uploading={watermarkUploading} error={watermarkUploadError} onChange={next => { setWatermarkUploadError(''); setWatermark(next); }} onUpload={uploadWatermark} /><p>Bạn cũng có thể chỉnh trực tiếp màu sắc, chữ, vị trí và chuyển động ở editor bên dưới.</p></aside>
       </div>
       <MotionDesignEditor motionCanvas={motion} narrationAudioUrl={narrationAudioUrl} watermark={watermark} watermarkImageUrl={watermarkImageUrl} />
-      <footer className="scene-review-footer"><div><strong>{direct ? exportReady ? 'Sẵn sàng xuất video' : autoSyncing ? 'Đang cập nhật hình và tiếng' : synchronized ? 'Hình và tiếng đã đồng bộ' : 'Thay đổi sẽ được đồng bộ lại' : 'Chốt scene để tạo voice'}</strong><p>{completionMessage || (direct ? 'Hoàn tất sẽ chốt scene, cập nhật đồng bộ nếu cần và chuẩn bị đầu ra tự động.' : 'Scene đã được review trong cùng màn hình này. Sau khi chốt, bạn sẽ tiếp tục tạo voice ElevenLabs.')}</p></div><button className="submit-button" type="button" disabled={syncing || autoSyncing || !watermarkValid || motion.candidate?.decision === 'pending'} onClick={() => exportReady ? navigate(projectRenderPath(project.id)) : void approveAndContinue()}>{syncing ? direct ? 'Đang chuẩn bị đầu ra…' : 'Đang chốt…' : autoSyncing ? 'Đang cập nhật preview…' : direct ? exportReady ? 'Xuất video' : 'Hoàn tất & xuất video' : 'Chốt scene & tạo voice'}</button></footer>
+      <footer className="scene-review-footer"><div><strong>{direct ? exportReady ? 'Sẵn sàng xuất video' : synchronized ? 'Chỉnh sửa hình đã lưu' : 'Hình và tiếng đã đồng bộ' : 'Chốt scene để tạo voice'}</strong><p>{completionMessage || (direct ? 'Các chỉnh sửa hình được giữ riêng; voice và timing đã chốt không bị tạo lại.' : 'Scene đã được review trong cùng màn hình này. Sau khi chốt, bạn sẽ tiếp tục tạo voice ElevenLabs.')}</p></div><button className="submit-button" type="button" disabled={syncing || !watermarkValid || motion.candidate?.decision === 'pending'} onClick={() => exportReady ? navigate(projectRenderPath(project.id)) : void approveAndContinue()}>{syncing ? direct ? 'Đang chuẩn bị đầu ra…' : 'Đang chốt…' : direct ? exportReady ? 'Xuất video' : 'Hoàn tất & xuất video' : 'Chốt scene & tạo voice'}</button></footer>
     </main>
   );
 }

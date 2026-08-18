@@ -8,7 +8,7 @@
  */
 export class GenerationIdReuseError extends Error {
   constructor() {
-    super('Generation ID Ä‘Ã£ Ä‘Æ°á»£c dÃ¹ng vá»›i ná»™i dung khÃ¡c.');
+    super('Generation ID đã được dùng với nội dung khác.');
   }
 }
 

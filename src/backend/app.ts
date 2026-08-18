@@ -111,6 +111,10 @@ import {
   type FinalRenderService,
 } from './finalRenderService.ts';
 import {
+  createRuntimeDiagnosticsService,
+  type RuntimeDiagnosticsService,
+} from './runtimeDiagnostics.ts';
+import {
   CodexConnectionError,
   createCodexConnectionService,
   StdioCodexAppServerClient,
@@ -360,6 +364,7 @@ interface AppOptions {
   layoutWorkspace?: LayoutWorkspace;
   layoutPreviewService?: LayoutPreviewService;
   finalRenderService?: FinalRenderService;
+  runtimeDiagnostics?: RuntimeDiagnosticsService;
   watermarkAssetStore?: WatermarkAssetStore;
   pronunciationRuleStore?: PronunciationRuleStore;
   pronunciationAuditService?: PronunciationAuditService;
@@ -976,7 +981,7 @@ async function serveFrontend(
   } catch {
     sendApiError(response, 404, {
       code: 'NOT_FOUND',
-      message: 'KhÃ´ng tÃ¬m tháº¥y tÃ i nguyÃªn.',
+      message: 'Không tìm thấy tài nguyên.',
     });
     return;
   }
@@ -1008,7 +1013,7 @@ async function serveFrontend(
     if (path.extname(relativePath)) {
       sendApiError(response, 404, {
         code: 'NOT_FOUND',
-        message: 'KhÃ´ng tÃ¬m tháº¥y tÃ i nguyÃªn.',
+        message: 'Không tìm thấy tài nguyên.',
       });
       return;
     }
@@ -1170,6 +1175,12 @@ export function createPadStudioServer(options: AppOptions = {}) {
       layoutWorkspace,
       watermarkAssetStore,
       logger: options.logger,
+    });
+  const runtimeDiagnostics =
+    options.runtimeDiagnostics ??
+    createRuntimeDiagnosticsService({
+      codexConnection,
+      elevenLabsConnection,
     });
   const logger = options.logger ?? console;
   const outlineGenerations = createInMemoryGenerationRegistry<OutlineGenerationResult>();
@@ -2666,6 +2677,16 @@ export function createPadStudioServer(options: AppOptions = {}) {
 
       if (requestUrl.pathname === '/api/health' && request.method === 'GET') {
         sendJson(response, 200, {status: 'ok'});
+        return;
+      }
+
+      if (
+        requestUrl.pathname === '/api/runtime/diagnostics' &&
+        request.method === 'GET'
+      ) {
+        sendJson(response, 200, {
+          diagnostics: await runtimeDiagnostics.inspect(),
+        });
         return;
       }
 
@@ -5441,8 +5462,8 @@ export function createPadStudioServer(options: AppOptions = {}) {
           currentProject.id,
           bundle,
           syncVisualDesign &&
-          syncVisualDesign.contentRevision ===
-            bundle.sourceVisualDesignContentRevision
+          previewMotion &&
+          visualDesignMatchesMotion(syncVisualDesign, previewMotion)
             ? retimeLayoutOverridesForSync(
                 syncVisualDesign.overrides,
                 bundle.sections,
@@ -6688,6 +6709,21 @@ export function createPadStudioServer(options: AppOptions = {}) {
           throw new ProjectConflictError(currentProject);
         }
         const generationId = parsed.data.generationId.toLowerCase();
+        const visualOverrides =
+          currentProject.motionCanvasBundle &&
+          currentProject.visualDesignBundle &&
+          visualDesignMatchesMotion(
+            currentProject.visualDesignBundle,
+            currentProject.motionCanvasBundle,
+          )
+            ? retimeLayoutOverridesForSync(
+                currentProject.visualDesignBundle.overrides,
+                sync.sections,
+              )
+            : [];
+        // The direct scene editor has already validated these saved changes
+        // against the live Motion Canvas preview. Preserve that verified node
+        // identity when creating the immutable export workspace.
         const editorManifest: LayoutEditorManifest = {
           version: 1,
           sourceAnimationSyncGenerationId: sync.generation.generationId,
@@ -6696,14 +6732,44 @@ export function createPadStudioServer(options: AppOptions = {}) {
           scenes: sync.sections.map(section => ({
             sceneId: section.sceneId,
             filePath: section.filePath,
-            nodes: [],
+            nodes: visualOverrides
+              .filter(override => override.sceneId === section.sceneId)
+              .map(override => ({
+                key: override.nodeKey,
+                fingerprint: override.nodeFingerprint,
+                label: 'Chỉnh sửa hình đã lưu',
+                nodeType: 'Layout',
+                parentKey: null,
+                identity: 'semantic' as const,
+                editableProperties: [
+                  'x',
+                  'y',
+                  'scale',
+                  'rotation',
+                  'opacity',
+                  'hidden',
+                  'fill',
+                  'stroke',
+                  'strokeWidth',
+                  'zIndexDelta',
+                  'text',
+                  'fontFamily',
+                  'fontSize',
+                  'fontWeight',
+                  'fontStyle',
+                  'underline',
+                  'strikethrough',
+                ],
+                lockedProperties: [],
+                lockReason: null,
+              })),
           })),
         };
         const prepared = await layoutWorkspace.prepare(
           currentProject.id,
           generationId,
           sync,
-          [],
+          visualOverrides,
           editorManifest,
           currentProject.layoutBundle?.generation.generationId ?? null,
         );

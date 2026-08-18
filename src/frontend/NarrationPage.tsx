@@ -16,8 +16,18 @@ import {
 } from './api.ts';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
 import {CheckIcon, PlusIcon, SparkIcon, TrashIcon} from './icons.tsx';
-import {navigate, projectProductionPath, projectTopicPath} from './router.ts';
+import {
+  navigate,
+  projectProductionPath,
+  projectTopicPath,
+  registerNavigationGuard,
+} from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
+import {
+  clearPageDraft,
+  readPageDraft,
+  savePageDraft,
+} from './pageDraft.ts';
 
 type RuleDraft = {
   id: string | null;
@@ -32,6 +42,20 @@ const emptyRule: RuleDraft = {
   source: '',
   spoken: '',
 };
+
+function isRuleDraft(value: RuleDraft | null): value is RuleDraft {
+  return Boolean(
+    value &&
+      (value.id === null || typeof value.id === 'string') &&
+      (value.scope === 'project' || value.scope === 'library') &&
+      typeof value.source === 'string' &&
+      typeof value.spoken === 'string',
+  );
+}
+
+function hasRuleDraft(value: RuleDraft) {
+  return Boolean(value.id || value.source.trim() || value.spoken.trim());
+}
 
 function sameRules(left: readonly PronunciationRule[], right: readonly PronunciationRule[]) {
   return JSON.stringify([...left].sort((a, b) => a.id.localeCompare(b.id))) ===
@@ -80,11 +104,13 @@ export function NarrationPage({projectId}: {projectId: string}) {
     void Promise.all([getProject(projectId), getProjectNarration(projectId)])
       .then(([loadedProject, payload]) => {
         if (!active) return;
+        const storedDraft = readPageDraft<RuleDraft>('narration', projectId);
         setProject(loadedProject);
         setNarration(payload.narration);
         setProjectRules(payload.narration?.projectRules ?? []);
         setLibraryRules(payload.libraryRules);
         setSnapshotDirty(false);
+        setDraft(isRuleDraft(storedDraft) ? storedDraft : emptyRule);
         setState('ready');
       })
       .catch(reason => {
@@ -111,9 +137,43 @@ export function NarrationPage({projectId}: {projectId: string}) {
     narration?.review && !sameRules(allRules, narration.review.rules),
   );
   const needsSave = !narration?.review || snapshotDirty || projectRulesDirty || rulesChangedSinceReview;
+  const hasPendingChanges =
+    snapshotDirty ||
+    projectRulesDirty ||
+    rulesChangedSinceReview ||
+    hasRuleDraft(draft);
   const approved = Boolean(
     !needsSave && narration?.review && narration.approvedSourceHash === narration.review.sourceHash,
   );
+
+  useEffect(() => {
+    if (!hasRuleDraft(draft)) {
+      clearPageDraft('narration', projectId);
+      return;
+    }
+    savePageDraft('narration', draft, projectId);
+  }, [draft, projectId]);
+
+  useEffect(() => {
+    if (!hasPendingChanges) return;
+    return registerNavigationGuard(() => {
+      if (ruleSaving || state === 'saving' || state === 'auditing' || state === 'approving') {
+        return false;
+      }
+      return window.confirm(
+        'Cách đọc đang có thay đổi chưa được chốt. Bản nháp quy tắc đã được giữ trong tab này. Bạn có muốn rời trang?',
+      );
+    });
+  }, [hasPendingChanges, ruleSaving, state]);
+
+  useEffect(() => {
+    if (!hasPendingChanges) return;
+    const preventUnsavedUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener('beforeunload', preventUnsavedUnload);
+    return () => window.removeEventListener('beforeunload', preventUnsavedUnload);
+  }, [hasPendingChanges]);
 
   function installProject(nextProject: TopicProject) {
     setProject(nextProject);

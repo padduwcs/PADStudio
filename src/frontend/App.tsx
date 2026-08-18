@@ -57,7 +57,9 @@ import {
   projectResumePath,
   projectTopicPath,
   projectVoiceVisualPath,
+  projectWorkflowPath,
   useAppRoute,
+  workflowStepIndex,
 } from './router.ts';
 import {
   clearNewTopicDraft,
@@ -208,7 +210,25 @@ function durationLabel(
 
 function Brand() {
   return (
-    <a className="brand" href="/" aria-label="PAD Studio — Trang chủ">
+    <a
+      className="brand"
+      href="/"
+      aria-label="PAD Studio — Trang chủ"
+      onClick={(event) => {
+        if (
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey
+        ) {
+          return;
+        }
+        event.preventDefault();
+        navigate('/');
+      }}
+    >
       <span className="brand-mark" aria-hidden="true">
         <span />
         <span />
@@ -288,7 +308,7 @@ function PipelineSidebar({
       <nav aria-label="Các bước sản xuất video">
         <ol className="pipeline-list">
           {workflowSteps.map((label, index) => {
-            const unavailable = !hasProject || index > 3;
+            const unavailable = !hasProject;
             return (
             <li
               className={index === activeStep ? 'is-active' : ''}
@@ -301,7 +321,7 @@ function PipelineSidebar({
                 disabled={unavailable}
                 title={
                   unavailable
-                    ? 'Hãy lưu chủ đề để mở các bước còn lại.'
+                    ? 'Hãy tạo project trước khi mở các bước sản xuất.'
                     : `Mở ${label}`
                 }
                 onClick={() => {
@@ -2593,28 +2613,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [newProjectKey, setNewProjectKey] = useState(0);
   const [projectReloadKey, setProjectReloadKey] = useState(0);
-  const activeStep =
-    route.name === 'project-scene-review'
-      ? 3
-      : route.name === 'project-production'
-      ? 2
-      : route.name === 'project-narration'
-      ? 1
-      : route.name === 'project-render'
-      ? 4
-      : route.name === 'project-layout'
-      ? 6
-      : route.name === 'project-sync'
-      ? 5
-      : route.name === 'project-voice'
-      ? 4
-      : route.name === 'project-motion-canvas'
-      ? 3
-            : route.name === 'project-voice-visual'
-      ? 2
-      : route.name === 'project-outline'
-        ? 1
-        : 0;
+  const activeStep = workflowStepIndex(route);
   const activeProjectId =
     route.name === 'new-topic' ? undefined : route.projectId;
   const routeIdentity =
@@ -2639,10 +2638,19 @@ export default function App() {
     };
   }
   const pageTransition = navigationRef.current.transition;
-  const previousStep =
-    activeProjectId && activeStep > 0
-      ? pipelineSteps[activeStep - 1]?.id
-      : null;
+  const previousPath = activeProjectId
+    ? route.name === 'project-narration'
+      ? projectTopicPath(activeProjectId)
+      : route.name === 'project-production'
+        ? projectNarrationPath(activeProjectId)
+        : route.name === 'project-scene-review'
+          ? projectProductionPath(activeProjectId)
+          : route.name === 'project-render'
+            ? projectSceneReviewPath(activeProjectId)
+            : activeStep > 0
+              ? projectStepPath(activeProjectId, pipelineSteps[activeStep - 1]!.id)
+              : null
+    : null;
 
   const closeLibrary = useCallback(() => setLibraryOpen(false), []);
   const openLibrary = useCallback(() => setLibraryOpen(true), []);
@@ -2697,20 +2705,15 @@ export default function App() {
         onOpenProjects={openLibrary}
         theme={theme}
         onToggleTheme={toggleTheme}
-        onSelectStep={(stepIndex) => {
-          if (!activeProjectId || stepIndex > 4) return;
-          navigate(
-            stepIndex === 0
-              ? projectTopicPath(activeProjectId)
-              : stepIndex === 1
-                ? projectNarrationPath(activeProjectId)
-                : stepIndex === 2
-                  ? projectProductionPath(activeProjectId)
-                  : stepIndex === 3
-                    ? projectSceneReviewPath(activeProjectId)
-                    : projectRenderPath(activeProjectId),
-          );
-        }}
+          onSelectStep={(stepIndex) => {
+            if (!activeProjectId || stepIndex < 0 || stepIndex > 4) return;
+            navigate(
+              projectWorkflowPath(
+                activeProjectId,
+                stepIndex as 0 | 1 | 2 | 3 | 4,
+              ),
+            );
+          }}
       />
       <button
         className={`sidebar-backdrop${sidebarOpen ? ' is-open' : ''}`}
@@ -2739,11 +2742,8 @@ export default function App() {
               setProjectReloadKey(current => current + 1)
             }
             onBack={() =>
-              activeProjectId && previousStep
-                ? navigate(
-                    projectStepPath(activeProjectId, previousStep),
-                    true,
-                  )
+              previousPath
+                ? navigate(previousPath, true)
                 : navigate('/', true)
             }
           >

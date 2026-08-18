@@ -55,6 +55,7 @@ import type {
 import type {FinalRenderService} from './finalRenderService.ts';
 import type {CredentialStore} from './credentialStore.ts';
 import type {PronunciationAuditService} from './pronunciationAudit.ts';
+import type {RuntimeDiagnosticsService} from './runtimeDiagnostics.ts';
 
 const topicInput = {
   topic: 'Tìm kiếm nhị phân hoạt động như thế nào?',
@@ -100,6 +101,7 @@ async function startTestApp(
     layoutWorkspace?: LayoutWorkspace;
     layoutPreviewService?: LayoutPreviewService;
     finalRenderService?: FinalRenderService;
+    runtimeDiagnostics?: RuntimeDiagnosticsService;
     pronunciationAuditService?: PronunciationAuditService;
     frontendDirectory?: string;
   } = {},
@@ -130,6 +132,7 @@ async function startTestApp(
     layoutWorkspace: options.layoutWorkspace,
     layoutPreviewService: options.layoutPreviewService,
     finalRenderService: options.finalRenderService,
+    runtimeDiagnostics: options.runtimeDiagnostics,
     pronunciationAuditService: options.pronunciationAuditService,
     frontendDirectory: options.frontendDirectory,
     logger: {info() {}, error() {}},
@@ -166,6 +169,53 @@ async function createProject(
   assert.equal(response.status, 201);
   return {project: body.project, request};
 }
+
+test('API diagnostics trả trạng thái tool và provider tập trung', async (context) => {
+  const runtimeDiagnostics: RuntimeDiagnosticsService = {
+    async inspect() {
+      return {
+        checkedAt: '2026-08-18T00:00:00.000Z',
+        tools: {
+          ffmpeg: {
+            available: true,
+            message: 'FFmpeg đã sẵn sàng.',
+            executablePath: 'C:\\tools\\ffmpeg\\bin\\ffmpeg.exe',
+          },
+          ffprobe: {available: true, message: 'FFprobe đã sẵn sàng.'},
+          browser: {available: false, message: 'Không tìm thấy Chrome hoặc Edge.'},
+        },
+        providers: {
+          codex: {
+            state: 'connected',
+            account: {type: 'apiKey'},
+            quota: null,
+            verifiedAt: '2026-08-18T00:00:00.000Z',
+          },
+          elevenLabs: {
+            state: 'not_configured',
+            message: 'Chưa cấu hình API key.',
+            checkedAt: '2026-08-18T00:00:00.000Z',
+          },
+        },
+      };
+    },
+  };
+  const {baseUrl} = await startTestApp(context, {runtimeDiagnostics});
+  const response = await fetch(`${baseUrl}/api/runtime/diagnostics`);
+  const body = (await response.json()) as {
+    diagnostics: Awaited<ReturnType<RuntimeDiagnosticsService['inspect']>>;
+  };
+
+  assert.equal(response.status, 200);
+  assert.equal(body.diagnostics.tools.ffmpeg.available, true);
+  assert.equal(
+    body.diagnostics.tools.ffmpeg.executablePath,
+    'C:\\tools\\ffmpeg\\bin\\ffmpeg.exe',
+  );
+  assert.equal(body.diagnostics.tools.browser.available, false);
+  assert.equal(body.diagnostics.providers.codex.state, 'connected');
+  assert.equal(body.diagnostics.providers.elevenLabs.state, 'not_configured');
+});
 
 test('pronunciation review locks the audited snapshot and keeps a reusable library', async (context) => {
   const pronunciationAuditService: PronunciationAuditService = {
@@ -3903,9 +3953,9 @@ export default makeScene2D(function* (view) {
   );
   assert.equal(
     motionDesignBody.project.animationSyncBundle.status,
-    'draft',
+    'approved',
   );
-  assert.equal(motionDesignBody.project.layoutBundle.status, 'draft');
+  assert.equal(motionDesignBody.project.layoutBundle, null);
   assert.equal(motionDesignBody.project.renderBundle, null);
 
   const approvedPlan = syncApproveBody.project.voiceVisualPlan;
@@ -3959,7 +4009,7 @@ export default makeScene2D(function* (view) {
     visualOnlyUpdateBody.project.animationSyncBundle.status,
     'draft',
   );
-  assert.equal(visualOnlyUpdateBody.project.layoutBundle.status, 'draft');
+  assert.equal(visualOnlyUpdateBody.project.layoutBundle, null);
   assert.equal(visualOnlyUpdateBody.project.renderBundle, null);
 
   const staleMotionDesignResponse = await fetch(
