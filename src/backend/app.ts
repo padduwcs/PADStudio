@@ -1784,7 +1784,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
       };
       const updatedProject = await repository.updateProject(
         currentProject.id,
-        {motionCanvasBundle: nextBundle},
+        {motionCanvasBundle: nextBundle, currentStep: 'scenes'},
         expectedRevision,
       );
       if (!updatedProject) {
@@ -1905,7 +1905,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
       };
       const updatedProject = await repository.updateProject(
         currentProject.id,
-        {motionCanvasBundle: restoredBundle},
+        {motionCanvasBundle: restoredBundle, currentStep: 'scenes'},
         expectedRevision,
       );
       if (!updatedProject) {
@@ -2673,7 +2673,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
         };
         const updatedProject = await repository.updateProject(
           currentProject.id,
-          {visualDesignBundle},
+          {visualDesignBundle, currentStep: 'scenes'},
           expectedRevision,
         );
         if (!updatedProject) {
@@ -2807,6 +2807,20 @@ export function createPadStudioServer(options: AppOptions = {}) {
         if (
           currentProject.voiceBundle?.generation.generationId === generationId
         ) {
+          const existingConfiguration = currentProject.voiceBundle.configuration;
+          if (
+            existingConfiguration.voiceId !== parsedRequest.data.voiceId ||
+            existingConfiguration.modelId !== parsedRequest.data.modelId ||
+            existingConfiguration.outputFormat !== parsedRequest.data.outputFormat ||
+            !sameValue(existingConfiguration.settings, parsedRequest.data.settings) ||
+            existingConfiguration.seed !== parsedRequest.data.seed
+          ) {
+            throw new RequestBodyError(
+              409,
+              'GENERATION_ID_REUSED',
+              'Generation ID đã được dùng với cấu hình voice khác.',
+            );
+          }
           sendProject(response, 200, currentProject);
           return;
         }
@@ -2816,7 +2830,6 @@ export function createPadStudioServer(options: AppOptions = {}) {
 
         const outline = currentProject.outline;
         const plan = currentProject.voiceVisualPlan;
-        const motionBundle = currentProject.motionCanvasBundle;
         const narration = currentProject.narration;
         const narrationArtifacts = narrationArtifactsAreCurrent(outline, plan);
         if (
@@ -2831,12 +2844,7 @@ export function createPadStudioServer(options: AppOptions = {}) {
             !narration?.review ||
               narration.approvedSourceHash !== narration.review.sourceHash ||
               !narration.approvedAt ||
-              !narrationPlanMatchesReviewedNarration(narration, plan) ||
-              !motionBundle ||
-              motionBundle.status !== 'approved' ||
-              motionBundle.sourceVoiceVisualContentRevision !==
-                plan.contentRevision ||
-              !motionCanvasMatchesOutline(motionBundle, outline))
+              !narrationPlanMatchesReviewedNarration(narration, plan))
         ) {
           throw new RequestBodyError(
             409,

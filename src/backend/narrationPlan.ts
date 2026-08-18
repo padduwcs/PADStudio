@@ -173,7 +173,6 @@ export function createNarrationArtifacts({
     tool: 'narration-structure' as const,
     algorithmVersion: NARRATION_STRUCTURE_VERSION,
     generatedAt: now,
-    usage: null,
   };
   const outline: TeachingOutline = {
     brief: {

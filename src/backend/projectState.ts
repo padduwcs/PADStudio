@@ -19,6 +19,8 @@ import {
  * cannot accidentally leave an approved artifact attached to changed input.
  */
 export type ProjectStateChange = {
+  /** Explicit resume state for an in-place scene editing transition. */
+  currentStep?: TopicProject['currentStep'];
   topicInput?: TopicProject['topicInput'];
   outline?: NonNullable<TopicProject['outline']>;
   voiceVisualPlan?: NonNullable<TopicProject['voiceVisualPlan']>;
@@ -37,6 +39,8 @@ export function projectChangeAlreadyApplied(
   change: ProjectStateChange,
 ) {
   return (
+    (change.currentStep === undefined ||
+      change.currentStep === project.currentStep) &&
     (change.topicInput === undefined ||
       sameValue(change.topicInput, project.topicInput)) &&
     (change.outline === undefined || sameValue(change.outline, project.outline)) &&
@@ -190,7 +194,7 @@ export function reconcileProjectState(
       ...(change.topicInput ? {topicInput: change.topicInput} : {}),
       ...(change.narration !== undefined ? {narration: change.narration} : {}),
       ...(change.renderProfile ? {renderProfile: change.renderProfile} : {}),
-    currentStep: currentProject.currentStep,
+    currentStep: change.currentStep ?? currentProject.currentStep,
     outline: nextOutline,
     voiceVisualPlan: nextVoiceVisualPlan,
     motionCanvasBundle: nextMotionCanvasBundle,
@@ -204,6 +208,6 @@ export function reconcileProjectState(
   };
   return {
     ...reconciled,
-    currentStep: nextWorkflowStep(reconciled),
+    currentStep: change.currentStep ?? nextWorkflowStep(reconciled),
   };
 }
