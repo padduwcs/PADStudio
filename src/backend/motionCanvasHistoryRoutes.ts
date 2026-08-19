@@ -23,7 +23,8 @@ import {
 } from './motionCanvasGenerator.ts';
 import {
   MotionCanvasVisualQualityError,
-  visualValidationIsCurrent,
+  assertVisualValidationCurrent,
+  visualValidationIsReusable,
 } from './motionCanvasVisualQuality.ts';
 import {
   hashJson,
@@ -100,7 +101,13 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
     const lifecycleFor = (scenes: Array<{outlineSectionId: string}>) => new Map(
       scenes.flatMap(scene => {
         const section = voiceVisualPlan.sections.find(item => item.outlineSectionId === scene.outlineSectionId);
-        return (section?.beats ?? []).map(beat => [beat.id, {stay: beat.visualLifecycle!.stay}] as const);
+        return (section?.beats ?? []).map(beat => [beat.id, {stay: beat.visualLifecycle!.stay, primaryBlock: beat.primaryBlock, compositionContract: beat.compositionContract}] as const);
+      }),
+    );
+    const handoffFor = (scenes: Array<{id: string; outlineSectionId: string}>) => new Map(
+      scenes.map(scene => {
+        const section = voiceVisualPlan.sections.find(item => item.outlineSectionId === scene.outlineSectionId);
+        return [scene.id, {incoming: section?.stateHandoff?.incoming ?? null, outgoing: section?.stateHandoff?.outgoing ?? null}] as const;
       }),
     );
     const currentContentHash = hashMotionCanvasBundle(bundle);
@@ -467,10 +474,12 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
             let visualValidation;
             try {
               visualValidation = await motionCanvasVisualQualityGate.validate({
-                scenes: mergedSources,
+                scenes: prepared.sourceScenes,
                 lifecycle: lifecycleFor(mergedSources),
                 frame: projectVideoFrame(currentProject),
                 backgroundColor: currentProject.topicInput.background.color,
+                visualBible: voiceVisualPlan.visualBible,
+                sceneHandoff: handoffFor(mergedSources),
                 workspaceDirectory: prepared.workspaceDirectory,
                 projectFile: prepared.projectFilePath,
               });
@@ -507,15 +516,18 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
               await motionCanvasWorkspace.discard(currentProject.id, generationId);
               prepared = await motionCanvasWorkspace.prepare(currentProject.id, generationId, mergedSources, projectVideoFrame(currentProject));
               visualValidation = await motionCanvasVisualQualityGate.validate({
-                scenes: mergedSources,
+                scenes: prepared.sourceScenes,
                 lifecycle: lifecycleFor(mergedSources),
                 frame: projectVideoFrame(currentProject),
                 backgroundColor: currentProject.topicInput.background.color,
+                visualBible: voiceVisualPlan.visualBible,
+                sceneHandoff: handoffFor(mergedSources),
                 workspaceDirectory: prepared.workspaceDirectory,
                 projectFile: prepared.projectFilePath,
               });
               generationDiagnostics.push({stage: 'quality-retry', attempt: 1, reason: `Re-rendered ${repaired.scenes.length} failed candidate scene(s); the merged ${mergedSources.length}-scene bundle passed.`, outcome: 'passed'});
             }
+            assertVisualValidationCurrent({visualValidation}, prepared.sourceScenes);
             let review: MotionCanvasRevisionReviewResult;
             try {
               review = await motionCanvasRevisionReviewService.review({
@@ -748,10 +760,12 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
         currentProject.id,
         candidate.bundle,
       );
+      // Rendered-frame evidence is reused only when it is passing, current in
+      // shape and hashed over exactly these sources; otherwise it is produced
+      // again and then re-checked by the same shared rule.
       const candidateVisualValidation =
-        candidate.bundle.visualValidation &&
-        visualValidationIsCurrent(candidate.bundle.visualValidation, candidateSources)
-          ? candidate.bundle.visualValidation
+        visualValidationIsReusable(candidate.bundle.visualValidation, candidateSources)
+          ? candidate.bundle.visualValidation!
           : await motionCanvasVisualQualityGate.validate({
             scenes: candidateSources,
             lifecycle: lifecycleFor(candidateSources),
@@ -761,9 +775,12 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
               candidate.bundle.fps,
             ),
             backgroundColor: currentProject.topicInput.background.color,
+            visualBible: voiceVisualPlan.visualBible,
+            sceneHandoff: handoffFor(candidateSources),
             workspaceDirectory: verifiedCandidate.workspaceDirectory,
             projectFile: verifiedCandidate.projectFile,
           });
+      assertVisualValidationCurrent({visualValidation: candidateVisualValidation}, candidateSources);
       const nextBundle: MotionCanvasBundle = {
         ...candidate.bundle,
         status: 'draft',
@@ -880,13 +897,18 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
       );
       try {
         const visualValidation = await motionCanvasVisualQualityGate.validate({
-          scenes: sources,
+          scenes: prepared.sourceScenes,
           lifecycle: lifecycleFor(sources),
           frame: restoreFrame,
           backgroundColor: currentProject.topicInput.background.color,
+          visualBible: voiceVisualPlan.visualBible,
+          sceneHandoff: handoffFor(sources),
           workspaceDirectory: prepared.workspaceDirectory,
           projectFile: prepared.projectFilePath,
         });
+        // Restore has nothing to regenerate, so a single strict attempt must
+        // still clear the same gate before the bundle can be adopted.
+        assertVisualValidationCurrent({visualValidation}, prepared.sourceScenes);
         const restoredBundle: MotionCanvasBundle = {
           ...sourceVersion.artifact,
           status: 'draft',

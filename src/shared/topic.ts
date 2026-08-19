@@ -325,6 +325,35 @@ export const TeachingOutlineSchema = TeachingOutlineContentSchema.extend({
 
 export type TeachingOutline = z.infer<typeof TeachingOutlineSchema>;
 
+/** Narrative function of a beat, using the same vocabulary the planner and the
+ * teaching outline already speak. Closed set so the composition gate can reason
+ * about which beats may legitimately cut the layout. */
+export const compositionSemanticRoleValues = ['intro', 'claim', 'evidence', 'contrast', 'process', 'summary', 'transition'] as const;
+/** Composition archetypes the rendered-frame gate can check geometrically. */
+export const compositionLayoutValues = ['center-focus', 'left-right-split', 'top-bottom-stack', 'grid', 'full-bleed'] as const;
+export const compositionDensityValues = ['sparse', 'balanced', 'dense'] as const;
+
+const semanticKeyPattern = /^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/;
+
+/**
+ * Declared composition intent for one beat. Orthogonal to voice and timing:
+ * it only describes what the frame must look like, never what is said or how
+ * long it lasts. Optional so old saved projects stay readable; every newly
+ * planned beat must carry it before Motion Canvas generation is allowed.
+ */
+export const BeatCompositionContractSchema = z
+  .object({
+    visualFocus: z.string().trim().min(12, 'Visual focus phải mô tả rõ điểm nhìn chính.').max(300),
+    hierarchy: z.array(z.string().regex(semanticKeyPattern)).min(2).max(6),
+    semanticRole: z.enum(compositionSemanticRoleValues),
+    layout: z.enum(compositionLayoutValues),
+    density: z.enum(compositionDensityValues),
+    spacingNotes: z.string().trim().min(12, 'Spacing notes phải nêu rõ ý đồ khoảng cách.').max(300),
+  })
+  .strict();
+
+export type BeatCompositionContract = z.infer<typeof BeatCompositionContractSchema>;
+
 export const VoiceVisualBeatSchema = z
   .object({
     id: z.string().uuid(),
@@ -368,6 +397,7 @@ export const VoiceVisualBeatSchema = z
       .string()
       .regex(/^block-[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/)
       .optional(),
+    compositionContract: BeatCompositionContractSchema.optional(),
     visualHoldSeconds: z
       .number()
       .int()
@@ -399,6 +429,25 @@ export const VoiceVisualBeatSchema = z
         code: 'custom',
         path: ['visualLifecycle', 'stay'],
         message: 'Mỗi beat chỉ được giữ tối đa hai block-* active.',
+      });
+    }
+    const hierarchy = value.compositionContract?.hierarchy;
+    if (!hierarchy) return;
+    if (value.primaryBlock && hierarchy[0] !== value.primaryBlock) {
+      context.addIssue({
+        code: 'custom',
+        path: ['compositionContract', 'hierarchy', 0],
+        message: 'Phần tử đầu của hierarchy phải chính là primaryBlock.',
+      });
+    }
+    const stay = value.visualLifecycle?.stay;
+    if (!stay) return;
+    for (const [index, key] of hierarchy.entries()) {
+      if (stay.includes(key)) continue;
+      context.addIssue({
+        code: 'custom',
+        path: ['compositionContract', 'hierarchy', index],
+        message: 'Mọi key trong hierarchy phải nằm trong visualLifecycle.stay.',
       });
     }
   });
@@ -571,6 +620,15 @@ export const MotionCanvasSceneSchema = z
 
 export type MotionCanvasScene = z.infer<typeof MotionCanvasSceneSchema>;
 
+/**
+ * Deterministic rendered-frame issue codes. Shared so the persisted bundle
+ * schema and the quality gate can never drift apart on the code vocabulary.
+ */
+export const visualQualityIssueCodeValues = [
+  'empty-frame', 'unexpected-block', 'missing-active-block', 'clipped-block', 'outside-safe-area', 'block-overlap', 'text-clipped', 'text-too-small', 'text-low-contrast', 'static-beats', 'renderer-error',
+  'frame-too-sparse', 'frame-too-dense', 'primary-block-not-prominent', 'primary-block-off-center', 'insufficient-spacing', 'text-hierarchy-violation', 'text-overflow', 'content-occluded', 'layout-jump-excessive', 'palette-drift', 'typography-drift',
+] as const;
+
 export const MotionCanvasBundleSchema = z
   .object({
     status: z.enum(motionCanvasStatusValues),
@@ -598,7 +656,7 @@ export const MotionCanvasBundleSchema = z
     }).strict()).max(32).optional(),
     /** Rendered-frame evidence, tied to the exact source hash. */
     visualValidation: z.object({
-      version: z.literal(1),
+      version: z.literal(2),
       status: z.enum(['passed', 'failed']),
       validatedAt: z.string().datetime(),
       sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
@@ -612,7 +670,7 @@ export const MotionCanvasBundleSchema = z
         }).strict()).max(30),
       }).strict()).max(128),
       issues: z.array(z.object({
-        code: z.string(), sceneId: z.string().uuid(), beatId: z.string().uuid().nullable(), timeSeconds: z.number().nonnegative(), semanticKey: z.string().nullable(),
+        code: z.enum(visualQualityIssueCodeValues), sceneId: z.string().uuid(), beatId: z.string().uuid().nullable(), timeSeconds: z.number().nonnegative(), semanticKey: z.string().nullable(),
         bounds: z.object({x: z.number(), y: z.number(), width: z.number().nonnegative(), height: z.number().nonnegative()}).nullable(), reason: z.string().min(1).max(600),
       }).strict()).max(64),
     }).strict().optional(),

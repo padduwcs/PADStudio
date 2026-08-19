@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {DEFAULT_NARRATION_CALIBRATION, plannedBeatDurationSeconds} from '../shared/narrationTiming.ts';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
-import {TeachingOutlineSchema, VoiceVisualPlanSchema, type NarrationDocument, type TeachingOutline, type TopicProject, type VoiceVisualPlan, type VoiceVisualPlanContent} from '../shared/topic.ts';
+import {TeachingOutlineSchema, VoiceVisualPlanSchema, type NarrationDocument, type TeachingOutline, type TopicProject, type VoiceVisualBeat, type VoiceVisualPlan, type VoiceVisualPlanContent} from '../shared/topic.ts';
 import {
   NARRATION_VISUAL_PLANNER_PROMPT_VERSION,
   splitPlannerScenesAtBeatLimit,
@@ -11,7 +11,7 @@ import {
   type NarrationVisualPlannerService,
 } from './narrationVisualPlanner.ts';
 
-export const NARRATION_STRUCTURE_VERSION = 'semantic-visual-plan-v3';
+export const NARRATION_STRUCTURE_VERSION = 'semantic-visual-plan-v4';
 
 export const DEFAULT_TIMING_CALIBRATION: VoiceVisualPlanContent['timingCalibration'] = {
   source: 'default',
@@ -67,6 +67,18 @@ function fallbackBeatLifecycle() {
     },
   };
 }
+/** Deterministic composition intent for the non-AI planning path. It matches
+ * the geometry the deterministic fallback scene actually renders. */
+function fallbackBeatComposition(): VoiceVisualBeat['compositionContract'] {
+  return {
+    visualFocus: 'Thẻ khái niệm trung tâm mang ý chính của beat, mọi thành phần khác chỉ hỗ trợ đọc hiểu.',
+    hierarchy: ['block-concept-card', 'concept-label'],
+    semanticRole: 'claim',
+    layout: 'center-focus',
+    density: 'balanced',
+    spacingNotes: 'Chừa safe margin quanh thẻ trung tâm và giữ khoảng thở rõ ràng giữa tiêu đề, thẻ và thanh tiến trình.',
+  };
+}
 function groupSemanticScenes(beats: string[]) {
   const groups: string[][] = []; let current: string[] = [];
   for (const beat of beats) {
@@ -87,11 +99,19 @@ function visualBible(background: string, topic: string) {
   };
 }
 
+/** A composition contract only counts when it agrees with the lifecycle it
+ * describes: the dominant entry is the primary block and every ranked key is
+ * actually on screen for that beat. */
+export function beatCompositionContractIsComplete(beat: VoiceVisualBeat) {
+  const contract = beat.compositionContract;
+  return Boolean(contract && beat.primaryBlock && beat.visualLifecycle && contract.hierarchy[0] === beat.primaryBlock && contract.hierarchy.every(key => beat.visualLifecycle!.stay.includes(key)));
+}
+
 export function narrationArtifactsAreCurrent(outline: TeachingOutline | null | undefined, plan: VoiceVisualPlan | null | undefined) { return Boolean(outline?.status === 'approved' && plan?.status === 'approved'); }
 export function narrationArtifactsMatchReview(project: Pick<TopicProject, 'outline' | 'voiceVisualPlan' | 'narration'>) {
   // A v1 plan remains readable, but production preparation upgrades it to a
   // v2 semantic blueprint; it cannot silently masquerade as a reviewed v2 plan.
-  return Boolean(project.narration?.review && project.narration.approvedSourceHash === project.narration.review.sourceHash && narrationArtifactsAreCurrent(project.outline, project.voiceVisualPlan) && project.voiceVisualPlan?.visualBible && project.voiceVisualPlan.sections.every(section => section.beats.length <= pipelineSafetyLimits.maximumBeatsPerSection && section.beats.every(beat => beat.primaryBlock && beat.visualLifecycle && beat.visualLifecycle.stay.includes(beat.primaryBlock) && beat.visualLifecycle.stay.filter(key => key.startsWith('block-')).length <= 2)) && narrationPlanMatchesReviewedNarration(project.narration, project.voiceVisualPlan));
+  return Boolean(project.narration?.review && project.narration.approvedSourceHash === project.narration.review.sourceHash && narrationArtifactsAreCurrent(project.outline, project.voiceVisualPlan) && project.voiceVisualPlan?.visualBible && project.voiceVisualPlan.sections.every(section => section.beats.length <= pipelineSafetyLimits.maximumBeatsPerSection && section.beats.every(beat => beat.primaryBlock && beat.visualLifecycle && beat.visualLifecycle.stay.includes(beat.primaryBlock) && beat.visualLifecycle.stay.filter(key => key.startsWith('block-')).length <= 2 && beatCompositionContractIsComplete(beat))) && narrationPlanMatchesReviewedNarration(project.narration, project.voiceVisualPlan));
 }
 /** Proof that the plan preserves all reviewed narration and its order. */
 export function narrationPlanMatchesReviewedNarration(narration: NarrationDocument, plan: VoiceVisualPlan) {
@@ -108,6 +128,7 @@ export function validateSemanticVisualPlan(narration: NarrationDocument, outline
   if (plan.sections.some(section => section.beats.length > pipelineSafetyLimits.maximumBeatsPerSection)) diagnostics.push('scene exceeds maximum beat count');
   if (plan.sections.some(section => section.beats.some(beat => (beat.visualLifecycle?.stay ?? []).filter(key => key.startsWith('block-')).length > 2))) diagnostics.push('beat exceeds maximum active block count');
   if (plan.sections.some(section => !section.stateHandoff || section.beats.some(beat => !beat.visualPurpose || !beat.visualDescription || !beat.animationDescription || !beat.primaryBlock || !beat.visualLifecycle || !beat.visualLifecycle.stay.includes(beat.primaryBlock)))) diagnostics.push('beat blueprint, lifecycle, or scene handoff is incomplete');
+  if (plan.sections.some(section => section.beats.some(beat => !beatCompositionContractIsComplete(beat)))) diagnostics.push('beat composition contract is missing or inconsistent');
   if (!narrationPlanMatchesReviewedNarration(narration, plan)) diagnostics.push('spoken narration was changed, omitted, or reordered');
   if (diagnostics.length) throw new Error(`Semantic visual plan invalid: ${diagnostics.join('; ')}.`);
 }
@@ -125,7 +146,7 @@ export function createNarrationArtifacts({topicInput, narration, generationId, n
   const outline: TeachingOutline = {brief: {summary: `Video về ${topicInput.topic} được dựng từ lời thoại đã duyệt.`, assumptions: ['Semantic planner chỉ phân đoạn và mô tả visual; không viết lại lời thoại.']}, centralMessage: topicInput.topic, sections: groups.map((group, index) => ({id: ids[index]!, title: semanticTitle(topicInput.topic, group, index), goal: teachingGoal(group), content: group.join(' '), estimatedSeconds: Math.max(pipelineSafetyLimits.minimumSectionDurationSeconds, group.reduce((total, beat) => total + plannedBeatDurationSeconds(beat, 0, timingCalibration), 0))})), status: 'approved', contentRevision: (previousPlan?.sourceOutlineContentRevision ?? 0) + 1, sourceInput: topicInput, sourceNarrationHash: review.sourceHash, sourceNarrationRevision: narrationRevision, generation};
   const plan: VoiceVisualPlan = {voiceDirection: 'Đọc nguyên văn bản cách đọc đã được người dùng duyệt.', visualDirection: 'Chuyển semantic blueprint và visual bible thành Motion Canvas; không tự đổi phép ẩn dụ nền tảng.', visualBible: visualBible(topicInput.background.color, topicInput.topic), timingCalibration, sections: groups.map((group, index) => ({outlineSectionId: ids[index]!, stateHandoff: {incoming: index ? `Kế thừa ${topicInput.topic} visual anchor từ scene ${index}.` : null, outgoing: index < groups.length - 1 ? `Giữ ${topicInput.topic} visual anchor để scene ${index + 2} tiếp tục.` : null}, beats: group.map(text => ({id: randomUUID(), voiceover: text, spokenVoiceover: text, visualPurpose: `Biến ý “${keywords(text).slice(0, 3).join(' ') || topicInput.topic}” thành một quan hệ nhìn thấy được thay vì chỉ lặp caption.`, visualDescription: describeVisual(text, topicInput.topic), animationDescription: 'Đưa quan hệ chính vào focus, chuyển trạng thái một lần theo nhịp lời đọc, rồi giữ hình để đọc.', visualHoldSeconds: 0, durationSeconds: plannedBeatDurationSeconds(text, 0, timingCalibration)}))})), status: 'approved', contentRevision: (previousPlan?.contentRevision ?? 0) + 1, narrationRevision, sourceOutlineContentRevision: outline.contentRevision, sourceNarrationHash: review.sourceHash, sourceNarrationRevision: narrationRevision, generation};
   for (const section of plan.sections) {
-    for (const beat of section.beats) Object.assign(beat, fallbackBeatLifecycle());
+    for (const beat of section.beats) Object.assign(beat, fallbackBeatLifecycle(), {compositionContract: fallbackBeatComposition()});
   }
   validateSemanticVisualPlan(narration, outline, plan);
   return {outline, voiceVisualPlan: plan};
@@ -162,6 +183,7 @@ export function reconstructArtifactsFromPlannerOutput({topicInput, narration, un
   plannedBeats.forEach((beat, index) => Object.assign(beat, {
     primaryBlock: blueprintBeats[index]!.primaryBlock,
     visualLifecycle: blueprintBeats[index]!.visualLifecycle,
+    compositionContract: blueprintBeats[index]!.compositionContract,
   }));
   validateSemanticVisualPlan(narration, outline, voiceVisualPlan);
   return {outline, voiceVisualPlan};

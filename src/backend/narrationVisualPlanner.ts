@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {z} from 'zod';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
-import type {CodexTokenUsage, TopicInput} from '../shared/topic.ts';
+import {compositionDensityValues, compositionLayoutValues, compositionSemanticRoleValues, type CodexTokenUsage, type TopicInput} from '../shared/topic.ts';
 import type {CodexAppServerClient} from './codexConnection.ts';
 import {
   CodexStructuredGenerationError,
@@ -11,7 +11,7 @@ import {
 } from './codexStructuredGeneration.ts';
 
 export const NARRATION_VISUAL_PLANNER_PROMPT_VERSION =
-  'narration-visual-planner-v2';
+  'narration-visual-planner-v3';
 
 /** One reviewed sentence with a stable ID. The AI planner may only reference
  * this ID; it never receives permission to echo, paraphrase, or invent text. */
@@ -58,6 +58,16 @@ const plannerUnitBlueprintSchema = z
       exit: z.array(z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/)).min(1).max(12),
     }).strict(),
     primaryBlock: z.string().regex(/^block-[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/),
+    compositionContract: z
+      .object({
+        visualFocus: z.string().trim().min(12, 'Visual focus phải rõ ràng.').max(300),
+        hierarchy: z.array(z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/)).min(2).max(6),
+        semanticRole: z.enum(compositionSemanticRoleValues),
+        layout: z.enum(compositionLayoutValues),
+        density: z.enum(compositionDensityValues),
+        spacingNotes: z.string().trim().min(12, 'Spacing notes phải rõ ràng.').max(300),
+      })
+      .strict(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -66,6 +76,13 @@ const plannerUnitBlueprintSchema = z
     }
     if (value.visualLifecycle.stay.filter(key => key.startsWith('block-')).length > 2) {
       context.addIssue({code: 'custom', path: ['visualLifecycle', 'stay'], message: 'At most two block-* keys may stay active in one beat.'});
+    }
+    if (value.compositionContract.hierarchy[0] !== value.primaryBlock) {
+      context.addIssue({code: 'custom', path: ['compositionContract', 'hierarchy', 0], message: 'The dominant hierarchy entry must be the primary block.'});
+    }
+    for (const [index, key] of value.compositionContract.hierarchy.entries()) {
+      if (value.visualLifecycle.stay.includes(key)) continue;
+      context.addIssue({code: 'custom', path: ['compositionContract', 'hierarchy', index], message: 'Every hierarchy key must stay visible during its beat.'});
     }
   });
 
@@ -190,6 +207,9 @@ function collectPlannerStrings(output: NarrationVisualPlannerOutput) {
         unit.visualDescription,
         unit.animationDescription,
         unit.primaryBlock,
+        unit.compositionContract.visualFocus,
+        unit.compositionContract.spacingNotes,
+        ...unit.compositionContract.hierarchy,
         ...unit.visualLifecycle.enter,
         ...unit.visualLifecycle.stay,
         ...unit.visualLifecycle.exit,
@@ -244,6 +264,7 @@ function buildPrompt(request: NarrationVisualPlannerRequest) {
   return [
     'Group all units in their exact input order into consecutive, non-overlapping scenes. Prefer 3–4 beats per scene and never exceed 5; split at unit boundaries.',
     'For every unit provide primaryBlock (a stable block-* JSX key) plus visualLifecycle.enter, visualLifecycle.stay and visualLifecycle.exit. Each list is non-empty and contains stable kebab-case JSX keys. primaryBlock must occur in stay; within the same beat, stay may contain at most two block-* keys (this is not a limit on different blocks used sequentially across the scene); exit means hidden completely or moved outside the frame.',
+    `Composition contract: for every unit provide compositionContract with visualFocus (one single dominant point of interest in the frame, in plain language), hierarchy (2–6 semantic keys ordered from dominant to subordinate visual weight; hierarchy[0] must equal primaryBlock and every key must be in visualLifecycle.stay), semanticRole (one of ${compositionSemanticRoleValues.join(', ')}), layout (one of ${compositionLayoutValues.join(', ')}), density (one of ${compositionDensityValues.join(', ')}) and spacingNotes (padding and breathing-room intent). Exactly one element dominates each frame; use transition only for a beat that genuinely justifies a hard layout cut.`,
     'Bạn là AI Visual Planner. Bạn CHỈ lập kế hoạch hình ảnh; tuyệt đối không được viết, sửa, rút gọn, dịch hay diễn giải lại lời thoại.',
     'Input units là danh sách câu lời thoại đã được người dùng duyệt, mỗi câu có unitId ổn định. Bạn không có quyền trả về voiceover text; chỉ được tham chiếu unitId.',
     'Nhóm TOÀN BỘ unit theo đúng thứ tự xuất hiện trong units thành các scene liên tiếp không chồng lấn: mọi unitId phải xuất hiện đúng một lần, không bỏ sót, không lặp lại, không đổi thứ tự.',

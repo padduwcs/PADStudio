@@ -42,6 +42,9 @@ export interface PreparedMotionCanvasWorkspace {
   workspacePath: string;
   projectFile: 'src/project.ts';
   scenes: MotionCanvasScene[];
+  /** Exactly the sources written to disk, after color normalisation, so the
+   * rendered-frame gate hashes what the renderer will actually load. */
+  sourceScenes: MotionCanvasSourceScene[];
   validation: MotionCanvasBundle['validation'];
   workspaceDirectory: string;
   projectFilePath: string;
@@ -576,6 +579,7 @@ declare type Callback = (...args: any[]) => void;
           workspaceDirectory: finalDirectory,
           projectFilePath: path.join(finalDirectory, 'src/project.ts'),
           scenes: normalizedScenes.map(({source: _source, ...scene}) => scene),
+          sourceScenes: normalizedScenes,
           validation: {
             validatedAt: new Date().toISOString(),
             sourceHash: hash,

@@ -18,6 +18,8 @@ import {defaultLayoutRenderSettings, LayoutEditorManifestSchema} from '../shared
 import {hashJson} from './motionCanvasHistoryStore.ts';
 import type {GeneratedVoiceNarration} from './voiceWorkspace.ts';
 import {closePadStudioServerServices, createPadStudioServer} from './app.ts';
+import {MotionCanvasVisualQualityError, motionCanvasSceneSourceHash} from './motionCanvasVisualQuality.ts';
+import type {MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
 
 const now = '2026-08-18T00:00:00.000Z';
 const digest = (value: unknown) => hashJson(value);
@@ -92,6 +94,14 @@ function fakeDependencies(root: string) {
               unitId: unit.id,
               primaryBlock: 'block-concept-card' as const,
               visualLifecycle: {enter: ['block-concept-card'], stay: ['block-concept-card', 'concept-label'], exit: ['block-concept-card']},
+              compositionContract: {
+                visualFocus: 'Khối khái niệm trung tâm giữ toàn bộ sự chú ý của beat này.',
+                hierarchy: ['block-concept-card', 'concept-label'],
+                semanticRole: 'claim' as const,
+                layout: 'center-focus' as const,
+                density: 'balanced' as const,
+                spacingNotes: 'Giữ khoảng thở rộng quanh khối trung tâm và giữa các nhãn.',
+              },
               visualPurpose: 'Biến ý chính của câu thành một quan hệ nhìn thấy được.',
               visualDescription: 'Một sơ đồ trung tâm minh họa quan hệ được nhắc tới.',
               animationDescription: 'Phần tử chính di chuyển vào vị trí rồi giữ hình.',
@@ -111,6 +121,9 @@ function fakeDependencies(root: string) {
     },
   };
 
+  // The real workspace round-trips sources through disk, so the fake must too:
+  // rendered-frame evidence is hashed over exactly what a reader gets back.
+  const preparedSceneSources = new Map<string, string>();
   const motionCanvasWorkspace = {
     async prepare(_projectId: string, generationId: string, scenes: Awaited<ReturnType<typeof motionCanvasGenerator.generate>>['scenes']) {
       const result = {
@@ -119,15 +132,17 @@ function fakeDependencies(root: string) {
         workspaceDirectory: root,
         projectFilePath: path.join(root, 'src/project.ts'),
         scenes: scenes.map(({source: _source, ...scene}) => scene),
+        sourceScenes: scenes,
         validation: {validatedAt: now, sourceHash: digest(scenes.map(scene => scene.source)), motionCanvasVersion: 'fake-motion'},
       };
+      for (const scene of scenes) preparedSceneSources.set(scene.id, scene.source);
       return result;
     },
     async readFiles(_projectId: string, bundle: ReturnType<typeof MotionCanvasBundleSchema.parse>) {
       return bundle.scenes.map(scene => ({path: scene.filePath, source: `// ${scene.id}`}));
     },
     async readSceneSources(_projectId: string, bundle: ReturnType<typeof MotionCanvasBundleSchema.parse>) {
-      return bundle.scenes.map(scene => ({...scene, source: `// source for ${scene.id}\n`.repeat(20)}));
+      return bundle.scenes.map(scene => ({...scene, source: preparedSceneSources.get(scene.id) ?? `// source for ${scene.id}\n`.repeat(20)}));
     },
     async verify(_projectId: string, bundle: ReturnType<typeof MotionCanvasBundleSchema.parse>) {
       return {projectDirectory: root, workspaceDirectory: root, projectFile: path.join(root, bundle.projectFile), sourceHash: bundle.validation.sourceHash};
@@ -227,7 +242,7 @@ function fakeDependencies(root: string) {
   };
 
   const motionCanvasRevisionReviewService = {async review() { return {coherence: {verdict: 'coherent' as const, summary: 'Fake review confirms the scoped scene stays coherent.', issues: []}, model: 'fake-codex', usage: null}; }};
-  const motionCanvasVisualQualityGate = {async validate(input: {scenes: Array<{id: string; source: string}>}) { return {version: 1 as const, status: 'passed' as const, validatedAt: now, sourceHash: digest(input.scenes.map(scene => [scene.id, scene.source])), scenes: [], issues: []}; }};
+  const motionCanvasVisualQualityGate = {async validate(input: {scenes: Array<{id: string; source: string}>}) { return {version: 2 as const, status: 'passed' as const, validatedAt: now, sourceHash: motionCanvasSceneSourceHash(input.scenes as MotionCanvasSourceScene[]), scenes: [], issues: []}; }};
   const finalRenderService = {
     async render(_projectId: string, generationId: string, contentRevision: number, _sync: ReturnType<typeof AnimationSyncBundleSchema.parse>, layout: ReturnType<typeof LayoutBundleSchema.parse>, profile?: {frame: {width: number; height: number; fps: number}}) {
       renderGeneration = generationId;
@@ -501,4 +516,109 @@ test('narration audit joins concurrent requests sharing a generation id and reje
   assert.equal(reused.status, 409, JSON.stringify(reusedBody));
   assert.equal(reusedBody.error?.code, 'GENERATION_ID_REUSED');
   assert.equal(audit.calls(), 1, 'reusing a generation id with different content must not call the AI provider again');
+});
+
+const twoUnitNarration = 'Tìm kiếm nhị phân liên tục thu hẹp khoảng tìm kiếm đã được sắp xếp. Nhờ vậy nó tìm đúng đáp án nhanh hơn duyệt tuần tự.';
+
+function twoScenePlanner() {
+  return {
+    async plan(request: {units: Array<{id: string; text: string}>}) {
+      const blueprint = (unitId: string) => ({
+        unitId,
+        primaryBlock: 'block-concept-card' as const,
+        visualLifecycle: {enter: ['block-concept-card'], stay: ['block-concept-card', 'concept-label'], exit: ['block-concept-card']},
+        compositionContract: {
+          visualFocus: 'Khối khái niệm trung tâm giữ toàn bộ sự chú ý của beat này.',
+          hierarchy: ['block-concept-card', 'concept-label'],
+          semanticRole: 'claim' as const,
+          layout: 'center-focus' as const,
+          density: 'balanced' as const,
+          spacingNotes: 'Giữ khoảng thở rộng quanh khối trung tâm và giữa các nhãn.',
+        },
+        visualPurpose: 'Biến ý chính của câu thành một quan hệ nhìn thấy được.',
+        visualDescription: 'Một sơ đồ trung tâm minh họa quan hệ được nhắc tới.',
+        animationDescription: 'Phần tử chính di chuyển vào vị trí rồi giữ hình.',
+      });
+      const middle = Math.max(1, Math.floor(request.units.length / 2));
+      return {
+        model: 'fake-codex',
+        usage: null,
+        output: {
+          scenes: [request.units.slice(0, middle), request.units.slice(middle)].map((units, index) => ({
+            title: `Fake scene ${index + 1}`,
+            goal: 'Giải thích nội dung chính bằng hình ảnh.',
+            stateHandoffIncoming: index === 0 ? null : 'Kế thừa anchor từ scene trước.',
+            stateHandoffOutgoing: index === 0 ? 'Giữ anchor cho scene sau.' : null,
+            units: units.map(unit => blueprint(unit.id)),
+          })),
+          visualBible: {
+            palette: {surface: '#173B31', primary: '#51B68E', accent: '#F5C451', text: '#F7FBF8'},
+            typographyScale: {title: 88, label: 42, body: 34},
+            shapeLanguage: 'Thẻ bo góc nhất quán, tránh trang trí không mang nghĩa.',
+            diagramLanguage: 'Sơ đồ trung tâm với nhãn ngắn và quan hệ rõ ràng.',
+            motionTempo: 'Nhịp vừa, mỗi beat một chuyển động có chủ đích.',
+            transitionConvention: 'Giữ anchor giữa các scene bằng fade ngắn.',
+            visualAnchor: 'Khối trung tâm đại diện chủ đề video.',
+          },
+        },
+      };
+    },
+  };
+}
+
+async function prepareTwoScenes(baseUrl: string) {
+  let project = await projectFrom(await request(baseUrl, null, 'POST', '/api/projects', {creationId: randomUUID(), topicInput, narrationSourceText: twoUnitNarration}));
+  project = await projectFrom(await request(baseUrl, project, 'PUT', `/api/projects/${project.id}/narration`, {sourceText: twoUnitNarration, projectRules: []}));
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/narration/approve`, {sourceHash: project.narration!.review!.sourceHash, rulesHash: project.narration!.review!.rulesHash}));
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/production/prepare`, {generationId: randomUUID()}));
+  return projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/voice/generate`, voiceRequest(randomUUID())));
+}
+
+test('a rendered-quality failure retries once, re-validates the whole bundle, and never approves a failed bundle', async t => {
+  const validatedSceneCounts: number[] = [];
+  const failedAt = '2026-01-01T00:00:00.000Z';
+  let validations = 0;
+  const failFirstSceneOnce = {
+    async validate(input: {scenes: MotionCanvasSourceScene[]}) {
+      validations += 1;
+      validatedSceneCounts.push(input.scenes.length);
+      if (validations === 1) {
+        throw new MotionCanvasVisualQualityError({version: 2, status: 'failed', validatedAt: failedAt, sourceHash: 'a'.repeat(64), scenes: [], issues: [{code: 'frame-too-sparse', sceneId: input.scenes[0]!.id, beatId: null, timeSeconds: 0, semanticKey: null, bounds: null, reason: 'Visible content covers too little of the frame.'}]});
+      }
+      return {version: 2 as const, status: 'passed' as const, validatedAt: failedAt, sourceHash: motionCanvasSceneSourceHash(input.scenes), scenes: [], issues: []};
+    },
+  };
+  const retried = await start(t, {narrationVisualPlanner: twoScenePlanner(), motionCanvasVisualQualityGate: failFirstSceneOnce});
+  let project = await prepareTwoScenes(retried.baseUrl);
+  const beforeRetryCalls = retried.metrics.motionCalls();
+  project = await projectFrom(await request(retried.baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/generate`, {generationId: randomUUID()}));
+
+  assert.equal(project.motionCanvasBundle!.scenes.length, 2);
+  assert.equal(validations, 2);
+  // The retry regenerates only the failed section, but the second validation
+  // must cover every scene in the merged bundle.
+  assert.deepEqual(validatedSceneCounts, [2, 2]);
+  assert.equal(retried.metrics.motionCalls() - beforeRetryCalls, 2);
+  const retryDiagnostics = project.motionCanvasBundle!.generationDiagnostics!.filter(diagnostic => diagnostic.stage === 'quality-retry');
+  assert.deepEqual(retryDiagnostics.map(diagnostic => diagnostic.outcome), ['failed', 'passed']);
+  assert.match(retryDiagnostics[1]!.reason, /Re-rendered 1 failed scene/);
+  assert.equal(project.motionCanvasBundle!.visualValidation!.version, 2);
+  assert.equal(project.motionCanvasBundle!.visualValidation!.status, 'passed');
+  // Approve only passes because the stored hash covers the whole merged bundle.
+  project = await projectFrom(await request(retried.baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/approve`, {}));
+  assert.equal(project.motionCanvasBundle!.status, 'approved');
+
+  const alwaysFail = {
+    async validate(input: {scenes: MotionCanvasSourceScene[]}) {
+      throw new MotionCanvasVisualQualityError({version: 2, status: 'failed', validatedAt: failedAt, sourceHash: 'a'.repeat(64), scenes: [], issues: [{code: 'frame-too-dense', sceneId: input.scenes[0]!.id, beatId: null, timeSeconds: 0, semanticKey: null, bounds: null, reason: 'Visible content covers too much of the frame.'}]});
+    },
+  };
+  const blocked = await start(t, {narrationVisualPlanner: twoScenePlanner(), motionCanvasVisualQualityGate: alwaysFail});
+  const stuck = await prepareTwoScenes(blocked.baseUrl);
+  const failedResponse = await request(blocked.baseUrl, stuck, 'POST', `/api/projects/${stuck.id}/motion-canvas/generate`, {generationId: randomUUID()});
+  assert.equal(failedResponse.ok, false);
+  const reloaded = await projectFrom(await request(blocked.baseUrl, null, 'GET', `/api/projects/${stuck.id}`));
+  assert.ok(!reloaded.motionCanvasBundle);
+  const approveWithoutBundle = await request(blocked.baseUrl, reloaded, 'POST', `/api/projects/${reloaded.id}/motion-canvas/approve`, {});
+  assert.equal(approveWithoutBundle.status, 409);
 });

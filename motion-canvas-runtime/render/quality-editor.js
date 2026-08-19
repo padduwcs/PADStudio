@@ -4,6 +4,12 @@ import {rendererRangeFromFrames} from './diagnostics.js';
 const EXPORTER_ID = 'pad-studio/quality-samples';
 function finite(value) { return Number.isFinite(value) ? Number(value) : null; }
 function signal(node, name) { try { return typeof node?.[name] === 'function' ? node[name]() : null; } catch { return null; } }
+/** Motion Canvas resolves fills to Color objects; normalise them to #rrggbb so
+ * the deterministic gate can compare them against the visual bible palette. */
+function colorHex(value) {
+  if (typeof value === 'string') return value;
+  try { return value && typeof value.hex === 'function' ? value.hex() : null; } catch { return null; }
+}
 const SEMANTIC_KEY = /^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/;
 function keyOf(node) {
   const direct = node?.key;
@@ -66,12 +72,12 @@ function snapshot(scene, config, sample) {
         if (!parentKey) parentKey = candidate;
         if (!blockAncestor && candidate.startsWith('block-')) blockAncestor = candidate;
       }
-      const parentFill = signal(parent, 'fill');
+      const parentFill = colorHex(signal(parent, 'fill'));
       if (!localFill && typeof parentFill === 'string') localFill = parentFill;
       parent = signal(parent, 'parent');
     }
     const name = node.constructor?.name ?? '';
-    const fill = signal(node, 'fill');
+    const fill = colorHex(signal(node, 'fill'));
     return [{node, name, key, parentKey, blockAncestor, ancestorKeys, managed: managed.has(key), effectiveOpacity: finite(signal(node, 'absoluteOpacity')) ?? 1, kind: key.startsWith('block-') ? 'block' : /Txt/i.test(name) ? 'text' : 'other', bounds: box, visibleBounds: clipped(box, config.width, config.height), fontSize: finite(signal(node, 'fontSize')), fill: typeof fill === 'string' ? fill : null, localBackground: typeof localFill === 'string' ? localFill : null}];
   });
   return entries.map(entry => {

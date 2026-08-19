@@ -62,6 +62,23 @@ export function parseHexColor(value: string | null | undefined): Rgb | null {
   ];
 }
 
+/** WCAG relative-luminance contrast ratio, or null when either colour is not
+ * a parsable opaque hex value. */
+export function wcagContrastRatio(foreground: string | null | undefined, background: string | null | undefined) {
+  const front = parseHexColor(foreground);
+  const back = parseHexColor(background);
+  if (!front || !back) return null;
+  const luminance = (rgb: Rgb) => {
+    const channels = rgb.map(value => {
+      const ratio = value / 255;
+      return ratio <= 0.04045 ? ratio / 12.92 : ((ratio + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!;
+  };
+  const values = [luminance(front), luminance(back)].sort((left, right) => right - left);
+  return (values[0]! + 0.05) / (values[1]! + 0.05);
+}
+
 function colorDistanceWithin(
   red: number,
   green: number,

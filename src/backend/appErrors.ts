@@ -11,6 +11,7 @@ import {MotionCanvasGenerationError} from './motionCanvasGenerator.ts';
 import {MotionCanvasHistoryStoreError} from './motionCanvasHistoryStore.ts';
 import {MotionCanvasRevisionReviewError} from './motionCanvasRevisionReview.ts';
 import {MotionCanvasWorkspaceError} from './motionCanvasWorkspace.ts';
+import {MotionCanvasVisualValidationGateError} from './motionCanvasVisualQuality.ts';
 import {NarrationDraftGenerationError} from './narrationDraftGenerator.ts';
 import {ProjectConflictError, ProjectDataError} from './projectRepository.ts';
 import {VoiceWorkspaceError} from './voiceWorkspace.ts';
@@ -99,6 +100,14 @@ export function handleAppError(error: unknown, response: ServerResponse, logger:
         : 503,
       {code: error.code, message: error.message},
     );
+    return true;
+  }
+
+  if (error instanceof MotionCanvasVisualValidationGateError) {
+    sendApiError(response, 409, {
+      code: error.code,
+      message: error.message,
+    });
     return true;
   }
 

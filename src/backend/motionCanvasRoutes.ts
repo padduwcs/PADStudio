@@ -16,7 +16,7 @@ import {
   MOTION_CANVAS_PROMPT_VERSION,
   mergeMotionCanvasGenerationUsage,
 } from './motionCanvasGenerator.ts';
-import {MotionCanvasVisualQualityError} from './motionCanvasVisualQuality.ts';
+import {MotionCanvasVisualQualityError, assertVisualValidationCurrent} from './motionCanvasVisualQuality.ts';
 import {
   hashMotionCanvasBundle
 } from './motionCanvasHistoryStore.ts';
@@ -267,16 +267,24 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
             const lifecycleFor = (scenes: typeof generated.scenes) => new Map(
             scenes.flatMap(scene => {
               const section = voiceVisualPlan.sections.find(item => item.outlineSectionId === scene.outlineSectionId);
-              return (section?.beats ?? []).map(beat => [beat.id, {stay: beat.visualLifecycle!.stay}] as const);
+              return (section?.beats ?? []).map(beat => [beat.id, {stay: beat.visualLifecycle!.stay, primaryBlock: beat.primaryBlock, compositionContract: beat.compositionContract}] as const);
+            }),
+          );
+            const handoffFor = (scenes: typeof generated.scenes) => new Map(
+            scenes.map(scene => {
+              const section = voiceVisualPlan.sections.find(item => item.outlineSectionId === scene.outlineSectionId);
+              return [scene.id, {incoming: section?.stateHandoff?.incoming ?? null, outgoing: section?.stateHandoff?.outgoing ?? null}] as const;
             }),
           );
             let visualValidation;
             try {
               visualValidation = await motionCanvasVisualQualityGate.validate({
-              scenes: generated.scenes,
+              scenes: prepared.sourceScenes,
               lifecycle: lifecycleFor(generated.scenes),
               frame: projectVideoFrame(currentProject),
               backgroundColor: currentProject.topicInput.background.color,
+              visualBible: voiceVisualPlan.visualBible,
+              sceneHandoff: handoffFor(generated.scenes),
               workspaceDirectory: prepared.workspaceDirectory,
               projectFile: prepared.projectFilePath,
             });
@@ -300,9 +308,10 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
               qualityRetryDiagnostics.push(...(repaired.qualityRetryDiagnostics ?? []));
               await motionCanvasWorkspace.discard(currentProject.id, generationId);
               prepared = await motionCanvasWorkspace.prepare(currentProject.id, generationId, generated.scenes, projectVideoFrame(currentProject));
-              visualValidation = await motionCanvasVisualQualityGate.validate({scenes: generated.scenes, lifecycle: lifecycleFor(generated.scenes), frame: projectVideoFrame(currentProject), backgroundColor: currentProject.topicInput.background.color, workspaceDirectory: prepared.workspaceDirectory, projectFile: prepared.projectFilePath});
+              visualValidation = await motionCanvasVisualQualityGate.validate({scenes: prepared.sourceScenes, lifecycle: lifecycleFor(generated.scenes), frame: projectVideoFrame(currentProject), backgroundColor: currentProject.topicInput.background.color, visualBible: voiceVisualPlan.visualBible, sceneHandoff: handoffFor(generated.scenes), workspaceDirectory: prepared.workspaceDirectory, projectFile: prepared.projectFilePath});
               generationDiagnostics.push({stage: 'quality-retry', attempt: 1, reason: `Re-rendered ${repaired.scenes.length} failed scene(s); the merged ${generated.scenes.length}-scene bundle passed rendered-frame validation.`, outcome: 'passed'});
             }
+            assertVisualValidationCurrent({visualValidation}, prepared.sourceScenes);
             generationDiagnostics.push({stage: 'generate', attempt: 0, reason: 'Source attachment/container/timing policy, compiler preparation, and rendered-frame quality gate passed.', outcome: 'passed'});
             generationDiagnostics.push(...qualityRetryDiagnostics);
             acceptedWorkspace = true;
@@ -531,6 +540,16 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
           'Kế hoạch voice–visual đã thay đổi. Hãy sinh lại scene trước khi chốt.',
         );
       }
+
+      // Approval is only ever as good as the rendered-frame evidence attached
+      // to these exact sources; nothing else may stand in for it.
+      assertVisualValidationCurrent(
+        motionCanvasBundle,
+        await motionCanvasWorkspace.readSceneSources(
+          currentProject.id,
+          motionCanvasBundle,
+        ),
+      );
 
       const approvedBundle: MotionCanvasBundle = {
         ...motionCanvasBundle,

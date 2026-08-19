@@ -24,8 +24,9 @@ import {
   findUnsupportedMotionCanvasColorLiterals,
   normalizeMotionCanvasColorFormats,
 } from './motionCanvasSourceCompatibility.ts';
+import {wcagContrastRatio} from './visualViability.ts';
 
-export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v12';
+export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v13';
 export const MOTION_CANVAS_VERSION = '3.17.2';
 export const MOTION_CANVAS_FPS = 30;
 export const MOTION_CANVAS_DEFAULT_FONT_FAMILY =
@@ -395,6 +396,7 @@ function generationPayload(
         animationDescription: beat.animationDescription,
         primaryBlock: beat.primaryBlock,
         visualLifecycle: beat.visualLifecycle,
+        compositionContract: beat.compositionContract,
         durationSeconds: beat.durationSeconds,
       })),
       stateHandoff: voiceVisualSection.stateHandoff,
@@ -424,6 +426,11 @@ function buildPrompt(
 ) {
   return [
     `Lifecycle contract: for each beat emit one exact comment: // lifecycle:beat:<id>:enter=<keys>|stay=<keys>|exit=<keys>|primary=<block>. Substitute values from scene.beats; do not change them. Animate enter visuals from opacity 0 or off-canvas to active state, retain only stay visuals, and animate exit visuals to opacity 0 or beyond the canvas edge before the next beat. Never leave inactive visuals accumulated at low opacity. Keep at most ${MAX_CONCURRENT_PRIMARY_BLOCKS} block-* primary containers active in stay within the same beat; different beats may use different blocks sequentially.`,
+    'Composition contract: realise scene.beats[].compositionContract literally. Exactly one dominant focal point per frame; it is the node named by compositionContract.hierarchy[0] (the primaryBlock) and it must render the largest, most central mass described by visualFocus. Every remaining hierarchy key must be visibly subordinate, in that order. Place the primary block according to compositionContract.layout: center-focus keeps it near the frame centre, left-right-split and top-bottom-stack keep it clearly inside one half, grid keeps it on a regular cell, full-bleed lets it span the safe area. Honour compositionContract.density (sparse/balanced/dense) for how many concurrent visible nodes you emit, and compositionContract.spacingNotes for padding and the gap between neighbouring blocks.',
+    'Text discipline: use short labels, not paragraphs. Keep every Txt under roughly 90 characters and never emit a text node that is a full sentence of the voiceover. Exactly one text node per beat may use the title size; everything else is label or body.',
+    'Every node must earn its keep: do not emit purely decorative nodes with no semantic role. Each JSX node must have a meaningful semantic key and either carry information or be a structural container for nodes that do.',
+    'Colour and type discipline: use only the exact hex values in video.visualBible.palette (plus #00000000 for transparency) for fill, stroke and text colour, and only the exact numeric sizes in video.visualBible.typographyScale (title/label/body) for fontSize. Do not invent intermediate colours, gradients or font sizes.',
+    'Handoff consistency: any node referenced by an adjacent beat lifecycle (enter/stay/exit) or by scene.stateHandoff must keep the same key, the same visual role and approximately the same position across that boundary. Do not relocate or restyle an anchor while it is being handed over.',
     `Responsive layout contract: start with const canvasWidth = view.width(); const canvasHeight = view.height(); const safeMarginX = canvasWidth * ${MOTION_CANVAS_SAFE_MARGIN_X_RATIO}; const safeMarginY = canvasHeight * ${MOTION_CANVAS_SAFE_MARGIN_Y_RATIO};. Use centered x/y coordinates and these variables for scene-background width/height and all composition bounds.`,
     'Structural attachment invariant: inside the default makeScene2D generator, call view.add(<SceneTree />) exactly once as a direct statement. Its argument must be the actual JSX scene tree, with exactly one key="scene-background" containing key="scene-content-root". Never yield or yield* JSX, view.add, or node.add, and never leave a JSX tree unattached.',
     'Sinh đúng một scene Motion Canvas TypeScript/TSX cho section trong JSON sau.',
@@ -1588,6 +1595,42 @@ interface GeneratedSceneResult {
   usage: CodexTokenUsage | null;
 }
 
+/** Deterministic geometry for one declared composition archetype. Ratios are
+ * canvas-relative so the fallback stays responsive and inside the safe area. */
+function fallbackCompositionGeometry(
+  layout: NonNullable<VoiceVisualPlan['sections'][number]['beats'][number]['compositionContract']>['layout'] | undefined,
+  density: NonNullable<VoiceVisualPlan['sections'][number]['beats'][number]['compositionContract']>['density'] | undefined,
+) {
+  const heightScale = density === 'sparse' ? 0.88 : density === 'dense' ? 1.16 : 1;
+  const descriptionLimit = density === 'sparse' ? 70 : density === 'dense' ? 150 : 110;
+  const base = {widthRatio: 1, restXRatio: 0, restYRatio: 0, heightRatio: 0.271, descriptionLimit};
+  switch (layout) {
+    case 'left-right-split':
+      return {...base, widthRatio: 0.62, restXRatio: -0.16, heightRatio: 0.3 * heightScale};
+    case 'top-bottom-stack':
+      return {...base, restYRatio: -0.12, heightRatio: 0.22 * heightScale};
+    case 'grid':
+      return {...base, widthRatio: 0.7, heightRatio: 0.24 * heightScale};
+    case 'full-bleed':
+      return {...base, heightRatio: 0.4 * heightScale};
+    default:
+      return {...base, heightRatio: 0.271 * heightScale};
+  }
+}
+
+/** Picks the candidate colour with the best worst-case contrast against every
+ * surface it will sit on, so palette adherence never costs readability. */
+function bestContrastColor(candidates: string[], surfaces: string[], fallback: string) {
+  let best: {color: string; ratio: number} | null = null;
+  for (const candidate of candidates) {
+    const ratios = surfaces.map(surface => wcagContrastRatio(candidate, surface));
+    if (ratios.some(ratio => ratio === null)) continue;
+    const worst = Math.min(...(ratios as number[]));
+    if (!best || worst > best.ratio) best = {color: candidate, ratio: worst};
+  }
+  return best?.color ?? fallback;
+}
+
 function fallbackSceneSource(
   request: MotionCanvasGenerationRequest,
   sectionIndex: number,
@@ -1596,14 +1639,26 @@ function fallbackSceneSource(
   const beats = request.voiceVisualPlan.sections[sectionIndex]!.beats;
   const background = request.topicInput.background;
   const backgroundTone = videoBackgroundTone(background);
-  const foreground = backgroundTone === 'light' ? '#18342C' : '#F3F7F4';
-  const trackColor = backgroundTone === 'light' ? '#D7E1DB' : '#365149';
-  const colors = ['#51B68E', '#ED8F67', '#71A7E8', '#D8B85A'];
+  const bible = request.voiceVisualPlan.visualBible;
+  // Deterministic fallback still obeys the visual bible so the rendered-frame
+  // gate sees the same palette and type ratios it sees for AI scenes.
+  const foreground = bible?.palette.text ?? (backgroundTone === 'light' ? '#18342C' : '#F3F7F4');
+  const trackColor = bible?.palette.surface ?? (backgroundTone === 'light' ? '#D7E1DB' : '#365149');
+  const cardColors = bible ? [bible.palette.primary, bible.palette.accent] : ['#51B68E', '#ED8F67'];
+  const labelColor = bible
+    ? bestContrastColor([bible.palette.background, bible.palette.text, bible.palette.surface], cardColors, '#10231D')
+    : '#10231D';
+  const headingFontRatio = 0.061;
+  const labelFontRatio = bible ? headingFontRatio * (bible.typographyScale.label / bible.typographyScale.title) : 0.044;
+  // The fallback renders one static composition, so it follows the first
+  // beat's declared archetype rather than inventing its own geometry.
+  const composition = beats[0]?.compositionContract;
+  const geometry = fallbackCompositionGeometry(composition?.layout, composition?.density);
   const beatBlocks = beats.map((beat, beatIndex) => {
     const number = beatIndex + 1;
-    const description = beat.visualDescription.replace(/\s+/g, ' ').trim().slice(0, 110);
+    const description = beat.visualDescription.replace(/\s+/g, ' ').trim().slice(0, geometry.descriptionLimit);
     const progress = (beatIndex + 1) / beats.length;
-    const color = colors[beatIndex % colors.length]!;
+    const color = cardColors[beatIndex % cardColors.length]!;
     const lifecycle = beat.visualLifecycle!;
     return `  // lifecycle:beat:${beat.id}:enter=${lifecycle.enter.join(',')}|stay=${lifecycle.stay.join(',')}|exit=${lifecycle.exit.join(',')}|primary=${beat.primaryBlock}
   yield* waitUntil('beat:${beat.id}:start');
@@ -1613,7 +1668,7 @@ function fallbackSceneSource(
   const exitDuration${number} = Math.min(0.4, Math.max(0.05, beatDuration${number} * 0.1));
   yield* all(
     conceptCard().opacity(1, enterDuration${number}),
-    conceptCard().y(0, enterDuration${number}),
+    conceptCard().y(canvasHeight * ${geometry.restYRatio}, enterDuration${number}),
     conceptLabel().opacity(1, enterDuration${number}),
     conceptLabel().text(${JSON.stringify(description)}, enterDuration${number}),
     conceptCard().fill('${color}', enterDuration${number}),
@@ -1644,7 +1699,7 @@ export default makeScene2D(function* (view) {
             text={${JSON.stringify(outlineSection.title.slice(0, 80))}}
             width={canvasWidth - safeMarginX * 2}
             fill={${JSON.stringify(foreground)}}
-            fontSize={canvasWidth * 0.061}
+            fontSize={canvasWidth * ${headingFontRatio}}
             fontWeight={700}
             textAlign={'center'}
           />
@@ -1652,21 +1707,22 @@ export default makeScene2D(function* (view) {
         <Rect
           key="block-concept-card"
           ref={conceptCard}
-          width={canvasWidth - safeMarginX * 2}
-          height={canvasHeight * 0.271}
+          width={(canvasWidth - safeMarginX * 2) * ${geometry.widthRatio}}
+          height={canvasHeight * ${geometry.heightRatio}}
           radius={canvasWidth * 0.048}
-          fill={'#51B68E'}
+          fill={${JSON.stringify(cardColors[0]!)}}
           padding={canvasWidth * 0.059}
           opacity={0}
+          x={(canvasWidth - safeMarginX * 2) * ${geometry.restXRatio}}
           y={canvasHeight}
         >
         <Txt
           key="concept-label"
           ref={conceptLabel}
           text={'Đang chuẩn bị visual…'}
-          width={canvasWidth - safeMarginX * 4}
-          fill={'#10231D'}
-          fontSize={canvasWidth * 0.044}
+          width={(canvasWidth - safeMarginX * 2) * ${geometry.widthRatio} - canvasWidth * 0.118}
+          fill={${JSON.stringify(labelColor)}}
+          fontSize={canvasWidth * ${labelFontRatio}}
           fontWeight={650}
           textAlign={'center'}
           opacity={0}

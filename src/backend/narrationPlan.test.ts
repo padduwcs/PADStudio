@@ -110,6 +110,14 @@ function validPlannerOutput(unitIds: string[]) {
         unitId,
         primaryBlock: 'block-concept-card' as const,
         visualLifecycle: {enter: ['block-concept-card'], stay: ['block-concept-card', 'concept-label'], exit: ['block-concept-card']},
+        compositionContract: {
+          visualFocus: 'Khối khái niệm trung tâm giữ toàn bộ sự chú ý của beat này.',
+          hierarchy: ['block-concept-card', 'concept-label'],
+          semanticRole: 'claim' as const,
+          layout: 'center-focus' as const,
+          density: 'balanced' as const,
+          spacingNotes: 'Giữ khoảng thở rộng quanh khối trung tâm và giữa các nhãn.',
+        },
         visualPurpose: 'Biến ý chính của câu thành một quan hệ nhìn thấy được.',
         visualDescription: 'Một sơ đồ trung tâm minh họa quan hệ được nhắc tới.',
         animationDescription: 'Phần tử chính di chuyển vào vị trí rồi giữ hình.',
@@ -299,4 +307,47 @@ test('planNarrationArtifacts giữ nguyên historical calibration ở cả nhán
     timingCalibration: historicalCalibration,
   });
   assert.deepEqual(aiPlanned.voiceVisualPlan.timingCalibration, historicalCalibration);
+});
+
+test('composition contract is planned, ranked against the lifecycle, and required by the gate', () => {
+  const narration = plannerNarration();
+  const {outline, voiceVisualPlan} = createNarrationArtifacts({topicInput: plannerTopicInput, narration, generationId: '10000000-0000-4000-8000-000000000101', now: '2026-01-01T00:00:00.000Z', previousPlan: null});
+  const beat = voiceVisualPlan.sections[0]!.beats[0]!;
+  const contract = beat.compositionContract!;
+  assert.equal(contract.hierarchy[0], beat.primaryBlock);
+  assert.ok(contract.hierarchy.every(key => beat.visualLifecycle!.stay.includes(key)));
+  assert.equal(contract.layout, 'center-focus');
+  assert.equal(contract.density, 'balanced');
+  assert.equal(narrationArtifactsMatchReview({outline, voiceVisualPlan, narration}), true);
+
+  const missing = structuredClone(voiceVisualPlan);
+  delete missing.sections[0]!.beats[0]!.compositionContract;
+  assert.throws(() => validateSemanticVisualPlan(narration, outline, missing), /composition contract/i);
+  assert.equal(narrationArtifactsMatchReview({outline, voiceVisualPlan: missing, narration}), false);
+
+  const misranked = structuredClone(voiceVisualPlan);
+  misranked.sections[0]!.beats[0]!.compositionContract!.hierarchy = ['concept-label', 'block-concept-card'];
+  assert.throws(() => validateSemanticVisualPlan(narration, outline, misranked), /composition contract/i);
+});
+
+test('beat schema rejects a hierarchy that contradicts primaryBlock or the lifecycle', () => {
+  const narration = plannerNarration();
+  const {voiceVisualPlan} = createNarrationArtifacts({topicInput: plannerTopicInput, narration, generationId: '10000000-0000-4000-8000-000000000102', now: '2026-01-01T00:00:00.000Z', previousPlan: null});
+  assert.doesNotThrow(() => VoiceVisualPlanSchema.parse(voiceVisualPlan));
+
+  const wrongDominant = structuredClone(voiceVisualPlan);
+  wrongDominant.sections[0]!.beats[0]!.compositionContract!.hierarchy = ['concept-label', 'block-concept-card'];
+  assert.throws(() => VoiceVisualPlanSchema.parse(wrongDominant), /hierarchy phải chính là primaryBlock/);
+
+  const offstage = structuredClone(voiceVisualPlan);
+  offstage.sections[0]!.beats[0]!.compositionContract!.hierarchy = ['block-concept-card', 'block-not-on-stage'];
+  assert.throws(() => VoiceVisualPlanSchema.parse(offstage), /visualLifecycle\.stay/);
+
+  const tooShort = structuredClone(voiceVisualPlan);
+  tooShort.sections[0]!.beats[0]!.compositionContract!.hierarchy = ['block-concept-card'];
+  assert.throws(() => VoiceVisualPlanSchema.parse(tooShort));
+
+  const badRole = structuredClone(voiceVisualPlan) as unknown as {sections: Array<{beats: Array<{compositionContract: {semanticRole: string}}>}>};
+  badRole.sections[0]!.beats[0]!.compositionContract.semanticRole = 'vibes';
+  assert.throws(() => VoiceVisualPlanSchema.parse(badRole));
 });
