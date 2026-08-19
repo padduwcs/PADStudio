@@ -41,14 +41,19 @@ function fakeDependencies(root: string) {
   const videoPath = path.join(root, 'fake-render.mp4');
   const nodeFingerprint = digest('fake-layout-node');
   const manifests = new Map<string, ReturnType<typeof LayoutEditorManifestSchema.parse>>();
+  const motionCanvasRequests: Array<{model?: string; reasoningEffort?: string}> = [];
+  const plannerRequests: Array<{model?: string; reasoningEffort?: string}> = [];
 
   const motionCanvasGenerator = {
     async generate(request: {
       generationId: string;
+      model?: string;
+      reasoningEffort?: string;
       voiceVisualPlan: TopicProject['voiceVisualPlan'];
       sectionIndexes?: number[];
     }) {
       motionCalls += 1;
+      motionCanvasRequests.push({model: request.model, reasoningEffort: request.reasoningEffort});
       const plan = request.voiceVisualPlan!;
       const indexes = request.sectionIndexes ?? plan.sections.map((_section, index) => index);
       return {
@@ -69,6 +74,39 @@ function fakeDependencies(root: string) {
       };
     },
     discardGeneration() {},
+  };
+
+  const narrationVisualPlanner = {
+    async plan(request: {units: Array<{id: string; text: string}>; model?: string; reasoningEffort?: string}) {
+      plannerRequests.push({model: request.model, reasoningEffort: request.reasoningEffort});
+      return {
+        model: 'fake-codex',
+        usage: null,
+        output: {
+          scenes: [{
+            title: 'Fake scene',
+            goal: 'Giải thích nội dung chính bằng hình ảnh.',
+            stateHandoffIncoming: null,
+            stateHandoffOutgoing: null,
+            units: request.units.map(unit => ({
+              unitId: unit.id,
+              visualPurpose: 'Biến ý chính của câu thành một quan hệ nhìn thấy được.',
+              visualDescription: 'Một sơ đồ trung tâm minh họa quan hệ được nhắc tới.',
+              animationDescription: 'Phần tử chính di chuyển vào vị trí rồi giữ hình.',
+            })),
+          }],
+          visualBible: {
+            palette: {surface: '#173B31', primary: '#51B68E', accent: '#F5C451', text: '#F7FBF8'},
+            typographyScale: {title: 88, label: 42, body: 34},
+            shapeLanguage: 'Thẻ bo góc nhất quán, tránh trang trí không mang nghĩa.',
+            diagramLanguage: 'Sơ đồ trung tâm với nhãn ngắn và quan hệ rõ ràng.',
+            motionTempo: 'Nhịp vừa, mỗi beat một chuyển động có chủ đích.',
+            transitionConvention: 'Giữ anchor giữa các scene bằng fade ngắn.',
+            visualAnchor: 'Khối trung tâm đại diện chủ đề video.',
+          },
+        },
+      };
+    },
   };
 
   const motionCanvasWorkspace = {
@@ -192,7 +230,7 @@ function fakeDependencies(root: string) {
     async resolveVideo() { return {filePath: videoPath, size: 8}; },
     async close() {},
   };
-  return {deps: {motionCanvasGenerator, motionCanvasWorkspace, elevenLabsVoiceService, voiceWorkspace, animationSyncWorkspace, layoutWorkspace, layoutPreviewService, animationSyncPreviewService, motionCanvasRevisionReviewService, finalRenderService, logger: {info() {}, error() {}}}, metrics: {ttsCalls: () => ttsCalls, motionCalls: () => motionCalls, nodeFingerprint}};
+  return {deps: {motionCanvasGenerator, motionCanvasWorkspace, narrationVisualPlanner, elevenLabsVoiceService, voiceWorkspace, animationSyncWorkspace, layoutWorkspace, layoutPreviewService, animationSyncPreviewService, motionCanvasRevisionReviewService, finalRenderService, logger: {info() {}, error() {}}}, metrics: {ttsCalls: () => ttsCalls, motionCalls: () => motionCalls, nodeFingerprint, motionCanvasRequests, plannerRequests}};
 }
 
 async function start(t: test.TestContext) {
@@ -270,6 +308,51 @@ test('golden HTTP workflow runs all five steps with schema-valid fake providers'
   project = (await (await fetch(`${baseUrl}/api/projects/${project.id}`)).json() as ProjectReply).project;
   assert.equal(project.renderBundle!.status, 'completed'); assert.equal(project.renderBundle!.sourceLayoutGenerationId, project.layoutBundle!.generation.generationId); assert.equal(project.currentStep, 'render');
   const video = await fetch(`${baseUrl}/api/projects/${project.id}/render/video`); assert.equal(video.status, 200); assert.equal(metrics.motionCalls(), 1);
+});
+
+test('AI Visual Planner và Motion Canvas scene generation nhận model/reasoning độc lập trong cùng một production flow', async t => {
+  const {baseUrl, metrics} = await start(t);
+  let project = await create(baseUrl);
+  project = await projectFrom(await request(baseUrl, project, 'PUT', `/api/projects/${project.id}/narration`, {sourceText: narrationSourceText, projectRules: []}));
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/narration/approve`, {sourceHash: project.narration!.review!.sourceHash, rulesHash: project.narration!.review!.rulesHash}));
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/production/prepare`, {
+    generationId: randomUUID(),
+    plannerModel: 'planner-model',
+    plannerReasoningEffort: 'high',
+  }));
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/voice/generate`, voiceRequest(randomUUID())));
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/generate`, {
+    generationId: randomUUID(),
+    model: 'scene-model',
+    reasoningEffort: 'low',
+  }));
+
+  assert.equal(metrics.plannerRequests.length, 1);
+  assert.equal(metrics.plannerRequests[0]?.model, 'planner-model');
+  assert.equal(metrics.plannerRequests[0]?.reasoningEffort, 'high');
+  assert.ok(metrics.motionCanvasRequests.length >= 1);
+  for (const sceneRequest of metrics.motionCanvasRequests) {
+    assert.equal(sceneRequest.model, 'scene-model');
+    assert.equal(sceneRequest.reasoningEffort, 'low');
+  }
+  // The two stages received distinct selections — neither leaked into the other.
+  assert.notEqual(metrics.plannerRequests[0]?.model, metrics.motionCanvasRequests[0]?.model);
+  assert.equal(project.voiceVisualPlan!.generation.provider, 'codex');
+  assert.equal(project.voiceVisualPlan!.plannerDiagnostics?.[0]?.outcome, 'used_ai');
+});
+
+test('AI Visual Planner fallback về deterministic khi không có planner selection', async t => {
+  const {baseUrl} = await start(t);
+  let project = await create(baseUrl);
+  project = await projectFrom(await request(baseUrl, project, 'PUT', `/api/projects/${project.id}/narration`, {sourceText: narrationSourceText, projectRules: []}));
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/narration/approve`, {sourceHash: project.narration!.review!.sourceHash, rulesHash: project.narration!.review!.rulesHash}));
+  // No plannerModel/plannerReasoningEffort at all — the fake planner still
+  // succeeds here (it does not require a model), proving the request shape
+  // stays valid with no selection. Fallback-on-failure itself is covered at
+  // the narrationPlan.ts unit level.
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/production/prepare`, {generationId: randomUUID()}));
+  assert.equal(project.voiceVisualPlan!.status, 'approved');
+  assert.equal(project.outline!.status, 'approved');
 });
 
 test('voice regeneration invalidates only downstream sync, layout, and render', async t => {

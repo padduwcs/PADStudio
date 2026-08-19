@@ -17,70 +17,31 @@ import {
   clearCachedCodexAccount,
   readCachedCodexAccount,
 } from './codexConnectionCache.ts';
+import {
+  emptyTaskSelections,
+  initialTaskSelections,
+  recomputeTaskSelections,
+  selectionAfterModelChange,
+  selectionAfterReasoningChange,
+  type CodexTaskSelections,
+  type StorageLike,
+} from './codexTaskSelection.ts';
+import type {CodexGenerationTask} from './codexWaitEstimate.ts';
 
 const LOGIN_POLL_INTERVAL_MS = 2_000;
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1_000;
 const QUOTA_REFRESH_INTERVAL_MS = 60_000;
-const MODEL_STORAGE_KEY = 'pad-studio:codex-model';
-const REASONING_STORAGE_KEY = 'pad-studio:codex-reasoning-by-model';
 
-function storedModel() {
+function browserStorage(): StorageLike | null {
   try {
-    if (typeof window === 'undefined') return '';
-    return window.localStorage.getItem(MODEL_STORAGE_KEY) ?? '';
+    return typeof window === 'undefined' ? null : window.localStorage;
   } catch {
-    return '';
+    return null;
   }
-}
-
-function storedReasoning(model: string) {
-  if (!model) return '';
-  try {
-    if (typeof window === 'undefined') return '';
-    const parsed = JSON.parse(
-      window.localStorage.getItem(REASONING_STORAGE_KEY) ?? '{}',
-    );
-    return parsed &&
-      typeof parsed === 'object' &&
-      !Array.isArray(parsed) &&
-      typeof parsed[model] === 'string'
-      ? parsed[model]
-      : '';
-  } catch {
-    return '';
-  }
-}
-
-function saveReasoning(model: string, reasoningEffort: string) {
-  if (!model || !reasoningEffort) return;
-  try {
-    const parsed = JSON.parse(
-      window.localStorage.getItem(REASONING_STORAGE_KEY) ?? '{}',
-    );
-    const selections =
-      parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-        ? parsed
-        : {};
-    window.localStorage.setItem(
-      REASONING_STORAGE_KEY,
-      JSON.stringify({...selections, [model]: reasoningEffort}),
-    );
-  } catch {
-    // Keep the selection for this session.
-  }
-}
-
-function preferredReasoning(model: CodexModelSummary) {
-  const remembered = storedReasoning(model.model);
-  if (model.supportedReasoningEfforts.includes(remembered)) return remembered;
-  if (
-    model.defaultReasoningEffort &&
-    model.supportedReasoningEfforts.includes(model.defaultReasoningEffort)
-  ) return model.defaultReasoningEffort;
-  return model.supportedReasoningEfforts[0] ?? '';
 }
 
 export function useCodexConnection() {
+  const storage = browserStorage();
   const [status, setStatus] = useState<CodexConnectionStatus | null>(null);
   const [cachedAccount, setCachedAccount] = useState(() =>
     readCachedCodexAccount(),
@@ -91,54 +52,34 @@ export function useCodexConnection() {
   const [error, setError] = useState('');
   const [models, setModels] = useState<CodexModelSummary[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
-  const [selectedModel, setSelectedModelState] = useState(storedModel);
-  const [selectedReasoningEffort, setSelectedReasoningEffortState] =
-    useState('');
+  const [selections, setSelectionsState] = useState<CodexTaskSelections>(
+    () => initialTaskSelections(storage),
+  );
   const requestSequence = useRef(0);
   const loginStartedAt = useRef(0);
-  const selectedModelRef = useRef(selectedModel);
-  const selectedReasoningEffortRef = useRef('');
-  const generationReadyRef = useRef(false);
+  const selectionsRef = useRef<CodexTaskSelections>(selections);
   const modelsRef = useRef<CodexModelSummary[]>([]);
   const connectedRef = useRef(false);
 
+  const applySelections = useCallback((next: CodexTaskSelections) => {
+    selectionsRef.current = next;
+    setSelectionsState(next);
+  }, []);
+
   const refreshModels = useCallback(async () => {
-    generationReadyRef.current = false;
     setModelsLoading(true);
     try {
       const available = await getCodexModels();
       modelsRef.current = available;
       setModels(available);
-      const selected = available.find(
-        (item) => item.model === selectedModelRef.current,
+      applySelections(
+        recomputeTaskSelections(storage, selectionsRef.current, available),
       );
-      const nextModel =
-        selected ??
-        available.find((item) => item.isDefault) ??
-        available[0];
-      const next = nextModel?.model ?? '';
-      selectedModelRef.current = next;
-      setSelectedModelState(next);
-      const nextReasoning = nextModel ? preferredReasoning(nextModel) : '';
-      selectedReasoningEffortRef.current = nextReasoning;
-      generationReadyRef.current = Boolean(
-        nextModel &&
-          (nextModel.supportedReasoningEfforts.length === 0 || nextReasoning),
-      );
-      setSelectedReasoningEffortState(nextReasoning);
-      if (nextReasoning) saveReasoning(next, nextReasoning);
-      try {
-        if (next) window.localStorage.setItem(MODEL_STORAGE_KEY, next);
-      } catch {
-        // Model selection can remain session-only if storage is unavailable.
-      }
       return available;
     } catch (requestError) {
       setModels([]);
       modelsRef.current = [];
-      generationReadyRef.current = false;
-      selectedReasoningEffortRef.current = '';
-      setSelectedReasoningEffortState('');
+      applySelections(emptyTaskSelections());
       setError(
         requestError instanceof ApiRequestError
           ? requestError.message
@@ -148,7 +89,7 @@ export function useCodexConnection() {
     } finally {
       setModelsLoading(false);
     }
-  }, []);
+  }, [applySelections, storage]);
 
   const verify = useCallback(async (background = false) => {
     const requestId = requestSequence.current + 1;
@@ -186,12 +127,10 @@ export function useCodexConnection() {
         }
       } else if (connectionStatus.state === 'disconnected') {
         connectedRef.current = false;
-        generationReadyRef.current = false;
         clearCachedCodexAccount();
         setCachedAccount(null);
       } else {
         connectedRef.current = false;
-        generationReadyRef.current = false;
       }
       return connectionStatus;
     } catch (requestError) {
@@ -212,7 +151,6 @@ export function useCodexConnection() {
         checkedAt: new Date().toISOString(),
       });
       setError(message);
-      generationReadyRef.current = false;
       return null;
     } finally {
       if (!background && requestSequence.current === requestId) {
@@ -335,11 +273,7 @@ export function useCodexConnection() {
       connectedRef.current = false;
       setModels([]);
       modelsRef.current = [];
-      selectedModelRef.current = '';
-      selectedReasoningEffortRef.current = '';
-      generationReadyRef.current = false;
-      setSelectedModelState('');
-      setSelectedReasoningEffortState('');
+      applySelections(emptyTaskSelections());
       setLogin(null);
       setLoginPending(false);
     } catch (requestError) {
@@ -353,49 +287,62 @@ export function useCodexConnection() {
     }
   }
 
-  function selectModel(model: string) {
-    const selected = models.find((item) => item.model === model);
-    if (!selected) return;
-    selectedModelRef.current = model;
-    setSelectedModelState(model);
-    const nextReasoning = preferredReasoning(selected);
-    selectedReasoningEffortRef.current = nextReasoning;
-    generationReadyRef.current = Boolean(
-      selected.supportedReasoningEfforts.length === 0 || nextReasoning,
+  function selectModel(task: CodexGenerationTask, model: string) {
+    const next = selectionAfterModelChange(
+      storage,
+      task,
+      model,
+      modelsRef.current,
     );
-    setSelectedReasoningEffortState(nextReasoning);
-    if (nextReasoning) saveReasoning(model, nextReasoning);
-    try {
-      window.localStorage.setItem(MODEL_STORAGE_KEY, model);
-    } catch {
-      // Keep the selection for this session.
-    }
+    if (!next) return;
+    applySelections({...selectionsRef.current, [task]: next});
   }
 
-  function selectReasoningEffort(reasoningEffort: string) {
-    const selected = models.find((item) => item.model === selectedModel);
-    if (!selected?.supportedReasoningEfforts.includes(reasoningEffort)) return;
-    selectedReasoningEffortRef.current = reasoningEffort;
-    generationReadyRef.current = true;
-    setSelectedReasoningEffortState(reasoningEffort);
-    saveReasoning(selected.model, reasoningEffort);
+  function selectReasoningEffort(
+    task: CodexGenerationTask,
+    reasoningEffort: string,
+  ) {
+    const currentModel = selectionsRef.current[task]?.model ?? '';
+    const next = selectionAfterReasoningChange(
+      storage,
+      task,
+      currentModel,
+      reasoningEffort,
+      modelsRef.current,
+    );
+    if (!next) return;
+    applySelections({...selectionsRef.current, [task]: next});
   }
 
-  const selectedModelSummary =
-    models.find((item) => item.model === selectedModel) ?? null;
-  const generationReady = Boolean(
-    status?.state === 'connected' &&
-      !modelsLoading &&
-      selectedModelSummary &&
-      (selectedModelSummary.supportedReasoningEfforts.length === 0 ||
-        selectedReasoningEffort),
-  );
+  function isTaskReady(task: CodexGenerationTask) {
+    if (!connectedRef.current || modelsLoading) return false;
+    const selection = selectionsRef.current[task];
+    if (!selection?.model) return false;
+    const summary = modelsRef.current.find(
+      (item) => item.model === selection.model,
+    );
+    if (!summary) return false;
+    return (
+      summary.supportedReasoningEfforts.length === 0 ||
+      Boolean(selection.reasoningEffort)
+    );
+  }
 
-  function getGenerationSelection() {
-    if (!generationReadyRef.current) return null;
+  function getGenerationSelection(task: CodexGenerationTask) {
+    if (!connectedRef.current) return null;
+    const selection = selectionsRef.current[task];
+    if (!selection?.model) return null;
+    const summary = modelsRef.current.find(
+      (item) => item.model === selection.model,
+    );
+    if (!summary) return null;
+    if (
+      summary.supportedReasoningEfforts.length > 0 &&
+      !selection.reasoningEffort
+    ) return null;
     return {
-      model: selectedModelRef.current || undefined,
-      reasoningEffort: selectedReasoningEffortRef.current || undefined,
+      model: selection.model || undefined,
+      reasoningEffort: selection.reasoningEffort || undefined,
     };
   }
 
@@ -408,10 +355,7 @@ export function useCodexConnection() {
     error,
     models,
     modelsLoading,
-    selectedModel,
-    selectedModelSummary,
-    selectedReasoningEffort,
-    generationReady,
+    selections,
     connected: status?.state === 'connected',
     verify,
     beginLogin,
@@ -419,6 +363,7 @@ export function useCodexConnection() {
     logout,
     selectModel,
     selectReasoningEffort,
+    isTaskReady,
     getGenerationSelection,
   };
 }

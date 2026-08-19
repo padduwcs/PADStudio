@@ -438,6 +438,7 @@ function buildPrompt(
     'Scene phải tự chứa toàn bộ node và animation, chạy độc lập và không import file tương đối.',
     'Thiết kế đúng theo canvas trong JSON. Mọi kích thước, tọa độ và safe margin phải tỷ lệ với canvas.width/canvas.height; tuyệt đối không mặc định hoặc hard-code bố cục 1080x1920. scene-background phải phủ đúng canvas, còn mọi nội dung phải nằm trong vùng nhìn của canvas đã yêu cầu.',
     'Trước khi viết source, tự lập blueprint ngắn trong suy luận gồm visual anchor, vai trò từng node và thay đổi chính của từng beat; không xuất blueprint ra JSON.',
+    'Bạn chỉ chuyển blueprint (visualBible, visualAnchor, visualPurpose/visualDescription/animationDescription của từng beat, stateHandoff) đã cho thành mã Motion Canvas. Không tự đổi các quyết định đó trừ khi API/kỹ thuật thực sự không cho phép; nếu buộc phải lệch, vẫn giữ đúng tinh thần blueprint gần nhất có thể.',
     'Tuân thủ designBrief. Chất lượng và mật độ visual của scene sau phải ngang scene đầu: mỗi beat cần một thay đổi hình học/chuyển động có ý nghĩa, không được chỉ đổi text hoặc màu ở các beat cuối.',
     'Giữ một visual anchor xuyên scene để mạch hình ảnh liền lạc, nhưng mỗi beat phải tiến triển trạng thái rõ ràng thay vì thay toàn bộ bố cục.',
     `Nền gốc bắt buộc là ${request.topicInput.background.color} (${videoBackgroundTone(request.topicInput.background)}). Node scene-background phải dùng đúng màu này; mọi chữ, stroke, card và màu nhấn phải đủ tương phản với nền.`,

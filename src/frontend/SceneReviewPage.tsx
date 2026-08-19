@@ -115,7 +115,7 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
     if (!guidance.trim() || selectedSceneIds.length === 0) return;
     const status = await codex.verify();
     if (status?.state !== 'connected') return;
-    const selection = codex.getGenerationSelection();
+    const selection = codex.getGenerationSelection('motionCanvas');
     if (!selection) return;
     const candidate = await motion.createCandidate(
       guidance,
@@ -203,7 +203,14 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
 
   return (
     <main className="scene-review-workspace">
-      <header className="scene-review-heading"><span>Bước 04 · Chỉnh scene</span><h1>Chỉnh scene theo giọng đọc</h1><p>Một editor duy nhất: phát hình và tiếng cùng lúc, rồi chỉ sửa các điểm còn lệch. Thay đổi sẽ được đồng bộ lại trước khi xuất video.</p></header>
+      <div className="page-heading">
+        <div className="eyebrow">
+          <span>Bước 04 · Chỉnh scene</span>
+          <div className="eyebrow-line" />
+        </div>
+        <h1>Chỉnh scene theo giọng đọc</h1>
+        <p>Một editor duy nhất: phát hình và tiếng cùng lúc, rồi chỉ sửa các điểm còn lệch. Thay đổi sẽ được đồng bộ lại trước khi xuất video.</p>
+      </div>
       {motion.actionError && <p className="submit-error" role="alert">{motion.actionError}</p>}
       {(syncPreviewState === 'loading' || syncPreviewState === 'error') && <p className={syncPreviewState === 'error' ? 'submit-error' : 'scene-review-sync-status'} role={syncPreviewState === 'error' ? 'alert' : 'status'}>{syncPreviewState === 'error' ? `${syncPreviewError} Editor vẫn sẵn sàng để chỉnh hình.` : 'Đang nối giọng ElevenLabs vào editor…'}</p>}
       <div className="scene-review-grid">
@@ -211,7 +218,7 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
           <header><span>Chỉnh bằng AI</span><h2>Chỉ sửa scene bạn chọn</h2></header>
           <div className="scene-review-list">{bundle.scenes.map((scene, index) => <label key={scene.id}><input type="checkbox" checked={selectedSceneIds.includes(scene.id)} onChange={() => toggle(scene.id)} /><span>{String(index + 1).padStart(2, '0')}</span><strong>{scene.name}</strong><small>{Math.round(scene.durationSeconds)} giây</small></label>)}</div>
           <textarea rows={4} value={guidance} onChange={event => setGuidance(event.currentTarget.value)} placeholder="Ví dụ: Làm phần minh họa mảng trực quan hơn, giữ palette và nhịp chuyển động hiện có." />
-          <button className="secondary-button" type="button" disabled={motion.candidateGenerating || selectedSceneIds.length === 0 || guidance.trim().length < 3 || !codex.generationReady} onClick={() => void createCandidate()}>{motion.candidateGenerating ? 'Đang tạo candidate…' : 'Tạo candidate để so sánh'}</button>
+          <button className="secondary-button" type="button" disabled={motion.candidateGenerating || selectedSceneIds.length === 0 || guidance.trim().length < 3 || !codex.isTaskReady('motionCanvas')} onClick={() => void createCandidate()}>{motion.candidateGenerating ? 'Đang tạo candidate…' : 'Tạo candidate để so sánh'}</button>
           {motion.candidate && <section className="scene-review-candidate"><strong>Candidate mới</strong><p>{motion.candidate.coherence.summary}</p>{motion.candidatePreviewState === 'ready' && motion.candidatePreviewUrl && <iframe title="Preview candidate scene" src={motion.candidatePreviewUrl} />}{motion.candidate.decision === 'pending' && <div><button type="button" disabled={motion.candidateApplying || motion.candidate.status === 'coherence_blocked' || motion.candidate.status === 'scope_expansion_required'} onClick={() => void motion.applyCandidate()}>Áp dụng candidate</button><button type="button" disabled={motion.historyBusy} onClick={() => void motion.rejectCandidate()}>Bỏ candidate</button></div>}</section>}
         </section>
         <aside className="scene-review-side"><CodexConnectionCard connection={codex} task="motionCanvas" workUnits={selectedSceneIds.length || bundle.scenes.length} /><WatermarkSettings watermark={watermark} uploading={watermarkUploading} error={watermarkUploadError} onChange={next => { setWatermarkUploadError(''); setWatermark(next); }} onUpload={uploadWatermark} /><p>Bạn cũng có thể chỉnh trực tiếp màu sắc, chữ, vị trí và chuyển động ở editor bên dưới.</p></aside>

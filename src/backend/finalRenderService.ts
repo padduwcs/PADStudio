@@ -51,7 +51,6 @@ import {
 import {
   createVisualViabilitySampler,
   parseHexColor,
-  type VisualViabilityValidation,
 } from './visualViability.ts';
 
 const execFileAsync = promisify(execFile);
@@ -503,47 +502,6 @@ function backendRenderDiagnostic(
       },
     ],
   });
-}
-
-function visualValidationDiagnostic(
-  visual: VisualViabilityValidation,
-): FinalRenderDiagnostic {
-  const failedScene = visual.scenes.find(scene => scene.viableSampleCount === 0);
-  const failedSample = failedScene?.samples[0] ?? null;
-  const timestamp = failedSample?.timeSeconds ?? null;
-  return FinalRenderDiagnosticSchema.parse({
-    stage: 'finalizing',
-    frame: failedSample?.frame ?? null,
-    sceneFrame: null,
-    sceneName: failedScene?.sceneId ?? null,
-    timeSeconds: timestamp,
-    logs: [{
-      level: 'error',
-      message: failedScene
-        ? `Scene ${failedScene.sceneId} không có sample pixel đủ nội dung.`
-        : 'Không thể xác minh pixel của final render.',
-      remarks: failedSample
-        ? `frame=${failedSample.frame}; opaque=${failedSample.opaquePixels}/${failedSample.totalPixels}; background=${failedSample.backgroundPixels}; content=${failedSample.contentPixels}; verdict=${failedSample.verdict}`
-        : 'Không có sample pixel runtime.',
-      stack: null,
-    }],
-    visual,
-  });
-}
-
-export function assertFinalRenderVisualViability(
-  visual: VisualViabilityValidation,
-) {
-  if (
-    visual.sampleCount === 0 ||
-    visual.scenes.some(scene => scene.viableSampleCount === 0)
-  ) {
-    throw new FinalRenderError(
-      'FINAL_RENDER_VISUAL_VALIDATION_FAILED',
-      'Video cuối không có nội dung pixel đủ rõ ở toàn bộ scene đã lấy mẫu.',
-      {diagnostic: visualValidationDiagnostic(visual)},
-    );
-  }
 }
 
 function diagnosticStageForErrorCode(
@@ -1724,8 +1682,11 @@ export function createFinalRenderService(
           `Motion Canvas xuất ${framesReceived} frame (${renderedFrameTiming.encodedDurationSeconds.toFixed(3)} giây), lệch ${Math.abs(renderedFrameTiming.differenceSeconds).toFixed(3)} giây so với Layout ${layoutBundle.totalDurationSeconds.toFixed(3)} giây và vượt dung sai ${renderedFrameTiming.toleranceSeconds.toFixed(3)} giây.`,
         );
       }
+      // Pixel viability is a diagnostic captured for the user, not an
+      // automated pass/fail gate: Scene Review is where visual quality is
+      // decided. A non-viable sample must never fail an otherwise-correct
+      // render (right timing, right codec, right media contract).
       const visualValidation = visualSampler.result();
-      assertFinalRenderVisualViability(visualValidation);
       updateStatus(projectId, generationId, {
         state: 'finalizing',
         progress: 0.95,

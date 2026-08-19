@@ -225,7 +225,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
     setMessage('');
     try {
       const status = await codex.verify();
-      const selection = codex.getGenerationSelection();
+      const selection = codex.getGenerationSelection('outline');
       if (status?.state !== 'connected' || !selection) {
         setState('ready');
         setMessage('Hãy kết nối Codex và chọn model/reasoning trước khi rà soát.');
@@ -328,11 +328,14 @@ export function NarrationPage({projectId}: {projectId: string}) {
 
   return (
     <main className="pronunciation-workspace">
-      <header className="pronunciation-heading">
-        <span>Bước 02 · Cách đọc</span>
+      <div className="page-heading">
+        <div className="eyebrow">
+          <span>Bước 02 · Cách đọc</span>
+          <div className="eyebrow-line" />
+        </div>
         <h1>Duyệt bản đọc cho ElevenLabs</h1>
         <p>Quy tắc được áp dụng trước; AI chỉ rà soát ký hiệu dễ đọc sai, không viết lại lời thoại.</p>
-      </header>
+      </div>
       <div className="pronunciation-layout">
         <section className="pronunciation-preview-card">
           <header><div><span className="preview-kicker">Bản gửi ElevenLabs</span><h2>{approved ? 'Đã duyệt' : needsSave ? 'Có thay đổi chưa lưu' : 'Sẵn sàng kiểm tra'}</h2></div>{approved && <span className="approved-badge"><CheckIcon /> Đã duyệt</span>}</header>

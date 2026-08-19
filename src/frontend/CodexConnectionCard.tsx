@@ -35,7 +35,7 @@ const reasoningLabels: Record<string, string> = {
 const taskLabels: Record<CodexGenerationTask, string> = {
   narration: 'lời thoại',
   outline: 'mạch giảng',
-  voiceVisual: 'kế hoạch voice–visual',
+  visualPlanner: 'kế hoạch hình ảnh',
   motionCanvas: 'bộ scene Motion Canvas',
 };
 
@@ -95,9 +95,7 @@ export function CodexConnectionCard({
     error,
     models,
     modelsLoading,
-    selectedModel,
-    selectedModelSummary,
-    selectedReasoningEffort,
+    selections,
     verify,
     beginLogin,
     useApiKey,
@@ -105,6 +103,10 @@ export function CodexConnectionCard({
     selectModel,
     selectReasoningEffort,
   } = connection;
+  const selectedModel = selections[task]?.model ?? '';
+  const selectedReasoningEffort = selections[task]?.reasoningEffort ?? '';
+  const selectedModelSummary =
+    models.find((model) => model.model === selectedModel) ?? null;
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const connectedStatus = status?.state === 'connected' ? status : null;
@@ -362,7 +364,7 @@ export function CodexConnectionCard({
               <select
                 value={selectedModel}
                 disabled={modelsLoading || models.length === 0}
-                onChange={(event) => selectModel(event.target.value)}
+                onChange={(event) => selectModel(task, event.target.value)}
               >
                 {models.map((model) => (
                   <option value={model.model} key={model.id}>
@@ -385,7 +387,7 @@ export function CodexConnectionCard({
                   selectedModelSummary.supportedReasoningEfforts.length === 0
                 }
                 onChange={(event) =>
-                  selectReasoningEffort(event.target.value)
+                  selectReasoningEffort(task, event.target.value)
                 }
               >
                 {selectedModelSummary?.supportedReasoningEfforts.map(

@@ -125,6 +125,16 @@ export function ProductionPage({projectId}: {projectId: string}) {
     }, current.revision);
   }
 
+  function plannerSelectionFields() {
+    const selection = codex.getGenerationSelection('visualPlanner');
+    return {
+      ...(selection?.model ? {plannerModel: selection.model} : {}),
+      ...(selection?.reasoningEffort
+        ? {plannerReasoningEffort: selection.reasoningEffort}
+        : {}),
+    };
+  }
+
   async function regenerateAudio() {
     if (!project || state === 'working' || !voiceId || !modelId) return;
     const confirmed = window.confirm(
@@ -138,7 +148,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
       setMessage('Đang chuẩn bị cấu trúc scene từ lời thoại đã duyệt…');
       current = await prepareNarrationProduction(
         current.id,
-        {generationId: newGenerationId()},
+        {generationId: newGenerationId(), ...plannerSelectionFields()},
         current.revision,
       );
       current = await generateSelectedAudio(current);
@@ -160,14 +170,14 @@ export function ProductionPage({projectId}: {projectId: string}) {
     try {
       let current = project;
       setMessage('Đang chuẩn bị cấu trúc scene từ lời thoại đã duyệt…');
-      current = await prepareNarrationProduction(current.id, {generationId: newGenerationId()}, current.revision);
+      current = await prepareNarrationProduction(current.id, {generationId: newGenerationId(), ...plannerSelectionFields()}, current.revision);
       setProject(current);
       if (!current.voiceBundle) {
         current = await generateSelectedAudio(current);
         setProject(current);
       }
       if (!current.motionCanvasBundle) {
-        const selection = codex.getGenerationSelection();
+        const selection = codex.getGenerationSelection('motionCanvas');
         if (!selection) {
           throw new Error('Hãy kết nối Codex và chọn model trước khi sinh scene.');
         }
@@ -210,11 +220,14 @@ export function ProductionPage({projectId}: {projectId: string}) {
   const firstSection = project.voiceBundle?.sections[0];
   return (
     <main className="production-workspace">
-      <header className="production-heading">
-        <span>Bước 03 · Giọng đọc & scene</span>
+      <div className="page-heading">
+        <div className="eyebrow">
+          <span>Bước 03 · Giọng đọc & scene</span>
+          <div className="eyebrow-line" />
+        </div>
         <h1>Chọn giọng ElevenLabs rồi sinh scene</h1>
         <p>Chọn voice và model tiếng Việt cho bản cách đọc đã duyệt. Codex dùng cùng lời thoại đó để dựng scene ở bước kế tiếp.</p>
-      </header>
+      </div>
       <div className="production-grid">
         <section className="production-card">
           <header>
@@ -275,6 +288,17 @@ export function ProductionPage({projectId}: {projectId: string}) {
               </div>
             </>
           )}
+        </section>
+        <section className="production-card">
+          <header>
+            <span>Codex</span>
+            <h2>Lập kế hoạch hình ảnh</h2>
+          </header>
+          <CodexConnectionCard connection={codex} task="visualPlanner" />
+          <div className="production-result">
+            <strong>AI Visual Planner</strong>
+            <p>Chọn model/reasoning riêng cho bước lập kế hoạch hình ảnh (title, mục tiêu, visual bible từng scene). Nếu không chọn hoặc AI lỗi, hệ thống tự dùng bộ lập kế hoạch tất định thay thế.</p>
+          </div>
         </section>
         <section className="production-card">
           <header>

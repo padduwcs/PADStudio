@@ -16,13 +16,15 @@ import {
   visualDesignMatchesMotion
 } from '../shared/projectPipeline.ts';
 import {defaultVideoFrame} from '../shared/videoFormat.ts';
+import {CodexReasoningEffortSchema} from '../shared/topic.ts';
 import {
   retimeLayoutOverridesForSync
 } from './layoutWorkspace.ts';
+import {hashJson} from './motionCanvasHistoryStore.ts';
 import {
-  createNarrationArtifacts,
   narrationArtifactsAreCurrent,
-  narrationArtifactsMatchReview
+  narrationArtifactsMatchReview,
+  planNarrationArtifacts
 } from './narrationPlan.ts';
 import {
   ProjectConflictError
@@ -34,14 +36,14 @@ import {
 import type {AppContext} from './appContext.ts';
 import {RequestBodyError, sendApiError} from './appErrors.ts';
 import {readExpectedRevision, readJsonBody, sendProject, validationFields} from './httpTransport.ts';
-const PrepareNarrationProductionSchema = z.object({generationId: z.string().uuid(), renderSettings: LayoutRenderSettingsSchema.optional()}).strict();
+const PrepareNarrationProductionSchema = z.object({generationId: z.string().uuid(), renderSettings: LayoutRenderSettingsSchema.optional(), plannerModel: z.string().trim().min(1).max(160).optional(), plannerReasoningEffort: CodexReasoningEffortSchema.optional()}).strict();
 
 import type {ApiRouteHandler} from './routeTypes.ts';
 
-type ProductionRouteContext = Pick<AppContext, 'repository' | 'layoutWorkspace'>;
+type ProductionRouteContext = Pick<AppContext, 'repository' | 'layoutWorkspace' | 'narrationVisualPlanner' | 'narrationPlanGenerations' | 'generateOnce'>;
 
 export function createProductionRouteHandler(context: ProductionRouteContext): ApiRouteHandler {
-  const {repository, layoutWorkspace} = context;
+  const {repository, layoutWorkspace, narrationVisualPlanner, narrationPlanGenerations, generateOnce} = context;
   return async (request: IncomingMessage, response: ServerResponse, requestUrl: URL) => {
     const productionRoute = getProjectProductionRoute(requestUrl.pathname);
     if (productionRoute?.action === 'prepare' && request.method === 'POST') {
@@ -82,16 +84,33 @@ export function createProductionRouteHandler(context: ProductionRouteContext): A
           'Hãy duyệt bản cách đọc hiện tại trước khi tạo audio.',
         );
       }
+      const generationId = parsed.data.generationId.toLowerCase();
+      const planFingerprint = hashJson({
+        topicInput: currentProject.topicInput,
+        narrationSourceHash: narration.review.sourceHash,
+        plannerModel: parsed.data.plannerModel ?? null,
+        plannerReasoningEffort: parsed.data.plannerReasoningEffort ?? null,
+      });
       let artifacts;
       try {
-        artifacts = createNarrationArtifacts({
-          topicInput: currentProject.topicInput,
-          narration,
-          generationId: parsed.data.generationId.toLowerCase(),
-          now: new Date().toISOString(),
-          previousPlan: currentProject.voiceVisualPlan,
-        });
+        const generated = await generateOnce(
+          narrationPlanGenerations,
+          generationId,
+          planFingerprint,
+          () => planNarrationArtifacts({
+            planner: narrationVisualPlanner,
+            topicInput: currentProject.topicInput,
+            narration,
+            generationId,
+            now: new Date().toISOString(),
+            previousPlan: currentProject.voiceVisualPlan,
+            model: parsed.data.plannerModel,
+            reasoningEffort: parsed.data.plannerReasoningEffort,
+          }),
+        );
+        artifacts = generated.result;
       } catch (error) {
+        if (error instanceof RequestBodyError) throw error;
         throw new RequestBodyError(
           422,
           'NARRATION_STRUCTURE_INVALID',

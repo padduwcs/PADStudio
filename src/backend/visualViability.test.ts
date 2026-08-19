@@ -4,10 +4,6 @@ import {
   analyzeRgbaFrame,
   createVisualViabilitySampler,
 } from './visualViability.ts';
-import {
-  FinalRenderError,
-  assertFinalRenderVisualViability,
-} from './finalRenderService.ts';
 
 const sceneOne = '10000000-0000-4000-8000-000000000001';
 const sceneTwo = '20000000-0000-4000-8000-000000000002';
@@ -48,7 +44,7 @@ test('visual viability chấp nhận content tương phản dù scene tối gi�
   assert.ok(sample.contentPixels >= 96);
 });
 
-test('video có một scene rỗng bị reject dù media metadata giả định hợp lệ', () => {
+test('video có một scene rỗng vẫn giữ metadata chẩn đoán mà không tự làm final render fail', () => {
   const sampler = createVisualViabilitySampler({
     sections: [
       {sceneId: sceneOne, durationSeconds: 1},
@@ -80,11 +76,7 @@ test('video có một scene rỗng bị reject dù media metadata giả định 
   assert.equal(result.scenes[0]?.viableSampleCount, 3);
   assert.equal(result.scenes[1]?.viableSampleCount, 0);
   assert.equal(result.scenes[1]?.samples[0]?.verdict, 'uniform');
-  assert.throws(
-    () => assertFinalRenderVisualViability(result),
-    (error: unknown) =>
-      error instanceof FinalRenderError &&
-      error.code === 'FINAL_RENDER_VISUAL_VALIDATION_FAILED' &&
-      error.diagnostic?.visual?.scenes[1]?.samples[0]?.frame === result.scenes[1]?.sampleFrames[0],
-  );
+  // The sampler only records data; deciding whether that data is acceptable
+  // is Scene Review's job, not an automated final-render gate.
+  assert.equal(result.sampleCount, 6);
 });

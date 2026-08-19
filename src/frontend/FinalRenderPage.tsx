@@ -89,6 +89,9 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
   const videoUrl = bundle
     ? `${finalRenderVideoUrl(project.id)}?v=${bundle.validation.videoHash.slice(0, 12)}`
     : '';
+  const nonViableSceneCount = bundle?.validation.visual
+    ? bundle.validation.visual.scenes.filter(scene => scene.viableSampleCount === 0).length
+    : 0;
   const progress = Math.round((status?.progress ?? 0) * 100);
   const renderBlockedReason = render.conflict
     ? 'Project đã thay đổi ở một phiên khác. Hãy bấm “Kiểm tra lại” trước khi render.'
@@ -97,11 +100,10 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
 
   return (
     <div className="render-workspace">
-      <header className="outline-heading render-heading">
+      <div className="page-heading">
         <div className="eyebrow">
-          <span>Bước 05</span>
-          <span className="eyebrow-line" />
-          Final render
+          <span>Bước 05 · Final render</span>
+          <div className="eyebrow-line" />
         </div>
         <AdaptiveHeading as="h1">
           {render.ready ? 'Video cuối đã sẵn sàng.' : 'Đóng gói bài giảng thành video hoàn chỉnh.'}
@@ -109,7 +111,7 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
         <p>
           Hệ thống dựng scene đã chốt, ghép master narration và kiểm tra lại codec, kích thước lẫn thời lượng trước khi bàn giao.
         </p>
-      </header>
+      </div>
 
       <section className="render-summary" aria-label="Cấu hình video">
         <div>
@@ -160,6 +162,14 @@ export function FinalRenderPage({projectId}: {projectId: string}) {
               <p>{formatBytes(bundle.fileSizeBytes)} · H.264 / AAC · CRF {bundle.encoding.crf}</p>
             </div>
           </div>
+          {nonViableSceneCount > 0 && (
+            <div className="library-warning" role="status">
+              <strong>Tín hiệu chẩn đoán sau khi bạn đã duyệt scene</strong>
+              <p>
+                {nonViableSceneCount} scene có mẫu pixel tự động không nhận đủ nội dung. Đây không phải lỗi kỹ thuật của video — chất lượng hình ảnh đã do bạn quyết định ở bước Scene Review. Hãy xem lại video nếu còn nghi ngờ.
+              </p>
+            </div>
+          )}
           <div className="render-player-shell">
             <video
               controls

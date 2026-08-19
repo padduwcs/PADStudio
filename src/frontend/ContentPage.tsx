@@ -123,18 +123,11 @@ function isPresetFrame(frame: VideoFrame) {
   return framePresets.some(preset => sameFrame(frame, preset.frame));
 }
 
-function codexAccountLabel(connection: ReturnType<typeof useCodexConnection>) {
-  if (connection.checking) return 'Đang kiểm tra kết nối Codex';
-  if (connection.status?.state !== 'connected') return 'Codex chưa kết nối';
-  const account = connection.status.account;
-  const accountLabel = account.type === 'chatgpt'
-    ? account.email || 'Tài khoản ChatGPT'
-    : 'OpenAI API key';
-  const model = (
-    connection.selectedModelSummary?.displayName ?? connection.selectedModel
-  ) || 'Chưa chọn model';
-  const reasoning = connection.selectedReasoningEffort || 'Chưa chọn reasoning';
-  return `Đã kết nối: ${accountLabel} · ${model} · ${reasoning}`;
+function codexAssistStatus(connection: ReturnType<typeof useCodexConnection>) {
+  if (connection.checking) return 'Đang kiểm tra';
+  if (connection.status?.state === 'connected') return 'Codex sẵn sàng';
+  if (connection.status?.state === 'disconnected') return 'Chưa kết nối';
+  return 'Cần kiểm tra Codex';
 }
 
 export function ContentPage({projectId}: {projectId?: string}) {
@@ -150,7 +143,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
   const creationId = useRef(createNewTopicCreationId());
   const skipNextNavigationGuardRef = useRef(false);
   const codex = useCodexConnection();
-  const aiConnectionLabel = codexAccountLabel(codex);
+  const aiConnectionLabel = codexAssistStatus(codex);
 
   useEffect(() => {
     if (!projectId) {
@@ -249,7 +242,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
       if (status?.state !== 'connected') {
         throw new Error('Hãy kết nối Codex trước khi tạo lời thoại.');
       }
-      const selection = codex.getGenerationSelection();
+      const selection = codex.getGenerationSelection('narration');
       if (!selection) {
         throw new Error('Hãy chọn model và mức reasoning trước khi tạo lời thoại.');
       }
@@ -341,11 +334,14 @@ export function ContentPage({projectId}: {projectId?: string}) {
 
   return (
     <main className="content-workspace">
-      <header className="content-heading">
-        <span>Bước 01 · Nội dung gốc</span>
+      <div className="page-heading">
+        <div className="eyebrow">
+          <span>Bước 01 · Nội dung gốc</span>
+          <div className="eyebrow-line" />
+        </div>
         <h1>{projectId ? 'Chỉnh đầu vào video' : 'Bắt đầu từ nội dung của bạn'}</h1>
         <p>Chỉ cần chủ đề, background, khung hình và lời thoại. Bạn có thể tự chuẩn bị, hoặc dùng AI tạo một bản nháp rồi chỉnh theo ý mình.</p>
-      </header>
+      </div>
       <form className="content-form" onSubmit={submit} noValidate>
         <section className="content-field">
           <span>Chủ đề</span>
@@ -357,8 +353,13 @@ export function ContentPage({projectId}: {projectId?: string}) {
           <details className="content-narration-assist">
             <summary><span><strong>Chưa có lời thoại? Tạo nháp bằng AI</strong><small>Tùy chọn — nếu đã chuẩn bị kỹ, chỉ cần dán lời thoại của bạn và bỏ qua phần này.</small></span><em className={codex.status?.state === 'connected' ? 'is-connected' : ''}>{aiConnectionLabel}</em></summary>
             <label><span>Gợi ý cho AI <small>Không bắt buộc</small></span><textarea rows={3} value={narrationGuidance} disabled={narrationGenerating} placeholder="Ví dụ: giải thích cho người mới, ưu tiên ví dụ đời thường, khoảng ba phút." onChange={event => setNarrationGuidance(event.currentTarget.value)} /></label>
-            <CodexConnectionCard connection={codex} task="narration" />
-            <button className="secondary-button" type="button" disabled={narrationGenerating || !codex.generationReady || form.topic.trim().length < 6} onClick={() => void createNarrationDraft()}>{narrationGenerating ? 'Đang soạn lời thoại…' : form.narrationSourceText.trim() ? 'Tạo bản nháp thay thế' : 'Để AI soạn lời thoại'}</button>
+            <details className="narration-codex-settings">
+              <summary>Thiết lập Codex</summary>
+              <CodexConnectionCard connection={codex} task="narration" />
+            </details>
+            <div className="narration-assist-actions">
+              <button className="secondary-button" type="button" disabled={narrationGenerating || !codex.isTaskReady('narration') || form.topic.trim().length < 6} onClick={() => void createNarrationDraft()}>{narrationGenerating ? 'Đang soạn lời thoại…' : form.narrationSourceText.trim() ? 'Tạo bản nháp thay thế' : 'Để AI soạn lời thoại'}</button>
+            </div>
             {narrationGenerationError && <p className="field-error" role="alert">{narrationGenerationError}</p>}
           </details>
           <textarea className="narration-input" rows={15} value={form.narrationSourceText} placeholder="Dán hoặc viết toàn bộ lời thoại tại đây…" onChange={event => update('narrationSourceText', event.currentTarget.value)} />

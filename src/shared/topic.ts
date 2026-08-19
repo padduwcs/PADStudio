@@ -51,7 +51,7 @@ export const videoBackgroundModeValues = [
 ] as const;
 export const defaultVideoBackground = {
   mode: 'dark',
-  color: '#10231D',
+  color: '#000000',
 } as const;
 export const VideoBackgroundSchema = z
   .object({
@@ -469,6 +469,21 @@ export const VoiceVisualPlanContentSchema = z
       })
       .strict()
       // Legacy plans may omit this field; new planners always write it.
+      .optional(),
+    // Bounded, actionable planner diagnostics; never used as an approval
+    // signal and never implies AI succeeded when the fallback ran instead.
+    plannerDiagnostics: z
+      .array(
+        z
+          .object({
+            stage: z.enum(['ai-plan', 'fallback']),
+            model: z.string().trim().min(1).max(160).nullable(),
+            reason: z.string().trim().min(1).max(2_000).nullable(),
+            outcome: z.enum(['used_ai', 'used_fallback']),
+          })
+          .strict(),
+      )
+      .max(8)
       .optional(),
     timingCalibration: z
       .object({

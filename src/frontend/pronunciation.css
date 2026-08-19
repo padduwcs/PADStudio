@@ -1,10 +1,8 @@
 .pronunciation-workspace { width: min(1240px, 100%); margin: 8px auto 48px; }
-.pronunciation-heading { max-width: 760px; margin-bottom: 28px; }
-.pronunciation-heading > span { color: var(--orange); font-size: .75rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
-.pronunciation-heading h1 { margin: 8px 0 12px; color: var(--ink); font-family: Georgia, 'Times New Roman', serif; font-size: clamp(2.2rem, 5vw, 4rem); font-weight: 500; letter-spacing: -.04em; line-height: 1; }
-.pronunciation-heading p, .pronunciation-dictionary > header p { margin: 0; color: var(--ink-soft); line-height: 1.55; }
+.pronunciation-dictionary > header p { margin: 0; color: var(--ink-soft); line-height: 1.55; }
 .pronunciation-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(330px, .85fr); gap: 20px; align-items: start; }
-.pronunciation-preview-card, .pronunciation-dictionary, .pronunciation-codex { padding: clamp(20px, 3vw, 30px); border: 1px solid var(--line); border-radius: 22px; background: var(--paper); box-shadow: var(--shadow-sm); }
+.pronunciation-preview-card, .pronunciation-dictionary, .pronunciation-codex { padding: clamp(20px, 3vw, 30px); border: 1px solid var(--line); border-radius: 22px; background: var(--paper); box-shadow: var(--shadow-sm); transition: transform 250ms var(--ease-out), box-shadow 250ms var(--ease-out); }
+.pronunciation-preview-card:hover, .pronunciation-dictionary:hover, .pronunciation-codex:hover { transform: scale(1.01); box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12); }
 .pronunciation-preview-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .pronunciation-preview-card h2 { margin: 5px 0 0; color: var(--ink); font-size: 1.25rem; }
 .approved-badge { display: inline-flex; align-items: center; gap: 5px; color: var(--success); font-size: .78rem; font-weight: 750; white-space: nowrap; }

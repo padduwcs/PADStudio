@@ -5,9 +5,7 @@
   padding: 8px 0 42px;
 }
 
-.render-heading {
-  max-width: 820px;
-}
+
 
 .render-summary {
   display: grid;
@@ -22,15 +20,15 @@
   gap: 13px;
   min-width: 0;
   padding: 15px 17px;
-  border: 1px solid #dce8e2;
+  border: 1px solid var(--line);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.74);
+  background: var(--surface-raised);
 }
 
 .render-summary svg {
   width: 22px;
   flex: 0 0 auto;
-  color: #28745d;
+  color: var(--ink-soft);
 }
 
 .render-summary span {
@@ -40,7 +38,7 @@
 }
 
 .render-summary small {
-  color: #71827b;
+  color: var(--ink-soft);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -49,31 +47,29 @@
 
 .render-summary strong {
   overflow: hidden;
-  color: #17372f;
+  color: var(--ink);
   font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .watermark-upload-error {
-  color: #a24438;
+  color: var(--danger);
   font-size: 11px;
 }
 
 .render-progress-card,
 .render-ready-card,
 .render-result-card {
-  border: 1px solid #d8e7e0;
+  border: 1px solid var(--line);
   border-radius: 22px;
-  background: #fff;
-  box-shadow: 0 18px 48px rgba(25, 67, 54, 0.08);
+  background: var(--surface);
+  box-shadow: var(--shadow);
 }
 
 .render-progress-card {
   padding: 34px;
-  background:
-    radial-gradient(circle at 96% 0, rgba(75, 190, 151, 0.16), transparent 38%),
-    #fff;
+  background: var(--surface);
 }
 
 .render-progress-topline,
@@ -90,7 +86,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #26755b;
+  color: var(--success);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -101,13 +97,13 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: #37b889;
-  box-shadow: 0 0 0 6px rgba(55, 184, 137, 0.14);
+  background: var(--success);
+  box-shadow: none;
   animation: render-pulse 1.6s ease-in-out infinite;
 }
 
 .render-progress-topline > strong {
-  color: #17372f;
+  color: var(--ink);
   font-size: 24px;
 }
 
@@ -115,8 +111,7 @@
 .render-ready-card h2,
 .render-result-card h2 {
   margin: 20px 0 7px;
-  color: #15382e;
-  font-family: Georgia, serif;
+  color: var(--ink);
   font-size: 25px;
 }
 
@@ -124,7 +119,7 @@
 .render-ready-card p,
 .render-result-card p {
   margin: 0;
-  color: #65766f;
+  color: var(--ink-soft);
   line-height: 1.65;
 }
 
@@ -133,19 +128,19 @@
   margin: 26px 0 12px;
   overflow: hidden;
   border-radius: 999px;
-  background: #e5eee9;
+  background: var(--line);
 }
 
 .render-progress-track > span {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, #2c8b6b, #65d2ab);
+  background: var(--success);
   transition: width 300ms ease;
 }
 
 .render-progress-meta {
-  color: #7b8b84;
+  color: var(--ink-soft);
   font-size: 12px;
 }
 
@@ -177,7 +172,7 @@
 
 .render-blocked-reason {
   max-width: 520px;
-  color: #8b5148;
+  color: var(--danger);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -189,14 +184,11 @@
   aspect-ratio: 16 / 10;
   overflow: hidden;
   border-radius: 18px;
-  color: #dff8ed;
-  background:
-    linear-gradient(145deg, rgba(255,255,255,.1), transparent 45%),
-    #153c31;
+  color: var(--ink);
+  background: var(--surface-soft);
 }
 
 .render-ready-visual > span {
-  font-family: Georgia, serif;
   font-size: clamp(34px, 6vw, 62px);
   letter-spacing: 0.08em;
 }
@@ -213,7 +205,7 @@
 .render-ready-visual > div span {
   height: 4px;
   border-radius: 99px;
-  background: #72d7b3;
+  background: var(--line-strong);
 }
 
 .render-ready-visual > div span:nth-child(1) {flex: 1.8;}
@@ -242,8 +234,8 @@
   flex: 0 0 auto;
   place-items: center;
   border-radius: 50%;
-  color: #fff;
-  background: #318668;
+  color: white;
+  background: var(--success);
 }
 
 .render-success-icon svg {width: 24px;}
@@ -255,7 +247,7 @@
   place-items: center;
   overflow: hidden;
   border-radius: 18px;
-  background: #07100d;
+  background: var(--ink);
 }
 
 .render-player-shell video {
@@ -282,17 +274,17 @@
   gap: 12px;
   margin-top: 16px;
   padding: 14px 16px;
-  border: 1px solid #edc9c3;
+  border: 1px solid var(--danger);
   border-radius: 12px;
-  color: #7a342c;
-  background: #fff7f5;
+  color: var(--danger);
+  background: var(--theme-danger-surface);
   font-size: 13px;
 }
 
 .render-error button {
   margin-left: auto;
   border: 0;
-  color: #6b3029;
+  color: var(--danger);
   background: transparent;
   font-weight: 750;
   cursor: pointer;
@@ -305,14 +297,14 @@
 }
 
 .render-error-location {
-  color: #985348;
+  color: var(--danger);
   font-size: 11px;
   font-weight: 750;
 }
 
 .render-error-details {
   max-width: 100%;
-  color: #67362f;
+  color: var(--danger);
 }
 
 .render-error-details summary {
@@ -337,8 +329,8 @@
   padding: 9px 10px;
   overflow: auto;
   border-radius: 8px;
-  color: #f8e9e6;
-  background: #3e2521;
+  color: var(--ink);
+  background: var(--surface-soft);
   font: 10px/1.55 Consolas, monospace;
   white-space: pre-wrap;
   word-break: break-word;
@@ -347,11 +339,11 @@
 .render-final-actions {
   margin-top: 24px;
   padding-top: 22px;
-  border-top: 1px solid #dce7e2;
+  border-top: 1px solid var(--line);
 }
 
 .render-final-actions > span {
-  color: #74837d;
+  color: var(--ink-soft);
   font-size: 12px;
 }
 

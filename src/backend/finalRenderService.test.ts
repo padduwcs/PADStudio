@@ -163,6 +163,78 @@ test('schema final render dùng cùng dung sai cho kết quả ffprobe', () => {
   );
 });
 
+test('render hoàn tất vẫn lưu bundle dù có scene sample không viable', () => {
+  const bundle = {
+    status: 'completed',
+    contentRevision: 1,
+    sourceLayoutContentRevision: 1,
+    sourceLayoutGenerationId: '10000000-0000-4000-8000-000000000001',
+    sourceLayoutSourceHash: 'a'.repeat(64),
+    workspacePath:
+      'renders/generations/20000000-0000-4000-8000-000000000002',
+    videoFile: 'video.mp4',
+    width: 1080,
+    height: 1920,
+    fps: 30,
+    watermark: {type: 'none'},
+    durationSeconds: 60,
+    fileSizeBytes: 1,
+    encoding: {
+      container: 'mp4',
+      videoCodec: 'h264',
+      audioCodec: 'aac',
+      pixelFormat: 'yuv420p',
+      crf: 18,
+      preset: 'medium',
+    },
+    validation: {
+      validatedAt: '2026-07-20T00:00:00.000Z',
+      sourceHash: 'b'.repeat(64),
+      videoHash: 'c'.repeat(64),
+      renderedFrameCount: 1_800,
+      probedDurationSeconds: 60,
+      // A scene with no viable sample is a diagnostic signal only. It must
+      // not prevent the bundle from parsing as a completed render — Scene
+      // Review, not Final Render, decides visual quality.
+      visual: {
+        backgroundColor: '#10231D',
+        sampleCount: 1,
+        scenes: [{
+          sceneId: '30000000-0000-4000-8000-000000000003',
+          sampleFrames: [12],
+          viableSampleCount: 0,
+          samples: [{
+            frame: 12,
+            timeSeconds: 0.4,
+            sceneId: '30000000-0000-4000-8000-000000000003',
+            backgroundColor: '#10231D',
+            totalPixels: 2_073_600,
+            opaquePixels: 2_073_600,
+            backgroundPixels: 2_073_600,
+            contentPixels: 0,
+            contentRatio: 0,
+            dominantColorRatio: 1,
+            verdict: 'uniform',
+          }],
+        }],
+      },
+    },
+    generation: {
+      generationId: '20000000-0000-4000-8000-000000000002',
+      provider: 'local',
+      tool: 'motion-canvas-ffmpeg',
+      generatedAt: '2026-07-20T00:00:00.000Z',
+    },
+  };
+
+  const parsed = FinalRenderBundleSchema.safeParse(bundle);
+  assert.equal(parsed.success, true);
+  if (parsed.success) {
+    assert.equal(parsed.data.status, 'completed');
+    assert.equal(parsed.data.validation.visual?.scenes[0]?.viableSampleCount, 0);
+  }
+});
+
 test('từ chối scene thực sự kết thúc sớm và frame count rỗng', () => {
   assert.equal(inspectRenderFrameTiming(2_580, 87.04, 30).matches, false);
   assert.equal(inspectRenderFrameTiming(0, 87.04, 30).matches, false);

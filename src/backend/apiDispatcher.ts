@@ -37,6 +37,8 @@ export function createApiRequestHandler(context: AppContext) {
     motionCanvasWorkspace,
     narrationDraftGenerations,
     narrationDraftGenerator,
+    narrationPlanGenerations,
+    narrationVisualPlanner,
     pronunciationAuditService,
     pronunciationRuleStore,
     repository,
@@ -115,7 +117,13 @@ export function createApiRequestHandler(context: AppContext) {
       pronunciationAuditService,
       pronunciationRuleStore,
     }),
-    createProductionRouteHandler({repository, layoutWorkspace}),
+    createProductionRouteHandler({
+      repository,
+      layoutWorkspace,
+      narrationVisualPlanner,
+      narrationPlanGenerations,
+      generateOnce,
+    }),
   ];
 
   return async (request: IncomingMessage, response: ServerResponse) => {

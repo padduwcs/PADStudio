@@ -8,7 +8,9 @@ import {
 import {
   type FinalRenderBundle,
   type MotionCanvasBundle,
-  type VoiceBundle
+  type TeachingOutline,
+  type VoiceBundle,
+  type VoiceVisualPlan
 } from '../shared/topic.ts';
 import {
   createAnimationSyncPreviewService,
@@ -80,6 +82,10 @@ import {
   type NarrationDraftGenerator
 } from './narrationDraftGenerator.ts';
 import {
+  createCodexNarrationVisualPlanner,
+  type NarrationVisualPlannerService
+} from './narrationVisualPlanner.ts';
+import {
   createFileProjectRepository,
   ProjectConflictError,
   type ProjectRepository
@@ -120,6 +126,7 @@ export interface AppOptions {
     apiKey: string,
   ) => ElevenLabsConnectionService;
   narrationDraftGenerator?: NarrationDraftGenerator;
+  narrationVisualPlanner?: NarrationVisualPlannerService;
   motionCanvasGenerator?: MotionCanvasGenerator;
   motionCanvasWorkspace?: MotionCanvasWorkspace;
   motionCanvasHistoryStore?: MotionCanvasHistoryStore;
@@ -156,6 +163,7 @@ export function createAppContext(options: AppOptions = {}) {
   const sharedCodexClient: CodexAppServerClient | null =
     !options.codexConnection ||
       !options.narrationDraftGenerator ||
+      !options.narrationVisualPlanner ||
       !options.motionCanvasGenerator ||
       !options.motionCanvasRevisionReviewService ||
       !options.pronunciationAuditService
@@ -176,6 +184,9 @@ export function createAppContext(options: AppOptions = {}) {
   const narrationDraftGenerator =
     options.narrationDraftGenerator ??
     createCodexNarrationDraftGenerator(sharedCodexClient!);
+  const narrationVisualPlanner =
+    options.narrationVisualPlanner ??
+    createCodexNarrationVisualPlanner(sharedCodexClient!);
   const motionCanvasGenerator =
     options.motionCanvasGenerator ??
     createCodexMotionCanvasGenerator(sharedCodexClient!, {
@@ -235,6 +246,10 @@ export function createAppContext(options: AppOptions = {}) {
     });
   const logger = options.logger ?? console;
   const narrationDraftGenerations = createInMemoryGenerationRegistry<NarrationDraftGenerationResult>();
+  const narrationPlanGenerations = createInMemoryGenerationRegistry<{
+    outline: TeachingOutline;
+    voiceVisualPlan: VoiceVisualPlan;
+  }>();
   const motionCanvasGenerations = createInMemoryGenerationRegistry<{
     generated: MotionCanvasGenerationResult;
     prepared: PreparedMotionCanvasWorkspace;
@@ -325,7 +340,7 @@ export function createAppContext(options: AppOptions = {}) {
     }
   }
 
-  return {options, storedElevenLabsApiKey, projectsDirectory, frontendDirectory, repository, credentialStore, sharedCodexClient, codexConnection, elevenLabsConnection, elevenLabsVoiceService, elevenLabsConnectionFactory, narrationDraftGenerator, motionCanvasGenerator, motionCanvasWorkspace, motionCanvasHistoryStore, motionCanvasRevisionReviewService, voiceWorkspace, animationSyncWorkspace, animationSyncPreviewService, layoutWorkspace, layoutPreviewService, watermarkAssetStore, pronunciationRuleStore, pronunciationAuditService, finalRenderService, runtimeDiagnostics, logger, narrationDraftGenerations, motionCanvasGenerations, motionCanvasCandidateGenerations, voiceGenerations, voiceSectionGenerations, animationSyncGenerations, finalRenderCommits, commitFinalRenderBundle, trackFinalRenderCommit, generateOnce};
+  return {options, storedElevenLabsApiKey, projectsDirectory, frontendDirectory, repository, credentialStore, sharedCodexClient, codexConnection, elevenLabsConnection, elevenLabsVoiceService, elevenLabsConnectionFactory, narrationDraftGenerator, narrationVisualPlanner, motionCanvasGenerator, motionCanvasWorkspace, motionCanvasHistoryStore, motionCanvasRevisionReviewService, voiceWorkspace, animationSyncWorkspace, animationSyncPreviewService, layoutWorkspace, layoutPreviewService, watermarkAssetStore, pronunciationRuleStore, pronunciationAuditService, finalRenderService, runtimeDiagnostics, logger, narrationDraftGenerations, narrationPlanGenerations, motionCanvasGenerations, motionCanvasCandidateGenerations, voiceGenerations, voiceSectionGenerations, animationSyncGenerations, finalRenderCommits, commitFinalRenderBundle, trackFinalRenderCommit, generateOnce};
 }
 
 export type AppContext = ReturnType<typeof createAppContext>;

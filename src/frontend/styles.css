@@ -1,72 +1,72 @@
 :root {
-  color: #18342c;
-  background: #f3f1eb;
+  color: #0f172a;
+  background: #f8f9fc;
   font-family:
     "Segoe UI Variable", "Segoe UI", "Aptos", system-ui, -apple-system,
     BlinkMacSystemFont, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --ink: #18342c;
-  --ink-soft: #61746e;
-  --green-900: #153d33;
-  --green-800: #1b4a3d;
-  --green-700: #245f4d;
-  --green-100: #deebe5;
-  --paper: #fffdf9;
-  --surface: #f8faf8;
+  --ink: #0f172a;
+  --ink-soft: #475569;
+  --green-900: #0f172a;
+  --green-800: #0369a1;
+  --green-700: #0ea5e9;
+  --green-100: #e0f2fe;
+  --paper: #ffffff;
+  --surface: #f8fafc;
   --surface-raised: #ffffff;
-  --surface-soft: #eff4f1;
+  --surface-soft: #f1f5f9;
   --control-bg: #ffffff;
-  --canvas: #e9ece7;
-  --line: #cbd5cf;
-  --line-strong: #b7c5bd;
-  --orange: #e77849;
-  --orange-soft: #fff0e7;
-  --danger: #b94738;
-  --success: #2b7457;
+  --canvas: #e8eef5;
+  --line: #cbd5e1;
+  --line-strong: #94a3b8;
+  --orange: #f59e0b;
+  --orange-soft: #fef3c7;
+  --danger: #ef4444;
+  --success: #10b981;
   --shadow:
-    0 1px 2px rgba(29, 55, 45, 0.06),
-    0 16px 42px rgba(29, 55, 45, 0.11);
+    0 2px 4px rgba(15, 23, 42, 0.04),
+    0 16px 42px rgba(15, 23, 42, 0.08);
   --shadow-sm:
-    0 1px 2px rgba(29, 55, 45, 0.05),
-    0 7px 20px rgba(29, 55, 45, 0.07);
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 6px 18px rgba(15, 23, 42, 0.06);
   --control-shadow:
-    inset 0 1px 0 rgba(24, 56, 44, 0.025),
-    0 1px 2px rgba(24, 56, 44, 0.045);
+    inset 0 1px 0 rgba(15, 23, 42, 0.02),
+    0 1px 2px rgba(15, 23, 42, 0.04);
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 :root[data-theme="dark"] {
-  color: #e5eee9;
-  background: #08120f;
-  --ink: #e5eee9;
-  --ink-soft: #9aada5;
-  --green-900: #0a1512;
-  --green-800: #173d32;
-  --green-700: #78b99c;
-  --green-100: #203b32;
-  --paper: #14271f;
-  --surface: #1b322a;
-  --surface-raised: #1f3a30;
-  --surface-soft: #0f211a;
-  --control-bg: #193028;
-  --canvas: #08120f;
-  --line: #345148;
-  --line-strong: #42645a;
-  --orange: #f09369;
-  --orange-soft: #3b261f;
-  --danger: #ef8c7e;
-  --success: #72c99c;
+  color: #f8fafc;
+  background: #020617;
+  --ink: #f8fafc;
+  --ink-soft: #94a3b8;
+  --green-900: #0f172a;
+  --green-800: #0ea5e9;
+  --green-700: #38bdf8;
+  --green-100: #0c4a6e;
+  --paper: #162032;
+  --surface: #1e293b;
+  --surface-raised: #334155;
+  --surface-soft: #0f172a;
+  --control-bg: #1e293b;
+  --canvas: #020617;
+  --line: #334155;
+  --line-strong: #475569;
+  --orange: #fbbf24;
+  --orange-soft: #78350f;
+  --danger: #f87171;
+  --success: #34d399;
   --shadow:
-    inset 0 1px 0 rgba(225, 240, 233, 0.045),
-    0 20px 52px rgba(0, 0, 0, 0.43),
-    0 3px 10px rgba(0, 0, 0, 0.24);
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 24px 64px rgba(0, 0, 0, 0.6),
+    0 4px 12px rgba(0, 0, 0, 0.3);
   --shadow-sm:
-    inset 0 1px 0 rgba(225, 240, 233, 0.035),
-    0 9px 24px rgba(0, 0, 0, 0.28);
+    inset 0 1px 0 rgba(255, 255, 255, 0.02),
+    0 8px 24px rgba(0, 0, 0, 0.4);
   --control-shadow:
-    inset 0 1px 0 rgba(225, 240, 233, 0.035),
-    0 2px 5px rgba(0, 0, 0, 0.18);
+    inset 0 1px 0 rgba(255, 255, 255, 0.02),
+    0 2px 5px rgba(0, 0, 0, 0.2);
 }
 
 * {
@@ -593,7 +593,7 @@ button:not(:disabled):active {
   align-items: center;
   gap: 10px;
   margin-bottom: 18px;
-  color: #657970;
+  color: var(--ink-soft);
   font-size: 10px;
   font-weight: 760;
   letter-spacing: 0.15em;
@@ -607,7 +607,7 @@ button:not(:disabled):active {
 .eyebrow-line {
   width: 28px;
   height: 1px;
-  background: #c8ccc5;
+  background: var(--line-strong);
 }
 
 .page-heading h1 {
@@ -616,7 +616,7 @@ button:not(:disabled):active {
   margin: 0;
   color: var(--ink);
   font-size: clamp(2.125rem, 7cqi, 3.25rem);
-  font-weight: 680;
+  font-weight: 750;
   letter-spacing: -0.045em;
   line-height: 1.12;
   overflow-wrap: anywhere;
@@ -1366,8 +1366,8 @@ textarea.has-error,
   border-radius: 10px;
   color: white;
   background: var(--green-800);
-  box-shadow: 0 7px 18px rgba(24, 74, 61, 0.17);
-  font-size: 12px;
+  box-shadow: 0 7px 18px rgba(14, 165, 233, 0.25);
+  font-size: 13px;
   font-weight: 720;
   white-space: nowrap;
   cursor: pointer;
@@ -1379,8 +1379,8 @@ textarea.has-error,
 
 .submit-button:hover:not(:disabled) {
   background: var(--green-700);
-  box-shadow: 0 9px 22px rgba(24, 74, 61, 0.22);
-  transform: translateY(-1px);
+  box-shadow: 0 9px 28px rgba(14, 165, 233, 0.45);
+  transform: scale(1.02);
 }
 
 .submit-button:focus-visible {

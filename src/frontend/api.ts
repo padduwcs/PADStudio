@@ -279,7 +279,11 @@ export async function approveProjectNarration(
 
 export async function prepareNarrationProduction(
   projectId: string,
-  request: {generationId: string},
+  request: {
+    generationId: string;
+    plannerModel?: string;
+    plannerReasoningEffort?: string;
+  },
   expectedRevision: number,
 ) {
   const response = await fetch(
