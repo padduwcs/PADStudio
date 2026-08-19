@@ -936,6 +936,11 @@ export function useMotionCanvasDraft(projectId: string) {
     }
   }
 
+  function adoptProject(updatedProject: TopicProject) {
+    projectRef.current = updatedProject;
+    setProject(updatedProject);
+  }
+
   return {
     project,
     files,
@@ -977,6 +982,7 @@ export function useMotionCanvasDraft(projectId: string) {
     },
     approve,
     saveDesign,
+    adoptProject,
     retryPreview: () => setPreviewRetryKey((current) => current + 1),
     reload: () => setReloadKey((current) => current + 1),
   };

@@ -32,7 +32,7 @@ const taskBaselines: Record<
   motionCanvas: {minimumMs: 45_000, maximumMs: 240_000},
 };
 
-const effortMultipliers: Record<string, number> = {
+export const effortMultipliers: Record<string, number> = {
   none: 0.7,
   minimal: 0.8,
   low: 1,

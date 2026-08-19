@@ -17,12 +17,7 @@
 .content-narration-assist > label { display: grid; gap: 8px; color: var(--ink); font-size: .88rem; }
 .content-narration-assist > label > span { font-weight: 700; }
 .content-narration-assist > label textarea { min-height: 88px; }
-.narration-codex-settings { padding-top: 13px; border-top: 1px solid var(--line); }
-.narration-codex-settings > summary { display: flex; align-items: center; justify-content: space-between; color: var(--ink-soft); font-size: .8rem; font-weight: 650; cursor: pointer; list-style: none; }
-.narration-codex-settings > summary::-webkit-details-marker { display: none; }
-.narration-codex-settings > summary::after { content: '⌄'; color: var(--ink-soft); font-size: 1rem; line-height: .8; transition: transform 150ms ease; }
-.narration-codex-settings[open] > summary::after { transform: rotate(180deg); }
-.narration-codex-settings .codex-connection-card { margin: 12px 0 0; }
+.content-narration-assist .codex-connection-card { margin: 4px 0 0; }
 .narration-assist-actions { display: flex; align-items: center; justify-content: flex-end; }
 .narration-assist-actions .secondary-button { min-height: 38px; }
 .content-settings { display: grid; grid-template-columns: minmax(190px, .7fr) minmax(0, 1.3fr); gap: 18px; padding-top: 4px; }

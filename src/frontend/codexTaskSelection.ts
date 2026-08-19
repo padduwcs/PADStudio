@@ -1,5 +1,5 @@
 import type {CodexModelSummary} from '../shared/codex.ts';
-import type {CodexGenerationTask} from './codexWaitEstimate.ts';
+import {effortMultipliers, type CodexGenerationTask} from './codexWaitEstimate.ts';
 
 /**
  * Every AI stage (narration draft, pronunciation audit, AI Visual Planner,
@@ -34,6 +34,9 @@ export const CODEX_TASKS: CodexGenerationTask[] = [
 // its own yet, and are never written back to.
 export const LEGACY_MODEL_STORAGE_KEY = 'pad-studio:codex-model';
 export const LEGACY_REASONING_STORAGE_KEY = 'pad-studio:codex-reasoning-by-model';
+export const DEFAULT_CODEX_MODEL = 'gpt-5.5';
+export const DEFAULT_CODEX_REASONING_EFFORT = 'low';
+const MANUAL_SELECTION_STORAGE_PREFIX = 'pad-studio:codex-manual-selection:v1';
 
 // Pronunciation audit used to share the 'outline' task slot. A user who
 // already picked a model/effort for 'outline' before the split gets it
@@ -48,6 +51,28 @@ function taskModelStorageKey(task: CodexGenerationTask) {
 
 function taskReasoningStorageKey(task: CodexGenerationTask) {
   return `${LEGACY_REASONING_STORAGE_KEY}:${task}`;
+}
+
+function manualSelectionStorageKey(task: CodexGenerationTask) {
+  return `${MANUAL_SELECTION_STORAGE_PREFIX}:${task}`;
+}
+
+function hasManualSelection(storage: StorageLike | null, task: CodexGenerationTask) {
+  if (!storage) return false;
+  try {
+    return storage.getItem(manualSelectionStorageKey(task)) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function markManualSelection(storage: StorageLike | null, task: CodexGenerationTask) {
+  if (!storage) return;
+  try {
+    storage.setItem(manualSelectionStorageKey(task), 'true');
+  } catch {
+    // The selection can remain session-only if storage is unavailable.
+  }
 }
 
 function readJsonMap(
@@ -104,10 +129,12 @@ export function saveModel(
   storage: StorageLike | null,
   task: CodexGenerationTask,
   model: string,
+  manual = true,
 ) {
   if (!storage || !model) return;
   try {
     storage.setItem(taskModelStorageKey(task), model);
+    if (manual) markManualSelection(storage, task);
   } catch {
     // Selection can remain session-only if storage is unavailable.
   }
@@ -118,6 +145,7 @@ export function saveReasoning(
   task: CodexGenerationTask,
   model: string,
   reasoningEffort: string,
+  manual = true,
 ) {
   if (!storage || !model || !reasoningEffort) return;
   try {
@@ -127,23 +155,41 @@ export function saveReasoning(
       key,
       JSON.stringify({...selections, [model]: reasoningEffort}),
     );
+    if (manual) markManualSelection(storage, task);
   } catch {
     // Keep the selection for this session.
   }
+}
+
+/** Picks the cheapest supported tier so a task with no remembered choice of
+ * its own starts at minimum cost, rather than the provider's declared
+ * default (which is often a mid/high tier). An unranked effort identifier
+ * is treated as expensive so it is never picked over a known cheap one. */
+export function cheapestReasoningEffort(supportedReasoningEfforts: string[]) {
+  return [...supportedReasoningEfforts].sort(
+    (left, right) =>
+      (effortMultipliers[left] ?? Infinity) -
+      (effortMultipliers[right] ?? Infinity),
+  )[0] ?? '';
 }
 
 export function preferredReasoningEffort(
   storage: StorageLike | null,
   task: CodexGenerationTask,
   model: CodexModelSummary,
+  useRememberedSelection = true,
 ) {
-  const remembered = storedReasoningForModel(storage, task, model.model);
+  const remembered = useRememberedSelection
+    ? storedReasoningForModel(storage, task, model.model)
+    : '';
   if (model.supportedReasoningEfforts.includes(remembered)) return remembered;
   if (
-    model.defaultReasoningEffort &&
-    model.supportedReasoningEfforts.includes(model.defaultReasoningEffort)
-  ) return model.defaultReasoningEffort;
-  return model.supportedReasoningEfforts[0] ?? '';
+    model.model === DEFAULT_CODEX_MODEL &&
+    model.supportedReasoningEfforts.includes(DEFAULT_CODEX_REASONING_EFFORT)
+  ) {
+    return DEFAULT_CODEX_REASONING_EFFORT;
+  }
+  return cheapestReasoningEffort(model.supportedReasoningEfforts);
 }
 
 export function emptyTaskSelections(): CodexTaskSelections {
@@ -177,17 +223,28 @@ export function recomputeTaskSelections(
 ): CodexTaskSelections {
   const next = emptyTaskSelections();
   for (const task of CODEX_TASKS) {
-    const rememberedModel = previous[task]?.model || storedModel(storage, task);
+    const useRememberedSelection = hasManualSelection(storage, task);
+    const rememberedModel = useRememberedSelection
+      ? previous[task]?.model || storedModel(storage, task)
+      : '';
     const matched = availableModels.find((item) => item.model === rememberedModel);
+    const configuredDefault = availableModels.find(
+      (item) => item.model === DEFAULT_CODEX_MODEL,
+    );
     const chosen =
-      matched ?? availableModels.find((item) => item.isDefault) ?? availableModels[0];
+      matched ??
+      configuredDefault ??
+      availableModels.find((item) => item.isDefault) ??
+      availableModels[0];
     const model = chosen?.model ?? '';
     const reasoningEffort = chosen
-      ? preferredReasoningEffort(storage, task, chosen)
+      ? preferredReasoningEffort(storage, task, chosen, useRememberedSelection)
       : '';
     next[task] = {model, reasoningEffort};
-    if (model) saveModel(storage, task, model);
-    if (reasoningEffort) saveReasoning(storage, task, model, reasoningEffort);
+    if (model) saveModel(storage, task, model, useRememberedSelection);
+    if (reasoningEffort) {
+      saveReasoning(storage, task, model, reasoningEffort, useRememberedSelection);
+    }
   }
   return next;
 }

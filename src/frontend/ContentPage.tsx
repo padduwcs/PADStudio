@@ -361,6 +361,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
           <label className="content-field color-field">
             <span>Background</span>
             <div><input type="color" value={form.backgroundColor} onChange={event => update('backgroundColor', event.currentTarget.value.toUpperCase())} /><code>{form.backgroundColor.toUpperCase()}</code></div>
+            <small>{form.backgroundColor.toUpperCase() === defaultVideoBackground.color ? 'Đây là màu mặc định đã chọn sẵn (đen), không phải ô trống — bấm để đổi.' : 'Màu nền cho toàn bộ video.'}</small>
           </label>
           <fieldset className="content-field frame-field">
             <legend>Khung hình</legend>
@@ -388,10 +389,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
           <details className="content-narration-assist">
             <summary><span><strong>Chưa có lời thoại? Tạo nháp bằng AI</strong><small>Tùy chọn — nếu đã chuẩn bị kỹ, chỉ cần dán lời thoại của bạn và bỏ qua phần này.</small></span><em className={codex.status?.state === 'connected' ? 'is-connected' : ''}>{aiConnectionLabel}</em></summary>
             <label><span>Gợi ý cho AI <small>Không bắt buộc</small></span><textarea rows={3} value={narrationGuidance} disabled={narrationGenerating} placeholder="Ví dụ: giải thích cho người mới, ưu tiên ví dụ đời thường, khoảng ba phút." onChange={event => setNarrationGuidance(event.currentTarget.value)} /></label>
-            <details className="narration-codex-settings">
-              <summary>Thiết lập Codex</summary>
-              <CodexConnectionCard connection={codex} task="narration" />
-            </details>
+            <CodexConnectionCard connection={codex} task="narration" />
             <div className="narration-assist-actions">
               <button className="secondary-button" type="button" disabled={narrationGenerating || !codex.isTaskReady('narration') || form.topic.trim().length < 6} onClick={() => void createNarrationDraft()}>{narrationGenerating ? 'Đang soạn lời thoại…' : form.narrationSourceText.trim() ? 'Tạo bản nháp thay thế' : 'Để AI soạn lời thoại'}</button>
             </div>

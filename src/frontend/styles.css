@@ -4860,6 +4860,22 @@ kbd {
   gap: 10px;
 }
 
+.codex-config-controls + .codex-config-controls {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(53, 87, 74, 0.14);
+}
+
+.codex-config-controls-label {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #35574a;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
 .codex-service-card .codex-model-picker {
   gap: 4px;
   margin: 0;

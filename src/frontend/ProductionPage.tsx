@@ -167,6 +167,29 @@ export function ProductionPage({projectId}: {projectId: string}) {
     }
   }
 
+  async function createAudio() {
+    if (!project || state === 'working' || !voiceId || !modelId) return;
+    setState('working');
+    setMessage('');
+    try {
+      setMessage('Đang chuẩn bị cấu trúc scene từ lời thoại đã duyệt…');
+      let current = await prepareNarrationProduction(
+        project.id,
+        {generationId: newGenerationId(), ...plannerSelectionFields()},
+        project.revision,
+      );
+      current = await generateSelectedAudio(current);
+      setProject(current);
+      setVoiceId(current.voiceBundle!.configuration.voiceId);
+      setModelId(current.voiceBundle!.configuration.modelId);
+      setMessage('Audio đã sẵn sàng. Bước tiếp theo: bấm “Sinh scene” ở khung Codex.');
+      setState('ready');
+    } catch (error) {
+      setState('error');
+      setMessage(error instanceof ApiRequestError || error instanceof Error ? error.message : 'Không thể tạo audio.');
+    }
+  }
+
   async function runProduction() {
     if (!project || state === 'working') return;
     setState('working');
@@ -300,6 +323,25 @@ export function ProductionPage({projectId}: {projectId: string}) {
               </label>
             )}
           </details>
+          {!audioReady && (
+            <div className="production-action">
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={!eleven.connected || !voiceId || !modelId || state === 'working'}
+                onClick={() => void createAudio()}
+              >
+                {state === 'working' ? 'Đang tạo audio…' : 'Tạo audio'}
+              </button>
+              <small>
+                {!eleven.connected
+                  ? 'Kết nối ElevenLabs để bắt đầu.'
+                  : !voiceId || !modelId
+                    ? 'Chọn voice và model tiếng Việt trước.'
+                    : 'Chỉ tạo giọng đọc; scene sẽ được tạo ở khung bên cạnh.'}
+              </small>
+            </div>
+          )}
           {audioReady && (
             <>
               <div className={`production-selection-note${voiceSelectionChanged ? ' is-changed' : ''}`}>
@@ -323,23 +365,76 @@ export function ProductionPage({projectId}: {projectId: string}) {
         <section className="production-card">
           <header>
             <span>Codex</span>
-            <h2>Lập kế hoạch hình ảnh</h2>
+            <h2>Lập kế hoạch & dựng scene</h2>
           </header>
-          <CodexConnectionCard connection={codex} task="visualPlanner" />
+          <CodexConnectionCard
+            connection={codex}
+            task="visualPlanner"
+            extraTasks={[{task: 'motionCanvas', label: 'Scene Motion Canvas'}]}
+          />
           <div className="production-result">
             <strong>AI Visual Planner</strong>
             <p>Chọn model/reasoning riêng cho bước lập kế hoạch hình ảnh (title, mục tiêu, visual bible từng scene). Nếu không chọn hoặc AI lỗi, hệ thống tự dùng bộ lập kế hoạch tất định thay thế.</p>
           </div>
-        </section>
-        <section className="production-card">
-          <header>
-            <span>Codex</span>
-            <h2>Scene đã khớp giọng đọc</h2>
-          </header>
-          <CodexConnectionCard connection={codex} task="motionCanvas" />
           <div className="production-result">
-            <strong>{syncReady ? 'Scene và audio đã đồng bộ' : sceneReady ? 'Scene cần đồng bộ lại' : 'Sẵn sàng phân tích trực tiếp'}</strong>
-            <p>{syncReady ? `${project.motionCanvasBundle!.scenes.length} scene đã được ánh xạ theo timing giọng đọc thật.` : sceneReady ? 'Bấm đồng bộ để cập nhật scene theo audio hiện tại.' : 'Codex sinh scene, sau đó hệ thống tự ghép timing ElevenLabs.'}</p>
+            <strong>{syncReady ? 'Scene và audio đã đồng bộ' : sceneReady && project.motionCanvasBundle?.status !== 'approved' ? 'Scene cần được duyệt' : sceneReady ? 'Scene cần đồng bộ lại' : 'Sẵn sàng phân tích trực tiếp'}</strong>
+            <p>{syncReady ? `${project.motionCanvasBundle!.scenes.length} scene đã được ánh xạ theo timing giọng đọc thật.` : sceneReady && project.motionCanvasBundle?.status !== 'approved' ? 'Mở preview để kiểm tra và duyệt scene trước khi đồng bộ theo audio.' : sceneReady ? 'Audio vừa đổi nên scene cần ánh xạ lại timing.' : 'Codex sinh scene, sau đó hệ thống tự ghép timing ElevenLabs.'}</p>
+            {sceneReady && project.motionCanvasBundle?.status !== 'approved' && (
+              <div className="production-action">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => navigate(projectScenesPath(project.id))}
+                >
+                  Xem preview & duyệt scene
+                </button>
+                <small>Dự án cũ cần duyệt lại scene trước khi có thể đồng bộ.</small>
+              </div>
+            )}
+            {sceneReady && !syncReady && project.motionCanvasBundle?.status === 'approved' && (
+              <div className="production-action">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={state === 'working'}
+                  onClick={() => void runProduction()}
+                >
+                  {state === 'working' ? 'Đang đồng bộ…' : 'Đồng bộ lại scene'}
+                </button>
+                <small>Scene đã duyệt và sẵn sàng ánh xạ lại theo audio hiện tại.</small>
+              </div>
+            )}
+            {syncReady && (
+              <div className="production-action">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => navigate(projectScenesPath(project.id))}
+                >
+                  Review & chỉnh scene
+                </button>
+                <small>Mở workspace để kiểm tra hoặc chỉnh sửa scene.</small>
+              </div>
+            )}
+            {!sceneReady && (
+              <div className="production-action">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={!audioReady || !codex.isTaskReady('motionCanvas') || state === 'working'}
+                  onClick={() => void runProduction()}
+                >
+                  {state === 'working' ? 'Đang sinh scene…' : 'Sinh scene'}
+                </button>
+                <small>
+                  {!audioReady
+                    ? 'Tạo audio trước khi sinh scene.'
+                    : !codex.isTaskReady('motionCanvas')
+                      ? 'Kết nối Codex để sinh scene.'
+                      : 'Scene sẽ được mở ở bước xem trước để duyệt.'}
+                </small>
+              </div>
+            )}
           </div>
         </section>
       </div>

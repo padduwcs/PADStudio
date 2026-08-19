@@ -6,6 +6,10 @@ import {
   formatCodexWaitEstimate,
   type CodexGenerationTask,
 } from './codexWaitEstimate.ts';
+import {
+  DEFAULT_CODEX_MODEL,
+  DEFAULT_CODEX_REASONING_EFFORT,
+} from './codexTaskSelection.ts';
 
 type CodexConnectionController = ReturnType<typeof useCodexConnection>;
 
@@ -82,10 +86,16 @@ export function CodexConnectionCard({
   connection,
   task = 'outline',
   workUnits = 1,
+  extraTasks = [],
 }: {
   connection: CodexConnectionController;
   task?: CodexGenerationTask;
   workUnits?: number;
+  /** Additional task selectors sharing this card's single connection/quota
+   * status, so two AI steps that always run back-to-back (e.g. visual
+   * planning then Motion Canvas scene generation) don't repeat the whole
+   * connection card just to show a second model/reasoning picker. */
+  extraTasks?: Array<{task: CodexGenerationTask; label: string; workUnits?: number}>;
 }) {
   const {
     status,
@@ -104,10 +114,6 @@ export function CodexConnectionCard({
     selectModel,
     selectReasoningEffort,
   } = connection;
-  const selectedModel = selections[task]?.model ?? '';
-  const selectedReasoningEffort = selections[task]?.reasoningEffort ?? '';
-  const selectedModelSummary =
-    models.find((model) => model.model === selectedModel) ?? null;
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const connectedStatus = status?.state === 'connected' ? status : null;
@@ -130,18 +136,25 @@ export function CodexConnectionCard({
         }`
       : 'Đang dùng OpenAI API key'
     : '';
-  const waitEstimate =
-    selectedModel && selectedReasoningEffort
-      ? estimateCodexWait({
-          model: selectedModel,
-          reasoningEffort: selectedReasoningEffort,
-          task,
-          workUnits,
-        })
-      : null;
-  const slowReasoning =
-    Boolean(selectedReasoningEffort) &&
-    !['none', 'minimal', 'low', 'medium'].includes(selectedReasoningEffort);
+  function taskControls(taskId: CodexGenerationTask, unitsForTask: number) {
+    const selectedModel = selections[taskId]?.model ?? '';
+    const selectedReasoningEffort = selections[taskId]?.reasoningEffort ?? '';
+    const selectedModelSummary =
+      models.find((model) => model.model === selectedModel) ?? null;
+    const waitEstimate =
+      selectedModel && selectedReasoningEffort
+        ? estimateCodexWait({
+            model: selectedModel,
+            reasoningEffort: selectedReasoningEffort,
+            task: taskId,
+            workUnits: unitsForTask,
+          })
+        : null;
+    const slowReasoning =
+      Boolean(selectedReasoningEffort) &&
+      !['none', 'minimal', 'low', 'medium'].includes(selectedReasoningEffort);
+    return {selectedModel, selectedReasoningEffort, selectedModelSummary, waitEstimate, slowReasoning};
+  }
 
   const headline = connectedStatus
     ? 'Codex đã sẵn sàng'
@@ -359,72 +372,98 @@ export function CodexConnectionCard({
             )}
           </div>
 
-          <div className="codex-config-controls">
-            <label className="codex-model-picker">
-              <span>Model</span>
-              <select
-                value={selectedModel}
-                disabled={modelsLoading || models.length === 0}
-                onChange={(event) => selectModel(task, event.target.value)}
-              >
-                {models.map((model) => (
-                  <option value={model.model} key={model.id}>
-                    {model.displayName}
-                    {model.displayName !== model.model
-                      ? ` · ${model.model}`
-                      : ''}
-                    {model.isDefault ? ' · Default' : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="codex-model-picker">
-              <span>Reasoning effort</span>
-              <select
-                value={selectedReasoningEffort}
-                disabled={
-                  modelsLoading ||
-                  !selectedModelSummary ||
-                  selectedModelSummary.supportedReasoningEfforts.length === 0
-                }
-                onChange={(event) =>
-                  selectReasoningEffort(task, event.target.value)
-                }
-              >
-                {selectedModelSummary?.supportedReasoningEfforts.map(
-                  (reasoningEffort) => (
-                    <option value={reasoningEffort} key={reasoningEffort}>
-                      {reasoningLabels[reasoningEffort] ?? reasoningEffort}
-                      {reasoningEffort ===
-                      selectedModelSummary.defaultReasoningEffort
-                        ? ' · Default'
-                        : ''}
-                    </option>
-                  ),
-                )}
-              </select>
-            </label>
+          {[
+            {taskId: task, label: null, units: workUnits},
+            ...extraTasks.map((extra) => ({
+              taskId: extra.task,
+              label: extra.label,
+              units: extra.workUnits ?? 1,
+            })),
+          ].map(({taskId, label, units}) => {
+            const {
+              selectedModel,
+              selectedReasoningEffort,
+              selectedModelSummary,
+              waitEstimate,
+              slowReasoning,
+            } = taskControls(taskId, units);
+            return (
+              <div className="codex-config-controls" key={taskId}>
+                {label && <h3 className="codex-config-controls-label">{label}</h3>}
+                <label className="codex-model-picker">
+                  <span>Model</span>
+                  <select
+                    value={selectedModel}
+                    disabled={modelsLoading || models.length === 0}
+                    onChange={(event) => selectModel(taskId, event.target.value)}
+                  >
+                    {models.map((model) => (
+                      <option value={model.model} key={model.id}>
+                        {model.displayName}
+                        {model.displayName !== model.model
+                          ? ` · ${model.model}`
+                          : ''}
+                        {model.model === DEFAULT_CODEX_MODEL
+                          ? ' · PAD Studio default'
+                          : model.isDefault
+                            ? ' · Provider default'
+                            : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="codex-model-picker">
+                  <span>Reasoning effort</span>
+                  <select
+                    value={selectedReasoningEffort}
+                    disabled={
+                      modelsLoading ||
+                      !selectedModelSummary ||
+                      selectedModelSummary.supportedReasoningEfforts.length === 0
+                    }
+                    onChange={(event) =>
+                      selectReasoningEffort(taskId, event.target.value)
+                    }
+                  >
+                    {selectedModelSummary?.supportedReasoningEfforts.map(
+                      (reasoningEffort) => (
+                        <option value={reasoningEffort} key={reasoningEffort}>
+                          {reasoningLabels[reasoningEffort] ?? reasoningEffort}
+                          {selectedModel === DEFAULT_CODEX_MODEL &&
+                          reasoningEffort === DEFAULT_CODEX_REASONING_EFFORT
+                            ? ' · PAD Studio default'
+                            : reasoningEffort ===
+                                selectedModelSummary.defaultReasoningEffort
+                              ? ' · Provider default'
+                              : ''}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                </label>
 
-            {waitEstimate && (
-              <div
-                className={`codex-wait-estimate${
-                  slowReasoning ? ' is-slow' : ''
-                }`}
-              >
-                <ClockIcon />
-                <span>
-                  <small>Ước tính tạo {taskLabels[task]}</small>
-                  <strong>{formatCodexWaitEstimate(waitEstimate)}</strong>
-                  <small>
-                    {waitEstimate.basis === 'observed'
-                      ? `Từ ${waitEstimate.sampleCount} lần gần nhất`
-                      : 'Ước tính ban đầu'}
-                    {slowReasoning ? ' · dùng nhiều token hơn' : ''}
-                  </small>
-                </span>
+                {waitEstimate && (
+                  <div
+                    className={`codex-wait-estimate${
+                      slowReasoning ? ' is-slow' : ''
+                    }`}
+                  >
+                    <ClockIcon />
+                    <span>
+                      <small>Ước tính tạo {taskLabels[taskId]}</small>
+                      <strong>{formatCodexWaitEstimate(waitEstimate)}</strong>
+                      <small>
+                        {waitEstimate.basis === 'observed'
+                          ? `Từ ${waitEstimate.sampleCount} lần gần nhất`
+                          : 'Ước tính ban đầu'}
+                        {slowReasoning ? ' · dùng nhiều token hơn' : ''}
+                      </small>
+                    </span>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })}
 
           <div className="codex-config-meta">
             <span>

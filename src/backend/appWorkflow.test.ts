@@ -299,6 +299,8 @@ test('golden HTTP workflow runs all five steps with schema-valid fake providers'
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/approve`, {}));
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/sync/generate`, {generationId: randomUUID()}));
   assert.equal(project.animationSyncBundle!.status, 'draft'); assert.equal(project.currentStep, 'production');
+  const draftSyncPreview = await fetch(`${baseUrl}/api/projects/${project.id}/sync/preview?generation=${project.animationSyncBundle!.generation.generationId}`);
+  assert.equal(draftSyncPreview.status, 200, await draftSyncPreview.text());
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/sync/approve`, {})); assert.equal(project.currentStep, 'scenes');
   const blockedRender = await request(baseUrl, project, 'POST', `/api/projects/${project.id}/render/generate`, {generationId: randomUUID()}); assert.equal(blockedRender.status, 409);
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/production/output`, {generationId: randomUUID(), renderSettings: defaultLayoutRenderSettings}));
@@ -387,6 +389,8 @@ test('candidate apply and visual design HTTP transitions stay in scenes and inva
   assert.equal(candidateResponse.status, 201); const candidate = (await candidateResponse.json() as {candidate: {candidateId: string; decision: string; bundle: TopicProject['motionCanvasBundle']}}).candidate;
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/candidates/${candidate.candidateId}/apply`, {}));
   assert.equal(project.currentStep, 'scenes'); assert.equal(project.animationSyncBundle!.status, 'draft'); assert.equal(project.motionCanvasBundle!.scenes[0]!.id, original.scenes[0]!.id); assert.equal(project.motionCanvasBundle!.contentRevision, original.contentRevision + 1); assert.notEqual(project.motionCanvasBundle!.validation.sourceHash, original.validation.sourceHash);
+  const staleSyncPreview = await fetch(`${baseUrl}/api/projects/${project.id}/sync/preview?generation=${project.animationSyncBundle!.generation.generationId}`);
+  assert.equal(staleSyncPreview.status, 409, await staleSyncPreview.text());
   const history = await fetch(`${baseUrl}/api/projects/${project.id}/motion-canvas/history`);
   assert.equal(history.status, 200);
   const historyBody = await history.json() as {candidates: Array<{candidateId: string; decision: string}>; versions: Array<{versionId: string}>};

@@ -3,6 +3,9 @@ import test from 'node:test';
 import {
   LEGACY_MODEL_STORAGE_KEY,
   LEGACY_REASONING_STORAGE_KEY,
+  DEFAULT_CODEX_MODEL,
+  DEFAULT_CODEX_REASONING_EFFORT,
+  cheapestReasoningEffort,
   emptyTaskSelections,
   initialTaskSelections,
   recomputeTaskSelections,
@@ -50,15 +53,17 @@ test('selection cho một task không làm đổi selection của task khác', (
   const afterPlanner = selectionAfterModelChange(storage, 'visualPlanner', 'model-a', available);
   const afterMotionCanvas = selectionAfterModelChange(storage, 'motionCanvas', 'model-b', available);
 
-  assert.deepEqual(afterPlanner, {model: 'model-a', reasoningEffort: 'medium'});
-  assert.deepEqual(afterMotionCanvas, {model: 'model-b', reasoningEffort: 'medium'});
+  // No remembered choice yet, so both default to the cheapest supported
+  // tier ('low'), not the model's declared default ('medium').
+  assert.deepEqual(afterPlanner, {model: 'model-a', reasoningEffort: 'low'});
+  assert.deepEqual(afterMotionCanvas, {model: 'model-b', reasoningEffort: 'low'});
   assert.equal(storedModel(storage, 'visualPlanner'), 'model-a');
   assert.equal(storedModel(storage, 'motionCanvas'), 'model-b');
 
   // Changing the planner's reasoning effort must not touch motionCanvas's.
   selectionAfterReasoningChange(storage, 'visualPlanner', 'model-a', 'high', available);
   assert.equal(storedReasoningForModel(storage, 'visualPlanner', 'model-a'), 'high');
-  assert.equal(storedReasoningForModel(storage, 'motionCanvas', 'model-b'), 'medium');
+  assert.equal(storedReasoningForModel(storage, 'motionCanvas', 'model-b'), 'low');
 });
 
 test('recomputeTaskSelections cho planner và scene generator model khác nhau trong cùng một lượt refresh', () => {
@@ -139,9 +144,64 @@ test('selectionAfterModelChange bỏ qua model không có trong catalog', () => 
   assert.equal(result, null);
 });
 
+test('cheapestReasoningEffort chọn mức rẻ nhất và bỏ qua giá trị không xếp hạng được', () => {
+  assert.equal(cheapestReasoningEffort(['medium', 'low', 'high']), 'low');
+  assert.equal(cheapestReasoningEffort(['high', 'xhigh']), 'high');
+  // An unranked identifier must never be picked over a known cheap tier.
+  assert.equal(cheapestReasoningEffort(['exotic-tier', 'low']), 'low');
+  assert.equal(cheapestReasoningEffort([]), '');
+});
+
 test('selectionAfterReasoningChange bỏ qua reasoning không được model hỗ trợ', () => {
   const storage = memoryStorage();
   selectionAfterModelChange(storage, 'visualPlanner', 'model-a', [model()]);
   const result = selectionAfterReasoningChange(storage, 'visualPlanner', 'model-a', 'ultra', [model()]);
   assert.equal(result, null);
+});
+
+test('unselected tasks default to gpt-5.5 with low reasoning', () => {
+  const storage = memoryStorage();
+  const available = [
+    model({id: 'provider-default', model: 'provider-default', isDefault: true}),
+    model({
+      id: DEFAULT_CODEX_MODEL,
+      model: DEFAULT_CODEX_MODEL,
+      displayName: 'GPT-5.5',
+      supportedReasoningEfforts: ['none', DEFAULT_CODEX_REASONING_EFFORT, 'medium'],
+      defaultReasoningEffort: 'medium',
+    }),
+  ];
+
+  const next = recomputeTaskSelections(storage, emptyTaskSelections(), available);
+
+  for (const selection of Object.values(next)) {
+    assert.deepEqual(selection, {
+      model: DEFAULT_CODEX_MODEL,
+      reasoningEffort: DEFAULT_CODEX_REASONING_EFFORT,
+    });
+  }
+});
+
+test('stored automatic defaults are upgraded to gpt-5.5 with low reasoning', () => {
+  const storage = memoryStorage();
+  storage.setItem('pad-studio:codex-model:visualPlanner', 'provider-default');
+  storage.setItem(
+    'pad-studio:codex-reasoning-by-model:visualPlanner',
+    JSON.stringify({'provider-default': 'high'}),
+  );
+  const available = [
+    model({id: 'provider-default', model: 'provider-default', isDefault: true}),
+    model({
+      id: DEFAULT_CODEX_MODEL,
+      model: DEFAULT_CODEX_MODEL,
+      supportedReasoningEfforts: [DEFAULT_CODEX_REASONING_EFFORT, 'medium'],
+    }),
+  ];
+
+  const next = recomputeTaskSelections(storage, initialTaskSelections(storage), available);
+
+  assert.deepEqual(next.visualPlanner, {
+    model: DEFAULT_CODEX_MODEL,
+    reasoningEffort: DEFAULT_CODEX_REASONING_EFFORT,
+  });
 });

@@ -55,19 +55,19 @@
 
 ### Sorting, Searching và cấu trúc dữ liệu cơ bản
 
-17. **Sorting** — Vì sao sắp xếp giúp bài toán dễ hơn?
+17. **Sorting** — Vì sao sắp xếp giúp bài toán dễ hơn? ✓
 18. **Merge Sort** — Chia nhỏ rồi trộn lại ✓
-19. **Binary Search** — Tìm kiếm bằng cách chia đôi ✓
+19. **Binary Search** — Tìm kiếm bằng cách chia đôi ✓ x
 20. **Stack** — Vào sau, ra trước ✓
 21. **Queue** — Vào trước, ra trước ✓
 22. **Deque** — Hàng đợi thao tác ở cả hai đầu ✓
-23. **Binary Representation** — Số được biểu diễn bằng bit như thế nào? ✓
+23. **Binary Representation** — Số được biểu diễn bằng bit như thế nào? ✓ x
 
 ---
 
 ### Các chủ đề tiếp theo
 
-24. **Quick Sort** — Chia mảng quanh một phần tử
+24. **Quick Sort** — Chia mảng quanh một phần tử x
 
 25. **Priority Queue & Heap** — Khi thứ tự ưu tiên quan trọng hơn thứ tự đến
 
