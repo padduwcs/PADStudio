@@ -14,9 +14,6 @@ const motionCanvas =
 // Windows separators would otherwise be interpreted as a dynamic pattern.
 const project = process.env.PAD_MOTION_PROJECT_FILE?.replaceAll('\\', '/');
 const output = process.env.PAD_MOTION_OUTPUT_DIRECTORY;
-const previewEditor = fileURLToPath(
-  new URL('./preview/main.js', import.meta.url),
-).replaceAll('\\', '/');
 const layoutEditor = fileURLToPath(
   new URL('./layout-editor/main.js', import.meta.url),
 ).replaceAll('\\', '/');
@@ -40,9 +37,7 @@ export default {
           editor:
               process.env.PAD_MOTION_RENDER_FINAL === 'true'
                 ? renderEditor
-                : process.env.PAD_MOTION_LAYOUT_EDITOR === 'true'
-                ? layoutEditor
-                : previewEditor,
+                : layoutEditor,
           }
         : {}),
       buildForEditor:

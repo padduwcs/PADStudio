@@ -3,6 +3,7 @@ import {createAnimationSyncRouteHandler} from './animationSyncRoutes.ts';
 import type {AppContext} from './appContext.ts';
 import {handleAppError, sendApiError} from './appErrors.ts';
 import {serveFrontend} from './frontendStatic.ts';
+import {createLayoutRouteHandler} from './layoutRoutes.ts';
 import {createMotionCanvasHistoryRouteHandler} from './motionCanvasHistoryRoutes.ts';
 import {createMotionCanvasRouteHandler} from './motionCanvasRoutes.ts';
 import {createNarrationRouteHandler} from './narrationRoutes.ts';
@@ -15,7 +16,6 @@ import {createVoiceRouteHandler} from './voiceRoutes.ts';
 export function createApiRequestHandler(context: AppContext) {
   const {
     animationSyncGenerations,
-    animationSyncPreviewService,
     animationSyncWorkspace,
     codexConnection,
     commitFinalRenderBundle,
@@ -100,9 +100,13 @@ export function createApiRequestHandler(context: AppContext) {
     createAnimationSyncRouteHandler({
       repository,
       animationSyncWorkspace,
-      animationSyncPreviewService,
       animationSyncGenerations,
       generateOnce,
+    }),
+    createLayoutRouteHandler({
+      repository,
+      layoutWorkspace,
+      layoutPreviewService,
     }),
     createRenderRouteHandler({
       repository,
@@ -122,7 +126,6 @@ export function createApiRequestHandler(context: AppContext) {
     }),
     createProductionRouteHandler({
       repository,
-      layoutWorkspace,
       narrationVisualPlanner,
       narrationPlanGenerations,
       generateOnce,

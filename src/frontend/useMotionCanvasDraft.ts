@@ -1,5 +1,4 @@
 import {useEffect, useRef, useState} from 'react';
-import type {LayoutNodeOverride} from '../shared/layout.ts';
 import type {TopicProject} from '../shared/topic.ts';
 import type {
   CreateMotionCanvasCandidate,
@@ -16,7 +15,6 @@ import {
   ApiRequestError,
   applyMotionCanvasCandidate,
   approveMotionCanvas,
-  commitVisualDesign,
   createMotionCanvasCandidate,
   createMotionCanvasCheckpoint,
   generateMotionCanvas,
@@ -42,7 +40,6 @@ import {ProjectOperationQueue} from './projectOperationQueue.ts';
 
 type LoadState = 'loading' | 'ready' | 'error';
 type PreviewState = 'idle' | 'loading' | 'ready' | 'error';
-type DesignSaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 export function useMotionCanvasDraft(projectId: string) {
   const [project, setProject] = useState<TopicProject | null>(null);
@@ -78,8 +75,6 @@ export function useMotionCanvasDraft(projectId: string) {
   const [previewSessionNonce, setPreviewSessionNonce] = useState('');
   const [previewError, setPreviewError] = useState('');
   const [previewRetryKey, setPreviewRetryKey] = useState(0);
-  const [designSaveState, setDesignSaveState] =
-    useState<DesignSaveState>('idle');
   const [reloadKey, setReloadKey] = useState(0);
   const projectRef = useRef<TopicProject | null>(null);
   const sessionRef = useRef(0);
@@ -140,7 +135,6 @@ export function useMotionCanvasDraft(projectId: string) {
     setPreviewUrl('');
     setPreviewSessionNonce('');
     setPreviewError('');
-    setDesignSaveState('idle');
 
     void getProject(projectId)
       .then(async (loadedProject) => {
@@ -890,52 +884,6 @@ export function useMotionCanvasDraft(projectId: string) {
     }
   }
 
-  async function saveDesign(
-    overrides: LayoutNodeOverride[],
-    sessionNonce = previewSessionNonce,
-  ) {
-    if (!sessionNonce || conflict) return null;
-    setDesignSaveState('saving');
-    setActionError('');
-    try {
-      const updatedProject = await operationQueueRef.current.enqueue(
-        async () => {
-          const currentProject = projectRef.current;
-          const motion = currentProject?.motionCanvasBundle;
-          if (!currentProject || !motion) {
-            throw new MotionCanvasOperationCancelledError();
-          }
-          return commitVisualDesign(
-            projectId,
-            {
-              sourceMotionCanvasGenerationId:
-                motion.generation.generationId,
-              sessionNonce,
-              overrides,
-            },
-            currentProject.revision,
-          );
-        },
-      );
-      projectRef.current = updatedProject;
-      setProject(updatedProject);
-      setDesignSaveState('saved');
-      return updatedProject;
-    } catch (error) {
-      if (error instanceof MotionCanvasOperationCancelledError) return null;
-      const isConflict =
-        error instanceof ApiRequestError && error.code === 'PROJECT_CONFLICT';
-      if (isConflict) setConflict(true);
-      setActionError(
-        error instanceof ApiRequestError
-          ? error.message
-          : 'Không thể lưu chỉnh sửa visual scene.',
-      );
-      setDesignSaveState('error');
-      return null;
-    }
-  }
-
   function adoptProject(updatedProject: TopicProject) {
     projectRef.current = updatedProject;
     setProject(updatedProject);
@@ -966,7 +914,6 @@ export function useMotionCanvasDraft(projectId: string) {
     previewUrl,
     previewSessionNonce,
     previewError,
-    designSaveState,
     ready: project ? motionCanvasIsReady(project) : false,
     stale: project ? motionCanvasIsStale(project) : false,
     generate,
@@ -981,7 +928,6 @@ export function useMotionCanvasDraft(projectId: string) {
       setCandidate(null);
     },
     approve,
-    saveDesign,
     adoptProject,
     retryPreview: () => setPreviewRetryKey((current) => current + 1),
     reload: () => setReloadKey((current) => current + 1),

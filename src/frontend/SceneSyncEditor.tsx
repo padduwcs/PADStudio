@@ -38,6 +38,7 @@ import {
   UnlockIcon,
 } from './icons.tsx';
 import type {useMotionCanvasDraft} from './useMotionCanvasDraft.ts';
+import type {useSyncSceneEditor} from './useSyncSceneEditor.ts';
 import {useEditorFocusMode} from './useEditorFocusMode.ts';
 import {
   EditorCanvasViewport,
@@ -61,6 +62,7 @@ const PROTOCOL_SOURCE = 'pad-studio-layout-editor';
 const PROTOCOL_VERSION = 1;
 
 type MotionCanvasController = ReturnType<typeof useMotionCanvasDraft>;
+type SyncSceneEditorController = ReturnType<typeof useSyncSceneEditor>;
 type EditableProperty = LayoutEditorNode['editableProperties'][number];
 type NumericProperty =
   | 'x'
@@ -163,6 +165,10 @@ function isRuntimeState(value: unknown): value is RuntimeState {
       typeof value.history.canUndo === 'boolean' &&
       typeof value.history.canRedo === 'boolean',
   );
+}
+
+function watermarkEqual(a: RenderWatermark, b: RenderWatermark) {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function matchesSource(
@@ -293,12 +299,14 @@ function TextEditor({
   );
 }
 
-export function MotionDesignEditor({
+export function SceneSyncEditor({
   motionCanvas,
+  syncEditor,
   watermark = {type: 'none'},
   watermarkImageUrl = '',
 }: {
   motionCanvas: MotionCanvasController;
+  syncEditor: SyncSceneEditorController;
   watermark?: RenderWatermark;
   watermarkImageUrl?: string;
 }) {
@@ -321,17 +329,18 @@ export function MotionDesignEditor({
   const [search, setSearch] = useState('');
   const [copiedPatch, setCopiedPatch] = useState<LayoutNodePatch | null>(null);
   const motion = motionCanvas.project?.motionCanvasBundle;
-  const generationId = motion?.generation.generationId ?? '';
-  const contentRevision = motion?.contentRevision ?? 0;
-  const sourceHash = motion?.validation.sourceHash ?? '';
-  const sessionNonce = motionCanvas.previewSessionNonce;
+  const sync = motionCanvas.project?.animationSyncBundle;
+  const generationId = sync?.generation.generationId ?? '';
+  const contentRevision = sync?.contentRevision ?? 0;
+  const sourceHash = sync?.validation.sourceHash ?? '';
+  const sessionNonce = syncEditor.previewSessionNonce;
   const expectedOrigin = useMemo(() => {
     try {
-      return motionCanvas.previewUrl ? new URL(motionCanvas.previewUrl).origin : '';
+      return syncEditor.previewUrl ? new URL(syncEditor.previewUrl).origin : '';
     } catch {
       return '';
     }
-  }, [motionCanvas.previewUrl]);
+  }, [syncEditor.previewUrl]);
 
   const sendCommand = useCallback(
     (type: string, payload: Record<string, unknown> = {}) => {
@@ -366,27 +375,58 @@ export function MotionDesignEditor({
     setActiveSceneId('');
   }, [sessionNonce]);
 
+  const documentRef = useRef(document);
+  useEffect(() => {
+    documentRef.current = document;
+  }, [document]);
+  const layoutCurrentRef = useRef(syncEditor.ready);
+  useEffect(() => {
+    layoutCurrentRef.current = syncEditor.ready;
+  }, [syncEditor.ready]);
+
+  const persistPendingRef = useRef<() => void>(() => {});
+  const persistPending = useCallback(() => {
+    const overrides = pendingOverridesRef.current;
+    if (!overrides || !manifestStoredRef.current) return;
+    pendingOverridesRef.current = null;
+    saveChainRef.current = saveChainRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        const savedProject = await syncEditor.saveDesign(
+          overrides,
+          {watermark},
+          sessionNonce,
+        );
+        if (!savedProject && !pendingOverridesRef.current) {
+          // Keep the latest committed runtime document available for the next
+          // edit/retry instead of silently dropping it after a network error.
+          pendingOverridesRef.current = overrides;
+          return;
+        }
+        if (pendingOverridesRef.current) persistPendingRef.current();
+      });
+  }, [sessionNonce, syncEditor, watermark]);
+  useEffect(() => {
+    persistPendingRef.current = persistPending;
+  }, [persistPending]);
+
+  // A watermark-only change (no layer edits) must still reach the saved
+  // draft — it does not arrive through a runtime postMessage like overrides do.
+  // Compared by value, not reference: every successful save round-trips a
+  // freshly parsed project, so a same-value watermark still gets a new
+  // object identity and must not be treated as a new user change.
+  const watermarkAppliedRef = useRef(watermark);
+  useEffect(() => {
+    if (watermarkEqual(watermarkAppliedRef.current, watermark)) return;
+    watermarkAppliedRef.current = watermark;
+    if (!manifestStoredRef.current || !documentRef.current) return;
+    pendingOverridesRef.current = documentRef.current.overrides;
+    persistPendingRef.current();
+  }, [watermark]);
+
   useEffect(() => {
     if (!generationId || !contentRevision || !sourceHash || !expectedOrigin || !sessionNonce) {
       return;
-    }
-
-    function persistPending() {
-      const overrides = pendingOverridesRef.current;
-      if (!overrides || !manifestStoredRef.current) return;
-      pendingOverridesRef.current = null;
-      saveChainRef.current = saveChainRef.current
-        .catch(() => undefined)
-        .then(async () => {
-          const savedProject = await motionCanvas.saveDesign(overrides, sessionNonce);
-          if (!savedProject && !pendingOverridesRef.current) {
-            // Keep the latest committed runtime document available for the next
-            // edit/retry instead of silently dropping it after a network error.
-            pendingOverridesRef.current = overrides;
-            return;
-          }
-          if (pendingOverridesRef.current) persistPending();
-        });
     }
 
     function receiveMessage(event: MessageEvent) {
@@ -469,31 +509,36 @@ export function MotionDesignEditor({
         }
         if (payload.status === 'stored' && payload.complete === true) {
           if (!validManifest) {
-            setRuntimeError('Node map không khớp scene Motion Canvas hiện hành.');
+            setRuntimeError('Node map không khớp scene đã đồng bộ hiện hành.');
             return;
           }
           manifestStoredRef.current = true;
-          persistPending();
+          // Opening the editor with zero edits must still produce a
+          // layoutBundle — otherwise "approve" stays blocked forever.
+          if (!pendingOverridesRef.current && !layoutCurrentRef.current) {
+            pendingOverridesRef.current = documentRef.current?.overrides ?? [];
+          }
+          persistPendingRef.current();
         }
         return;
       }
       if (message.type === 'documentChanged') {
         const parsed = LayoutOverridesDocumentSchema.safeParse(payload.document);
         if (!parsed.success || !matchesSource(parsed.data, generationId, contentRevision, sourceHash)) {
-          setRuntimeError('Visual editor trả về dữ liệu không khớp scene hiện hành.');
+          setRuntimeError('Editor scene trả về dữ liệu không khớp bản đồng bộ hiện hành.');
           return;
         }
         setDocument(parsed.data);
         if (isRuntimeSelection(payload.selection)) setSelection(payload.selection);
         if (payload.transient !== true && payload.reason !== 'load-document') {
           pendingOverridesRef.current = parsed.data.overrides;
-          persistPending();
+          persistPendingRef.current();
         }
         return;
       }
       if (message.type === 'error') {
         setRuntimeError(
-          typeof payload.message === 'string' ? payload.message : 'Visual editor gặp lỗi runtime.',
+          typeof payload.message === 'string' ? payload.message : 'Editor scene gặp lỗi runtime.',
         );
       }
     }
@@ -506,8 +551,8 @@ export function MotionDesignEditor({
 
   useEffect(() => {
     if (
-      motionCanvas.previewState !== 'ready' ||
-      !motionCanvas.previewUrl ||
+      syncEditor.previewState !== 'ready' ||
+      !syncEditor.previewUrl ||
       runtimeReady ||
       runtimeError
     ) {
@@ -517,14 +562,14 @@ export function MotionDesignEditor({
     const retryTimer = window.setInterval(requestReady, 1_000);
     const timeout = window.setTimeout(() => {
       setRuntimeError(
-        'Visual editor chưa phản hồi sau 30 giây. Scene và các chỉnh sửa đã lưu vẫn được giữ nguyên.',
+        'Editor scene chưa phản hồi sau 30 giây. Scene và các chỉnh sửa đã lưu vẫn được giữ nguyên.',
       );
     }, 30_000);
     return () => {
       window.clearInterval(retryTimer);
       window.clearTimeout(timeout);
     };
-  }, [motionCanvas.previewState, motionCanvas.previewUrl, requestReady, runtimeError, runtimeReady]);
+  }, [syncEditor.previewState, syncEditor.previewUrl, requestReady, runtimeError, runtimeReady]);
 
   const scenes = useMemo(() => {
     if (!motion) return [];
@@ -728,19 +773,19 @@ export function MotionDesignEditor({
     <section className="motion-design-card motion-design-workbench">
       <header>
         <div>
-          <span className="preview-kicker">Visual editor</span>
-          <h2>Chỉnh scene</h2>
-          <p>Visual editor này chỉ preview Motion Canvas. Hãy tạo Animation Sync để review hình cùng audio đã retime.</p>
+          <span className="preview-kicker">Scene editor</span>
+          <h2>Chỉnh scene theo giọng đọc</h2>
+          <p>Editor này chạy trên bản đã đồng bộ — nghe giọng đọc thật trong lúc chỉnh layer, chữ, vị trí và chuyển động.</p>
         </div>
-        <span className={`draft-status${motionCanvas.designSaveState === 'saved' ? ' is-saved' : ''}`}>
+        <span className={`draft-status${syncEditor.saveState === 'saved' ? ' is-saved' : ''}`}>
           <span />
-          {motionCanvas.designSaveState === 'saving'
+          {syncEditor.saveState === 'saving'
             ? 'Đang lưu…'
-            : motionCanvas.designSaveState === 'error'
+            : syncEditor.saveState === 'error'
               ? 'Lưu chưa thành công'
-              : motionCanvas.designSaveState === 'saved'
+              : syncEditor.saveState === 'saved'
                 ? 'Đã tự lưu'
-                : 'Visual draft'}
+                : 'Bản nháp'}
         </span>
       </header>
 
@@ -759,7 +804,7 @@ export function MotionDesignEditor({
         }
         role={focusMode ? 'dialog' : undefined}
         aria-modal={focusMode || undefined}
-        aria-label={focusMode ? 'Visual editor toàn màn hình' : undefined}
+        aria-label={focusMode ? 'Editor scene toàn màn hình' : undefined}
         tabIndex={focusMode ? -1 : undefined}
       >
         <aside className="layout-tree-panel" aria-label="Danh sách layer">
@@ -854,43 +899,43 @@ export function MotionDesignEditor({
 
         <div className="layout-preview-column">
           <div className="layout-preview-frame motion-design-frame">
-            {motionCanvas.previewState === 'loading' && (
+            {syncEditor.previewState === 'loading' && (
               <div className="layout-preview-state" role="status">
-                <span className="spinner" /><strong>Đang khởi động Motion Canvas…</strong>
+                <span className="spinner" /><strong>Đang mở bản đồng bộ để chỉnh…</strong>
               </div>
             )}
-            {motionCanvas.previewState === 'error' && (
+            {syncEditor.previewState === 'error' && (
               <div className="layout-preview-state is-error" role="alert">
-                <strong>Chưa mở được visual editor</strong><p>{motionCanvas.previewError}</p>
-                <button className="secondary-button" type="button" onClick={motionCanvas.retryPreview}>Thử lại</button>
+                <strong>Chưa mở được editor scene</strong><p>{syncEditor.previewError}</p>
+                <button className="secondary-button" type="button" onClick={syncEditor.retryPreview}>Thử lại</button>
               </div>
             )}
-            {motionCanvas.previewState === 'ready' && motionCanvas.previewUrl && (
+            {syncEditor.previewState === 'ready' && syncEditor.previewUrl && (
               <EditorCanvasViewport
                 zoom={editorWorkspace.preferences.canvasZoom}
               >
                 <iframe
                   ref={frameRef}
-                  title="Visual editor Motion Canvas"
-                  src={motionCanvas.previewUrl}
+                  title="Editor scene đã đồng bộ"
+                  src={syncEditor.previewUrl}
                   allow="autoplay; fullscreen"
                   sandbox="allow-scripts allow-same-origin"
                   referrerPolicy="no-referrer"
                   allowFullScreen
                   onLoad={requestReady}
-                  onError={() => setRuntimeError('Trình duyệt không tải được visual editor. Hãy mở lại.')}
+                  onError={() => setRuntimeError('Trình duyệt không tải được editor scene. Hãy mở lại.')}
                 />
               </EditorCanvasViewport>
             )}
-            {motionCanvas.previewState === 'ready' && !runtimeReady && !runtimeError && (
+            {syncEditor.previewState === 'ready' && !runtimeReady && !runtimeError && (
               <div className="layout-preview-state" role="status">
-                <span className="spinner" /><strong>Đang nối với visual editor…</strong>
+                <span className="spinner" /><strong>Đang nối với editor scene…</strong>
               </div>
             )}
             {runtimeError && (
               <div className="layout-preview-state is-error" role="alert">
-                <strong>Visual editor cần tải lại</strong><p>{runtimeError}</p>
-                <button className="secondary-button" type="button" onClick={motionCanvas.retryPreview}>Mở lại</button>
+                <strong>Editor scene cần tải lại</strong><p>{runtimeError}</p>
+                <button className="secondary-button" type="button" onClick={syncEditor.retryPreview}>Mở lại</button>
               </div>
             )}
             {watermark.type === 'text' && <div className="motion-design-watermark" style={{'--watermark-x': `${watermark.xPercent}%`, '--watermark-y': `${watermark.yPercent}%`, '--watermark-opacity': watermark.opacity, '--watermark-size': `${watermark.fontSize}px`, color: watermark.color} as CSSProperties}>{watermark.text}</div>}
@@ -930,20 +975,20 @@ export function MotionDesignEditor({
               {focusMode && (
                 <span
                   className={`layout-focus-save-state${
-                    motionCanvas.designSaveState === 'saved'
+                    syncEditor.saveState === 'saved'
                       ? ' is-saved'
-                      : motionCanvas.designSaveState === 'error'
+                      : syncEditor.saveState === 'error'
                         ? ' is-error'
                         : ''
                   }`}
                   role="status"
                 >
                   <i />
-                  {motionCanvas.designSaveState === 'saving'
+                  {syncEditor.saveState === 'saving'
                     ? 'Đang lưu…'
-                    : motionCanvas.designSaveState === 'error'
+                    : syncEditor.saveState === 'error'
                       ? 'Lưu lỗi'
-                      : motionCanvas.designSaveState === 'saved'
+                      : syncEditor.saveState === 'saved'
                         ? 'Đã lưu'
                         : 'Bản nháp'}
                 </span>

@@ -6,7 +6,6 @@ import {
 import type {
   AnimationSyncBundle,
   MotionCanvasBundle,
-  VisualDesignBundle,
   VoiceBundle,
   VoiceVisualPlan,
 } from '../shared/topic.ts';
@@ -42,12 +41,6 @@ export function animationSyncMatchesSources(
   bundle: AnimationSyncBundle,
   motion: MotionCanvasBundle,
   voice: VoiceBundle,
-  visualDesign: VisualDesignBundle | null = null,
 ): boolean {
-  return animationSyncMatchesSourcesStructure(
-    bundle,
-    motion,
-    voice,
-    visualDesign,
-  );
+  return animationSyncMatchesSourcesStructure(bundle, motion, voice);
 }

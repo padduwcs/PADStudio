@@ -18,7 +18,6 @@ export function createPadStudioServer(options: AppOptions = {}) {
     if (cleanupPromise) return cleanupPromise;
     const tasks: Array<Promise<unknown>> = [
       Promise.resolve().then(() => context.codexConnection.close()),
-      Promise.resolve().then(() => context.animationSyncPreviewService.close()),
       Promise.resolve().then(() => context.layoutPreviewService.close()),
       Promise.resolve().then(async () => {
         await context.finalRenderService.close();

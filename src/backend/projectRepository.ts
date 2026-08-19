@@ -319,7 +319,6 @@ export function createFileProjectRepository(
           outline: null,
           voiceVisualPlan: null,
           motionCanvasBundle: null,
-          visualDesignBundle: null,
           voiceBundle: null,
           animationSyncBundle: null,
           layoutBundle: null,

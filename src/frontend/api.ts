@@ -29,8 +29,8 @@ import type {
   WatermarkAssetSummary,
 } from '../shared/render.ts';
 import type {
-  CommitVisualDesign,
-  LayoutRenderSettings,
+  ApproveLayout,
+  CommitLayout,
 } from '../shared/layout.ts';
 import type {
   CreateMotionCanvasCandidate,
@@ -288,27 +288,6 @@ export async function prepareNarrationProduction(
 ) {
   const response = await fetch(
     `/api/projects/${encodeURIComponent(projectId)}/production/prepare`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'If-Match': `"${expectedRevision}"`,
-      },
-      body: JSON.stringify(request),
-    },
-  );
-  const payload = await readPayload<{project: TopicProject}>(response);
-  assertSuccessful(response, payload);
-  return getProjectPayload(payload);
-}
-
-export async function prepareProjectOutput(
-  projectId: string,
-  request: {generationId: string; renderSettings?: LayoutRenderSettings},
-  expectedRevision: number,
-) {
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/production/output`,
     {
       method: 'POST',
       headers: {
@@ -604,27 +583,6 @@ export async function getMotionCanvasPreview(
   return payload.preview;
 }
 
-export async function commitVisualDesign(
-  projectId: string,
-  request: CommitVisualDesign,
-  expectedRevision: number,
-) {
-  const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/design`,
-    {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'If-Match': `"${expectedRevision}"`,
-      },
-      body: JSON.stringify(request),
-    },
-  );
-  const payload = await readPayload<{project: TopicProject}>(response);
-  assertSuccessful(response, payload);
-  return getProjectPayload(payload);
-}
-
 export async function approveMotionCanvas(
   projectId: string,
   expectedRevision: number,
@@ -701,28 +659,74 @@ export async function generateAnimationSync(
   return getProjectPayload(payload);
 }
 
-export async function getAnimationSyncPreview(
-  projectId: string,
-  generationId: string,
-) {
+export async function getLayoutPreview(projectId: string) {
   const response = await fetch(
-    `/api/projects/${encodeURIComponent(projectId)}/sync/preview?generation=${encodeURIComponent(generationId)}`,
+    `/api/projects/${encodeURIComponent(projectId)}/layout/preview`,
+    previewRequestOptions(),
   );
   const payload = await readPayload<{
-    preview: {generationId: string; url: string};
+    preview: {
+      generationId: string;
+      sourceSyncGenerationId: string;
+      sessionNonce: string;
+      url: string;
+    };
   }>(response);
   assertSuccessful(response, payload);
   if (
     !payload ||
     !('preview' in payload) ||
-    typeof payload.preview?.url !== 'string'
+    typeof payload.preview.url !== 'string' ||
+    typeof payload.preview.sessionNonce !== 'string'
   ) {
     throw new ApiRequestError(
-      'Phản hồi bản nháp đồng bộ không hợp lệ.',
+      'Phản hồi editor scene không hợp lệ.',
       'INVALID_RESPONSE',
     );
   }
   return payload.preview;
+}
+
+export async function commitLayoutDesign(
+  projectId: string,
+  request: CommitLayout,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/layout/design`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
+}
+
+export async function approveLayout(
+  projectId: string,
+  request: ApproveLayout,
+  expectedRevision: number,
+) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/layout/approve`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'If-Match': `"${expectedRevision}"`,
+      },
+      body: JSON.stringify(request),
+    },
+  );
+  const payload = await readPayload<{project: TopicProject}>(response);
+  assertSuccessful(response, payload);
+  return getProjectPayload(payload);
 }
 
 export async function approveAnimationSync(

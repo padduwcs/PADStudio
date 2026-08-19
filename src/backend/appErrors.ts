@@ -1,6 +1,5 @@
 import type {ServerResponse} from 'node:http';
 import type {ApiErrorPayload} from '../shared/topic.ts';
-import {AnimationSyncPreviewError} from './animationSyncPreviewService.ts';
 import {AnimationSyncWorkspaceError} from './animationSyncWorkspace.ts';
 import {CodexConnectionError} from './codexConnection.ts';
 import {ElevenLabsVoiceError} from './elevenLabsVoiceService.ts';
@@ -189,19 +188,6 @@ export function handleAppError(error: unknown, response: ServerResponse, logger:
     return true;
   }
 
-  if (error instanceof AnimationSyncPreviewError) {
-    sendApiError(
-      response,
-      error.code === 'ANIMATION_SYNC_PREVIEW_INVALID'
-        ? 422
-        : 503,
-      {
-        code: error.code,
-        message: error.message,
-      },
-    );
-    return true;
-  }
 
   if (error instanceof LayoutWorkspaceError) {
     const conflictCodes = new Set([

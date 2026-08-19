@@ -4,10 +4,7 @@ import {
   hasSafeTotalBeatCount,
   pipelineSafetyLimits,
 } from './pipelineLimits.ts';
-import {
-  LayoutBundleSchema,
-  VisualDesignBundleSchema,
-} from './layout.ts';
+import {LayoutBundleSchema} from './layout.ts';
 import {FinalRenderBundleSchema} from './render.ts';
 import {
   RenderProfileSchema,
@@ -42,7 +39,7 @@ export const voiceVisualStatusValues = ['draft', 'approved'] as const;
 export const motionCanvasStatusValues = ['draft', 'approved'] as const;
 export const voiceStatusValues = ['draft', 'approved'] as const;
 export const animationSyncStatusValues = ['draft', 'approved'] as const;
-export const currentProjectVersion = 16 as const;
+export const currentProjectVersion = 17 as const;
 
 export const videoBackgroundModeValues = [
   'light',
@@ -833,15 +830,6 @@ export const AnimationSyncBundleSchema = z
     contentRevision: z.number().int().positive(),
     sourceMotionCanvasContentRevision: z.number().int().positive(),
     sourceVoiceContentRevision: z.number().int().positive(),
-    // Optional for backward-compatible parsing of projects created before
-    // visual design became an explicit Sync source. New generations always
-    // write either the exact revision or null.
-    sourceVisualDesignContentRevision: z
-      .number()
-      .int()
-      .positive()
-      .nullable()
-      .optional(),
     workspacePath: z
       .string()
       .regex(
@@ -909,7 +897,6 @@ export const TopicProjectSchema = z
     outline: TeachingOutlineSchema.nullable(),
     voiceVisualPlan: VoiceVisualPlanSchema.nullable(),
     motionCanvasBundle: MotionCanvasBundleSchema.nullable(),
-    visualDesignBundle: VisualDesignBundleSchema.nullable(),
     voiceBundle: VoiceBundleSchema.nullable(),
     animationSyncBundle: AnimationSyncBundleSchema.nullable(),
     layoutBundle: LayoutBundleSchema.nullable(),
@@ -922,8 +909,41 @@ export const TopicProjectSchema = z
 
 export type TopicProject = z.infer<typeof TopicProjectSchema>;
 
+// Version 16 projects may still carry the now-removed `visualDesignBundle`
+// field and `animationSyncBundle.sourceVisualDesignContentRevision` field.
+// Strip them and bump the version stamp so old project files keep loading
+// under the current strict schema instead of failing to parse.
+function migrateStoredProjectData(value: unknown): unknown {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    (value as {version?: unknown}).version !== 16
+  ) {
+    return value;
+  }
+
+  const project = {...(value as Record<string, unknown>)};
+  delete project.visualDesignBundle;
+
+  if (
+    project.animationSyncBundle &&
+    typeof project.animationSyncBundle === 'object'
+  ) {
+    const animationSyncBundle = {
+      ...(project.animationSyncBundle as Record<string, unknown>),
+    };
+    delete animationSyncBundle.sourceVisualDesignContentRevision;
+    project.animationSyncBundle = animationSyncBundle;
+  }
+
+  project.version = currentProjectVersion;
+  return project;
+}
+
 export function parseTopicProject(value: unknown): TopicProject {
-  const currentProject = TopicProjectSchema.safeParse(value);
+  const migrated = migrateStoredProjectData(value);
+  const currentProject = TopicProjectSchema.safeParse(migrated);
   if (currentProject.success) {
     return currentProject.data;
   }

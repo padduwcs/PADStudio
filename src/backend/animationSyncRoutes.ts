@@ -6,16 +6,12 @@ import {
   animationSyncPrerequisitesAreReady,
   motionCanvasMatchesOutline,
   sameValue,
-  visualDesignMatchesMotion,
   voiceVisualMatchesOutline
 } from '../shared/projectPipeline.ts';
 import {
   GenerateAnimationSyncSchema,
   type AnimationSyncBundle
 } from '../shared/topic.ts';
-import {
-  retimeLayoutOverridesForSync
-} from './layoutWorkspace.ts';
 import {
   animationSyncMatchesSources,
   voiceMatchesPlan,
@@ -29,13 +25,13 @@ import {
 
 import type {AppContext} from './appContext.ts';
 import {RequestBodyError, sendApiError} from './appErrors.ts';
-import {readExpectedRevision, readJsonBody, sendJson, sendProject, validationFields} from './httpTransport.ts';
+import {readExpectedRevision, readJsonBody, sendProject, validationFields} from './httpTransport.ts';
 import type {ApiRouteHandler} from './routeTypes.ts';
 
-type AnimationSyncRouteContext = Pick<AppContext, 'repository' | 'animationSyncWorkspace' | 'animationSyncPreviewService' | 'animationSyncGenerations' | 'generateOnce'>;
+type AnimationSyncRouteContext = Pick<AppContext, 'repository' | 'animationSyncWorkspace' | 'animationSyncGenerations' | 'generateOnce'>;
 
 export function createAnimationSyncRouteHandler(context: AnimationSyncRouteContext): ApiRouteHandler {
-  const {repository, animationSyncWorkspace, animationSyncPreviewService, animationSyncGenerations, generateOnce} = context;
+  const {repository, animationSyncWorkspace, animationSyncGenerations, generateOnce} = context;
   return async (request: IncomingMessage, response: ServerResponse, requestUrl: URL) => {
     const animationSyncRoute = getProjectAnimationSyncRoute(
       requestUrl.pathname,
@@ -114,22 +110,12 @@ export function createAnimationSyncRouteHandler(context: AnimationSyncRouteConte
       }
 
       const generationKey = `${currentProject.id}:${generationId}`;
-      const visualDesign =
-        currentProject.visualDesignBundle &&
-          visualDesignMatchesMotion(
-            currentProject.visualDesignBundle,
-            motion,
-          )
-          ? currentProject.visualDesignBundle
-          : null;
       const fingerprint = JSON.stringify({
         motionContentRevision: motion.contentRevision,
         motionSourceHash: motion.validation.sourceHash,
         voiceContentRevision: voice.contentRevision,
         voiceGenerationId: voice.generation.generationId,
         voiceSections: voice.sections,
-        visualDesignContentRevision: visualDesign?.contentRevision ?? null,
-        visualDesignOverrides: visualDesign?.overrides ?? [],
       });
       const generation = await generateOnce(
         animationSyncGenerations,
@@ -150,8 +136,6 @@ export function createAnimationSyncRouteHandler(context: AnimationSyncRouteConte
           (currentProject.animationSyncBundle?.contentRevision ?? 0) + 1,
         sourceMotionCanvasContentRevision: motion.contentRevision,
         sourceVoiceContentRevision: voice.contentRevision,
-        sourceVisualDesignContentRevision:
-          visualDesign?.contentRevision ?? null,
         workspacePath: prepared.workspacePath,
         projectFile: prepared.projectFile,
         audioFile: prepared.audioFile,
@@ -178,76 +162,6 @@ export function createAnimationSyncRouteHandler(context: AnimationSyncRouteConte
         return true;
       }
       sendProject(response, 200, updatedProject);
-      return true;
-    }
-
-    if (
-      animationSyncRoute?.action === 'preview' &&
-      request.method === 'GET'
-    ) {
-      const currentProject = await repository.getProject(
-        animationSyncRoute.projectId,
-      );
-      if (!currentProject) {
-        sendApiError(response, 404, {
-          code: 'PROJECT_NOT_FOUND',
-          message: 'Không tìm thấy project.',
-        });
-        return true;
-      }
-      const bundle = currentProject.animationSyncBundle;
-      if (!bundle) {
-        throw new RequestBodyError(
-          409,
-          'ANIMATION_SYNC_NOT_READY',
-          'Hãy đồng bộ animation trước khi mở bản nháp.',
-        );
-      }
-      const requestedGeneration =
-        requestUrl.searchParams.get('generation');
-      if (
-        requestedGeneration &&
-        requestedGeneration !== bundle.generation.generationId
-      ) {
-        throw new RequestBodyError(
-          404,
-          'ANIMATION_SYNC_GENERATION_NOT_FOUND',
-          'Generation bản nháp được yêu cầu không còn là bản hiện tại.',
-        );
-      }
-      const previewMotion = currentProject.motionCanvasBundle;
-      const previewVoice = currentProject.voiceBundle;
-      if (
-        !previewMotion ||
-        !previewVoice ||
-        !animationSyncMatchesSources(
-          bundle,
-          previewMotion,
-          previewVoice,
-          currentProject.visualDesignBundle,
-        )
-      ) {
-        throw new RequestBodyError(
-          409,
-          'ANIMATION_SYNC_OUTDATED',
-          'Scene, visual design hoặc voice đã thay đổi. Hãy đồng bộ lại trước khi mở preview.',
-        );
-      }
-      const syncVisualDesign = currentProject.visualDesignBundle;
-      const preview = await animationSyncPreviewService.start(
-        currentProject.id,
-        bundle,
-        syncVisualDesign &&
-          previewMotion &&
-          visualDesignMatchesMotion(syncVisualDesign, previewMotion)
-          ? retimeLayoutOverridesForSync(
-            syncVisualDesign.overrides,
-            bundle.sections,
-          )
-          : [],
-      );
-      response.setHeader('Cache-Control', 'no-store');
-      sendJson(response, 200, {preview});
       return true;
     }
 
@@ -279,12 +193,7 @@ export function createAnimationSyncRouteHandler(context: AnimationSyncRouteConte
         voice.status !== 'approved' ||
         !bundle ||
         !animationSyncPrerequisitesAreReady(currentProject) ||
-        !animationSyncMatchesSources(
-          bundle,
-          motion,
-          voice,
-          currentProject.visualDesignBundle,
-        )
+        !animationSyncMatchesSources(bundle, motion, voice)
       ) {
         throw new RequestBodyError(
           409,

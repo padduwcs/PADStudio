@@ -94,7 +94,7 @@ export function voiceVisualContextHash(
 export function motionCanvasContextHash(
   project: Pick<
     TopicProject,
-    'topicInput' | 'outline' | 'voiceVisualPlan' | 'visualDesignBundle'
+    'topicInput' | 'outline' | 'voiceVisualPlan'
   >,
   bundle: MotionCanvasBundle,
 ) {
@@ -113,7 +113,6 @@ export function motionCanvasContextHash(
         narrationRevision: project.voiceVisualPlan.narrationRevision,
       }
       : null,
-    visualDesignBundle: project.visualDesignBundle,
     bundle,
   });
 }

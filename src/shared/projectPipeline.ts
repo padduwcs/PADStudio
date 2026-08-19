@@ -105,18 +105,6 @@ export function motionCanvasIsStale(project: TopicProject): boolean {
   );
 }
 
-export function visualDesignMatchesMotion(
-  design: NonNullable<TopicProject['visualDesignBundle']>,
-  motion: NonNullable<TopicProject['motionCanvasBundle']>,
-) {
-  return (
-    design.sourceMotionCanvasGenerationId ===
-      motion.generation.generationId &&
-    design.sourceMotionCanvasContentRevision === motion.contentRevision &&
-    design.sourceMotionCanvasSourceHash === motion.validation.sourceHash
-  );
-}
-
 export function voicePrerequisitesAreReady(project: TopicProject): boolean {
   const outline = project.outline;
   const plan = project.voiceVisualPlan;
@@ -181,7 +169,6 @@ export function animationSyncMatchesSourcesStructure(
     AnimationSyncBundle,
     | 'sourceMotionCanvasContentRevision'
     | 'sourceVoiceContentRevision'
-    | 'sourceVisualDesignContentRevision'
     | 'sections'
   >,
   motion: Pick<
@@ -189,10 +176,6 @@ export function animationSyncMatchesSourcesStructure(
     'contentRevision' | 'timingContractVersion' | 'scenes'
   >,
   voice: Pick<VoiceBundle, 'contentRevision' | 'sections'>,
-  _visualDesign: Pick<
-    NonNullable<TopicProject['visualDesignBundle']>,
-    'contentRevision'
-  > | null = null,
 ): boolean {
   return (
     motion.timingContractVersion === 1 &&
@@ -248,12 +231,7 @@ export function animationSyncIsStale(project: TopicProject): boolean {
     !motion ||
       !voice ||
       !animationSyncPrerequisitesAreReady(project) ||
-      !animationSyncMatchesSourcesStructure(
-        bundle,
-        motion,
-        voice,
-        project.visualDesignBundle,
-      ),
+      !animationSyncMatchesSourcesStructure(bundle, motion, voice),
   );
 }
 
@@ -268,12 +246,7 @@ export function layoutPrerequisitesAreReady(project: TopicProject): boolean {
       voice &&
       sync.status === 'approved' &&
       animationSyncPrerequisitesAreReady(project) &&
-      animationSyncMatchesSourcesStructure(
-        sync,
-        motion,
-        voice,
-        project.visualDesignBundle,
-      ),
+      animationSyncMatchesSourcesStructure(sync, motion, voice),
   );
 }
 

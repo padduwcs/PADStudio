@@ -41,9 +41,17 @@ export function getProjectId(pathname: string) {
 }
 
 export function getProjectMotionCanvasRoute(pathname: string) {
-  const match = /^\/api\/projects\/([^/]+)\/motion-canvas(?:\/(generate|approve|files|preview|design))?$/.exec(pathname);
+  const match = /^\/api\/projects\/([^/]+)\/motion-canvas(?:\/(generate|approve|files|preview))?$/.exec(pathname);
   const projectId = match?.[1] ? decodeProjectId(match[1]) : null;
   return projectId ? {projectId, action: match?.[2] ?? 'read'} : null;
+}
+
+export function getProjectLayoutRoute(pathname: string) {
+  const match = /^\/api\/projects\/([^/]+)\/layout\/(preview|design|approve)$/.exec(pathname);
+  const projectId = match?.[1] ? decodeProjectId(match[1]) : null;
+  return projectId && match?.[2]
+    ? {projectId, action: match[2] as 'preview' | 'design' | 'approve'}
+    : null;
 }
 
 export function getProjectMotionCanvasHistoryRoute(pathname: string) {
@@ -86,8 +94,8 @@ function simpleRoute(pathname: string, expression: RegExp, readAction: string) {
 }
 
 export const getProjectAnimationSyncRoute = (pathname: string) =>
-  simpleRoute(pathname, /^\/api\/projects\/([^/]+)\/sync\/(generate|approve|preview)$/, 'generate') as
-    | {projectId: string; action: 'generate' | 'approve' | 'preview'}
+  simpleRoute(pathname, /^\/api\/projects\/([^/]+)\/sync\/(generate|approve)$/, 'generate') as
+    | {projectId: string; action: 'generate' | 'approve'}
     | null;
 
 export const getProjectRenderRoute = (pathname: string) =>
@@ -101,8 +109,8 @@ export const getProjectNarrationRoute = (pathname: string) =>
     | null;
 
 export const getProjectProductionRoute = (pathname: string) =>
-  simpleRoute(pathname, /^\/api\/projects\/([^/]+)\/production\/(prepare|output)$/, 'prepare') as
-    | {projectId: string; action: 'prepare' | 'output'}
+  simpleRoute(pathname, /^\/api\/projects\/([^/]+)\/production\/(prepare)$/, 'prepare') as
+    | {projectId: string; action: 'prepare'}
     | null;
 
 export function getPronunciationLibraryRuleRoute(pathname: string) {

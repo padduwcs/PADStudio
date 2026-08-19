@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  getProjectLayoutRoute,
   getProjectMotionCanvasHistoryRoute,
   getProjectProductionRoute,
   getPronunciationLibraryRuleRoute,
@@ -58,12 +59,32 @@ test('direct production route accepts only its explicit actions', () => {
     getProjectProductionRoute(`/api/projects/${projectId}/production/prepare`),
     {projectId, action: 'prepare'},
   );
-  assert.deepEqual(
+  assert.equal(
     getProjectProductionRoute(`/api/projects/${projectId}/production/output`),
-    {projectId, action: 'output'},
+    null,
   );
   assert.equal(
     getProjectProductionRoute(`/api/projects/${projectId}/production`),
+    null,
+  );
+});
+
+test('layout route accepts only its explicit actions', () => {
+  assert.deepEqual(
+    getProjectLayoutRoute(`/api/projects/${projectId}/layout/preview`),
+    {projectId, action: 'preview'},
+  );
+  assert.deepEqual(
+    getProjectLayoutRoute(`/api/projects/${projectId}/layout/design`),
+    {projectId, action: 'design'},
+  );
+  assert.deepEqual(
+    getProjectLayoutRoute(`/api/projects/${projectId}/layout/approve`),
+    {projectId, action: 'approve'},
+  );
+  assert.equal(getProjectLayoutRoute(`/api/projects/${projectId}/layout`), null);
+  assert.equal(
+    getProjectLayoutRoute(`/api/projects/${projectId}/layout/output`),
     null,
   );
 });

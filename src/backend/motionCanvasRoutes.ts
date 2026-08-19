@@ -3,22 +3,15 @@ import {
   type ServerResponse,
 } from 'node:http';
 import {
-  CommitVisualDesignSchema
-} from '../shared/layout.ts';
-import {
   motionCanvasIsStale,
   motionCanvasMatchesOutline,
   sameValue,
-  visualDesignMatchesMotion,
   voiceVisualMatchesOutline
 } from '../shared/projectPipeline.ts';
 import {
   GenerateMotionCanvasSchema,
   type MotionCanvasBundle
 } from '../shared/topic.ts';
-import {
-  validateLayoutDocuments
-} from './layoutWorkspace.ts';
 import {
   MOTION_CANVAS_PROMPT_VERSION
 } from './motionCanvasGenerator.ts';
@@ -417,17 +410,12 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
           'Scene Motion Canvas đã có generation mới hơn.',
         );
       }
-      const currentDesign =
-        currentProject.visualDesignBundle &&
-          visualDesignMatchesMotion(currentProject.visualDesignBundle, motion)
-          ? currentProject.visualDesignBundle
-          : null;
       const preview = await layoutPreviewService.startMotion(
         currentProject.id,
         motion,
         {
           parentOrigin: requestParentOrigin(request),
-          initialOverrides: currentDesign?.overrides ?? [],
+          initialOverrides: [],
         },
       );
       sendJson(response, 200, {
@@ -436,101 +424,6 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
           sourceMotionCanvasGenerationId: preview.sourceSyncGenerationId,
         },
       });
-      return true;
-    }
-
-    if (
-      motionCanvasRoute?.action === 'design' &&
-      request.method === 'PUT'
-    ) {
-      const expectedRevision = readExpectedRevision(request);
-      const body = await readJsonBody(request);
-      const parsedRequest = CommitVisualDesignSchema.safeParse(body);
-      if (!parsedRequest.success) {
-        sendApiError(response, 422, {
-          code: 'VALIDATION_ERROR',
-          message: 'Chỉnh sửa visual scene chưa hợp lệ.',
-          fields: validationFields(parsedRequest.error.issues),
-        });
-        return true;
-      }
-      const currentProject = await repository.getProject(
-        motionCanvasRoute.projectId,
-      );
-      const motion = currentProject?.motionCanvasBundle;
-      if (!currentProject || !motion) {
-        throw new RequestBodyError(
-          409,
-          'MOTION_CANVAS_NOT_READY',
-          'Project chưa có scene Motion Canvas để chỉnh sửa.',
-        );
-      }
-      if (currentProject.revision !== expectedRevision) {
-        throw new ProjectConflictError(currentProject);
-      }
-      if (motionCanvasIsStale(currentProject)) {
-        throw new RequestBodyError(
-          409,
-          'MOTION_CANVAS_OUTDATED',
-          'Kế hoạch voice–visual đã thay đổi. Hãy sinh lại scene trước khi chỉnh sửa.',
-        );
-      }
-      if (
-        motion.generation.generationId !==
-        parsedRequest.data.sourceMotionCanvasGenerationId
-      ) {
-        throw new RequestBodyError(
-          409,
-          'MOTION_CANVAS_PREVIEW_OUTDATED',
-          'Scene Motion Canvas đã thay đổi. Hãy tải lại editor.',
-        );
-      }
-      const manifest = layoutPreviewService.getManifest(
-        currentProject.id,
-        parsedRequest.data.sessionNonce,
-        motion.generation.generationId,
-      );
-      const documents = validateLayoutDocuments(
-        {
-          contentRevision: motion.contentRevision,
-          generation: {generationId: motion.generation.generationId},
-          validation: {sourceHash: motion.validation.sourceHash},
-          sections: motion.scenes.map((scene) => ({
-            sceneId: scene.id,
-            filePath: scene.filePath,
-            durationSeconds: scene.durationSeconds,
-          })),
-        },
-        parsedRequest.data.overrides,
-        manifest,
-      );
-      const previousDesign = currentProject.visualDesignBundle;
-      const sameSource = Boolean(
-        previousDesign && visualDesignMatchesMotion(previousDesign, motion),
-      );
-      const visualDesignBundle = {
-        contentRevision: sameSource
-          ? previousDesign!.contentRevision + 1
-          : 1,
-        sourceMotionCanvasGenerationId: motion.generation.generationId,
-        sourceMotionCanvasContentRevision: motion.contentRevision,
-        sourceMotionCanvasSourceHash: motion.validation.sourceHash,
-        overrides: documents.overridesDocument.overrides,
-        updatedAt: new Date().toISOString(),
-      };
-      const updatedProject = await repository.updateProject(
-        currentProject.id,
-        {visualDesignBundle, currentStep: 'scenes'},
-        expectedRevision,
-      );
-      if (!updatedProject) {
-        sendApiError(response, 404, {
-          code: 'PROJECT_NOT_FOUND',
-          message: 'Không tìm thấy project.',
-        });
-        return true;
-      }
-      sendProject(response, 200, updatedProject);
       return true;
     }
 

@@ -193,9 +193,9 @@ function fakeDependencies(root: string) {
   };
 
   const layoutWorkspace = {
-    async prepare(_projectId: string, generationId: string, sync: ReturnType<typeof AnimationSyncBundleSchema.parse>, _overrides: unknown[], manifest: ReturnType<typeof LayoutEditorManifestSchema.parse>) {
+    async prepare(_projectId: string, generationId: string, sync: ReturnType<typeof AnimationSyncBundleSchema.parse>, overrides: Array<{sceneId: string}>, manifest: ReturnType<typeof LayoutEditorManifestSchema.parse>) {
       manifests.set(`${generationId}:layout`, manifest);
-      return {workspacePath: `layout/generations/${generationId}` as const, sourceWorkspacePath: sync.workspacePath as `sync/generations/${string}`, projectFile: 'src/project.ts' as const, audioFile: 'audio/narration.wav' as const, overridesFile: 'overrides.json' as const, manifestFile: 'editor-manifest.json' as const, overrideContractVersion: 1 as const, totalDurationSeconds: sync.totalDurationSeconds, scenes: sync.sections.map(section => ({sceneId: section.sceneId, filePath: section.filePath, editableNodeCount: 1, overrideCount: 0})), validation: {validatedAt: now, sourceHash: digest(sync.validation.sourceHash), overridesHash: digest([]), manifestHash: digest(manifest), motionCanvasVersion: 'fake-motion', audioDurationSeconds: sync.totalDurationSeconds}};
+      return {workspacePath: `layout/generations/${generationId}` as const, sourceWorkspacePath: sync.workspacePath as `sync/generations/${string}`, projectFile: 'src/project.ts' as const, audioFile: 'audio/narration.wav' as const, overridesFile: 'overrides.json' as const, manifestFile: 'editor-manifest.json' as const, overrideContractVersion: 1 as const, totalDurationSeconds: sync.totalDurationSeconds, scenes: sync.sections.map(section => ({sceneId: section.sceneId, filePath: section.filePath, editableNodeCount: 1, overrideCount: overrides.filter(override => override.sceneId === section.sceneId).length})), validation: {validatedAt: now, sourceHash: digest(sync.validation.sourceHash), overridesHash: digest(overrides), manifestHash: digest(manifest), motionCanvasVersion: 'fake-motion', audioDurationSeconds: sync.totalDurationSeconds}};
     },
     async readFiles() { return [{path: 'src/project.ts', source: '// fake layout'}]; },
     async readOverrides(_projectId: string, bundle: ReturnType<typeof LayoutBundleSchema.parse>) { return {version: 1 as const, sourceAnimationSyncGenerationId: bundle.sourceAnimationSyncGenerationId, sourceAnimationSyncContentRevision: bundle.sourceAnimationSyncContentRevision, sourceAnimationSyncSourceHash: bundle.sourceAnimationSyncSourceHash, overrides: []}; },
@@ -204,7 +204,12 @@ function fakeDependencies(root: string) {
   };
 
   const layoutPreviewService = {
-    async start() { return {generationId: randomUUID(), sourceSyncGenerationId: randomUUID(), sessionNonce: 'x'.repeat(32), url: 'http://fake.preview/'}; },
+    async start(_projectId: string, sync: ReturnType<typeof AnimationSyncBundleSchema.parse>) {
+      const sessionNonce = 'x'.repeat(32);
+      const manifest = LayoutEditorManifestSchema.parse({version: 1, sourceAnimationSyncGenerationId: sync.generation.generationId, sourceAnimationSyncContentRevision: sync.contentRevision, sourceAnimationSyncSourceHash: sync.validation.sourceHash, scenes: sync.sections.map(section => ({sceneId: section.sceneId, filePath: section.filePath, nodes: [{key: 'root', fingerprint: nodeFingerprint, label: 'Root', nodeType: 'Layout', parentKey: null, identity: 'semantic', editableProperties: ['x'], lockedProperties: [], lockReason: null}]}))});
+      manifests.set(`${sessionNonce}:${sync.generation.generationId}`, manifest);
+      return {generationId: sync.generation.generationId, sourceSyncGenerationId: sync.generation.generationId, sessionNonce, url: 'http://fake.preview/'};
+    },
     async startMotion(_projectId: string, motion: ReturnType<typeof MotionCanvasBundleSchema.parse>) {
       const sessionNonce = 'x'.repeat(32);
       const manifest = LayoutEditorManifestSchema.parse({version: 1, sourceAnimationSyncGenerationId: motion.generation.generationId, sourceAnimationSyncContentRevision: motion.contentRevision, sourceAnimationSyncSourceHash: motion.validation.sourceHash, scenes: motion.scenes.map(scene => ({sceneId: scene.id, filePath: scene.filePath, nodes: [{key: 'root', fingerprint: nodeFingerprint, label: 'Root', nodeType: 'Layout', parentKey: null, identity: 'semantic', editableProperties: ['x'], lockedProperties: [], lockReason: null}]}))});
@@ -216,7 +221,6 @@ function fakeDependencies(root: string) {
     async close() {},
   };
 
-  const animationSyncPreviewService = {async start() { return {generationId: randomUUID(), url: 'http://fake.preview/'}; }, async close() {}};
   const motionCanvasRevisionReviewService = {async review() { return {coherence: {verdict: 'coherent' as const, summary: 'Fake review confirms the scoped scene stays coherent.', issues: []}, model: 'fake-codex', usage: null}; }};
   const finalRenderService = {
     async render(_projectId: string, generationId: string, contentRevision: number, _sync: ReturnType<typeof AnimationSyncBundleSchema.parse>, layout: ReturnType<typeof LayoutBundleSchema.parse>, profile?: {frame: {width: number; height: number; fps: number}}) {
@@ -230,7 +234,7 @@ function fakeDependencies(root: string) {
     async resolveVideo() { return {filePath: videoPath, size: 8}; },
     async close() {},
   };
-  return {deps: {motionCanvasGenerator, motionCanvasWorkspace, narrationVisualPlanner, elevenLabsVoiceService, voiceWorkspace, animationSyncWorkspace, layoutWorkspace, layoutPreviewService, animationSyncPreviewService, motionCanvasRevisionReviewService, finalRenderService, logger: {info() {}, error() {}}}, metrics: {ttsCalls: () => ttsCalls, motionCalls: () => motionCalls, nodeFingerprint, motionCanvasRequests, plannerRequests}};
+  return {deps: {motionCanvasGenerator, motionCanvasWorkspace, narrationVisualPlanner, elevenLabsVoiceService, voiceWorkspace, animationSyncWorkspace, layoutWorkspace, layoutPreviewService, motionCanvasRevisionReviewService, finalRenderService, logger: {info() {}, error() {}}}, metrics: {ttsCalls: () => ttsCalls, motionCalls: () => motionCalls, nodeFingerprint, motionCanvasRequests, plannerRequests}};
 }
 
 async function start(t: test.TestContext, overrides: Record<string, unknown> = {}) {
@@ -280,7 +284,7 @@ async function toScenes(baseUrl: string) {
 test('golden HTTP workflow runs all five steps with schema-valid fake providers', async t => {
   const {baseUrl, metrics, projectsDirectory} = await start(t);
   let project = await create(baseUrl);
-  assert.equal(project.version, 16); assert.equal(project.currentStep, 'pronunciation'); assert.equal(project.narration!.approvedAt, null);
+  assert.equal(project.version, 17); assert.equal(project.currentStep, 'pronunciation'); assert.equal(project.narration!.approvedAt, null);
   const blockedPrepare = await request(baseUrl, project, 'POST', `/api/projects/${project.id}/production/prepare`, {generationId: randomUUID()}); assert.equal(blockedPrepare.status, 409, await blockedPrepare.text());
   project = await projectFrom(await request(baseUrl, project, 'PUT', `/api/projects/${project.id}/narration`, {sourceText: narrationSourceText, projectRules: []}));
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/narration/approve`, {sourceHash: project.narration!.review!.sourceHash, rulesHash: project.narration!.review!.rulesHash}));
@@ -299,11 +303,38 @@ test('golden HTTP workflow runs all five steps with schema-valid fake providers'
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/approve`, {}));
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/sync/generate`, {generationId: randomUUID()}));
   assert.equal(project.animationSyncBundle!.status, 'draft'); assert.equal(project.currentStep, 'production');
-  const draftSyncPreview = await fetch(`${baseUrl}/api/projects/${project.id}/sync/preview?generation=${project.animationSyncBundle!.generation.generationId}`);
-  assert.equal(draftSyncPreview.status, 200, await draftSyncPreview.text());
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/sync/approve`, {})); assert.equal(project.currentStep, 'scenes');
   const blockedRender = await request(baseUrl, project, 'POST', `/api/projects/${project.id}/render/generate`, {generationId: randomUUID()}); assert.equal(blockedRender.status, 409);
-  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/production/output`, {generationId: randomUUID(), renderSettings: defaultLayoutRenderSettings}));
+  const layoutPreview = await fetch(`${baseUrl}/api/projects/${project.id}/layout/preview`, {headers: {'X-Pad-Parent-Origin': 'http://127.0.0.1'}});
+  assert.equal(layoutPreview.status, 200);
+  const layoutPreviewBody = await layoutPreview.json() as {preview: {sessionNonce: string; sourceSyncGenerationId: string}};
+  project = await projectFrom(await request(baseUrl, project, 'PUT', `/api/projects/${project.id}/layout/design`, {
+    generationId: randomUUID(),
+    baseGenerationId: null,
+    sourceAnimationSyncGenerationId: layoutPreviewBody.preview.sourceSyncGenerationId,
+    sessionNonce: layoutPreviewBody.preview.sessionNonce,
+    overrides: [{sceneId: project.animationSyncBundle!.sections[0]!.sceneId, nodeKey: 'root', nodeFingerprint: metrics.nodeFingerprint, patch: {x: 12}}],
+    renderSettings: defaultLayoutRenderSettings,
+  }));
+  assert.equal(project.layoutBundle!.status, 'draft'); assert.equal(project.layoutBundle!.scenes[0]!.overrideCount, 1);
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/layout/approve`, {generationId: project.layoutBundle!.generation.generationId}));
+  assert.equal(project.layoutBundle!.status, 'approved'); assert.equal(project.currentStep, 'render');
+  // A further edit after approval must re-draft the layout instead of being silently
+  // dropped — this is the regression guard for the "edits lost after output" bug.
+  const secondPreview = await fetch(`${baseUrl}/api/projects/${project.id}/layout/preview`, {headers: {'X-Pad-Parent-Origin': 'http://127.0.0.1'}});
+  const secondPreviewBody = await secondPreview.json() as {preview: {sessionNonce: string; sourceSyncGenerationId: string}};
+  const approvedGenerationId = project.layoutBundle!.generation.generationId;
+  project = await projectFrom(await request(baseUrl, project, 'PUT', `/api/projects/${project.id}/layout/design`, {
+    generationId: randomUUID(),
+    baseGenerationId: approvedGenerationId,
+    sourceAnimationSyncGenerationId: secondPreviewBody.preview.sourceSyncGenerationId,
+    sessionNonce: secondPreviewBody.preview.sessionNonce,
+    overrides: [{sceneId: project.animationSyncBundle!.sections[0]!.sceneId, nodeKey: 'root', nodeFingerprint: metrics.nodeFingerprint, patch: {x: 24}}],
+    renderSettings: defaultLayoutRenderSettings,
+  }));
+  assert.notEqual(project.layoutBundle!.generation.generationId, approvedGenerationId);
+  assert.equal(project.layoutBundle!.status, 'draft', 'a post-approval edit must reopen the layout for review, not vanish');
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/layout/approve`, {generationId: project.layoutBundle!.generation.generationId}));
   assert.equal(project.layoutBundle!.status, 'approved'); assert.equal(project.currentStep, 'render');
   const renderId = randomUUID(); const started = await request(baseUrl, project, 'POST', `/api/projects/${project.id}/render/generate`, {generationId: renderId}); assert.equal(started.status, 202);
   const status = await fetch(`${baseUrl}/api/projects/${project.id}/render/status?generationId=${renderId}`); assert.equal(status.status, 200);
@@ -360,14 +391,23 @@ test('AI Visual Planner fallback về deterministic khi không có planner selec
 test('voice regeneration invalidates only downstream sync, layout, and render', async t => {
   const {baseUrl, metrics} = await start(t);
   let project = await toScenes(baseUrl);
-  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/production/output`, {generationId: randomUUID()}));
+  const preview = await fetch(`${baseUrl}/api/projects/${project.id}/layout/preview`, {headers: {'X-Pad-Parent-Origin': 'http://127.0.0.1'}});
+  const previewBody = await preview.json() as {preview: {sessionNonce: string; sourceSyncGenerationId: string}};
+  project = await projectFrom(await request(baseUrl, project, 'PUT', `/api/projects/${project.id}/layout/design`, {
+    generationId: randomUUID(),
+    baseGenerationId: null,
+    sourceAnimationSyncGenerationId: previewBody.preview.sourceSyncGenerationId,
+    sessionNonce: previewBody.preview.sessionNonce,
+    overrides: [],
+  }));
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/layout/approve`, {generationId: project.layoutBundle!.generation.generationId}));
   const renderId = randomUUID(); await request(baseUrl, project, 'POST', `/api/projects/${project.id}/render/generate`, {generationId: renderId}); await fetch(`${baseUrl}/api/projects/${project.id}/render/status?generationId=${renderId}`);
   project = (await (await fetch(`${baseUrl}/api/projects/${project.id}`)).json() as ProjectReply).project;
   const previousVoice = project.voiceBundle!.generation.generationId; const previousMotion = project.motionCanvasBundle!.generation.generationId; const calls = metrics.motionCalls();
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/voice/generate`, {...voiceRequest(randomUUID()), seed: 2}));
   assert.notEqual(project.voiceBundle!.generation.generationId, previousVoice); assert.equal(project.motionCanvasBundle!.generation.generationId, previousMotion); assert.equal(project.animationSyncBundle!.status, 'draft'); assert.equal(project.layoutBundle, null); assert.equal(project.renderBundle, null); assert.equal(project.currentStep, 'production'); assert.equal(metrics.motionCalls(), calls); assert.equal(metrics.ttsCalls(), 2);
-  const staleOutput = await request(baseUrl, project, 'POST', `/api/projects/${project.id}/production/output`, {generationId: randomUUID()});
-  assert.equal(staleOutput.status, 409, await staleOutput.text());
+  const staleDesign = await request(baseUrl, project, 'PUT', `/api/projects/${project.id}/layout/design`, {generationId: randomUUID(), baseGenerationId: null, sourceAnimationSyncGenerationId: project.animationSyncBundle!.generation.generationId, sessionNonce: 'x'.repeat(32), overrides: []});
+  assert.equal(staleDesign.status, 409, await staleDesign.text());
 });
 
 test('sync generation rejects missing production prerequisites', async t => {
@@ -389,8 +429,8 @@ test('candidate apply and visual design HTTP transitions stay in scenes and inva
   assert.equal(candidateResponse.status, 201); const candidate = (await candidateResponse.json() as {candidate: {candidateId: string; decision: string; bundle: TopicProject['motionCanvasBundle']}}).candidate;
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/candidates/${candidate.candidateId}/apply`, {}));
   assert.equal(project.currentStep, 'scenes'); assert.equal(project.animationSyncBundle!.status, 'draft'); assert.equal(project.motionCanvasBundle!.scenes[0]!.id, original.scenes[0]!.id); assert.equal(project.motionCanvasBundle!.contentRevision, original.contentRevision + 1); assert.notEqual(project.motionCanvasBundle!.validation.sourceHash, original.validation.sourceHash);
-  const staleSyncPreview = await fetch(`${baseUrl}/api/projects/${project.id}/sync/preview?generation=${project.animationSyncBundle!.generation.generationId}`);
-  assert.equal(staleSyncPreview.status, 409, await staleSyncPreview.text());
+  const staleLayoutPreview = await fetch(`${baseUrl}/api/projects/${project.id}/layout/preview`, {headers: {'X-Pad-Parent-Origin': 'http://127.0.0.1'}});
+  assert.equal(staleLayoutPreview.status, 409, await staleLayoutPreview.text());
   const history = await fetch(`${baseUrl}/api/projects/${project.id}/motion-canvas/history`);
   assert.equal(history.status, 200);
   const historyBody = await history.json() as {candidates: Array<{candidateId: string; decision: string}>; versions: Array<{versionId: string}>};
@@ -398,10 +438,24 @@ test('candidate apply and visual design HTTP transitions stay in scenes and inva
   const restore = await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/versions/${historyBody.versions[0]!.versionId}/restore`, {});
   project = await projectFrom(restore);
   assert.equal(project.currentStep, 'scenes');
-  const preview = await fetch(`${baseUrl}/api/projects/${project.id}/motion-canvas/preview`, {headers: {'X-Pad-Parent-Origin': 'http://127.0.0.1'}}); assert.equal(preview.status, 200);
-  const previewBody = await preview.json() as {preview: {sessionNonce: string; sourceMotionCanvasGenerationId: string}};
-  project = await projectFrom(await request(baseUrl, project, 'PUT', `/api/projects/${project.id}/motion-canvas/design`, {sourceMotionCanvasGenerationId: previewBody.preview.sourceMotionCanvasGenerationId, sessionNonce: previewBody.preview.sessionNonce, overrides: [{sceneId: project.motionCanvasBundle!.scenes[0]!.id, nodeKey: 'root', nodeFingerprint: metrics.nodeFingerprint, patch: {x: 12}}]}));
-  assert.equal(project.currentStep, 'scenes'); assert.equal(project.visualDesignBundle!.overrides.length, 1); assert.equal(project.animationSyncBundle!.status, 'draft');
+  // The raw Motion Canvas preview stays reachable for reviewing the (silent)
+  // AI-authored draft before it is approved and synced.
+  const rawPreview = await fetch(`${baseUrl}/api/projects/${project.id}/motion-canvas/preview`, {headers: {'X-Pad-Parent-Origin': 'http://127.0.0.1'}}); assert.equal(rawPreview.status, 200);
+  if (project.motionCanvasBundle!.status !== 'approved') {
+    project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/approve`, {}));
+  }
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/sync/generate`, {generationId: randomUUID()}));
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/sync/approve`, {}));
+  const preview = await fetch(`${baseUrl}/api/projects/${project.id}/layout/preview`, {headers: {'X-Pad-Parent-Origin': 'http://127.0.0.1'}}); assert.equal(preview.status, 200);
+  const previewBody = await preview.json() as {preview: {sessionNonce: string; sourceSyncGenerationId: string}};
+  project = await projectFrom(await request(baseUrl, project, 'PUT', `/api/projects/${project.id}/layout/design`, {
+    generationId: randomUUID(),
+    baseGenerationId: null,
+    sourceAnimationSyncGenerationId: previewBody.preview.sourceSyncGenerationId,
+    sessionNonce: previewBody.preview.sessionNonce,
+    overrides: [{sceneId: project.animationSyncBundle!.sections[0]!.sceneId, nodeKey: 'root', nodeFingerprint: metrics.nodeFingerprint, patch: {x: 12}}],
+  }));
+  assert.equal(project.currentStep, 'scenes'); assert.equal(project.layoutBundle!.scenes[0]!.overrideCount, 1); assert.equal(project.layoutBundle!.status, 'draft'); assert.equal(project.animationSyncBundle!.status, 'approved');
 });
 
 function fakePronunciationAuditService() {

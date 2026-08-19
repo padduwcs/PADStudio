@@ -434,25 +434,6 @@ test('sync predicates compare every revision, section, event and voice time', ()
     true,
   );
 
-  const designed = createReadyProject();
-  designed.visualDesignBundle = {
-    contentRevision: 9,
-    sourceMotionCanvasGenerationId:
-      '50000000-0000-4000-8000-000000000001',
-    sourceMotionCanvasContentRevision: 5,
-    sourceMotionCanvasSourceHash: 'c'.repeat(64),
-    overrides: [],
-    updatedAt: new Date(0).toISOString(),
-  };
-  designed.animationSyncBundle!.sourceVisualDesignContentRevision = 9;
-  assert.equal(animationSyncIsStale(designed), false);
-  designed.visualDesignBundle.contentRevision += 1;
-  assert.equal(
-    animationSyncIsStale(designed),
-    false,
-    'visual overrides do not change the locked voice-to-scene timing',
-  );
-
   const cases: Array<{
     name: string;
     mutate?: (project: TopicProject) => void;

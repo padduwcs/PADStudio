@@ -13,10 +13,6 @@ import {
   type VoiceVisualPlan
 } from '../shared/topic.ts';
 import {
-  createAnimationSyncPreviewService,
-  type AnimationSyncPreviewService
-} from './animationSyncPreviewService.ts';
-import {
   createAnimationSyncWorkspace,
   type AnimationSyncWorkspace,
   type PreparedAnimationSyncWorkspace
@@ -134,7 +130,6 @@ export interface AppOptions {
   motionCanvasRevisionReviewService?: MotionCanvasRevisionReviewService;
   voiceWorkspace?: VoiceWorkspace;
   animationSyncWorkspace?: AnimationSyncWorkspace;
-  animationSyncPreviewService?: AnimationSyncPreviewService;
   layoutWorkspace?: LayoutWorkspace;
   layoutPreviewService?: LayoutPreviewService;
   finalRenderService?: FinalRenderService;
@@ -222,9 +217,6 @@ export function createAppContext(options: AppOptions = {}) {
   const animationSyncWorkspace =
     options.animationSyncWorkspace ??
     createAnimationSyncWorkspace(projectsDirectory);
-  const animationSyncPreviewService =
-    options.animationSyncPreviewService ??
-    createAnimationSyncPreviewService(projectsDirectory);
   const layoutWorkspace =
     options.layoutWorkspace ?? createLayoutWorkspace(projectsDirectory);
   const layoutPreviewService =
@@ -349,7 +341,7 @@ export function createAppContext(options: AppOptions = {}) {
     }
   }
 
-  return {options, storedElevenLabsApiKey, projectsDirectory, frontendDirectory, repository, credentialStore, sharedCodexClient, codexConnection, elevenLabsConnection, elevenLabsVoiceService, elevenLabsConnectionFactory, narrationDraftGenerator, narrationVisualPlanner, motionCanvasGenerator, motionCanvasWorkspace, motionCanvasHistoryStore, motionCanvasRevisionReviewService, voiceWorkspace, animationSyncWorkspace, animationSyncPreviewService, layoutWorkspace, layoutPreviewService, watermarkAssetStore, pronunciationRuleStore, pronunciationAuditService, finalRenderService, runtimeDiagnostics, logger, narrationDraftGenerations, narrationPlanGenerations, motionCanvasGenerations, motionCanvasCandidateGenerations, voiceGenerations, voiceSectionGenerations, animationSyncGenerations, pronunciationAuditGenerations, finalRenderCommits, commitFinalRenderBundle, trackFinalRenderCommit, generateOnce};
+  return {options, storedElevenLabsApiKey, projectsDirectory, frontendDirectory, repository, credentialStore, sharedCodexClient, codexConnection, elevenLabsConnection, elevenLabsVoiceService, elevenLabsConnectionFactory, narrationDraftGenerator, narrationVisualPlanner, motionCanvasGenerator, motionCanvasWorkspace, motionCanvasHistoryStore, motionCanvasRevisionReviewService, voiceWorkspace, animationSyncWorkspace, layoutWorkspace, layoutPreviewService, watermarkAssetStore, pronunciationRuleStore, pronunciationAuditService, finalRenderService, runtimeDiagnostics, logger, narrationDraftGenerations, narrationPlanGenerations, motionCanvasGenerations, motionCanvasCandidateGenerations, voiceGenerations, voiceSectionGenerations, animationSyncGenerations, pronunciationAuditGenerations, finalRenderCommits, commitFinalRenderBundle, trackFinalRenderCommit, generateOnce};
 }
 
 export type AppContext = ReturnType<typeof createAppContext>;

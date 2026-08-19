@@ -4,7 +4,6 @@ import {
   layoutMatchesAnimationSync,
   nextWorkflowStep,
   sameValue,
-  visualDesignMatchesMotion,
 } from '../shared/projectPipeline.ts';
 import {
   animationSyncMatchesSources,
@@ -25,7 +24,6 @@ export type ProjectStateChange = {
   outline?: NonNullable<TopicProject['outline']>;
   voiceVisualPlan?: NonNullable<TopicProject['voiceVisualPlan']>;
   motionCanvasBundle?: NonNullable<TopicProject['motionCanvasBundle']>;
-  visualDesignBundle?: TopicProject['visualDesignBundle'];
   voiceBundle?: NonNullable<TopicProject['voiceBundle']>;
   animationSyncBundle?: NonNullable<TopicProject['animationSyncBundle']>;
   layoutBundle?: NonNullable<TopicProject['layoutBundle']>;
@@ -48,8 +46,6 @@ export function projectChangeAlreadyApplied(
       sameValue(change.voiceVisualPlan, project.voiceVisualPlan)) &&
     (change.motionCanvasBundle === undefined ||
       sameValue(change.motionCanvasBundle, project.motionCanvasBundle)) &&
-    (change.visualDesignBundle === undefined ||
-      sameValue(change.visualDesignBundle, project.visualDesignBundle)) &&
     (change.voiceBundle === undefined ||
       sameValue(change.voiceBundle, project.voiceBundle)) &&
     (change.animationSyncBundle === undefined ||
@@ -107,21 +103,6 @@ export function reconcileProjectState(
     currentProject.motionCanvasBundle
       ? {...currentProject.motionCanvasBundle, status: 'draft' as const}
       : currentProject.motionCanvasBundle);
-  const nextVisualDesignBundle =
-    change.visualDesignBundle !== undefined
-      ? change.visualDesignBundle
-      : currentProject.visualDesignBundle &&
-          nextMotionCanvasBundle &&
-          visualDesignMatchesMotion(
-            currentProject.visualDesignBundle,
-            nextMotionCanvasBundle,
-          )
-        ? currentProject.visualDesignBundle
-        : null;
-  const visualDesignChanged = !sameValue(
-    nextVisualDesignBundle,
-    currentProject.visualDesignBundle,
-  );
   const voiceSourceChanged = Boolean(
     currentProject.voiceBundle &&
       (!nextVoiceVisualPlan ||
@@ -143,7 +124,6 @@ export function reconcileProjectState(
           currentProject.animationSyncBundle,
           nextMotionCanvasBundle,
           nextVoiceBundle,
-          nextVisualDesignBundle,
         )),
   );
   const nextAnimationSyncBundle =
@@ -153,8 +133,7 @@ export function reconcileProjectState(
       : currentProject.animationSyncBundle);
   const layoutSourceChanged = Boolean(
     currentProject.layoutBundle &&
-      (visualDesignChanged ||
-        !nextAnimationSyncBundle ||
+      (!nextAnimationSyncBundle ||
         nextAnimationSyncBundle.status !== 'approved' ||
         !layoutMatchesAnimationSync(
           currentProject.layoutBundle,
@@ -184,7 +163,6 @@ export function reconcileProjectState(
     outline: nextOutline,
     voiceVisualPlan: nextVoiceVisualPlan,
     motionCanvasBundle: nextMotionCanvasBundle,
-    visualDesignBundle: nextVisualDesignBundle,
     voiceBundle: nextVoiceBundle,
     animationSyncBundle: nextAnimationSyncBundle,
     layoutBundle: nextLayoutBundle,
