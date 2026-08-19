@@ -22,10 +22,12 @@ import {
 } from './layoutWorkspace.ts';
 import {hashJson} from './motionCanvasHistoryStore.ts';
 import {
+  DEFAULT_TIMING_CALIBRATION,
   narrationArtifactsAreCurrent,
   narrationArtifactsMatchReview,
   planNarrationArtifacts
 } from './narrationPlan.ts';
+import {preferredNarrationCalibration} from './appRouteSupport.ts';
 import {
   ProjectConflictError
 } from './projectRepository.ts';
@@ -97,7 +99,7 @@ export function createProductionRouteHandler(context: ProductionRouteContext): A
           narrationPlanGenerations,
           generationId,
           planFingerprint,
-          () => planNarrationArtifacts({
+          async () => planNarrationArtifacts({
             planner: narrationVisualPlanner,
             topicInput: currentProject.topicInput,
             narration,
@@ -106,6 +108,7 @@ export function createProductionRouteHandler(context: ProductionRouteContext): A
             previousPlan: currentProject.voiceVisualPlan,
             model: parsed.data.plannerModel,
             reasoningEffort: parsed.data.plannerReasoningEffort,
+            timingCalibration: (await preferredNarrationCalibration(repository)) ?? DEFAULT_TIMING_CALIBRATION,
           }),
         );
         artifacts = generated.result;

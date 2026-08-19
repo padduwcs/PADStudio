@@ -59,8 +59,6 @@
   .sync-workspace-card,
   .sync-section-card,
   .render-summary > div,
-  .topic-guidance-result article,
-  .topic-guidance-angles,
   .layout-shortcut-grid > section
 ) {
   border-color: var(--line);
@@ -150,7 +148,6 @@
   .page-state,
   .codex-connection,
   .codex-service-card,
-  .topic-ai-guidance,
   .outline-side-card,
   .outline-editor-card,
   .outline-review-card,
@@ -196,8 +193,6 @@
   .sync-section-card,
   .render-summary > div,
   .render-result-card,
-  .topic-guidance-result article,
-  .topic-guidance-angles,
   .layout-shortcut-grid > section
 ) {
   border-color: var(--line);
@@ -269,7 +264,6 @@
   .outline-candidate-history button,
   .icon-button,
   .responsive-aside-header button,
-  .topic-guidance-result button,
   .ai-scope-presets button,
   .voice-presets button,
   .voice-show-more,
@@ -303,7 +297,6 @@
   .outline-candidate-history button,
   .icon-button,
   .responsive-aside-header button,
-  .topic-guidance-result button,
   .ai-scope-presets button,
   .voice-presets button,
   .voice-show-more,
@@ -532,15 +525,9 @@
   .codex-service-identity > p,
   .codex-service-card .codex-model-picker > span,
   .codex-service-card .codex-api-key-form label > span,
-  .topic-guidance-result article > span,
-  .topic-guidance-angles > span,
   .layout-shortcut-row
 ) {
   color: var(--ink-soft);
-}
-
-:root[data-theme="dark"] .topic-ai-guidance {
-  background: var(--surface-raised);
 }
 
 :root[data-theme="dark"] .voice-config-heading {
@@ -565,11 +552,6 @@
 
 :root[data-theme="dark"] .sync-flow-visual {
   background: var(--surface-raised);
-}
-
-:root[data-theme="dark"] .topic-guidance-result article,
-:root[data-theme="dark"] .topic-guidance-angles {
-  background: var(--theme-glass-soft);
 }
 
 :root[data-theme="dark"] .codex-quota-track,

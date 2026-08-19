@@ -38,6 +38,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
   const [catalog, setCatalog] = useState<ElevenLabsCatalog | null>(null);
   const [voiceId, setVoiceId] = useState('');
   const [modelId, setModelId] = useState('');
+  const [settings, setSettings] = useState(defaultSettings);
   const [state, setState] = useState<'loading' | 'ready' | 'working' | 'error'>('loading');
   const [message, setMessage] = useState('');
   const eleven = useElevenLabsConnection();
@@ -52,6 +53,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
         if (value.voiceBundle) {
           setVoiceId(value.voiceBundle.configuration.voiceId);
           setModelId(value.voiceBundle.configuration.modelId);
+          setSettings(value.voiceBundle.configuration.settings);
         }
         setState('ready');
       })
@@ -96,10 +98,16 @@ export function ProductionPage({projectId}: {projectId: string}) {
   const syncReady = Boolean(
     project?.animationSyncBundle && !animationSyncIsStale(project),
   );
+  const effectiveSettings = {
+    ...settings,
+    style: selectedModel?.canUseStyle ? settings.style : 0,
+    useSpeakerBoost: selectedModel?.canUseSpeakerBoost ? settings.useSpeakerBoost : false,
+  };
   const voiceSelectionChanged = Boolean(
     project?.voiceBundle &&
       (project.voiceBundle.configuration.voiceId !== voiceId ||
-        project.voiceBundle.configuration.modelId !== modelId),
+        project.voiceBundle.configuration.modelId !== modelId ||
+        JSON.stringify(project.voiceBundle.configuration.settings) !== JSON.stringify(effectiveSettings)),
   );
 
   async function generateSelectedAudio(current: TopicProject) {
@@ -116,11 +124,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
       voiceId,
       modelId,
       outputFormat: 'mp3_44100_128',
-      settings: {
-        ...defaultSettings,
-        style: selectedModel?.canUseStyle ? defaultSettings.style : 0,
-        useSpeakerBoost: Boolean(selectedModel?.canUseSpeakerBoost),
-      },
+      settings: effectiveSettings,
       seed: null,
     }, current.revision);
   }
@@ -269,6 +273,33 @@ export function ProductionPage({projectId}: {projectId: string}) {
               </select>
             </label>
           </div>
+          <details className="production-voice-settings">
+            <summary>Thông số giọng đọc</summary>
+            <label>
+              <span>Ổn định giọng <small>{settings.stability.toFixed(2)}</small></span>
+              <input type="range" min={0} max={1} step={0.05} value={settings.stability} disabled={state === 'working'} onChange={event => setSettings(current => ({...current, stability: Number(event.currentTarget.value)}))} />
+            </label>
+            <label>
+              <span>Độ giống giọng gốc <small>{settings.similarityBoost.toFixed(2)}</small></span>
+              <input type="range" min={0} max={1} step={0.05} value={settings.similarityBoost} disabled={state === 'working'} onChange={event => setSettings(current => ({...current, similarityBoost: Number(event.currentTarget.value)}))} />
+            </label>
+            <label>
+              <span>Tốc độ đọc <small>{settings.speed.toFixed(2)}×</small></span>
+              <input type="range" min={0.7} max={1.2} step={0.05} value={settings.speed} disabled={state === 'working'} onChange={event => setSettings(current => ({...current, speed: Number(event.currentTarget.value)}))} />
+            </label>
+            {selectedModel?.canUseStyle && (
+              <label>
+                <span>Biểu cảm (style) <small>{settings.style.toFixed(2)}</small></span>
+                <input type="range" min={0} max={1} step={0.05} value={settings.style} disabled={state === 'working'} onChange={event => setSettings(current => ({...current, style: Number(event.currentTarget.value)}))} />
+              </label>
+            )}
+            {selectedModel?.canUseSpeakerBoost && (
+              <label className="production-voice-toggle">
+                <input type="checkbox" checked={settings.useSpeakerBoost} disabled={state === 'working'} onChange={event => setSettings(current => ({...current, useSpeakerBoost: event.currentTarget.checked}))} />
+                <span>Speaker boost</span>
+              </label>
+            )}
+          </details>
           {audioReady && (
             <>
               <div className={`production-selection-note${voiceSelectionChanged ? ' is-changed' : ''}`}>

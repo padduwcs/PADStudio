@@ -94,7 +94,6 @@ test('dark mode bao phủ các surface độc lập của toàn bộ pipeline', 
     'utf8',
   );
   const criticalSurfaces = [
-    '.topic-ai-guidance',
     '.motion-canvas-command',
     '.layout-output-settings',
     '.layout-inspector',

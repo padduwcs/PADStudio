@@ -233,10 +233,10 @@ function fakeDependencies(root: string) {
   return {deps: {motionCanvasGenerator, motionCanvasWorkspace, narrationVisualPlanner, elevenLabsVoiceService, voiceWorkspace, animationSyncWorkspace, layoutWorkspace, layoutPreviewService, animationSyncPreviewService, motionCanvasRevisionReviewService, finalRenderService, logger: {info() {}, error() {}}}, metrics: {ttsCalls: () => ttsCalls, motionCalls: () => motionCalls, nodeFingerprint, motionCanvasRequests, plannerRequests}};
 }
 
-async function start(t: test.TestContext) {
+async function start(t: test.TestContext, overrides: Record<string, unknown> = {}) {
   const projectsDirectory = await mkdtemp(path.join(os.tmpdir(), 'pad-workflow-'));
   const fake = fakeDependencies(projectsDirectory);
-  const server = createPadStudioServer({projectsDirectory, ...fake.deps});
+  const server = createPadStudioServer({projectsDirectory, ...fake.deps, ...overrides});
   t.after(async () => { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); await closePadStudioServerServices(server); await rm(projectsDirectory, {recursive: true, force: true}); });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   return {baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, projectsDirectory, ...fake};
@@ -398,4 +398,43 @@ test('candidate apply and visual design HTTP transitions stay in scenes and inva
   const previewBody = await preview.json() as {preview: {sessionNonce: string; sourceMotionCanvasGenerationId: string}};
   project = await projectFrom(await request(baseUrl, project, 'PUT', `/api/projects/${project.id}/motion-canvas/design`, {sourceMotionCanvasGenerationId: previewBody.preview.sourceMotionCanvasGenerationId, sessionNonce: previewBody.preview.sessionNonce, overrides: [{sceneId: project.motionCanvasBundle!.scenes[0]!.id, nodeKey: 'root', nodeFingerprint: metrics.nodeFingerprint, patch: {x: 12}}]}));
   assert.equal(project.currentStep, 'scenes'); assert.equal(project.visualDesignBundle!.overrides.length, 1); assert.equal(project.animationSyncBundle!.status, 'draft');
+});
+
+function fakePronunciationAuditService() {
+  let calls = 0;
+  return {
+    service: {
+      async audit(_request: unknown) {
+        calls += 1;
+        return {patches: [], model: 'fake-audit-model', usage: null};
+      },
+    },
+    calls: () => calls,
+  };
+}
+
+test('narration audit joins concurrent requests sharing a generation id and rejects reuse with different input', async t => {
+  const audit = fakePronunciationAuditService();
+  const {baseUrl} = await start(t, {pronunciationAuditService: audit.service});
+  let project = await create(baseUrl);
+  project = await projectFrom(await request(baseUrl, project, 'PUT', `/api/projects/${project.id}/narration`, {sourceText: narrationSourceText, projectRules: []}));
+
+  const generationId = randomUUID();
+  const [first, second] = await Promise.all([
+    request(baseUrl, project, 'POST', `/api/projects/${project.id}/narration/audit`, {generationId}),
+    request(baseUrl, project, 'POST', `/api/projects/${project.id}/narration/audit`, {generationId}),
+  ]);
+  const statuses = [first.status, second.status].sort();
+  assert.deepEqual(statuses, [200, 200], `expected both duplicate requests to resolve to the same applied result, got ${statuses.join(',')}`);
+  assert.equal(audit.calls(), 1, 'duplicate concurrent requests with the same generation id and content must call the AI provider once');
+
+  project = await projectFrom(first);
+
+  const otherText = `${narrationSourceText} Một câu khác để đổi fingerprint.`;
+  project = await projectFrom(await request(baseUrl, project, 'PUT', `/api/projects/${project.id}/narration`, {sourceText: otherText, projectRules: []}));
+  const reused = await request(baseUrl, project, 'POST', `/api/projects/${project.id}/narration/audit`, {generationId});
+  const reusedBody = await reused.json() as {error?: {code: string}};
+  assert.equal(reused.status, 409, JSON.stringify(reusedBody));
+  assert.equal(reusedBody.error?.code, 'GENERATION_ID_REUSED');
+  assert.equal(audit.calls(), 1, 'reusing a generation id with different content must not call the AI provider again');
 });

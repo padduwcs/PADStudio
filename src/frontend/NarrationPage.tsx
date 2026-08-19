@@ -225,7 +225,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
     setMessage('');
     try {
       const status = await codex.verify();
-      const selection = codex.getGenerationSelection('outline');
+      const selection = codex.getGenerationSelection('pronunciation');
       if (status?.state !== 'connected' || !selection) {
         setState('ready');
         setMessage('Hãy kết nối Codex và chọn model/reasoning trước khi rà soát.');
@@ -361,7 +361,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
           <RuleList title="Dùng chung" rules={libraryRules} onEdit={rule => setDraft({id: rule.id, scope: 'library', source: rule.source, spoken: rule.spoken})} onRemove={rule => void removeRule(rule)} />
         </aside>
       </div>
-      <details className="pronunciation-codex"><summary>Thiết lập AI rà soát</summary><CodexConnectionCard connection={codex} task="outline" /></details>
+      <details className="pronunciation-codex"><summary>Thiết lập AI rà soát</summary><CodexConnectionCard connection={codex} task="pronunciation" /></details>
     </main>
   );
 }

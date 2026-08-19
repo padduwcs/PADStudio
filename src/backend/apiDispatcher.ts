@@ -39,6 +39,7 @@ export function createApiRequestHandler(context: AppContext) {
     narrationDraftGenerator,
     narrationPlanGenerations,
     narrationVisualPlanner,
+    pronunciationAuditGenerations,
     pronunciationAuditService,
     pronunciationRuleStore,
     repository,
@@ -115,7 +116,9 @@ export function createApiRequestHandler(context: AppContext) {
     createNarrationRouteHandler({
       repository,
       pronunciationAuditService,
+      pronunciationAuditGenerations,
       pronunciationRuleStore,
+      generateOnce,
     }),
     createProductionRouteHandler({
       repository,

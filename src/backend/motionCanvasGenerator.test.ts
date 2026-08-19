@@ -352,15 +352,102 @@ test('Motion Canvas tự sinh lại scene tụt richness và chỉ nhận bản 
   });
   const generated = await generator.generate(request);
 
+  // Section 2 comes back structurally poor (turn 2); the default bounded
+  // retry spends exactly one extra turn regenerating it, and since the
+  // regeneration is genuinely richer, it replaces the original scene.
   assert.equal(
     client.calls.filter((call) => call.method === 'turn/start').length,
-    2,
+    3,
   );
   assert.equal(generated.scenes.length, 2);
+  assert.match(generated.scenes[1]!.source, /pivot-marker/);
+  assert.equal(generated.qualityRetryDiagnostics?.length, 1);
+  assert.equal(generated.qualityRetryDiagnostics?.[0]?.outcome, 'passed');
+  assert.equal(generated.qualityRetryDiagnostics?.[0]?.stage, 'quality-retry');
   const firstPrompt = JSON.stringify(client.calls.find(call => call.method === 'turn/start')?.params);
   assert.match(firstPrompt, /visualBible/);
   assert.match(firstPrompt, /visualPurpose/);
   assert.match(firstPrompt, /stateHandoff/);
+});
+
+test('Motion Canvas quality retry giữ scene gốc khi bản sinh lại không tốt hơn thực sự', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-quality-gate-no-improve-'),
+  );
+  context.after(() =>
+    rm(runtimeDirectory, {recursive: true, force: true}),
+  );
+  const client = new FakeCodexClient(
+    false,
+    undefined,
+    false,
+    // Turn 1 (section 1) is rich, establishing a high baseline. Turn 2
+    // (section 2) is poor and gets flagged for retry. Turn 3 (the retry
+    // itself) is poor again, so the regeneration must not replace the
+    // original scene.
+    (turnNumber, beatIds) =>
+      turnNumber === 1 ? richTimedSceneSource(beatIds) : timedSceneSource(beatIds),
+  );
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+    concurrency: 1,
+  });
+  const request = createGenerationRequest();
+  request.voiceVisualPlan.visualBible = {
+    palette: {background: '#10231D', surface: '#173B31', primary: '#51B68E', accent: '#F5C451', text: '#F7FBF8'},
+    typographyScale: {title: 88, label: 42, body: 34},
+    shapeLanguage: 'Rounded cards around a shared anchor.',
+    diagramLanguage: 'A visible relationship diagram for each beat.',
+    motionTempo: 'One purposeful change per beat.',
+    transitionConvention: 'Keep the anchor at each boundary.',
+    visualAnchor: 'The shared search-range anchor.',
+  };
+  request.voiceVisualPlan.sections.forEach(section => {
+    section.stateHandoff = {incoming: 'Keep the anchor.', outgoing: 'Pass the anchor forward.'};
+    section.beats.forEach(beat => { beat.visualPurpose = 'Show the currently relevant search range.'; });
+  });
+  const generated = await generator.generate(request);
+
+  assert.equal(generated.qualityRetryDiagnostics?.length, 1);
+  assert.equal(generated.qualityRetryDiagnostics?.[0]?.outcome, 'skipped');
+  assert.doesNotMatch(generated.scenes[1]!.source, /pivot-marker/);
+});
+
+test('Motion Canvas quality retry tắt hoàn toàn khi qualityRetryLimit = 0', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-quality-gate-disabled-'),
+  );
+  context.after(() =>
+    rm(runtimeDirectory, {recursive: true, force: true}),
+  );
+  const client = new FakeCodexClient(
+    false,
+    undefined,
+    false,
+    (turnNumber, beatIds) =>
+      turnNumber === 2
+        ? timedSceneSource(beatIds)
+        : richTimedSceneSource(beatIds),
+  );
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+    concurrency: 1,
+    qualityRetryLimit: 0,
+  });
+  const request = createGenerationRequest();
+  request.voiceVisualPlan.sections.forEach(section => {
+    section.stateHandoff = {incoming: 'Keep the anchor.', outgoing: 'Pass the anchor forward.'};
+    section.beats.forEach(beat => { beat.visualPurpose = 'Show the currently relevant search range.'; });
+  });
+  const generated = await generator.generate(request);
+
+  assert.equal(
+    client.calls.filter((call) => call.method === 'turn/start').length,
+    2,
+  );
+  assert.equal(generated.qualityRetryDiagnostics, undefined);
 });
 
 class FakeCodexClient implements CodexAppServerClient {

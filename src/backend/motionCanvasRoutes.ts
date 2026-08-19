@@ -199,6 +199,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
           };
           let generated =
             await motionCanvasGenerator.generate(generationRequest);
+          const qualityRetryDiagnostics = generated.qualityRetryDiagnostics ?? [];
           let prepared: PreparedMotionCanvasWorkspace | null = null;
           let repairAttempts = 0;
           let fallbackAttempted = false;
@@ -267,6 +268,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
             }
           }
           generationDiagnostics.push({stage: 'generate', attempt: 0, reason: 'Source attachment/container/timing policy and workspace/compiler preparation passed.', outcome: 'passed'});
+          generationDiagnostics.push(...qualityRetryDiagnostics);
           return {generated, prepared, generationDiagnostics};
         },
       );

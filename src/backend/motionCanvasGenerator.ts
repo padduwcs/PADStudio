@@ -5,6 +5,7 @@ import ts from 'typescript';
 import {z} from 'zod';
 import type {
   CodexTokenUsage,
+  MotionCanvasBundle,
   MotionCanvasScene,
   TeachingOutline,
   TopicInput,
@@ -100,6 +101,8 @@ export interface MotionCanvasGenerationResult {
   scenes: MotionCanvasSourceScene[];
   model: string;
   usage: CodexTokenUsage | null;
+  /** Bounded audit trail for the richness-triggered quality retry, if any ran. */
+  qualityRetryDiagnostics?: NonNullable<MotionCanvasBundle['generationDiagnostics']>;
 }
 
 export interface MotionCanvasGenerator {
@@ -1554,9 +1557,20 @@ export function createCodexMotionCanvasGenerator(
     1,
     Math.min(4, Math.floor(options.concurrency ?? 2)),
   );
-  // Structural richness is telemetry only. It is not actionable evidence that
-  // a semantic blueprint failed, so it must never spend an extra AI turn.
-  const qualityRetryLimit = 0;
+  // Structural richness is telemetry, not proof that a semantic blueprint
+  // failed, so it may trigger at most a couple of bounded regeneration turns
+  // per batch — never an approval signal, never unbounded AI spend.
+  const qualityRetryLimit = Math.max(
+    0,
+    Math.min(
+      2,
+      Math.floor(
+        Number.isFinite(options.qualityRetryLimit)
+          ? options.qualityRetryLimit!
+          : 1,
+      ),
+    ),
+  );
   const sceneGenerations = new Map<
     string,
     {
@@ -2201,6 +2215,7 @@ export function createCodexMotionCanvasGenerator(
         }
       }
 
+      const qualityRetryDiagnostics: NonNullable<MotionCanvasBundle['generationDiagnostics']> = [];
       for (const resultIndex of qualityRetryIndexes.slice(
         0,
         qualityRetryLimit,
@@ -2208,6 +2223,7 @@ export function createCodexMotionCanvasGenerator(
         const sectionIndex = sectionIndexes[resultIndex]!;
         const initialResult = results[resultIndex]!;
         const initialAssessment = assessments[resultIndex]!;
+        const sceneName = initialResult.scene.name.slice(0, 80);
         const diagnostics = [
           'QUALITY_GATE: Scene hợp lệ nhưng độ hoàn thiện thị giác thấp hơn chuẩn của batch.',
           `Điểm cấu trúc ${initialAssessment.score}/100; richness/beat ${initialAssessment.richnessPerBeat.toFixed(1)}.`,
@@ -2251,10 +2267,22 @@ export function createCodexMotionCanvasGenerator(
               promise: Promise.resolve(results[resultIndex]!),
             });
           }
-        } catch {
+          qualityRetryDiagnostics.push({
+            stage: 'quality-retry',
+            attempt: 1,
+            reason: `Scene "${sceneName}": điểm ${initialAssessment.score}→${regeneratedAssessment.score}, richness/beat ${initialAssessment.richnessPerBeat.toFixed(1)}→${regeneratedAssessment.richnessPerBeat.toFixed(1)}.`.slice(0, 4_000),
+            outcome: improved ? 'passed' : 'skipped',
+          });
+        } catch (error) {
           // The original scene already passed the strict source/timing gates.
           // A best-effort visual retry must never turn a valid batch into a
           // failed generation.
+          qualityRetryDiagnostics.push({
+            stage: 'quality-retry',
+            attempt: 1,
+            reason: `Scene "${sceneName}": regenerate thất bại, giữ bản gốc. ${error instanceof Error ? error.message : 'Unknown error.'}`.slice(0, 4_000),
+            outcome: 'failed',
+          });
         }
       }
 
@@ -2265,6 +2293,7 @@ export function createCodexMotionCanvasGenerator(
         scenes: results.map((result) => result.scene),
         model: models.join(', ').slice(0, 160),
         usage: aggregateUsage(results),
+        ...(qualityRetryDiagnostics.length ? {qualityRetryDiagnostics} : {}),
       };
     },
     async repair(request, generated, compilerDiagnostics) {

@@ -12,6 +12,7 @@ import {
   FinalRenderBundleSchema,
   FinalRenderJobReportSchema,
   FinalRenderJobStatusSchema,
+  FinalRenderProgressMarkerSchema,
 } from '../shared/render.ts';
 
 test('ước tính frame giữ quy ước endpoint của Motion Canvas', () => {
@@ -349,4 +350,126 @@ test('khôi phục status terminal từ report sau khi service khởi động l�
 
   assert.deepEqual(await service.getStatus(projectId, generationId), report.status);
   assert.deepEqual(await service.getStatus(projectId), report.status);
+});
+
+test('render dang dở khi backend khởi động lại được nhận diện là bị gián đoạn, không phải mất tích', async context => {
+  const projectsDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-render-progress-test-'),
+  );
+  context.after(() => rm(projectsDirectory, {recursive: true, force: true}));
+  const projectId = 'diagnostic-project';
+  const generationId = '20000000-0000-4000-8000-000000000003';
+  const jobsDirectory = path.join(
+    projectsDirectory,
+    projectId,
+    'renders',
+    'jobs',
+  );
+  await mkdir(jobsDirectory, {recursive: true});
+  // A checkpoint left behind by a render whose process was killed mid-way —
+  // no terminal report was ever written for it (that only happens in the
+  // .then/.catch handlers, which a hard kill never reaches).
+  const marker = FinalRenderProgressMarkerSchema.parse({
+    version: 1,
+    generationId,
+    projectId,
+    sourceLayoutContentRevision: 1,
+    sourceLayoutGenerationId: '10000000-0000-4000-8000-000000000001',
+    sourceLayoutSourceHash: 'a'.repeat(64),
+    renderedFrames: 180,
+    totalFrames: 600,
+    startedAt: '2026-07-22T00:00:00.000Z',
+    updatedAt: '2026-07-22T00:02:00.000Z',
+    pid: 4242,
+  });
+  await writeFile(
+    path.join(jobsDirectory, `${generationId}.progress.json`),
+    JSON.stringify(marker),
+    'utf8',
+  );
+
+  const service = createFinalRenderService(projectsDirectory, {
+    logger: {info() {}, error() {}},
+  });
+  context.after(() => service.close());
+
+  const byId = await service.getStatus(projectId, generationId);
+  assert.equal(byId?.state, 'failed');
+  assert.equal(byId?.errorCode, 'FINAL_RENDER_INTERRUPTED');
+  assert.equal(byId?.renderedFrames, 180);
+  assert.equal(byId?.totalFrames, 600);
+  assert.match(byId?.message ?? '', /gián đoạn/u);
+
+  const latest = await service.getStatus(projectId);
+  assert.deepEqual(latest, byId);
+
+  // Nothing was verified or committed, so this must never be readable as a
+  // usable render.
+  assert.equal(await service.getCompletedBundle(projectId, generationId), null);
+});
+
+test('render hoàn tất sau đó luôn thắng một checkpoint gián đoạn cũ hơn của cùng project', async context => {
+  const projectsDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-render-progress-precedence-test-'),
+  );
+  context.after(() => rm(projectsDirectory, {recursive: true, force: true}));
+  const projectId = 'diagnostic-project';
+  const staleGenerationId = '20000000-0000-4000-8000-000000000004';
+  const completedGenerationId = '20000000-0000-4000-8000-000000000005';
+  const jobsDirectory = path.join(
+    projectsDirectory,
+    projectId,
+    'renders',
+    'jobs',
+  );
+  await mkdir(jobsDirectory, {recursive: true});
+  const staleMarker = FinalRenderProgressMarkerSchema.parse({
+    version: 1,
+    generationId: staleGenerationId,
+    projectId,
+    sourceLayoutContentRevision: 1,
+    sourceLayoutGenerationId: '10000000-0000-4000-8000-000000000001',
+    sourceLayoutSourceHash: 'a'.repeat(64),
+    renderedFrames: 30,
+    totalFrames: 300,
+    startedAt: '2026-07-22T00:00:00.000Z',
+    updatedAt: '2026-07-22T00:00:30.000Z',
+    pid: 4242,
+  });
+  await writeFile(
+    path.join(jobsDirectory, `${staleGenerationId}.progress.json`),
+    JSON.stringify(staleMarker),
+    'utf8',
+  );
+  const completedReport = FinalRenderJobReportSchema.parse({
+    version: 1,
+    projectId,
+    sourceLayoutContentRevision: 1,
+    sourceLayoutGenerationId: '10000000-0000-4000-8000-000000000001',
+    sourceLayoutSourceHash: 'a'.repeat(64),
+    status: {
+      generationId: completedGenerationId,
+      state: 'completed',
+      progress: 1,
+      renderedFrames: 300,
+      totalFrames: 300,
+      startedAt: '2026-07-22T01:00:00.000Z',
+      updatedAt: '2026-07-22T01:05:00.000Z',
+      message: 'Video cuối đã sẵn sàng.',
+      errorCode: null,
+      diagnostic: null,
+    },
+  });
+  await writeFile(
+    path.join(jobsDirectory, `${completedGenerationId}.json`),
+    JSON.stringify(completedReport),
+    'utf8',
+  );
+
+  const service = createFinalRenderService(projectsDirectory, {
+    logger: {info() {}, error() {}},
+  });
+  context.after(() => service.close());
+
+  assert.deepEqual(await service.getStatus(projectId), completedReport.status);
 });

@@ -24,10 +24,12 @@ import {
   FinalRenderBundleSchema,
   FinalRenderJobReportSchema,
   FinalRenderJobStatusSchema,
+  FinalRenderProgressMarkerSchema,
   finalRenderTimingToleranceSeconds,
   type FinalRenderDiagnostic,
   type FinalRenderBundle,
   type FinalRenderJobStatus,
+  type FinalRenderProgressMarker,
   type RenderWatermark,
 } from '../shared/render.ts';
 import type {
@@ -883,24 +885,54 @@ export function createFinalRenderService(
     }
   }
 
+  function interruptedStatusFromMarker(
+    marker: FinalRenderProgressMarker,
+  ): FinalRenderJobStatus {
+    return FinalRenderJobStatusSchema.parse({
+      generationId: marker.generationId,
+      state: 'failed',
+      progress: marker.totalFrames > 0
+        ? Math.min(0.99, marker.renderedFrames / marker.totalFrames)
+        : 0,
+      renderedFrames: marker.renderedFrames,
+      totalFrames: marker.totalFrames,
+      startedAt: marker.startedAt,
+      updatedAt: marker.updatedAt,
+      message: `Render bị gián đoạn khi máy chủ khởi động lại (đã dựng ${marker.renderedFrames.toLocaleString('vi-VN')}/${marker.totalFrames.toLocaleString('vi-VN')} frame). Hãy render lại.`,
+      errorCode: 'FINAL_RENDER_INTERRUPTED',
+      diagnostic: null,
+    });
+  }
+
   async function readPersistedStatus(
     projectId: string,
     generationId?: string,
   ) {
     if (generationId) {
-      return (await readPersistedReport(projectId, generationId))?.status ?? null;
+      const report = await readPersistedReport(projectId, generationId);
+      if (report) return report.status;
+      const marker = await readProgressMarker(projectId, generationId);
+      return marker ? interruptedStatusFromMarker(marker) : null;
     }
     const jobsDirectory = await resolveJobReportsDirectory(projectId, false);
     if (!jobsDirectory) return null;
-    const fileNames = (await readdir(jobsDirectory))
+    const allFileNames = await readdir(jobsDirectory);
+    const reportFileNames = allFileNames
       .filter(fileName =>
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.json$/iu.test(
           fileName,
         ),
       )
       .slice(0, 1_000);
+    const progressFileNames = allFileNames
+      .filter(fileName =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.progress\.json$/iu.test(
+          fileName,
+        ),
+      )
+      .slice(0, 1_000);
     const reports = await Promise.all(
-      fileNames.map(async fileName => {
+      reportFileNames.map(async fileName => {
         const candidate = path.join(jobsDirectory, fileName);
         if (!isInside(jobsDirectory, candidate)) return null;
         try {
@@ -916,9 +948,103 @@ export function createFinalRenderService(
         }
       }),
     );
-    return reports
+    const interrupted = await Promise.all(
+      progressFileNames.map(async fileName => {
+        const generationIdFromFile = fileName.replace(/\.progress\.json$/u, '');
+        const marker = await readProgressMarker(projectId, generationIdFromFile);
+        return marker ? interruptedStatusFromMarker(marker) : null;
+      }),
+    );
+    return [...reports, ...interrupted]
       .filter((status): status is FinalRenderJobStatus => Boolean(status))
       .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
+  }
+
+  function progressMarkerFileName(generationId: string) {
+    return `${generationId}.progress.json`;
+  }
+
+  // A best-effort restart aid, not part of the render contract: writing it
+  // must never fail an otherwise-valid render, and it is never read as proof
+  // of resumable or completed output.
+  async function persistProgressMarker(
+    projectId: string,
+    layoutBundle: LayoutBundle,
+    generationId: string,
+    renderedFrames: number,
+    totalFrames: number,
+    startedAt: string,
+  ) {
+    try {
+      const marker = FinalRenderProgressMarkerSchema.parse({
+        version: 1,
+        generationId,
+        projectId,
+        sourceLayoutContentRevision: layoutBundle.contentRevision,
+        sourceLayoutGenerationId: layoutBundle.generation.generationId,
+        sourceLayoutSourceHash: layoutBundle.validation.sourceHash,
+        renderedFrames,
+        totalFrames,
+        startedAt,
+        updatedAt: new Date().toISOString(),
+        pid: process.pid,
+      });
+      const jobsDirectory = await resolveJobReportsDirectory(projectId, true);
+      if (!jobsDirectory) return;
+      const target = path.join(jobsDirectory, progressMarkerFileName(generationId));
+      const temporary = path.join(
+        jobsDirectory,
+        `.staging-${generationId}-progress-${randomBytes(6).toString('hex')}.json`,
+      );
+      if (!isInside(jobsDirectory, target) || !isInside(jobsDirectory, temporary)) return;
+      try {
+        await writeFile(temporary, `${JSON.stringify(marker, null, 2)}\n`, 'utf8');
+        await rename(temporary, target);
+      } finally {
+        await rm(temporary, {force: true}).catch(() => undefined);
+      }
+    } catch (error) {
+      logger.error(error);
+    }
+  }
+
+  async function readProgressMarker(
+    projectId: string,
+    generationId: string,
+  ): Promise<FinalRenderProgressMarker | null> {
+    const jobsDirectory = await resolveJobReportsDirectory(projectId, false);
+    if (!jobsDirectory) return null;
+    const candidate = path.join(jobsDirectory, progressMarkerFileName(generationId));
+    if (!isInside(jobsDirectory, candidate)) return null;
+    try {
+      const entry = await stat(candidate);
+      if (!entry.isFile() || entry.size > MAX_JOB_REPORT_BYTES) return null;
+      const parsed = FinalRenderProgressMarkerSchema.safeParse(
+        JSON.parse(await readFile(candidate, 'utf8')),
+      );
+      if (
+        !parsed.success ||
+        parsed.data.projectId !== projectId ||
+        parsed.data.generationId !== generationId
+      ) {
+        return null;
+      }
+      return parsed.data;
+    } catch {
+      return null;
+    }
+  }
+
+  async function clearProgressMarker(projectId: string, generationId: string) {
+    try {
+      const jobsDirectory = await resolveJobReportsDirectory(projectId, false);
+      if (!jobsDirectory) return;
+      const candidate = path.join(jobsDirectory, progressMarkerFileName(generationId));
+      if (!isInside(jobsDirectory, candidate)) return;
+      await rm(candidate, {force: true});
+    } catch (error) {
+      logger.error(error);
+    }
   }
 
   async function loadRuntime(): Promise<RenderRuntime> {
@@ -1128,10 +1254,11 @@ export function createFinalRenderService(
         'Không tìm thấy Chrome hoặc Edge để chạy Motion Canvas headless.',
       );
     }
+    const renderStartedAt = new Date().toISOString();
     updateStatus(projectId, generationId, {
       state: 'preparing',
       progress: 0.01,
-      startedAt: new Date().toISOString(),
+      startedAt: renderStartedAt,
       message: 'Đang xác minh Layout và chuẩn bị bộ dựng…',
     });
 
@@ -1666,6 +1793,14 @@ export function createFinalRenderService(
             `Motion Canvas không xuất frame cho segment bắt đầu tại ${segmentStartFrame}.`,
           );
         }
+        await persistProgressMarker(
+          projectId,
+          layoutBundle,
+          generationId,
+          framesReceived,
+          estimatedTotalFrames,
+          renderStartedAt,
+        );
         if (framesReceived < segmentEndFrame + 1) {
           break;
         }
@@ -1800,6 +1935,7 @@ export function createFinalRenderService(
       throw renderError;
     } finally {
       activeStoppers.delete(stopActiveRender);
+      await clearProgressMarker(projectId, generationId);
       if (browser) await terminateChildProcess(browser).catch(() => undefined);
       if (ffmpeg) {
         ffmpeg.stdin?.destroy();

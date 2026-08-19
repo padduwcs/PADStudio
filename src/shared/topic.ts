@@ -166,41 +166,6 @@ export const TopicInputSchema = z
 
 export type TopicInput = z.infer<typeof TopicInputSchema>;
 
-export const TopicGuidanceSuggestionSchema = z
-  .object({
-    learningGoal: z
-      .string()
-      .trim()
-      .min(6, 'Mục tiêu học do AI đề xuất cần rõ nghĩa hơn.'),
-    videoDirection: z
-      .string()
-      .trim()
-      .min(12, 'Định hướng video do AI đề xuất cần rõ nghĩa hơn.'),
-    suggestedAngles: z
-      .array(z.string().trim().min(3))
-      .min(1)
-      .max(8),
-  })
-  .strict();
-
-export type TopicGuidanceSuggestion = z.infer<
-  typeof TopicGuidanceSuggestionSchema
->;
-
-export interface TopicGuidanceGenerationResponse {
-  suggestion: TopicGuidanceSuggestion;
-  generation: {
-    generationId: string;
-    provider: 'codex';
-    model: string;
-    requestedModel?: string;
-    reasoningEffort?: string;
-    promptVersion: string;
-    generatedAt: string;
-    usage: CodexTokenUsage | null;
-  };
-}
-
 export const AiVideoBriefSchema = z
   .object({
     summary: z
@@ -600,7 +565,7 @@ export const MotionCanvasBundleSchema = z
     technicalReadyAt: z.string().datetime().nullable().optional(),
     /** Bounded, actionable generation diagnostics; never used as an approval signal. */
     generationDiagnostics: z.array(z.object({
-      stage: z.enum(['generate', 'repair', 'fallback', 'coherence']),
+      stage: z.enum(['generate', 'repair', 'fallback', 'coherence', 'quality-retry']),
       attempt: z.number().int().nonnegative(),
       reason: z.string().trim().min(3).max(4_000),
       outcome: z.enum(['passed', 'failed', 'used_fallback', 'skipped']),

@@ -10,6 +10,7 @@ import {
   type VideoFrame,
 } from '../shared/videoFormat.ts';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
+import {estimateNarrationSeconds} from '../shared/narrationTiming.ts';
 import {textEncodingIssue} from '../shared/vietnameseSpeech.ts';
 import {
   ApiRequestError,
@@ -121,6 +122,15 @@ function sameFrame(left: VideoFrame, right: VideoFrame) {
 
 function isPresetFrame(frame: VideoFrame) {
   return framePresets.some(preset => sameFrame(frame, preset.frame));
+}
+
+function formatEstimatedDuration(seconds: number) {
+  const rounded = Math.round(seconds);
+  const minutes = Math.floor(rounded / 60);
+  const remainingSeconds = rounded % 60;
+  if (minutes === 0) return `${remainingSeconds} giây`;
+  if (remainingSeconds === 0) return `${minutes} phút`;
+  return `${minutes} phút ${remainingSeconds} giây`;
 }
 
 function codexAssistStatus(connection: ReturnType<typeof useCodexConnection>) {
@@ -347,24 +357,6 @@ export function ContentPage({projectId}: {projectId?: string}) {
           <span>Chủ đề</span>
           <textarea autoFocus rows={2} value={form.topic} placeholder="Ví dụ: Vì sao tìm kiếm nhị phân nhanh hơn?" onChange={event => update('topic', event.currentTarget.value)} />
         </section>
-        <section className="content-field">
-          <span>Lời thoại gốc</span>
-          <small>Đây là nội dung bạn muốn nói. Bước tiếp theo chỉ chuẩn hóa cách ElevenLabs đọc nó.</small>
-          <details className="content-narration-assist">
-            <summary><span><strong>Chưa có lời thoại? Tạo nháp bằng AI</strong><small>Tùy chọn — nếu đã chuẩn bị kỹ, chỉ cần dán lời thoại của bạn và bỏ qua phần này.</small></span><em className={codex.status?.state === 'connected' ? 'is-connected' : ''}>{aiConnectionLabel}</em></summary>
-            <label><span>Gợi ý cho AI <small>Không bắt buộc</small></span><textarea rows={3} value={narrationGuidance} disabled={narrationGenerating} placeholder="Ví dụ: giải thích cho người mới, ưu tiên ví dụ đời thường, khoảng ba phút." onChange={event => setNarrationGuidance(event.currentTarget.value)} /></label>
-            <details className="narration-codex-settings">
-              <summary>Thiết lập Codex</summary>
-              <CodexConnectionCard connection={codex} task="narration" />
-            </details>
-            <div className="narration-assist-actions">
-              <button className="secondary-button" type="button" disabled={narrationGenerating || !codex.isTaskReady('narration') || form.topic.trim().length < 6} onClick={() => void createNarrationDraft()}>{narrationGenerating ? 'Đang soạn lời thoại…' : form.narrationSourceText.trim() ? 'Tạo bản nháp thay thế' : 'Để AI soạn lời thoại'}</button>
-            </div>
-            {narrationGenerationError && <p className="field-error" role="alert">{narrationGenerationError}</p>}
-          </details>
-          <textarea className="narration-input" rows={15} value={form.narrationSourceText} placeholder="Dán hoặc viết toàn bộ lời thoại tại đây…" onChange={event => update('narrationSourceText', event.currentTarget.value)} />
-          <em>{form.narrationSourceText.trim().length.toLocaleString('vi-VN')} ký tự</em>
-        </section>
         <div className="content-settings">
           <label className="content-field color-field">
             <span>Background</span>
@@ -382,14 +374,35 @@ export function ContentPage({projectId}: {projectId?: string}) {
             </div>
           </fieldset>
           <fieldset className="content-field duration-field">
-            <legend>Thời lượng lời thoại</legend>
+            <legend>Thời lượng mục tiêu</legend>
             <div className="frame-presets">
               {durationOptions.map(option => <button key={option.value} type="button" className={form.duration === option.value ? 'is-selected' : ''} onClick={() => update('duration', option.value)}>{option.label}</button>)}
             </div>
             {form.duration === 'custom' && <label className="custom-duration-control">Mục tiêu <input type="number" min={pipelineSafetyLimits.minimumCustomDurationMinutes} max={pipelineSafetyLimits.maximumCustomDurationMinutes} step="0.1" value={Number.isFinite(form.targetDurationMinutes) ? form.targetDurationMinutes : ''} onChange={event => update('targetDurationMinutes', event.currentTarget.valueAsNumber)} /> phút <small>Mục tiêu linh hoạt ±15% để lời thoại tự nhiên.</small></label>}
-            <small>AI dùng thời lượng này để điều chỉnh độ dài và nhịp của bản nháp.</small>
+            <small>Chỉ dùng để định hướng AI soạn lời thoại bên dưới. Nếu bạn tự viết hoặc dán lời thoại, độ dài thật của video sẽ theo đúng nội dung đó, không theo lựa chọn này.</small>
           </fieldset>
         </div>
+        <section className="content-field">
+          <span>Lời thoại gốc</span>
+          <small>Đây là nội dung bạn muốn nói. Bước tiếp theo chỉ chuẩn hóa cách ElevenLabs đọc nó.</small>
+          <details className="content-narration-assist">
+            <summary><span><strong>Chưa có lời thoại? Tạo nháp bằng AI</strong><small>Tùy chọn — nếu đã chuẩn bị kỹ, chỉ cần dán lời thoại của bạn và bỏ qua phần này.</small></span><em className={codex.status?.state === 'connected' ? 'is-connected' : ''}>{aiConnectionLabel}</em></summary>
+            <label><span>Gợi ý cho AI <small>Không bắt buộc</small></span><textarea rows={3} value={narrationGuidance} disabled={narrationGenerating} placeholder="Ví dụ: giải thích cho người mới, ưu tiên ví dụ đời thường, khoảng ba phút." onChange={event => setNarrationGuidance(event.currentTarget.value)} /></label>
+            <details className="narration-codex-settings">
+              <summary>Thiết lập Codex</summary>
+              <CodexConnectionCard connection={codex} task="narration" />
+            </details>
+            <div className="narration-assist-actions">
+              <button className="secondary-button" type="button" disabled={narrationGenerating || !codex.isTaskReady('narration') || form.topic.trim().length < 6} onClick={() => void createNarrationDraft()}>{narrationGenerating ? 'Đang soạn lời thoại…' : form.narrationSourceText.trim() ? 'Tạo bản nháp thay thế' : 'Để AI soạn lời thoại'}</button>
+            </div>
+            {narrationGenerationError && <p className="field-error" role="alert">{narrationGenerationError}</p>}
+          </details>
+          <textarea className="narration-input" rows={15} value={form.narrationSourceText} placeholder="Dán hoặc viết toàn bộ lời thoại tại đây…" onChange={event => update('narrationSourceText', event.currentTarget.value)} />
+          <em>
+            {form.narrationSourceText.trim().length.toLocaleString('vi-VN')} ký tự
+            {form.narrationSourceText.trim() && ` · ước tính video dài ~${formatEstimatedDuration(estimateNarrationSeconds(form.narrationSourceText))}`}
+          </em>
+        </section>
         {error && <p className="submit-error" role="alert">{error}</p>}
         <footer className="content-actions">
           <p>{state === 'saved' ? 'Đã lưu. Bước tiếp theo sẽ là duyệt cách đọc.' : 'Lời thoại được lưu cục bộ trong project của bạn.'}</p>

@@ -35,6 +35,7 @@ const reasoningLabels: Record<string, string> = {
 const taskLabels: Record<CodexGenerationTask, string> = {
   narration: 'lời thoại',
   outline: 'mạch giảng',
+  pronunciation: 'rà soát cách đọc',
   visualPlanner: 'kế hoạch hình ảnh',
   motionCanvas: 'bộ scene Motion Canvas',
 };

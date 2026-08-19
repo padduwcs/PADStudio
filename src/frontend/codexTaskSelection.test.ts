@@ -104,6 +104,35 @@ test('legacy global selection chỉ seed task chưa từng được chọn riên
   assert.equal(seeded.motionCanvas.model, 'legacy-model');
 });
 
+test('pronunciation seed một lần từ lựa chọn outline cũ, không ghi đè khi đã tự chọn', () => {
+  const storage = memoryStorage();
+  saveModel(storage, 'outline', 'outline-model');
+  saveReasoning(storage, 'outline', 'outline-model', 'high');
+
+  // Before this split, pronunciation audit reused the 'outline' slot. A user
+  // upgrading must see their old choice carried over into 'pronunciation'.
+  assert.equal(storedModel(storage, 'pronunciation'), 'outline-model');
+  assert.equal(storedReasoningForModel(storage, 'pronunciation', 'outline-model'), 'high');
+
+  // Once pronunciation saves its own choice, that wins — and no longer
+  // tracks later changes to outline's selection.
+  saveModel(storage, 'pronunciation', 'pronunciation-model');
+  saveReasoning(storage, 'pronunciation', 'pronunciation-model', 'low');
+  saveModel(storage, 'outline', 'a-different-outline-model');
+  assert.equal(storedModel(storage, 'pronunciation'), 'pronunciation-model');
+  assert.equal(storedReasoningForModel(storage, 'pronunciation', 'pronunciation-model'), 'low');
+  assert.equal(storedModel(storage, 'outline'), 'a-different-outline-model');
+});
+
+test('pronunciation không seed từ outline khi outline cũng chưa từng được chọn', () => {
+  const storage = memoryStorage();
+  storage.setItem(LEGACY_MODEL_STORAGE_KEY, 'legacy-model');
+
+  // With neither pronunciation nor outline scoped yet, pronunciation still
+  // falls back to the same pre-task-scoping legacy key as every other task.
+  assert.equal(storedModel(storage, 'pronunciation'), 'legacy-model');
+});
+
 test('selectionAfterModelChange bỏ qua model không có trong catalog', () => {
   const storage = memoryStorage();
   const result = selectionAfterModelChange(storage, 'visualPlanner', 'unknown-model', [model()]);

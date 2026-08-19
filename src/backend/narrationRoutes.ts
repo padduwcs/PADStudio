@@ -31,10 +31,10 @@ function narrationReviewSourceHash(sourceText: string, aiPatches: unknown) {retu
 
 import type {ApiRouteHandler} from './routeTypes.ts';
 
-type NarrationRouteContext = Pick<AppContext, 'repository' | 'pronunciationAuditService' | 'pronunciationRuleStore'>;
+type NarrationRouteContext = Pick<AppContext, 'repository' | 'pronunciationAuditService' | 'pronunciationAuditGenerations' | 'pronunciationRuleStore' | 'generateOnce'>;
 
 export function createNarrationRouteHandler(context: NarrationRouteContext): ApiRouteHandler {
-  const {repository, pronunciationAuditService, pronunciationRuleStore} = context;
+  const {repository, pronunciationAuditService, pronunciationAuditGenerations, pronunciationRuleStore, generateOnce} = context;
   return async (request: IncomingMessage, response: ServerResponse, requestUrl: URL) => {
     const narrationRoute = getProjectNarrationRoute(requestUrl.pathname);
 
@@ -150,13 +150,28 @@ export function createNarrationRouteHandler(context: NarrationRouteContext): Api
           'Hãy lưu lời thoại trước khi yêu cầu AI rà soát.',
         );
       }
-      const audit = await pronunciationAuditService.audit({
+      const review = narration.review;
+      const auditGenerationKey = `${currentProject.id}:${parsed.data.generationId}`;
+      const auditFingerprint = JSON.stringify({
         sourceText: narration.sourceText,
-        normalizedText: narration.review.normalizedText,
-        rules: narration.review.rules,
-        model: parsed.data.model,
-        reasoningEffort: parsed.data.reasoningEffort,
+        normalizedText: review.normalizedText,
+        rules: review.rules,
+        model: parsed.data.model ?? null,
+        reasoningEffort: parsed.data.reasoningEffort ?? null,
       });
+      const auditGeneration = await generateOnce(
+        pronunciationAuditGenerations,
+        auditGenerationKey,
+        auditFingerprint,
+        () => pronunciationAuditService.audit({
+          sourceText: narration.sourceText,
+          normalizedText: review.normalizedText,
+          rules: review.rules,
+          model: parsed.data.model,
+          reasoningEffort: parsed.data.reasoningEffort,
+        }),
+      );
+      const audit = auditGeneration.result;
       const nextReview = {
         ...narration.review,
         normalizedText: reviewedPronunciationText(

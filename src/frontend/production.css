@@ -14,6 +14,12 @@
 .production-fields label { display: grid; gap: 6px; color: var(--ink-soft); font-size: 12px; font-weight: 700; }
 .production-fields select { min-height: 40px; border: 1px solid var(--line); border-radius: 9px; padding: 0 10px; background: var(--paper, #fff); color: var(--ink); }
 .production-fields select:focus-visible { outline: 2px solid color-mix(in srgb, var(--orange) 72%, white); outline-offset: 2px; }
+.production-voice-settings { display: grid; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-soft); }
+.production-voice-settings summary { color: var(--ink); font-size: 12px; font-weight: 800; cursor: pointer; }
+.production-voice-settings label { display: grid; gap: 6px; margin-top: 12px; color: var(--ink-soft); font-size: 12px; font-weight: 700; }
+.production-voice-settings label small { color: var(--ink-soft); font-weight: 600; }
+.production-voice-settings input[type="range"] { width: 100%; }
+.production-voice-settings .production-voice-toggle { display: flex; align-items: center; flex-direction: row-reverse; justify-content: flex-end; gap: 8px; }
 .production-selection-note { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface-soft); }
 .production-selection-note span { color: var(--ink-soft); font-size: 12px; font-weight: 700; }
 .production-selection-note.is-changed { border-color: var(--orange); background: var(--orange-soft); }

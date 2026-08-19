@@ -7,6 +7,7 @@ import {
   narrationArtifactsMatchReview,
   planNarrationArtifacts,
 } from './narrationPlan.ts';
+import type {VoiceVisualPlanContent} from '../shared/topic.ts';
 import type {NarrationVisualPlannerService} from './narrationVisualPlanner.ts';
 import {VoiceVisualPlanSchema, type NarrationDocument} from '../shared/topic.ts';
 
@@ -212,4 +213,79 @@ test('legacy VoiceVisualPlan thiếu plannerDiagnostics vẫn parse được', (
   assert.equal('plannerDiagnostics' in voiceVisualPlan, false);
   const parsed = VoiceVisualPlanSchema.safeParse(voiceVisualPlan);
   assert.equal(parsed.success, true);
+});
+
+const historicalCalibration: VoiceVisualPlanContent['timingCalibration'] = {
+  source: 'voice-history',
+  whitespaceTokensPerMinute: 260,
+  charactersPerSecond: 19,
+  voiceId: 'voice-a',
+  modelId: 'model-a',
+  voiceName: 'Voice A',
+  sampleCount: 3,
+};
+
+test('createNarrationArtifacts dùng historical calibration khi được truyền vào thay vì default', () => {
+  const narration = plannerNarration();
+  const withDefault = createNarrationArtifacts({
+    topicInput: plannerTopicInput,
+    narration,
+    generationId: '10000000-0000-4000-8000-000000000006',
+    now: '2026-01-01T00:00:00.000Z',
+    previousPlan: null,
+  });
+  const withHistory = createNarrationArtifacts({
+    topicInput: plannerTopicInput,
+    narration,
+    generationId: '10000000-0000-4000-8000-000000000007',
+    now: '2026-01-01T00:00:00.000Z',
+    previousPlan: null,
+    timingCalibration: historicalCalibration,
+  });
+
+  assert.deepEqual(withHistory.voiceVisualPlan.timingCalibration, historicalCalibration);
+  assert.equal(withDefault.voiceVisualPlan.timingCalibration.source, 'default');
+  // Historical calibration reads faster (higher tokens/characters per
+  // second), so the same narration must plan to a shorter beat duration.
+  const defaultDuration = withDefault.voiceVisualPlan.sections[0]!.beats[0]!.durationSeconds;
+  const historyDuration = withHistory.voiceVisualPlan.sections[0]!.beats[0]!.durationSeconds;
+  assert.ok(historyDuration <= defaultDuration);
+  assert.notDeepEqual(withHistory.voiceVisualPlan.timingCalibration, withDefault.voiceVisualPlan.timingCalibration);
+});
+
+test('planNarrationArtifacts giữ nguyên historical calibration ở cả nhánh AI và fallback', async () => {
+  const narration = plannerNarration();
+  const failingPlanner: NarrationVisualPlannerService = {
+    async plan() { throw new Error('planner unavailable'); },
+  };
+  const fallback = await planNarrationArtifacts({
+    planner: failingPlanner,
+    topicInput: plannerTopicInput,
+    narration,
+    generationId: '10000000-0000-4000-8000-000000000008',
+    now: '2026-01-01T00:00:00.000Z',
+    previousPlan: null,
+    timingCalibration: historicalCalibration,
+  });
+  assert.deepEqual(fallback.voiceVisualPlan.timingCalibration, historicalCalibration);
+
+  const workingPlanner: NarrationVisualPlannerService = {
+    async plan(request) {
+      return {
+        output: validPlannerOutput(request.units.map(unit => unit.id)),
+        model: 'fake-planner-model',
+        usage: null,
+      };
+    },
+  };
+  const aiPlanned = await planNarrationArtifacts({
+    planner: workingPlanner,
+    topicInput: plannerTopicInput,
+    narration,
+    generationId: '10000000-0000-4000-8000-000000000009',
+    now: '2026-01-01T00:00:00.000Z',
+    previousPlan: null,
+    timingCalibration: historicalCalibration,
+  });
+  assert.deepEqual(aiPlanned.voiceVisualPlan.timingCalibration, historicalCalibration);
 });

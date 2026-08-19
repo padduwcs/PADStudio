@@ -24,6 +24,7 @@ export interface StorageLike {
 export const CODEX_TASKS: CodexGenerationTask[] = [
   'narration',
   'outline',
+  'pronunciation',
   'visualPlanner',
   'motionCanvas',
 ];
@@ -33,6 +34,13 @@ export const CODEX_TASKS: CodexGenerationTask[] = [
 // its own yet, and are never written back to.
 export const LEGACY_MODEL_STORAGE_KEY = 'pad-studio:codex-model';
 export const LEGACY_REASONING_STORAGE_KEY = 'pad-studio:codex-reasoning-by-model';
+
+// Pronunciation audit used to share the 'outline' task slot. A user who
+// already picked a model/effort for 'outline' before the split gets it
+// seeded once into 'pronunciation' too, so the split doesn't silently reset
+// their choice. Once 'pronunciation' has its own stored value, this is
+// never consulted again.
+const PRONUNCIATION_LEGACY_SOURCE_TASK: CodexGenerationTask = 'outline';
 
 function taskModelStorageKey(task: CodexGenerationTask) {
   return `${LEGACY_MODEL_STORAGE_KEY}:${task}`;
@@ -65,6 +73,9 @@ export function storedModel(
   try {
     return (
       storage.getItem(taskModelStorageKey(task)) ||
+      (task === 'pronunciation'
+        ? storage.getItem(taskModelStorageKey(PRONUNCIATION_LEGACY_SOURCE_TASK))
+        : '') ||
       storage.getItem(LEGACY_MODEL_STORAGE_KEY) ||
       ''
     );
@@ -81,6 +92,10 @@ export function storedReasoningForModel(
   if (!model) return '';
   const taskMap = readJsonMap(storage, taskReasoningStorageKey(task));
   if (typeof taskMap[model] === 'string') return taskMap[model];
+  if (task === 'pronunciation') {
+    const seedMap = readJsonMap(storage, taskReasoningStorageKey(PRONUNCIATION_LEGACY_SOURCE_TASK));
+    if (typeof seedMap[model] === 'string') return seedMap[model];
+  }
   const legacyMap = readJsonMap(storage, LEGACY_REASONING_STORAGE_KEY);
   return typeof legacyMap[model] === 'string' ? legacyMap[model] : '';
 }

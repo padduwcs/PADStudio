@@ -287,3 +287,30 @@ export const FinalRenderJobReportSchema = z
 export type FinalRenderJobReport = z.infer<
   typeof FinalRenderJobReportSchema
 >;
+
+/**
+ * Lightweight, non-terminal checkpoint written after each rendered browser
+ * segment. It exists only so a restart can recognize an interrupted render
+ * instead of leaving it silently unresolvable — it is never treated as a
+ * completed or resumable artifact, and never substitutes for
+ * FinalRenderJobReportSchema's ffprobe-validated bundle.
+ */
+export const FinalRenderProgressMarkerSchema = z
+  .object({
+    version: z.literal(1),
+    generationId: CreationIdSchema,
+    projectId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,100}$/),
+    sourceLayoutContentRevision: z.number().int().positive(),
+    sourceLayoutGenerationId: CreationIdSchema,
+    sourceLayoutSourceHash: Sha256Schema,
+    renderedFrames: z.number().int().nonnegative(),
+    totalFrames: z.number().int().positive(),
+    startedAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+    pid: z.number().int().positive(),
+  })
+  .strict();
+
+export type FinalRenderProgressMarker = z.infer<
+  typeof FinalRenderProgressMarkerSchema
+>;
