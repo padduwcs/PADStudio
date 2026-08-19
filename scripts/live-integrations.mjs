@@ -1,18 +1,19 @@
 import {existsSync} from 'node:fs';
 import {loadEnvFile} from 'node:process';
 import {fileURLToPath} from 'node:url';
+import {randomUUID} from 'node:crypto';
 import {
   createCodexConnectionService,
   StdioCodexAppServerClient,
 } from '../src/backend/codexConnection.ts';
 import {createElevenLabsConnectionService} from '../src/backend/elevenLabsConnection.ts';
 import {createElevenLabsVoiceService} from '../src/backend/elevenLabsVoiceService.ts';
-import {createCodexOutlineGenerator} from '../src/backend/outlineGenerator.ts';
-import {createCodexOutlineRevisionService} from '../src/backend/outlineRevisionService.ts';
-import {createCodexVoiceVisualRevisionService} from '../src/backend/voiceVisualRevisionService.ts';
+import {createCodexNarrationDraftGenerator} from '../src/backend/narrationDraftGenerator.ts';
+import {createCodexNarrationVisualPlanner} from '../src/backend/narrationVisualPlanner.ts';
 import {createCodexMotionCanvasGenerator} from '../src/backend/motionCanvasGenerator.ts';
 import {createCodexMotionCanvasRevisionReviewService} from '../src/backend/motionCanvasRevisionReview.ts';
 import {createDefaultCredentialStore} from '../src/backend/credentialStore.ts';
+import {defaultVideoFrame} from '../src/shared/videoFormat.ts';
 
 const envFile = fileURLToPath(new URL('../.env', import.meta.url));
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -22,12 +23,8 @@ const elevenLabsApiKey = async () =>
   (await credentialStore.get('elevenlabs')) ?? process.env.ELEVENLABS_API_KEY;
 
 const allowCodex = process.argv.includes('--allow-codex');
-const allowCodexRevision = process.argv.includes('--allow-codex-revision');
-const allowCodexVoiceVisualRevision = process.argv.includes(
-  '--allow-codex-voice-visual-revision',
-);
-const allowCodexVoiceVisualReview = process.argv.includes(
-  '--allow-codex-voice-visual-review',
+const allowCodexVisualPlanner = process.argv.includes(
+  '--allow-codex-visual-planner',
 );
 const allowCodexMotionRevision = process.argv.includes(
   '--allow-codex-motion-revision',
@@ -46,22 +43,26 @@ if (helpRequested) {
 Usage:
   npm run smoke:live
   npm run smoke:live -- --allow-codex
-  npm run smoke:live -- --allow-codex-revision
-  npm run smoke:live -- --allow-codex-voice-visual-revision
-  npm run smoke:live -- --allow-codex-voice-visual-review
+  npm run smoke:live -- --allow-codex-visual-planner
   npm run smoke:live -- --allow-codex-motion-revision
   npm run smoke:live -- --allow-elevenlabs
 
 Without an allow flag, the script only verifies Codex and ElevenLabs.
---allow-codex runs one concise outline through the production Codex path.
---allow-codex-revision runs the two-pass scoped editor and coherence reviewer.
---allow-codex-voice-visual-revision runs the scoped beat editor/reviewer.
---allow-codex-voice-visual-review reviews the current plan without editing it.
+--allow-codex runs one concise narration draft through the production Codex
+path (createCodexNarrationDraftGenerator).
+--allow-codex-visual-planner runs the AI visual planner over a fixed set of
+reviewed narration units (createCodexNarrationVisualPlanner) and checks that
+every unit is covered, in order, exactly once.
 --allow-codex-motion-revision regenerates one selected scene and reviews the
 merged two-scene sequence.
 --allow-elevenlabs creates one short ElevenLabs TTS sample. These flags are
 separate so a Codex smoke test can never spend ElevenLabs credits accidentally.
-Credentials and generated audio are never printed or written to the repository.`);
+Credentials and generated audio are never printed or written to the repository.
+
+Outline and voice-visual-plan revision are no longer separate AI services:
+the current pipeline generates a narration draft, the user edits it directly,
+then the AI visual planner plans over the approved text once. There is no
+scoped-revision Codex path left to smoke-test for either stage.`);
   process.exit(0);
 }
 
@@ -119,6 +120,7 @@ function scopedStageFixture() {
     learningGoal: 'Hiểu trực giác chia đôi vùng tìm kiếm.',
     videoDirection: 'Smoke test ngắn, ưu tiên hình khối thay vì caption.',
     background: {mode: 'dark', color: '#10231D'},
+    videoFrame: defaultVideoFrame,
     audience: 'beginner',
     duration: 'concise',
   };
@@ -287,9 +289,7 @@ try {
 
   if (
     !allowCodex &&
-    !allowCodexRevision &&
-    !allowCodexVoiceVisualRevision &&
-    !allowCodexVoiceVisualReview &&
+    !allowCodexVisualPlanner &&
     !allowCodexMotionRevision &&
     !allowElevenLabs
   ) {
@@ -299,161 +299,68 @@ try {
   }
 
   if (allowCodex) {
-    const outline = await createCodexOutlineGenerator(codexClient).generate({
+    const result = await createCodexNarrationDraftGenerator(
+      codexClient,
+    ).generate({
       topicInput: {
         topic: 'Ngăn xếp hoạt động như thế nào',
         learningGoal: 'Hiểu trực giác vào sau ra trước.',
         videoDirection: 'Một phép thử integration thật ngắn.',
+        background: {mode: 'dark', color: '#10231D'},
+        videoFrame: defaultVideoFrame,
         audience: 'beginner',
         duration: 'concise',
       },
     });
-    if (outline.content.sections.length < 2) {
-      throw new Error('Codex trả về outline không đủ section.');
+    if (result.draft.text.trim().length < 40) {
+      throw new Error('Codex trả về lời thoại quá ngắn.');
     }
     console.info(
-      `Codex structured generation: OK (${outline.model}, ` +
-        `${outline.usage?.totalTokens ?? 'unknown'} tokens)`,
+      `Codex narration draft generation: OK (${result.model}, ` +
+        `${result.usage?.totalTokens ?? 'unknown'} tokens)`,
     );
   }
 
-  if (allowCodexRevision) {
-    const firstSectionId = '11111111-1111-4111-8111-111111111111';
-    const protectedSectionId = '22222222-2222-4222-8222-222222222222';
-    const baseContent = {
-      brief: {
-        summary: 'Video ngắn giúp người mới hiểu trực giác ngăn xếp.',
-        assumptions: ['Người xem đã quen với danh sách đơn giản.'],
-      },
-      centralMessage: 'Ngăn xếp luôn lấy phần tử được đưa vào gần nhất.',
-      sections: [
-        {
-          id: firstSectionId,
-          title: 'Trực giác chồng đĩa',
-          goal: 'Hình dung quy tắc vào sau ra trước.',
-          content: 'Các chiếc đĩa được đặt lần lượt lên trên cùng của chồng.',
-          estimatedSeconds: 40,
-        },
-        {
-          id: protectedSectionId,
-          title: 'Hai thao tác chính',
-          goal: 'Liên hệ trực giác với push và pop.',
-          content: 'Push đặt phần tử lên đỉnh, còn pop lấy đúng phần tử ở đỉnh.',
-          estimatedSeconds: 50,
-        },
-      ],
-    };
-    const revision = await createCodexOutlineRevisionService(codexClient).revise({
-      topicInput: {
-        topic: 'Ngăn xếp hoạt động như thế nào',
-        learningGoal: 'Hiểu trực giác vào sau ra trước.',
-        videoDirection: 'Một phép thử integration thật ngắn.',
-        audience: 'beginner',
-        duration: 'concise',
-      },
-      baseContent,
-      guidance:
-        'Làm ví dụ chồng đĩa ở ý đầu sống động hơn nhưng giữ nguyên luận điểm và phần sau.',
-      scope: {
-        globalFields: [],
-        sections: [{sectionId: firstSectionId, fields: ['content']}],
-      },
-      reasoningEffort: 'low',
-    });
-    if (
-      revision.content.sections[1]?.content !==
-      baseContent.sections[1].content
-    ) {
-      throw new Error('Scoped revision đã thay đổi section được bảo vệ.');
-    }
-    console.info(
-      `Codex scoped revision: OK (${revision.model}, ` +
-        `${(revision.editorUsage?.totalTokens ?? 0) +
-          (revision.reviewerUsage?.totalTokens ?? 0)} tokens, ` +
-        `coherence=${revision.coherence.verdict})`,
-    );
-  }
-
-  if (allowCodexVoiceVisualRevision) {
+  if (allowCodexVisualPlanner) {
     const fixture = scopedStageFixture();
-    const baseContent = {
-      voiceDirection: fixture.voiceVisualPlan.voiceDirection,
-      visualDirection: fixture.voiceVisualPlan.visualDirection,
-      timingCalibration: fixture.voiceVisualPlan.timingCalibration,
-      sections: fixture.voiceVisualPlan.sections,
-    };
-    const targetBeat = fixture.voiceVisualPlan.sections[0].beats[0];
-    const protectedBeat = fixture.voiceVisualPlan.sections[1].beats[0];
-    const revision = await createCodexVoiceVisualRevisionService(
+    const units = fixture.voiceVisualPlan.sections.flatMap((section) =>
+      section.beats.map((beat) => beat.voiceover),
+    ).map((text, index) => ({id: `unit-${index + 1}`, text}));
+    const planned = await createCodexNarrationVisualPlanner(
       codexClient,
-    ).revise({
+    ).plan({
       topicInput: fixture.topicInput,
-      outline: fixture.outline,
-      baseContent,
-      guidance:
-        'Làm mô tả visual của beat đầu trực quan hơn, nhưng giữ nguyên lời kể, timing và mạch nối sang scene sau.',
-      scope: {
-        globalFields: [],
-        beats: [{beatId: targetBeat.id, fields: ['visualDescription']}],
-      },
+      units,
       model: smokeCodexModel,
       reasoningEffort: smokeReasoningEffort,
     });
-    if (
-      revision.content.sections[0].beats[0].id !== targetBeat.id ||
-      revision.content.sections[0].beats[0].voiceover !== targetBeat.voiceover ||
-      revision.content.sections[1].beats[0].visualDescription !==
-        protectedBeat.visualDescription
-    ) {
-      throw new Error('Scoped voice–visual revision đã đổi identity/nội dung được bảo vệ.');
-    }
-    console.info(
-      `Codex scoped voice–visual revision: OK (${revision.model}, ` +
-        `${(revision.editorUsage?.totalTokens ?? 0) +
-          (revision.reviewerUsage?.totalTokens ?? 0)} tokens, ` +
-        `coherence=${revision.coherence.verdict})`,
+    const actualUnitIds = planned.output.scenes.flatMap((scene) =>
+      scene.units.map((unit) => unit.unitId),
     );
-  }
-
-  if (allowCodexVoiceVisualReview) {
-    const fixture = scopedStageFixture();
-    const content = {
-      voiceDirection: fixture.voiceVisualPlan.voiceDirection,
-      visualDirection: fixture.voiceVisualPlan.visualDirection,
-      timingCalibration: fixture.voiceVisualPlan.timingCalibration,
-      sections: fixture.voiceVisualPlan.sections,
-    };
-    const review = await createCodexVoiceVisualRevisionService(
-      codexClient,
-    ).review({
-      target: 'current',
-      topicInput: fixture.topicInput,
-      outline: fixture.outline,
-      content,
-      model: smokeCodexModel,
-      reasoningEffort: smokeReasoningEffort,
-    });
+    const expectedUnitIds = units.map((unit) => unit.id);
     if (
-      review.coherence.verdict === 'needs_scope_expansion' ||
-      review.coherence.issues.some(issue => issue.requiresScopeExpansion)
+      actualUnitIds.length !== expectedUnitIds.length ||
+      actualUnitIds.some((id, index) => id !== expectedUnitIds[index])
     ) {
       throw new Error(
-        'Standalone voice–visual review đã coi bản hiện tại như một edit scope bị khóa.',
+        'AI visual planner đã bỏ sót, lặp lại hoặc đổi thứ tự unit đã duyệt.',
       );
     }
     console.info(
-      `Codex standalone voice–visual review: OK (${review.model}, ` +
-        `${review.usage?.totalTokens ?? 0} tokens, ` +
-        `coherence=${review.coherence.verdict})`,
+      `Codex visual planner: OK (${planned.model}, ` +
+        `${planned.usage?.totalTokens ?? 'unknown'} tokens, ` +
+        `${planned.output.scenes.length} scene)`,
     );
   }
 
   if (allowCodexMotionRevision) {
     const fixture = scopedStageFixture();
+    const smokeProjectId = randomUUID();
     const generator = createCodexMotionCanvasGenerator(codexClient, {
       concurrency: 1,
     });
     const generated = await generator.generate({
+      projectId: smokeProjectId,
       generationId: '99999999-9999-4999-8999-999999999999',
       topicInput: fixture.topicInput,
       outline: fixture.outline,
@@ -498,7 +405,10 @@ try {
           (review.usage?.totalTokens ?? 0)} tokens, ` +
         `coherence=${review.coherence.verdict})`,
     );
-    generator.discardGeneration?.('99999999-9999-4999-8999-999999999999');
+    generator.discardGeneration?.(
+      smokeProjectId,
+      '99999999-9999-4999-8999-999999999999',
+    );
   }
 
   if (allowElevenLabs) {
