@@ -22,7 +22,6 @@ import {
   getMotionCanvasCandidateFiles,
   getMotionCanvasCandidatePreview,
   getMotionCanvasHistory,
-  getMotionCanvasPreview,
   getProject,
   rejectMotionCanvasCandidate,
   restoreMotionCanvasVersion,
@@ -70,11 +69,6 @@ export function useMotionCanvasDraft(projectId: string) {
   >([]);
   const [approving, setApproving] = useState(false);
   const [conflict, setConflict] = useState(false);
-  const [previewState, setPreviewState] = useState<PreviewState>('idle');
-  const [previewUrl, setPreviewUrl] = useState('');
-  const [previewSessionNonce, setPreviewSessionNonce] = useState('');
-  const [previewError, setPreviewError] = useState('');
-  const [previewRetryKey, setPreviewRetryKey] = useState(0);
   const [reloadKey, setReloadKey] = useState(0);
   const projectRef = useRef<TopicProject | null>(null);
   const sessionRef = useRef(0);
@@ -131,10 +125,6 @@ export function useMotionCanvasDraft(projectId: string) {
     setCandidatePreviewError('');
     setCandidateFiles([]);
     setApproving(false);
-    setPreviewState('idle');
-    setPreviewUrl('');
-    setPreviewSessionNonce('');
-    setPreviewError('');
 
     void getProject(projectId)
       .then(async (loadedProject) => {
@@ -332,55 +322,6 @@ export function useMotionCanvasDraft(projectId: string) {
       active = false;
     };
   }, [loadState, project, projectId]);
-
-  const sourceGenerationId =
-    project?.motionCanvasBundle?.generation.generationId ?? '';
-  const sourceIsStale = project ? motionCanvasIsStale(project) : false;
-
-  useEffect(() => {
-    let active = true;
-    if (loadState !== 'ready' || !sourceGenerationId || sourceIsStale) {
-      setPreviewState('idle');
-      setPreviewUrl('');
-      setPreviewSessionNonce('');
-      setPreviewError('');
-      return () => {
-        active = false;
-      };
-    }
-    setPreviewState('loading');
-    setPreviewUrl('');
-    setPreviewSessionNonce('');
-    setPreviewError('');
-    void getMotionCanvasPreview(projectId, sourceGenerationId)
-      .then((preview) => {
-        if (
-          !active ||
-          preview.sourceMotionCanvasGenerationId !== sourceGenerationId
-        ) return;
-        setPreviewUrl(preview.url);
-        setPreviewSessionNonce(preview.sessionNonce);
-        setPreviewState('ready');
-      })
-      .catch((error) => {
-        if (!active) return;
-        setPreviewError(
-          error instanceof ApiRequestError
-            ? error.message
-            : 'Không thể khởi động visual editor cho scene.',
-        );
-        setPreviewState('error');
-      });
-    return () => {
-      active = false;
-    };
-  }, [
-    loadState,
-    previewRetryKey,
-    projectId,
-    sourceGenerationId,
-    sourceIsStale,
-  ]);
 
   const candidateId = candidate?.candidateId ?? '';
   useEffect(() => {
@@ -910,10 +851,6 @@ export function useMotionCanvasDraft(projectId: string) {
     candidateFiles,
     approving,
     conflict,
-    previewState,
-    previewUrl,
-    previewSessionNonce,
-    previewError,
     ready: project ? motionCanvasIsReady(project) : false,
     stale: project ? motionCanvasIsStale(project) : false,
     generate,
@@ -929,7 +866,6 @@ export function useMotionCanvasDraft(projectId: string) {
     },
     approve,
     adoptProject,
-    retryPreview: () => setPreviewRetryKey((current) => current + 1),
     reload: () => setReloadKey((current) => current + 1),
   };
 }

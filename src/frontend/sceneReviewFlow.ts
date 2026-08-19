@@ -4,10 +4,8 @@ import type {
 } from '../shared/topic.ts';
 
 export type SceneReviewPhase =
-  | 'motion-draft'
   | 'motion-stale'
-  | 'sync-required'
-  | 'sync-draft'
+  | 'preparing-sync'
   | 'editing'
   | 'layout-ready';
 
@@ -20,8 +18,8 @@ export interface SceneReviewFlowInput {
 }
 
 /**
- * Keeps the Scene Review UI honest about which artifact is being reviewed.
- * A stale artifact is never offered an action that the backend will reject.
+ * Step 4 has one user review: the edited, narrated scene. Motion and Sync
+ * approvals are technical prerequisites and are prepared automatically.
  */
 export function deriveSceneReviewPhase({
   motion,
@@ -31,12 +29,15 @@ export function deriveSceneReviewPhase({
   layoutReady,
 }: SceneReviewFlowInput): SceneReviewPhase {
   if (!motion) {
-    return 'motion-draft';
+    return 'preparing-sync';
   }
   if (motionStale) return 'motion-stale';
-  if (motion.status !== 'approved') return 'motion-draft';
-  if (!sync || syncStale) return 'sync-required';
-  if (sync.status !== 'approved') return 'sync-draft';
+  if (
+    motion.status !== 'approved' ||
+    !sync ||
+    syncStale ||
+    sync.status !== 'approved'
+  ) return 'preparing-sync';
   return layoutReady ? 'layout-ready' : 'editing';
 }
 
@@ -44,7 +45,7 @@ export function sceneReviewPrimaryAction(phase: SceneReviewPhase) {
   if (phase === 'motion-stale') return 'back-to-production' as const;
   if (phase === 'layout-ready') return 'navigate-to-render' as const;
   if (phase === 'editing') return 'approve-layout-and-continue' as const;
-  return 'approve-motion-and-generate-sync' as const;
+  return 'wait-for-sync' as const;
 }
 
 export interface SceneReviewOperationState {

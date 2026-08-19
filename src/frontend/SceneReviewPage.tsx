@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {RenderWatermarkSchema, type RenderWatermark} from '../shared/render.ts';
 import {
   animationSyncIsStale,
@@ -11,7 +11,6 @@ import {
   generateAnimationSync,
   getProject,
   uploadWatermarkImage,
-  voiceAudioUrl,
   watermarkAssetUrl,
 } from './api.ts';
 import {CodexConnectionCard} from './CodexConnectionCard.tsx';
@@ -74,6 +73,7 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
   const [watermark, setWatermark] = useState<RenderWatermark>({type: 'none'});
   const [watermarkUploading, setWatermarkUploading] = useState(false);
   const [watermarkUploadError, setWatermarkUploadError] = useState('');
+  const synchronizationAttemptRevision = useRef<number | null>(null);
 
   useEffect(() => {
     const existing = motion.project?.layoutBundle?.renderSettings.watermark;
@@ -93,7 +93,7 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
     if (
       (phase === 'editing' || phase === 'layout-ready') &&
       !window.confirm(
-        'Áp dụng candidate sẽ xóa toàn bộ chỉnh sửa Layout hiện có và đưa bản đồng bộ về trạng thái nháp, cần duyệt lại. Tiếp tục?',
+        'Áp dụng candidate sẽ xóa toàn bộ chỉnh sửa Layout hiện có. Scene sẽ được tự đồng bộ lại với giọng đọc trước khi bạn chỉnh tiếp. Tiếp tục?',
       )
     ) {
       return;
@@ -137,7 +137,7 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
     };
   }
 
-  async function approveMotionAndGenerateSync() {
+  async function prepareSyncedEditor() {
     if (sceneReviewOperationIsBusy(operationState())) return;
     setSyncing(true);
     setCompletionMessage('');
@@ -150,9 +150,10 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
         motion.adoptProject(current);
         throw new Error('Scene không còn khớp với nguồn hiện tại. Hãy quay lại bước sản xuất để sinh lại.');
       }
+      motion.adoptProject(current);
       if (current.motionCanvasBundle.status !== 'approved') {
         const approved = await motion.approve();
-        if (!approved) throw new Error('Không thể chốt scene hiện tại.');
+        if (!approved) throw new Error('Không thể chuẩn bị scene hiện tại.');
         current = approved;
       }
       if (!current.voiceBundle) {
@@ -169,13 +170,43 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
         current = await approveAnimationSync(current.id, current.revision);
       }
       motion.adoptProject(current);
-      setCompletionMessage('Bản đồng bộ đã sẵn sàng. Hãy chỉnh hình ngay trên editor bên dưới — có tiếng.');
+      setCompletionMessage('Editor đã sẵn sàng với scene và giọng đọc đồng bộ.');
     } catch (error) {
-      setCompletionMessage(error instanceof Error ? error.message : 'Không thể đồng bộ scene và audio lúc này.');
+      setCompletionMessage(error instanceof Error ? error.message : 'Không thể chuẩn bị editor có tiếng lúc này.');
     } finally {
       setSyncing(false);
     }
   }
+
+  useEffect(() => {
+    const project = motion.project;
+    const sync = project?.animationSyncBundle;
+    const needsPreparation = Boolean(
+      project?.motionCanvasBundle &&
+        !motion.stale &&
+        (project.motionCanvasBundle.status !== 'approved' ||
+          !sync ||
+          sync.status !== 'approved' ||
+          animationSyncIsStale(project)),
+    );
+    if (
+      !needsPreparation ||
+      synchronizationAttemptRevision.current === project?.revision ||
+      sceneReviewOperationIsBusy(operationState())
+    ) return;
+    synchronizationAttemptRevision.current = project!.revision;
+    void prepareSyncedEditor();
+  }, [
+    motion.candidate?.decision,
+    motion.candidateApplying,
+    motion.candidateGenerating,
+    motion.candidateRepairing,
+    motion.historyBusy,
+    motion.project?.revision,
+    motion.stale,
+    projectId,
+    syncing,
+  ]);
 
   if (motion.loadState === 'loading') return <div className="page-state" role="status"><span className="spinner dark" /><strong>Đang mở scene để review…</strong></div>;
   if (!motion.project || motion.loadState === 'error') return <div className="page-state is-error" role="alert"><strong>Không thể mở scene</strong><p>{motion.loadError}</p></div>;
@@ -219,36 +250,26 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
   const sceneOperationBusy = sceneReviewOperationIsBusy(operationState());
   const footerTitle = phase === 'motion-stale'
     ? 'Scene không còn khớp với nguồn hiện tại'
-    : phase === 'motion-draft'
-    ? 'Scene chưa được đồng bộ với audio'
-    : phase === 'sync-required'
-      ? 'Scene đã duyệt nhưng cần tạo bản đồng bộ'
-      : phase === 'sync-draft'
-        ? 'Bản đồng bộ đang ở trạng thái nháp'
+    : phase === 'preparing-sync'
+      ? 'Đang chuẩn bị editor có tiếng'
         : phase === 'editing'
           ? 'Đang chỉnh scene — chưa duyệt bản chỉnh sửa'
           : 'Sẵn sàng xuất video';
   const footerDescription = completionMessage || (
     phase === 'motion-stale'
       ? 'Scene đã stale so với voice–visual source hiện tại. Hãy quay lại bước sản xuất để sinh lại.'
-      : phase === 'motion-draft' || phase === 'sync-required'
-      ? 'Bản xem trước này chỉ có hình; hãy duyệt scene để mở editor có cả tiếng.'
-      : phase === 'sync-draft'
-        ? 'Bản đồng bộ đã tạo nhưng chưa được duyệt. Duyệt bản đồng bộ để mở editor có tiếng và chỉnh được.'
+      : phase === 'preparing-sync'
+        ? 'Scene đang được tự động ghép theo timing giọng đọc trước khi mở editor.'
         : 'Editor bên dưới chạy trên scene đã đồng bộ với giọng đọc thật. Chỉnh xong hãy duyệt để xuất video.'
   );
   const primaryLabel = phase === 'motion-stale'
     ? 'Quay lại bước sản xuất'
-    : phase === 'motion-draft'
-    ? 'Duyệt scene & mở editor có tiếng'
-    : phase === 'sync-required'
-      ? project.animationSyncBundle ? 'Đồng bộ lại' : 'Tạo bản đồng bộ'
-      : phase === 'sync-draft'
-        ? 'Duyệt bản đồng bộ'
+    : phase === 'preparing-sync'
+      ? 'Đang chuẩn bị editor…'
         : phase === 'editing'
           ? 'Duyệt bản chỉnh sửa & tiếp tục'
           : 'Xuất video';
-  const primaryDisabled = sceneOperationBusy || watermarkUploading || !watermarkValid || (phase === 'editing' && (!project.layoutBundle || syncEditor.hasUnsavedChanges));
+  const primaryDisabled = phase === 'preparing-sync' || sceneOperationBusy || watermarkUploading || !watermarkValid || (phase === 'editing' && (!project.layoutBundle || syncEditor.hasUnsavedChanges));
 
   function handlePrimaryAction() {
     const action = sceneReviewPrimaryAction(phase);
@@ -264,7 +285,6 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
       void approveLayoutAndContinue();
       return;
     }
-    void approveMotionAndGenerateSync();
   }
 
   return (
@@ -275,49 +295,24 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
           <div className="eyebrow-line" />
         </div>
         <h1>Chỉnh scene theo giọng đọc</h1>
-        <p>Duyệt scene AI sinh ra, sau đó chỉnh layer, chữ, vị trí và chuyển động ngay trên bản đã đồng bộ — nghe giọng đọc thật trong lúc chỉnh.</p>
+        <p>Chỉnh layer, chữ, vị trí và chuyển động ngay trên scene đã đồng bộ — nghe giọng đọc thật trong lúc chỉnh, rồi duyệt một lần khi hoàn tất.</p>
       </div>
       {motion.actionError && <p className="submit-error" role="alert">{motion.actionError}</p>}
       {syncEditor.saveError && <p className="submit-error" role="alert">Không lưu được chỉnh sửa scene mới nhất: {syncEditor.saveError}</p>}
-      {!showEditor && (phase === 'motion-draft' || phase === 'motion-stale' || phase === 'sync-required' || phase === 'sync-draft') && <p className="scene-review-sync-status" role="status">{phase === 'motion-stale' ? 'Scene không còn khớp với nguồn hiện tại; không thể duyệt hoặc đồng bộ từ bản này.' : phase === 'sync-draft' ? 'Bản đồng bộ đã tạo nhưng chưa được duyệt. Chưa thể chỉnh layout cho đến khi duyệt.' : 'Scene chưa được đồng bộ với audio. Bản xem trước bên dưới chỉ có hình.'}</p>}
+      {!showEditor && (phase === 'preparing-sync' || phase === 'motion-stale') && <p className="scene-review-sync-status" role="status">{phase === 'motion-stale' ? 'Scene không còn khớp với nguồn hiện tại; hãy sinh lại ở bước sản xuất.' : 'Đang tự động chuẩn bị scene với giọng đọc đồng bộ. Editor sẽ mở ngay khi hoàn tất.'}</p>}
       <div className="scene-review-grid">
         <section className="scene-review-card">
           <header><span>Chỉnh bằng AI</span><h2>Chỉ sửa scene bạn chọn</h2></header>
-          <div className="scene-review-list">{bundle.scenes.map((scene, index) => <label key={scene.id}><input type="checkbox" checked={selectedSceneIds.includes(scene.id)} onChange={() => toggle(scene.id)} /><span>{String(index + 1).padStart(2, '0')}</span><strong>{scene.name}</strong><small>{Math.round(scene.durationSeconds)} giây</small></label>)}</div>
-          <textarea rows={4} value={guidance} onChange={event => setGuidance(event.currentTarget.value)} placeholder="Ví dụ: Làm phần minh họa mảng trực quan hơn, giữ palette và nhịp chuyển động hiện có." />
-          <button className="secondary-button" type="button" disabled={motion.candidateGenerating || selectedSceneIds.length === 0 || guidance.trim().length < 3 || !codex.isTaskReady('motionCanvas')} onClick={() => void createCandidate()}>{motion.candidateGenerating ? 'Đang tạo candidate…' : 'Tạo candidate để so sánh'}</button>
+          <div className="scene-review-list">{bundle.scenes.map((scene, index) => <label key={scene.id}><input type="checkbox" disabled={!showEditor} checked={selectedSceneIds.includes(scene.id)} onChange={() => toggle(scene.id)} /><span>{String(index + 1).padStart(2, '0')}</span><strong>{scene.name}</strong><small>{Math.round(scene.durationSeconds)} giây</small></label>)}</div>
+          <textarea rows={4} value={guidance} disabled={!showEditor} onChange={event => setGuidance(event.currentTarget.value)} placeholder="Ví dụ: Làm phần minh họa mảng trực quan hơn, giữ palette và nhịp chuyển động hiện có." />
+          <button className="secondary-button" type="button" disabled={!showEditor || motion.candidateGenerating || selectedSceneIds.length === 0 || guidance.trim().length < 3 || !codex.isTaskReady('motionCanvas')} onClick={() => void createCandidate()}>{motion.candidateGenerating ? 'Đang tạo candidate…' : 'Tạo candidate để so sánh'}</button>
           {motion.candidate && <section className="scene-review-candidate"><strong>Candidate mới</strong><p>{motion.candidate.coherence.summary}</p>{motion.candidatePreviewState === 'ready' && motion.candidatePreviewUrl && <iframe title="Preview candidate scene" src={motion.candidatePreviewUrl} />}{motion.candidate.decision === 'pending' && <div><button type="button" disabled={motion.candidateApplying || motion.candidate.status === 'coherence_blocked' || motion.candidate.status === 'scope_expansion_required'} onClick={() => applyCandidateWithGuard(phase)}>Áp dụng candidate</button><button type="button" disabled={motion.historyBusy} onClick={() => void motion.rejectCandidate()}>Bỏ candidate</button></div>}</section>}
         </section>
-        <aside className="scene-review-side"><CodexConnectionCard connection={codex} task="motionCanvas" workUnits={selectedSceneIds.length || bundle.scenes.length} /><WatermarkSettings watermark={watermark} uploading={watermarkUploading} error={watermarkUploadError} onChange={next => { setWatermarkUploadError(''); setWatermark(next); }} onUpload={uploadWatermark} /><p>{showEditor ? 'Chỉnh trực tiếp màu sắc, chữ, vị trí và chuyển động ở editor bên dưới — thay đổi được tự lưu.' : 'Watermark áp dụng ngay khi editor có tiếng mở ra ở bước tiếp theo.'}</p></aside>
+        <aside className="scene-review-side"><CodexConnectionCard connection={codex} task="motionCanvas" workUnits={selectedSceneIds.length || bundle.scenes.length} /><WatermarkSettings watermark={watermark} uploading={watermarkUploading} error={watermarkUploadError} onChange={next => { setWatermarkUploadError(''); setWatermark(next); }} onUpload={uploadWatermark} /><p>{showEditor ? 'Chỉnh trực tiếp màu sắc, chữ, vị trí và chuyển động ở editor bên dưới — thay đổi được tự lưu.' : 'Watermark sẽ áp dụng khi editor có tiếng sẵn sàng.'}</p></aside>
       </div>
       {showEditor ? (
         <SceneSyncEditor motionCanvas={motion} syncEditor={syncEditor} watermark={watermark} watermarkImageUrl={watermarkImageUrl} />
-      ) : (
-        <section className="scene-review-sync-preview" aria-label="Xem trước scene">
-          <header>
-            <span>Motion Canvas</span>
-            <h2>Xem trước hình (chưa đồng bộ)</h2>
-            <p>Hình chưa được retime khớp giọng đọc — nghe thử giọng đọc gốc bên dưới trong lúc chờ, editor chỉnh được cả hình lẫn tiếng sẽ mở ra sau khi bạn duyệt scene.</p>
-          </header>
-          {motion.previewState === 'loading' && <div className="scene-review-sync-state" role="status"><span className="spinner dark" /><strong>Đang mở bản xem trước…</strong></div>}
-          {motion.previewState === 'error' && <div className="scene-review-sync-state is-error" role="alert"><strong>Không thể mở bản xem trước</strong><p>{motion.previewError}</p><button className="secondary-button" type="button" onClick={motion.retryPreview}>Thử lại</button></div>}
-          {motion.previewState === 'ready' && motion.previewUrl && <div className="scene-review-sync-frame"><iframe title="Xem trước Motion Canvas" src={motion.previewUrl} allow="autoplay; fullscreen" sandbox="allow-scripts allow-same-origin" referrerPolicy="no-referrer" allowFullScreen /></div>}
-          {(() => {
-            const voiceBundle = project.voiceBundle;
-            const firstSection = voiceBundle?.sections[0];
-            if (!voiceBundle || !firstSection) return null;
-            return (
-              <div className="scene-review-voice-preview">
-                <strong>Giọng đọc (chưa retime khớp hình)</strong>
-                <audio
-                  controls
-                  src={voiceAudioUrl(project.id, firstSection.outlineSectionId, voiceBundle.generation.generationId)}
-                />
-              </div>
-            );
-          })()}
-        </section>
-      )}
+      ) : <section className="scene-review-sync-status" aria-live="polite"><span className="spinner dark" /><strong>{phase === 'motion-stale' ? 'Scene cần được sinh lại trước khi mở editor.' : 'Đang mở editor với scene và giọng đọc đồng bộ…'}</strong>{phase === 'preparing-sync' && !syncing && completionMessage && <button className="secondary-button" type="button" onClick={() => { synchronizationAttemptRevision.current = motion.project?.revision ?? null; void prepareSyncedEditor(); }}>Thử lại</button>}</section>}
       <footer className="scene-review-footer"><div><strong>{footerTitle}</strong><p>{footerDescription}</p></div><button className="submit-button" type="button" disabled={primaryDisabled} onClick={handlePrimaryAction}>{syncing ? 'Đang xử lý…' : primaryLabel}</button></footer>
     </main>
   );
