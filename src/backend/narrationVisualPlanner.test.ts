@@ -11,6 +11,7 @@ import {
   assertPlannerOutputHasNoCodeArtifacts,
   createCodexNarrationVisualPlanner,
   NarrationVisualPlannerError,
+  splitPlannerScenesAtBeatLimit,
   validatePlannerCoversUnitsInOrder,
   type NarrationPlannerUnit,
   type NarrationVisualPlannerOutput,
@@ -44,6 +45,12 @@ function validVisualBible() {
 function validUnitBlueprint(unitId: string) {
   return {
     unitId,
+    primaryBlock: 'block-concept-card' as const,
+    visualLifecycle: {
+      enter: ['block-concept-card'],
+      stay: ['block-concept-card', 'concept-label'],
+      exit: ['block-concept-card'],
+    },
     visualPurpose: 'Biến ý chính của câu thành một quan hệ nhìn thấy được.',
     visualDescription: 'Một sơ đồ trung tâm minh họa quan hệ được nhắc tới.',
     animationDescription: 'Phần tử chính di chuyển vào vị trí rồi giữ hình.',
@@ -139,6 +146,8 @@ test('assertPlannerOutputHasNoCodeArtifacts từ chối Markdown fence lẫn tro
         stateHandoffOutgoing: null,
         units: [{
           unitId: 'unit-1',
+          primaryBlock: 'block-concept-card',
+          visualLifecycle: {enter: ['block-concept-card'], stay: ['block-concept-card'], exit: ['block-concept-card']},
           visualPurpose: 'Biến ý chính của câu thành một quan hệ nhìn thấy được.',
           visualDescription: '```tsx\nconst x = 1;\n```',
           animationDescription: 'Phần tử chính di chuyển vào vị trí rồi giữ hình.',
@@ -154,6 +163,16 @@ test('assertPlannerOutputHasNoCodeArtifacts từ chối Markdown fence lẫn tro
       error instanceof NarrationVisualPlannerError &&
       error.code === 'CODEX_NARRATION_PLANNER_INVALID_RESPONSE',
   );
+});
+
+test('planner splits an overlong scene into preferred beat groups without changing unit order', () => {
+  const units = Array.from({length: 9}, (_value, index) => validUnitBlueprint(`unit-${index + 1}`));
+  const scenes = splitPlannerScenesAtBeatLimit([{
+    title: 'Long explanation', goal: 'Keep every narration unit in sequence.',
+    stateHandoffIncoming: null, stateHandoffOutgoing: null, units,
+  }]);
+  assert.deepEqual(scenes.map(scene => scene.units.length), [4, 4, 1]);
+  assert.deepEqual(scenes.flatMap(scene => scene.units.map(unit => unit.unitId)), units.map(unit => unit.unitId));
 });
 
 class FakeCodexClient implements CodexAppServerClient {

@@ -72,6 +72,8 @@ import {
   type MotionCanvasWorkspace,
   type PreparedMotionCanvasWorkspace
 } from './motionCanvasWorkspace.ts';
+import {createMotionCanvasVisualQualityGate, type MotionCanvasVisualQualityGate} from './motionCanvasVisualQuality.ts';
+import {createMotionCanvasRuntimeFrameRenderer} from './motionCanvasRuntimeFrameRenderer.ts';
 import {
   createCodexNarrationDraftGenerator,
   type NarrationDraftGenerationResult,
@@ -126,6 +128,7 @@ export interface AppOptions {
   narrationVisualPlanner?: NarrationVisualPlannerService;
   motionCanvasGenerator?: MotionCanvasGenerator;
   motionCanvasWorkspace?: MotionCanvasWorkspace;
+  motionCanvasVisualQualityGate?: MotionCanvasVisualQualityGate;
   motionCanvasHistoryStore?: MotionCanvasHistoryStore;
   motionCanvasRevisionReviewService?: MotionCanvasRevisionReviewService;
   voiceWorkspace?: VoiceWorkspace;
@@ -206,6 +209,8 @@ export function createAppContext(options: AppOptions = {}) {
   const motionCanvasWorkspace =
     options.motionCanvasWorkspace ??
     createMotionCanvasWorkspace(projectsDirectory);
+  const motionCanvasVisualQualityGate = options.motionCanvasVisualQualityGate ??
+    createMotionCanvasVisualQualityGate(createMotionCanvasRuntimeFrameRenderer());
   const motionCanvasHistoryStore =
     options.motionCanvasHistoryStore ??
     createFileMotionCanvasHistoryStore(projectsDirectory);
@@ -254,11 +259,14 @@ export function createAppContext(options: AppOptions = {}) {
     generated: MotionCanvasGenerationResult;
     prepared: PreparedMotionCanvasWorkspace;
     generationDiagnostics: NonNullable<MotionCanvasBundle['generationDiagnostics']>;
+    visualValidation: NonNullable<MotionCanvasBundle['visualValidation']>;
   }>();
   const motionCanvasCandidateGenerations = createInMemoryGenerationRegistry<{
     generated: MotionCanvasGenerationResult;
     prepared: PreparedMotionCanvasWorkspace;
     review: MotionCanvasRevisionReviewResult;
+    generationDiagnostics: NonNullable<MotionCanvasBundle['generationDiagnostics']>;
+    visualValidation: NonNullable<MotionCanvasBundle['visualValidation']>;
   }>();
   const voiceGenerations = createInMemoryGenerationRegistry<{
     configuration: VoiceBundle['configuration'];
@@ -341,8 +349,7 @@ export function createAppContext(options: AppOptions = {}) {
     }
   }
 
-  return {options, storedElevenLabsApiKey, projectsDirectory, frontendDirectory, repository, credentialStore, sharedCodexClient, codexConnection, elevenLabsConnection, elevenLabsVoiceService, elevenLabsConnectionFactory, narrationDraftGenerator, narrationVisualPlanner, motionCanvasGenerator, motionCanvasWorkspace, motionCanvasHistoryStore, motionCanvasRevisionReviewService, voiceWorkspace, animationSyncWorkspace, layoutWorkspace, layoutPreviewService, watermarkAssetStore, pronunciationRuleStore, pronunciationAuditService, finalRenderService, runtimeDiagnostics, logger, narrationDraftGenerations, narrationPlanGenerations, motionCanvasGenerations, motionCanvasCandidateGenerations, voiceGenerations, voiceSectionGenerations, animationSyncGenerations, pronunciationAuditGenerations, finalRenderCommits, commitFinalRenderBundle, trackFinalRenderCommit, generateOnce};
+  return {options, storedElevenLabsApiKey, projectsDirectory, frontendDirectory, repository, credentialStore, sharedCodexClient, codexConnection, elevenLabsConnection, elevenLabsVoiceService, elevenLabsConnectionFactory, narrationDraftGenerator, narrationVisualPlanner, motionCanvasGenerator, motionCanvasWorkspace, motionCanvasVisualQualityGate, motionCanvasHistoryStore, motionCanvasRevisionReviewService, voiceWorkspace, animationSyncWorkspace, layoutWorkspace, layoutPreviewService, watermarkAssetStore, pronunciationRuleStore, pronunciationAuditService, finalRenderService, runtimeDiagnostics, logger, narrationDraftGenerations, narrationPlanGenerations, motionCanvasGenerations, motionCanvasCandidateGenerations, voiceGenerations, voiceSectionGenerations, animationSyncGenerations, pronunciationAuditGenerations, finalRenderCommits, commitFinalRenderBundle, trackFinalRenderCommit, generateOnce};
 }
 
 export type AppContext = ReturnType<typeof createAppContext>;
-

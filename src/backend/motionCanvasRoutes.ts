@@ -13,8 +13,10 @@ import {
   type MotionCanvasBundle
 } from '../shared/topic.ts';
 import {
-  MOTION_CANVAS_PROMPT_VERSION
+  MOTION_CANVAS_PROMPT_VERSION,
+  mergeMotionCanvasGenerationUsage,
 } from './motionCanvasGenerator.ts';
+import {MotionCanvasVisualQualityError} from './motionCanvasVisualQuality.ts';
 import {
   hashMotionCanvasBundle
 } from './motionCanvasHistoryStore.ts';
@@ -39,10 +41,10 @@ import {assertSameCodexGenerationSelection, outlineContent, projectVideoFrame, v
 import {readExpectedRevision, readJsonBody, requestParentOrigin, sendJson, sendProject, validationFields} from './httpTransport.ts';
 import type {ApiRouteHandler} from './routeTypes.ts';
 
-type MotionCanvasRouteContext = Pick<AppContext, 'repository' | 'motionCanvasGenerator' | 'motionCanvasWorkspace' | 'motionCanvasHistoryStore' | 'motionCanvasGenerations' | 'layoutPreviewService' | 'generateOnce' | 'logger'>;
+type MotionCanvasRouteContext = Pick<AppContext, 'repository' | 'motionCanvasGenerator' | 'motionCanvasWorkspace' | 'motionCanvasVisualQualityGate' | 'motionCanvasHistoryStore' | 'motionCanvasGenerations' | 'layoutPreviewService' | 'generateOnce' | 'logger'>;
 
 export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext): ApiRouteHandler {
-  const {repository, motionCanvasGenerator, motionCanvasWorkspace, motionCanvasHistoryStore, motionCanvasGenerations, layoutPreviewService, generateOnce, logger} = context;
+  const {repository, motionCanvasGenerator, motionCanvasWorkspace, motionCanvasVisualQualityGate, motionCanvasHistoryStore, motionCanvasGenerations, layoutPreviewService, generateOnce, logger} = context;
   return async (request: IncomingMessage, response: ServerResponse, requestUrl: URL) => {
     const motionCanvasRoute = getProjectMotionCanvasRoute(
       requestUrl.pathname,
@@ -192,12 +194,14 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
           };
           let generated =
             await motionCanvasGenerator.generate(generationRequest);
-          const qualityRetryDiagnostics = generated.qualityRetryDiagnostics ?? [];
+          const qualityRetryDiagnostics = [...(generated.qualityRetryDiagnostics ?? [])];
           let prepared: PreparedMotionCanvasWorkspace | null = null;
+          let acceptedWorkspace = false;
           let repairAttempts = 0;
           let fallbackAttempted = false;
           const generationDiagnostics: NonNullable<MotionCanvasBundle['generationDiagnostics']> = [];
-          while (!prepared) {
+          try {
+            while (!prepared) {
             try {
               prepared = await motionCanvasWorkspace.prepare(
                 currentProject.id,
@@ -259,10 +263,55 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
               }
               throw error;
             }
+            }
+            const lifecycleFor = (scenes: typeof generated.scenes) => new Map(
+            scenes.flatMap(scene => {
+              const section = voiceVisualPlan.sections.find(item => item.outlineSectionId === scene.outlineSectionId);
+              return (section?.beats ?? []).map(beat => [beat.id, {stay: beat.visualLifecycle!.stay}] as const);
+            }),
+          );
+            let visualValidation;
+            try {
+              visualValidation = await motionCanvasVisualQualityGate.validate({
+              scenes: generated.scenes,
+              lifecycle: lifecycleFor(generated.scenes),
+              frame: projectVideoFrame(currentProject),
+              backgroundColor: currentProject.topicInput.background.color,
+              workspaceDirectory: prepared.workspaceDirectory,
+              projectFile: prepared.projectFilePath,
+            });
+            } catch (error) {
+              if (!(error instanceof MotionCanvasVisualQualityError)) throw error;
+              const failedSceneIds = [...new Set(error.summary.issues.map(issue => issue.sceneId))];
+              const failedIndexes = generated.scenes.map((scene, index) => failedSceneIds.includes(scene.id) ? index : -1).filter(index => index >= 0);
+              if (failedIndexes.length === 0) throw error;
+              generationDiagnostics.push({stage: 'quality-retry', attempt: 1, reason: error.summary.issues.map(issue => `${issue.sceneId}/${issue.beatId ?? 'scene'}: ${issue.reason}`).join('; ').slice(0, 4_000), outcome: 'failed'});
+              // A visual failure never falls back silently. Regenerate the
+              // affected sections once, then compile and validate the merged
+              // full bundle so its summary and hash cover every stored scene.
+              const sectionIndexes = failedIndexes.map(index => voiceVisualPlan.sections.findIndex(section => section.outlineSectionId === generated.scenes[index]!.outlineSectionId));
+              const repaired = await motionCanvasGenerator.generate({...generationRequest, sectionIndexes, currentScenes: generated.scenes});
+              for (const scene of repaired.scenes) { const index = generated.scenes.findIndex(item => item.outlineSectionId === scene.outlineSectionId); if (index >= 0) generated.scenes[index] = scene; }
+              generated = {
+                ...generated,
+                model: repaired.model,
+                usage: mergeMotionCanvasGenerationUsage(generated.usage, repaired.usage),
+              };
+              qualityRetryDiagnostics.push(...(repaired.qualityRetryDiagnostics ?? []));
+              await motionCanvasWorkspace.discard(currentProject.id, generationId);
+              prepared = await motionCanvasWorkspace.prepare(currentProject.id, generationId, generated.scenes, projectVideoFrame(currentProject));
+              visualValidation = await motionCanvasVisualQualityGate.validate({scenes: generated.scenes, lifecycle: lifecycleFor(generated.scenes), frame: projectVideoFrame(currentProject), backgroundColor: currentProject.topicInput.background.color, workspaceDirectory: prepared.workspaceDirectory, projectFile: prepared.projectFilePath});
+              generationDiagnostics.push({stage: 'quality-retry', attempt: 1, reason: `Re-rendered ${repaired.scenes.length} failed scene(s); the merged ${generated.scenes.length}-scene bundle passed rendered-frame validation.`, outcome: 'passed'});
+            }
+            generationDiagnostics.push({stage: 'generate', attempt: 0, reason: 'Source attachment/container/timing policy, compiler preparation, and rendered-frame quality gate passed.', outcome: 'passed'});
+            generationDiagnostics.push(...qualityRetryDiagnostics);
+            acceptedWorkspace = true;
+            return {generated, prepared, generationDiagnostics, visualValidation};
+          } finally {
+            if (!acceptedWorkspace) {
+              await motionCanvasWorkspace.discard(currentProject.id, generationId).catch(error => logger.error(error));
+            }
           }
-          generationDiagnostics.push({stage: 'generate', attempt: 0, reason: 'Source attachment/container/timing policy and workspace/compiler preparation passed.', outcome: 'passed'});
-          generationDiagnostics.push(...qualityRetryDiagnostics);
-          return {generated, prepared, generationDiagnostics};
         },
       );
       const preparedWorkspace = generation.result.prepared;
@@ -286,6 +335,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
           : {}),
         scenes: preparedWorkspace.scenes,
         validation: preparedWorkspace.validation,
+        visualValidation: generation.result.visualValidation,
         generation: {
           generationId,
           provider: 'codex',
@@ -314,13 +364,20 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
           })
           .catch(error => logger.error(error));
       }
-      const updatedProject = await repository.updateProject(
-        currentProject.id,
-        {motionCanvasBundle},
-        expectedRevision,
-      );
+      let updatedProject;
+      try {
+        updatedProject = await repository.updateProject(
+          currentProject.id,
+          {motionCanvasBundle},
+          expectedRevision,
+        );
+      } catch (error) {
+        await motionCanvasWorkspace.discard(currentProject.id, generationId).catch(cleanupError => logger.error(cleanupError));
+        throw error;
+      }
 
       if (!updatedProject) {
+        await motionCanvasWorkspace.discard(currentProject.id, generationId).catch(error => logger.error(error));
         sendApiError(response, 404, {
           code: 'PROJECT_NOT_FOUND',
           message: 'Không tìm thấy project.',
@@ -519,4 +576,3 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
     return false;
   };
 }
-

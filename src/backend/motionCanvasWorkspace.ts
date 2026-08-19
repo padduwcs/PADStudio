@@ -43,6 +43,8 @@ export interface PreparedMotionCanvasWorkspace {
   projectFile: 'src/project.ts';
   scenes: MotionCanvasScene[];
   validation: MotionCanvasBundle['validation'];
+  workspaceDirectory: string;
+  projectFilePath: string;
 }
 
 export interface MotionCanvasWorkspaceFile {
@@ -74,6 +76,8 @@ export interface MotionCanvasWorkspace {
     projectFile: string;
     sourceHash: string;
   }>;
+  /** Removes only an unaccepted generation so a quality retry can reuse its id. */
+  discard(projectId: string, generationId: string): Promise<void>;
 }
 
 const StoredMotionCanvasManifestSchema = z
@@ -569,6 +573,8 @@ declare type Callback = (...args: any[]) => void;
         return {
           workspacePath,
           projectFile: 'src/project.ts',
+          workspaceDirectory: finalDirectory,
+          projectFilePath: path.join(finalDirectory, 'src/project.ts'),
           scenes: normalizedScenes.map(({source: _source, ...scene}) => scene),
           validation: {
             validatedAt: new Date().toISOString(),
@@ -697,6 +703,17 @@ declare type Callback = (...args: any[]) => void;
         projectFile: path.join(realDirectory, bundle.projectFile),
         sourceHash: computedHash,
       };
+    },
+
+    async discard(projectId, generationId) {
+      assertProjectId(projectId);
+      if (!uuidPattern.test(generationId)) {
+        throw new MotionCanvasWorkspaceError('MOTION_CANVAS_WORKSPACE_INVALID', 'Generation ID không hợp lệ.');
+      }
+      const root = projectDirectory(projectId);
+      const target = path.join(root, 'motion-canvas', 'generations', generationId);
+      if (!isInside(root, target)) throw new MotionCanvasWorkspaceError('MOTION_CANVAS_WORKSPACE_INVALID', 'Workspace Motion Canvas nằm ngoài project.');
+      await rm(target, {recursive: true, force: true});
     },
   };
 }

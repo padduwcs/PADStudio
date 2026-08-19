@@ -95,6 +95,36 @@ npm run build
 npm run validate
 ```
 
+### Visual Planner → Motion Canvas contract
+
+Rendered-frame quality gate runs after the temporary Motion Canvas workspace has
+compiled and before a Motion bundle is published.  For every beat it samples a
+stable-start frame, middle frame, and pre-exit frame.  The gate joins RGBA
+viability metrics with runtime semantic-node geometry: active `block-*` nodes
+must match `lifecycle.stay`, remain in the 8%/7% safe area, avoid clipping and
+large overlap, while deterministically measurable text must be large, visible,
+and sufficiently contrasted.  The persisted summary is source-hash-bound, so a
+changed source is stale rather than silently reusing old evidence.  A failed
+scene gets one isolated regeneration/re-render; a second failure is terminal.
+Node/animation richness is telemetry only and never proves visual quality.
+
+Mỗi scene production có tối đa 5 beat (planner ưu tiên 3–4). Khi planner nhận
+một scene dài, backend tách tại ranh giới narration unit; `unitId` và toàn bộ
+thứ tự lời đọc giữ nguyên. Mỗi beat mới có `primaryBlock` và
+`visualLifecycle.enter/stay/exit`. Generator ghi lifecycle này thành marker
+tĩnh trong TSX để truy vết; validator còn đối chiếu key→ref, animation enter/
+exit đúng ref trong phạm vi statement của beat, timing và layout.
+
+Scene TSX phải lấy `canvasWidth`/`canvasHeight` từ `view`, sử dụng safe margin
+định lượng 8% ngang / 7% dọc theo hệ tọa độ tâm canvas. Validator từ chối
+canvas 1080×1920 hard-code, block rõ ràng ngoài safe area, hoặc lifecycle
+không thực thi. Structural gate này được nối tiếp bởi runtime gate ở trên.
+Runtime renderer dùng project Vite/Motion Canvas hiện hữu với localhost token
+bridge và Chrome/Edge headless; mỗi `sampleId` phải trả cả PNG/RGBA lẫn semantic
+geometry. Workspace browser/Vite tạm được xóa ở cả nhánh thành công và lỗi cuối.
+Main generation, candidate generation/application và history restore đều phải
+có rendered evidence còn current theo source hash trước khi publish artifact.
+
 `npm run validate` cần đầy đủ FFmpeg, FFprobe và browser. Thay đổi workflow phải
 có regression test cho schema, transition và invalidation; thay đổi scene/media
 phải chạy thêm validation Motion/Sync.

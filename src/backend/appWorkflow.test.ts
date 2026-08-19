@@ -90,6 +90,8 @@ function fakeDependencies(root: string) {
             stateHandoffOutgoing: null,
             units: request.units.map(unit => ({
               unitId: unit.id,
+              primaryBlock: 'block-concept-card' as const,
+              visualLifecycle: {enter: ['block-concept-card'], stay: ['block-concept-card', 'concept-label'], exit: ['block-concept-card']},
               visualPurpose: 'Biến ý chính của câu thành một quan hệ nhìn thấy được.',
               visualDescription: 'Một sơ đồ trung tâm minh họa quan hệ được nhắc tới.',
               animationDescription: 'Phần tử chính di chuyển vào vị trí rồi giữ hình.',
@@ -114,6 +116,8 @@ function fakeDependencies(root: string) {
       const result = {
         workspacePath: `motion-canvas/generations/${generationId}`,
         projectFile: 'src/project.ts' as const,
+        workspaceDirectory: root,
+        projectFilePath: path.join(root, 'src/project.ts'),
         scenes: scenes.map(({source: _source, ...scene}) => scene),
         validation: {validatedAt: now, sourceHash: digest(scenes.map(scene => scene.source)), motionCanvasVersion: 'fake-motion'},
       };
@@ -128,6 +132,7 @@ function fakeDependencies(root: string) {
     async verify(_projectId: string, bundle: ReturnType<typeof MotionCanvasBundleSchema.parse>) {
       return {projectDirectory: root, workspaceDirectory: root, projectFile: path.join(root, bundle.projectFile), sourceHash: bundle.validation.sourceHash};
     },
+    async discard() {},
   };
 
   const elevenLabsVoiceService = {
@@ -222,6 +227,7 @@ function fakeDependencies(root: string) {
   };
 
   const motionCanvasRevisionReviewService = {async review() { return {coherence: {verdict: 'coherent' as const, summary: 'Fake review confirms the scoped scene stays coherent.', issues: []}, model: 'fake-codex', usage: null}; }};
+  const motionCanvasVisualQualityGate = {async validate(input: {scenes: Array<{id: string; source: string}>}) { return {version: 1 as const, status: 'passed' as const, validatedAt: now, sourceHash: digest(input.scenes.map(scene => [scene.id, scene.source])), scenes: [], issues: []}; }};
   const finalRenderService = {
     async render(_projectId: string, generationId: string, contentRevision: number, _sync: ReturnType<typeof AnimationSyncBundleSchema.parse>, layout: ReturnType<typeof LayoutBundleSchema.parse>, profile?: {frame: {width: number; height: number; fps: number}}) {
       renderGeneration = generationId;
@@ -234,7 +240,7 @@ function fakeDependencies(root: string) {
     async resolveVideo() { return {filePath: videoPath, size: 8}; },
     async close() {},
   };
-  return {deps: {motionCanvasGenerator, motionCanvasWorkspace, narrationVisualPlanner, elevenLabsVoiceService, voiceWorkspace, animationSyncWorkspace, layoutWorkspace, layoutPreviewService, motionCanvasRevisionReviewService, finalRenderService, logger: {info() {}, error() {}}}, metrics: {ttsCalls: () => ttsCalls, motionCalls: () => motionCalls, nodeFingerprint, motionCanvasRequests, plannerRequests}};
+  return {deps: {motionCanvasGenerator, motionCanvasWorkspace, motionCanvasVisualQualityGate, narrationVisualPlanner, elevenLabsVoiceService, voiceWorkspace, animationSyncWorkspace, layoutWorkspace, layoutPreviewService, motionCanvasRevisionReviewService, finalRenderService, logger: {info() {}, error() {}}}, metrics: {ttsCalls: () => ttsCalls, motionCalls: () => motionCalls, nodeFingerprint, motionCanvasRequests, plannerRequests}};
 }
 
 async function start(t: test.TestContext, overrides: Record<string, unknown> = {}) {

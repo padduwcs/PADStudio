@@ -11,7 +11,7 @@ import {
 } from './codexStructuredGeneration.ts';
 
 export const NARRATION_VISUAL_PLANNER_PROMPT_VERSION =
-  'narration-visual-planner-v1';
+  'narration-visual-planner-v2';
 
 /** One reviewed sentence with a stable ID. The AI planner may only reference
  * this ID; it never receives permission to echo, paraphrase, or invent text. */
@@ -52,8 +52,22 @@ const plannerUnitBlueprintSchema = z
       .trim()
       .min(8, 'Animation description phải rõ ràng.')
       .max(500),
+    visualLifecycle: z.object({
+      enter: z.array(z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/)).min(1).max(12),
+      stay: z.array(z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/)).min(1).max(12),
+      exit: z.array(z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/)).min(1).max(12),
+    }).strict(),
+    primaryBlock: z.string().regex(/^block-[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (!value.visualLifecycle.stay.includes(value.primaryBlock)) {
+      context.addIssue({code: 'custom', path: ['primaryBlock'], message: 'Primary block must stay visible during its beat.'});
+    }
+    if (value.visualLifecycle.stay.filter(key => key.startsWith('block-')).length > 2) {
+      context.addIssue({code: 'custom', path: ['visualLifecycle', 'stay'], message: 'At most two block-* keys may stay active in one beat.'});
+    }
+  });
 
 const plannerSceneSchema = z
   .object({
@@ -64,7 +78,7 @@ const plannerSceneSchema = z
     units: z
       .array(plannerUnitBlueprintSchema)
       .min(1)
-      .max(pipelineSafetyLimits.maximumBeatsPerSection),
+      .max(pipelineSafetyLimits.maximumTotalBeats),
   })
   .strict();
 
@@ -110,6 +124,34 @@ export type NarrationVisualPlannerOutput = z.infer<
 >;
 export type NarrationVisualPlannerScene = z.infer<typeof plannerSceneSchema>;
 
+/** Splits at unit boundaries only; narration IDs and their order are untouched. */
+export function splitPlannerScenesAtBeatLimit(
+  scenes: NarrationVisualPlannerScene[],
+): NarrationVisualPlannerScene[] {
+  const preferred = pipelineSafetyLimits.preferredBeatsPerSection;
+  const maximum = pipelineSafetyLimits.maximumBeatsPerSection;
+  const result: NarrationVisualPlannerScene[] = [];
+  for (const scene of scenes) {
+    if (scene.units.length <= maximum) { result.push(scene); continue; }
+    for (let start = 0, part = 1; start < scene.units.length; start += preferred, part += 1) {
+      const units = scene.units.slice(start, start + preferred);
+      const isFirst = start === 0;
+      const isLast = start + units.length >= scene.units.length;
+      result.push({
+        ...scene,
+        title: `${scene.title} · part ${part}`.slice(0, 160),
+        stateHandoffIncoming: isFirst ? scene.stateHandoffIncoming : `Continue the visual state from ${scene.title}.`,
+        stateHandoffOutgoing: isLast ? scene.stateHandoffOutgoing : `Hand off the visual state to the next part of ${scene.title}.`,
+        units,
+      });
+    }
+  }
+  if (result.length > pipelineSafetyLimits.maximumSections) {
+    throw new NarrationVisualPlannerError('CODEX_NARRATION_PLANNER_INVARIANT_VIOLATION', 'Narration needs more scenes than the project safety limit.');
+  }
+  return result;
+}
+
 const outputJsonSchema = z.toJSONSchema(narrationVisualPlannerOutputSchema, {
   target: 'draft-7',
 });
@@ -147,6 +189,10 @@ function collectPlannerStrings(output: NarrationVisualPlannerOutput) {
         unit.visualPurpose,
         unit.visualDescription,
         unit.animationDescription,
+        unit.primaryBlock,
+        ...unit.visualLifecycle.enter,
+        ...unit.visualLifecycle.stay,
+        ...unit.visualLifecycle.exit,
       );
     }
   }
@@ -196,6 +242,8 @@ export interface NarrationVisualPlannerService {
 
 function buildPrompt(request: NarrationVisualPlannerRequest) {
   return [
+    'Group all units in their exact input order into consecutive, non-overlapping scenes. Prefer 3–4 beats per scene and never exceed 5; split at unit boundaries.',
+    'For every unit provide primaryBlock (a stable block-* JSX key) plus visualLifecycle.enter, visualLifecycle.stay and visualLifecycle.exit. Each list is non-empty and contains stable kebab-case JSX keys. primaryBlock must occur in stay; within the same beat, stay may contain at most two block-* keys (this is not a limit on different blocks used sequentially across the scene); exit means hidden completely or moved outside the frame.',
     'Bạn là AI Visual Planner. Bạn CHỈ lập kế hoạch hình ảnh; tuyệt đối không được viết, sửa, rút gọn, dịch hay diễn giải lại lời thoại.',
     'Input units là danh sách câu lời thoại đã được người dùng duyệt, mỗi câu có unitId ổn định. Bạn không có quyền trả về voiceover text; chỉ được tham chiếu unitId.',
     'Nhóm TOÀN BỘ unit theo đúng thứ tự xuất hiện trong units thành các scene liên tiếp không chồng lấn: mọi unitId phải xuất hiện đúng một lần, không bỏ sót, không lặp lại, không đổi thứ tự.',
@@ -276,10 +324,14 @@ export function createCodexNarrationVisualPlanner(
             {cause: parsed.error},
           );
         }
-        validatePlannerCoversUnitsInOrder(request.units, parsed.data.scenes);
-        assertPlannerOutputHasNoCodeArtifacts(parsed.data);
+        const output = {
+          ...parsed.data,
+          scenes: splitPlannerScenesAtBeatLimit(parsed.data.scenes),
+        };
+        validatePlannerCoversUnitsInOrder(request.units, output.scenes);
+        assertPlannerOutputHasNoCodeArtifacts(output);
         return {
-          output: parsed.data,
+          output,
           model: generated.model,
           usage: generated.usage,
         };

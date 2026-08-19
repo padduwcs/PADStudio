@@ -3,9 +3,12 @@
 // first vertical slice used small fixed limits.
 export const pipelineSafetyLimits = {
   minimumSections: 1,
-  maximumSections: 64,
+  // A production scene is deliberately short.  512 narration units still fit
+  // when grouped at the preferred four beats per scene.
+  maximumSections: 128,
   minimumBeatsPerSection: 1,
-  maximumBeatsPerSection: 64,
+  maximumBeatsPerSection: 5,
+  preferredBeatsPerSection: 4,
   maximumTotalBeats: 512,
   minimumSectionDurationSeconds: 10,
   maximumSectionDurationSeconds: 16 * 60 * 60,

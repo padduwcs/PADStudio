@@ -18,8 +18,13 @@ import {
 } from '../shared/topic.ts';
 import {
   MOTION_CANVAS_PROMPT_VERSION,
-  MotionCanvasGenerationError
+  MotionCanvasGenerationError,
+  mergeMotionCanvasGenerationUsage,
 } from './motionCanvasGenerator.ts';
+import {
+  MotionCanvasVisualQualityError,
+  visualValidationIsCurrent,
+} from './motionCanvasVisualQuality.ts';
 import {
   hashJson,
   hashMotionCanvasBundle
@@ -46,10 +51,10 @@ import {motionCanvasContextHash, projectVideoFrame, workspaceVideoFrame} from '.
 import {readExpectedRevision, readJsonBody, requestParentOrigin, sendJson, sendProject, validationFields} from './httpTransport.ts';
 import type {ApiRouteHandler} from './routeTypes.ts';
 
-type MotionCanvasHistoryRouteContext = Pick<AppContext, 'repository' | 'motionCanvasHistoryStore' | 'motionCanvasWorkspace' | 'layoutPreviewService' | 'motionCanvasCandidateGenerations' | 'motionCanvasGenerator' | 'motionCanvasRevisionReviewService' | 'generateOnce' | 'logger'>;
+type MotionCanvasHistoryRouteContext = Pick<AppContext, 'repository' | 'motionCanvasHistoryStore' | 'motionCanvasWorkspace' | 'motionCanvasVisualQualityGate' | 'layoutPreviewService' | 'motionCanvasCandidateGenerations' | 'motionCanvasGenerator' | 'motionCanvasRevisionReviewService' | 'generateOnce' | 'logger'>;
 
 export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHistoryRouteContext): ApiRouteHandler {
-  const {repository, motionCanvasHistoryStore, motionCanvasWorkspace, layoutPreviewService, motionCanvasCandidateGenerations, motionCanvasGenerator, motionCanvasRevisionReviewService, generateOnce, logger} = context;
+  const {repository, motionCanvasHistoryStore, motionCanvasWorkspace, motionCanvasVisualQualityGate, layoutPreviewService, motionCanvasCandidateGenerations, motionCanvasGenerator, motionCanvasRevisionReviewService, generateOnce, logger} = context;
   async function handleMotionCanvasHistoryRoute(
     route: NonNullable<ReturnType<typeof getProjectMotionCanvasHistoryRoute>>,
     request: IncomingMessage,
@@ -92,6 +97,12 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
       );
     }
     await motionCanvasWorkspace.verify(currentProject.id, bundle);
+    const lifecycleFor = (scenes: Array<{outlineSectionId: string}>) => new Map(
+      scenes.flatMap(scene => {
+        const section = voiceVisualPlan.sections.find(item => item.outlineSectionId === scene.outlineSectionId);
+        return (section?.beats ?? []).map(beat => [beat.id, {stay: beat.visualLifecycle!.stay}] as const);
+      }),
+    );
     const currentContentHash = hashMotionCanvasBundle(bundle);
     const currentContextHash = motionCanvasContextHash(currentProject, bundle);
 
@@ -389,9 +400,12 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
           };
           let mergedSources = mergeScenes();
           let prepared: PreparedMotionCanvasWorkspace | null = null;
+          let acceptedWorkspace = false;
           let repairAttempts = 0;
           let fallbackAttempted = false;
-          while (!prepared) {
+          const generationDiagnostics: NonNullable<MotionCanvasBundle['generationDiagnostics']> = [];
+          try {
+            while (!prepared) {
             try {
               prepared = await motionCanvasWorkspace.prepare(
                 currentProject.id,
@@ -449,10 +463,62 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
               }
               throw error;
             }
-          }
-          let review: MotionCanvasRevisionReviewResult;
-          try {
-            review = await motionCanvasRevisionReviewService.review({
+            }
+            let visualValidation;
+            try {
+              visualValidation = await motionCanvasVisualQualityGate.validate({
+                scenes: mergedSources,
+                lifecycle: lifecycleFor(mergedSources),
+                frame: projectVideoFrame(currentProject),
+                backgroundColor: currentProject.topicInput.background.color,
+                workspaceDirectory: prepared.workspaceDirectory,
+                projectFile: prepared.projectFilePath,
+              });
+            } catch (error) {
+              if (!(error instanceof MotionCanvasVisualQualityError)) throw error;
+              const failedSceneIds = [...new Set(error.summary.issues.map(issue => issue.sceneId))];
+              if (failedSceneIds.length === 0 || failedSceneIds.some(sceneId => !selectedSceneIds.has(sceneId))) {
+                throw error;
+              }
+              const failedIndexes = mergedSources
+                .filter(scene => failedSceneIds.includes(scene.id))
+                .map(scene => voiceVisualPlan.sections.findIndex(section => section.outlineSectionId === scene.outlineSectionId))
+                .filter(index => index >= 0);
+              generationDiagnostics.push({stage: 'quality-retry', attempt: 1, reason: error.summary.issues.map(issue => `${issue.sceneId}/${issue.beatId ?? 'scene'}: ${issue.reason}`).join('; ').slice(0, 4_000), outcome: 'failed'});
+              const repaired = await motionCanvasGenerator.generate({
+                ...generationRequest,
+                sectionIndexes: failedIndexes,
+                currentScenes: mergedSources,
+              });
+              const repairedBySection = new Map(repaired.scenes.map(scene => [scene.outlineSectionId, scene]));
+              mergedSources = mergedSources.map(scene => {
+                const replacement = repairedBySection.get(scene.outlineSectionId);
+                return replacement ? {...replacement, id: scene.id, filePath: scene.filePath, outlineSectionId: scene.outlineSectionId} : scene;
+              });
+              generated = {
+                ...generated,
+                model: repaired.model,
+                usage: mergeMotionCanvasGenerationUsage(generated.usage, repaired.usage),
+                qualityRetryDiagnostics: [
+                  ...(generated.qualityRetryDiagnostics ?? []),
+                  ...(repaired.qualityRetryDiagnostics ?? []),
+                ],
+              };
+              await motionCanvasWorkspace.discard(currentProject.id, generationId);
+              prepared = await motionCanvasWorkspace.prepare(currentProject.id, generationId, mergedSources, projectVideoFrame(currentProject));
+              visualValidation = await motionCanvasVisualQualityGate.validate({
+                scenes: mergedSources,
+                lifecycle: lifecycleFor(mergedSources),
+                frame: projectVideoFrame(currentProject),
+                backgroundColor: currentProject.topicInput.background.color,
+                workspaceDirectory: prepared.workspaceDirectory,
+                projectFile: prepared.projectFilePath,
+              });
+              generationDiagnostics.push({stage: 'quality-retry', attempt: 1, reason: `Re-rendered ${repaired.scenes.length} failed candidate scene(s); the merged ${mergedSources.length}-scene bundle passed.`, outcome: 'passed'});
+            }
+            let review: MotionCanvasRevisionReviewResult;
+            try {
+              review = await motionCanvasRevisionReviewService.review({
               topicInput: currentProject.topicInput,
               outline,
               voiceVisualPlan,
@@ -474,14 +540,14 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
               model: parsed.data.model,
               reasoningEffort: parsed.data.reasoningEffort,
             });
-          } catch (error) {
-            if (!(error instanceof MotionCanvasRevisionReviewError)) {
-              throw error;
-            }
-            logger.info(
+            } catch (error) {
+              if (!(error instanceof MotionCanvasRevisionReviewError)) {
+                throw error;
+              }
+              logger.info(
               `Motion candidate ${generationId} đã compile nhưng reviewer không hoàn tất: ${error.code}`,
             );
-            review = {
+              review = {
               coherence: {
                 verdict: 'warning',
                 summary:
@@ -499,16 +565,24 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
               },
               model: generated.model || 'unavailable',
               usage: null,
-            };
+              };
+            }
+            generationDiagnostics.push({stage: 'generate', attempt: 0, reason: 'Candidate passed compiler preparation and full-bundle rendered-frame validation.', outcome: 'passed'});
+            generationDiagnostics.push(...(generated.qualityRetryDiagnostics ?? []));
+            acceptedWorkspace = true;
+            return {generated, prepared, review, visualValidation, generationDiagnostics};
+          } finally {
+            if (!acceptedWorkspace) {
+              await motionCanvasWorkspace.discard(currentProject.id, generationId).catch(error => logger.error(error));
+            }
           }
-          return {generated, prepared, review};
         },
       );
       const prepared = generation.result.prepared;
       const candidateBundle: MotionCanvasBundle = {
         status: 'draft',
         technicalReadyAt: new Date().toISOString(),
-        generationDiagnostics: [{stage: 'generate', attempt: 0, reason: 'Candidate passed source attachment/container/timing policy and workspace/compiler preparation.', outcome: 'passed'}],
+        generationDiagnostics: generation.result.generationDiagnostics,
         contentRevision: bundle.contentRevision + 1,
         sourceVoiceVisualContentRevision: voiceVisualPlan.contentRevision,
         workspacePath: prepared.workspacePath,
@@ -521,6 +595,7 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
           : {}),
         scenes: prepared.scenes,
         validation: prepared.validation,
+        visualValidation: generation.result.visualValidation,
         generation: {
           generationId,
           provider: 'codex',
@@ -542,7 +617,9 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
             : coherence.verdict === 'warning' || coherence.issues.length > 0
               ? 'coherence_warning'
               : 'ready';
-      const candidate = await motionCanvasHistoryStore.saveCandidate({
+      let candidate;
+      try {
+        candidate = await motionCanvasHistoryStore.saveCandidate({
         candidateId: generationId,
         projectId: currentProject.id,
         createdAt: generation.generatedAt,
@@ -579,7 +656,11 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
           generationUsage: generation.result.generated.usage,
           reviewerUsage: generation.result.review.usage,
         },
-      });
+        });
+      } catch (error) {
+        await motionCanvasWorkspace.discard(currentProject.id, generationId).catch(cleanupError => logger.error(cleanupError));
+        throw error;
+      }
       motionCanvasGenerator.discardGeneration?.(
         currentProject.id,
         generationId,
@@ -662,12 +743,33 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
           'Đầu vào hoặc workspace nền đã thay đổi kể từ lúc tạo candidate.',
         );
       }
-      await motionCanvasWorkspace.verify(currentProject.id, candidate.bundle);
+      const verifiedCandidate = await motionCanvasWorkspace.verify(currentProject.id, candidate.bundle);
+      const candidateSources = await motionCanvasWorkspace.readSceneSources(
+        currentProject.id,
+        candidate.bundle,
+      );
+      const candidateVisualValidation =
+        candidate.bundle.visualValidation &&
+        visualValidationIsCurrent(candidate.bundle.visualValidation, candidateSources)
+          ? candidate.bundle.visualValidation
+          : await motionCanvasVisualQualityGate.validate({
+            scenes: candidateSources,
+            lifecycle: lifecycleFor(candidateSources),
+            frame: workspaceVideoFrame(
+              candidate.bundle.width,
+              candidate.bundle.height,
+              candidate.bundle.fps,
+            ),
+            backgroundColor: currentProject.topicInput.background.color,
+            workspaceDirectory: verifiedCandidate.workspaceDirectory,
+            projectFile: verifiedCandidate.projectFile,
+          });
       const nextBundle: MotionCanvasBundle = {
         ...candidate.bundle,
         status: 'draft',
         contentRevision: bundle.contentRevision + 1,
         sourceVoiceVisualContentRevision: voiceVisualPlan.contentRevision,
+        visualValidation: candidateVisualValidation,
       };
       const updatedProject = await repository.updateProject(
         currentProject.id,
@@ -764,44 +866,58 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
         currentProject.id,
         sourceVersion.artifact,
       );
+      let restoreAccepted = false;
+      const restoreFrame = workspaceVideoFrame(
+        sourceVersion.artifact.width,
+        sourceVersion.artifact.height,
+        sourceVersion.artifact.fps,
+      );
       const prepared = await motionCanvasWorkspace.prepare(
         currentProject.id,
         restoreGenerationId,
         sources,
-        workspaceVideoFrame(
-          sourceVersion.artifact.width,
-          sourceVersion.artifact.height,
-          sourceVersion.artifact.fps,
-        ),
+        restoreFrame,
       );
-      const restoredBundle: MotionCanvasBundle = {
-        ...sourceVersion.artifact,
-        status: 'draft',
-        contentRevision: bundle.contentRevision + 1,
-        sourceVoiceVisualContentRevision: voiceVisualPlan.contentRevision,
-        workspacePath: prepared.workspacePath,
-        projectFile: prepared.projectFile,
-        scenes: prepared.scenes,
-        validation: prepared.validation,
-        generation: {
-          ...sourceVersion.artifact.generation,
-          generationId: restoreGenerationId,
-          generatedAt: new Date().toISOString(),
-          usage: null,
-        },
-      };
-      const updatedProject = await repository.updateProject(
-        currentProject.id,
-        {motionCanvasBundle: restoredBundle, currentStep: 'scenes'},
-        expectedRevision,
-      );
+      try {
+        const visualValidation = await motionCanvasVisualQualityGate.validate({
+          scenes: sources,
+          lifecycle: lifecycleFor(sources),
+          frame: restoreFrame,
+          backgroundColor: currentProject.topicInput.background.color,
+          workspaceDirectory: prepared.workspaceDirectory,
+          projectFile: prepared.projectFilePath,
+        });
+        const restoredBundle: MotionCanvasBundle = {
+          ...sourceVersion.artifact,
+          status: 'draft',
+          contentRevision: bundle.contentRevision + 1,
+          sourceVoiceVisualContentRevision: voiceVisualPlan.contentRevision,
+          workspacePath: prepared.workspacePath,
+          projectFile: prepared.projectFile,
+          scenes: prepared.scenes,
+          validation: prepared.validation,
+          visualValidation,
+          generation: {
+            ...sourceVersion.artifact.generation,
+            generationId: restoreGenerationId,
+            generatedAt: new Date().toISOString(),
+            usage: null,
+          },
+        };
+        const updatedProject = await repository.updateProject(
+          currentProject.id,
+          {motionCanvasBundle: restoredBundle, currentStep: 'scenes'},
+          expectedRevision,
+        );
       if (!updatedProject) {
+        await motionCanvasWorkspace.discard(currentProject.id, restoreGenerationId).catch(error => logger.error(error));
         sendApiError(response, 404, {
           code: 'PROJECT_NOT_FOUND',
           message: 'Không tìm thấy project.',
         });
         return true;
       }
+      restoreAccepted = true;
       const version = await motionCanvasHistoryStore.ensureVersion(
         {
           projectId: updatedProject.id,
@@ -823,6 +939,11 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
         {ETag: `"${updatedProject.revision}"`},
       );
       return true;
+      } finally {
+        if (!restoreAccepted) {
+          await motionCanvasWorkspace.discard(currentProject.id, restoreGenerationId).catch(error => logger.error(error));
+        }
+      }
     }
     return false;
   }

@@ -351,6 +351,23 @@ export const VoiceVisualBeatSchema = z
       .string()
       .trim()
       .min(8, 'Mô tả chuyển động của beat cần rõ hơn.'),
+    /**
+     * A stable, code-addressable visual contract.  This is optional only so
+     * old saved projects remain readable; every newly planned beat must have
+     * it before Motion Canvas generation is allowed.
+     */
+    visualLifecycle: z
+      .object({
+        enter: z.array(z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/)).min(1).max(12),
+        stay: z.array(z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/)).min(1).max(12),
+        exit: z.array(z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/)).min(1).max(12),
+      })
+      .strict()
+      .optional(),
+    primaryBlock: z
+      .string()
+      .regex(/^block-[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/)
+      .optional(),
     visualHoldSeconds: z
       .number()
       .int()
@@ -372,7 +389,19 @@ export const VoiceVisualBeatSchema = z
         'Thời lượng một beat vượt quá cầu chì an toàn.',
       ),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    const activeBlocks = (value.visualLifecycle?.stay ?? []).filter(key =>
+      key.startsWith('block-'),
+    );
+    if (activeBlocks.length > 2) {
+      context.addIssue({
+        code: 'custom',
+        path: ['visualLifecycle', 'stay'],
+        message: 'Mỗi beat chỉ được giữ tối đa hai block-* active.',
+      });
+    }
+  });
 
 export type VoiceVisualBeat = z.infer<typeof VoiceVisualBeatSchema>;
 
@@ -567,6 +596,26 @@ export const MotionCanvasBundleSchema = z
       reason: z.string().trim().min(3).max(4_000),
       outcome: z.enum(['passed', 'failed', 'used_fallback', 'skipped']),
     }).strict()).max(32).optional(),
+    /** Rendered-frame evidence, tied to the exact source hash. */
+    visualValidation: z.object({
+      version: z.literal(1),
+      status: z.enum(['passed', 'failed']),
+      validatedAt: z.string().datetime(),
+      sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+      scenes: z.array(z.object({
+        sceneId: z.string().uuid(),
+        samples: z.array(z.object({
+          beatId: z.string().uuid(), phase: z.enum(['stable-start', 'middle', 'pre-exit']),
+          timeSeconds: z.number().nonnegative(), frame: z.number().int().nonnegative(),
+          metrics: z.object({verdict: z.string(), contentRatio: z.number(), dominantColorRatio: z.number()}).strict(),
+          activeBlocks: z.array(z.string()).max(12), imageDeltaFromPreviousBeat: z.number().nullable(),
+        }).strict()).max(30),
+      }).strict()).max(128),
+      issues: z.array(z.object({
+        code: z.string(), sceneId: z.string().uuid(), beatId: z.string().uuid().nullable(), timeSeconds: z.number().nonnegative(), semanticKey: z.string().nullable(),
+        bounds: z.object({x: z.number(), y: z.number(), width: z.number().nonnegative(), height: z.number().nonnegative()}).nullable(), reason: z.string().min(1).max(600),
+      }).strict()).max(64),
+    }).strict().optional(),
     scenes: z
       .array(MotionCanvasSceneSchema)
       .min(

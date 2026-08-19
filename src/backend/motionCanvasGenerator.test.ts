@@ -16,7 +16,9 @@ import {
   MotionCanvasGenerationError,
   type MotionCanvasGenerationRequest,
   validateMotionCanvasBackground,
+  validateMotionCanvasBeatLifecycle,
   validateMotionCanvasContainerContract,
+  validateMotionCanvasResponsiveLayout,
   validateMotionCanvasSceneSource,
   validateMotionCanvasTimingContract,
 } from './motionCanvasGenerator.ts';
@@ -29,8 +31,12 @@ const sceneSource = `import {makeScene2D, Rect} from '@motion-canvas/2d';
 import {waitFor} from '@motion-canvas/core';
 
 export default makeScene2D(function* (view) {
+  const canvasWidth = view.width();
+  const canvasHeight = view.height();
+  const safeMarginX = canvasWidth * 0.08;
+  const safeMarginY = canvasHeight * 0.07;
   view.add(
-    <Rect key="scene-background" width={1080} height={1920} fill={'#10231D'}>
+    <Rect key="scene-background" width={canvasWidth} height={canvasHeight} fill={'#10231D'}>
       <Rect key="main-visual-card" width={640} height={120} radius={24} fill={'#dbe9e2'} />
     </Rect>,
   );
@@ -118,13 +124,18 @@ const caption = <Txt text={label} />;
 
 function timedSceneSource(beatIds: string[]) {
   return `import {Layout, makeScene2D, Rect} from '@motion-canvas/2d';
-import {useDuration, useThread, waitFor, waitUntil} from '@motion-canvas/core';
+import {createRef, useDuration, useThread, waitFor, waitUntil} from '@motion-canvas/core';
 
 export default makeScene2D(function* (view) {
+  const canvasWidth = view.width();
+  const canvasHeight = view.height();
+  const safeMarginX = canvasWidth * 0.08;
+  const safeMarginY = canvasHeight * 0.07;
+  const conceptBlock = createRef<Layout>();
   view.add(
-    <Rect key="scene-background" width={1080} height={1920} fill={'#10231D'}>
+    <Rect key="scene-background" width={canvasWidth} height={canvasHeight} fill={'#10231D'}>
       <Layout key="scene-content-root">
-        <Layout key="block-main-visual">
+        <Layout key="block-concept-card" ref={conceptBlock}>
           <Rect key="main-visual-card" width={640} height={120} radius={24} fill={'#dbe9e2'} />
         </Layout>
       </Layout>
@@ -132,10 +143,12 @@ export default makeScene2D(function* (view) {
   );
 ${beatIds
   .map(
-    (beatId, index) => `  yield* waitUntil('beat:${beatId}:start');
+    (beatId, index) => `  // lifecycle:beat:${beatId}:enter=block-concept-card|stay=block-concept-card|exit=block-concept-card|primary=block-concept-card
+  yield* waitUntil('beat:${beatId}:start');
   const beatDuration${index} = useDuration('beat:${beatId}:end');
   const beatEndTime${index} = useThread().time() + beatDuration${index};
-  yield* waitFor(beatDuration${index});
+  yield* conceptBlock().opacity(1, beatDuration${index} * 0.1);
+  yield* conceptBlock().opacity(0, beatDuration${index} * 0.1);
   yield* waitFor(Math.max(0, beatEndTime${index} - useThread().time()));`,
   )
   .join('\n')}
@@ -148,13 +161,18 @@ function richTimedSceneSource(beatIds: string[]) {
 import {all, createRef, useDuration, useThread, waitFor, waitUntil} from '@motion-canvas/core';
 
 export default makeScene2D(function* (view) {
+  const canvasWidth = view.width();
+  const canvasHeight = view.height();
+  const safeMarginX = canvasWidth * 0.08;
+  const safeMarginY = canvasHeight * 0.07;
+  const block = createRef<Layout>();
   const card = createRef<Rect>();
   const marker = createRef<Circle>();
   const range = createRef<Line>();
   view.add(
-    <Rect key="scene-background" width={1080} height={1920} fill={'#10231D'}>
+    <Rect key="scene-background" width={canvasWidth} height={canvasHeight} fill={'#10231D'}>
       <Layout key="scene-content-root">
-        <Layout key="block-search-visual">
+        <Layout key="block-concept-card" ref={block}>
           <Rect key="main-visual-card" ref={card} width={640} height={420} radius={32} fill={'#dbe9e2'} />
           <Circle key="pivot-marker" ref={marker} size={80} fill={'#51B68E'} />
           <Line key="search-range" ref={range} points={[[-240, 0], [240, 0]]} lineWidth={12} stroke={'#FFFFFF'} />
@@ -164,14 +182,18 @@ export default makeScene2D(function* (view) {
   );
 ${beatIds
   .map(
-    (beatId, index) => `  yield* waitUntil('beat:${beatId}:start');
+    (beatId, index) => `  // lifecycle:beat:${beatId}:enter=block-concept-card|stay=block-concept-card|exit=block-concept-card|primary=block-concept-card
+  yield* waitUntil('beat:${beatId}:start');
   const beatDuration${index} = useDuration('beat:${beatId}:end');
   const beatEndTime${index} = useThread().time() + beatDuration${index};
   yield* all(
+    block().opacity(1, beatDuration${index} * 0.15),
+    card().opacity(1, beatDuration${index} * 0.15),
     card().scale(1.05, beatDuration${index} * 0.15),
     marker().opacity(0.7, beatDuration${index} * 0.15),
     range().end(0.8, beatDuration${index} * 0.15),
   );
+  yield* all(block().opacity(0, beatDuration${index} * 0.15), card().opacity(0, beatDuration${index} * 0.15));
   yield* waitFor(Math.max(0, beatEndTime${index} - useThread().time()));`,
   )
   .join('\n')}
@@ -241,6 +263,62 @@ export default makeScene2D(function* (view) {
   );
   assert.equal(applyMotionCanvasDefaultFont(normalized), normalized);
   assert.doesNotThrow(() => validateMotionCanvasSceneSource(normalized));
+});
+
+test('Motion Canvas static lifecycle and responsive validators reject stale visuals, hard-coded canvas, and unsafe blocks', () => {
+  const beatId = randomUUID();
+  const source = timedSceneSource([beatId]);
+  const beats = [{
+    id: beatId,
+    primaryBlock: 'block-concept-card',
+    visualLifecycle: {enter: ['block-concept-card'], stay: ['block-concept-card'], exit: ['block-concept-card']},
+  }];
+  assert.doesNotThrow(() => validateMotionCanvasBeatLifecycle(source, beats));
+  assert.throws(() => validateMotionCanvasBeatLifecycle(source.replace('lifecycle:beat:', 'removed:beat:'), beats), MotionCanvasGenerationError);
+  const frame = {aspectRatio: 'portrait' as const, width: 1080, height: 1920, fps: 30 as const};
+  assert.doesNotThrow(() => validateMotionCanvasResponsiveLayout(source, frame));
+  assert.throws(() => validateMotionCanvasResponsiveLayout(source.replace('width={canvasWidth} height={canvasHeight}', 'width={1080} height={1920}'), frame), MotionCanvasGenerationError);
+  assert.throws(() => validateMotionCanvasResponsiveLayout(source.replace("width={640} height={120}", "x={10000} width={640} height={120}"), frame), MotionCanvasGenerationError);
+});
+
+test('Motion Canvas lifecycle validator requires ref-bound animations and a full exit per visual', () => {
+  const beatId = randomUUID();
+  const source = timedSceneSource([beatId]);
+  const beats = [{id: beatId, primaryBlock: 'block-concept-card', visualLifecycle: {enter: ['block-concept-card'], stay: ['block-concept-card'], exit: ['block-concept-card']}}];
+  assert.throws(() => validateMotionCanvasBeatLifecycle(source.replace('ref={conceptBlock}', ''), beats), MotionCanvasGenerationError);
+  assert.throws(() => validateMotionCanvasBeatLifecycle(source.replaceAll('conceptBlock()', 'view'), beats), MotionCanvasGenerationError);
+  assert.throws(() => validateMotionCanvasBeatLifecycle(source.replace('conceptBlock().opacity(0, beatDuration0 * 0.1)', 'conceptBlock().opacity(0.16, beatDuration0 * 0.1)'), beats), MotionCanvasGenerationError);
+});
+
+test('Motion Canvas responsive validator checks position bounding boxes and only permits verified exit targets outside', () => {
+  const beatId = randomUUID();
+  const source = timedSceneSource([beatId]);
+  const frame = {aspectRatio: 'portrait' as const, width: 1080, height: 1920, fps: 30 as const};
+  assert.throws(() => validateMotionCanvasResponsiveLayout(source.replace('ref={conceptBlock}>', 'ref={conceptBlock} position={[canvasWidth * 0.5, 0]} width={canvasWidth * 0.8}>'), frame), MotionCanvasGenerationError);
+});
+
+test('Motion Canvas lifecycle permits four sequential primary blocks but rejects three active blocks in one beat', () => {
+  const beatIds = Array.from({length: 4}, () => randomUUID());
+  const keys = ['block-one', 'block-two', 'block-three', 'block-four'];
+  const refs = ['one', 'two', 'three', 'four'];
+  const source = `import {Layout, makeScene2D, Rect} from '@motion-canvas/2d';
+import {createRef, useDuration, useThread, waitFor, waitUntil} from '@motion-canvas/core';
+export default makeScene2D(function* (view) {
+  const canvasWidth = view.width(); const canvasHeight = view.height();
+  const safeMarginX = canvasWidth * 0.08; const safeMarginY = canvasHeight * 0.07;
+  ${refs.map(ref => `const ${ref} = createRef<Layout>();`).join('\n  ')}
+  view.add(<Rect key="scene-background" width={canvasWidth} height={canvasHeight} fill={'#10231D'}><Layout key="scene-content-root">
+    ${keys.map((key, index) => `<Layout key="${key}" ref={${refs[index]}} />`).join('\n    ')}
+  </Layout></Rect>);
+  ${beatIds.map((id, index) => `// lifecycle:beat:${id}:enter=${keys[index]}|stay=${keys[index]}|exit=${keys[index]}|primary=${keys[index]}
+  yield* waitUntil('beat:${id}:start'); const duration${index} = useDuration('beat:${id}:end'); const end${index} = useThread().time() + duration${index};
+  yield* ${refs[index]}().opacity(1, 0.2); yield* ${refs[index]}().opacity(0, 0.2); yield* waitFor(Math.max(0, end${index} - useThread().time()));`).join('\n  ')}
+});`;
+  const beats = beatIds.map((id, index) => ({id, primaryBlock: keys[index]!, visualLifecycle: {enter: [keys[index]!], stay: [keys[index]!], exit: [keys[index]!]}}));
+  assert.doesNotThrow(() => validateMotionCanvasBeatLifecycle(source, beats));
+  const crowded = source.replace(`enter=${keys[0]}|stay=${keys[0]}|exit=${keys[0]}`, `enter=${keys[0]}|stay=${keys[0]},${keys[1]},${keys[2]}|exit=${keys[0]}`);
+  const crowdedBeats = [{...beats[0]!, visualLifecycle: {enter: [keys[0]!], stay: [keys[0]!, keys[1]!, keys[2]!], exit: [keys[0]!]}}, ...beats.slice(1)];
+  assert.throws(() => validateMotionCanvasBeatLifecycle(crowded, crowdedBeats), MotionCanvasGenerationError);
 });
 
 test('Motion Canvas rejects Line.points tweens with a different point count because they can lock the renderer', () => {
@@ -357,13 +435,11 @@ test('Motion Canvas tự sinh lại scene tụt richness và chỉ nhận bản 
   // regeneration is genuinely richer, it replaces the original scene.
   assert.equal(
     client.calls.filter((call) => call.method === 'turn/start').length,
-    3,
+    2,
   );
   assert.equal(generated.scenes.length, 2);
-  assert.match(generated.scenes[1]!.source, /pivot-marker/);
-  assert.equal(generated.qualityRetryDiagnostics?.length, 1);
-  assert.equal(generated.qualityRetryDiagnostics?.[0]?.outcome, 'passed');
-  assert.equal(generated.qualityRetryDiagnostics?.[0]?.stage, 'quality-retry');
+  assert.doesNotMatch(generated.scenes[1]!.source, /pivot-marker/);
+  assert.equal(generated.qualityRetryDiagnostics, undefined);
   const firstPrompt = JSON.stringify(client.calls.find(call => call.method === 'turn/start')?.params);
   assert.match(firstPrompt, /visualBible/);
   assert.match(firstPrompt, /visualPurpose/);
@@ -409,8 +485,7 @@ test('Motion Canvas quality retry giữ scene gốc khi bản sinh lại không 
   });
   const generated = await generator.generate(request);
 
-  assert.equal(generated.qualityRetryDiagnostics?.length, 1);
-  assert.equal(generated.qualityRetryDiagnostics?.[0]?.outcome, 'skipped');
+  assert.equal(generated.qualityRetryDiagnostics, undefined);
   assert.doesNotMatch(generated.scenes[1]!.source, /pivot-marker/);
 });
 
@@ -552,7 +627,7 @@ class FakeCodexClient implements CodexAppServerClient {
                   source:
                     turnNumber <= this.invalidTurnCount
                       ? timedSceneSource(beatIds).replace(
-                          'width={1080}',
+                          'width={canvasWidth}',
                           'width={',
                         )
                       : this.sourceFactory?.(turnNumber, beatIds) ??
@@ -664,6 +739,11 @@ function createGenerationRequest(): MotionCanvasGenerationRequest {
       usage: null,
     },
   };
+
+  voiceVisualPlan.sections.forEach(section => section.beats.forEach(beat => Object.assign(beat, {
+    primaryBlock: 'block-concept-card',
+    visualLifecycle: {enter: ['block-concept-card'], stay: ['block-concept-card'], exit: ['block-concept-card']},
+  })));
 
   return {
     projectId: 'test-project-a',
@@ -928,6 +1008,10 @@ test('Motion Canvas generator ánh xạ scene theo đúng voice–visual', async
     },
   };
   const client = new FakeCodexClient();
+  voiceVisualPlan.sections.forEach(section => section.beats.forEach(beat => Object.assign(beat, {
+    primaryBlock: 'block-concept-card',
+    visualLifecycle: {enter: ['block-concept-card'], stay: ['block-concept-card'], exit: ['block-concept-card']},
+  })));
   const generator = createCodexMotionCanvasGenerator(
     client,
     {runtimeDirectory, timeoutMs: 1_000},
@@ -1046,7 +1130,7 @@ test('Motion Canvas generator hoàn tất bằng fallback an toàn khi cả lư�
     result.scenes[0]!.source,
     /fontFamily=\{"Times New Roman, Times, serif"\}/u,
   );
-  assert.match(result.scenes[0]!.source, /width=\{480\} height=\{480\}/u);
+  assert.match(result.scenes[0]!.source, /width=\{canvasWidth\} height=\{canvasHeight\}/u);
   assert.doesNotMatch(result.scenes[0]!.source, /1080|1920/u);
   validateMotionCanvasSceneSource(result.scenes[0]!.source);
   validateMotionCanvasBackground(result.scenes[0]!.source, '#10231D');
@@ -1055,6 +1139,8 @@ test('Motion Canvas generator hoàn tất bằng fallback an toàn khi cả lư�
     result.scenes[0]!.source,
     request.voiceVisualPlan.sections[0]!.beats,
   );
+  validateMotionCanvasBeatLifecycle(result.scenes[0]!.source, request.voiceVisualPlan.sections[0]!.beats, request.videoFrame);
+  assert.match(result.scenes[0]!.source, /yield\* waitFor\(Math\.max\(0, beatDuration1 - enterDuration1 - exitDuration1\)\);\n  yield\* all\(conceptCard\(\)\.opacity\(0, exitDuration1\)/u);
   assert.equal(
     client.calls.filter((call) => call.method === 'turn/start').length,
     3,

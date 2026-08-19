@@ -25,13 +25,14 @@ import {
   normalizeMotionCanvasColorFormats,
 } from './motionCanvasSourceCompatibility.ts';
 
-export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v11';
+export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v12';
 export const MOTION_CANVAS_VERSION = '3.17.2';
-export const MOTION_CANVAS_WIDTH = 1080;
-export const MOTION_CANVAS_HEIGHT = 1920;
 export const MOTION_CANVAS_FPS = 30;
 export const MOTION_CANVAS_DEFAULT_FONT_FAMILY =
   'Times New Roman, Times, serif';
+export const MOTION_CANVAS_SAFE_MARGIN_X_RATIO = 0.08;
+export const MOTION_CANVAS_SAFE_MARGIN_Y_RATIO = 0.07;
+export const MAX_CONCURRENT_PRIMARY_BLOCKS = 2;
 const DEFAULT_SCENE_TIMEOUT_MS = 20 * 60 * 1000;
 // One focused repair plus one clean regeneration is both more reliable and
 // more token-efficient than repeatedly feeding an increasingly broken source
@@ -392,6 +393,8 @@ function generationPayload(
         visualPurpose: beat.visualPurpose,
         visualDescription: beat.visualDescription,
         animationDescription: beat.animationDescription,
+        primaryBlock: beat.primaryBlock,
+        visualLifecycle: beat.visualLifecycle,
         durationSeconds: beat.durationSeconds,
       })),
       stateHandoff: voiceVisualSection.stateHandoff,
@@ -420,6 +423,8 @@ function buildPrompt(
   sectionIndex: number,
 ) {
   return [
+    `Lifecycle contract: for each beat emit one exact comment: // lifecycle:beat:<id>:enter=<keys>|stay=<keys>|exit=<keys>|primary=<block>. Substitute values from scene.beats; do not change them. Animate enter visuals from opacity 0 or off-canvas to active state, retain only stay visuals, and animate exit visuals to opacity 0 or beyond the canvas edge before the next beat. Never leave inactive visuals accumulated at low opacity. Keep at most ${MAX_CONCURRENT_PRIMARY_BLOCKS} block-* primary containers active in stay within the same beat; different beats may use different blocks sequentially.`,
+    `Responsive layout contract: start with const canvasWidth = view.width(); const canvasHeight = view.height(); const safeMarginX = canvasWidth * ${MOTION_CANVAS_SAFE_MARGIN_X_RATIO}; const safeMarginY = canvasHeight * ${MOTION_CANVAS_SAFE_MARGIN_Y_RATIO};. Use centered x/y coordinates and these variables for scene-background width/height and all composition bounds.`,
     'Structural attachment invariant: inside the default makeScene2D generator, call view.add(<SceneTree />) exactly once as a direct statement. Its argument must be the actual JSX scene tree, with exactly one key="scene-background" containing key="scene-content-root". Never yield or yield* JSX, view.add, or node.add, and never leave a JSX tree unattached.',
     'Sinh đúng một scene Motion Canvas TypeScript/TSX cho section trong JSON sau.',
     'Trả object gồm name và source. Source phải export default makeScene2D(function* (view) {...}).',
@@ -464,6 +469,7 @@ function buildRepairPrompt(
   compilerDiagnostics: string,
 ) {
   return [
+    `Preserve the exact lifecycle marker and implementation for every beat, including full exit (opacity 0 or outside the runtime canvas). Preserve runtime canvas variables canvasWidth/canvasHeight and safe margins ${MOTION_CANVAS_SAFE_MARGIN_X_RATIO}/${MOTION_CANVAS_SAFE_MARGIN_Y_RATIO}; do not replace them with 1080x1920 literals.`,
     'Structural attachment invariant: preserve or restore exactly one direct view.add(<SceneTree />) statement inside the default makeScene2D generator. The attached JSX tree must contain exactly one key="scene-background" with key="scene-content-root" nested inside it. Never yield or yield* JSX, view.add, or node.add, and do not leave JSX unattached.',
     'Sửa scene Motion Canvas sau để TypeScript biên dịch thành công.',
     'Giữ nguyên ý nghĩa visual, thứ tự beat và tổng timing. Chỉ thay đổi những phần cần để sửa lỗi và làm API đúng.',
@@ -1014,6 +1020,254 @@ export function validateMotionCanvasTimingContract(
   }
 }
 
+export function mergeMotionCanvasGenerationUsage(
+  left: CodexTokenUsage | null,
+  right: CodexTokenUsage | null,
+): CodexTokenUsage | null {
+  if (!left || !right) return null;
+  return {
+    inputTokens: left.inputTokens + right.inputTokens,
+    cachedInputTokens: left.cachedInputTokens + right.cachedInputTokens,
+    outputTokens: left.outputTokens + right.outputTokens,
+    reasoningOutputTokens: left.reasoningOutputTokens + right.reasoningOutputTokens,
+    totalTokens: left.totalTokens + right.totalTokens,
+  };
+}
+
+type LifecycleBeat = {
+  id: string;
+  primaryBlock?: string;
+  visualLifecycle?: {enter: string[]; stay: string[]; exit: string[]};
+};
+
+type SceneNodeBinding = {key: string; ref: string | null; node: ts.JsxOpeningElement | ts.JsxSelfClosingElement};
+type RefAnimation = {ref: string; property: string; target: ts.Expression; node: ts.CallExpression};
+
+function sceneNodeBindings(sourceFile: ts.SourceFile) {
+  const bindings = new Map<string, SceneNodeBinding>();
+  function visit(node: ts.Node) {
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      let key: string | null = null;
+      let ref: string | null = null;
+      for (const attribute of node.attributes.properties) {
+        if (!ts.isJsxAttribute(attribute) || !ts.isIdentifier(attribute.name)) continue;
+        if (attribute.name.text === 'key' && attribute.initializer && ts.isStringLiteral(attribute.initializer)) key = attribute.initializer.text;
+        if (attribute.name.text === 'ref' && attribute.initializer && ts.isJsxExpression(attribute.initializer) && attribute.initializer.expression && ts.isIdentifier(attribute.initializer.expression)) ref = attribute.initializer.expression.text;
+      }
+      if (key) bindings.set(key, {key, ref, node});
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return bindings;
+}
+
+function generatorStatements(sourceFile: ts.SourceFile) {
+  const exported = sourceFile.statements.find(statement => ts.isExportAssignment(statement));
+  const factory = exported && ts.isExportAssignment(exported) && ts.isCallExpression(exported.expression)
+    ? exported.expression.arguments[0] : undefined;
+  return factory && ts.isFunctionExpression(factory) ? [...factory.body.statements] : [];
+}
+
+function statementHasStartEvent(statement: ts.Statement, event: string) {
+  let found = false;
+  function visit(node: ts.Node) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'waitUntil' && node.arguments.length === 1 && ts.isStringLiteral(node.arguments[0]!) && node.arguments[0]!.text === event) found = true;
+    if (!found) ts.forEachChild(node, visit);
+  }
+  visit(statement);
+  return found;
+}
+
+function refAnimations(nodes: readonly ts.Node[]) {
+  const animations: RefAnimation[] = [];
+  function visit(node: ts.Node) {
+    if (ts.isCallExpression(node) && node.arguments.length >= 2 && ts.isPropertyAccessExpression(node.expression) && ts.isCallExpression(node.expression.expression) && ts.isIdentifier(node.expression.expression.expression)) {
+      animations.push({ref: node.expression.expression.expression.text, property: node.expression.name.text, target: node.arguments[0]!, node});
+    }
+    ts.forEachChild(node, visit);
+  }
+  for (const node of nodes) visit(node);
+  return animations;
+}
+
+function staticExpressionNumber(expression: ts.Expression | undefined, constants: ReadonlyMap<string, number>) : number | null {
+  if (!expression) return null;
+  if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression)) return staticExpressionNumber(expression.expression, constants);
+  if (ts.isNumericLiteral(expression)) return Number(expression.text);
+  if (ts.isIdentifier(expression)) return constants.get(expression.text) ?? null;
+  if (ts.isPrefixUnaryExpression(expression) && expression.operator === ts.SyntaxKind.MinusToken) {
+    const value = staticExpressionNumber(expression.operand, constants); return value === null ? null : -value;
+  }
+  if (ts.isBinaryExpression(expression)) {
+    const left = staticExpressionNumber(expression.left, constants); const right = staticExpressionNumber(expression.right, constants);
+    if (left === null || right === null) return null;
+    switch (expression.operatorToken.kind) {
+      case ts.SyntaxKind.PlusToken: return left + right;
+      case ts.SyntaxKind.MinusToken: return left - right;
+      case ts.SyntaxKind.AsteriskToken: return left * right;
+      case ts.SyntaxKind.SlashToken: return right === 0 ? null : left / right;
+    }
+  }
+  return null;
+}
+
+function sourceConstants(sourceFile: ts.SourceFile, frame: VideoFrame) {
+  const constants = new Map<string, number>([['canvasWidth', frame.width], ['canvasHeight', frame.height]]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    function visit(node: ts.Node) {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && !constants.has(node.name.text)) {
+        const value = staticExpressionNumber(node.initializer, constants);
+        if (value !== null) { constants.set(node.name.text, value); changed = true; }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
+  }
+  return constants;
+}
+
+export function validateMotionCanvasBeatLifecycle(
+  source: string,
+  beats: LifecycleBeat[],
+  frame: VideoFrame = defaultVideoFrame,
+) {
+  const sourceFile = ts.createSourceFile('generated-scene.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const bindings = sceneNodeBindings(sourceFile);
+  const statements = generatorStatements(sourceFile);
+  const constants = sourceConstants(sourceFile, frame);
+  if (beats.length > pipelineSafetyLimits.maximumBeatsPerSection) {
+    throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_LIFECYCLE', 'Scene exceeds the five-beat lifecycle limit.');
+  }
+  for (let beatIndex = 0; beatIndex < beats.length; beatIndex += 1) {
+    const beat = beats[beatIndex]!;
+    const lifecycle = beat.visualLifecycle;
+    if (!beat.primaryBlock || !lifecycle || !lifecycle.enter.length || !lifecycle.stay.length || !lifecycle.exit.length || !lifecycle.stay.includes(beat.primaryBlock)) {
+      throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_LIFECYCLE', 'Beat is missing its primary block or enter/stay/exit blueprint.');
+    }
+    const marker = `lifecycle:beat:${beat.id}:enter=${lifecycle.enter.join(',')}|stay=${lifecycle.stay.join(',')}|exit=${lifecycle.exit.join(',')}|primary=${beat.primaryBlock}`;
+    if (!source.includes(marker)) {
+      throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_LIFECYCLE', `Scene does not implement the planned lifecycle for beat ${beat.id}.`);
+    }
+    const lifecycleKeys = [...new Set([...lifecycle.enter, ...lifecycle.stay, ...lifecycle.exit])];
+    for (const key of lifecycleKeys) {
+      if (!bindings.get(key)?.ref) {
+        throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_LIFECYCLE', `Lifecycle visual “${key}” must map to a JSX node with a ref.`);
+      }
+    }
+    if (lifecycle.stay.filter(key => key.startsWith('block-')).length > MAX_CONCURRENT_PRIMARY_BLOCKS) {
+      throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_LIFECYCLE', `Beat ${beat.id} keeps more than ${MAX_CONCURRENT_PRIMARY_BLOCKS} block-* visuals active.`);
+    }
+    const startIndex = statements.findIndex(statement => statementHasStartEvent(statement, `beat:${beat.id}:start`));
+    const nextStartIndex = beatIndex + 1 < beats.length
+      ? statements.findIndex(statement => statementHasStartEvent(statement, `beat:${beats[beatIndex + 1]!.id}:start`))
+      : statements.length;
+    if (startIndex < 0 || nextStartIndex <= startIndex) {
+      throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_LIFECYCLE', `Cannot isolate executable lifecycle scope for beat ${beat.id}.`);
+    }
+    const animations = refAnimations(statements.slice(startIndex + 1, nextStartIndex));
+    const animationsFor = (key: string) => animations.filter(animation => animation.ref === bindings.get(key)!.ref);
+    for (const key of lifecycle.enter) {
+      const implemented = animationsFor(key).some(animation => {
+        if (animation.property === 'opacity') {
+          const value = staticExpressionNumber(animation.target, constants); return value !== null && value > 0;
+        }
+        return animation.property === 'x' || animation.property === 'y' || animation.property === 'position';
+      });
+      if (!implemented) throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_LIFECYCLE', `Beat ${beat.id} does not animate enter visual “${key}” through its own ref.`);
+    }
+    for (const key of lifecycle.exit) {
+      const implemented = animationsFor(key).some(animation => {
+        if (animation.property === 'opacity') return staticExpressionNumber(animation.target, constants) === 0;
+        if (animation.property === 'x') { const value = staticExpressionNumber(animation.target, constants); return value !== null && Math.abs(value) > frame.width / 2; }
+        if (animation.property === 'y') { const value = staticExpressionNumber(animation.target, constants); return value !== null && Math.abs(value) > frame.height / 2; }
+        if (animation.property === 'position' && ts.isArrayLiteralExpression(animation.target) && animation.target.elements.length === 2) {
+          const x = staticExpressionNumber(animation.target.elements[0] as ts.Expression, constants);
+          const y = staticExpressionNumber(animation.target.elements[1] as ts.Expression, constants);
+          return (x !== null && Math.abs(x) > frame.width / 2) || (y !== null && Math.abs(y) > frame.height / 2);
+        }
+        return false;
+      });
+      if (!implemented) throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_LIFECYCLE', `Beat ${beat.id} does not fully exit visual “${key}” through its own ref.`);
+    }
+  }
+}
+
+/** Static responsive-layout contract for generated scenes. */
+export function validateMotionCanvasResponsiveLayout(source: string, frame: VideoFrame, beats: LifecycleBeat[] = []) {
+  const sourceFile = ts.createSourceFile('generated-scene.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  if (!/const\s+canvasWidth\s*=\s*view\.width\(\)\s*;/.test(source) || !/const\s+canvasHeight\s*=\s*view\.height\(\)\s*;/.test(source)) {
+    throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_LAYOUT', 'Scene must derive canvasWidth/canvasHeight from view.width()/view.height().');
+  }
+  if (!new RegExp(`const\\s+safeMarginX\\s*=\\s*canvasWidth\\s*\\*\\s*${MOTION_CANVAS_SAFE_MARGIN_X_RATIO}`).test(source) || !new RegExp(`const\\s+safeMarginY\\s*=\\s*canvasHeight\\s*\\*\\s*${MOTION_CANVAS_SAFE_MARGIN_Y_RATIO}`).test(source)) {
+    throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_LAYOUT', 'Scene must declare the quantified safe margins from canvas dimensions.');
+  }
+  const constants = sourceConstants(sourceFile, frame);
+  const bindings = sceneNodeBindings(sourceFile);
+  const exitRefs = new Set(beats.flatMap(beat => beat.visualLifecycle?.exit ?? []).map(key => bindings.get(key)?.ref).filter((ref): ref is string => Boolean(ref)));
+  function jsxExpression(attribute: ts.JsxAttribute | undefined) {
+    return attribute?.initializer && ts.isJsxExpression(attribute.initializer) ? attribute.initializer.expression : undefined;
+  }
+  function coordinate(expression: ts.Expression | undefined) { return staticExpressionNumber(expression, constants); }
+  function coordinates(attributes: ReadonlyMap<string, ts.JsxAttribute>) {
+    const position = jsxExpression(attributes.get('position'));
+    if (position && ts.isArrayLiteralExpression(position) && position.elements.length === 2) return [coordinate(position.elements[0] as ts.Expression), coordinate(position.elements[1] as ts.Expression)] as const;
+    return [coordinate(jsxExpression(attributes.get('x'))), coordinate(jsxExpression(attributes.get('y')))] as const;
+  }
+  function dimensions(attributes: ReadonlyMap<string, ts.JsxAttribute>) {
+    const size = coordinate(jsxExpression(attributes.get('size')));
+    return [coordinate(jsxExpression(attributes.get('width'))) ?? size, coordinate(jsxExpression(attributes.get('height'))) ?? size] as const;
+  }
+  function assertBox(x: number | null, y: number | null, width: number | null, height: number | null, label: string, allowOutside: boolean) {
+    if (allowOutside) return;
+    const minX = -frame.width / 2 + frame.width * MOTION_CANVAS_SAFE_MARGIN_X_RATIO;
+    const maxX = frame.width / 2 - frame.width * MOTION_CANVAS_SAFE_MARGIN_X_RATIO;
+    const minY = -frame.height / 2 + frame.height * MOTION_CANVAS_SAFE_MARGIN_Y_RATIO;
+    const maxY = frame.height / 2 - frame.height * MOTION_CANVAS_SAFE_MARGIN_Y_RATIO;
+    if ((x !== null && ((width !== null && (x - width / 2 < minX || x + width / 2 > maxX)) || (width === null && (x < minX || x > maxX)))) || (y !== null && ((height !== null && (y - height / 2 < minY || y + height / 2 > maxY)) || (height === null && (y < minY || y > maxY))))) {
+      throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_LAYOUT', `${label} is outside the quantified safe area.`);
+    }
+  }
+  let responsiveBackground = false;
+  function visit(node: ts.Node) {
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      const attributes = new Map<string, ts.JsxAttribute>();
+      for (const attribute of node.attributes.properties) if (ts.isJsxAttribute(attribute) && ts.isIdentifier(attribute.name)) attributes.set(attribute.name.text, attribute);
+      const key = attributes.get('key')?.initializer;
+      const keyText = key && ts.isStringLiteral(key) ? key.text : null;
+      if (keyText === 'scene-background') {
+        const width = jsxExpression(attributes.get('width'));
+        const height = jsxExpression(attributes.get('height'));
+        responsiveBackground = Boolean(width && height && ts.isIdentifier(width) && width.text === 'canvasWidth' && ts.isIdentifier(height) && height.text === 'canvasHeight');
+      }
+      const [x, y] = coordinates(attributes); const [width, height] = dimensions(attributes);
+      const ref = bindings.get(keyText ?? '')?.ref;
+      const lifecycleStaging = Boolean(ref && beats.some(beat => [...(beat.visualLifecycle?.enter ?? []), ...(beat.visualLifecycle?.exit ?? [])].some(key => bindings.get(key)?.ref === ref)));
+      if (keyText !== 'scene-background') assertBox(x, y, width, height, `Initial visual ${keyText ?? 'without-key'}`, lifecycleStaging);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  for (const animation of refAnimations(generatorStatements(sourceFile))) {
+    if (!['x', 'y', 'position'].includes(animation.property)) continue;
+    const binding = [...bindings.values()].find(candidate => candidate.ref === animation.ref);
+    if (!binding) continue;
+    const attributes = new Map<string, ts.JsxAttribute>();
+    for (const attribute of binding.node.attributes.properties) if (ts.isJsxAttribute(attribute) && ts.isIdentifier(attribute.name)) attributes.set(attribute.name.text, attribute);
+    const [, , width, height] = [...coordinates(attributes), ...dimensions(attributes)];
+    let x: number | null = null; let y: number | null = null;
+    if (animation.property === 'x') x = coordinate(animation.target);
+    if (animation.property === 'y') y = coordinate(animation.target);
+    if (animation.property === 'position' && ts.isArrayLiteralExpression(animation.target) && animation.target.elements.length === 2) { x = coordinate(animation.target.elements[0] as ts.Expression); y = coordinate(animation.target.elements[1] as ts.Expression); }
+    assertBox(x, y, width, height, `Animation target for ${binding.key}`, exitRefs.has(animation.ref));
+  }
+  if (!responsiveBackground || /(?:width|height)=\{\s*(?:1080|1920)\s*\}/.test(source)) {
+    throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_LAYOUT', 'Scene hard-codes canvas dimensions instead of using the runtime canvas.');
+  }
+}
+
 function attachedSceneTreeNodes(source: string) {
   const sourceFile = ts.createSourceFile(
     'generated-scene.tsx',
@@ -1338,7 +1592,6 @@ function fallbackSceneSource(
   request: MotionCanvasGenerationRequest,
   sectionIndex: number,
 ) {
-  const frame = request.videoFrame ?? request.topicInput.videoFrame ?? defaultVideoFrame;
   const outlineSection = request.outline.sections[sectionIndex]!;
   const beats = request.voiceVisualPlan.sections[sectionIndex]!.beats;
   const background = request.topicInput.background;
@@ -1346,56 +1599,52 @@ function fallbackSceneSource(
   const foreground = backgroundTone === 'light' ? '#18342C' : '#F3F7F4';
   const trackColor = backgroundTone === 'light' ? '#D7E1DB' : '#365149';
   const colors = ['#51B68E', '#ED8F67', '#71A7E8', '#D8B85A'];
-  // Keep the recovery path safe for every user-selected frame, including square
-  // and landscape canvases. These ratios intentionally reproduce the previous
-  // portrait composition without leaking 1080x1920 assumptions into output.
-  const titleY = -Math.round(frame.height * 0.3385);
-  const titleWidth = Math.round(frame.width * 0.815);
-  const titleFontSize = Math.max(26, Math.round(frame.width * 0.061));
-  const cardWidth = Math.round(frame.width * 0.796);
-  const cardHeight = Math.max(96, Math.round(frame.height * 0.271));
-  const cardRadius = Math.max(18, Math.round(frame.width * 0.048));
-  const cardPadding = Math.max(20, Math.round(frame.width * 0.059));
-  const labelWidth = Math.round(frame.width * 0.676);
-  const labelFontSize = Math.max(24, Math.round(frame.width * 0.044));
-  const progressY = Math.round(frame.height * 0.3385);
-  const progressWidth = Math.round(frame.width * 0.704);
-  const progressHeight = Math.max(8, Math.round(frame.height * 0.0094));
-  const progressRadius = Math.max(4, Math.round(progressHeight / 2));
   const beatBlocks = beats.map((beat, beatIndex) => {
     const number = beatIndex + 1;
     const description = beat.visualDescription.replace(/\s+/g, ' ').trim().slice(0, 110);
-    const progress = Math.round(((beatIndex + 1) / beats.length) * progressWidth);
+    const progress = (beatIndex + 1) / beats.length;
     const color = colors[beatIndex % colors.length]!;
-    return `  yield* waitUntil('beat:${beat.id}:start');
+    const lifecycle = beat.visualLifecycle!;
+    return `  // lifecycle:beat:${beat.id}:enter=${lifecycle.enter.join(',')}|stay=${lifecycle.stay.join(',')}|exit=${lifecycle.exit.join(',')}|primary=${beat.primaryBlock}
+  yield* waitUntil('beat:${beat.id}:start');
   const beatDuration${number} = useDuration('beat:${beat.id}:end');
   const beatEndTime${number} = useThread().time() + beatDuration${number};
-  const transition${number} = Math.min(0.45, Math.max(0.05, beatDuration${number} * 0.18));
+  const enterDuration${number} = Math.min(0.45, Math.max(0.05, beatDuration${number} * 0.12));
+  const exitDuration${number} = Math.min(0.4, Math.max(0.05, beatDuration${number} * 0.1));
   yield* all(
-    conceptLabel().text(${JSON.stringify(description)}, transition${number}),
-    conceptCard().fill('${color}', transition${number}),
-    progressFill().width(${progress}, transition${number}),
+    conceptCard().opacity(1, enterDuration${number}),
+    conceptCard().y(0, enterDuration${number}),
+    conceptLabel().opacity(1, enterDuration${number}),
+    conceptLabel().text(${JSON.stringify(description)}, enterDuration${number}),
+    conceptCard().fill('${color}', enterDuration${number}),
+    progressFill().width((canvasWidth - safeMarginX * 4) * ${progress}, enterDuration${number}),
   );
+  yield* waitFor(Math.max(0, beatDuration${number} - enterDuration${number} - exitDuration${number}));
+  yield* all(conceptCard().opacity(0, exitDuration${number}), conceptCard().y(canvasHeight, exitDuration${number}), conceptLabel().opacity(0, exitDuration${number}));
   yield* waitFor(Math.max(0, beatEndTime${number} - useThread().time()));`;
   });
   return `import {Layout, makeScene2D, Rect, Txt} from '@motion-canvas/2d';
 import {all, createRef, useDuration, useThread, waitFor, waitUntil} from '@motion-canvas/core';
 
 export default makeScene2D(function* (view) {
+  const canvasWidth = view.width();
+  const canvasHeight = view.height();
+  const safeMarginX = canvasWidth * ${MOTION_CANVAS_SAFE_MARGIN_X_RATIO};
+  const safeMarginY = canvasHeight * ${MOTION_CANVAS_SAFE_MARGIN_Y_RATIO};
   const conceptCard = createRef<Rect>();
   const conceptLabel = createRef<Txt>();
   const progressFill = createRef<Rect>();
 
   view.add(
-    <Rect key="scene-background" width={${frame.width}} height={${frame.height}} fill={${JSON.stringify(background.color)}}>
+    <Rect key="scene-background" width={canvasWidth} height={canvasHeight} fill={${JSON.stringify(background.color)}}>
       <Layout key="scene-content-root">
-        <Layout key="block-scene-heading" y={${titleY}}>
+        <Layout key="block-scene-heading" y={-canvasHeight * 0.3385}>
           <Txt
             key="scene-heading"
             text={${JSON.stringify(outlineSection.title.slice(0, 80))}}
-            width={${titleWidth}}
+            width={canvasWidth - safeMarginX * 2}
             fill={${JSON.stringify(foreground)}}
-            fontSize={${titleFontSize}}
+            fontSize={canvasWidth * 0.061}
             fontWeight={700}
             textAlign={'center'}
           />
@@ -1403,34 +1652,37 @@ export default makeScene2D(function* (view) {
         <Rect
           key="block-concept-card"
           ref={conceptCard}
-          width={${cardWidth}}
-          height={${cardHeight}}
-          radius={${cardRadius}}
+          width={canvasWidth - safeMarginX * 2}
+          height={canvasHeight * 0.271}
+          radius={canvasWidth * 0.048}
           fill={'#51B68E'}
-          padding={${cardPadding}}
+          padding={canvasWidth * 0.059}
+          opacity={0}
+          y={canvasHeight}
         >
         <Txt
           key="concept-label"
           ref={conceptLabel}
           text={'Đang chuẩn bị visual…'}
-          width={${labelWidth}}
+          width={canvasWidth - safeMarginX * 4}
           fill={'#10231D'}
-          fontSize={${labelFontSize}}
+          fontSize={canvasWidth * 0.044}
           fontWeight={650}
           textAlign={'center'}
+          opacity={0}
         />
         </Rect>
-        <Layout key="block-progress-track" y={${progressY}}>
-          <Rect key="progress-track" width={${progressWidth}} height={${progressHeight}} radius={${progressRadius}} fill={${JSON.stringify(trackColor)}}>
+        <Layout key="block-progress-track" y={canvasHeight * 0.3385}>
+          <Rect key="progress-track" width={canvasWidth - safeMarginX * 4} height={canvasHeight * 0.0094} radius={canvasHeight * 0.0047} fill={${JSON.stringify(trackColor)}}>
             <Rect
               key="progress-fill"
               ref={progressFill}
               width={0}
-              height={${progressHeight}}
-              radius={${progressRadius}}
+              height={canvasHeight * 0.0094}
+              radius={canvasHeight * 0.0047}
               fill={${JSON.stringify(foreground)}}
               offsetX={-1}
-              x={${-Math.round(progressWidth / 2)}}
+              x={-(canvasWidth - safeMarginX * 4) / 2}
             />
           </Rect>
         </Layout>
@@ -1740,6 +1992,16 @@ export function createCodexMotionCanvasGenerator(
     validateMotionCanvasContainerContract(source);
     validateMotionCanvasTimingContract(
       source,
+      request.voiceVisualPlan.sections[sectionIndex]!.beats,
+    );
+    validateMotionCanvasBeatLifecycle(
+      source,
+      request.voiceVisualPlan.sections[sectionIndex]!.beats,
+      request.videoFrame ?? request.topicInput.videoFrame ?? defaultVideoFrame,
+    );
+    validateMotionCanvasResponsiveLayout(
+      source,
+      request.videoFrame ?? request.topicInput.videoFrame ?? defaultVideoFrame,
       request.voiceVisualPlan.sections[sectionIndex]!.beats,
     );
   }
@@ -2130,6 +2392,11 @@ export function createCodexMotionCanvasGenerator(
 
   return {
     async generate(request) {
+      for (const section of request.voiceVisualPlan.sections) {
+        if (section.beats.length > pipelineSafetyLimits.maximumBeatsPerSection || section.beats.some(beat => !beat.primaryBlock || !beat.visualLifecycle || !beat.visualLifecycle.stay.includes(beat.primaryBlock) || beat.visualLifecycle.stay.filter(key => key.startsWith('block-')).length > MAX_CONCURRENT_PRIMARY_BLOCKS)) {
+          throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_REQUEST', 'Voice–visual plan must contain at most five beats per scene and a complete lifecycle for each beat.');
+        }
+      }
       const sectionIndexes = request.sectionIndexes ??
         request.outline.sections.map((_section, index) => index);
       if (
@@ -2178,9 +2445,9 @@ export function createCodexMotionCanvasGenerator(
         throw failures[0]!.error;
       }
 
-      // Compare normalized richness across the batch. A deliberately simple
-      // video stays simple, while a scene that collapses relative to the
-      // established visual language gets one clean regeneration automatically.
+      // Structural richness is retained as telemetry for diagnostics only.
+      // It is deliberately not a pass/fail signal: rendered-frame validation
+      // owns acceptance and retries after compilation.
       const assessments = results.map((result, index) =>
         assessMotionCanvasSceneQuality(
           result.scene.source,
@@ -2210,9 +2477,8 @@ export function createCodexMotionCanvasGenerator(
           baseline !== null &&
           baseline >= 12 &&
           assessment.richnessPerBeat < baseline * 0.72;
-        if (severeAbsoluteDrop || relativeDrop) {
-          qualityRetryIndexes.push(index);
-        }
+        void severeAbsoluteDrop;
+        void relativeDrop;
       }
 
       const qualityRetryDiagnostics: NonNullable<MotionCanvasBundle['generationDiagnostics']> = [];

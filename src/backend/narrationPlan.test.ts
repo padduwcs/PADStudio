@@ -6,6 +6,7 @@ import {
   narrationPlanMatchesReviewedNarration,
   narrationArtifactsMatchReview,
   planNarrationArtifacts,
+  validateSemanticVisualPlan,
 } from './narrationPlan.ts';
 import type {VoiceVisualPlanContent} from '../shared/topic.ts';
 import type {NarrationVisualPlannerService} from './narrationVisualPlanner.ts';
@@ -64,6 +65,14 @@ test('semantic plan preserves reviewed words while adding meaningful visual blue
   }), true);
 });
 
+test('semantic plan rejects three active block containers before Motion Canvas generation', () => {
+  const narration = plannerNarration();
+  const {outline, voiceVisualPlan} = createNarrationArtifacts({topicInput: plannerTopicInput, narration, generationId: '10000000-0000-4000-8000-000000000099', now: '2026-01-01T00:00:00.000Z', previousPlan: null});
+  const beat = voiceVisualPlan.sections[0]!.beats[0]!;
+  beat.visualLifecycle = {...beat.visualLifecycle!, stay: ['block-one', 'block-two', 'block-three']};
+  assert.throws(() => validateSemanticVisualPlan(narration, outline, voiceVisualPlan), /maximum active block/i);
+});
+
 const plannerTopicInput = {
   topic: 'Độ phức tạp thuật toán',
   background: {mode: 'dark' as const, color: '#10231D'},
@@ -99,6 +108,8 @@ function validPlannerOutput(unitIds: string[]) {
       stateHandoffOutgoing: null,
       units: unitIds.map(unitId => ({
         unitId,
+        primaryBlock: 'block-concept-card' as const,
+        visualLifecycle: {enter: ['block-concept-card'], stay: ['block-concept-card', 'concept-label'], exit: ['block-concept-card']},
         visualPurpose: 'Biến ý chính của câu thành một quan hệ nhìn thấy được.',
         visualDescription: 'Một sơ đồ trung tâm minh họa quan hệ được nhắc tới.',
         animationDescription: 'Phần tử chính di chuyển vào vị trí rồi giữ hình.',
