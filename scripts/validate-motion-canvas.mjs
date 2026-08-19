@@ -405,31 +405,13 @@ export default makeScene2D(function* (view) {
         );
       }
     }
-    if (stage === 'sync') {
-      const previewEntry = path.join(
-        rootDirectory,
-        'motion-canvas-runtime',
-        'preview',
-        'main.js',
-      );
-      const transformedPreview = await server.transformRequest(
-        `/@fs/${previewEntry.replaceAll('\\', '/')}`,
-      );
-      if (
-        !transformedPreview?.code.includes('pad-studio-sync-preview')
-      ) {
-        throw new Error(
-          'Player chỉ-đọc của workspace đồng bộ chưa được transform.',
-        );
-      }
-    }
     const response = await fetch(editorUrl);
     const html = await response.text();
     if (
       !response.ok ||
       !html.toLowerCase().includes('<html') ||
       (stage === 'sync' &&
-        !html.includes('PAD Studio · Bản nháp đồng bộ'))
+        !html.includes('PAD Studio · Layout Editor'))
     ) {
       throw new Error('Motion Canvas editor không trả về HTML hợp lệ.');
     }
@@ -476,7 +458,7 @@ export default makeScene2D(function* (view) {
       );
       if (
         !stdout.includes('data-ready="true"') ||
-        !stdout.includes('class="preview-play"')
+        !stdout.includes('class="layout-play"')
       ) {
         const browserDiagnostics = stderr
           .split(/\r?\n/)
@@ -488,12 +470,12 @@ export default makeScene2D(function* (view) {
           .slice(-50)
           .join('\n');
         throw new Error(
-          'Player sync không render xong trong trình duyệt headless.\n' +
+          'Editor scene đồng bộ không render xong trong trình duyệt headless.\n' +
             `DOM: ${stdout.slice(-3_000)}\n` +
             `Chromium: ${browserDiagnostics || stderr.slice(-3_000)}`,
         );
       }
-      console.info('Sync preview browser player: OK');
+      console.info('Synchronized scene editor in browser: OK');
     }
     await server.waitForRequestsIdle();
     console.info(`Motion Canvas runtime editor (${projectId}): OK`);

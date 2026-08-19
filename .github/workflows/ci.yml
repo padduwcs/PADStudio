@@ -68,7 +68,7 @@ jobs:
       - name: Validate synchronized workspace
         run: npm run validate:sync
 
-      - name: Smoke-test sync player in Chrome
+      - name: Smoke-test synchronized scene editor in Chrome
         shell: bash
         run: |
           chrome=""
