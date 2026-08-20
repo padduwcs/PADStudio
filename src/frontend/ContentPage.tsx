@@ -30,6 +30,10 @@ import {
 } from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {
+  notifyTaskCompleted,
+  prepareTaskCompletionNotifications,
+} from './taskCompletionNotifications.ts';
+import {
   clearPageDraft,
   readPageDraft,
   savePageDraft,
@@ -277,6 +281,8 @@ export function ContentPage({projectId}: {projectId?: string}) {
       form.narrationSourceText.trim() &&
       !window.confirm('Thay lời thoại hiện tại bằng bản nháp mới? Bạn có thể hủy để giữ nguyên.')
     ) return;
+    const generationId = crypto.randomUUID();
+    prepareTaskCompletionNotifications();
     setNarrationGenerating(true);
     setNarrationGenerationError('');
     try {
@@ -289,7 +295,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
         throw new Error('Hãy chọn model và mức reasoning trước khi tạo lời thoại.');
       }
       const response = await generateNarrationDraft({
-        generationId: crypto.randomUUID(),
+        generationId,
         topicInput: topicInput.data,
         ...(narrationGuidance.trim()
           ? {userGuidance: narrationGuidance.trim()}
@@ -297,6 +303,11 @@ export function ContentPage({projectId}: {projectId?: string}) {
         ...selection,
       });
       update('narrationSourceText', response.draft.text);
+      notifyTaskCompleted({
+        id: `narration-draft:${generationId}`,
+        title: 'Lời thoại đã soạn xong',
+        message: 'Bản nháp mới đã sẵn sàng để bạn đọc và chỉnh sửa.',
+      });
     } catch (reason) {
       setNarrationGenerationError(
         reason instanceof ApiRequestError || reason instanceof Error

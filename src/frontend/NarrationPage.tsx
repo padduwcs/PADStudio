@@ -25,6 +25,10 @@ import {
 } from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {
+  notifyTaskCompleted,
+  prepareTaskCompletionNotifications,
+} from './taskCompletionNotifications.ts';
+import {
   clearPageDraft,
   readPageDraft,
   savePageDraft,
@@ -288,10 +292,12 @@ export function NarrationPage({projectId}: {projectId: string}) {
   async function runAudit() {
     let current = project;
     if (!current || !narration) return;
+    prepareTaskCompletionNotifications();
     if (needsSave) {
       current = await saveSnapshot();
       if (!current) return;
     }
+    const generationId = crypto.randomUUID();
     setState('auditing');
     setMessage('');
     try {
@@ -303,7 +309,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
         return;
       }
       const audited = await auditProjectNarration(current.id, {
-        generationId: crypto.randomUUID(),
+        generationId,
         ...selection,
       }, current.revision);
       installProject(audited);
@@ -311,6 +317,13 @@ export function NarrationPage({projectId}: {projectId: string}) {
       setMessage(audited.narration?.review?.aiPatches.length
         ? 'AI đã tạo đề xuất cách đọc. Hãy kiểm tra diff và bấm áp dụng nếu phù hợp.'
         : 'AI không thấy ký hiệu kỹ thuật nào cần bổ sung.');
+      notifyTaskCompleted({
+        id: `pronunciation-audit:${generationId}`,
+        title: 'Đã rà soát cách đọc',
+        message: audited.narration?.review?.aiPatches.length
+          ? 'AI đã tạo đề xuất mới để bạn kiểm tra.'
+          : 'AI không phát hiện ký hiệu kỹ thuật nào cần bổ sung.',
+      });
     } catch (reason) {
       setState('error');
       setMessage(reason instanceof ApiRequestError ? reason.message : 'AI chưa thể rà soát cách đọc lúc này.');

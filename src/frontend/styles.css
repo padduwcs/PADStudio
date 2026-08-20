@@ -5151,3 +5151,115 @@ kbd {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.completion-notice-stack {
+  position: fixed;
+  z-index: 1200;
+  top: 20px;
+  right: 20px;
+  display: grid;
+  width: min(390px, calc(100vw - 32px));
+  gap: 10px;
+  pointer-events: none;
+}
+
+.completion-notice {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 28px;
+  gap: 12px;
+  align-items: start;
+  padding: 15px 14px;
+  border: 1px solid color-mix(in srgb, var(--success) 42%, var(--line));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--paper) 94%, var(--success) 6%);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 18%);
+  pointer-events: auto;
+  animation: completion-notice-enter 220ms ease-out both;
+}
+
+.completion-notice-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, #39c98a 18%, transparent);
+  color: #15925d;
+}
+
+.completion-notice-icon svg {
+  width: 23px;
+  height: 23px;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.completion-notice small,
+.completion-notice strong,
+.completion-notice p {
+  display: block;
+  margin: 0;
+}
+
+.completion-notice small {
+  margin-bottom: 2px;
+  color: #15925d;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.completion-notice strong {
+  color: var(--ink);
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.completion-notice p {
+  margin-top: 3px;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.completion-notice > button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.completion-notice > button:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  color: var(--ink);
+}
+
+@keyframes completion-notice-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(18px, -4px, 0) scale(0.98);
+  }
+}
+
+@media (max-width: 640px) {
+  .completion-notice-stack {
+    top: 12px;
+    right: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .completion-notice {
+    animation: none;
+  }
+}

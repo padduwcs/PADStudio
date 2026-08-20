@@ -22,6 +22,10 @@ import {navigate, projectPronunciationPath, projectScenesPath} from './router.ts
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useElevenLabsConnection} from './useElevenLabsConnection.ts';
 import {RuntimeDiagnosticsCard} from './RuntimeDiagnosticsCard.tsx';
+import {
+  notifyTaskCompleted,
+  prepareTaskCompletionNotifications,
+} from './taskCompletionNotifications.ts';
 
 const defaultSettings = {
   stability: 0.5,
@@ -149,6 +153,8 @@ export function ProductionPage({projectId}: {projectId: string}) {
       'Tạo lại audio sẽ dùng quota ElevenLabs và làm bản đồng bộ/render cũ hết hiệu lực. Tiếp tục?',
     );
     if (!confirmed) return;
+    const taskId = newGenerationId();
+    prepareTaskCompletionNotifications();
     setBusyAction('regenerateAudio');
     setMessage('');
     try {
@@ -165,6 +171,11 @@ export function ProductionPage({projectId}: {projectId: string}) {
       setModelId(current.voiceBundle!.configuration.modelId);
       setMessage('Audio mới đã sẵn sàng. Scene hiện tại được giữ lại; đồng bộ và render sẽ được tạo lại ở các bước sau.');
       setState('ready');
+      notifyTaskCompleted({
+        id: `regenerate-audio:${taskId}`,
+        title: 'Audio mới đã tạo xong',
+        message: 'Bạn có thể nghe lại audio ngay trong bước Giọng đọc & scene.',
+      });
     } catch (error) {
       setState('error');
       setMessage(error instanceof ApiRequestError || error instanceof Error ? error.message : 'Không thể tạo lại audio.');
@@ -175,6 +186,8 @@ export function ProductionPage({projectId}: {projectId: string}) {
 
   async function createAudio() {
     if (!project || busyAction || !voiceId || !modelId) return;
+    const taskId = newGenerationId();
+    prepareTaskCompletionNotifications();
     setBusyAction('createAudio');
     setMessage('');
     try {
@@ -190,6 +203,11 @@ export function ProductionPage({projectId}: {projectId: string}) {
       setModelId(current.voiceBundle!.configuration.modelId);
       setMessage('Audio đã sẵn sàng. Bước tiếp theo: bấm “Sinh scene” ở khung Codex.');
       setState('ready');
+      notifyTaskCompleted({
+        id: `create-audio:${taskId}`,
+        title: 'Audio đã tạo xong',
+        message: 'Giọng đọc đã sẵn sàng để nghe thử và dùng khi sinh scene.',
+      });
     } catch (error) {
       setState('error');
       setMessage(error instanceof ApiRequestError || error instanceof Error ? error.message : 'Không thể tạo audio.');
@@ -200,6 +218,8 @@ export function ProductionPage({projectId}: {projectId: string}) {
 
   async function runProduction(source: 'generateScene' | 'combined' = 'combined') {
     if (!project || busyAction) return;
+    const taskId = newGenerationId();
+    prepareTaskCompletionNotifications();
     setBusyAction(source);
     setMessage('');
     try {
@@ -245,6 +265,11 @@ export function ProductionPage({projectId}: {projectId: string}) {
         setProject(current);
       }
       setState('ready');
+      notifyTaskCompleted({
+        id: `production:${taskId}`,
+        title: 'Scene và đồng bộ đã sẵn sàng',
+        message: 'PAD Studio đã hoàn tất lượt tạo. Bạn có thể bắt đầu kiểm tra scene.',
+      });
       navigate(projectScenesPath(current.id));
     } catch (error) {
       setState('error');

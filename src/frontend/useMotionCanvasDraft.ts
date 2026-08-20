@@ -36,6 +36,10 @@ import {
   type PendingMotionCanvasCandidateOperation,
 } from './motionCanvasPendingOperation.ts';
 import {ProjectOperationQueue} from './projectOperationQueue.ts';
+import {
+  notifyTaskCompleted,
+  prepareTaskCompletionNotifications,
+} from './taskCompletionNotifications.ts';
 
 type LoadState = 'loading' | 'ready' | 'error';
 type PreviewState = 'idle' | 'loading' | 'ready' | 'error';
@@ -294,6 +298,13 @@ export function useMotionCanvasDraft(projectId: string) {
           );
         }
         setHistory(await getMotionCanvasHistory(projectId));
+        notifyTaskCompleted({
+          id: `candidate-resume:${operationId}`,
+          title: 'Candidate scene đã sẵn sàng',
+          message: result.repairError
+            ? 'Bản candidate đầu tiên đã sẵn sàng để xem; lượt tự sửa cần bạn kiểm tra lại.'
+            : 'Codex đã hoàn tất candidate scene đang được khôi phục.',
+        });
       })
       .catch(error => {
         if (!active || sessionRef.current !== session) return;
@@ -368,6 +379,8 @@ export function useMotionCanvasDraft(projectId: string) {
     reasoningEffort?: string,
   ) {
     if (generating || conflict) return null;
+    const taskNoticeId = crypto.randomUUID();
+    prepareTaskCompletionNotifications();
     const startedAt = Date.now();
     setGenerating(true);
     setActionError('');
@@ -450,6 +463,11 @@ export function useMotionCanvasDraft(projectId: string) {
           );
         }
       }
+      notifyTaskCompleted({
+        id: `motion-canvas:${taskNoticeId}`,
+        title: 'Scene đã sinh xong',
+        message: 'Source Motion Canvas mới đã sẵn sàng để preview và chỉnh sửa.',
+      });
       return updatedProject;
     } catch (error) {
       if (error instanceof MotionCanvasOperationCancelledError) return null;
@@ -481,6 +499,8 @@ export function useMotionCanvasDraft(projectId: string) {
     reasoningEffort?: string,
   ) {
     if (candidateGenerating || conflict) return null;
+    const taskNoticeId = crypto.randomUUID();
+    prepareTaskCompletionNotifications();
     const startedAt = Date.now();
     setCandidateGenerating(true);
     setCandidateRepairing(false);
@@ -599,6 +619,13 @@ export function useMotionCanvasDraft(projectId: string) {
           elapsedMs: Date.now() - startedAt,
         });
       }
+      notifyTaskCompleted({
+        id: `motion-canvas-candidate:${taskNoticeId}`,
+        title: 'Candidate scene đã sẵn sàng',
+        message: result.repairError
+          ? 'Bản candidate đầu tiên đã sẵn sàng để xem; lượt tự sửa cần bạn kiểm tra lại.'
+          : 'Codex đã tạo xong phương án mới để bạn so sánh.',
+      });
       return created;
     } catch (error) {
       if (error instanceof MotionCanvasOperationCancelledError) return null;

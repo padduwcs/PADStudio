@@ -11,6 +11,10 @@ import {
   getFinalRenderStatus,
   getProject,
 } from './api.ts';
+import {
+  notifyTaskCompleted,
+  prepareTaskCompletionNotifications,
+} from './taskCompletionNotifications.ts';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -117,6 +121,11 @@ export function useFinalRender(projectId: string) {
             }
             return;
           }
+          notifyTaskCompleted({
+            id: `final-render:${generationId}`,
+            title: 'Video đã render xong',
+            message: 'File video cuối đã sẵn sàng để xem và tải xuống.',
+          });
         } else if (nextStatus.state === 'failed') {
           setActionError(nextStatus.message);
         }
@@ -148,6 +157,7 @@ export function useFinalRender(projectId: string) {
       return null;
     }
     const nextGenerationId = crypto.randomUUID();
+    prepareTaskCompletionNotifications();
     const queuedAt = new Date().toISOString();
     const totalFrames = Math.ceil(
       (currentProject.layoutBundle?.totalDurationSeconds ?? 0) *
@@ -180,6 +190,11 @@ export function useFinalRender(projectId: string) {
       if (startedStatus.state === 'completed') {
         const updatedProject = await getProject(projectId);
         publishProject(updatedProject);
+        notifyTaskCompleted({
+          id: `final-render:${nextGenerationId}`,
+          title: 'Video đã render xong',
+          message: 'File video cuối đã sẵn sàng để xem và tải xuống.',
+        });
         return updatedProject;
       }
       return currentProject;

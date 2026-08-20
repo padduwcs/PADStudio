@@ -12,6 +12,7 @@ import {ContentPage} from './ContentPage.tsx';
 import {NarrationPage} from './NarrationPage.tsx';
 import {ProductionPage} from './ProductionPage.tsx';
 import {ProjectLibrary} from './ProjectLibrary.tsx';
+import {TaskCompletionNotifications} from './TaskCompletionNotifications.tsx';
 import {RouteErrorBoundary} from './RouteErrorBoundary.tsx';
 import {
   navigate,
@@ -287,6 +288,7 @@ export default function App() {
         onEditProject={handleEditProject}
         onDeleted={handleDeleted}
       />
+      <TaskCompletionNotifications />
     </div>
   );
 }
