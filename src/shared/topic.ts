@@ -627,6 +627,7 @@ export type MotionCanvasScene = z.infer<typeof MotionCanvasSceneSchema>;
 export const visualQualityIssueCodeValues = [
   'empty-frame', 'unexpected-block', 'missing-active-block', 'clipped-block', 'outside-safe-area', 'block-overlap', 'text-clipped', 'text-too-small', 'text-low-contrast', 'static-beats', 'renderer-error',
   'frame-too-sparse', 'frame-too-dense', 'primary-block-not-prominent', 'primary-block-off-center', 'insufficient-spacing', 'text-hierarchy-violation', 'text-overflow', 'content-occluded', 'layout-jump-excessive', 'palette-drift', 'typography-drift',
+  'caption-too-long', 'text-overrepresented',
 ] as const;
 
 export const MotionCanvasBundleSchema = z
@@ -656,7 +657,7 @@ export const MotionCanvasBundleSchema = z
     }).strict()).max(32).optional(),
     /** Rendered-frame evidence, tied to the exact source hash. */
     visualValidation: z.object({
-      version: z.literal(2),
+      version: z.literal(3),
       status: z.enum(['passed', 'failed']),
       validatedAt: z.string().datetime(),
       sourceHash: z.string().regex(/^[a-f0-9]{64}$/),

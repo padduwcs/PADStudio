@@ -78,7 +78,9 @@ function snapshot(scene, config, sample) {
     }
     const name = node.constructor?.name ?? '';
     const fill = colorHex(signal(node, 'fill'));
-    return [{node, name, key, parentKey, blockAncestor, ancestorKeys, managed: managed.has(key), effectiveOpacity: finite(signal(node, 'absoluteOpacity')) ?? 1, kind: key.startsWith('block-') ? 'block' : /Txt/i.test(name) ? 'text' : 'other', bounds: box, visibleBounds: clipped(box, config.width, config.height), fontSize: finite(signal(node, 'fontSize')), fill: typeof fill === 'string' ? fill : null, localBackground: typeof localFill === 'string' ? localFill : null}];
+    const isText = /Txt/i.test(name);
+    const text = isText && typeof signal(node, 'text') === 'string' ? signal(node, 'text') : null;
+    return [{node, name, key, parentKey, blockAncestor, ancestorKeys, managed: managed.has(key), effectiveOpacity: finite(signal(node, 'absoluteOpacity')) ?? 1, kind: key.startsWith('block-') ? 'block' : isText ? 'text' : 'other', bounds: box, visibleBounds: clipped(box, config.width, config.height), fontSize: finite(signal(node, 'fontSize')), fill: typeof fill === 'string' ? fill : null, localBackground: typeof localFill === 'string' ? localFill : null, text}];
   });
   return entries.map(entry => {
     let box = entry.bounds;

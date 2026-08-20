@@ -80,21 +80,21 @@
   .project-library,
   .responsive-aside
 ) :where(input, textarea, select):focus {
-  border-color: var(--green-700);
+  border-color: var(--accent);
   box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--green-700) 18%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent),
     var(--control-shadow);
 }
 
 :root[data-theme="dark"] {
-  --theme-glass: rgba(15, 23, 42, 0.92);
-  --theme-glass-soft: rgba(15, 23, 42, 0.78);
-  --theme-hover: #1e293b;
-  --theme-selected: #334155;
-  --theme-success-surface: #064e3b;
-  --theme-warning-surface: #451a03;
-  --theme-danger-surface: #450a0a;
-  --theme-code-surface: #020617;
+  --theme-glass: rgba(32, 28, 25, 0.92);
+  --theme-glass-soft: rgba(32, 28, 25, 0.78);
+  --theme-hover: #322c27;
+  --theme-selected: #4d433b;
+  --theme-success-surface: #0d472c;
+  --theme-warning-surface: #442404;
+  --theme-danger-surface: #440f0b;
+  --theme-code-surface: #150c04;
 }
 
 :root[data-theme="dark"] body {
@@ -140,7 +140,7 @@
   .project-library,
   .responsive-aside
 ) :where(input, textarea)::placeholder {
-  color: #71867d;
+  color: #817b76;
 }
 
 :root[data-theme="dark"] :is(
@@ -324,10 +324,10 @@
   .layout-review-step.is-done,
   .layout-text-style-group button.is-active
 ) {
-  border-color: var(--green-700);
+  border-color: var(--accent);
   color: var(--ink);
   background: var(--theme-selected);
-  box-shadow: inset 0 0 0 1px rgba(14, 165, 233, 0.15);
+  box-shadow: inset 0 0 0 1px rgba(217, 123, 30, 0.15);
 }
 
 :root[data-theme="dark"] :is(
@@ -565,7 +565,7 @@
 }
 
 :root[data-theme="dark"] .layout-inspector {
-  scrollbar-color: #42584f transparent;
+  scrollbar-color: #534d47 transparent;
 }
 
 :root[data-theme="dark"] .layout-legacy-note {

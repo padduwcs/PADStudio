@@ -41,7 +41,8 @@ export function ProductionPage({projectId}: {projectId: string}) {
   const [voiceId, setVoiceId] = useState('');
   const [modelId, setModelId] = useState('');
   const [settings, setSettings] = useState(defaultSettings);
-  const [state, setState] = useState<'loading' | 'ready' | 'working' | 'error'>('loading');
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [busyAction, setBusyAction] = useState<'createAudio' | 'regenerateAudio' | 'generateScene' | 'combined' | null>(null);
   const [message, setMessage] = useState('');
   const eleven = useElevenLabsConnection();
   const codex = useCodexConnection();
@@ -143,12 +144,12 @@ export function ProductionPage({projectId}: {projectId: string}) {
   }
 
   async function regenerateAudio() {
-    if (!project || state === 'working' || !voiceId || !modelId) return;
+    if (!project || busyAction || !voiceId || !modelId) return;
     const confirmed = window.confirm(
       'Tạo lại audio sẽ dùng quota ElevenLabs và làm bản đồng bộ/render cũ hết hiệu lực. Tiếp tục?',
     );
     if (!confirmed) return;
-    setState('working');
+    setBusyAction('regenerateAudio');
     setMessage('');
     try {
       let current = project;
@@ -167,12 +168,14 @@ export function ProductionPage({projectId}: {projectId: string}) {
     } catch (error) {
       setState('error');
       setMessage(error instanceof ApiRequestError || error instanceof Error ? error.message : 'Không thể tạo lại audio.');
+    } finally {
+      setBusyAction(null);
     }
   }
 
   async function createAudio() {
-    if (!project || state === 'working' || !voiceId || !modelId) return;
-    setState('working');
+    if (!project || busyAction || !voiceId || !modelId) return;
+    setBusyAction('createAudio');
     setMessage('');
     try {
       setMessage('Đang chuẩn bị cấu trúc scene từ lời thoại đã duyệt…');
@@ -190,12 +193,14 @@ export function ProductionPage({projectId}: {projectId: string}) {
     } catch (error) {
       setState('error');
       setMessage(error instanceof ApiRequestError || error instanceof Error ? error.message : 'Không thể tạo audio.');
+    } finally {
+      setBusyAction(null);
     }
   }
 
-  async function runProduction() {
-    if (!project || state === 'working') return;
-    setState('working');
+  async function runProduction(source: 'generateScene' | 'combined' = 'combined') {
+    if (!project || busyAction) return;
+    setBusyAction(source);
     setMessage('');
     try {
       let current = project;
@@ -244,6 +249,8 @@ export function ProductionPage({projectId}: {projectId: string}) {
     } catch (error) {
       setState('error');
       setMessage(error instanceof ApiRequestError || error instanceof Error ? error.message : 'Không thể hoàn tất lượt tạo này.');
+    } finally {
+      setBusyAction(null);
     }
   }
 
@@ -262,6 +269,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
         <h1>Chọn giọng ElevenLabs rồi sinh scene</h1>
         <p>Chọn voice và model tiếng Việt cho bản cách đọc đã duyệt. Codex dùng cùng lời thoại đó để dựng scene ở bước kế tiếp.</p>
       </div>
+      <RuntimeDiagnosticsCard />
       <div className="production-grid">
         <section className="production-card">
           <header>
@@ -275,7 +283,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
               <select
                 value={voiceId}
                 onChange={event => setVoiceId(event.currentTarget.value)}
-                disabled={!eleven.connected || state === 'working'}
+                disabled={!eleven.connected || busyAction !== null}
               >
                 <option value="">Chọn voice</option>
                 {project.voiceBundle && !catalog?.voices.some(voice => voice.voiceId === project.voiceBundle!.configuration.voiceId) && (
@@ -291,7 +299,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
               <select
                 value={modelId}
                 onChange={event => setModelId(event.currentTarget.value)}
-                disabled={!eleven.connected || state === 'working'}
+                disabled={!eleven.connected || busyAction !== null}
               >
                 <option value="">Chọn model</option>
                 {project.voiceBundle && !catalog?.models.some(model => model.modelId === project.voiceBundle!.configuration.modelId) && (
@@ -307,25 +315,25 @@ export function ProductionPage({projectId}: {projectId: string}) {
             <summary>Thông số giọng đọc</summary>
             <label>
               <span>Ổn định giọng <small>{settings.stability.toFixed(2)}</small></span>
-              <input type="range" min={0} max={1} step={0.05} value={settings.stability} disabled={state === 'working'} onChange={event => setSettings(current => ({...current, stability: Number(event.currentTarget.value)}))} />
+              <input type="range" min={0} max={1} step={0.05} value={settings.stability} disabled={busyAction !== null} onChange={event => setSettings(current => ({...current, stability: Number(event.currentTarget.value)}))} />
             </label>
             <label>
               <span>Độ giống giọng gốc <small>{settings.similarityBoost.toFixed(2)}</small></span>
-              <input type="range" min={0} max={1} step={0.05} value={settings.similarityBoost} disabled={state === 'working'} onChange={event => setSettings(current => ({...current, similarityBoost: Number(event.currentTarget.value)}))} />
+              <input type="range" min={0} max={1} step={0.05} value={settings.similarityBoost} disabled={busyAction !== null} onChange={event => setSettings(current => ({...current, similarityBoost: Number(event.currentTarget.value)}))} />
             </label>
             <label>
               <span>Tốc độ đọc <small>{settings.speed.toFixed(2)}×</small></span>
-              <input type="range" min={0.7} max={1.2} step={0.05} value={settings.speed} disabled={state === 'working'} onChange={event => setSettings(current => ({...current, speed: Number(event.currentTarget.value)}))} />
+              <input type="range" min={0.7} max={1.2} step={0.05} value={settings.speed} disabled={busyAction !== null} onChange={event => setSettings(current => ({...current, speed: Number(event.currentTarget.value)}))} />
             </label>
             {selectedModel?.canUseStyle && (
               <label>
                 <span>Biểu cảm (style) <small>{settings.style.toFixed(2)}</small></span>
-                <input type="range" min={0} max={1} step={0.05} value={settings.style} disabled={state === 'working'} onChange={event => setSettings(current => ({...current, style: Number(event.currentTarget.value)}))} />
+                <input type="range" min={0} max={1} step={0.05} value={settings.style} disabled={busyAction !== null} onChange={event => setSettings(current => ({...current, style: Number(event.currentTarget.value)}))} />
               </label>
             )}
             {selectedModel?.canUseSpeakerBoost && (
               <label className="production-voice-toggle">
-                <input type="checkbox" checked={settings.useSpeakerBoost} disabled={state === 'working'} onChange={event => setSettings(current => ({...current, useSpeakerBoost: event.currentTarget.checked}))} />
+                <input type="checkbox" checked={settings.useSpeakerBoost} disabled={busyAction !== null} onChange={event => setSettings(current => ({...current, useSpeakerBoost: event.currentTarget.checked}))} />
                 <span>Speaker boost</span>
               </label>
             )}
@@ -335,10 +343,10 @@ export function ProductionPage({projectId}: {projectId: string}) {
               <button
                 className="secondary-button"
                 type="button"
-                disabled={!eleven.connected || !voiceId || !modelId || state === 'working'}
+                disabled={!eleven.connected || !voiceId || !modelId || busyAction !== null}
                 onClick={() => void createAudio()}
               >
-                {state === 'working' ? 'Đang tạo audio…' : 'Tạo audio'}
+                {busyAction === 'createAudio' ? 'Đang tạo audio…' : 'Tạo audio'}
               </button>
               <small>
                 {!eleven.connected
@@ -356,9 +364,9 @@ export function ProductionPage({projectId}: {projectId: string}) {
                 <button
                   type="button"
                   onClick={() => void regenerateAudio()}
-                  disabled={!eleven.connected || !voiceId || !modelId || state === 'working'}
+                  disabled={!eleven.connected || !voiceId || !modelId || busyAction !== null}
                 >
-                  {state === 'working' ? 'Đang tạo…' : voiceSelectionChanged ? 'Đổi giọng & tạo lại' : 'Tạo lại audio'}
+                  {busyAction === 'regenerateAudio' ? 'Đang tạo…' : voiceSelectionChanged ? 'Đổi giọng & tạo lại' : 'Tạo lại audio'}
                 </button>
               </div>
               <div className="production-result">
@@ -391,10 +399,10 @@ export function ProductionPage({projectId}: {projectId: string}) {
                 <button
                   type="button"
                   className="secondary-button"
-                  disabled={state === 'working'}
-                  onClick={() => void runProduction()}
+                  disabled={busyAction !== null}
+                  onClick={() => void runProduction('combined')}
                 >
-                  {state === 'working' ? 'Đang chuẩn bị…' : 'Chuẩn bị editor có tiếng'}
+                  {busyAction === 'combined' ? 'Đang chuẩn bị…' : 'Chuẩn bị editor có tiếng'}
                 </button>
                 <small>Không cần duyệt preview trung gian; editor sẽ mở trên bản đã đồng bộ.</small>
               </div>
@@ -416,10 +424,10 @@ export function ProductionPage({projectId}: {projectId: string}) {
                 <button
                   type="button"
                   className="secondary-button"
-                  disabled={!audioReady || !codex.isTaskReady('motionCanvas') || state === 'working'}
-                  onClick={() => void runProduction()}
+                  disabled={!audioReady || !codex.isTaskReady('motionCanvas') || busyAction !== null}
+                  onClick={() => void runProduction('generateScene')}
                 >
-                  {state === 'working' ? 'Đang sinh scene…' : 'Sinh scene'}
+                  {busyAction === 'generateScene' ? 'Đang sinh scene…' : 'Sinh scene'}
                 </button>
                 <small>
                   {!audioReady
@@ -433,7 +441,6 @@ export function ProductionPage({projectId}: {projectId: string}) {
           </div>
         </section>
       </div>
-      <RuntimeDiagnosticsCard />
       <footer className="production-footer">
         <div>
           <strong>{syncReady ? 'Bản đồng bộ đã sẵn sàng chỉnh' : sceneReady ? 'Scene cần đồng bộ với audio' : audioReady ? 'Audio đã sẵn sàng, tiếp tục sinh scene' : 'Sẵn sàng sản xuất'}</strong>
@@ -442,8 +449,8 @@ export function ProductionPage({projectId}: {projectId: string}) {
         {syncReady ? (
           <button className="submit-button" type="button" onClick={() => navigate(projectScenesPath(project.id))}>Mở editor có tiếng</button>
         ) : (
-          <button className="submit-button" type="button" disabled={state === 'working' || (!audioReady && (!eleven.connected || !voiceId || !modelId))} onClick={() => void runProduction()}>
-            {state === 'working' ? 'Đang xử lý…' : sceneReady ? 'Mở editor có tiếng' : audioReady ? 'Sinh scene & mở editor' : 'Tạo audio, scene & mở editor'}
+          <button className="submit-button" type="button" disabled={busyAction !== null || (!audioReady && (!eleven.connected || !voiceId || !modelId))} onClick={() => void runProduction('combined')}>
+            {busyAction === 'combined' ? 'Đang xử lý…' : sceneReady ? 'Mở editor có tiếng' : audioReady ? 'Sinh scene & mở editor' : 'Tạo audio, scene & mở editor'}
           </button>
         )}
       </footer>

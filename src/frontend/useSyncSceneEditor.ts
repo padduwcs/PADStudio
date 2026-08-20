@@ -27,6 +27,7 @@ export function useSyncSceneEditor(
 ) {
   const [previewState, setPreviewState] = useState<PreviewState>('idle');
   const [previewUrl, setPreviewUrl] = useState('');
+  const [previewGenerationId, setPreviewGenerationId] = useState('');
   const [previewSessionNonce, setPreviewSessionNonce] = useState('');
   const [previewError, setPreviewError] = useState('');
   const [previewRetryKey, setPreviewRetryKey] = useState(0);
@@ -53,6 +54,7 @@ export function useSyncSceneEditor(
     if (!syncGenerationId || !syncReady) {
       setPreviewState('idle');
       setPreviewUrl('');
+      setPreviewGenerationId('');
       setPreviewSessionNonce('');
       setPreviewError('');
       return () => {
@@ -61,6 +63,7 @@ export function useSyncSceneEditor(
     }
     setPreviewState('loading');
     setPreviewUrl('');
+    setPreviewGenerationId('');
     setPreviewSessionNonce('');
     setPreviewError('');
     baseGenerationIdRef.current =
@@ -71,6 +74,7 @@ export function useSyncSceneEditor(
           return;
         }
         setPreviewUrl(preview.url);
+        setPreviewGenerationId(preview.generationId);
         setPreviewSessionNonce(preview.sessionNonce);
         setPreviewState('ready');
       })
@@ -181,6 +185,7 @@ export function useSyncSceneEditor(
   return {
     previewState,
     previewUrl,
+    previewGenerationId,
     previewSessionNonce,
     previewError,
     retryPreview: () => setPreviewRetryKey((current) => current + 1),

@@ -336,6 +336,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
         <h1>Duyệt bản đọc cho ElevenLabs</h1>
         <p>Quy tắc được áp dụng trước; AI chỉ rà soát ký hiệu dễ đọc sai, không viết lại lời thoại.</p>
       </div>
+      <details className="pronunciation-codex"><summary>Thiết lập AI rà soát</summary><CodexConnectionCard connection={codex} task="pronunciation" /></details>
       <div className="pronunciation-layout">
         <section className="pronunciation-preview-card">
           <header><div><span className="preview-kicker">Bản gửi ElevenLabs</span><h2>{approved ? 'Đã duyệt' : needsSave ? 'Có thay đổi chưa lưu' : 'Sẵn sàng kiểm tra'}</h2></div>{approved && <span className="approved-badge"><CheckIcon /> Đã duyệt</span>}</header>
@@ -361,7 +362,6 @@ export function NarrationPage({projectId}: {projectId: string}) {
           <RuleList title="Dùng chung" rules={libraryRules} onEdit={rule => setDraft({id: rule.id, scope: 'library', source: rule.source, spoken: rule.spoken})} onRemove={rule => void removeRule(rule)} />
         </aside>
       </div>
-      <details className="pronunciation-codex"><summary>Thiết lập AI rà soát</summary><CodexConnectionCard connection={codex} task="pronunciation" /></details>
     </main>
   );
 }

@@ -7,7 +7,7 @@ import {visualQualityIssueCodeValues, type BeatCompositionContract, type VoiceVi
 import type {MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
 import {analyzeRgbaFrame, parseHexColor, wcagContrastRatio} from './visualViability.ts';
 
-export const VISUAL_QUALITY_GATE_VERSION = 2;
+export const VISUAL_QUALITY_GATE_VERSION = 3;
 export const visualQualityThresholds = {
   safeMarginXRatio: 0.08,
   safeMarginYRatio: 0.07,
@@ -30,6 +30,10 @@ export const visualQualityThresholds = {
   occlusionCoverageRatio: 0.5,
   /** Anchor displacement between consecutive beats, relative to the frame diagonal. */
   maximumLayoutJumpRatio: 0.3,
+  /** Combined glyph area of visible text nodes versus occupied visual content area. */
+  maximumTextAreaShareRatio: 0.3,
+  /** Character length of a single Txt node's rendered string. */
+  maximumTextCharacters: 90,
   maximumIssues: 64,
 } as const;
 
@@ -48,7 +52,7 @@ export const VisualQualitySummarySchema = z.object({
 }).strict();
 export type VisualQualitySummary = z.infer<typeof VisualQualitySummarySchema>;
 
-export interface QualityNodeSnapshot { key: string; parentKey?: string | null; blockAncestor?: string | null; ancestorKeys?: string[]; managed?: boolean; bounds: {x: number; y: number; width: number; height: number}; visibleBounds?: {x: number; y: number; width: number; height: number}; opacity?: number; effectiveOpacity?: number; kind?: 'block' | 'text' | 'other'; fontSize?: number; fill?: string | null; localBackground?: string | null; }
+export interface QualityNodeSnapshot { key: string; parentKey?: string | null; blockAncestor?: string | null; ancestorKeys?: string[]; managed?: boolean; bounds: {x: number; y: number; width: number; height: number}; visibleBounds?: {x: number; y: number; width: number; height: number}; opacity?: number; effectiveOpacity?: number; kind?: 'block' | 'text' | 'other'; fontSize?: number; fill?: string | null; localBackground?: string | null; text?: string | null; }
 export interface QualityRenderedFrame { width: number; height: number; rgba: Uint8Array; nodes: QualityNodeSnapshot[]; }
 export interface QualitySample {sampleId: string; sceneId: string; beatId: string; phase: 'stable-start' | 'middle' | 'pre-exit'; timeSeconds: number; frame: number;}
 /** What one beat promised the frame would contain and look like. */
@@ -95,6 +99,18 @@ export function assertVisualValidationCurrent(bundle: {visualValidation?: Stored
   if (summary.version !== VISUAL_QUALITY_GATE_VERSION) throw new MotionCanvasVisualValidationGateError('stale-version', `Bằng chứng kiểm tra khung hình thuộc phiên bản ${summary.version}, cần phiên bản ${VISUAL_QUALITY_GATE_VERSION}.`);
   if (summary.status !== 'passed') throw new MotionCanvasVisualValidationGateError('failed', 'Bundle Motion Canvas chưa vượt qua kiểm tra khung hình đã render.');
   if (!visualValidationIsCurrent(summary, scenes)) throw new MotionCanvasVisualValidationGateError('stale-source', 'Bằng chứng kiểm tra khung hình không khớp với source scene hiện tại.');
+}
+
+/** Turns a failed gate's issues into guidance text an automatic regeneration
+ * retry can act on, instead of re-rolling the section blind. Callers should
+ * append this to any pre-existing human-supplied guidance, not replace it. */
+export function formatVisualQualityRetryGuidance(issues: VisualQualityIssue[]): string {
+  if (issues.length === 0) return '';
+  const lines = issues.map(issue => `- ${issue.sceneId}/${issue.beatId ?? 'scene'}${issue.semanticKey ? ` (${issue.semanticKey})` : ''}: ${issue.reason}`);
+  return [
+    'Lượt render trước bị kiểm tra khung hình từ chối vì các lý do sau. Bản sinh lại phải khắc phục triệt để từng lý do, không chỉ đổi màu hoặc rút gọn chữ để né qua kiểm tra:',
+    ...lines,
+  ].join('\n').slice(0, 4_000);
 }
 
 type Bounds = QualityNodeSnapshot['bounds'];
@@ -155,7 +171,7 @@ export async function validateRenderedMotionCanvas(options: {scenes: MotionCanva
   const managedBlocksByScene = new Map(options.scenes.map(scene => [scene.id, new Set(samples.filter(sample => sample.sceneId === scene.id).flatMap(sample => options.lifecycle.get(sample.beatId)?.stay ?? []).filter(key => key.startsWith('block-')))]));
   for (const scene of options.scenes) { const sampleRows: VisualQualitySummary['scenes'][number]['samples'] = []; for (const sample of samples.filter(x=>x.sceneId===scene.id)) { const render = rendered.get(keyOf(sample)); const lifecycle = options.lifecycle.get(sample.beatId); if (!render || !lifecycle) { push({code:'renderer-error', sceneId:scene.id, beatId:sample.beatId, timeSeconds:sample.timeSeconds, semanticKey:null, bounds:null, reason:!render?'Renderer did not return requested frame.':'Missing beat lifecycle.'}); continue; } const metrics = analyzeRgbaFrame({frame:sample.frame,timeSeconds:sample.timeSeconds,sceneId:scene.id,width:render.width,height:render.height,rgba:render.rgba,backgroundColor:options.backgroundColor}); if (metrics.verdict !== 'viable') push({code:'empty-frame',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:null,bounds:null,reason:`RGBA verdict is ${metrics.verdict}.`}); const managedBlocks = managedBlocksByScene.get(scene.id)!; const activeBlocks = render.nodes.filter(node=>node.key.startsWith('block-') && managedBlocks.has(node.key) && isVisible(node)); const expected = new Set(lifecycle.stay.filter(key=>key.startsWith('block-'))); for (const node of activeBlocks) if (!expected.has(node.key)) push({code:'unexpected-block',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:node.key,bounds:node.bounds,reason:'Visible lifecycle-managed block is not in this beat lifecycle.stay.'}); for (const key of expected) if (!activeBlocks.some(n=>n.key===key)) push({code:'missing-active-block',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:key,bounds:null,reason:'Expected active block is not visibly rendered.'}); const safe={x:render.width*visualQualityThresholds.safeMarginXRatio,y:render.height*visualQualityThresholds.safeMarginYRatio,width:render.width*(1-2*visualQualityThresholds.safeMarginXRatio),height:render.height*(1-2*visualQualityThresholds.safeMarginYRatio)}; for (const node of activeBlocks) { const visible=node.visibleBounds??node.bounds; if (area(visible)<area(node.bounds)*visualQualityThresholds.minimumVisibleRatio) push({code:'clipped-block',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:node.key,bounds:node.bounds,reason:'Runtime visible area is clipped.'}); if (node.bounds.x<safe.x || node.bounds.y<safe.y || node.bounds.x+node.bounds.width>safe.x+safe.width || node.bounds.y+node.bounds.height>safe.y+safe.height) push({code:'outside-safe-area',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:node.key,bounds:node.bounds,reason:'Active block exceeds quantified safe area.'}); } for(let i=0;i<activeBlocks.length;i++) for(let j=i+1;j<activeBlocks.length;j++){const a=activeBlocks[i]!,b=activeBlocks[j]!;if(nested(a,b))continue;const shared=intersection(a.bounds,b.bounds); if(shared/Math.max(1,Math.min(area(a.bounds),area(b.bounds)))>visualQualityThresholds.maximumBlockOverlapRatio) push({code:'block-overlap',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:`${a.key},${b.key}`,bounds:a.bounds,reason:'Independent active blocks overlap above threshold.'}); else if(shared===0 && separation(a.bounds,b.bounds)<Math.min(render.width,render.height)*visualQualityThresholds.minimumBlockGapRatio) push({code:'insufficient-spacing',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:`${a.key},${b.key}`,bounds:a.bounds,reason:'Adjacent active blocks are closer than the minimum breathing room.'});}
     const textNodes = render.nodes.filter(node=>node.kind==='text'&&isVisible(node));
-    for(const node of textNodes){const visible=node.visibleBounds??node.bounds;if(area(visible)<area(node.bounds)*visualQualityThresholds.minimumVisibleRatio) push({code:'text-clipped',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:node.key,bounds:node.bounds,reason:'Text visible area is clipped.'});if(node.fontSize!==undefined&&node.fontSize<visualQualityThresholds.minimumTextPixels) push({code:'text-too-small',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:node.key,bounds:node.bounds,reason:'Text font size is below deterministic minimum.'});const ratio=wcagContrastRatio(node.fill,node.localBackground??options.backgroundColor);if(ratio!==null&&ratio<visualQualityThresholds.minimumTextContrast)push({code:'text-low-contrast',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:node.key,bounds:node.bounds,reason:`Text contrast ${ratio.toFixed(2)} is below ${visualQualityThresholds.minimumTextContrast}.`});
+    for(const node of textNodes){const visible=node.visibleBounds??node.bounds;if(area(visible)<area(node.bounds)*visualQualityThresholds.minimumVisibleRatio) push({code:'text-clipped',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:node.key,bounds:node.bounds,reason:'Text visible area is clipped.'});if(node.fontSize!==undefined&&node.fontSize<visualQualityThresholds.minimumTextPixels) push({code:'text-too-small',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:node.key,bounds:node.bounds,reason:'Text font size is below deterministic minimum.'});const ratio=wcagContrastRatio(node.fill,node.localBackground??options.backgroundColor);if(ratio!==null&&ratio<visualQualityThresholds.minimumTextContrast)push({code:'text-low-contrast',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:node.key,bounds:node.bounds,reason:`Text contrast ${ratio.toFixed(2)} is below ${visualQualityThresholds.minimumTextContrast}.`});if(typeof node.text==='string'&&node.text.length>visualQualityThresholds.maximumTextCharacters) push({code:'caption-too-long',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:node.key,bounds:node.bounds,reason:`Text node has ${node.text.length} characters, above the ${visualQualityThresholds.maximumTextCharacters} limit.`});
       // Container overflow is about the owning block, not the canvas edge.
       const container = node.blockAncestor ? render.nodes.find(candidate => candidate.key === node.blockAncestor) : undefined;
       if (container) { const padX = container.bounds.width * visualQualityThresholds.textOverflowToleranceRatio + 1; const padY = container.bounds.height * visualQualityThresholds.textOverflowToleranceRatio + 1;
@@ -166,7 +182,13 @@ export async function validateRenderedMotionCanvas(options: {scenes: MotionCanva
     const contentNodes = render.nodes.filter(node => isVisible(node) && !structuralKeys.has(node.key));
     const contentKeys = new Set(contentNodes.map(node => node.key));
     const outermost = contentNodes.filter(node => !(node.ancestorKeys ?? []).some(key => contentKeys.has(key)));
-    const occupancy = outermost.reduce((total, node) => total + area(clipTo(node.visibleBounds ?? node.bounds, render.width, render.height)), 0) / Math.max(1, render.width * render.height);
+    const occupiedArea = outermost.reduce((total, node) => total + area(clipTo(node.visibleBounds ?? node.bounds, render.width, render.height)), 0);
+    const occupancy = occupiedArea / Math.max(1, render.width * render.height);
+    // What fraction of the occupied screen real estate is drawn glyphs versus
+    // shapes/diagrams; visual storytelling should dominate over text.
+    const textArea = textNodes.reduce((total, node) => total + area(clipTo(node.visibleBounds ?? node.bounds, render.width, render.height)), 0);
+    const textShare = occupiedArea > 0 ? textArea / occupiedArea : 0;
+    if (textShare > visualQualityThresholds.maximumTextAreaShareRatio) push({code:'text-overrepresented',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:null,bounds:null,reason:`Text glyph area covers ${(textShare*100).toFixed(1)}% of the occupied visual content, above ${(visualQualityThresholds.maximumTextAreaShareRatio*100).toFixed(1)}%.`});
     if (occupancy < visualQualityThresholds.minimumFrameOccupancyRatio) push({code:'frame-too-sparse',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:null,bounds:null,reason:`Visible content covers ${(occupancy*100).toFixed(1)}% of the frame, below ${(visualQualityThresholds.minimumFrameOccupancyRatio*100).toFixed(1)}%.`});
     if (occupancy > visualQualityThresholds.maximumFrameOccupancyRatio) push({code:'frame-too-dense',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:null,bounds:null,reason:`Visible content covers ${(occupancy*100).toFixed(1)}% of the frame, above ${(visualQualityThresholds.maximumFrameOccupancyRatio*100).toFixed(1)}%.`});
     else if (contentNodes.length > visualQualityThresholds.maximumVisibleSemanticNodes) push({code:'frame-too-dense',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:null,bounds:null,reason:`${contentNodes.length} semantic nodes are visible at once, above ${visualQualityThresholds.maximumVisibleSemanticNodes}.`});

@@ -2,7 +2,7 @@
 .pronunciation-dictionary > header p { margin: 0; color: var(--ink-soft); line-height: 1.55; }
 .pronunciation-layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(330px, .85fr); gap: 20px; align-items: start; }
 .pronunciation-preview-card, .pronunciation-dictionary, .pronunciation-codex { padding: clamp(20px, 3vw, 30px); border: 1px solid var(--line); border-radius: 22px; background: var(--paper); box-shadow: var(--shadow-sm); transition: transform 250ms var(--ease-out), box-shadow 250ms var(--ease-out); }
-.pronunciation-preview-card:hover, .pronunciation-dictionary:hover, .pronunciation-codex:hover { transform: scale(1.01); box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12); }
+.pronunciation-preview-card:hover, .pronunciation-dictionary:hover, .pronunciation-codex:hover { transform: scale(1.01); box-shadow: var(--shadow-lg); }
 .pronunciation-preview-card > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .pronunciation-preview-card h2 { margin: 5px 0 0; color: var(--ink); font-size: 1.25rem; }
 .approved-badge { display: inline-flex; align-items: center; gap: 5px; color: var(--success); font-size: .78rem; font-weight: 750; white-space: nowrap; }
@@ -18,7 +18,7 @@
 .ai-patches li { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; padding: 10px; border-radius: 10px; background: var(--surface); font-size: .82rem; }
 .ai-patches code { color: var(--orange); }
 .ai-patches small { flex-basis: 100%; color: var(--ink-soft); }
-.ai-patches button, .text-button { padding: 0; border: 0; color: var(--green-700); background: none; cursor: pointer; font-size: .78rem; font-weight: 700; }
+.ai-patches button, .text-button { padding: 0; border: 0; color: var(--accent); background: none; cursor: pointer; font-size: .78rem; font-weight: 700; }
 .pronunciation-dictionary { display: grid; gap: 18px; }
 .rule-editor { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
 .rule-editor label { display: grid; gap: 5px; color: var(--ink-soft); font-size: .75rem; font-weight: 700; }
@@ -38,7 +38,7 @@
 .rule-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .78rem; }
 .rule-main span { color: var(--ink-soft); }
 .rule-remove { width: 35px; border: 0; border-left: 1px solid var(--line); color: var(--ink-soft); background: transparent; cursor: pointer; }
-.rule-remove:hover { color: var(--danger); background: var(--orange-soft); }
+.rule-remove:hover { color: var(--danger); background: var(--danger-soft); }
 .rule-remove svg { width: 15px; }
 .pronunciation-codex { margin-top: 20px; }
 .pronunciation-codex summary { cursor: pointer; color: var(--ink-soft); font-size: .86rem; font-weight: 700; }

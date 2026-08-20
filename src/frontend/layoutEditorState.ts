@@ -68,6 +68,18 @@ export function resolveLayoutEditorManifest(
 }
 
 /**
+ * The iframe protocol is scoped to the preview workspace generation. Once a
+ * Layout draft exists this differs from the Animation Sync generation that
+ * remains the source identity for manifests and override documents.
+ */
+export function layoutEditorProtocolGenerationId(
+  previewGenerationId: string,
+  sourceSyncGenerationId: string,
+) {
+  return previewGenerationId || sourceSyncGenerationId;
+}
+
+/**
  * A runtime manifest is discovery metadata, not a visual edit. Opening an
  * approved Layout must remain read-only until the user changes the document.
  * Draft layouts still persist their first complete manifest for review.

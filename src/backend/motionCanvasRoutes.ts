@@ -16,7 +16,7 @@ import {
   MOTION_CANVAS_PROMPT_VERSION,
   mergeMotionCanvasGenerationUsage,
 } from './motionCanvasGenerator.ts';
-import {MotionCanvasVisualQualityError, assertVisualValidationCurrent} from './motionCanvasVisualQuality.ts';
+import {MotionCanvasVisualQualityError, assertVisualValidationCurrent, formatVisualQualityRetryGuidance} from './motionCanvasVisualQuality.ts';
 import {
   hashMotionCanvasBundle
 } from './motionCanvasHistoryStore.ts';
@@ -298,7 +298,8 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
               // affected sections once, then compile and validate the merged
               // full bundle so its summary and hash cover every stored scene.
               const sectionIndexes = failedIndexes.map(index => voiceVisualPlan.sections.findIndex(section => section.outlineSectionId === generated.scenes[index]!.outlineSectionId));
-              const repaired = await motionCanvasGenerator.generate({...generationRequest, sectionIndexes, currentScenes: generated.scenes});
+              const retryGuidance = [generationRequest.guidance, formatVisualQualityRetryGuidance(error.summary.issues)].filter(Boolean).join('\n\n');
+              const repaired = await motionCanvasGenerator.generate({...generationRequest, sectionIndexes, currentScenes: generated.scenes, ...(retryGuidance ? {guidance: retryGuidance} : {})});
               for (const scene of repaired.scenes) { const index = generated.scenes.findIndex(item => item.outlineSectionId === scene.outlineSectionId); if (index >= 0) generated.scenes[index] = scene; }
               generated = {
                 ...generated,

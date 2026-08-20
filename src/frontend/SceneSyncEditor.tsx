@@ -47,6 +47,7 @@ import {
   useEditorWorkspaceLayout,
 } from './useEditorWorkspaceLayout.tsx';
 import {
+  layoutEditorProtocolGenerationId,
   parseRuntimeNodeVisibility,
   timelineVisibleEditorNodes,
   type RuntimeNodeVisibility,
@@ -330,7 +331,11 @@ export function SceneSyncEditor({
   const [copiedPatch, setCopiedPatch] = useState<LayoutNodePatch | null>(null);
   const motion = motionCanvas.project?.motionCanvasBundle;
   const sync = motionCanvas.project?.animationSyncBundle;
-  const generationId = sync?.generation.generationId ?? '';
+  const sourceGenerationId = sync?.generation.generationId ?? '';
+  const protocolGenerationId = layoutEditorProtocolGenerationId(
+    syncEditor.previewGenerationId,
+    sourceGenerationId,
+  );
   const contentRevision = sync?.contentRevision ?? 0;
   const sourceHash = sync?.validation.sourceHash ?? '';
   const sessionNonce = syncEditor.previewSessionNonce;
@@ -344,14 +349,14 @@ export function SceneSyncEditor({
 
   const sendCommand = useCallback(
     (type: string, payload: Record<string, unknown> = {}) => {
-      if (!expectedOrigin || !frameRef.current?.contentWindow || !generationId || !sessionNonce) {
+      if (!expectedOrigin || !frameRef.current?.contentWindow || !protocolGenerationId || !sessionNonce) {
         return;
       }
       frameRef.current.contentWindow.postMessage(
         {
           source: PROTOCOL_SOURCE,
           version: PROTOCOL_VERSION,
-          generationId,
+          generationId: protocolGenerationId,
           sessionId: sessionNonce,
           type,
           payload,
@@ -359,7 +364,7 @@ export function SceneSyncEditor({
         expectedOrigin,
       );
     },
-    [expectedOrigin, generationId, sessionNonce],
+    [expectedOrigin, protocolGenerationId, sessionNonce],
   );
 
   useEffect(() => {
@@ -425,7 +430,7 @@ export function SceneSyncEditor({
   }, [watermark]);
 
   useEffect(() => {
-    if (!generationId || !contentRevision || !sourceHash || !expectedOrigin || !sessionNonce) {
+    if (!sourceGenerationId || !protocolGenerationId || !contentRevision || !sourceHash || !expectedOrigin || !sessionNonce) {
       return;
     }
 
@@ -435,7 +440,7 @@ export function SceneSyncEditor({
       if (
         message.source !== PROTOCOL_SOURCE ||
         message.version !== PROTOCOL_VERSION ||
-        message.generationId !== generationId ||
+        message.generationId !== protocolGenerationId ||
         message.sessionId !== sessionNonce ||
         typeof message.type !== 'string'
       ) {
@@ -449,7 +454,7 @@ export function SceneSyncEditor({
         const parsedDocument = LayoutOverridesDocumentSchema.safeParse(payload.document);
         if (
           parsedDocument.success &&
-          matchesSource(parsedDocument.data, generationId, contentRevision, sourceHash)
+          matchesSource(parsedDocument.data, sourceGenerationId, contentRevision, sourceHash)
         ) {
           setDocument(parsedDocument.data);
         }
@@ -495,7 +500,7 @@ export function SceneSyncEditor({
         const parsedManifest = LayoutEditorManifestSchema.safeParse(payload.manifest);
         const validManifest =
           parsedManifest.success &&
-          parsedManifest.data.sourceAnimationSyncGenerationId === generationId &&
+          parsedManifest.data.sourceAnimationSyncGenerationId === sourceGenerationId &&
           parsedManifest.data.sourceAnimationSyncContentRevision === contentRevision &&
           parsedManifest.data.sourceAnimationSyncSourceHash === sourceHash;
         if (validManifest) setManifest(parsedManifest.data);
@@ -524,7 +529,7 @@ export function SceneSyncEditor({
       }
       if (message.type === 'documentChanged') {
         const parsed = LayoutOverridesDocumentSchema.safeParse(payload.document);
-        if (!parsed.success || !matchesSource(parsed.data, generationId, contentRevision, sourceHash)) {
+        if (!parsed.success || !matchesSource(parsed.data, sourceGenerationId, contentRevision, sourceHash)) {
           setRuntimeError('Editor scene trả về dữ liệu không khớp bản đồng bộ hiện hành.');
           return;
         }
@@ -545,7 +550,7 @@ export function SceneSyncEditor({
 
     window.addEventListener('message', receiveMessage);
     return () => window.removeEventListener('message', receiveMessage);
-  }, [contentRevision, expectedOrigin, generationId, sendCommand, sessionNonce, sourceHash]);
+  }, [contentRevision, expectedOrigin, protocolGenerationId, sendCommand, sessionNonce, sourceGenerationId, sourceHash]);
 
   const requestReady = useCallback(() => sendCommand('requestReady'), [sendCommand]);
 

@@ -6,11 +6,29 @@ import type {
   LayoutOverridesDocument,
 } from '../shared/layout.ts';
 import {
+  layoutEditorProtocolGenerationId,
   parseRuntimeNodeVisibility,
   resolveLayoutEditorManifest,
   runtimeManifestRequiresSave,
   timelineVisibleEditorNodes,
 } from './layoutEditorState.ts';
+
+test('Layout editor dùng preview generation cho protocol sau khi autosave', () => {
+  const sourceSyncGenerationId = randomUUID();
+  const savedLayoutGenerationId = randomUUID();
+
+  assert.equal(
+    layoutEditorProtocolGenerationId(
+      savedLayoutGenerationId,
+      sourceSyncGenerationId,
+    ),
+    savedLayoutGenerationId,
+  );
+  assert.equal(
+    layoutEditorProtocolGenerationId('', sourceSyncGenerationId),
+    sourceSyncGenerationId,
+  );
+});
 
 function sourceFixture(sourceHash = 'a'.repeat(64)) {
   const generationId = randomUUID();

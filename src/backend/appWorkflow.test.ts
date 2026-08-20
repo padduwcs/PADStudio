@@ -18,7 +18,7 @@ import {defaultLayoutRenderSettings, LayoutEditorManifestSchema} from '../shared
 import {hashJson} from './motionCanvasHistoryStore.ts';
 import type {GeneratedVoiceNarration} from './voiceWorkspace.ts';
 import {closePadStudioServerServices, createPadStudioServer} from './app.ts';
-import {MotionCanvasVisualQualityError, motionCanvasSceneSourceHash} from './motionCanvasVisualQuality.ts';
+import {MotionCanvasVisualQualityError, VISUAL_QUALITY_GATE_VERSION, motionCanvasSceneSourceHash} from './motionCanvasVisualQuality.ts';
 import type {MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
 
 const now = '2026-08-18T00:00:00.000Z';
@@ -43,7 +43,7 @@ function fakeDependencies(root: string) {
   const videoPath = path.join(root, 'fake-render.mp4');
   const nodeFingerprint = digest('fake-layout-node');
   const manifests = new Map<string, ReturnType<typeof LayoutEditorManifestSchema.parse>>();
-  const motionCanvasRequests: Array<{model?: string; reasoningEffort?: string}> = [];
+  const motionCanvasRequests: Array<{model?: string; reasoningEffort?: string; guidance?: string}> = [];
   const plannerRequests: Array<{model?: string; reasoningEffort?: string}> = [];
 
   const motionCanvasGenerator = {
@@ -53,9 +53,10 @@ function fakeDependencies(root: string) {
       reasoningEffort?: string;
       voiceVisualPlan: TopicProject['voiceVisualPlan'];
       sectionIndexes?: number[];
+      guidance?: string;
     }) {
       motionCalls += 1;
-      motionCanvasRequests.push({model: request.model, reasoningEffort: request.reasoningEffort});
+      motionCanvasRequests.push({model: request.model, reasoningEffort: request.reasoningEffort, guidance: request.guidance});
       const plan = request.voiceVisualPlan!;
       const indexes = request.sectionIndexes ?? plan.sections.map((_section, index) => index);
       return {
@@ -224,11 +225,17 @@ function fakeDependencies(root: string) {
   };
 
   const layoutPreviewService = {
-    async start(_projectId: string, sync: ReturnType<typeof AnimationSyncBundleSchema.parse>) {
+    async start(
+      _projectId: string,
+      sync: ReturnType<typeof AnimationSyncBundleSchema.parse>,
+      layout: ReturnType<typeof LayoutBundleSchema.parse> | null,
+    ) {
       const sessionNonce = 'x'.repeat(32);
+      const generationId =
+        layout?.generation.generationId ?? sync.generation.generationId;
       const manifest = LayoutEditorManifestSchema.parse({version: 1, sourceAnimationSyncGenerationId: sync.generation.generationId, sourceAnimationSyncContentRevision: sync.contentRevision, sourceAnimationSyncSourceHash: sync.validation.sourceHash, scenes: sync.sections.map(section => ({sceneId: section.sceneId, filePath: section.filePath, nodes: [{key: 'root', fingerprint: nodeFingerprint, label: 'Root', nodeType: 'Layout', parentKey: null, identity: 'semantic', editableProperties: ['x'], lockedProperties: [], lockReason: null}]}))});
       manifests.set(`${sessionNonce}:${sync.generation.generationId}`, manifest);
-      return {generationId: sync.generation.generationId, sourceSyncGenerationId: sync.generation.generationId, sessionNonce, url: 'http://fake.preview/'};
+      return {generationId, sourceSyncGenerationId: sync.generation.generationId, sessionNonce, url: 'http://fake.preview/'};
     },
     async startMotion(_projectId: string, motion: ReturnType<typeof MotionCanvasBundleSchema.parse>) {
       const sessionNonce = 'x'.repeat(32);
@@ -242,7 +249,7 @@ function fakeDependencies(root: string) {
   };
 
   const motionCanvasRevisionReviewService = {async review() { return {coherence: {verdict: 'coherent' as const, summary: 'Fake review confirms the scoped scene stays coherent.', issues: []}, model: 'fake-codex', usage: null}; }};
-  const motionCanvasVisualQualityGate = {async validate(input: {scenes: Array<{id: string; source: string}>}) { return {version: 2 as const, status: 'passed' as const, validatedAt: now, sourceHash: motionCanvasSceneSourceHash(input.scenes as MotionCanvasSourceScene[]), scenes: [], issues: []}; }};
+  const motionCanvasVisualQualityGate = {async validate(input: {scenes: Array<{id: string; source: string}>}) { return {version: VISUAL_QUALITY_GATE_VERSION as typeof VISUAL_QUALITY_GATE_VERSION, status: 'passed' as const, validatedAt: now, sourceHash: motionCanvasSceneSourceHash(input.scenes as MotionCanvasSourceScene[]), scenes: [], issues: []}; }};
   const finalRenderService = {
     async render(_projectId: string, generationId: string, contentRevision: number, _sync: ReturnType<typeof AnimationSyncBundleSchema.parse>, layout: ReturnType<typeof LayoutBundleSchema.parse>, profile?: {frame: {width: number; height: number; fps: number}}) {
       renderGeneration = generationId;
@@ -343,8 +350,17 @@ test('golden HTTP workflow runs all five steps with schema-valid fake providers'
   // A further edit after approval must re-draft the layout instead of being silently
   // dropped — this is the regression guard for the "edits lost after output" bug.
   const secondPreview = await fetch(`${baseUrl}/api/projects/${project.id}/layout/preview`, {headers: {'X-Pad-Parent-Origin': 'http://127.0.0.1'}});
-  const secondPreviewBody = await secondPreview.json() as {preview: {sessionNonce: string; sourceSyncGenerationId: string}};
+  const secondPreviewBody = await secondPreview.json() as {preview: {generationId: string; sessionNonce: string; sourceSyncGenerationId: string}};
   const approvedGenerationId = project.layoutBundle!.generation.generationId;
+  assert.equal(secondPreviewBody.preview.generationId, approvedGenerationId);
+  assert.equal(
+    secondPreviewBody.preview.sourceSyncGenerationId,
+    project.animationSyncBundle!.generation.generationId,
+  );
+  assert.notEqual(
+    secondPreviewBody.preview.generationId,
+    secondPreviewBody.preview.sourceSyncGenerationId,
+  );
   project = await projectFrom(await request(baseUrl, project, 'PUT', `/api/projects/${project.id}/layout/design`, {
     generationId: randomUUID(),
     baseGenerationId: approvedGenerationId,
@@ -583,9 +599,9 @@ test('a rendered-quality failure retries once, re-validates the whole bundle, an
       validations += 1;
       validatedSceneCounts.push(input.scenes.length);
       if (validations === 1) {
-        throw new MotionCanvasVisualQualityError({version: 2, status: 'failed', validatedAt: failedAt, sourceHash: 'a'.repeat(64), scenes: [], issues: [{code: 'frame-too-sparse', sceneId: input.scenes[0]!.id, beatId: null, timeSeconds: 0, semanticKey: null, bounds: null, reason: 'Visible content covers too little of the frame.'}]});
+        throw new MotionCanvasVisualQualityError({version: VISUAL_QUALITY_GATE_VERSION, status: 'failed', validatedAt: failedAt, sourceHash: 'a'.repeat(64), scenes: [], issues: [{code: 'frame-too-sparse', sceneId: input.scenes[0]!.id, beatId: null, timeSeconds: 0, semanticKey: null, bounds: null, reason: 'Visible content covers too little of the frame.'}]});
       }
-      return {version: 2 as const, status: 'passed' as const, validatedAt: failedAt, sourceHash: motionCanvasSceneSourceHash(input.scenes), scenes: [], issues: []};
+      return {version: VISUAL_QUALITY_GATE_VERSION as typeof VISUAL_QUALITY_GATE_VERSION, status: 'passed' as const, validatedAt: failedAt, sourceHash: motionCanvasSceneSourceHash(input.scenes), scenes: [], issues: []};
     },
   };
   const retried = await start(t, {narrationVisualPlanner: twoScenePlanner(), motionCanvasVisualQualityGate: failFirstSceneOnce});
@@ -602,15 +618,18 @@ test('a rendered-quality failure retries once, re-validates the whole bundle, an
   const retryDiagnostics = project.motionCanvasBundle!.generationDiagnostics!.filter(diagnostic => diagnostic.stage === 'quality-retry');
   assert.deepEqual(retryDiagnostics.map(diagnostic => diagnostic.outcome), ['failed', 'passed']);
   assert.match(retryDiagnostics[1]!.reason, /Re-rendered 1 failed scene/);
-  assert.equal(project.motionCanvasBundle!.visualValidation!.version, 2);
+  assert.equal(project.motionCanvasBundle!.visualValidation!.version, VISUAL_QUALITY_GATE_VERSION);
   assert.equal(project.motionCanvasBundle!.visualValidation!.status, 'passed');
+  // The retry must tell the model why the previous attempt failed, not just re-roll blind.
+  const retryRequest = retried.metrics.motionCanvasRequests.at(-1);
+  assert.match(retryRequest?.guidance ?? '', /Visible content covers too little of the frame/);
   // Approve only passes because the stored hash covers the whole merged bundle.
   project = await projectFrom(await request(retried.baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/approve`, {}));
   assert.equal(project.motionCanvasBundle!.status, 'approved');
 
   const alwaysFail = {
     async validate(input: {scenes: MotionCanvasSourceScene[]}) {
-      throw new MotionCanvasVisualQualityError({version: 2, status: 'failed', validatedAt: failedAt, sourceHash: 'a'.repeat(64), scenes: [], issues: [{code: 'frame-too-dense', sceneId: input.scenes[0]!.id, beatId: null, timeSeconds: 0, semanticKey: null, bounds: null, reason: 'Visible content covers too much of the frame.'}]});
+      throw new MotionCanvasVisualQualityError({version: VISUAL_QUALITY_GATE_VERSION, status: 'failed', validatedAt: failedAt, sourceHash: 'a'.repeat(64), scenes: [], issues: [{code: 'frame-too-dense', sceneId: input.scenes[0]!.id, beatId: null, timeSeconds: 0, semanticKey: null, bounds: null, reason: 'Visible content covers too much of the frame.'}]});
     },
   };
   const blocked = await start(t, {narrationVisualPlanner: twoScenePlanner(), motionCanvasVisualQualityGate: alwaysFail});

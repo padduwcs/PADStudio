@@ -255,7 +255,7 @@
   width: auto;
   max-width: 100%;
   height: min(64vh, 680px);
-  background: #000;
+  background: #000000;
 }
 
 .render-result-actions {
@@ -277,7 +277,7 @@
   border: 1px solid var(--danger);
   border-radius: 12px;
   color: var(--danger);
-  background: var(--theme-danger-surface);
+  background: var(--danger-soft);
   font-size: 13px;
 }
 
@@ -348,7 +348,7 @@
 }
 
 @keyframes render-pulse {
-  50% {box-shadow: 0 0 0 10px rgba(55, 184, 137, 0.04);}
+  50% {box-shadow: 0 0 0 10px rgba(58, 181, 124, 0.04);}
 }
 
 @media (max-width: 760px) {

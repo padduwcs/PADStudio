@@ -24,6 +24,7 @@ import {
 import {
   MotionCanvasVisualQualityError,
   assertVisualValidationCurrent,
+  formatVisualQualityRetryGuidance,
   visualValidationIsReusable,
 } from './motionCanvasVisualQuality.ts';
 import {
@@ -494,10 +495,12 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
                 .map(scene => voiceVisualPlan.sections.findIndex(section => section.outlineSectionId === scene.outlineSectionId))
                 .filter(index => index >= 0);
               generationDiagnostics.push({stage: 'quality-retry', attempt: 1, reason: error.summary.issues.map(issue => `${issue.sceneId}/${issue.beatId ?? 'scene'}: ${issue.reason}`).join('; ').slice(0, 4_000), outcome: 'failed'});
+              const retryGuidance = [generationRequest.guidance, formatVisualQualityRetryGuidance(error.summary.issues)].filter(Boolean).join('\n\n');
               const repaired = await motionCanvasGenerator.generate({
                 ...generationRequest,
                 sectionIndexes: failedIndexes,
                 currentScenes: mergedSources,
+                ...(retryGuidance ? {guidance: retryGuidance} : {}),
               });
               const repairedBySection = new Map(repaired.scenes.map(scene => [scene.outlineSectionId, scene]));
               mergedSources = mergedSources.map(scene => {

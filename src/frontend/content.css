@@ -4,14 +4,14 @@
 .content-field { display: grid; gap: 8px; color: var(--ink); font-weight: 700; }
 .content-field small, .content-field em { color: var(--ink-soft); font-size: .8rem; font-style: normal; font-weight: 450; line-height: 1.45; }
 .content-field textarea { width: 100%; resize: vertical; padding: 13px 15px; border: 1px solid var(--line-strong); border-radius: 12px; color: var(--ink); background: var(--control-bg); line-height: 1.55; }
-.content-field textarea:focus { border-color: var(--green-700); box-shadow: 0 0 0 3px rgba(36,95,77,.12); outline: 0; }
+.content-field textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(217, 118, 31, .12); outline: 0; }
 .narration-input { min-height: 260px; font-family: inherit; }
 .content-narration-assist { display: grid; gap: 16px; padding: 18px 20px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
 .content-narration-assist > summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; color: var(--ink); cursor: pointer; }
-.content-narration-assist > summary::marker { color: var(--green-700); }
+.content-narration-assist > summary::marker { color: var(--accent); }
 .content-narration-assist > summary > span { display: grid; gap: 4px; }
 .content-narration-assist > summary em { flex: 0 0 auto; padding: 5px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink-soft); background: var(--paper); font-size: .72rem; font-style: normal; font-weight: 650; line-height: 1; text-align: right; }
-.content-narration-assist > summary em.is-connected { color: var(--green-700); }
+.content-narration-assist > summary em.is-connected { color: var(--accent); }
 .content-narration-assist strong { color: var(--ink); font-size: 1rem; }
 .content-narration-assist small { color: var(--ink-soft); font-size: .82rem; font-weight: 450; line-height: 1.45; }
 .content-narration-assist > label { display: grid; gap: 8px; color: var(--ink); font-size: .88rem; }
@@ -33,7 +33,7 @@
 .custom-duration-control small { flex-basis: 100%; }
 .frame-presets { display: flex; flex-wrap: wrap; gap: 8px; }
 .frame-presets button { padding: 9px 11px; border: 1px solid var(--line-strong); border-radius: 10px; color: var(--ink-soft); background: var(--control-bg); cursor: pointer; font-size: .82rem; font-weight: 650; }
-.frame-presets button.is-selected { border-color: var(--green-700); color: var(--green-700); background: var(--green-100); }
+.frame-presets button.is-selected { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .frame-details { display: flex; align-items: center; gap: 14px; margin-top: 10px; color: var(--ink-soft); font-size: .8rem; font-weight: 500; }
 .frame-details select, .frame-details input { margin-left: 5px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--control-bg); }
 .frame-details input { width: 76px; }

@@ -4,7 +4,7 @@ import test from 'node:test';
 import {randomUUID} from 'node:crypto';
 import type {MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
 import type {BeatCompositionContract} from '../shared/topic.ts';
-import {MotionCanvasVisualQualityError, MotionCanvasVisualValidationGateError, assertVisualValidationCurrent, motionCanvasSceneSourceHash, retryRenderedSceneQualityOnce, validateRenderedMotionCanvas, visualQualitySamples, visualValidationIsCurrent, visualValidationIsReusable, withTemporaryVisualQualityWorkspace, type BeatQualityContract, type QualityRenderedFrame} from './motionCanvasVisualQuality.ts';
+import {MotionCanvasVisualQualityError, MotionCanvasVisualValidationGateError, VISUAL_QUALITY_GATE_VERSION, assertVisualValidationCurrent, motionCanvasSceneSourceHash, retryRenderedSceneQualityOnce, validateRenderedMotionCanvas, visualQualitySamples, visualValidationIsCurrent, visualValidationIsReusable, withTemporaryVisualQualityWorkspace, type BeatQualityContract, type QualityRenderedFrame} from './motionCanvasVisualQuality.ts';
 
 const sceneId = '10000000-0000-4000-8000-000000000001';
 const beatOne = '10000000-0000-4000-8000-000000000011';
@@ -78,9 +78,9 @@ test('sample timeline keeps every beat beyond the former 96-sample boundary', ()
 
 test('one retry regenerates only failed scene, persistent failure rejects, hash stale and temp cleanup are explicit', async () => {
   let validations=0, retries=0;
-  const value=await retryRenderedSceneQualityOnce({async validate(){validations++; if(validations===1) throw new MotionCanvasVisualQualityError({version:2,status:'failed',validatedAt:'2026-01-01T00:00:00.000Z',sourceHash:'a'.repeat(64),scenes:[],issues:[{code:'empty-frame',sceneId,beatId:beatOne,timeSeconds:0,semanticKey:null,bounds:null,reason:'empty'}]}); return 'passed';},async regenerateFailedScenes(summary){retries++;assert.deepEqual([...new Set(summary.issues.map(issue=>issue.sceneId))],[sceneId]);}});
+  const value=await retryRenderedSceneQualityOnce({async validate(){validations++; if(validations===1) throw new MotionCanvasVisualQualityError({version:VISUAL_QUALITY_GATE_VERSION,status:'failed',validatedAt:'2026-01-01T00:00:00.000Z',sourceHash:'a'.repeat(64),scenes:[],issues:[{code:'empty-frame',sceneId,beatId:beatOne,timeSeconds:0,semanticKey:null,bounds:null,reason:'empty'}]}); return 'passed';},async regenerateFailedScenes(summary){retries++;assert.deepEqual([...new Set(summary.issues.map(issue=>issue.sceneId))],[sceneId]);}});
   assert.equal(value,'passed');assert.equal(retries,1);assert.equal(validations,2);
-  await assert.rejects(retryRenderedSceneQualityOnce({async validate(){throw new MotionCanvasVisualQualityError({version:2,status:'failed',validatedAt:'2026-01-01T00:00:00.000Z',sourceHash:'a'.repeat(64),scenes:[],issues:[{code:'empty-frame',sceneId,beatId:beatOne,timeSeconds:0,semanticKey:null,bounds:null,reason:'empty'}]});},async regenerateFailedScenes(){}}), MotionCanvasVisualQualityError);
+  await assert.rejects(retryRenderedSceneQualityOnce({async validate(){throw new MotionCanvasVisualQualityError({version:VISUAL_QUALITY_GATE_VERSION,status:'failed',validatedAt:'2026-01-01T00:00:00.000Z',sourceHash:'a'.repeat(64),scenes:[],issues:[{code:'empty-frame',sceneId,beatId:beatOne,timeSeconds:0,semanticKey:null,bounds:null,reason:'empty'}]});},async regenerateFailedScenes(){}}), MotionCanvasVisualQualityError);
   assert.equal(visualValidationIsCurrent({sourceHash:'a'.repeat(64)},[scene]),false);
   let temporary=''; await withTemporaryVisualQualityWorkspace(async directory=>{temporary=directory; await access(directory);}); await assert.rejects(access(temporary));
 });
@@ -161,7 +161,9 @@ test('text overflow, competing titles and font sizes outside the bible are separ
     safe('block-one'),
     {key: 'concept-label', kind: 'text' as const, blockAncestor: 'block-one', ancestorKeys: ['block-one'], bounds: {x: 12, y: 12, width: 60, height: 30}, visibleBounds: {x: 12, y: 12, width: 60, height: 30}, opacity: 1, fontSize: 20},
   ]}));
-  assert.deepEqual(overflow, ['text-overflow']);
+  // The oversized box that trips the container-overflow check also covers
+  // more glyph area than the block it overflows, so both faults are real.
+  assert.deepEqual(overflow, ['text-overflow', 'text-overrepresented']);
 
   const twoTitles = await codesOf(run({lifecycle, visualBible: bible, nodes: () => [
     safe('block-one'),
@@ -176,6 +178,33 @@ test('text overflow, competing titles and font sizes outside the bible are separ
     {key: 'stray-caption', kind: 'text' as const, bounds: {x: 60, y: 60, width: 20, height: 10}, visibleBounds: {x: 60, y: 60, width: 20, height: 10}, opacity: 1, fontSize: 60},
   ]}));
   assert.deepEqual(drift, ['typography-drift']);
+});
+
+test('a caption over the character limit is flagged even when its box is small', async () => {
+  const lifecycle = bothBeats({stay: ['block-one']});
+  const longCaption = await codesOf(run({lifecycle, nodes: () => [
+    safe('block-one'),
+    {key: 'long-caption', kind: 'text' as const, bounds: {x: 12, y: 60, width: 20, height: 10}, visibleBounds: {x: 12, y: 60, width: 20, height: 10}, opacity: 1, fontSize: 20, text: 'A'.repeat(120)},
+  ]}));
+  assert.deepEqual(longCaption, ['caption-too-long']);
+});
+
+test('text glyph area dominating the occupied frame is flagged as text-overrepresented', async () => {
+  const lifecycle = bothBeats({stay: ['block-one']});
+  const textHeavy = await codesOf(run({lifecycle, nodes: () => [
+    safe('block-one'),
+    {key: 'big-caption', kind: 'text' as const, bounds: {x: 12, y: 50, width: 50, height: 40}, visibleBounds: {x: 12, y: 50, width: 50, height: 40}, opacity: 1, fontSize: 20, text: 'Label'},
+  ]}));
+  assert.deepEqual(textHeavy, ['text-overrepresented']);
+});
+
+test('a short caption nested in its block clears both text-quantity checks', async () => {
+  const lifecycle = bothBeats({stay: ['block-one']});
+  const modest = await codesOf(run({lifecycle, nodes: () => [
+    safe('block-one'),
+    {key: 'short-label', kind: 'text' as const, blockAncestor: 'block-one', ancestorKeys: ['block-one'], bounds: {x: 16, y: 16, width: 20, height: 10}, visibleBounds: {x: 16, y: 16, width: 20, height: 10}, opacity: 1, fontSize: 20, text: 'Nhị phân'},
+  ]}));
+  assert.deepEqual(modest, []);
 });
 
 test('fills outside the visual bible palette report palette drift', async () => {
@@ -225,14 +254,14 @@ test('the scene handoff boundary is checked with the same anchor rule', async ()
 
 test('approve, apply and restore block on missing, failed, stale-shape or stale-source evidence', () => {
   const hash = motionCanvasSceneSourceHash([scene]);
-  const passing = {version: 2, status: 'passed' as const, sourceHash: hash};
+  const passing = {version: VISUAL_QUALITY_GATE_VERSION, status: 'passed' as const, sourceHash: hash};
   assert.doesNotThrow(() => assertVisualValidationCurrent({visualValidation: passing}, [scene]));
   assert.equal(visualValidationIsReusable(passing, [scene]), true);
   const reasons = [
     [undefined, 'missing'],
-    [{version: 1, status: 'passed' as const, sourceHash: hash}, 'stale-version'],
-    [{version: 2, status: 'failed' as const, sourceHash: hash}, 'failed'],
-    [{version: 2, status: 'passed' as const, sourceHash: 'b'.repeat(64)}, 'stale-source'],
+    [{version: VISUAL_QUALITY_GATE_VERSION - 1, status: 'passed' as const, sourceHash: hash}, 'stale-version'],
+    [{version: VISUAL_QUALITY_GATE_VERSION, status: 'failed' as const, sourceHash: hash}, 'failed'],
+    [{version: VISUAL_QUALITY_GATE_VERSION, status: 'passed' as const, sourceHash: 'b'.repeat(64)}, 'stale-source'],
   ] as const;
   for (const [visualValidation, reason] of reasons) {
     assert.equal(visualValidationIsReusable(visualValidation, [scene]), false);
