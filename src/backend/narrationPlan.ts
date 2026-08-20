@@ -23,6 +23,9 @@ export const DEFAULT_TIMING_CALIBRATION: VoiceVisualPlanContent['timingCalibrati
 };
 
 function compactWhitespace(text: string) { return text.trim().replace(/\s+/gu, ' '); }
+function centralMessage(topic: string) {
+  return `Nội dung cốt lõi của ${compactWhitespace(topic)}.`;
+}
 function narrationUnits(text: string) {
   const units = text.trim().split(/(?<=[.!?…])\s+|\n{2,}/u).map(compactWhitespace).filter(Boolean);
   return units.length ? units : [compactWhitespace(text)];
@@ -143,13 +146,15 @@ export function createNarrationArtifacts({topicInput, narration, generationId, n
   const narrationRevision = (previousPlan?.narrationRevision ?? 0) + 1;
   const generation = {generationId, provider: 'local' as const, tool: 'narration-structure' as const, algorithmVersion: NARRATION_STRUCTURE_VERSION, generatedAt: now};
   const ids = groups.map(() => randomUUID());
-  const outline: TeachingOutline = {brief: {summary: `Video về ${topicInput.topic} được dựng từ lời thoại đã duyệt.`, assumptions: ['Semantic planner chỉ phân đoạn và mô tả visual; không viết lại lời thoại.']}, centralMessage: topicInput.topic, sections: groups.map((group, index) => ({id: ids[index]!, title: semanticTitle(topicInput.topic, group, index), goal: teachingGoal(group), content: group.join(' '), estimatedSeconds: Math.max(pipelineSafetyLimits.minimumSectionDurationSeconds, group.reduce((total, beat) => total + plannedBeatDurationSeconds(beat, 0, timingCalibration), 0))})), status: 'approved', contentRevision: (previousPlan?.sourceOutlineContentRevision ?? 0) + 1, sourceInput: topicInput, sourceNarrationHash: review.sourceHash, sourceNarrationRevision: narrationRevision, generation};
+  const outline: TeachingOutline = {brief: {summary: `Video về ${topicInput.topic} được dựng từ lời thoại đã duyệt.`, assumptions: ['Semantic planner chỉ phân đoạn và mô tả visual; không viết lại lời thoại.']}, centralMessage: centralMessage(topicInput.topic), sections: groups.map((group, index) => ({id: ids[index]!, title: semanticTitle(topicInput.topic, group, index), goal: teachingGoal(group), content: group.join(' '), estimatedSeconds: Math.max(pipelineSafetyLimits.minimumSectionDurationSeconds, group.reduce((total, beat) => total + plannedBeatDurationSeconds(beat, 0, timingCalibration), 0))})), status: 'approved', contentRevision: (previousPlan?.sourceOutlineContentRevision ?? 0) + 1, sourceInput: topicInput, sourceNarrationHash: review.sourceHash, sourceNarrationRevision: narrationRevision, generation};
   const plan: VoiceVisualPlan = {voiceDirection: 'Đọc nguyên văn bản cách đọc đã được người dùng duyệt.', visualDirection: 'Chuyển semantic blueprint và visual bible thành Motion Canvas; không tự đổi phép ẩn dụ nền tảng.', visualBible: visualBible(topicInput.background.color, topicInput.topic), timingCalibration, sections: groups.map((group, index) => ({outlineSectionId: ids[index]!, stateHandoff: {incoming: index ? `Kế thừa ${topicInput.topic} visual anchor từ scene ${index}.` : null, outgoing: index < groups.length - 1 ? `Giữ ${topicInput.topic} visual anchor để scene ${index + 2} tiếp tục.` : null}, beats: group.map(text => ({id: randomUUID(), voiceover: text, spokenVoiceover: text, visualPurpose: `Biến ý “${keywords(text).slice(0, 3).join(' ') || topicInput.topic}” thành một quan hệ nhìn thấy được thay vì chỉ lặp caption.`, visualDescription: describeVisual(text, topicInput.topic), animationDescription: 'Đưa quan hệ chính vào focus, chuyển trạng thái một lần theo nhịp lời đọc, rồi giữ hình để đọc.', visualHoldSeconds: 0, durationSeconds: plannedBeatDurationSeconds(text, 0, timingCalibration)}))})), status: 'approved', contentRevision: (previousPlan?.contentRevision ?? 0) + 1, narrationRevision, sourceOutlineContentRevision: outline.contentRevision, sourceNarrationHash: review.sourceHash, sourceNarrationRevision: narrationRevision, generation};
   for (const section of plan.sections) {
     for (const beat of section.beats) Object.assign(beat, fallbackBeatLifecycle(), {compositionContract: fallbackBeatComposition()});
   }
-  validateSemanticVisualPlan(narration, outline, plan);
-  return {outline, voiceVisualPlan: plan};
+  const validatedOutline = TeachingOutlineSchema.parse(outline);
+  const validatedPlan = VoiceVisualPlanSchema.parse(plan);
+  validateSemanticVisualPlan(narration, validatedOutline, validatedPlan);
+  return {outline: validatedOutline, voiceVisualPlan: validatedPlan};
 }
 
 function boundedText(value: string, max: number) {
@@ -174,7 +179,7 @@ export function reconstructArtifactsFromPlannerOutput({topicInput, narration, un
     cursor += scene.units.length;
   }
 
-  const outline: TeachingOutline = {brief: {summary: `Video về ${topicInput.topic} được dựng từ lời thoại đã duyệt.`, assumptions: ['AI visual planner chỉ phân đoạn và mô tả visual; không viết lại lời thoại.']}, centralMessage: topicInput.topic, sections: output.scenes.map((scene, index) => ({id: sceneIds[index]!, title: scene.title, goal: scene.goal, content: sceneUnitSlices[index]!.map(unit => unit.text).join(' '), estimatedSeconds: Math.max(pipelineSafetyLimits.minimumSectionDurationSeconds, sceneUnitSlices[index]!.reduce((total, unit) => total + plannedBeatDurationSeconds(unit.text, 0, timingCalibration), 0))})), status: 'approved', contentRevision: (previousPlan?.sourceOutlineContentRevision ?? 0) + 1, sourceInput: topicInput, sourceNarrationHash: review.sourceHash, sourceNarrationRevision: narrationRevision, generation};
+  const outline: TeachingOutline = {brief: {summary: `Video về ${topicInput.topic} được dựng từ lời thoại đã duyệt.`, assumptions: ['AI visual planner chỉ phân đoạn và mô tả visual; không viết lại lời thoại.']}, centralMessage: centralMessage(topicInput.topic), sections: output.scenes.map((scene, index) => ({id: sceneIds[index]!, title: scene.title, goal: scene.goal, content: sceneUnitSlices[index]!.map(unit => unit.text).join(' '), estimatedSeconds: Math.max(pipelineSafetyLimits.minimumSectionDurationSeconds, sceneUnitSlices[index]!.reduce((total, unit) => total + plannedBeatDurationSeconds(unit.text, 0, timingCalibration), 0))})), status: 'approved', contentRevision: (previousPlan?.sourceOutlineContentRevision ?? 0) + 1, sourceInput: topicInput, sourceNarrationHash: review.sourceHash, sourceNarrationRevision: narrationRevision, generation};
 
   const voiceVisualPlan: VoiceVisualPlan = {voiceDirection: 'Đọc nguyên văn bản cách đọc đã được người dùng duyệt.', visualDirection: 'Chuyển blueprint AI và visual bible thành Motion Canvas; không tự đổi phép ẩn dụ nền tảng.', visualBible: {...output.visualBible, palette: {...output.visualBible.palette, background: topicInput.background.color}}, timingCalibration, sections: output.scenes.map((scene, index) => ({outlineSectionId: sceneIds[index]!, stateHandoff: {incoming: scene.stateHandoffIncoming, outgoing: scene.stateHandoffOutgoing}, beats: sceneUnitSlices[index]!.map((unit, unitIndex) => {const blueprint = scene.units[unitIndex]!; return {id: randomUUID(), voiceover: unit.text, spokenVoiceover: unit.text, visualPurpose: blueprint.visualPurpose, visualDescription: blueprint.visualDescription, animationDescription: blueprint.animationDescription, visualHoldSeconds: 0, durationSeconds: plannedBeatDurationSeconds(unit.text, 0, timingCalibration)};})})), status: 'approved', contentRevision: (previousPlan?.contentRevision ?? 0) + 1, narrationRevision, sourceOutlineContentRevision: outline.contentRevision, sourceNarrationHash: review.sourceHash, sourceNarrationRevision: narrationRevision, generation};
 

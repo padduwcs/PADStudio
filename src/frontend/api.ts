@@ -201,7 +201,9 @@ export async function getRuntimeDiagnostics() {
 
 export async function saveProjectNarration(
   projectId: string,
-  request: Pick<NarrationDocument, 'sourceText' | 'projectRules'>,
+  request: Pick<NarrationDocument, 'sourceText' | 'projectRules'> & {
+    normalizedText?: string;
+  },
   expectedRevision: number,
 ) {
   const response = await fetch(

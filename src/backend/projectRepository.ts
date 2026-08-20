@@ -126,7 +126,11 @@ export function createFileProjectRepository(
   }
 
   async function writeProject(project: TopicProject) {
-    const {projectDirectory, projectFile} = getProjectPaths(project.id);
+    // Runtime-generated artifacts can satisfy TypeScript while still violating
+    // the persisted schema. Validate before touching the current file so a bad
+    // transition can fail without making a readable project unreadable.
+    const validatedProject = parseTopicProject(project);
+    const {projectDirectory, projectFile} = getProjectPaths(validatedProject.id);
     const temporaryFile = path.join(
       projectDirectory,
       `project.json.${randomUUID()}.tmp`,
@@ -137,7 +141,7 @@ export function createFileProjectRepository(
     try {
       await writeFile(
         temporaryFile,
-        `${JSON.stringify(project, null, 2)}\n`,
+        `${JSON.stringify(validatedProject, null, 2)}\n`,
         'utf8',
       );
       await rename(temporaryFile, projectFile);

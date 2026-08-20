@@ -1,3 +1,4 @@
+import {request as httpsRequest} from 'node:https';
 import {setTimeout as delay} from 'node:timers/promises';
 import {z} from 'zod';
 import type {
@@ -14,6 +15,83 @@ import type {
 
 const ELEVENLABS_API_ORIGIN = 'https://api.elevenlabs.io';
 const DEFAULT_TIMEOUT_MS = 30_000;
+
+/**
+ * Node fetch has its own response-header deadline underneath AbortSignal.
+ * A long ElevenLabs generation can cross that hidden deadline even though
+ * PAD Studio's explicit generation timeout still has several minutes left.
+ * ClientRequest has no such independent deadline, so the AbortSignal below is
+ * the single source of truth for how long a paid request may run.
+ */
+function fetchWithApplicationTimeout(
+  input: string | URL | globalThis.Request,
+  init: RequestInit = {},
+): Promise<Response> {
+  const url = new URL(
+    input instanceof globalThis.Request ? input.url : input,
+  );
+  if (url.protocol !== 'https:') {
+    return Promise.reject(new TypeError('Only HTTPS requests are supported.'));
+  }
+  if (
+    init.body !== undefined &&
+    init.body !== null &&
+    typeof init.body !== 'string'
+  ) {
+    return Promise.reject(
+      new TypeError('Only JSON string request bodies are supported.'),
+    );
+  }
+
+  const requestHeaders = Object.fromEntries(
+    new Headers(init.headers).entries(),
+  );
+  if (typeof init.body === 'string' && requestHeaders['content-length'] === undefined) {
+    requestHeaders['content-length'] = String(Buffer.byteLength(init.body));
+  }
+  return new Promise<Response>((resolve, reject) => {
+    const request = httpsRequest(
+      url,
+      {
+        method: init.method ?? 'GET',
+        headers: requestHeaders,
+        signal: init.signal ?? undefined,
+      },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.once('aborted', () => {
+          reject(new Error('ElevenLabs closed the response early.'));
+        });
+        response.once('error', reject);
+        response.once('end', () => {
+          const status = response.statusCode ?? 502;
+          const headers = new Headers();
+          for (let index = 0; index < response.rawHeaders.length; index += 2) {
+            const name = response.rawHeaders[index];
+            const value = response.rawHeaders[index + 1];
+            if (name !== undefined && value !== undefined) {
+              headers.append(name, value);
+            }
+          }
+          const body = [101, 204, 205, 304].includes(status)
+            ? null
+            : Buffer.concat(chunks);
+          resolve(
+            new Response(body, {
+              status,
+              statusText: response.statusMessage,
+              headers,
+            }),
+          );
+        });
+      },
+    );
+    request.once('error', reject);
+    if (init.body) request.write(init.body);
+    request.end();
+  });
+}
 
 function environmentGenerationTimeoutMs() {
   const raw = process.env.PAD_ELEVENLABS_GENERATION_TIMEOUT_MS?.trim();
@@ -80,19 +158,30 @@ const historyResponseSchema = z
       z
         .object({
           history_item_id: z.string().min(1),
-          voice_id: z.string().min(1),
-          voice_name: z.string().min(1),
-          model_id: z.string().min(1),
+          voice_id: z.string().min(1).nullable().optional(),
+          voice_name: z.string().min(1).nullable().optional(),
+          model_id: z.string().min(1).nullable().optional(),
           date_unix: z.number().int().nonnegative(),
           settings: z
             .object({
-              stability: z.number().optional(),
-              similarity_boost: z.number().optional(),
-              style: z.number().optional(),
-              use_speaker_boost: z.boolean().optional(),
-              speed: z.number().optional(),
+              stability: z.number().nullable().optional(),
+              similarity_boost: z.number().nullable().optional(),
+              style: z.number().nullable().optional(),
+              use_speaker_boost: z.boolean().nullable().optional(),
+              speed: z.number().nullable().optional(),
             })
             .passthrough()
+            .nullable()
+            .optional(),
+          dialogue: z
+            .array(
+              z
+                .object({
+                  voice_id: z.string().min(1).nullable().optional(),
+                  voice_name: z.string().min(1).nullable().optional(),
+                })
+                .passthrough(),
+            )
             .nullable()
             .optional(),
         })
@@ -314,7 +403,7 @@ export function createElevenLabsVoiceService(
     retryDelaysMs?: number[];
   } = {},
 ): ElevenLabsVoiceService {
-  const fetchRequest = options.fetch ?? globalThis.fetch;
+  const fetchRequest = options.fetch ?? fetchWithApplicationTimeout;
   const timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const configuredGenerationTimeoutMs =
     options.generationTimeoutMs ?? environmentGenerationTimeoutMs();
@@ -493,11 +582,30 @@ export function createElevenLabsVoiceService(
       models.map((model) => [model.modelId, model.name]),
     );
     return {
-      presets: parsed.data.history.slice(0, 20).map((item) => ({
+      presets: parsed.data.history
+        .map((item) => {
+          const dialogueVoice = item.dialogue?.find(
+            (part) => part.voice_id,
+          );
+          return {
+            item,
+            voiceId: item.voice_id ?? dialogueVoice?.voice_id ?? null,
+            voiceName:
+              item.voice_name ?? dialogueVoice?.voice_name ?? null,
+          };
+        })
+        .filter(
+          (entry): entry is typeof entry & {
+            voiceId: string;
+            item: typeof entry.item & {model_id: string};
+          } => Boolean(entry.voiceId && entry.item.model_id),
+        )
+        .slice(0, 20)
+        .map(({item, voiceId, voiceName}) => ({
         id: `elevenlabs-history:${item.history_item_id}`,
         source: 'elevenlabs-history',
-        voiceId: item.voice_id,
-        voiceName: item.voice_name,
+        voiceId,
+        voiceName: voiceName ?? voiceId,
         modelId: item.model_id,
         modelName: modelNames.get(item.model_id) ?? item.model_id,
         usedAt: new Date(item.date_unix * 1_000).toISOString(),

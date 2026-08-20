@@ -275,6 +275,15 @@ function ffmpegArguments(
   return args;
 }
 
+export function voiceMasterTimeoutMs(durationSeconds: number) {
+  return Math.round(
+    Math.min(
+      2 * 60 * 60_000,
+      Math.max(120_000, durationSeconds * 500),
+    ),
+  );
+}
+
 function ffprobeExecutable(ffmpegPath: string, configured?: string) {
   if (configured) return configured;
   if (!path.dirname(ffmpegPath) || path.dirname(ffmpegPath) === '.') {
@@ -899,10 +908,7 @@ export function createVoiceWorkspace(
             ffmpegArguments(rawChunks, masterAudioFile),
             {
               windowsHide: true,
-              timeout: Math.min(
-                2 * 60 * 60_000,
-                Math.max(120_000, combined.durationSeconds * 500),
-              ),
+              timeout: voiceMasterTimeoutMs(combined.durationSeconds),
               maxBuffer: 2 * 1024 * 1024,
             },
           );

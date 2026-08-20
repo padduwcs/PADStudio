@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useState} from 'react';
 import type {NarrationDocument, TopicProject} from '../shared/topic.ts';
 import {
+  normalizePronunciationBaseText,
   reviewedPronunciationText,
   type PronunciationRule,
 } from '../shared/pronunciation.ts';
@@ -28,6 +29,7 @@ import {
   readPageDraft,
   savePageDraft,
 } from './pageDraft.ts';
+import {textDiff} from './textDiff.ts';
 
 type RuleDraft = {
   id: string | null;
@@ -86,6 +88,35 @@ function RuleList({
   );
 }
 
+function DiffPreview({
+  before,
+  after,
+  title,
+}: {
+  before: string;
+  after: string;
+  title: string;
+}) {
+  const parts = useMemo(() => textDiff(before, after), [after, before]);
+  if (before === after) return null;
+  return (
+    <details className="pronunciation-diff" open>
+      <summary>{title}</summary>
+      <div className="pronunciation-diff-legend" aria-hidden="true">
+        <span className="is-removed">− Bản hiện tại</span>
+        <span className="is-added">+ Bản sau thay đổi</span>
+      </div>
+      <div className="pronunciation-diff-content">
+        {parts.map((part, index) => part.kind === 'removed'
+          ? <del key={index}>{part.text}</del>
+          : part.kind === 'added'
+            ? <ins key={index}>{part.text}</ins>
+            : <span key={index}>{part.text}</span>)}
+      </div>
+    </details>
+  );
+}
+
 export function NarrationPage({projectId}: {projectId: string}) {
   const [project, setProject] = useState<TopicProject | null>(null);
   const [narration, setNarration] = useState<NarrationDocument | null>(null);
@@ -96,6 +127,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
   const [message, setMessage] = useState('');
   const [snapshotDirty, setSnapshotDirty] = useState(false);
   const [ruleSaving, setRuleSaving] = useState(false);
+  const [editableText, setEditableText] = useState('');
   const codex = useCodexConnection();
 
   useEffect(() => {
@@ -110,6 +142,12 @@ export function NarrationPage({projectId}: {projectId: string}) {
         setProjectRules(payload.narration?.projectRules ?? []);
         setLibraryRules(payload.libraryRules);
         setSnapshotDirty(false);
+        setEditableText(
+          payload.narration?.review?.normalizedText ??
+          (payload.narration
+            ? normalizePronunciationBaseText(payload.narration.sourceText)
+            : ''),
+        );
         setDraft(isRuleDraft(storedDraft) ? storedDraft : emptyRule);
         setState('ready');
       })
@@ -125,19 +163,24 @@ export function NarrationPage({projectId}: {projectId: string}) {
     () => [...libraryRules, ...projectRules],
     [libraryRules, projectRules],
   );
-  const preview = useMemo(() => narration
+  const suggestedText = useMemo(() => narration
     ? reviewedPronunciationText(
         narration.sourceText,
         allRules,
         snapshotDirty ? [] : narration.review?.aiPatches ?? [],
       )
     : '', [allRules, narration, snapshotDirty]);
+  const savedText = narration?.review?.normalizedText ??
+    (narration ? normalizePronunciationBaseText(narration.sourceText) : '');
+  const textDirty = editableText !== savedText;
+  const suggestionPending = Boolean(narration && editableText !== suggestedText);
   const projectRulesDirty = Boolean(narration && !sameRules(projectRules, narration.projectRules));
   const rulesChangedSinceReview = Boolean(
     narration?.review && !sameRules(allRules, narration.review.rules),
   );
-  const needsSave = !narration?.review || snapshotDirty || projectRulesDirty || rulesChangedSinceReview;
+  const needsSave = !narration?.review || textDirty || snapshotDirty || projectRulesDirty || rulesChangedSinceReview;
   const hasPendingChanges =
+    textDirty ||
     snapshotDirty ||
     projectRulesDirty ||
     rulesChangedSinceReview ||
@@ -175,22 +218,46 @@ export function NarrationPage({projectId}: {projectId: string}) {
     return () => window.removeEventListener('beforeunload', preventUnsavedUnload);
   }, [hasPendingChanges]);
 
-  function installProject(nextProject: TopicProject) {
+  function installProject(nextProject: TopicProject, editableOverride?: string) {
     setProject(nextProject);
     setNarration(nextProject.narration ?? null);
     setProjectRules(nextProject.narration?.projectRules ?? []);
     setSnapshotDirty(false);
+    setEditableText(
+      editableOverride ??
+        nextProject.narration?.review?.normalizedText ??
+        (nextProject.narration
+          ? normalizePronunciationBaseText(nextProject.narration.sourceText)
+          : ''),
+    );
   }
 
   async function persistProjectRules(nextRules: PronunciationRule[]) {
     if (!project || !narration) throw new Error('Không tìm thấy bản đọc của project.');
     const saved = await saveProjectNarration(
       project.id,
-      {sourceText: narration.sourceText, projectRules: nextRules},
+      {
+        sourceText: narration.sourceText,
+        // Saving a dictionary entry must not implicitly save text being
+        // edited in the other panel.
+        normalizedText: savedText,
+        projectRules: nextRules,
+      },
       project.revision,
     );
-    installProject(saved);
+    installProject(saved, editableText);
     return saved;
+  }
+
+  function applySuggestion() {
+    if (
+      textDirty &&
+      !window.confirm('Áp dụng đề xuất sẽ thay thế các chỉnh sửa thủ công chưa lưu trong ô cách đọc. Bạn có muốn tiếp tục?')
+    ) {
+      return;
+    }
+    setEditableText(suggestedText);
+    setMessage('Đã áp dụng đề xuất vào ô chỉnh sửa. Hãy kiểm tra và lưu khi bạn hài lòng.');
   }
 
   async function saveSnapshot() {
@@ -200,12 +267,16 @@ export function NarrationPage({projectId}: {projectId: string}) {
     try {
       const saved = await saveProjectNarration(
         project.id,
-        {sourceText: narration.sourceText, projectRules},
+        {
+          sourceText: narration.sourceText,
+          normalizedText: editableText,
+          projectRules,
+        },
         project.revision,
       );
       installProject(saved);
       setState('ready');
-      setMessage('Bản đọc đã được cập nhật theo từ điển hiện tại.');
+      setMessage('Đã lưu bản đọc đang chỉnh sửa. Chỉ snapshot này mới được dùng khi duyệt voice.');
       return saved;
     } catch (reason) {
       setState('error');
@@ -238,7 +309,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
       installProject(audited);
       setState('ready');
       setMessage(audited.narration?.review?.aiPatches.length
-        ? 'AI đã bổ sung các cách đọc cần chú ý. Hãy kiểm tra preview trước khi duyệt.'
+        ? 'AI đã tạo đề xuất cách đọc. Hãy kiểm tra diff và bấm áp dụng nếu phù hợp.'
         : 'AI không thấy ký hiệu kỹ thuật nào cần bổ sung.');
     } catch (reason) {
       setState('error');
@@ -295,8 +366,8 @@ export function NarrationPage({projectId}: {projectId: string}) {
       }
       setDraft(emptyRule);
       setMessage(ruleDraft.scope === 'project'
-        ? 'Đã lưu quy tắc vào project và cập nhật bản đọc.'
-        : 'Đã lưu quy tắc dùng chung. Preview được cập nhật ngay.');
+        ? 'Đã lưu quy tắc vào project. Bản đọc chưa đổi cho đến khi bạn bấm áp dụng đề xuất.'
+        : 'Đã lưu quy tắc dùng chung. Bản đọc chưa đổi cho đến khi bạn bấm áp dụng đề xuất.');
     } catch (reason) {
       setMessage(reason instanceof ApiRequestError ? reason.message : 'Không thể lưu quy tắc từ điển.');
     } finally {
@@ -334,15 +405,29 @@ export function NarrationPage({projectId}: {projectId: string}) {
           <div className="eyebrow-line" />
         </div>
         <h1>Duyệt bản đọc cho ElevenLabs</h1>
-        <p>Quy tắc được áp dụng trước; AI chỉ rà soát ký hiệu dễ đọc sai, không viết lại lời thoại.</p>
+        <p>Dòng trống và khoảng trắng đã được dọn thành bản nền. Từ điển và AI chỉ tạo đề xuất; bạn quyết định khi nào áp dụng.</p>
       </div>
       <details className="pronunciation-codex"><summary>Thiết lập AI rà soát</summary><CodexConnectionCard connection={codex} task="pronunciation" /></details>
       <div className="pronunciation-layout">
         <section className="pronunciation-preview-card">
-          <header><div><span className="preview-kicker">Bản gửi ElevenLabs</span><h2>{approved ? 'Đã duyệt' : needsSave ? 'Có thay đổi chưa lưu' : 'Sẵn sàng kiểm tra'}</h2></div>{approved && <span className="approved-badge"><CheckIcon /> Đã duyệt</span>}</header>
-          <article className="pronunciation-preview" aria-live="polite">{preview}</article>
+          <header><div><span className="preview-kicker">Bản gửi ElevenLabs</span><h2>{approved ? 'Đã duyệt' : needsSave ? 'Có thay đổi chưa lưu' : suggestionPending ? 'Có đề xuất chưa áp dụng' : 'Sẵn sàng kiểm tra'}</h2></div>{approved && <span className="approved-badge"><CheckIcon /> Đã duyệt</span>}</header>
+          <label className="pronunciation-editor">
+            <span>Chỉnh trực tiếp cách đọc</span>
+            <textarea
+              rows={15}
+              maxLength={1_500_000}
+              value={editableText}
+              disabled={state === 'saving' || state === 'auditing' || state === 'approving'}
+              onChange={event => setEditableText(event.currentTarget.value)}
+            />
+            <small>{editableText.trim().length.toLocaleString('vi-VN')} ký tự · thay đổi chỉ được lưu khi bạn bấm “Lưu bản đọc”</small>
+          </label>
+          {suggestionPending
+            ? <DiffPreview before={editableText} after={suggestedText} title="Thay đổi được đề xuất (chưa áp dụng)" />
+            : null}
           <div className="pronunciation-actions">
-            <button className="secondary-button" type="button" disabled={!needsSave || state === 'saving' || state === 'auditing'} onClick={() => void saveSnapshot()}>{state === 'saving' ? 'Đang cập nhật…' : 'Cập nhật bản đọc'}</button>
+            <button className="secondary-button" type="button" disabled={!suggestionPending || state === 'saving' || state === 'auditing' || state === 'approving'} onClick={applySuggestion}>Áp dụng đề xuất</button>
+            <button className="secondary-button" type="button" disabled={!needsSave || !editableText.trim() || state === 'saving' || state === 'auditing'} onClick={() => void saveSnapshot()}>{state === 'saving' ? 'Đang lưu…' : 'Lưu bản đọc'}</button>
             <button className="secondary-button" type="button" disabled={state === 'auditing' || state === 'saving'} onClick={() => void runAudit()}>{state === 'auditing' ? 'AI đang rà soát…' : <><SparkIcon /> Rà soát bằng AI</>}</button>
             <button className="submit-button" type="button" disabled={needsSave || state === 'approving'} onClick={() => void approve()}>{state === 'approving' ? 'Đang duyệt…' : 'Duyệt voice'}</button>
             {approved && <button className="secondary-button" type="button" onClick={() => navigate(projectProductionPath(projectId))}>Tạo audio & scene</button>}
@@ -351,7 +436,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
           {narration.review?.aiPatches.length ? <section className="ai-patches"><strong>AI vừa lưu ý</strong><ul>{narration.review.aiPatches.map(patch => <li key={`${patch.start}-${patch.end}`}><code>{patch.source}</code><span>→ {patch.spoken}</span><small>{patch.reason}</small>{patch.suggestedRule && <button type="button" onClick={() => setDraft({id: null, scope: 'project', source: patch.suggestedRule!.source, spoken: patch.suggestedRule!.spoken})}>Dùng làm quy tắc</button>}</li>)}</ul></section> : null}
         </section>
         <aside className="pronunciation-dictionary">
-          <header><span className="preview-kicker">Từ điển cách đọc</span><p>Sửa ở đây, preview thay đổi ngay. “Dùng chung” sẽ xuất hiện ở các project sau.</p></header>
+          <header><span className="preview-kicker">Từ điển cách đọc</span><p>Quy tắc mới chỉ cập nhật đề xuất. Bấm “Áp dụng đề xuất” để đưa chúng vào bản đọc. “Dùng chung” sẽ xuất hiện ở các project sau.</p></header>
           <div className="rule-editor">
             <label><span>Văn bản gốc</span><input value={draft.source} maxLength={300} disabled={ruleSaving} placeholder="Ví dụ: logarithm, O(n), a[i]" onChange={event => { const source = event.currentTarget.value; setDraft(current => ({...current, source})); }} /></label>
             <label><span>Cách ElevenLabs đọc</span><input value={draft.spoken} maxLength={600} disabled={ruleSaving} placeholder="Ví dụ: lô-ga-rít" onChange={event => { const spoken = event.currentTarget.value; setDraft(current => ({...current, spoken})); }} /></label>

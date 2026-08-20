@@ -63,6 +63,15 @@ function sortedRules(rules: readonly PronunciationRule[]) {
 }
 
 /**
+ * Creates the neutral step-2 baseline. This is formatting cleanup only:
+ * blank lines, line breaks, tabs and repeated spaces become one space. It
+ * deliberately does not apply pronunciation rules or technical notation.
+ */
+export function normalizePronunciationBaseText(sourceText: string) {
+  return sourceText.trim().replace(/\s+/gu, ' ');
+}
+
+/**
  * Applies user-controlled pronunciation memory before built-in notation rules.
  * English prose remains untouched unless a rule explicitly covers it.
  */
@@ -70,7 +79,7 @@ export function normalizePronunciation(
   sourceText: string,
   rules: readonly PronunciationRule[],
 ) {
-  let value = sourceText.trim();
+  let value = normalizePronunciationBaseText(sourceText);
   for (const rule of sortedRules(rules)) {
     const flags = rule.caseSensitive ? 'g' : 'gi';
     value = value.replace(new RegExp(escapeExpression(rule.source), flags), rule.spoken);

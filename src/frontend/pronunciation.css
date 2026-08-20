@@ -7,7 +7,18 @@
 .pronunciation-preview-card h2 { margin: 5px 0 0; color: var(--ink); font-size: 1.25rem; }
 .approved-badge { display: inline-flex; align-items: center; gap: 5px; color: var(--success); font-size: .78rem; font-weight: 750; white-space: nowrap; }
 .approved-badge svg { width: 17px; }
-.pronunciation-preview { min-height: 280px; margin-top: 20px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; color: var(--ink); background: var(--surface); font-size: 1.02rem; line-height: 1.8; white-space: pre-wrap; }
+.pronunciation-editor { display: grid; gap: 7px; margin-top: 20px; color: var(--ink-soft); font-size: .78rem; font-weight: 700; }
+.pronunciation-editor textarea { width: 100%; min-height: 280px; resize: vertical; padding: 18px; border: 1px solid var(--line-strong); border-radius: 14px; color: var(--ink); background: var(--surface); font: inherit; font-size: 1.02rem; font-weight: 400; line-height: 1.8; }
+.pronunciation-editor textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent); outline-offset: 2px; border-color: var(--accent); }
+.pronunciation-editor small { color: var(--ink-soft); font-size: .75rem; font-weight: 500; }
+.pronunciation-diff { margin-top: 16px; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.pronunciation-diff summary { padding: 11px 13px; cursor: pointer; color: var(--ink); font-size: .82rem; font-weight: 750; }
+.pronunciation-diff-legend { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 13px 10px; font-size: .72rem; }
+.pronunciation-diff-legend span { padding: 3px 7px; border-radius: 5px; }
+.pronunciation-diff-legend .is-removed, .pronunciation-diff-content del { color: var(--danger); background: var(--danger-soft); }
+.pronunciation-diff-legend .is-added, .pronunciation-diff-content ins { color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
+.pronunciation-diff-content { max-height: 260px; overflow: auto; padding: 13px; border-top: 1px solid var(--line); color: var(--ink); font-size: .88rem; line-height: 1.75; white-space: pre-wrap; }
+.pronunciation-diff-content del, .pronunciation-diff-content ins { padding: 1px 2px; border-radius: 3px; text-decoration: none; }
 .pronunciation-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 .pronunciation-actions button { display: inline-flex; align-items: center; gap: 6px; }
 .pronunciation-actions svg { width: 16px; }

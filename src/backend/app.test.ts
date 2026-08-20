@@ -46,6 +46,47 @@ test('v16 project starts at pronunciation and revision guards writes', async t =
   assert.equal(conflict.status, 409);
 });
 
+test('pronunciation changes stay proposed until normalized text is explicitly saved', async t => {
+  const baseUrl = await startApp(t);
+  let project = await createProject(baseUrl) as {
+    id: string;
+    revision: number;
+    narration?: {sourceText: string; review: {normalizedText: string; sourceHash: string} | null};
+  };
+  const sourceText = `  ${project.narration?.sourceText ??
+    'Day la loi thoai kiem thu du dai de tao project theo workflow moi.'}\r\n\r\n  Dong thu hai.  `;
+  const baselineText = sourceText.trim().replace(/\s+/gu, ' ');
+  const projectRules = [{
+    id: randomUUID(),
+    source: 'workflow',
+    spoken: 'uốc-phờ-lâu',
+    scope: 'project' as const,
+    origin: 'user' as const,
+    caseSensitive: false,
+  }];
+
+  const proposedOnly = await fetch(`${baseUrl}/api/projects/${project.id}/narration`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json', 'If-Match': `"${project.revision}"`},
+    body: JSON.stringify({sourceText, projectRules}),
+  });
+  assert.equal(proposedOnly.status, 200);
+  project = (await proposedOnly.json() as {project: typeof project}).project;
+  assert.equal(project.narration?.review?.normalizedText, baselineText);
+  const originalHash = project.narration?.review?.sourceHash;
+
+  const appliedText = baselineText.replace('workflow', 'uốc-phờ-lâu');
+  const applied = await fetch(`${baseUrl}/api/projects/${project.id}/narration`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json', 'If-Match': `"${project.revision}"`},
+    body: JSON.stringify({sourceText, normalizedText: appliedText, projectRules}),
+  });
+  assert.equal(applied.status, 200);
+  project = (await applied.json() as {project: typeof project}).project;
+  assert.equal(project.narration?.review?.normalizedText, appliedText);
+  assert.notEqual(project.narration?.review?.sourceHash, originalHash);
+});
+
 test('removed legacy endpoints return 404', async t => {
   const baseUrl = await startApp(t);
   const project = await createProject(baseUrl);

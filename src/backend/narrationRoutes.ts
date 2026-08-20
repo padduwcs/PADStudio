@@ -3,9 +3,7 @@ import {
   type ServerResponse,
 } from 'node:http';
 import {z} from 'zod';
-import {
-  reviewedPronunciationText,
-} from '../shared/pronunciation.ts';
+import {normalizePronunciationBaseText} from '../shared/pronunciation.ts';
 import {
   ApproveNarrationSchema,
   SaveNarrationSchema
@@ -27,7 +25,9 @@ import type {AppContext} from './appContext.ts';
 import {RequestBodyError, sendApiError} from './appErrors.ts';
 import {readExpectedRevision, readJsonBody, sendJson, sendProject, validationFields} from './httpTransport.ts';
 const AuditNarrationSchema = z.object({generationId: z.string().uuid(), model: z.string().trim().min(1).max(160).optional(), reasoningEffort: z.string().trim().min(1).max(80).optional()}).strict();
-function narrationReviewSourceHash(sourceText: string, aiPatches: unknown) {return hashJson({sourceText, aiPatches});}
+function narrationReviewSourceHash(sourceText: string, normalizedText: string) {
+  return hashJson({sourceText, normalizedText});
+}
 
 import type {ApiRouteHandler} from './routeTypes.ts';
 
@@ -79,10 +79,11 @@ export function createNarrationRouteHandler(context: NarrationRouteContext): Api
       }
       const libraryRules = await pronunciationRuleStore.list();
       const allRules = [...libraryRules, ...parsed.data.projectRules];
-      const normalizedText = reviewedPronunciationText(
-        parsed.data.sourceText,
-        allRules,
-      );
+      // Step 1 deliberately omits normalizedText. Only neutral whitespace
+      // cleanup is automatic; dictionary/notation changes still require an
+      // explicit Apply action (or a manual edit) in step 2.
+      const normalizedText = parsed.data.normalizedText ??
+        normalizePronunciationBaseText(parsed.data.sourceText);
       const encodingIssue =
         textEncodingIssue(parsed.data.sourceText) ??
         textEncodingIssue(normalizedText);
@@ -98,7 +99,7 @@ export function createNarrationRouteHandler(context: NarrationRouteContext): Api
         normalizedText,
         rules: allRules,
         aiPatches: [],
-        sourceHash: narrationReviewSourceHash(parsed.data.sourceText, []),
+        sourceHash: narrationReviewSourceHash(parsed.data.sourceText, normalizedText),
         rulesHash: hashJson(allRules),
         reviewedAt: null,
       };
@@ -174,15 +175,13 @@ export function createNarrationRouteHandler(context: NarrationRouteContext): Api
       const audit = auditGeneration.result;
       const nextReview = {
         ...narration.review,
-        normalizedText: reviewedPronunciationText(
-          narration.sourceText,
-          narration.review.rules,
-          audit.patches,
-        ),
+        // An audit produces a proposal only. It must not silently replace the
+        // user's editable/saved pronunciation snapshot.
+        normalizedText: narration.review.normalizedText,
         aiPatches: audit.patches,
         sourceHash: narrationReviewSourceHash(
           narration.sourceText,
-          audit.patches,
+          narration.review.normalizedText,
         ),
         reviewedAt: null,
       };
@@ -260,4 +259,3 @@ export function createNarrationRouteHandler(context: NarrationRouteContext): Api
     return false;
   };
 }
-

@@ -128,6 +128,77 @@ test('ElevenLabs TTS with timestamps gửi cấu hình đầy đủ và đọc r
   assert.equal(result.alignment.characters.join(''), text);
 });
 
+test('ElevenLabs history accepts nullable fields documented by the provider', async () => {
+  const service = createElevenLabsVoiceService({
+    apiKey: 'test-key',
+    retryDelaysMs: [],
+    fetch: async (input) => {
+      const url = String(input);
+      if (url.includes('/v2/voices')) return jsonResponse({voices: [voice]});
+      if (url.endsWith('/v1/models')) return jsonResponse([model]);
+      if (url.includes('/v1/history')) {
+        return jsonResponse({
+          history: [
+            {
+              history_item_id: 'dialogue-without-top-level-voice',
+              voice_id: null,
+              voice_name: null,
+              model_id: model.model_id,
+              date_unix: 1_700_000_000,
+              settings: null,
+              dialogue: [
+                {
+                  voice_id: voice.voice_id,
+                  voice_name: voice.name,
+                  text: 'Nội dung dialogue của Eleven v3.',
+                },
+              ],
+            },
+            {
+              history_item_id: 'tts-item',
+              voice_id: voice.voice_id,
+              voice_name: null,
+              model_id: model.model_id,
+              date_unix: 1_700_000_001,
+              settings: {
+                stability: null,
+                similarity_boost: null,
+                style: null,
+                use_speaker_boost: null,
+                speed: null,
+              },
+            },
+          ],
+          has_more: false,
+        });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  });
+
+  const catalog = await service.getCatalog('');
+  assert.equal(catalog.history.available, true);
+  assert.equal(catalog.recentPresets.length, 2);
+  const dialoguePreset = catalog.recentPresets.find(
+    (preset) =>
+      preset.id ===
+      'elevenlabs-history:dialogue-without-top-level-voice',
+  );
+  assert.equal(dialoguePreset?.voiceId, voice.voice_id);
+  assert.equal(dialoguePreset?.voiceName, voice.name);
+  const ttsPreset = catalog.recentPresets.find(
+    (preset) => preset.id === 'elevenlabs-history:tts-item',
+  );
+  assert.equal(ttsPreset?.voiceName, voice.voice_id);
+  assert.deepEqual(ttsPreset?.settings, {
+    stability: 0.5,
+    similarityBoost: 0.75,
+    style: 0,
+    useSpeakerBoost: true,
+    speed: 1,
+  });
+});
+
 test('ElevenLabs generation binds its key for the full job', async () => {
   let configuredKey = 'key-at-start';
   let requestKey = '';

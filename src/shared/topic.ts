@@ -73,6 +73,9 @@ export type NarrationDocument = z.infer<typeof NarrationDocumentSchema>;
 export const SaveNarrationSchema = z
   .object({
     sourceText: z.string().trim().min(1).max(1_500_000),
+    // Omitted by step 1 on purpose: entering pronunciation review must keep
+    // the source untouched until the user explicitly applies or edits it.
+    normalizedText: z.string().trim().min(1).max(1_500_000).optional(),
     projectRules: z.array(PronunciationRuleSchema).max(2_000).default([]),
   })
   .strict()

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   applyPronunciationPatches,
+  normalizePronunciationBaseText,
   normalizePronunciation,
   reviewedPronunciationText,
   validatePronunciationPatches,
@@ -16,6 +17,13 @@ const rule: PronunciationRule = {
   origin: 'builtin',
   caseSensitive: false,
 };
+
+test('step-2 baseline removes blank lines and repeated whitespace without applying pronunciation rules', () => {
+  assert.equal(
+    normalizePronunciationBaseText('  Binary   Search\r\n\r\n\t có O(log n).  '),
+    'Binary Search có O(log n).',
+  );
+});
 
 test('pronunciation memory preserves English and converts only explicit terms plus notation', () => {
   assert.equal(

@@ -10,7 +10,7 @@ import {
 } from './narrationPlan.ts';
 import type {VoiceVisualPlanContent} from '../shared/topic.ts';
 import type {NarrationVisualPlannerService} from './narrationVisualPlanner.ts';
-import {VoiceVisualPlanSchema, type NarrationDocument} from '../shared/topic.ts';
+import {TeachingOutlineSchema, VoiceVisualPlanSchema, type NarrationDocument} from '../shared/topic.ts';
 
 const sourceHash = createHash('sha256').update('review').digest('hex');
 
@@ -328,6 +328,20 @@ test('composition contract is planned, ranked against the lifecycle, and require
   const misranked = structuredClone(voiceVisualPlan);
   misranked.sections[0]!.beats[0]!.compositionContract!.hierarchy = ['concept-label', 'block-concept-card'];
   assert.throws(() => validateSemanticVisualPlan(narration, outline, misranked), /composition contract/i);
+});
+
+test('semantic plan keeps short topic names valid for persisted outlines', () => {
+  const narration = plannerNarration();
+  const {outline} = createNarrationArtifacts({
+    topicInput: {...plannerTopicInput, topic: 'Recursion'},
+    narration,
+    generationId: '10000000-0000-4000-8000-000000000010',
+    now: '2026-01-01T00:00:00.000Z',
+    previousPlan: null,
+  });
+
+  assert.equal(TeachingOutlineSchema.safeParse(outline).success, true);
+  assert.equal(outline.centralMessage, 'Nội dung cốt lõi của Recursion.');
 });
 
 test('beat schema rejects a hierarchy that contradicts primaryBlock or the lifecycle', () => {

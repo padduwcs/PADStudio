@@ -9,6 +9,7 @@ import type {VoiceBundle} from '../shared/topic.ts';
 import {
   createVoiceWorkspace,
   VoiceWorkspaceError,
+  voiceMasterTimeoutMs,
   type GeneratedVoiceNarration,
 } from './voiceWorkspace.ts';
 
@@ -22,6 +23,13 @@ const ffmpegAvailable = (() => {
     return false;
   }
 })();
+
+test('voice master timeout is an integer for fractional alignment durations', () => {
+  const timeout = voiceMasterTimeoutMs(257.6);
+
+  assert.equal(timeout, 128_800);
+  assert.equal(Number.isInteger(timeout), true);
+});
 
 function rawPcm(durationSeconds: number, sampleRate = 44_100) {
   return Buffer.alloc(Math.ceil(durationSeconds * sampleRate) * 2);

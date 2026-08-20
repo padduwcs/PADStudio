@@ -150,6 +150,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
   const [narrationGuidance, setNarrationGuidance] = useState('');
   const [narrationGenerating, setNarrationGenerating] = useState(false);
   const [narrationGenerationError, setNarrationGenerationError] = useState('');
+  const [openingPronunciation, setOpeningPronunciation] = useState(false);
   const creationId = useRef(createNewTopicCreationId());
   const skipNextNavigationGuardRef = useRef(false);
   const codex = useCodexConnection();
@@ -230,6 +231,37 @@ export function ContentPage({projectId}: {projectId?: string}) {
     setForm(current => ({...current, [key]: value}));
     setError('');
     if (state === 'saved') setState('ready');
+  }
+
+  async function openPronunciation() {
+    if (!project || openingPronunciation) return;
+    if (hasUnsavedChanges) {
+      setError('Hãy lưu nội dung đang chỉnh sửa trước khi chuyển sang bước cách đọc.');
+      return;
+    }
+    setOpeningPronunciation(true);
+    setError('');
+    try {
+      let current = project;
+      if (!current.narration?.review) {
+        current = await saveProjectNarration(
+          current.id,
+          {
+            sourceText: current.narration!.sourceText,
+            projectRules: current.narration!.projectRules,
+          },
+          current.revision,
+        );
+        setProject(current);
+      }
+      navigate(projectPronunciationPath(current.id));
+    } catch (reason) {
+      setError(reason instanceof ApiRequestError
+        ? reason.message
+        : 'Không thể chuẩn bị bản nền cho bước cách đọc.');
+    } finally {
+      setOpeningPronunciation(false);
+    }
   }
 
   async function createNarrationDraft() {
@@ -385,7 +417,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
         </div>
         <section className="content-field">
           <span>Lời thoại gốc</span>
-          <small>Đây là nội dung bạn muốn nói. Bước tiếp theo chỉ chuẩn hóa cách ElevenLabs đọc nó.</small>
+          <small>Đây là nội dung bạn muốn nói. Khi sang bước tiếp theo, hệ thống chỉ tự dọn dòng trống và khoảng trắng; mọi quy tắc cách đọc vẫn chờ bạn áp dụng.</small>
           <details className="content-narration-assist">
             <summary><span><strong>Chưa có lời thoại? Tạo nháp bằng AI</strong><small>Tùy chọn — nếu đã chuẩn bị kỹ, chỉ cần dán lời thoại của bạn và bỏ qua phần này.</small></span><em className={codex.status?.state === 'connected' ? 'is-connected' : ''}>{aiConnectionLabel}</em></summary>
             <label><span>Gợi ý cho AI <small>Không bắt buộc</small></span><textarea rows={3} value={narrationGuidance} disabled={narrationGenerating} placeholder="Ví dụ: giải thích cho người mới, ưu tiên ví dụ đời thường, khoảng ba phút." onChange={event => setNarrationGuidance(event.currentTarget.value)} /></label>
@@ -406,7 +438,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
           <p>{state === 'saved' ? 'Đã lưu. Bước tiếp theo sẽ là duyệt cách đọc.' : 'Lời thoại được lưu cục bộ trong project của bạn.'}</p>
           <div className="content-action-buttons">
             <button className="submit-button" type="submit" disabled={state === 'saving'}>{state === 'saving' ? 'Đang lưu…' : project ? 'Lưu đầu vào' : 'Tạo project'}</button>
-            {project && <button className="secondary-button" type="button" onClick={() => navigate(projectPronunciationPath(project.id))}>Chuẩn hóa cách đọc</button>}
+            {project && <button className="secondary-button" type="button" disabled={openingPronunciation || state === 'saving'} onClick={() => void openPronunciation()}>{openingPronunciation ? 'Đang chuẩn bị…' : 'Chuẩn hóa cách đọc'}</button>}
           </div>
         </footer>
       </form>
