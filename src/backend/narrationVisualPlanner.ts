@@ -11,13 +11,16 @@ import {
 } from './codexStructuredGeneration.ts';
 
 export const NARRATION_VISUAL_PLANNER_PROMPT_VERSION =
-  'narration-visual-planner-v3';
+  'narration-visual-planner-v4';
 
-/** One reviewed sentence with a stable ID. The AI planner may only reference
- * this ID; it never receives permission to echo, paraphrase, or invent text. */
+/** One timing-safe spoken unit paired with its original semantic wording. The
+ * AI may only reference the stable ID; it never authors narration text. */
 export interface NarrationPlannerUnit {
   id: string;
+  /** Exact approved wording used for voice and duration calculations. */
   text: string;
+  /** Step-1 wording used to understand concepts, notation and proper names. */
+  semanticText: string;
 }
 
 export class NarrationVisualPlannerError extends Error {
@@ -243,6 +246,8 @@ export function assertPlannerOutputHasNoCodeArtifacts(
 
 export interface NarrationVisualPlannerRequest {
   topicInput: TopicInput;
+  /** Complete step-1 transcript, formatting-cleaned but not pronounced. */
+  semanticSourceText: string;
   units: NarrationPlannerUnit[];
   model?: string;
   reasoningEffort?: string;
@@ -266,7 +271,9 @@ function buildPrompt(request: NarrationVisualPlannerRequest) {
     'For every unit provide primaryBlock (a stable block-* JSX key) plus visualLifecycle.enter, visualLifecycle.stay and visualLifecycle.exit. Each list is non-empty and contains stable kebab-case JSX keys. primaryBlock must occur in stay; within the same beat, stay may contain at most two block-* keys (this is not a limit on different blocks used sequentially across the scene); exit means hidden completely or moved outside the frame.',
     `Composition contract: for every unit provide compositionContract with visualFocus (one single dominant point of interest in the frame, in plain language), hierarchy (2–6 semantic keys ordered from dominant to subordinate visual weight; hierarchy[0] must equal primaryBlock and every key must be in visualLifecycle.stay), semanticRole (one of ${compositionSemanticRoleValues.join(', ')}), layout (one of ${compositionLayoutValues.join(', ')}), density (one of ${compositionDensityValues.join(', ')}) and spacingNotes (padding and breathing-room intent). Exactly one element dominates each frame; use transition only for a beat that genuinely justifies a hard layout cut.`,
     'Bạn là AI Visual Planner. Bạn CHỈ lập kế hoạch hình ảnh; tuyệt đối không được viết, sửa, rút gọn, dịch hay diễn giải lại lời thoại.',
-    'Input units là danh sách câu lời thoại đã được người dùng duyệt, mỗi câu có unitId ổn định. Bạn không có quyền trả về voiceover text; chỉ được tham chiếu unitId.',
+    'semanticSourceText và semanticText là nội dung gốc ở bước 1, là nguồn sự thật để hiểu ngữ nghĩa, công thức, thuật ngữ và tên riêng.',
+    'spokenText chỉ là cách đọc đã duyệt dành cho TTS và timing. Không được dùng cách viết phiên âm trong spokenText để suy diễn sai khái niệm hình ảnh.',
+    'Mỗi input unit có unitId ổn định. Bạn không có quyền trả về voiceover text; chỉ được tham chiếu unitId.',
     'Nhóm TOÀN BỘ unit theo đúng thứ tự xuất hiện trong units thành các scene liên tiếp không chồng lấn: mọi unitId phải xuất hiện đúng một lần, không bỏ sót, không lặp lại, không đổi thứ tự.',
     'Mỗi scene cần title và teaching goal cụ thể cho đúng nội dung của các unit trong scene đó; không dùng nhãn chung chung như "Đoạn N".',
     'Với mỗi unit, viết visualPurpose (ý nào trong lời thoại trở thành quan hệ nhìn thấy được), visualDescription (hình gì, bố cục nào) và animationDescription (chuyển động gì) cụ thể cho riêng unit đó; không dùng caption lặp lại lời thoại.',
@@ -276,7 +283,12 @@ function buildPrompt(request: NarrationVisualPlannerRequest) {
     'Không trả TSX, mã nguồn, Markdown fence, hay bất kỳ nội dung lời thoại mới nào. Chỉ trả đúng JSON theo schema.',
     JSON.stringify({
       topicInput: request.topicInput,
-      units: request.units,
+      semanticSourceText: request.semanticSourceText,
+      units: request.units.map(unit => ({
+        unitId: unit.id,
+        semanticText: unit.semanticText,
+        spokenText: unit.text,
+      })),
     }),
   ].join('\n');
 }

@@ -44,7 +44,12 @@ function fakeDependencies(root: string) {
   const nodeFingerprint = digest('fake-layout-node');
   const manifests = new Map<string, ReturnType<typeof LayoutEditorManifestSchema.parse>>();
   const motionCanvasRequests: Array<{model?: string; reasoningEffort?: string; guidance?: string}> = [];
-  const plannerRequests: Array<{model?: string; reasoningEffort?: string}> = [];
+  const plannerRequests: Array<{
+    model?: string;
+    reasoningEffort?: string;
+    semanticSourceText: string;
+    units: Array<{text: string; semanticText: string}>;
+  }> = [];
 
   const motionCanvasGenerator = {
     async generate(request: {
@@ -80,8 +85,8 @@ function fakeDependencies(root: string) {
   };
 
   const narrationVisualPlanner = {
-    async plan(request: {units: Array<{id: string; text: string}>; model?: string; reasoningEffort?: string}) {
-      plannerRequests.push({model: request.model, reasoningEffort: request.reasoningEffort});
+    async plan(request: {units: Array<{id: string; text: string; semanticText: string}>; semanticSourceText: string; model?: string; reasoningEffort?: string}) {
+      plannerRequests.push({model: request.model, reasoningEffort: request.reasoningEffort, semanticSourceText: request.semanticSourceText, units: request.units});
       return {
         model: 'fake-codex',
         usage: null,
@@ -391,6 +396,13 @@ test('AI Visual Planner và Motion Canvas scene generation nhận model/reasonin
     plannerReasoningEffort: 'high',
   }));
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/voice/generate`, voiceRequest(randomUUID())));
+  // Opening scene generation calls prepare again. A current persisted plan is
+  // reused even when the installed planner implementation has moved forward.
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/production/prepare`, {
+    generationId: randomUUID(),
+    plannerModel: 'newer-planner-model',
+    plannerReasoningEffort: 'low',
+  }));
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/generate`, {
     generationId: randomUUID(),
     model: 'scene-model',
@@ -400,6 +412,8 @@ test('AI Visual Planner và Motion Canvas scene generation nhận model/reasonin
   assert.equal(metrics.plannerRequests.length, 1);
   assert.equal(metrics.plannerRequests[0]?.model, 'planner-model');
   assert.equal(metrics.plannerRequests[0]?.reasoningEffort, 'high');
+  assert.equal(metrics.plannerRequests[0]?.semanticSourceText, narrationSourceText);
+  assert.ok(metrics.plannerRequests[0]?.units.every(unit => unit.semanticText.length > 0));
   assert.ok(metrics.motionCanvasRequests.length >= 1);
   for (const sceneRequest of metrics.motionCanvasRequests) {
     assert.equal(sceneRequest.model, 'scene-model');

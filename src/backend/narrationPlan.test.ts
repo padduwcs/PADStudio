@@ -83,7 +83,7 @@ const plannerTopicInput = {
 
 function plannerNarration(): NarrationDocument {
   return {
-    sourceText: 'Bản gốc.',
+    sourceText: 'Độ phức tạp là O(n). Logarithm đọc là logarithm.',
     projectRules: [],
     review: {
       sourceText: 'Bản gốc.',
@@ -137,8 +137,12 @@ function validPlannerOutput(unitIds: string[]) {
 
 test('planNarrationArtifacts dùng blueprint AI khi planner thành công', async () => {
   const narration = plannerNarration();
+  let plannerSemanticSource = '';
+  let plannerUnits: Array<{text: string; semanticText: string}> = [];
   const planner: NarrationVisualPlannerService = {
     async plan(request) {
+      plannerSemanticSource = request.semanticSourceText;
+      plannerUnits = request.units;
       return {
         output: validPlannerOutput(request.units.map(unit => unit.id)),
         model: 'fake-planner-model',
@@ -162,6 +166,19 @@ test('planNarrationArtifacts dùng blueprint AI khi planner thành công', async
   assert.equal(voiceVisualPlan.visualBible?.palette.background, plannerTopicInput.background.color);
   assert.deepEqual(voiceVisualPlan.sections[0]?.stateHandoff, {incoming: null, outgoing: null});
   assert.equal(voiceVisualPlan.generation.provider, 'codex');
+  assert.equal(plannerSemanticSource, narration.sourceText);
+  assert.deepEqual(plannerUnits.map(unit => unit.semanticText), [
+    'Độ phức tạp là O(n).',
+    'Logarithm đọc là logarithm.',
+  ]);
+  assert.deepEqual(
+    voiceVisualPlan.sections.flatMap(section => section.beats).map(beat => beat.voiceover),
+    plannerUnits.map(unit => unit.semanticText),
+  );
+  assert.deepEqual(
+    voiceVisualPlan.sections.flatMap(section => section.beats).map(beat => beat.spokenVoiceover),
+    plannerUnits.map(unit => unit.text),
+  );
   assert.deepEqual(voiceVisualPlan.plannerDiagnostics, [{stage: 'ai-plan', model: 'fake-planner-model', reason: null, outcome: 'used_ai'}]);
   assert.equal(narrationPlanMatchesReviewedNarration(narration, voiceVisualPlan), true);
 });
@@ -328,6 +345,37 @@ test('composition contract is planned, ranked against the lifecycle, and require
   const misranked = structuredClone(voiceVisualPlan);
   misranked.sections[0]!.beats[0]!.compositionContract!.hierarchy = ['concept-label', 'block-concept-card'];
   assert.throws(() => validateSemanticVisualPlan(narration, outline, misranked), /composition contract/i);
+});
+
+test('Visual Plan cũ vẫn hợp lệ và có thể tiếp tục sinh scene sau khi planner được nâng cấp', async () => {
+  const narration = plannerNarration();
+  const planner: NarrationVisualPlannerService = {
+    async plan(request) {
+      return {
+        output: validPlannerOutput(request.units.map(unit => unit.id)),
+        model: 'legacy-planner-model',
+        usage: null,
+      };
+    },
+  };
+  const {outline, voiceVisualPlan} = await planNarrationArtifacts({
+    planner,
+    topicInput: plannerTopicInput,
+    narration,
+    generationId: '10000000-0000-4000-8000-000000000102',
+    now: '2026-01-01T00:00:00.000Z',
+    previousPlan: null,
+  });
+  const legacyPlan = structuredClone(voiceVisualPlan);
+  if (legacyPlan.generation.provider === 'codex') {
+    legacyPlan.generation.promptVersion = 'narration-visual-planner-v3';
+  }
+  for (const beat of legacyPlan.sections.flatMap(section => section.beats)) {
+    beat.voiceover = beat.spokenVoiceover ?? beat.voiceover;
+  }
+
+  assert.equal(narrationPlanMatchesReviewedNarration(narration, legacyPlan), true);
+  assert.equal(narrationArtifactsMatchReview({outline, voiceVisualPlan: legacyPlan, narration}), true);
 });
 
 test('semantic plan keeps short topic names valid for persisted outlines', () => {

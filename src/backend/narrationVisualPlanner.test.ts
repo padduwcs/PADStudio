@@ -27,7 +27,7 @@ const topicInput = {
 };
 
 function unit(id: string, text: string): NarrationPlannerUnit {
-  return {id, text};
+  return {id, text, semanticText: text};
 }
 
 function validVisualBible() {
@@ -271,6 +271,7 @@ test('AI visual planner thật trả về title/goal/blueprint/bible/handoff h�
   });
   const request: NarrationVisualPlannerRequest = {
     topicInput,
+    semanticSourceText: 'Ta thu hẹp vùng tìm kiếm. Mốc giữa quyết định nửa nào bị loại.',
     units: [unit('unit-1', 'Ta thu hẹp vùng tìm kiếm.'), unit('unit-2', 'Mốc giữa quyết định nửa nào bị loại.')],
   };
 
@@ -309,6 +310,7 @@ test('AI visual planner ném lỗi invariant khi model bỏ sót một unit', as
   await assert.rejects(
     planner.plan({
       topicInput,
+      semanticSourceText: 'Ta thu hẹp vùng tìm kiếm. Mốc giữa quyết định nửa nào bị loại.',
       units: [unit('unit-1', 'Ta thu hẹp vùng tìm kiếm.'), unit('unit-2', 'Mốc giữa quyết định nửa nào bị loại.')],
     }),
     (error: unknown) =>
