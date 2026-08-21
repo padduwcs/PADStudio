@@ -76,6 +76,73 @@ test('sample timeline keeps every beat beyond the former 96-sample boundary', ()
   assert.ok((samples.at(-1)?.frame ?? 0) > 1_280);
 });
 
+test('issue budget is fair per scene so one broken scene cannot hide later failures', async () => {
+  const makeScene = (index: number, beatCount: number) => {
+    const id = randomUUID();
+    const beatIds = Array.from({length: beatCount}, () => randomUUID());
+    return {
+      scene: {
+        id,
+        outlineSectionId: randomUUID(),
+        name: `Broken scene ${index}`,
+        filePath: `src/scenes/0${index}-broken.tsx`,
+        durationSeconds: beatCount * 4,
+        source: `broken-${index}`,
+        timingEvents: beatIds.map(beatId => ({
+          beatId,
+          startEvent: `beat:${beatId}:start`,
+          endEvent: `beat:${beatId}:end`,
+          plannedDurationSeconds: 4,
+        })),
+      } satisfies MotionCanvasSourceScene,
+      beatIds,
+    };
+  };
+  const first = makeScene(1, 5);
+  const second = makeScene(2, 1);
+  const scenes = [first.scene, second.scene];
+  const contracts = new Map(
+    [...first.beatIds, ...second.beatIds].map(beatId => [
+      beatId,
+      {stay: ['block-required']},
+    ]),
+  );
+
+  const failure = await validateRenderedMotionCanvas({
+    scenes,
+    lifecycle: contracts,
+    frame: {width: 100, height: 100, fps: 10},
+    backgroundColor: '#10231D',
+    renderer: {
+      async render(input) {
+        return new Map(input.samples.map(sample => [
+          sample.sampleId,
+          frame(Array.from({length: 25}, (_, index) => ({
+            key: `faulty-label-${index}`,
+            kind: 'text' as const,
+            bounds: {x: 10, y: 10, width: 30, height: 8},
+            visibleBounds: {x: 10, y: 10, width: 30, height: 8},
+            opacity: 1,
+            fontSize: 10,
+            fill: '#10231D',
+            localBackground: '#10231D',
+            text: 'x'.repeat(100),
+          })), false),
+        ]));
+      },
+    },
+    now: '2026-01-01T00:00:00.000Z',
+  }).then(() => null, (error: unknown) => {
+    if (error instanceof MotionCanvasVisualQualityError) return error.summary;
+    throw error;
+  });
+
+  assert.ok(failure);
+  assert.ok(failure.issues.some(issue => issue.sceneId === first.scene.id));
+  assert.ok(failure.issues.some(issue => issue.sceneId === second.scene.id));
+  assert.ok(failure.issues.filter(issue => issue.sceneId === first.scene.id).length <= 12);
+});
+
 test('one retry regenerates only failed scene, persistent failure rejects, hash stale and temp cleanup are explicit', async () => {
   let validations=0, retries=0;
   const value=await retryRenderedSceneQualityOnce({async validate(){validations++; if(validations===1) throw new MotionCanvasVisualQualityError({version:VISUAL_QUALITY_GATE_VERSION,status:'failed',validatedAt:'2026-01-01T00:00:00.000Z',sourceHash:'a'.repeat(64),scenes:[],issues:[{code:'empty-frame',sceneId,beatId:beatOne,timeSeconds:0,semanticKey:null,bounds:null,reason:'empty'}]}); return 'passed';},async regenerateFailedScenes(summary){retries++;assert.deepEqual([...new Set(summary.issues.map(issue=>issue.sceneId))],[sceneId]);}});

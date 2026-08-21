@@ -605,7 +605,7 @@ async function prepareTwoScenes(baseUrl: string) {
   return projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/voice/generate`, voiceRequest(randomUUID())));
 }
 
-test('a rendered-quality failure retries once, re-validates the whole bundle, and never approves a failed bundle', async t => {
+test('rendered-quality failures use bounded retries, re-validate the whole bundle, and never approve a failed bundle', async t => {
   const validatedSceneCounts: number[] = [];
   const failedAt = '2026-01-01T00:00:00.000Z';
   let validations = 0;
@@ -652,6 +652,9 @@ test('a rendered-quality failure retries once, re-validates the whole bundle, an
   const stuck = await prepareTwoScenes(blocked.baseUrl);
   const failedResponse = await request(blocked.baseUrl, stuck, 'POST', `/api/projects/${stuck.id}/motion-canvas/generate`, {generationId: randomUUID()});
   assert.equal(failedResponse.ok, false);
+  assert.equal(failedResponse.status, 422);
+  const failedBody = await failedResponse.json() as {error: {code: string}};
+  assert.equal(failedBody.error.code, 'MOTION_CANVAS_VISUAL_QUALITY_FAILED');
   const reloaded = await projectFrom(await request(blocked.baseUrl, null, 'GET', `/api/projects/${stuck.id}`));
   assert.ok(!reloaded.motionCanvasBundle);
   const approveWithoutBundle = await request(blocked.baseUrl, reloaded, 'POST', `/api/projects/${reloaded.id}/motion-canvas/approve`, {});

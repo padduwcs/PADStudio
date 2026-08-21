@@ -35,6 +35,7 @@ export const visualQualityThresholds = {
   /** Character length of a single Txt node's rendered string. */
   maximumTextCharacters: 90,
   maximumIssues: 64,
+  maximumIssuesPerScene: 12,
 } as const;
 
 export const VisualQualityIssueSchema = z.object({
@@ -107,8 +108,18 @@ export function assertVisualValidationCurrent(bundle: {visualValidation?: Stored
 export function formatVisualQualityRetryGuidance(issues: VisualQualityIssue[]): string {
   if (issues.length === 0) return '';
   const lines = issues.map(issue => `- ${issue.sceneId}/${issue.beatId ?? 'scene'}${issue.semanticKey ? ` (${issue.semanticKey})` : ''}: ${issue.reason}`);
+  const visibilityGuidance = issues.some(issue =>
+    ['empty-frame', 'missing-active-block', 'frame-too-sparse'].includes(
+      issue.code,
+    ),
+  )
+    ? [
+        'Keep every information-bearing primary visual visible throughout the stable-start, middle, and pre-exit samples. The exit animation belongs only in the reserved final exit window; never hide the visual early and wait on an empty frame.',
+      ]
+    : [];
   return [
     'Lượt render trước bị kiểm tra khung hình từ chối vì các lý do sau. Bản sinh lại phải khắc phục triệt để từng lý do, không chỉ đổi màu hoặc rút gọn chữ để né qua kiểm tra:',
+    ...visibilityGuidance,
     ...lines,
   ].join('\n').slice(0, 4_000);
 }
@@ -125,7 +136,11 @@ function isVisible(node: QualityNodeSnapshot) { return (node.effectiveOpacity ??
 function pixelDelta(a: Uint8Array, b: Uint8Array) { if (a.length !== b.length) return 1; let total = 0; for (let i=0;i<a.length;i+=4) total += (Math.abs(a[i]! - b[i]!) + Math.abs(a[i+1]! - b[i+1]!) + Math.abs(a[i+2]! - b[i+2]!)) / (255 * 3); return total / (a.length / 4); }
 
 /** Structural wrappers own the whole canvas by design and never count as content. */
-const structuralKeys = new Set(['scene-background', 'scene-content-root']);
+const structuralKeys = new Set([
+  'scene-background',
+  'scene-content-root',
+  'block-lifecycle-support-layer',
+]);
 
 function matchesPalette(fill: string, palette: QualityVisualBible['palette']) {
   const value = parseHexColor(fill);
@@ -161,7 +176,18 @@ export function visualQualitySamples(scenes: MotionCanvasSourceScene[], fps: num
 }
 
 export async function validateRenderedMotionCanvas(options: {scenes: MotionCanvasSourceScene[]; lifecycle: Map<string, BeatQualityContract>; frame: {width: number; height: number; fps: number}; backgroundColor?: string | null; visualBible?: QualityVisualBible | null; sceneHandoff?: Map<string, {incoming: string | null; outgoing: string | null}>; renderer: MotionCanvasFrameRenderer; workspaceDirectory?: string; projectFile?: string; now?: string;}): Promise<VisualQualitySummary> {
-  const samples = visualQualitySamples(options.scenes, options.frame.fps); const issues: VisualQualityIssue[] = []; const push = (issue: VisualQualityIssue) => {if (issues.length < visualQualityThresholds.maximumIssues) issues.push(issue);};
+  const samples = visualQualitySamples(options.scenes, options.frame.fps);
+  const issues: VisualQualityIssue[] = [];
+  const issueCountsByScene = new Map<string, number>();
+  const push = (issue: VisualQualityIssue) => {
+    const sceneCount = issueCountsByScene.get(issue.sceneId) ?? 0;
+    if (
+      issues.length >= visualQualityThresholds.maximumIssues ||
+      sceneCount >= visualQualityThresholds.maximumIssuesPerScene
+    ) return;
+    issues.push(issue);
+    issueCountsByScene.set(issue.sceneId, sceneCount + 1);
+  };
   const bible = options.visualBible ?? null;
   let rendered: Map<string, QualityRenderedFrame>;
   try { rendered = await options.renderer.render({scenes: options.scenes, samples, frame: options.frame, workspaceDirectory: options.workspaceDirectory, projectFile: options.projectFile, managedKeysByBeat: new Map([...options.lifecycle].map(([id,value])=>[id,value.stay]))}); } catch (error) { const scene = options.scenes[0]!; const summary = {version: VISUAL_QUALITY_GATE_VERSION, status: 'failed' as const, validatedAt: options.now ?? new Date().toISOString(), sourceHash: motionCanvasSceneSourceHash(options.scenes), scenes: [], issues: [{code: 'renderer-error' as const, sceneId: scene.id, beatId: null, timeSeconds: 0, semanticKey: null, bounds: null, reason: error instanceof Error ? error.message.slice(0,600) : 'Renderer failed.'}]}; throw new MotionCanvasVisualQualityError(VisualQualitySummarySchema.parse(summary), 'Motion Canvas frame renderer failed.'); }

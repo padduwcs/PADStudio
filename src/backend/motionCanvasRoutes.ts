@@ -277,54 +277,104 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
             }),
           );
             let visualValidation;
-            try {
-              visualValidation = await motionCanvasVisualQualityGate.validate({
-              scenes: prepared.sourceScenes,
-              lifecycle: lifecycleFor(generated.scenes),
-              frame: projectVideoFrame(currentProject),
-              backgroundColor: currentProject.topicInput.background.color,
-              visualBible: voiceVisualPlan.visualBible,
-              sceneHandoff: handoffFor(generated.scenes),
-              workspaceDirectory: prepared.workspaceDirectory,
-              projectFile: prepared.projectFilePath,
-            });
-            } catch (error) {
-              if (!(error instanceof MotionCanvasVisualQualityError)) throw error;
-              const failedSceneIds = [...new Set(error.summary.issues.map(issue => issue.sceneId))];
-              const failedIndexes = generated.scenes.map((scene, index) => failedSceneIds.includes(scene.id) ? index : -1).filter(index => index >= 0);
-              if (failedIndexes.length === 0) throw error;
-              generationDiagnostics.push({stage: 'quality-retry', attempt: 1, reason: error.summary.issues.map(issue => `${issue.sceneId}/${issue.beatId ?? 'scene'}: ${issue.reason}`).join('; ').slice(0, 4_000), outcome: 'failed'});
-              // A visual failure never falls back silently. Regenerate the
-              // affected sections once, then compile and validate the merged
-              // full bundle so its summary and hash cover every stored scene.
-              const sectionIndexes = failedIndexes.map(index => voiceVisualPlan.sections.findIndex(section => section.outlineSectionId === generated.scenes[index]!.outlineSectionId));
-              const retryGuidance = [generationRequest.guidance, formatVisualQualityRetryGuidance(error.summary.issues)].filter(Boolean).join('\n\n');
-              // The retry intentionally changes the per-scene fingerprint by
-              // adding rendered diagnostics and current sources. Release only
-              // this completed internal generation cache; the outer request
-              // registry still owns HTTP idempotency for concurrent callers.
-              motionCanvasGenerator.discardGeneration?.(
-                currentProject.id,
-                generationId,
-              );
-              const repaired = await motionCanvasGenerator.generate({...generationRequest, sectionIndexes, currentScenes: generated.scenes, ...(retryGuidance ? {guidance: retryGuidance} : {})});
-              for (const scene of repaired.scenes) { const index = generated.scenes.findIndex(item => item.outlineSectionId === scene.outlineSectionId); if (index >= 0) generated.scenes[index] = scene; }
-              generated = {
-                ...generated,
-                model: repaired.model,
-                usage: mergeMotionCanvasGenerationUsage(generated.usage, repaired.usage),
-              };
-              qualityRetryDiagnostics.push(...(repaired.qualityRetryDiagnostics ?? []));
-              await motionCanvasWorkspace.discard(currentProject.id, generationId);
-              prepared = await motionCanvasWorkspace.prepare(currentProject.id, generationId, generated.scenes, projectVideoFrame(currentProject));
-              visualValidation = await motionCanvasVisualQualityGate.validate({scenes: prepared.sourceScenes, lifecycle: lifecycleFor(generated.scenes), frame: projectVideoFrame(currentProject), backgroundColor: currentProject.topicInput.background.color, visualBible: voiceVisualPlan.visualBible, sceneHandoff: handoffFor(generated.scenes), workspaceDirectory: prepared.workspaceDirectory, projectFile: prepared.projectFilePath});
-              generationDiagnostics.push({stage: 'quality-retry', attempt: 1, reason: `Re-rendered ${repaired.scenes.length} failed scene(s); the merged ${generated.scenes.length}-scene bundle passed rendered-frame validation.`, outcome: 'passed'});
+            const maximumQualityRetries = 2;
+            let lastRepairedSceneCount = 0;
+            for (let attempt = 0; ; attempt += 1) {
+              try {
+                visualValidation = await motionCanvasVisualQualityGate.validate({
+                  scenes: prepared.sourceScenes,
+                  lifecycle: lifecycleFor(generated.scenes),
+                  frame: projectVideoFrame(currentProject),
+                  backgroundColor: currentProject.topicInput.background.color,
+                  visualBible: voiceVisualPlan.visualBible,
+                  sceneHandoff: handoffFor(generated.scenes),
+                  workspaceDirectory: prepared.workspaceDirectory,
+                  projectFile: prepared.projectFilePath,
+                });
+                if (attempt > 0) {
+                  generationDiagnostics.push({stage: 'quality-retry', attempt, reason: `Re-rendered ${lastRepairedSceneCount} failed scene(s); the merged ${generated.scenes.length}-scene bundle passed rendered-frame validation.`, outcome: 'passed'});
+                }
+                break;
+              } catch (error) {
+                if (!(error instanceof MotionCanvasVisualQualityError)) throw error;
+                const failedSceneIds = [...new Set(error.summary.issues.map(issue => issue.sceneId))];
+                const failedIndexes = generated.scenes
+                  .map((scene, index) => failedSceneIds.includes(scene.id) ? index : -1)
+                  .filter(index => index >= 0);
+                generationDiagnostics.push({stage: 'quality-retry', attempt: attempt + 1, reason: error.summary.issues.map(issue => `${issue.sceneId}/${issue.beatId ?? 'scene'}: ${issue.reason}`).join('; ').slice(0, 4_000), outcome: 'failed'});
+                if (failedIndexes.length === 0 || attempt >= maximumQualityRetries) throw error;
+
+                const sectionIndexes = failedIndexes.map(index =>
+                  voiceVisualPlan.sections.findIndex(section =>
+                    section.outlineSectionId === generated.scenes[index]!.outlineSectionId,
+                  ),
+                );
+                const retryGuidance = [
+                  generationRequest.guidance,
+                  formatVisualQualityRetryGuidance(error.summary.issues),
+                ].filter(Boolean).join('\n\n');
+                motionCanvasGenerator.discardGeneration?.(
+                  currentProject.id,
+                  generationId,
+                );
+                const repaired = await motionCanvasGenerator.generate({
+                  ...generationRequest,
+                  sectionIndexes,
+                  currentScenes: generated.scenes,
+                  ...(retryGuidance ? {guidance: retryGuidance} : {}),
+                });
+                lastRepairedSceneCount = repaired.scenes.length;
+                for (const scene of repaired.scenes) {
+                  const index = generated.scenes.findIndex(item =>
+                    item.outlineSectionId === scene.outlineSectionId,
+                  );
+                  if (index >= 0) generated.scenes[index] = scene;
+                }
+                generated = {
+                  ...generated,
+                  model: repaired.model,
+                  usage: mergeMotionCanvasGenerationUsage(generated.usage, repaired.usage),
+                };
+                qualityRetryDiagnostics.push(...(repaired.qualityRetryDiagnostics ?? []));
+                await motionCanvasWorkspace.discard(currentProject.id, generationId);
+                prepared = await motionCanvasWorkspace.prepare(
+                  currentProject.id,
+                  generationId,
+                  generated.scenes,
+                  projectVideoFrame(currentProject),
+                );
+              }
             }
             assertVisualValidationCurrent({visualValidation}, prepared.sourceScenes);
             generationDiagnostics.push({stage: 'generate', attempt: 0, reason: 'Source attachment/container/timing policy, compiler preparation, and rendered-frame quality gate passed.', outcome: 'passed'});
             generationDiagnostics.push(...qualityRetryDiagnostics);
             acceptedWorkspace = true;
             return {generated, prepared, generationDiagnostics, visualValidation};
+          } catch (error) {
+            const visualFailure =
+              error instanceof MotionCanvasVisualQualityError ? error : null;
+            await motionCanvasWorkspace.recordFailure?.(
+              currentProject.id,
+              generationId,
+              {
+                stage: visualFailure ? 'render-quality' : 'compile',
+                code:
+                  visualFailure
+                    ? 'MOTION_CANVAS_VISUAL_QUALITY_FAILED'
+                    : error instanceof MotionCanvasWorkspaceError
+                      ? error.code
+                      : 'MOTION_CANVAS_GENERATION_FAILED',
+                message:
+                  error instanceof Error ? error.message : String(error),
+                details:
+                  error instanceof MotionCanvasWorkspaceError
+                    ? error.details
+                    : null,
+                issues: visualFailure?.summary.issues ?? [],
+                scenes: generated.scenes,
+              },
+            ).catch(recordError => logger.error(recordError));
+            throw error;
           } finally {
             if (!acceptedWorkspace) {
               await motionCanvasWorkspace.discard(currentProject.id, generationId).catch(error => logger.error(error));

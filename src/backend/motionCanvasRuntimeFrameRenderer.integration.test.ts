@@ -5,8 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {findBrowserExecutable} from './finalRenderService.ts';
+import type {VoiceVisualBeat} from '../shared/topic.ts';
 import type {MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
 import {createMotionCanvasRuntimeFrameRenderer} from './motionCanvasRuntimeFrameRenderer.ts';
+import {compileMotionCanvasSceneSpec} from './motionCanvasSceneSpec.ts';
 import {createMotionCanvasWorkspace} from './motionCanvasWorkspace.ts';
 import {MotionCanvasVisualQualityError, validateRenderedMotionCanvas} from './motionCanvasVisualQuality.ts';
 
@@ -191,4 +193,110 @@ test('real Chrome geometry trips the composition checks on two deliberately brok
   assert.ok(failure.issues.some(issue => issue.code === 'frame-too-dense' && issue.sceneId === scenes[1]!.id));
   assert.ok(!codes.has('palette-drift'), 'palette-conforming fills must not drift');
   assert.ok(!codes.has('renderer-error'), 'the real renderer must return every requested sample');
+});
+
+test('compiled Scene Spec stays visible through pre-exit rendered sampling', {
+  skip: browser ? false : 'Chrome or Edge is unavailable.',
+  timeout: 120_000,
+}, async context => {
+  const projectsDirectory = await mkdtemp(path.join(os.tmpdir(), 'pad-scene-spec-render-'));
+  context.after(() => rm(projectsDirectory, {recursive: true, force: true}));
+  const beatId = randomUUID();
+  const beat: VoiceVisualBeat = {
+    id: beatId,
+    voiceover: 'Các việc quan trọng đi qua hàng đợi theo đúng mức ưu tiên.',
+    visualDescription: 'Ba thẻ ưu tiên đi theo một hàng đợi có hướng rõ ràng.',
+    visualPurpose: 'Cho thấy trực quan thứ tự xử lý của hàng đợi ưu tiên.',
+    animationDescription: 'Hàng đợi xuất hiện, dịch chuyển nhẹ rồi chỉ thoát ở cuối beat.',
+    visualLifecycle: {
+      enter: ['block-priority-queue', 'diagram-priority-flow'],
+      stay: ['block-priority-queue', 'diagram-priority-flow'],
+      exit: ['block-priority-queue', 'diagram-priority-flow'],
+    },
+    primaryBlock: 'block-priority-queue',
+    compositionContract: {
+      visualFocus: 'Hàng đợi ưu tiên ở trung tâm là khối thị giác lớn nhất.',
+      hierarchy: ['block-priority-queue', 'diagram-priority-flow'],
+      semanticRole: 'process',
+      layout: 'center-focus',
+      density: 'balanced',
+      spacingNotes: 'Giữ khoảng thở đều quanh hàng đợi và nhãn ngắn.',
+    },
+    visualHoldSeconds: 0,
+    durationSeconds: 8,
+  };
+  const frame = {aspectRatio: 'portrait' as const, width: 540, height: 960, fps: 24 as const};
+  const visualBible = {
+    ...integrationBible,
+    typographyScale: {title: 50, label: 26, body: 22},
+  };
+  const compiled = compileMotionCanvasSceneSpec({
+    spec: {
+      version: 1,
+      visualAnchor: 'A stable priority queue flow.',
+      beats: [{
+        beatId,
+        visualId: 'priority-queue-process',
+        headline: 'Xử lý theo ưu tiên',
+        caption: 'Quan trọng trước, có thể chờ sau',
+        visualKind: 'queue',
+        motion: 'flow',
+        focus: 'center',
+        items: [
+          {label: 'Khẩn cấp', value: 'P1', emphasis: 'primary'},
+          {label: 'Quan trọng', value: 'P2', emphasis: 'secondary'},
+          {label: 'Có thể chờ', value: 'P3', emphasis: 'muted'},
+        ],
+      }],
+    },
+    beats: [beat],
+    outlineTitle: 'Hàng đợi ưu tiên',
+    frame,
+    backgroundColor: '#10231D',
+    visualBible,
+  });
+  const scene: MotionCanvasSourceScene = {
+    id: randomUUID(),
+    outlineSectionId: randomUUID(),
+    name: 'Compiled priority queue',
+    filePath: 'src/scenes/01-compiled-priority.tsx',
+    durationSeconds: 8,
+    timingEvents: [{
+      beatId,
+      startEvent: `beat:${beatId}:start`,
+      endEvent: `beat:${beatId}:end`,
+      plannedDurationSeconds: 8,
+    }],
+    source: compiled,
+  };
+  const prepared = await createMotionCanvasWorkspace(projectsDirectory).prepare(
+    'scene-spec-render',
+    randomUUID(),
+    [scene],
+    frame,
+  );
+
+  const summary = await validateRenderedMotionCanvas({
+    scenes: prepared.sourceScenes,
+    lifecycle: new Map([[beatId, {
+      stay: beat.visualLifecycle!.stay,
+      primaryBlock: beat.primaryBlock,
+      compositionContract: beat.compositionContract,
+    }]]),
+    frame,
+    backgroundColor: '#10231D',
+    visualBible,
+    renderer: createMotionCanvasRuntimeFrameRenderer({browserNoSandbox: true}),
+    workspaceDirectory: prepared.workspaceDirectory,
+    projectFile: prepared.projectFilePath,
+  });
+
+  assert.equal(summary.status, 'passed');
+  assert.deepEqual(
+    summary.scenes[0]?.samples.map(sample => sample.phase),
+    ['stable-start', 'middle', 'pre-exit'],
+  );
+  assert.ok(summary.scenes[0]?.samples.every(sample =>
+    sample.activeBlocks.includes('block-priority-queue'),
+  ));
 });

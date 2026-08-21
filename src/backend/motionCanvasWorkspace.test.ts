@@ -198,3 +198,48 @@ export default makeScene2D(function* (view) {
       /Line\.points/u.test(error.details ?? ''),
   );
 });
+
+test('Motion Canvas workspace keeps bounded failure evidence after cleanup', async context => {
+  const projectsDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-failure-evidence-'),
+  );
+  context.after(() => rm(projectsDirectory, {recursive: true, force: true}));
+  const workspace = createMotionCanvasWorkspace(projectsDirectory);
+  assert.ok(workspace.recordFailure);
+  const generationId = randomUUID();
+  const failedScene: MotionCanvasSourceScene = {
+    id: randomUUID(),
+    outlineSectionId: randomUUID(),
+    name: 'Failed priority scene',
+    filePath: 'src/scenes/01-failed-priority.tsx',
+    durationSeconds: 10,
+    timingEvents: [],
+    source: 'export default null;',
+  };
+
+  const evidenceDirectory = await workspace.recordFailure(
+    'failure-evidence-project',
+    generationId,
+    {
+      stage: 'render-quality',
+      code: 'MOTION_CANVAS_VISUAL_QUALITY_FAILED',
+      message: 'Pre-exit frame is empty.',
+      issues: [{code: 'empty-frame'}],
+      scenes: [failedScene],
+    },
+  );
+  await workspace.discard('failure-evidence-project', generationId);
+
+  const record = JSON.parse(
+    await readFile(path.join(evidenceDirectory, 'failure.json'), 'utf8'),
+  ) as {code: string; scenes: Array<{id: string}>};
+  assert.equal(record.code, 'MOTION_CANVAS_VISUAL_QUALITY_FAILED');
+  assert.equal(record.scenes[0]?.id, failedScene.id);
+  assert.equal(
+    await readFile(
+      path.join(evidenceDirectory, 'scenes', `01-${failedScene.id}.tsx`),
+      'utf8',
+    ),
+    failedScene.source,
+  );
+});

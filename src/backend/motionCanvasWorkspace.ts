@@ -55,6 +55,15 @@ export interface MotionCanvasWorkspaceFile {
   source: string;
 }
 
+export interface MotionCanvasFailureRecord {
+  stage: 'compile' | 'render-quality' | 'generation';
+  code: string;
+  message: string;
+  details?: string | null;
+  issues?: unknown[];
+  scenes?: MotionCanvasSourceScene[];
+}
+
 export interface MotionCanvasWorkspace {
   prepare(
     projectId: string,
@@ -81,6 +90,12 @@ export interface MotionCanvasWorkspace {
   }>;
   /** Removes only an unaccepted generation so a quality retry can reuse its id. */
   discard(projectId: string, generationId: string): Promise<void>;
+  /** Keeps a bounded, inspectable copy after the transient workspace is removed. */
+  recordFailure?(
+    projectId: string,
+    generationId: string,
+    failure: MotionCanvasFailureRecord,
+  ): Promise<string>;
 }
 
 const StoredMotionCanvasManifestSchema = z
@@ -707,6 +722,73 @@ declare type Callback = (...args: any[]) => void;
         projectFile: path.join(realDirectory, bundle.projectFile),
         sourceHash: computedHash,
       };
+    },
+
+    async recordFailure(projectId, generationId, failure) {
+      assertProjectId(projectId);
+      if (!uuidPattern.test(generationId)) {
+        throw new MotionCanvasWorkspaceError(
+          'MOTION_CANVAS_WORKSPACE_INVALID',
+          'Generation ID không hợp lệ.',
+        );
+      }
+      const root = projectDirectory(projectId);
+      const failuresRoot = path.join(root, 'motion-canvas', 'failures');
+      const target = path.join(failuresRoot, generationId);
+      if (!isInside(root, target)) {
+        throw new MotionCanvasWorkspaceError(
+          'MOTION_CANVAS_WORKSPACE_INVALID',
+          'Thư mục bằng chứng lỗi nằm ngoài project.',
+        );
+      }
+      await rm(target, {recursive: true, force: true});
+      await mkdir(path.join(target, 'scenes'), {recursive: true});
+      const scenes = failure.scenes ?? [];
+      await Promise.all(
+        scenes.map((scene, index) =>
+          writeFile(
+            path.join(
+              target,
+              'scenes',
+              `${String(index + 1).padStart(2, '0')}-${scene.id}.tsx`,
+            ),
+            scene.source,
+            'utf8',
+          ),
+        ),
+      );
+      await writeFile(
+        path.join(target, 'failure.json'),
+        `${JSON.stringify({
+          version: 1,
+          generationId,
+          failedAt: new Date().toISOString(),
+          stage: failure.stage,
+          code: failure.code,
+          message: failure.message,
+          details: failure.details ?? null,
+          issues: failure.issues ?? [],
+          scenes: scenes.map(({source: _source, ...scene}) => scene),
+        }, null, 2)}\n`,
+        'utf8',
+      );
+
+      const stored = await readdir(failuresRoot, {withFileTypes: true});
+      const dated = await Promise.all(
+        stored
+          .filter(entry => entry.isDirectory() && uuidPattern.test(entry.name))
+          .map(async entry => ({
+            name: entry.name,
+            modified: (await stat(path.join(failuresRoot, entry.name))).mtimeMs,
+          })),
+      );
+      for (const old of dated.sort((a, b) => b.modified - a.modified).slice(5)) {
+        await rm(path.join(failuresRoot, old.name), {
+          recursive: true,
+          force: true,
+        });
+      }
+      return target;
     },
 
     async discard(projectId, generationId) {

@@ -27,6 +27,10 @@ import {
   normalizeMotionCanvasColorFormats,
 } from './motionCanvasSourceCompatibility.ts';
 import {createMotionCanvasWorkspace} from './motionCanvasWorkspace.ts';
+import {
+  extractMotionCanvasSceneSpec,
+  type MotionCanvasSceneSpec,
+} from './motionCanvasSceneSpec.ts';
 
 const sceneSource = `import {makeScene2D, Rect} from '@motion-canvas/2d';
 import {waitFor} from '@motion-canvas/core';
@@ -566,7 +570,7 @@ class FakeCodexClient implements CodexAppServerClient {
   private readonly sourceFactory?: (
     turnNumber: number,
     beatIds: string[],
-  ) => string;
+  ) => string | MotionCanvasSceneSpec;
 
   constructor(
     failFirstTurn = false,
@@ -594,7 +598,10 @@ class FakeCodexClient implements CodexAppServerClient {
       },
     ],
     invalidFirstTurn: boolean | number = false,
-    sourceFactory?: (turnNumber: number, beatIds: string[]) => string,
+    sourceFactory?: (
+      turnNumber: number,
+      beatIds: string[],
+    ) => string | MotionCanvasSceneSpec,
   ) {
     this.failFirstTurn = failFirstTurn;
     this.models = models;
@@ -641,6 +648,24 @@ class FakeCodexClient implements CodexAppServerClient {
       ];
       if (!(this.failFirstTurn && turnNumber === 1)) {
         queueMicrotask(() => {
+          const generatedOutput = this.sourceFactory?.(turnNumber, beatIds);
+          const response =
+            generatedOutput && typeof generatedOutput !== 'string'
+              ? {
+                  name: `Scene ${turnNumber}`,
+                  source: null,
+                  spec: generatedOutput,
+                }
+              : {
+                  name: `Scene ${turnNumber}`,
+                  source:
+                    turnNumber <= this.invalidTurnCount
+                      ? timedSceneSource(beatIds).replace(
+                          'width={canvasWidth}',
+                          'width={',
+                        )
+                      : generatedOutput ?? timedSceneSource(beatIds),
+                };
           this.emit({
             method: 'item/completed',
             params: {
@@ -650,17 +675,7 @@ class FakeCodexClient implements CodexAppServerClient {
                 id: `message-${turnId}`,
                 type: 'agentMessage',
                 phase: 'final_answer',
-                text: JSON.stringify({
-                  name: `Scene ${turnNumber}`,
-                  source:
-                    turnNumber <= this.invalidTurnCount
-                      ? timedSceneSource(beatIds).replace(
-                          'width={canvasWidth}',
-                          'width={',
-                        )
-                      : this.sourceFactory?.(turnNumber, beatIds) ??
-                        timedSceneSource(beatIds),
-                }),
+                text: JSON.stringify(response),
               },
             },
           });
@@ -940,6 +955,64 @@ function createSingleSceneGenerationRequest() {
   } satisfies MotionCanvasGenerationRequest;
 }
 
+test('PAD Studio compiles declarative Scene Spec into safe lifecycle TSX', async context => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-scene-spec-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const request = createSingleSceneGenerationRequest();
+  const client = new FakeCodexClient(
+    false,
+    undefined,
+    false,
+    (_turnNumber, beatIds) => ({
+      version: 1,
+      visualAnchor: 'Priority decisions flow through one stable queue.',
+      beats: beatIds.map((beatId, index) => ({
+        beatId,
+        visualId: `priority-queue-${['opening', 'middle', 'closing'][index] ?? 'detail'}`,
+        headline: 'Ưu tiên việc quan trọng',
+        caption: 'Thứ tự rõ ràng',
+        visualKind: 'queue',
+        motion: 'flow',
+        focus: 'center',
+        items: [
+          {label: 'Khẩn cấp', value: 'P1', emphasis: 'primary'},
+          {label: 'Quan trọng', value: 'P2', emphasis: 'secondary'},
+          {label: 'Có thể chờ', value: 'P3', emphasis: 'muted'},
+        ],
+      })),
+    }),
+  );
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+    qualityRetryLimit: 0,
+  });
+
+  const result = await generator.generate(request);
+  const source = result.scenes[0]!.source;
+  const beats = request.voiceVisualPlan.sections[0]!.beats;
+
+  assert.match(result.model, /scene-spec-compiler-v1/u);
+  assert.equal(extractMotionCanvasSceneSpec(source)?.beats[0]?.beatId, beats[0]!.id);
+  assert.match(source, /ref=\{lifecycleNode1\}/u);
+  assert.match(source, /beatEndTime1 - useThread\(\)\.time\(\) - exitDuration1/u);
+  validateMotionCanvasSceneSource(source);
+  validateMotionCanvasBackground(source, request.topicInput.background.color);
+  validateMotionCanvasContainerContract(source);
+  validateMotionCanvasTimingContract(source, beats);
+  validateMotionCanvasBeatLifecycle(source, beats, request.topicInput.videoFrame);
+  validateMotionCanvasResponsiveLayout(source, request.topicInput.videoFrame, beats);
+  const prepared = await createMotionCanvasWorkspace(runtimeDirectory).prepare(
+    request.projectId,
+    randomUUID(),
+    result.scenes,
+    request.topicInput.videoFrame,
+  );
+  assert.equal(prepared.scenes.length, 1);
+});
+
 test('Motion Canvas generator chỉ sinh section được chọn và giữ scene identity', async context => {
   const runtimeDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-studio-motion-scoped-generator-'),
@@ -1199,7 +1272,8 @@ test('Motion Canvas generator sinh mới sạch khi lượt sửa vẫn vi phạ
     client.calls.find(call => call.method === 'turn/start')?.params,
   );
   assert.match(firstPrompt, /Lifecycle binding invariant/u);
-  assert.match(firstPrompt, /ref=\\u007bpriorityOrbit\\u007d|ref=\{priorityOrbit\}/u);
+  assert.match(firstPrompt, /compiler-owned/u);
+  assert.doesNotMatch(firstPrompt, /ref=\\u007bpriorityOrbit\\u007d|ref=\{priorityOrbit\}/u);
 });
 
 test('Motion Canvas generator hoàn tất bằng fallback an toàn khi cả lượt sinh mới vẫn sai TSX', async (context) => {

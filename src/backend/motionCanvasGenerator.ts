@@ -25,8 +25,15 @@ import {
   normalizeMotionCanvasColorFormats,
 } from './motionCanvasSourceCompatibility.ts';
 import {wcagContrastRatio} from './visualViability.ts';
+import {
+  MotionCanvasSceneSpecSchema,
+  compileMotionCanvasSceneSpec,
+  extractMotionCanvasSceneSpec,
+  motionCanvasMotionValues,
+  motionCanvasVisualKindValues,
+} from './motionCanvasSceneSpec.ts';
 
-export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v14';
+export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v15-scene-spec';
 export const MOTION_CANVAS_VERSION = '3.17.2';
 export const MOTION_CANVAS_FPS = 30;
 export const MOTION_CANVAS_DEFAULT_FONT_FAMILY =
@@ -39,6 +46,12 @@ const DEFAULT_SCENE_TIMEOUT_MS = 20 * 60 * 1000;
 // more token-efficient than repeatedly feeding an increasingly broken source
 // back into the model.
 const MAX_SOURCE_REPAIR_ATTEMPTS = 1;
+const sceneSpecRunInstructions = {
+  baseInstructions:
+    'Create or revise one declarative Scene Spec for PAD Studio. Do not use tools or read files. Return only JSON matching the schema.',
+  developerInstructions:
+    'Return source:null plus a complete spec. PAD Studio owns TSX, refs, layout, imports, and timeline arithmetic. Only when the prompt explicitly supplies a legacy scene with no embedded Scene Spec may corrected source be returned instead.',
+} as const;
 
 const generatedMotionCanvasSceneSchema = z
   .object({
@@ -47,9 +60,20 @@ const generatedMotionCanvasSceneSchema = z
       .string()
       .trim()
       .min(120)
-      .max(pipelineSafetyLimits.maximumSceneSourceCharacters),
+      .max(pipelineSafetyLimits.maximumSceneSourceCharacters)
+      .nullable()
+      .optional(),
+    spec: MotionCanvasSceneSpecSchema.nullable().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if ((value.source ? 1 : 0) + (value.spec ? 1 : 0) !== 1) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Return exactly one of source or spec.',
+      });
+    }
+  });
 
 const outputJsonSchema = z.toJSONSchema(generatedMotionCanvasSceneSchema, {
   target: 'draft-7',
@@ -413,7 +437,9 @@ function generationPayload(
       ? {
           currentScene: {
             name: request.currentScenes[sectionIndex]!.name,
-            source: request.currentScenes[sectionIndex]!.source,
+            spec: extractMotionCanvasSceneSpec(
+              request.currentScenes[sectionIndex]!.source,
+            ),
           },
         }
       : {}),
@@ -425,47 +451,14 @@ function buildPrompt(
   sectionIndex: number,
 ) {
   return [
-    `Lifecycle contract: for each beat emit one exact comment: // lifecycle:beat:<id>:enter=<keys>|stay=<keys>|exit=<keys>|primary=<block>. Substitute values from scene.beats; do not change them. Animate enter visuals from opacity 0 or off-canvas to active state, retain only stay visuals, and animate exit visuals to opacity 0 or beyond the canvas edge before the next beat. Never leave inactive visuals accumulated at low opacity. Keep at most ${MAX_CONCURRENT_PRIMARY_BLOCKS} block-* primary containers active in stay within the same beat; different beats may use different blocks sequentially.`,
-    'Lifecycle binding invariant: collect every distinct semantic key named anywhere in visualLifecycle.enter/stay/exit. For each one, declare a createRef with a plain identifier, then attach that same bare identifier directly to the exact JSX node carrying the matching literal key, for example const priorityOrbit = createRef<Layout>(); and <Layout key="block-priority-orbit" ref={priorityOrbit}>. Never put the lifecycle key on an unreferenced wrapper while animating a child ref, never use callback/member-expression refs, and animate enter/exit through that exact ref.',
-    'Composition contract: realise scene.beats[].compositionContract literally. Exactly one dominant focal point per frame; it is the node named by compositionContract.hierarchy[0] (the primaryBlock) and it must render the largest, most central mass described by visualFocus. Every remaining hierarchy key must be visibly subordinate, in that order. Place the primary block according to compositionContract.layout: center-focus keeps it near the frame centre, left-right-split and top-bottom-stack keep it clearly inside one half, grid keeps it on a regular cell, full-bleed lets it span the safe area. Honour compositionContract.density (sparse/balanced/dense) for how many concurrent visible nodes you emit, and compositionContract.spacingNotes for padding and the gap between neighbouring blocks.',
-    'Text discipline: use short labels, not paragraphs. Keep every Txt under 90 characters (hard limit, enforced after render) and never emit a text node that is a full sentence of the voiceover. Exactly one text node per beat may use the title size; everything else is label or body. Across all visible text nodes in a frame, the combined glyph area must stay under roughly 30% of the occupied visual content area (also enforced after render) — the drawn shapes/diagrams must remain the dominant visual mass, with text limited to titles and short captions.',
-    'Every node must earn its keep: do not emit purely decorative nodes with no semantic role. Each JSX node must have a meaningful semantic key and either carry information or be a structural container for nodes that do.',
-    'Colour and type discipline: use only the exact hex values in video.visualBible.palette (plus #00000000 for transparency) for fill, stroke and text colour, and only the exact numeric sizes in video.visualBible.typographyScale (title/label/body) for fontSize. Do not invent intermediate colours, gradients or font sizes.',
-    'Handoff consistency: any node referenced by an adjacent beat lifecycle (enter/stay/exit) or by scene.stateHandoff must keep the same key, the same visual role and approximately the same position across that boundary. Do not relocate or restyle an anchor while it is being handed over.',
-    `Responsive layout contract: start with const canvasWidth = view.width(); const canvasHeight = view.height(); const safeMarginX = canvasWidth * ${MOTION_CANVAS_SAFE_MARGIN_X_RATIO}; const safeMarginY = canvasHeight * ${MOTION_CANVAS_SAFE_MARGIN_Y_RATIO};. Use centered x/y coordinates and these variables for scene-background width/height and all composition bounds.`,
-    'Structural attachment invariant: inside the default makeScene2D generator, call view.add(<SceneTree />) exactly once as a direct statement. Its argument must be the actual JSX scene tree, with exactly one key="scene-background" containing key="scene-content-root". Never yield or yield* JSX, view.add, or node.add, and never leave a JSX tree unattached.',
-    'Sinh đúng một scene Motion Canvas TypeScript/TSX cho section trong JSON sau.',
-    'Trả object gồm name và source. Source phải export default makeScene2D(function* (view) {...}).',
-    'Chỉ import từ @motion-canvas/2d hoặc @motion-canvas/core; không dùng package, asset, mạng, filesystem hay API trình duyệt khác.',
-    'Import makeScene2D, Rect, Circle, Line, Txt, Layout và các visual node chỉ từ @motion-canvas/2d.',
-    'Import all, chain, sequence, createRef, createSignal, tween, waitFor, waitUntil, useDuration và easing chỉ từ @motion-canvas/core.',
-    'Dùng đúng tên export createRef, createSignal và easeInOutCubic; không import ref, signal hoặc easing.',
-    'Không dùng JSX.Element hoặc namespace JSX trong type annotation.',
-    'Mọi visual JSX node phải có key là string literal tường minh, duy nhất trong scene và mô tả đúng vai trò ổn định của node, kể cả node có ref. Dùng lowercase kebab-case gồm ít nhất hai từ, ví dụ key="search-range" hoặc key="pivot-marker".',
-    'Mọi scene mới phải có đúng một container key="scene-content-root" nằm trong scene-background. Mỗi cụm nội dung có thể thao tác độc lập phải nằm trong container có key bắt đầu bằng "block-". Container đặt tại tâm logic của cụm, còn node con dùng tọa độ local tương đối để người dùng scale/move cả khối mà không phá animation nội bộ.',
-    'scene-background chỉ giữ canvas/nền và scene-content-root; không đặt visual nội dung rời bên ngoài content root. Ưu tiên Layout làm container vô hình, không thêm border chỉ để biểu diễn khung editor.',
-    'Không dùng index, thứ tự, nội dung hiển thị, vị trí hiện tại, UUID, random, biểu thức hoặc biến để tạo key. Không sinh visual JSX node bằng map/loop; hãy khai báo tường minh để Layout Editor giữ được identity ổn định.',
-    'Không dùng scaleX/scaleY; dùng scale([x, y], duration) hoặc width/height với duration.',
-    'Không yield* view.add/node.add. Mọi giá trị truyền vào all/chain hoặc yield* phải là animation generator, thường là signal(value, duration).',
-    'Txt.text phải là string; chuyển số bằng String(value).',
-    'Motion Canvas không hỗ trợ CSS keyword transparent. Luôn dùng #00000000 cho màu trong suốt; không dùng literal transparent cho fill, stroke, shadowColor, color hoặc Color().',
-    `Mặc định mọi Txt phải dùng fontFamily={${JSON.stringify(MOTION_CANVAS_DEFAULT_FONT_FAMILY)}}. Chỉ đặt font khác khi góp ý người dùng hoặc visualDirection yêu cầu rõ ràng.`,
-    'Giá trị flex dùng kebab-case như space-between, không dùng spaceBetween.',
-    'Scene phải tự chứa toàn bộ node và animation, chạy độc lập và không import file tương đối.',
-    'Thiết kế đúng theo canvas trong JSON. Mọi kích thước, tọa độ và safe margin phải tỷ lệ với canvas.width/canvas.height; tuyệt đối không mặc định hoặc hard-code bố cục 1080x1920. scene-background phải phủ đúng canvas, còn mọi nội dung phải nằm trong vùng nhìn của canvas đã yêu cầu.',
-    'Trước khi viết source, tự lập blueprint ngắn trong suy luận gồm visual anchor, vai trò từng node và thay đổi chính của từng beat; không xuất blueprint ra JSON.',
-    'Bạn chỉ chuyển blueprint (visualBible, visualAnchor, visualPurpose/visualDescription/animationDescription của từng beat, stateHandoff) đã cho thành mã Motion Canvas. Không tự đổi các quyết định đó trừ khi API/kỹ thuật thực sự không cho phép; nếu buộc phải lệch, vẫn giữ đúng tinh thần blueprint gần nhất có thể.',
-    'Tuân thủ designBrief. Chất lượng và mật độ visual của scene sau phải ngang scene đầu: mỗi beat cần một thay đổi hình học/chuyển động có ý nghĩa, không được chỉ đổi text hoặc màu ở các beat cuối.',
-    'Giữ một visual anchor xuyên scene để mạch hình ảnh liền lạc, nhưng mỗi beat phải tiến triển trạng thái rõ ràng thay vì thay toàn bộ bố cục.',
-    `Nền gốc bắt buộc là ${request.topicInput.background.color} (${videoBackgroundTone(request.topicInput.background)}). Node scene-background phải dùng đúng màu này; mọi chữ, stroke, card và màu nhấn phải đủ tương phản với nền.`,
-    'Không hiển thị source code. Không dùng caption để gánh nội dung chính; chữ ngắn, số và ký hiệu chỉ được dùng khi bản thân visual cần chúng. Hình vẽ/sơ đồ phải là khối thị giác chiếm ưu thế trong khung hình, chữ chỉ giữ vai trò tiêu đề hoặc chú thích ngắn.',
-    'Mỗi beat phải gọi đúng một lần yield* waitUntil(startEvent), sau đó khai báo const beatDuration = useDuration(endEvent) và const beatEndTime = useThread().time() + beatDuration. Chạy visual theo tỷ lệ beatDuration rồi kết thúc beat bằng yield* waitFor(Math.max(0, beatEndTime - useThread().time())). Dùng tên duration/endTime riêng cho từng beat nếu không tạo block scope.',
-    'Không gọi waitUntil(endEvent), vì waitUntil cũng đăng ký event và sẽ gây trùng với useDuration. Import useThread và waitFor từ @motion-canvas/core.',
-    'Không hardcode waitFor để quyết định ranh giới beat. Time-event là hợp đồng bắt buộc để audio có thể điều khiển timeline ở bước đồng bộ.',
-    'Giữ source gọn, số node hợp lý, tái sử dụng reference và tránh hiệu ứng trang trí không truyền đạt thông tin.',
-    'Tuân theo visualDirection để các scene độc lập vẫn có cùng ngôn ngữ hình ảnh.',
-    'Source là mã thuần, không bọc bằng Markdown fence.',
-    'Line.points chỉ được tween khi mảng points nguồn và đích có cùng số điểm. Nếu cần đổi số điểm, hãy set points tức thời trước animation hoặc giữ nguyên cardinality; tween hai mảng khác độ dài có thể khóa renderer.',
+    'Create one declarative Scene Spec for the requested teaching section. PAD Studio, not you, owns TSX generation, refs, layout safety, imports, and timeline arithmetic.',
+    'Return JSON exactly as {"name":"...","source":null,"spec":{"version":1,"visualAnchor":"...","beats":[...]}}. Do not return TSX, JavaScript, Motion Canvas code, Markdown, refs, coordinates, durations, or lifecycle comments.',
+    'Emit exactly one spec beat for every scene.beats entry, in the same order, and copy its UUID exactly into beatId. visualId must be a unique, stable, descriptive lowercase kebab-case identifier; never use UUIDs, indexes, random text, or displayed labels as identity.',
+    `Choose visualKind from ${motionCanvasVisualKindValues.join(', ')} and motion from ${motionCanvasMotionValues.join(', ')}. Use 2-5 short information-bearing items per beat. Each item has label (max 28 characters), value (max 18 characters or null), and emphasis (primary, secondary, or muted).`,
+    'headline is a short title (max 44 characters); caption is a short optional note (max 64 characters or null). Shapes and relationships must carry the lesson; do not copy full voiceover sentences into text.',
+    'Keep a coherent visual anchor across the scene while making each beat a meaningful visual progression. Match visualPurpose, visualDescription, animationDescription, compositionContract, visualBible, and stateHandoff.',
+    'Lifecycle binding invariant is compiler-owned: PAD Studio deterministically maps every planned lifecycle key to one explicit JSX node with a ref and reserves the exit window at the end of each beat. Do not attempt to encode this in the spec.',
+    `The required background is ${request.topicInput.background.color} (${videoBackgroundTone(request.topicInput.background)}); PAD Studio applies it and the project visualBible during compilation.`,
     JSON.stringify(generationPayload(request, sectionIndex)),
   ].join('\n');
 }
@@ -476,6 +469,16 @@ function buildRepairPrompt(
   currentScene: MotionCanvasSourceScene,
   compilerDiagnostics: string,
 ) {
+  const currentSpec = extractMotionCanvasSceneSpec(currentScene.source);
+  if (currentSpec) {
+    return [
+      buildPrompt(request, sectionIndex),
+      'Revise the Scene Spec as a whole so the rendered scene fixes every diagnostic below. Keep every beatId exactly unchanged and return source:null with a complete replacement spec.',
+      'When a frame is empty or sparse, keep the information-bearing visual active through the middle of the beat; PAD Studio automatically reserves the final exit window. Improve the visualKind, focus, labels, values, and emphasis instead of attempting to write timing code.',
+      `Diagnostics:\n${compilerDiagnostics}`,
+      JSON.stringify({currentSpec}),
+    ].join('\n');
+  }
   return [
     `Preserve the exact lifecycle marker and implementation for every beat, including full exit (opacity 0 or outside the runtime canvas). Preserve runtime canvas variables canvasWidth/canvasHeight and safe margins ${MOTION_CANVAS_SAFE_MARGIN_X_RATIO}/${MOTION_CANVAS_SAFE_MARGIN_Y_RATIO}; do not replace them with 1080x1920 literals.`,
     'Repair every lifecycle binding as an inseparable triple: one literal lifecycle key on one explicit JSX node, one createRef assigned to a bare identifier, and ref={thatIdentifier} on that same node. Every enter and exit animation must call that exact ref. Check all distinct enter/stay/exit keys, not only the first diagnostic.',
@@ -513,9 +516,8 @@ function buildRegenerationPrompt(
 ) {
   return [
     buildPrompt(request, sectionIndex),
-    'Re-check the structural attachment invariant: the only scene tree must be passed directly to view.add(<SceneTree />), never yielded or left unattached.',
-    'Lượt trước không vượt qua validation. Hãy sinh lại toàn bộ source từ đầu, không sao chép hoặc chắp vá source lỗi.',
-    `Diagnostics cần tránh trong bản mới:\n${diagnostics}`,
+    'The previous result failed validation. Produce a complete replacement Scene Spec from the teaching context; do not copy, repair, or return the failed TSX source.',
+    `Diagnostics to avoid:\n${diagnostics}`,
   ].join('\n');
 }
 
@@ -2099,6 +2101,30 @@ export function createCodexMotionCanvasGenerator(
     const outlineSection = request.outline.sections[sectionIndex]!;
     const voiceVisualSection = request.voiceVisualPlan.sections[sectionIndex]!;
     const slug = toSlug(parsed.data.name) || `scene-${sectionIndex + 1}`;
+    let sceneSource: string;
+    try {
+      sceneSource = parsed.data.spec
+        ? compileMotionCanvasSceneSpec({
+            spec: parsed.data.spec,
+            beats: voiceVisualSection.beats,
+            outlineTitle: outlineSection.title,
+            frame:
+              request.videoFrame ??
+              request.topicInput.videoFrame ??
+              defaultVideoFrame,
+            backgroundColor: request.topicInput.background.color,
+            visualBible: request.voiceVisualPlan.visualBible,
+          })
+        : applyMotionCanvasDefaultFont(
+            normalizeMotionCanvasColorFormats(parsed.data.source!.trim()),
+          );
+    } catch (error) {
+      throw new MotionCanvasGenerationError(
+        'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+        'Scene Spec không khớp với kế hoạch beat của scene.',
+        {cause: error},
+      );
+    }
     return {
       scene: {
         id: previousScene?.id ?? randomUUID(),
@@ -2117,11 +2143,13 @@ export function createCodexMotionCanvasGenerator(
           endEvent: `beat:${beat.id}:end`,
           plannedDurationSeconds: beat.durationSeconds,
         })),
-        source: `${applyMotionCanvasDefaultFont(
-          normalizeMotionCanvasColorFormats(parsed.data.source.trim()),
-        )}\n`,
+        source: `${sceneSource.trim()}\n`,
       },
-      model,
+      model: parsed.data.spec
+        ? [...new Set([model, 'scene-spec-compiler-v1'].filter(Boolean))]
+            .join(', ')
+            .slice(0, 160)
+        : model,
       usage,
     };
   }
@@ -2254,10 +2282,8 @@ export function createCodexMotionCanvasGenerator(
         ),
       outputSchema: outputJsonSchema,
       prompt: buildRegenerationPrompt(request, sectionIndex, diagnostics),
-      baseInstructions:
-        'Bạn sinh lại từ đầu đúng một scene Motion Canvas cho PAD Studio. Không dùng công cụ hoặc đọc tệp. Chỉ trả JSON đúng schema.',
-      developerInstructions:
-        'Không tái sử dụng source lỗi. Source mới phải tự chứa, hợp lệ TypeScript/TSX, đúng timing từng beat và có semantic key ổn định cho mọi visual JSX node.',
+      baseInstructions: sceneSpecRunInstructions.baseInstructions,
+      developerInstructions: sceneSpecRunInstructions.developerInstructions,
       model: scenePolicy.model,
       reasoningEffort: scenePolicy.reasoningEffort,
     });
@@ -2319,10 +2345,8 @@ export function createCodexMotionCanvasGenerator(
             ),
           outputSchema: outputJsonSchema,
           prompt: buildPrompt(request, sectionIndex),
-          baseInstructions:
-            'Bạn sinh đúng một scene Motion Canvas cho PAD Studio. Không dùng công cụ hoặc đọc tệp. Chỉ trả JSON đúng schema.',
-          developerInstructions:
-            'Mã phải gọn, tự chứa, dễ chỉnh tiếp và đồng bộ chính xác với từng beat voice–visual. Mọi visual JSX node phải có semantic key tường minh, ổn định cho Layout Editor. Ưu tiên visual logic hơn hiệu ứng.',
+          baseInstructions: sceneSpecRunInstructions.baseInstructions,
+          developerInstructions: sceneSpecRunInstructions.developerInstructions,
           model: scenePolicy.model,
           reasoningEffort: scenePolicy.reasoningEffort,
         });
@@ -2451,10 +2475,8 @@ export function createCodexMotionCanvasGenerator(
             currentScene,
             diagnostics,
           ),
-          baseInstructions:
-            'Bạn sửa đúng một scene Motion Canvas theo compiler diagnostics. Không dùng công cụ hoặc đọc tệp. Chỉ trả JSON đúng schema.',
-          developerInstructions:
-            'Giữ nguyên mục tiêu giảng giải và timing; sửa tối thiểu để source dùng đúng API Motion Canvas, biên dịch và có semantic key tường minh, ổn định cho mọi visual JSX node.',
+          baseInstructions: sceneSpecRunInstructions.baseInstructions,
+          developerInstructions: sceneSpecRunInstructions.developerInstructions,
           model: scenePolicy.model,
           reasoningEffort: scenePolicy.reasoningEffort,
         });
@@ -2479,17 +2501,14 @@ export function createCodexMotionCanvasGenerator(
           );
         }
 
-        const candidate: GeneratedSceneResult = {
-          scene: {
-            ...currentScene,
-            name: parsed.data.name,
-            source: `${applyMotionCanvasDefaultFont(
-              normalizeMotionCanvasColorFormats(parsed.data.source.trim()),
-            )}\n`,
-          },
-          model: repaired.model,
-          usage: repaired.usage,
-        };
+        const candidate = sceneResultFromResponse(
+          request,
+          sectionIndex,
+          repaired.responseText,
+          repaired.model,
+          repaired.usage,
+          currentScene,
+        );
         repairs.push(candidate);
         try {
           validateSceneSourceContracts(
