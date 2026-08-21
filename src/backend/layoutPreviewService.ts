@@ -25,7 +25,9 @@ import {createMotionCanvasWorkspace} from './motionCanvasWorkspace.ts';
 const MANIFEST_CAPTURE_PATH = '/__pad_layout_manifest';
 const OVERRIDES_PATH = '/__pad_layout_overrides';
 const EDITOR_MANIFEST_PATH = '/__pad_layout_editor_manifest';
-const MAXIMUM_MANIFEST_BYTES = 512 * 1024;
+const MINIMUM_MANIFEST_BYTES = 512 * 1024;
+const MANIFEST_BYTES_PER_SCENE = 128 * 1024;
+const MAXIMUM_MANIFEST_BYTES = 8 * 1024 * 1024;
 const GENERATED_RUNTIME_NODE_KEY =
   /\/[A-Za-z][A-Za-z0-9]*\[\d+\]$/;
 const TEXT_CAPABILITY_PROPERTIES = new Set([
@@ -80,6 +82,25 @@ interface ActivePreview {
   overrides: LayoutOverridesDocument;
   manifestSeed: LayoutEditorManifest;
   manifest: LayoutEditorManifest | null;
+}
+
+/**
+ * A manifest contains the editable node tree for every scene, so its valid
+ * size grows with the source bundle. Preserve a tight floor for small
+ * projects, scale with the trusted source scene count, and retain an absolute
+ * cap for the loopback HTTP endpoint.
+ */
+export function layoutManifestByteLimit(sceneCount: number) {
+  const normalizedSceneCount = Number.isInteger(sceneCount)
+    ? Math.max(1, sceneCount)
+    : 1;
+  return Math.min(
+    MAXIMUM_MANIFEST_BYTES,
+    Math.max(
+      MINIMUM_MANIFEST_BYTES,
+      normalizedSceneCount * MANIFEST_BYTES_PER_SCENE,
+    ),
+  );
 }
 
 export interface LayoutPreview {
@@ -238,12 +259,15 @@ function sendJson(
   response.end(source);
 }
 
-async function readBoundedJson(request: IncomingMessage) {
+async function readBoundedJson(
+  request: IncomingMessage,
+  maximumBytes: number,
+) {
   const contentLength = Number(request.headers['content-length'] ?? 0);
   if (
     !Number.isFinite(contentLength) ||
     contentLength < 0 ||
-    contentLength > MAXIMUM_MANIFEST_BYTES
+    contentLength > maximumBytes
   ) {
     throw new LayoutPreviewError(
       'LAYOUT_PREVIEW_MANIFEST_TOO_LARGE',
@@ -256,7 +280,7 @@ async function readBoundedJson(request: IncomingMessage) {
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     totalBytes += buffer.length;
-    if (totalBytes > MAXIMUM_MANIFEST_BYTES) {
+    if (totalBytes > maximumBytes) {
       throw new LayoutPreviewError(
         'LAYOUT_PREVIEW_MANIFEST_TOO_LARGE',
         'Layout manifest vượt quá giới hạn cho phép.',
@@ -583,7 +607,10 @@ function createSessionPlugin(entry: ActivePreview) {
             return;
           }
           const manifest = validateManifestEnvelope(
-            await readBoundedJson(request),
+            await readBoundedJson(
+              request,
+              layoutManifestByteLimit(entry.manifestSeed.scenes.length),
+            ),
             entry,
           );
           entry.manifest = mergeManifest(

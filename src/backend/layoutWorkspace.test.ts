@@ -21,6 +21,7 @@ import {
   LayoutPreviewError,
   assertLayoutManifestHasEditableNodes,
   createLayoutPreviewService,
+  layoutManifestByteLimit,
   layoutPreviewSlotKey,
 } from './layoutPreviewService.ts';
 import {
@@ -33,6 +34,14 @@ import {
 
 const sha256 = (value: string) =>
   createHash('sha256').update(value).digest('hex');
+
+test('Layout manifest byte budget scales with the trusted scene count', () => {
+  assert.equal(layoutManifestByteLimit(1), 512 * 1024);
+  assert.equal(layoutManifestByteLimit(4), 512 * 1024);
+  assert.equal(layoutManifestByteLimit(13), 13 * 128 * 1024);
+  assert.equal(layoutManifestByteLimit(128), 8 * 1024 * 1024);
+  assert.equal(layoutManifestByteLimit(Number.NaN), 512 * 1024);
+});
 
 function wavSilence(durationSeconds: number, sampleRate = 48_000) {
   const samples = Math.round(durationSeconds * sampleRate);
