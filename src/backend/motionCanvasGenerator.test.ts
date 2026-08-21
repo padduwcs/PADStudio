@@ -26,6 +26,7 @@ import {
   findUnsupportedMotionCanvasColorLiterals,
   normalizeMotionCanvasColorFormats,
 } from './motionCanvasSourceCompatibility.ts';
+import {createMotionCanvasWorkspace} from './motionCanvasWorkspace.ts';
 
 const sceneSource = `import {makeScene2D, Rect} from '@motion-canvas/2d';
 import {waitFor} from '@motion-canvas/core';
@@ -288,6 +289,33 @@ test('Motion Canvas lifecycle validator requires ref-bound animations and a full
   assert.throws(() => validateMotionCanvasBeatLifecycle(source.replace('ref={conceptBlock}', ''), beats), MotionCanvasGenerationError);
   assert.throws(() => validateMotionCanvasBeatLifecycle(source.replaceAll('conceptBlock()', 'view'), beats), MotionCanvasGenerationError);
   assert.throws(() => validateMotionCanvasBeatLifecycle(source.replace('conceptBlock().opacity(0, beatDuration0 * 0.1)', 'conceptBlock().opacity(0.16, beatDuration0 * 0.1)'), beats), MotionCanvasGenerationError);
+});
+
+test('Motion Canvas lifecycle parser accepts every static literal key form used by the source validator', () => {
+  const beatId = randomUUID();
+  const source = timedSceneSource([beatId])
+    .replace('key="scene-background"', "key={'scene-background'}")
+    .replace('key="scene-content-root"', "key={'scene-content-root'}")
+    .replace('key="block-concept-card"', "key={'block-concept-card'}");
+  const beats = [{
+    id: beatId,
+    primaryBlock: 'block-concept-card',
+    visualLifecycle: {
+      enter: ['block-concept-card'],
+      stay: ['block-concept-card'],
+      exit: ['block-concept-card'],
+    },
+  }];
+
+  assert.doesNotThrow(() => validateMotionCanvasSceneSource(source));
+  assert.doesNotThrow(() => validateMotionCanvasBackground(source, '#10231D'));
+  assert.doesNotThrow(() => validateMotionCanvasContainerContract(source));
+  assert.doesNotThrow(() => validateMotionCanvasBeatLifecycle(source, beats));
+  assert.doesNotThrow(() => validateMotionCanvasResponsiveLayout(
+    source,
+    {aspectRatio: 'portrait', width: 1080, height: 1920, fps: 30},
+    beats,
+  ));
 });
 
 test('Motion Canvas responsive validator checks position bounding boxes and only permits verified exit targets outside', () => {
@@ -777,6 +805,42 @@ test('Motion Canvas cache cô lập scene cùng generation ID giữa các projec
   );
 });
 
+test('Motion Canvas releases a completed scene fingerprint before an intentional guided retry', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-guided-retry-cache-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const client = new FakeCodexClient();
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+    qualityRetryLimit: 0,
+  });
+  const request = createSingleSceneGenerationRequest();
+  const initial = await generator.generate(request);
+  const guidedRequest = {
+    ...request,
+    guidance: 'Increase the occupied visual area based on rendered evidence.',
+    currentScenes: initial.scenes,
+  };
+
+  await assert.rejects(
+    generator.generate(guidedRequest),
+    (error: unknown) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_GENERATION_ID_REUSED',
+  );
+
+  generator.discardGeneration?.(request.projectId, request.generationId);
+  const retried = await generator.generate(guidedRequest);
+
+  assert.equal(retried.scenes[0]!.id, initial.scenes[0]!.id);
+  assert.equal(
+    client.calls.filter(call => call.method === 'turn/start').length,
+    2,
+  );
+});
+
 test('Motion Canvas structural attachment contract rejects yielded or detached JSX trees', () => {
   const beatId = randomUUID();
   const yieldedTree = richTimedSceneSource([beatId])
@@ -1103,6 +1167,41 @@ test('Motion Canvas generator sinh mới từ đầu khi lượt sửa TSX vẫn
   );
 });
 
+test('Motion Canvas generator sinh mới sạch khi lượt sửa vẫn vi phạm lifecycle binding', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-lifecycle-regeneration-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const client = new FakeCodexClient(
+    false,
+    undefined,
+    false,
+    (turnNumber, beatIds) => turnNumber <= 2
+      ? timedSceneSource(beatIds).replace('ref={conceptBlock}', '')
+      : timedSceneSource(beatIds),
+  );
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+    qualityRetryLimit: 0,
+  });
+
+  const result = await generator.generate(
+    createSingleSceneGenerationRequest(),
+  );
+
+  assert.doesNotMatch(result.model, /local-safe-fallback/u);
+  assert.equal(
+    client.calls.filter(call => call.method === 'turn/start').length,
+    3,
+  );
+  const firstPrompt = JSON.stringify(
+    client.calls.find(call => call.method === 'turn/start')?.params,
+  );
+  assert.match(firstPrompt, /Lifecycle binding invariant/u);
+  assert.match(firstPrompt, /ref=\\u007bpriorityOrbit\\u007d|ref=\{priorityOrbit\}/u);
+});
+
 test('Motion Canvas generator hoàn tất bằng fallback an toàn khi cả lượt sinh mới vẫn sai TSX', async (context) => {
   const runtimeDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-studio-motion-invalid-output-fallback-'),
@@ -1140,9 +1239,83 @@ test('Motion Canvas generator hoàn tất bằng fallback an toàn khi cả lư�
     request.voiceVisualPlan.sections[0]!.beats,
   );
   validateMotionCanvasBeatLifecycle(result.scenes[0]!.source, request.voiceVisualPlan.sections[0]!.beats, request.videoFrame);
-  assert.match(result.scenes[0]!.source, /yield\* waitFor\(Math\.max\(0, beatDuration1 - enterDuration1 - exitDuration1\)\);\n  yield\* all\(conceptCard\(\)\.opacity\(0, exitDuration1\)/u);
+  assert.match(result.scenes[0]!.source, /yield\* waitFor\(Math\.max\(0, beatDuration1 - enterDuration1 - exitDuration1\)\);\n  yield\* all\(\n    lifecycleNode1\(\)\.opacity\(0, exitDuration1\)/u);
   assert.equal(
     client.calls.filter((call) => call.method === 'turn/start').length,
+    3,
+  );
+});
+
+test('Motion Canvas fallback is derived from arbitrary multi-beat lifecycle keys', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-lifecycle-fallback-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const request = createSingleSceneGenerationRequest();
+  const section = request.voiceVisualPlan.sections[0]!;
+  const first = section.beats[0]!;
+  Object.assign(first, {
+    primaryBlock: 'block-priority-orbit',
+    visualLifecycle: {
+      enter: ['block-priority-orbit', 'diagram-processing-gate'],
+      stay: ['block-priority-orbit', 'diagram-processing-gate'],
+      exit: ['block-priority-orbit', 'diagram-processing-gate'],
+    },
+  });
+  section.beats = [
+    first,
+    {
+      ...first,
+      id: randomUUID(),
+      visualDescription: 'Các đỉnh đồ thị hội tụ về phần tử tốt nhất.',
+      primaryBlock: 'block-graph-frontier',
+      visualLifecycle: {
+        enter: ['block-graph-frontier', 'indicator-best-candidate'],
+        stay: ['block-graph-frontier', 'indicator-best-candidate'],
+        exit: ['block-graph-frontier', 'indicator-best-candidate'],
+      },
+    },
+  ];
+  const client = new FakeCodexClient(
+    false,
+    undefined,
+    false,
+    (_turnNumber, beatIds) => timedSceneSource(beatIds),
+  );
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+    qualityRetryLimit: 0,
+  });
+
+  const result = await generator.generate(request);
+  const source = result.scenes[0]!.source;
+
+  assert.match(result.model, /local-safe-fallback/u);
+  for (const key of [
+    'block-priority-orbit',
+    'diagram-processing-gate',
+    'block-graph-frontier',
+    'indicator-best-candidate',
+  ]) {
+    assert.match(source, new RegExp(`key="${key}"\\s+ref=\\{lifecycleNode\\d+\\}`, 'u'));
+  }
+  validateMotionCanvasSceneSource(source);
+  validateMotionCanvasBackground(source, request.topicInput.background.color);
+  validateMotionCanvasContainerContract(source);
+  validateMotionCanvasTimingContract(source, section.beats);
+  validateMotionCanvasBeatLifecycle(source, section.beats, request.topicInput.videoFrame);
+  validateMotionCanvasResponsiveLayout(source, request.topicInput.videoFrame, section.beats);
+  const prepared = await createMotionCanvasWorkspace(runtimeDirectory).prepare(
+    request.projectId,
+    randomUUID(),
+    result.scenes,
+    request.topicInput.videoFrame,
+  );
+  assert.equal(prepared.scenes.length, 1);
+  assert.match(prepared.validation.sourceHash, /^[a-f0-9]{64}$/u);
+  assert.equal(
+    client.calls.filter(call => call.method === 'turn/start').length,
     3,
   );
 });

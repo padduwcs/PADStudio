@@ -38,6 +38,7 @@ type ProjectReply = {project: TopicProject};
 function fakeDependencies(root: string) {
   let ttsCalls = 0;
   let motionCalls = 0;
+  let motionDiscards = 0;
   let currentRender: ReturnType<typeof FinalRenderBundleSchema.parse> | null = null;
   let renderGeneration: string | null = null;
   const videoPath = path.join(root, 'fake-render.mp4');
@@ -81,7 +82,7 @@ function fakeDependencies(root: string) {
         }),
       };
     },
-    discardGeneration() {},
+    discardGeneration() { motionDiscards += 1; },
   };
 
   const narrationVisualPlanner = {
@@ -267,7 +268,7 @@ function fakeDependencies(root: string) {
     async resolveVideo() { return {filePath: videoPath, size: 8}; },
     async close() {},
   };
-  return {deps: {motionCanvasGenerator, motionCanvasWorkspace, motionCanvasVisualQualityGate, narrationVisualPlanner, elevenLabsVoiceService, voiceWorkspace, animationSyncWorkspace, layoutWorkspace, layoutPreviewService, motionCanvasRevisionReviewService, finalRenderService, logger: {info() {}, error() {}}}, metrics: {ttsCalls: () => ttsCalls, motionCalls: () => motionCalls, nodeFingerprint, motionCanvasRequests, plannerRequests}};
+  return {deps: {motionCanvasGenerator, motionCanvasWorkspace, motionCanvasVisualQualityGate, narrationVisualPlanner, elevenLabsVoiceService, voiceWorkspace, animationSyncWorkspace, layoutWorkspace, layoutPreviewService, motionCanvasRevisionReviewService, finalRenderService, logger: {info() {}, error() {}}}, metrics: {ttsCalls: () => ttsCalls, motionCalls: () => motionCalls, motionDiscards: () => motionDiscards, nodeFingerprint, motionCanvasRequests, plannerRequests}};
 }
 
 async function start(t: test.TestContext, overrides: Record<string, unknown> = {}) {
@@ -629,6 +630,7 @@ test('a rendered-quality failure retries once, re-validates the whole bundle, an
   // must cover every scene in the merged bundle.
   assert.deepEqual(validatedSceneCounts, [2, 2]);
   assert.equal(retried.metrics.motionCalls() - beforeRetryCalls, 2);
+  assert.equal(retried.metrics.motionDiscards(), 2, 'quality retry releases the stale internal fingerprint, then successful persistence clears the retry cache');
   const retryDiagnostics = project.motionCanvasBundle!.generationDiagnostics!.filter(diagnostic => diagnostic.stage === 'quality-retry');
   assert.deepEqual(retryDiagnostics.map(diagnostic => diagnostic.outcome), ['failed', 'passed']);
   assert.match(retryDiagnostics[1]!.reason, /Re-rendered 1 failed scene/);

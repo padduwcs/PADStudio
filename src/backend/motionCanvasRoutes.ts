@@ -299,6 +299,14 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
               // full bundle so its summary and hash cover every stored scene.
               const sectionIndexes = failedIndexes.map(index => voiceVisualPlan.sections.findIndex(section => section.outlineSectionId === generated.scenes[index]!.outlineSectionId));
               const retryGuidance = [generationRequest.guidance, formatVisualQualityRetryGuidance(error.summary.issues)].filter(Boolean).join('\n\n');
+              // The retry intentionally changes the per-scene fingerprint by
+              // adding rendered diagnostics and current sources. Release only
+              // this completed internal generation cache; the outer request
+              // registry still owns HTTP idempotency for concurrent callers.
+              motionCanvasGenerator.discardGeneration?.(
+                currentProject.id,
+                generationId,
+              );
               const repaired = await motionCanvasGenerator.generate({...generationRequest, sectionIndexes, currentScenes: generated.scenes, ...(retryGuidance ? {guidance: retryGuidance} : {})});
               for (const scene of repaired.scenes) { const index = generated.scenes.findIndex(item => item.outlineSectionId === scene.outlineSectionId); if (index >= 0) generated.scenes[index] = scene; }
               generated = {

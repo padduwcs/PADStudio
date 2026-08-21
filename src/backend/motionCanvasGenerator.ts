@@ -26,7 +26,7 @@ import {
 } from './motionCanvasSourceCompatibility.ts';
 import {wcagContrastRatio} from './visualViability.ts';
 
-export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v13';
+export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v14';
 export const MOTION_CANVAS_VERSION = '3.17.2';
 export const MOTION_CANVAS_FPS = 30;
 export const MOTION_CANVAS_DEFAULT_FONT_FAMILY =
@@ -426,6 +426,7 @@ function buildPrompt(
 ) {
   return [
     `Lifecycle contract: for each beat emit one exact comment: // lifecycle:beat:<id>:enter=<keys>|stay=<keys>|exit=<keys>|primary=<block>. Substitute values from scene.beats; do not change them. Animate enter visuals from opacity 0 or off-canvas to active state, retain only stay visuals, and animate exit visuals to opacity 0 or beyond the canvas edge before the next beat. Never leave inactive visuals accumulated at low opacity. Keep at most ${MAX_CONCURRENT_PRIMARY_BLOCKS} block-* primary containers active in stay within the same beat; different beats may use different blocks sequentially.`,
+    'Lifecycle binding invariant: collect every distinct semantic key named anywhere in visualLifecycle.enter/stay/exit. For each one, declare a createRef with a plain identifier, then attach that same bare identifier directly to the exact JSX node carrying the matching literal key, for example const priorityOrbit = createRef<Layout>(); and <Layout key="block-priority-orbit" ref={priorityOrbit}>. Never put the lifecycle key on an unreferenced wrapper while animating a child ref, never use callback/member-expression refs, and animate enter/exit through that exact ref.',
     'Composition contract: realise scene.beats[].compositionContract literally. Exactly one dominant focal point per frame; it is the node named by compositionContract.hierarchy[0] (the primaryBlock) and it must render the largest, most central mass described by visualFocus. Every remaining hierarchy key must be visibly subordinate, in that order. Place the primary block according to compositionContract.layout: center-focus keeps it near the frame centre, left-right-split and top-bottom-stack keep it clearly inside one half, grid keeps it on a regular cell, full-bleed lets it span the safe area. Honour compositionContract.density (sparse/balanced/dense) for how many concurrent visible nodes you emit, and compositionContract.spacingNotes for padding and the gap between neighbouring blocks.',
     'Text discipline: use short labels, not paragraphs. Keep every Txt under 90 characters (hard limit, enforced after render) and never emit a text node that is a full sentence of the voiceover. Exactly one text node per beat may use the title size; everything else is label or body. Across all visible text nodes in a frame, the combined glyph area must stay under roughly 30% of the occupied visual content area (also enforced after render) — the drawn shapes/diagrams must remain the dominant visual mass, with text limited to titles and short captions.',
     'Every node must earn its keep: do not emit purely decorative nodes with no semantic role. Each JSX node must have a meaningful semantic key and either carry information or be a structural container for nodes that do.',
@@ -477,6 +478,7 @@ function buildRepairPrompt(
 ) {
   return [
     `Preserve the exact lifecycle marker and implementation for every beat, including full exit (opacity 0 or outside the runtime canvas). Preserve runtime canvas variables canvasWidth/canvasHeight and safe margins ${MOTION_CANVAS_SAFE_MARGIN_X_RATIO}/${MOTION_CANVAS_SAFE_MARGIN_Y_RATIO}; do not replace them with 1080x1920 literals.`,
+    'Repair every lifecycle binding as an inseparable triple: one literal lifecycle key on one explicit JSX node, one createRef assigned to a bare identifier, and ref={thatIdentifier} on that same node. Every enter and exit animation must call that exact ref. Check all distinct enter/stay/exit keys, not only the first diagnostic.',
     'Structural attachment invariant: preserve or restore exactly one direct view.add(<SceneTree />) statement inside the default makeScene2D generator. The attached JSX tree must contain exactly one key="scene-background" with key="scene-content-root" nested inside it. Never yield or yield* JSX, view.add, or node.add, and do not leave JSX unattached.',
     'Sửa scene Motion Canvas sau để TypeScript biên dịch thành công.',
     'Giữ nguyên ý nghĩa visual, thứ tự beat và tổng timing. Chỉ thay đổi những phần cần để sửa lỗi và làm API đúng.',
@@ -762,21 +764,6 @@ export function validateMotionCanvasSceneSource(source: string) {
     }
   }
 
-  function staticJsxKey(attribute: ts.JsxAttribute) {
-    const initializer = attribute.initializer;
-    if (!initializer) return null;
-    if (ts.isStringLiteral(initializer)) return initializer.text;
-    if (
-      ts.isJsxExpression(initializer) &&
-      initializer.expression &&
-      (ts.isStringLiteral(initializer.expression) ||
-        ts.isNoSubstitutionTemplateLiteral(initializer.expression))
-    ) {
-      return initializer.expression.text;
-    }
-    return null;
-  }
-
   function validateSemanticLayoutKey(
     node: ts.JsxOpeningElement | ts.JsxSelfClosingElement,
   ) {
@@ -824,7 +811,7 @@ export function validateMotionCanvasSceneSource(source: string) {
         ts.isIdentifier(attribute.name) &&
         attribute.name.text === 'key',
     );
-    const key = keyAttribute ? staticJsxKey(keyAttribute) : null;
+    const key = keyAttribute ? staticJsxAttributeString(keyAttribute) : null;
     const semanticKeyPattern =
       /^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/;
     const hasRandomLikeSegment =
@@ -1050,6 +1037,21 @@ type LifecycleBeat = {
 type SceneNodeBinding = {key: string; ref: string | null; node: ts.JsxOpeningElement | ts.JsxSelfClosingElement};
 type RefAnimation = {ref: string; property: string; target: ts.Expression; node: ts.CallExpression};
 
+function staticJsxAttributeString(attribute: ts.JsxAttribute) {
+  const initializer = attribute.initializer;
+  if (!initializer) return null;
+  if (ts.isStringLiteral(initializer)) return initializer.text;
+  if (
+    ts.isJsxExpression(initializer) &&
+    initializer.expression &&
+    (ts.isStringLiteral(initializer.expression) ||
+      ts.isNoSubstitutionTemplateLiteral(initializer.expression))
+  ) {
+    return initializer.expression.text;
+  }
+  return null;
+}
+
 function sceneNodeBindings(sourceFile: ts.SourceFile) {
   const bindings = new Map<string, SceneNodeBinding>();
   function visit(node: ts.Node) {
@@ -1058,7 +1060,7 @@ function sceneNodeBindings(sourceFile: ts.SourceFile) {
       let ref: string | null = null;
       for (const attribute of node.attributes.properties) {
         if (!ts.isJsxAttribute(attribute) || !ts.isIdentifier(attribute.name)) continue;
-        if (attribute.name.text === 'key' && attribute.initializer && ts.isStringLiteral(attribute.initializer)) key = attribute.initializer.text;
+        if (attribute.name.text === 'key') key = staticJsxAttributeString(attribute);
         if (attribute.name.text === 'ref' && attribute.initializer && ts.isJsxExpression(attribute.initializer) && attribute.initializer.expression && ts.isIdentifier(attribute.initializer.expression)) ref = attribute.initializer.expression.text;
       }
       if (key) bindings.set(key, {key, ref, node});
@@ -1161,7 +1163,7 @@ export function validateMotionCanvasBeatLifecycle(
     const lifecycleKeys = [...new Set([...lifecycle.enter, ...lifecycle.stay, ...lifecycle.exit])];
     for (const key of lifecycleKeys) {
       if (!bindings.get(key)?.ref) {
-        throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_LIFECYCLE', `Lifecycle visual “${key}” must map to a JSX node with a ref.`);
+        throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_LIFECYCLE', `Lifecycle visual “${key}” must map to one explicit JSX node whose matching literal key and ref={bareIdentifier} are attached to that same node.`);
       }
     }
     if (lifecycle.stay.filter(key => key.startsWith('block-')).length > MAX_CONCURRENT_PRIMARY_BLOCKS) {
@@ -1242,8 +1244,10 @@ export function validateMotionCanvasResponsiveLayout(source: string, frame: Vide
     if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
       const attributes = new Map<string, ts.JsxAttribute>();
       for (const attribute of node.attributes.properties) if (ts.isJsxAttribute(attribute) && ts.isIdentifier(attribute.name)) attributes.set(attribute.name.text, attribute);
-      const key = attributes.get('key')?.initializer;
-      const keyText = key && ts.isStringLiteral(key) ? key.text : null;
+      const keyAttribute = attributes.get('key');
+      const keyText = keyAttribute
+        ? staticJsxAttributeString(keyAttribute)
+        : null;
       if (keyText === 'scene-background') {
         const width = jsxExpression(attributes.get('width'));
         const height = jsxExpression(attributes.get('height'));
@@ -1602,8 +1606,7 @@ function fallbackCompositionGeometry(
   density: NonNullable<VoiceVisualPlan['sections'][number]['beats'][number]['compositionContract']>['density'] | undefined,
 ) {
   const heightScale = density === 'sparse' ? 0.88 : density === 'dense' ? 1.16 : 1;
-  const descriptionLimit = density === 'sparse' ? 70 : density === 'dense' ? 150 : 110;
-  const base = {widthRatio: 1, restXRatio: 0, restYRatio: 0, heightRatio: 0.271, descriptionLimit};
+  const base = {widthRatio: 1, restXRatio: 0, restYRatio: 0, heightRatio: 0.271};
   switch (layout) {
     case 'left-right-split':
       return {...base, widthRatio: 0.62, restXRatio: -0.16, heightRatio: 0.3 * heightScale};
@@ -1650,16 +1653,127 @@ function fallbackSceneSource(
     : '#10231D';
   const headingFontRatio = 0.061;
   const labelFontRatio = bible ? headingFontRatio * (bible.typographyScale.label / bible.typographyScale.title) : 0.044;
-  // The fallback renders one static composition, so it follows the first
-  // beat's declared archetype rather than inventing its own geometry.
-  const composition = beats[0]?.compositionContract;
-  const geometry = fallbackCompositionGeometry(composition?.layout, composition?.density);
+  // Planner keys are content-dependent. Materialize every lifecycle identity
+  // instead of relying on one hard-coded concept card that only fits tests.
+  const lifecycleKeys = [...new Set(beats.flatMap(beat => [
+    ...(beat.visualLifecycle?.enter ?? []),
+    ...(beat.visualLifecycle?.stay ?? []),
+    ...(beat.visualLifecycle?.exit ?? []),
+  ]))];
+  const occupiedKeys = new Set(lifecycleKeys);
+  function infrastructureKey(base: string) {
+    let candidate = base;
+    let suffix = 1;
+    while (occupiedKeys.has(candidate)) {
+      candidate = `${base}-alt${suffix}`;
+      suffix += 1;
+    }
+    occupiedKeys.add(candidate);
+    return candidate;
+  }
+  const headingBlockKey = infrastructureKey('block-fallback-scene-heading');
+  const headingLabelKey = infrastructureKey('fallback-scene-heading-label');
+  const supportLayerKey = infrastructureKey('block-fallback-support-layer');
+  const progressBlockKey = infrastructureKey('block-fallback-progress-track');
+  const progressTrackKey = infrastructureKey('fallback-progress-track');
+  const progressFillKey = infrastructureKey('fallback-progress-fill');
+  const lifecycleNodes = lifecycleKeys.map((key, nodeIndex) => {
+    const primaryBeatIndex = beats.findIndex(beat => beat.primaryBlock === key);
+    const firstBeatIndex = beats.findIndex(beat => {
+      const lifecycle = beat.visualLifecycle;
+      return lifecycle
+        ? [...lifecycle.enter, ...lifecycle.stay, ...lifecycle.exit].includes(key)
+        : false;
+    });
+    const beatIndex = primaryBeatIndex >= 0
+      ? primaryBeatIndex
+      : Math.max(0, firstBeatIndex);
+    const beat = beats[beatIndex]!;
+    const geometry = fallbackCompositionGeometry(
+      beat.compositionContract?.layout,
+      beat.compositionContract?.density,
+    );
+    const isPrimary = primaryBeatIndex >= 0;
+    const restXRatio = isPrimary
+      ? geometry.restXRatio
+      : Math.max(-0.3, Math.min(0.3, geometry.restXRatio + 0.23));
+    const restYRatio = isPrimary
+      ? geometry.restYRatio
+      : Math.max(-0.3, Math.min(0.3, geometry.restYRatio - 0.15));
+    return {
+      key,
+      refName: `lifecycleNode${nodeIndex + 1}`,
+      isPrimary,
+      restXRatio,
+      restYRatio,
+      widthRatio: geometry.widthRatio,
+      heightRatio: geometry.heightRatio,
+      color: cardColors[beatIndex % cardColors.length]!,
+      label: beat.visualDescription.replace(/\s+/g, ' ').trim().slice(0, 84),
+      labelKey: isPrimary
+        ? infrastructureKey(`fallback-beat-u${String(beatIndex + 1).padStart(2, '0')}-label`)
+        : null,
+    };
+  });
+  const lifecycleNodeByKey = new Map(
+    lifecycleNodes.map(node => [node.key, node]),
+  );
+  const primaryNodes = lifecycleNodes
+    .filter(node => node.isPrimary)
+    .map(node => `        <Rect
+          key="${node.key}"
+          ref={${node.refName}}
+          width={(canvasWidth - safeMarginX * 2) * ${node.widthRatio}}
+          height={canvasHeight * ${node.heightRatio}}
+          radius={canvasWidth * 0.048}
+          fill={'${node.color}'}
+          padding={canvasWidth * 0.059}
+          opacity={0}
+          x={(canvasWidth - safeMarginX * 2) * ${node.restXRatio}}
+          y={canvasHeight}
+        >
+          <Txt
+            key="${node.labelKey}"
+            text={${JSON.stringify(node.label)}}
+            width={(canvasWidth - safeMarginX * 2) * ${node.widthRatio} - canvasWidth * 0.118}
+            fill={'${labelColor}'}
+            fontSize={canvasWidth * ${labelFontRatio}}
+            fontWeight={650}
+            textAlign={'center'}
+          />
+        </Rect>`);
+  const supportNodes = lifecycleNodes
+    .filter(node => !node.isPrimary)
+    .map(node => `          <Rect
+            key="${node.key}"
+            ref={${node.refName}}
+            width={canvasWidth * 0.13}
+            height={canvasWidth * 0.13}
+            radius={canvasWidth * 0.026}
+            fill={'${node.color}'}
+            rotation={45}
+            opacity={0}
+            x={(canvasWidth - safeMarginX * 2) * ${node.restXRatio}}
+            y={canvasHeight}
+          />`);
   const beatBlocks = beats.map((beat, beatIndex) => {
     const number = beatIndex + 1;
-    const description = beat.visualDescription.replace(/\s+/g, ' ').trim().slice(0, geometry.descriptionLimit);
     const progress = (beatIndex + 1) / beats.length;
-    const color = cardColors[beatIndex % cardColors.length]!;
     const lifecycle = beat.visualLifecycle!;
+    const enterAnimations = lifecycle.enter.flatMap(key => {
+      const node = lifecycleNodeByKey.get(key)!;
+      return [
+        `    ${node.refName}().opacity(1, enterDuration${number})`,
+        `    ${node.refName}().y(canvasHeight * ${node.restYRatio}, enterDuration${number})`,
+      ];
+    });
+    const exitAnimations = lifecycle.exit.flatMap(key => {
+      const node = lifecycleNodeByKey.get(key)!;
+      return [
+        `    ${node.refName}().opacity(0, exitDuration${number})`,
+        `    ${node.refName}().y(canvasHeight, exitDuration${number})`,
+      ];
+    });
     return `  // lifecycle:beat:${beat.id}:enter=${lifecycle.enter.join(',')}|stay=${lifecycle.stay.join(',')}|exit=${lifecycle.exit.join(',')}|primary=${beat.primaryBlock}
   yield* waitUntil('beat:${beat.id}:start');
   const beatDuration${number} = useDuration('beat:${beat.id}:end');
@@ -1667,15 +1781,13 @@ function fallbackSceneSource(
   const enterDuration${number} = Math.min(0.45, Math.max(0.05, beatDuration${number} * 0.12));
   const exitDuration${number} = Math.min(0.4, Math.max(0.05, beatDuration${number} * 0.1));
   yield* all(
-    conceptCard().opacity(1, enterDuration${number}),
-    conceptCard().y(canvasHeight * ${geometry.restYRatio}, enterDuration${number}),
-    conceptLabel().opacity(1, enterDuration${number}),
-    conceptLabel().text(${JSON.stringify(description)}, enterDuration${number}),
-    conceptCard().fill('${color}', enterDuration${number}),
+${enterAnimations.join(',\n')},
     progressFill().width((canvasWidth - safeMarginX * 4) * ${progress}, enterDuration${number}),
   );
   yield* waitFor(Math.max(0, beatDuration${number} - enterDuration${number} - exitDuration${number}));
-  yield* all(conceptCard().opacity(0, exitDuration${number}), conceptCard().y(canvasHeight, exitDuration${number}), conceptLabel().opacity(0, exitDuration${number}));
+  yield* all(
+${exitAnimations.join(',\n')},
+  );
   yield* waitFor(Math.max(0, beatEndTime${number} - useThread().time()));`;
   });
   return `import {Layout, makeScene2D, Rect, Txt} from '@motion-canvas/2d';
@@ -1686,16 +1798,15 @@ export default makeScene2D(function* (view) {
   const canvasHeight = view.height();
   const safeMarginX = canvasWidth * ${MOTION_CANVAS_SAFE_MARGIN_X_RATIO};
   const safeMarginY = canvasHeight * ${MOTION_CANVAS_SAFE_MARGIN_Y_RATIO};
-  const conceptCard = createRef<Rect>();
-  const conceptLabel = createRef<Txt>();
+${lifecycleNodes.map(node => `  const ${node.refName} = createRef<Rect>();`).join('\n')}
   const progressFill = createRef<Rect>();
 
   view.add(
     <Rect key="scene-background" width={canvasWidth} height={canvasHeight} fill={${JSON.stringify(background.color)}}>
       <Layout key="scene-content-root">
-        <Layout key="block-scene-heading" y={-canvasHeight * 0.3385}>
+        <Layout key="${headingBlockKey}" y={-canvasHeight * 0.3385}>
           <Txt
-            key="scene-heading"
+            key="${headingLabelKey}"
             text={${JSON.stringify(outlineSection.title.slice(0, 80))}}
             width={canvasWidth - safeMarginX * 2}
             fill={${JSON.stringify(foreground)}}
@@ -1704,34 +1815,14 @@ export default makeScene2D(function* (view) {
             textAlign={'center'}
           />
         </Layout>
-        <Rect
-          key="block-concept-card"
-          ref={conceptCard}
-          width={(canvasWidth - safeMarginX * 2) * ${geometry.widthRatio}}
-          height={canvasHeight * ${geometry.heightRatio}}
-          radius={canvasWidth * 0.048}
-          fill={${JSON.stringify(cardColors[0]!)}}
-          padding={canvasWidth * 0.059}
-          opacity={0}
-          x={(canvasWidth - safeMarginX * 2) * ${geometry.restXRatio}}
-          y={canvasHeight}
-        >
-        <Txt
-          key="concept-label"
-          ref={conceptLabel}
-          text={'Đang chuẩn bị visual…'}
-          width={(canvasWidth - safeMarginX * 2) * ${geometry.widthRatio} - canvasWidth * 0.118}
-          fill={${JSON.stringify(labelColor)}}
-          fontSize={canvasWidth * ${labelFontRatio}}
-          fontWeight={650}
-          textAlign={'center'}
-          opacity={0}
-        />
-        </Rect>
-        <Layout key="block-progress-track" y={canvasHeight * 0.3385}>
-          <Rect key="progress-track" width={canvasWidth - safeMarginX * 4} height={canvasHeight * 0.0094} radius={canvasHeight * 0.0047} fill={${JSON.stringify(trackColor)}}>
+${primaryNodes.join('\n')}
+        <Layout key="${supportLayerKey}">
+${supportNodes.join('\n')}
+        </Layout>
+        <Layout key="${progressBlockKey}" y={canvasHeight * 0.3385}>
+          <Rect key="${progressTrackKey}" width={canvasWidth - safeMarginX * 4} height={canvasHeight * 0.0094} radius={canvasHeight * 0.0047} fill={${JSON.stringify(trackColor)}}>
             <Rect
-              key="progress-fill"
+              key="${progressFillKey}"
               ref={progressFill}
               width={0}
               height={canvasHeight * 0.0094}
@@ -2093,7 +2184,10 @@ export function createCodexMotionCanvasGenerator(
     return (
       error instanceof MotionCanvasGenerationError &&
       (error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE' ||
-        error.code === 'CODEX_MOTION_CANVAS_INVALID_TIMING_CONTRACT')
+        error.code === 'CODEX_MOTION_CANVAS_INVALID_TIMING_CONTRACT' ||
+        error.code === 'CODEX_MOTION_CANVAS_INVALID_LIFECYCLE' ||
+        error.code === 'CODEX_MOTION_CANVAS_INVALID_LAYOUT' ||
+        error.code === 'CODEX_MOTION_CANVAS_UNSAFE_SOURCE')
     );
   }
 
@@ -2723,7 +2817,9 @@ export function createCodexMotionCanvasGenerator(
         const fallback = {
           ...scene,
           name: `${scene.name} · safe fallback`.slice(0, 120),
-          source: fallbackSceneSource(request, sectionIndex),
+          source: applyMotionCanvasDefaultFont(
+            fallbackSceneSource(request, sectionIndex),
+          ),
         };
         validateSceneSourceContracts(request, sectionIndex, fallback.source);
         return fallback;
