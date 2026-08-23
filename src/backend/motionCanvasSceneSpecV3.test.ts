@@ -287,3 +287,29 @@ test('Scene Graph v3 compiles a known icon into its real vector path, not a heur
   assert.match(iconLine, /scale=\{\[.* \/ 24, .* \/ 24\]\}/u);
   validateMotionCanvasSceneSource(source);
 });
+
+test('a relationship whose connector is suppressed as redundant pulls its entities into contact instead of leaving them floating apart', () => {
+  const farApartSpec: MotionCanvasSceneSpecV3 = {
+    ...spec,
+    beats: [{
+      ...spec.beats[0]!,
+      entities: spec.beats[0]!.entities.map((entity, index) => index === 2
+        ? {...entity, box: {...entity.box, x: 0.45, y: -0.35}}
+        : entity),
+      relationships: [
+        ...spec.beats[0]!.relationships,
+        {id: 'implicit-attachment', intentId: null, from: 'critical-patient-figure', to: 'treatment-room-door', style: 'spatial', label: null, emphasis: 'primary', via: []},
+      ],
+    }],
+  };
+  const fitted = fitMotionCanvasSceneSpecV3ToSafeGeometry(farApartSpec, [beat]);
+  const from = fitted.beats[0]!.entities.find(entity => entity.id === 'critical-patient-figure')!;
+  const to = fitted.beats[0]!.entities.find(entity => entity.id === 'treatment-room-door')!;
+  const gapBefore = Math.hypot(0.45 - spec.beats[0]!.entities[1]!.box.x, -0.35 - spec.beats[0]!.entities[1]!.box.y);
+  const gapAfter = Math.hypot(to.box.x - from.box.x, to.box.y - from.box.y);
+  assert.ok(gapAfter < gapBefore, 'entities connected by a suppressed-connector relationship should move closer together');
+  assert.ok(gapAfter < (Math.max(from.box.width, from.box.height) + Math.max(to.box.width, to.box.height)) / 2, 'pulled entities should end up touching, not merely closer');
+
+  const source = compileMotionCanvasSceneSpecV3({spec: farApartSpec, beats: [beat], outlineTitle: 'Priority', frame, backgroundColor: '#10231D', visualBible: plan().visualBible});
+  assert.doesNotMatch(source, /implicit-attachment-relationship/u);
+});

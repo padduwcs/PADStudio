@@ -280,12 +280,16 @@ function centerEntityCluster(
 /** Deterministic visual-director boundary between open AI composition and TSX. */
 export function fitMotionCanvasSceneSpecV3ToSafeGeometry(
   input: MotionCanvasSceneSpecV3,
+  beats: readonly Pick<PlannedBeat, 'id' | 'visualIntent'>[] = [],
 ): MotionCanvasSceneSpecV3 {
+  const plannedBeatsById = new Map(beats.map(beat => [beat.id, beat]));
   return MotionCanvasSceneSpecV3Schema.parse({
     ...input,
     beats: input.beats.map(beat => ({
       ...beat,
-      entities: centerEntityCluster(beat.entities),
+      entities: centerEntityCluster(
+        pullImplicitlyConnectedEntitiesTogether(beat.entities, beat.relationships, plannedBeatsById.get(beat.beatId)),
+      ),
       decorations: beat.decorations.map(fitPartInsideParent),
     })),
   });
@@ -457,12 +461,62 @@ function entitySource(beat: MotionCanvasSceneSpecBeatV3, entity: MotionCanvasSce
           </Layout>`;
 }
 
+/**
+ * Containment, overlap and attachment are meant to already be visible in the
+ * composite object positions, so their connector is deliberately suppressed
+ * here (an extra line would turn an illustration back into a generic node
+ * diagram). That promise only holds if something actually pulls those
+ * entities into contact; see pullImplicitlyConnectedEntitiesTogether, which
+ * uses this exact predicate so the two decisions can never disagree.
+ */
+function relationshipConnectorIsRedundant(relationship: MotionCanvasSceneSpecBeatV3['relationships'][number], plannedBeat: Pick<PlannedBeat, 'visualIntent'> | undefined) {
+  const intentType = plannedBeat?.visualIntent?.relations.find(item => item.id === relationship.intentId)?.type ?? '';
+  return relationship.style === 'spatial' || /(?:inside|within|cover|contain|coexist|attached|part[- ]of|forms?[- ]on)/iu.test(intentType);
+}
+
+/** Radius of the ellipse inscribed in `box`, measured along a unit direction. */
+function ellipseRadiusAlongDirection(box: {width: number; height: number}, dirX: number, dirY: number) {
+  const halfWidth = box.width / 2;
+  const halfHeight = box.height / 2;
+  if (halfWidth <= 0 || halfHeight <= 0) return 0;
+  const denominator = Math.sqrt((dirX / halfWidth) ** 2 + (dirY / halfHeight) ** 2);
+  return denominator > 0 ? 1 / denominator : 0;
+}
+
+/**
+ * A relationship whose connector is suppressed as redundant (see above) still
+ * needs its two entities to actually touch, or the "attachment" it describes
+ * silently disappears into two unrelated floating shapes. This nudges the
+ * `to` entity toward `from` — never further apart — just enough to close the
+ * gap, using each box's ellipse radius along the connecting direction so it
+ * behaves reasonably whether the pair sits side by side or diagonally.
+ */
+function pullImplicitlyConnectedEntitiesTogether(
+  entities: MotionCanvasSceneSpecV3['beats'][number]['entities'],
+  relationships: MotionCanvasSceneSpecV3['beats'][number]['relationships'],
+  plannedBeat: Pick<PlannedBeat, 'visualIntent'> | undefined,
+) {
+  const boxes = new Map(entities.map(entity => [entity.id, entity.box]));
+  for (const relationship of relationships) {
+    if (relationship.from === relationship.to || !relationshipConnectorIsRedundant(relationship, plannedBeat)) continue;
+    const fromBox = boxes.get(relationship.from);
+    const toBox = boxes.get(relationship.to);
+    if (!fromBox || !toBox) continue;
+    const dx = toBox.x - fromBox.x;
+    const dy = toBox.y - fromBox.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance < 1e-6) continue;
+    const dirX = dx / distance;
+    const dirY = dy / distance;
+    const desiredDistance = (ellipseRadiusAlongDirection(fromBox, dirX, dirY) + ellipseRadiusAlongDirection(toBox, dirX, dirY)) * 0.82;
+    if (distance <= desiredDistance) continue;
+    boxes.set(relationship.to, {...toBox, x: fromBox.x + dirX * desiredDistance, y: fromBox.y + dirY * desiredDistance});
+  }
+  return entities.map(entity => ({...entity, box: boxes.get(entity.id)!}));
+}
+
 function relationshipSource(beat: MotionCanvasSceneSpecBeatV3, relationship: MotionCanvasSceneSpecBeatV3['relationships'][number], entities: Map<string, MotionCanvasSceneSpecBeatV3['entities'][number]>, width: string, height: string, palette: Palette, typography: Typography, plannedBeat: PlannedBeat) {
-  const intentType = plannedBeat.visualIntent?.relations.find(item => item.id === relationship.intentId)?.type ?? '';
-  // Containment, overlap and attachment are already visible in the composite
-  // object positions. Drawing an extra connector turns an illustration back
-  // into a generic node diagram and can actively obscure the subject.
-  if (relationship.style === 'spatial' || /(?:inside|within|cover|contain|coexist|attached|part[- ]of|forms?[- ]on)/iu.test(intentType)) {
+  if (relationshipConnectorIsRedundant(relationship, plannedBeat)) {
     return '';
   }
   const from = entities.get(relationship.from)!;
@@ -502,7 +556,7 @@ function actionSource(beat: MotionCanvasSceneSpecBeatV3, beatIndex: number, refs
 
 export function compileMotionCanvasSceneSpecV3(options: {spec: MotionCanvasSceneSpecV3; beats: PlannedBeat[]; outlineTitle: string; frame: VideoFrame; backgroundColor: string; visualBible: VoiceVisualPlan['visualBible']}) {
   const {beats, backgroundColor} = options;
-  const spec = fitMotionCanvasSceneSpecV3ToSafeGeometry(options.spec);
+  const spec = fitMotionCanvasSceneSpecV3ToSafeGeometry(options.spec, beats);
   validateAgainstPlan(spec, beats);
   const fallbackBible = {palette: {background: backgroundColor, surface: '#1B263B', primary: '#86C5FF', accent: '#FFB86B', text: '#F8F5EE'}, typographyScale: {title: 64, label: 34, body: 28}};
   const palette = resolveMotionCanvasPresentationPalette(options.visualBible?.palette ?? fallbackBible.palette, backgroundColor);
