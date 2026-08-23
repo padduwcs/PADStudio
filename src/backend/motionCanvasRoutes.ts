@@ -44,6 +44,29 @@ import {z} from 'zod';
 
 const ApproveMotionCanvasSchema = z.object({acceptDegradedSemantic: z.literal(true).optional()}).strict();
 
+/**
+ * Guidance attached to an in-place edit of a stale bundle is unsafe: it would
+ * patch scenes built from a voice-visual plan that no longer exists. Guidance
+ * attached to a `regenerateFromScratch` request is not — that path never
+ * reuses the stale bundle's scene sources (see `currentScenes` below), so the
+ * guidance is only ever extra context for Codex about a prior failure. This
+ * used to reject both, turning the UI's only scene-recovery button into a
+ * dead end whenever the voice-visual plan had changed since the last attempt.
+ */
+export function motionCanvasGuidanceOnStaleBundleIsUnsafe(options: {
+  hasGuidance: boolean;
+  bundleExists: boolean;
+  currentBundleUsable: boolean;
+  regenerateFromScratch: boolean;
+}) {
+  return (
+    options.hasGuidance &&
+    options.bundleExists &&
+    !options.currentBundleUsable &&
+    !options.regenerateFromScratch
+  );
+}
+
 type MotionCanvasRouteContext = Pick<AppContext, 'repository' | 'motionCanvasGenerator' | 'motionCanvasGenerationProgressStore' | 'motionCanvasWorkspace' | 'motionCanvasVisualQualityGate' | 'motionCanvasHistoryStore' | 'motionCanvasGenerations' | 'layoutPreviewService' | 'generateOnce' | 'logger'>;
 
 /** Compiler/generation failures deserve the same recovery path as rendered
@@ -204,9 +227,12 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
         );
       }
       if (
-        parsedRequest.data.guidance &&
-        currentProject.motionCanvasBundle &&
-        !currentBundleUsable
+        motionCanvasGuidanceOnStaleBundleIsUnsafe({
+          hasGuidance: Boolean(parsedRequest.data.guidance),
+          bundleExists: Boolean(currentProject.motionCanvasBundle),
+          currentBundleUsable,
+          regenerateFromScratch,
+        })
       ) {
         throw new RequestBodyError(
           409,
