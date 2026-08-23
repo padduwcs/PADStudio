@@ -4,7 +4,8 @@ import test from 'node:test';
 import {randomUUID} from 'node:crypto';
 import type {MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
 import type {BeatCompositionContract} from '../shared/topic.ts';
-import {MotionCanvasVisualQualityError, MotionCanvasVisualValidationGateError, VISUAL_QUALITY_GATE_VERSION, assertVisualValidationCurrent, motionCanvasSceneSourceHash, retryRenderedSceneQualityOnce, validateRenderedMotionCanvas, visualQualitySamples, visualValidationIsCurrent, visualValidationIsReusable, withTemporaryVisualQualityWorkspace, type BeatQualityContract, type QualityRenderedFrame} from './motionCanvasVisualQuality.ts';
+import {MotionCanvasVisualQualityError, MotionCanvasVisualValidationGateError, VISUAL_QUALITY_GATE_VERSION, assertVisualValidationCurrent, motionCanvasSceneSourceHash, retryRenderedSceneQualityOnce, validateRenderedMotionCanvas, visualQualityFailureIsRendererOnly, visualQualitySamples, visualValidationIsCurrent, visualValidationIsReusable, withTemporaryVisualQualityWorkspace, type BeatQualityContract, type QualityRenderedFrame} from './motionCanvasVisualQuality.ts';
+import {encodeMotionCanvasSceneSpec} from './motionCanvasSceneSpec.ts';
 
 const sceneId = '10000000-0000-4000-8000-000000000001';
 const beatOne = '10000000-0000-4000-8000-000000000011';
@@ -17,12 +18,56 @@ async function inspect(factory: (sample: ReturnType<typeof visualQualitySamples>
 const safe = (key:string) => ({key,bounds:{x:12,y:12,width:40,height:30},visibleBounds:{x:12,y:12,width:40,height:30},opacity:1,kind:'block' as const});
 function failed(work: Promise<unknown>, code: string) { return assert.rejects(work, error => error instanceof MotionCanvasVisualQualityError && error.summary.issues.some(issue=>issue.code===code)); }
 
+test('renderer-only quality failures are infrastructure faults, not scene repair guidance', () => {
+  const rendererIssue = {code:'renderer-error' as const,sceneId,beatId:null,timeSeconds:0,semanticKey:null,bounds:null,reason:'Browser timeout.'};
+  const contentIssue = {...rendererIssue,code:'frame-too-sparse' as const};
+  assert.equal(visualQualityFailureIsRendererOnly({issues:[rendererIssue]}), true);
+  assert.equal(visualQualityFailureIsRendererOnly({issues:[rendererIssue,contentIssue]}), false);
+  assert.equal(visualQualityFailureIsRendererOnly({issues:[]}), false);
+});
+
+test('smoke quality mode renders only the middle frame of each beat', async () => {
+  let sampleCount = 0;
+  const summary = await validateRenderedMotionCanvas({
+    scenes:[scene],
+    lifecycle,
+    frame:{width:100,height:100,fps:10},
+    backgroundColor:'#10231D',
+    mode:'smoke',
+    renderer:{async render(input){
+      sampleCount = input.samples.length;
+      return new Map(input.samples.map(sample => [
+        sample.sampleId,
+        frame(
+          [safe(sample.beatId===beatOne?'block-one':'block-two')],
+          true,
+          sample.beatId===beatOne?[16,35,29,255]:[20,40,34,255],
+        ),
+      ]));
+    }},
+    now:'2026-01-01T00:00:00.000Z',
+  });
+  assert.equal(summary.status, 'passed');
+  assert.equal(sampleCount, 2);
+  assert.ok(summary.scenes.every(entry =>
+    entry.samples.every(sample => sample.phase === 'middle'),
+  ));
+});
+
 test('rendered frame gate rejects empty/uniform, unsafe, clipped, overlap, stale block and certain text faults', async () => {
   await failed(inspect(sample=>frame([safe(sample.beatId===beatOne?'block-one':'block-two')],false)), 'empty-frame');
   await failed(inspect(sample=>frame([{...safe(sample.beatId===beatOne?'block-one':'block-two'),bounds:{x:80,y:12,width:30,height:30}}])), 'outside-safe-area');
   await failed(inspect(sample=>frame([{...safe(sample.beatId===beatOne?'block-one':'block-two'),visibleBounds:{x:12,y:12,width:20,height:30}}])), 'clipped-block');
   await failed(inspect(sample=>frame([safe(sample.beatId===beatOne?'block-one':'block-two'), {...safe(sample.beatId===beatOne?'block-two':'block-one'),bounds:{x:15,y:15,width:40,height:30}}])), 'unexpected-block');
   await failed(inspect(sample=>frame([safe(sample.beatId===beatOne?'block-one':'block-two'), {key:'text-tiny',kind:'text',bounds:{x:12,y:50,width:20,height:10},visibleBounds:{x:12,y:50,width:10,height:10},fontSize:12,fill:'#183024',opacity:1}])), 'text-too-small');
+});
+
+test('rendered frame gate reports overlapping independent text boxes', async () => {
+  await failed(inspect(sample => frame([
+    safe(sample.beatId===beatOne?'block-one':'block-two'),
+    {key:'first-label',kind:'text',bounds:{x:20,y:50,width:30,height:12},visibleBounds:{x:20,y:50,width:30,height:12},fontSize:24,fill:'#F7FBF8',localBackground:'#10231D',opacity:1,text:'Một'},
+    {key:'second-label',kind:'text',bounds:{x:24,y:50,width:30,height:12},visibleBounds:{x:24,y:50,width:30,height:12},fontSize:24,fill:'#F7FBF8',localBackground:'#10231D',opacity:1,text:'Hai'},
+  ])), 'text-overlap');
 });
 
 test('valid changing safe blocks pass and records per-beat image deltas', async () => {
@@ -198,6 +243,60 @@ test('frame density detects an almost empty and an overfilled frame', async () =
   assert.ok((await codesOf(run({lifecycle, nodes: () => [{...safe('block-one'), bounds: {x: 45, y: 45, width: 6, height: 6}, visibleBounds: {x: 45, y: 45, width: 6, height: 6}}]}))).includes('frame-too-sparse'));
   assert.ok((await codesOf(run({lifecycle, nodes: () => [{...safe('block-one'), bounds: {x: 0, y: 0, width: 100, height: 100}, visibleBounds: {x: 0, y: 0, width: 100, height: 100}}]}))).includes('frame-too-dense'));
   assert.ok((await codesOf(run({lifecycle, nodes: () => [safe('block-one'), ...Array.from({length: 44}, (_, index) => ({key: `chip-${index}`, kind: 'other' as const, bounds: {x: 12, y: 12, width: 4, height: 4}, visibleBounds: {x: 12, y: 12, width: 4, height: 4}, opacity: 1}))]}))).includes('frame-too-dense'));
+});
+
+test('Scene Spec v2 counts conceptual components, not compiler drawing primitives', async () => {
+  const sceneSpec = {
+    version: 2 as const,
+    visualAnchor: 'A compact semantic density example.',
+    beats: [{
+      beatId: beatOne,
+      visualId: 'semantic-density',
+      headline: 'Mật độ hình',
+      caption: null,
+      template: 'comparison' as const,
+      focus: 'center' as const,
+      planAlignment: {planTerms: ['thành phần']},
+      elements: [
+        {type: 'node' as const, id: 'left-part', shape: 'pill' as const, label: 'Trái', value: null, emphasis: 'primary' as const, concepts: ['thành phần']},
+        {type: 'node' as const, id: 'right-part', shape: 'pill' as const, label: 'Phải', value: null, emphasis: 'secondary' as const, concepts: ['thành phần']},
+      ],
+      relationships: [],
+      groups: [],
+      motions: [{kind: 'compare' as const, targets: ['left-part'], direction: null}],
+    }],
+  };
+  const v2Scene = {
+    ...scene,
+    source: `// pad-scene-spec-v2:${encodeMotionCanvasSceneSpec(sceneSpec)}`,
+  };
+  const codes = await codesOf(run({
+    scenes: [v2Scene],
+    lifecycle,
+    nodes: sample => {
+      if (sample.beatId === beatTwo) return [safe('block-two')];
+      return [
+        safe('block-one'),
+        ...['left-part', 'right-part'].map(id => ({
+          key: `semantic-density-${id}-element`,
+          kind: 'other' as const,
+          bounds: {x: 15, y: 15, width: 12, height: 12},
+          visibleBounds: {x: 15, y: 15, width: 12, height: 12},
+          opacity: 1,
+          ancestorKeys: ['block-one'],
+        })),
+        ...Array.from({length: 40}, (_, index) => ({
+          key: `semantic-density-compiler-primitive-${index}`,
+          kind: 'other' as const,
+          bounds: {x: 15, y: 15, width: 2, height: 2},
+          visibleBounds: {x: 15, y: 15, width: 2, height: 2},
+          opacity: 1,
+          ancestorKeys: ['block-one'],
+        })),
+      ];
+    },
+  }));
+  assert.ok(!codes.includes('frame-too-dense'));
 });
 
 test('primary block must dominate and sit inside its declared focus zone', async () => {

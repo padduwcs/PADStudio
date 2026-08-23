@@ -1,8 +1,10 @@
 import {useEffect, useMemo, useState} from 'react';
 import type {ElevenLabsCatalog} from '../shared/elevenLabs.ts';
+import type {MotionCanvasGenerationProgress} from '../shared/motionCanvasGenerationProgress.ts';
 import type {TopicProject} from '../shared/topic.ts';
 import {
   animationSyncIsStale,
+  motionCanvasIsStale,
 } from '../shared/projectPipeline.ts';
 import {
   ApiRequestError,
@@ -12,7 +14,10 @@ import {
   generateMotionCanvas,
   generateVoice,
   getElevenLabsCatalog,
+  getLatestMotionCanvasFailure,
+  getMotionCanvasGenerationProgress,
   getProject,
+  type MotionCanvasFailureSummary,
   prepareNarrationProduction,
   voiceAudioUrl,
 } from './api.ts';
@@ -21,6 +26,7 @@ import {ElevenLabsConnectionCard} from './ElevenLabsConnectionCard.tsx';
 import {navigate, projectPronunciationPath, projectScenesPath} from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useElevenLabsConnection} from './useElevenLabsConnection.ts';
+import {useWorkflowOperationGuard} from './useWorkflowOperationGuard.ts';
 import {RuntimeDiagnosticsCard} from './RuntimeDiagnosticsCard.tsx';
 import {
   notifyTaskCompleted,
@@ -39,6 +45,19 @@ function newGenerationId() {
   return crypto.randomUUID();
 }
 
+function recoveryGuidanceFor(
+  failure: MotionCanvasFailureSummary | null,
+  fallbackMessage: string,
+) {
+  if (failure?.recoveryGuidance) return failure.recoveryGuidance;
+  const reason = failure?.firstIssueReason || failure?.message || fallbackMessage;
+  return [
+    'The previous independent scene generation did not complete. Fix the concrete failure below in the new result; do not bypass the rendered-frame checks.',
+    `Failure to fix: ${reason.slice(0, 1_800)}`,
+    'Use the current Visual Plan and approved voice as the source of truth. Generate a completely new scene bundle with readable, non-overlapping text and clear visual illustrations.',
+  ].join('\n');
+}
+
 export function ProductionPage({projectId}: {projectId: string}) {
   const [project, setProject] = useState<TopicProject | null>(null);
   const [catalog, setCatalog] = useState<ElevenLabsCatalog | null>(null);
@@ -46,17 +65,45 @@ export function ProductionPage({projectId}: {projectId: string}) {
   const [modelId, setModelId] = useState('');
   const [settings, setSettings] = useState(defaultSettings);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [busyAction, setBusyAction] = useState<'createAudio' | 'regenerateAudio' | 'generateScene' | 'combined' | null>(null);
+  const [busyAction, setBusyAction] = useState<'createAudio' | 'regenerateAudio' | 'replanVisual' | 'generateScene' | 'regenerateScene' | 'combined' | null>(null);
   const [message, setMessage] = useState('');
+  const [latestSceneFailure, setLatestSceneFailure] =
+    useState<MotionCanvasFailureSummary | null>(null);
+  const [failureKind, setFailureKind] =
+    useState<'audio' | 'visual-plan' | 'scene' | 'sync' | null>(null);
+  const [activeSceneGenerationId, setActiveSceneGenerationId] =
+    useState<string | null>(null);
+  const [sceneProgress, setSceneProgress] =
+    useState<MotionCanvasGenerationProgress | null>(null);
   const eleven = useElevenLabsConnection();
   const codex = useCodexConnection();
 
   useEffect(() => {
     let active = true;
-    void getProject(projectId)
-      .then(value => {
+    void Promise.all([
+      getProject(projectId),
+      getLatestMotionCanvasFailure(projectId).catch(() => null),
+      getMotionCanvasGenerationProgress(projectId).catch(() => null),
+    ])
+      .then(([value, failure, progress]) => {
         if (!active) return;
         setProject(value);
+        setSceneProgress(progress);
+        if (progress?.state === 'running') {
+          setActiveSceneGenerationId(progress.generationId);
+          setBusyAction('generateScene');
+          setMessage('Đang nối lại màn hình tiến độ của lượt sinh scene trên máy chủ…');
+        }
+        if (
+          failure &&
+          (!value.motionCanvasBundle ||
+            Date.parse(failure.failedAt) >
+              Date.parse(value.motionCanvasBundle.generation.generatedAt))
+        ) {
+          setLatestSceneFailure(failure);
+        } else {
+          setLatestSceneFailure(null);
+        }
         if (value.voiceBundle) {
           setVoiceId(value.voiceBundle.configuration.voiceId);
           setModelId(value.voiceBundle.configuration.modelId);
@@ -71,6 +118,47 @@ export function ProductionPage({projectId}: {projectId: string}) {
       });
     return () => { active = false; };
   }, [projectId]);
+
+  useEffect(() => {
+    if (!activeSceneGenerationId) return;
+    let active = true;
+    let polling = false;
+    const poll = async () => {
+      if (polling) return;
+      polling = true;
+      try {
+        const progress = await getMotionCanvasGenerationProgress(projectId);
+        if (!active || progress?.generationId !== activeSceneGenerationId) return;
+        setSceneProgress(progress);
+        if (progress.state === 'completed') {
+          const current = await getProject(projectId);
+          if (!active) return;
+          setProject(current);
+          setActiveSceneGenerationId(null);
+          setBusyAction(null);
+          setState('ready');
+          setMessage('Scene đã được tạo và kiểm định xong. Bạn có thể tiếp tục chuẩn bị editor có tiếng.');
+        } else if (progress.state === 'failed' || progress.state === 'interrupted') {
+          setActiveSceneGenerationId(null);
+          setBusyAction(null);
+          setFailureKind('scene');
+          setState('error');
+          setMessage(progress.error || progress.message);
+        }
+      } catch {
+        // The original generation request remains authoritative. A missed
+        // status poll must never trigger another Codex request.
+      } finally {
+        polling = false;
+      }
+    };
+    void poll();
+    const interval = window.setInterval(() => void poll(), 1_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [activeSceneGenerationId, projectId]);
 
   useEffect(() => {
     if (!eleven.connected) return;
@@ -101,7 +189,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
     [catalog, modelId],
   );
   const audioReady = Boolean(project?.voiceBundle);
-  const sceneReady = Boolean(project?.motionCanvasBundle);
+  const sceneReady = Boolean(project?.motionCanvasBundle && !motionCanvasIsStale(project));
   const syncReady = Boolean(
     project?.animationSyncBundle?.status === 'approved' &&
       !animationSyncIsStale(project),
@@ -116,6 +204,15 @@ export function ProductionPage({projectId}: {projectId: string}) {
       (project.voiceBundle.configuration.voiceId !== voiceId ||
         project.voiceBundle.configuration.modelId !== modelId ||
         JSON.stringify(project.voiceBundle.configuration.settings) !== JSON.stringify(effectiveSettings)),
+  );
+  const allowNextWorkflowNavigation = useWorkflowOperationGuard(
+    busyAction !== null,
+    'PAD Studio đang tạo hoặc cập nhật audio/scene. Hãy chờ tác vụ hoàn tất trước khi chuyển bước hay đổi project.',
+  );
+  const canRunCombined = Boolean(
+    !busyAction &&
+    (audioReady || (eleven.connected && voiceId && modelId)) &&
+    (sceneReady || codex.isTaskReady('motionCanvas')),
   );
 
   async function generateSelectedAudio(current: TopicProject) {
@@ -147,6 +244,39 @@ export function ProductionPage({projectId}: {projectId: string}) {
     };
   }
 
+  async function replanVisuals() {
+    if (!project || busyAction) return;
+    const confirmed = window.confirm(
+      'Lập lại kế hoạch hình ảnh sẽ giữ nguyên file audio, alignment và toàn bộ timestamp hiện có. Scene, đồng bộ và render phía sau sẽ cần tạo lại. Tiếp tục?',
+    );
+    if (!confirmed) return;
+    setBusyAction('replanVisual');
+    setState('ready');
+    setFailureKind(null);
+    setMessage('Codex đang lập lại ý đồ hình ảnh; audio và timeline hiện có được khóa nguyên trạng…');
+    try {
+      const current = await prepareNarrationProduction(project.id, {
+        generationId: newGenerationId(),
+        ...plannerSelectionFields(),
+        forceVisualReplan: true,
+      }, project.revision);
+      setProject(current);
+      setLatestSceneFailure(null);
+      setMessage('Kế hoạch hình ảnh đã được làm mới. Audio, alignment và timestamp được giữ nguyên; hãy sinh lại scene để áp dụng ý đồ mới.');
+      notifyTaskCompleted({
+        id: `visual-replan:${current.voiceVisualPlan?.contentRevision ?? current.revision}`,
+        title: 'Kế hoạch hình ảnh đã được làm mới',
+        message: 'Voice và timestamp không thay đổi. Scene cũ được giữ trong lịch sử và đã hết hiệu lực cho plan mới.',
+      });
+    } catch (error) {
+      setState('error');
+      setFailureKind('visual-plan');
+      setMessage(error instanceof ApiRequestError || error instanceof Error ? error.message : 'Không thể lập lại kế hoạch hình ảnh.');
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   async function regenerateAudio() {
     if (!project || busyAction || !voiceId || !modelId) return;
     const confirmed = window.confirm(
@@ -156,6 +286,8 @@ export function ProductionPage({projectId}: {projectId: string}) {
     const taskId = newGenerationId();
     prepareTaskCompletionNotifications();
     setBusyAction('regenerateAudio');
+    setState('ready');
+    setFailureKind(null);
     setMessage('');
     try {
       let current = project;
@@ -171,6 +303,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
       setModelId(current.voiceBundle!.configuration.modelId);
       setMessage('Audio mới đã sẵn sàng. Scene hiện tại được giữ lại; đồng bộ và render sẽ được tạo lại ở các bước sau.');
       setState('ready');
+      setLatestSceneFailure(null);
       notifyTaskCompleted({
         id: `regenerate-audio:${taskId}`,
         title: 'Audio mới đã tạo xong',
@@ -178,6 +311,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
       });
     } catch (error) {
       setState('error');
+      setFailureKind('audio');
       setMessage(error instanceof ApiRequestError || error instanceof Error ? error.message : 'Không thể tạo lại audio.');
     } finally {
       setBusyAction(null);
@@ -189,6 +323,8 @@ export function ProductionPage({projectId}: {projectId: string}) {
     const taskId = newGenerationId();
     prepareTaskCompletionNotifications();
     setBusyAction('createAudio');
+    setState('ready');
+    setFailureKind(null);
     setMessage('');
     try {
       setMessage('Đang chuẩn bị cấu trúc scene từ lời thoại đã duyệt…');
@@ -210,48 +346,93 @@ export function ProductionPage({projectId}: {projectId: string}) {
       });
     } catch (error) {
       setState('error');
+      setFailureKind('audio');
       setMessage(error instanceof ApiRequestError || error instanceof Error ? error.message : 'Không thể tạo audio.');
     } finally {
       setBusyAction(null);
     }
   }
 
-  async function runProduction(source: 'generateScene' | 'combined' = 'combined') {
+  async function runProduction(
+    source: 'generateScene' | 'regenerateScene' | 'combined' = 'combined',
+    recoveryGuidance?: string,
+  ) {
     if (!project || busyAction) return;
+    const needsSceneGeneration =
+      source === 'regenerateScene' ||
+      !project.motionCanvasBundle ||
+      motionCanvasIsStale(project);
+    if (needsSceneGeneration && !codex.isTaskReady('motionCanvas')) {
+      setState('error');
+      setFailureKind('scene');
+      setMessage('Hãy kết nối Codex và chọn model sinh scene trước khi bắt đầu. Audio chưa bị tạo hoặc thay đổi.');
+      return;
+    }
     const taskId = newGenerationId();
     prepareTaskCompletionNotifications();
+    setState('ready');
     setBusyAction(source);
+    setFailureKind(null);
     setMessage('');
+    let operationStage: 'visual-plan' | 'audio' | 'scene' | 'sync' = 'visual-plan';
     try {
       let current = project;
       setMessage('Đang chuẩn bị cấu trúc scene từ lời thoại đã duyệt…');
       current = await prepareNarrationProduction(current.id, {generationId: newGenerationId(), ...plannerSelectionFields()}, current.revision);
       setProject(current);
       if (!current.voiceBundle) {
+        operationStage = 'audio';
         current = await generateSelectedAudio(current);
         setProject(current);
       }
-      if (!current.motionCanvasBundle) {
+      const regenerateFromScratch = source === 'regenerateScene';
+      if (!current.motionCanvasBundle || motionCanvasIsStale(current) || regenerateFromScratch) {
+        operationStage = 'scene';
         const selection = codex.getGenerationSelection('motionCanvas');
         if (!selection) {
           throw new Error('Hãy kết nối Codex và chọn model trước khi sinh scene.');
         }
-        setMessage('Codex đang phân tích lời thoại và sinh scene trực tiếp…');
+        setMessage(
+          recoveryGuidance
+            ? 'Codex đang nhận lỗi kiểm tra của lượt trước và sinh một bản scene độc lập đã được định hướng sửa…'
+            : 'Codex đang phân tích lời thoại và sinh scene trực tiếp…',
+        );
+        const sceneGenerationId = newGenerationId();
+        setActiveSceneGenerationId(sceneGenerationId);
+        setSceneProgress(null);
         current = await generateMotionCanvas(current.id, {
-          generationId: newGenerationId(),
+          generationId: sceneGenerationId,
           ...selection,
+          ...(regenerateFromScratch ? {regenerateFromScratch: true as const} : {}),
+          ...(recoveryGuidance ? {guidance: recoveryGuidance} : {}),
         }, current.revision);
+        setActiveSceneGenerationId(null);
         setProject(current);
+        setLatestSceneFailure(null);
       }
+      operationStage = 'scene';
       if (!current.motionCanvasBundle) {
         throw new Error('Scene vừa sinh không có dữ liệu hợp lệ để đồng bộ.');
       }
+      const semanticStatus = current.motionCanvasBundle.semanticValidation?.status;
+      if (semanticStatus === 'failed') {
+        throw new Error('Scene render được nhưng chưa bao phủ đủ các đối tượng, quan hệ hoặc hành động bắt buộc trong kế hoạch hình ảnh.');
+      }
       if (current.motionCanvasBundle.status !== 'approved') {
+        const acceptDegradedSemantic = semanticStatus === 'degraded'
+          ? window.confirm('Scene hiện tại là minh họa giản lược từ fallback. Scene vẫn render và giữ đúng voice/timestamp, nhưng bạn cần kiểm tra kỹ ý nghĩa hình ảnh trong editor. Dùng bản này để tiếp tục?')
+          : false;
+        if (semanticStatus === 'degraded' && !acceptDegradedSemantic) {
+          setProject(current);
+          setMessage('Đã giữ scene giản lược ở trạng thái nháp. Bạn có thể sinh lại hoặc mở bước scene để đánh giá trước.');
+          return;
+        }
         setMessage('Đang chuẩn bị scene để ghép theo timing giọng đọc…');
-        current = await approveMotionCanvas(current.id, current.revision);
+        current = await approveMotionCanvas(current.id, current.revision, acceptDegradedSemantic ? {acceptDegradedSemantic: true} : {});
         setProject(current);
       }
       if (!current.animationSyncBundle || animationSyncIsStale(current)) {
+        operationStage = 'sync';
         setMessage('Đang đồng bộ scene theo timing thật của giọng đọc…');
         current = await generateAnimationSync(
           current.id,
@@ -261,17 +442,35 @@ export function ProductionPage({projectId}: {projectId: string}) {
         setProject(current);
       }
       if (current.animationSyncBundle?.status !== 'approved') {
+        operationStage = 'sync';
         current = await approveAnimationSync(current.id, current.revision);
         setProject(current);
       }
+      const semanticDegraded = semanticStatus === 'degraded';
       setState('ready');
+      setMessage(semanticDegraded
+        ? 'Scene đã sẵn sàng nhưng đang ở mức minh họa giản lược. Hãy kiểm tra cảnh báo về kế hoạch hình ảnh trong editor trước khi xuất.'
+        : 'Scene đã vượt qua cả kiểm tra render và độ bao phủ kế hoạch hình ảnh.');
+      setLatestSceneFailure(null);
+      setFailureKind(null);
       notifyTaskCompleted({
         id: `production:${taskId}`,
         title: 'Scene và đồng bộ đã sẵn sàng',
-        message: 'PAD Studio đã hoàn tất lượt tạo. Bạn có thể bắt đầu kiểm tra scene.',
+        message: semanticDegraded
+          ? 'Scene dùng minh họa giản lược; voice vẫn nguyên vẹn và editor sẽ hiển thị cảnh báo để bạn kiểm tra.'
+          : 'PAD Studio đã hoàn tất lượt tạo và bao phủ kế hoạch hình ảnh. Bạn có thể bắt đầu kiểm tra scene.',
       });
+      allowNextWorkflowNavigation();
       navigate(projectScenesPath(current.id));
     } catch (error) {
+      setActiveSceneGenerationId(null);
+      setFailureKind(operationStage);
+      if (operationStage === 'scene') {
+        const failure = await getLatestMotionCanvasFailure(project.id).catch(
+          () => null,
+        );
+        if (failure) setLatestSceneFailure(failure);
+      }
       setState('error');
       setMessage(error instanceof ApiRequestError || error instanceof Error ? error.message : 'Không thể hoàn tất lượt tạo này.');
     } finally {
@@ -284,6 +483,9 @@ export function ProductionPage({projectId}: {projectId: string}) {
   if (!narrationApproved) return <div className="page-state is-error" role="alert"><strong>Voice chưa được duyệt</strong><p>Chỉ bản cách đọc đã duyệt mới được gửi tới ElevenLabs.</p><button type="button" onClick={() => navigate(projectPronunciationPath(projectId))}>Quay lại duyệt voice</button></div>;
 
   const firstSection = project.voiceBundle?.sections[0];
+  const recoveryGuidance = recoveryGuidanceFor(latestSceneFailure, message);
+  const canRecoverScene =
+    !busyAction && audioReady && codex.isTaskReady('motionCanvas');
   return (
     <main className="production-workspace">
       <div className="page-heading">
@@ -295,6 +497,81 @@ export function ProductionPage({projectId}: {projectId: string}) {
         <p>Chọn voice và model tiếng Việt cho bản cách đọc đã duyệt. Codex dùng cùng lời thoại đó để dựng scene ở bước kế tiếp.</p>
       </div>
       <RuntimeDiagnosticsCard />
+      {busyAction && (
+        <section className="production-operation-status" role="status" aria-live="polite">
+          <span className="spinner dark" aria-hidden="true" />
+          <div>
+            {sceneProgress?.state === 'running' && activeSceneGenerationId === sceneProgress.generationId && (
+              <div className="production-scene-progress">
+                <strong>{sceneProgress.message}</strong>
+                <progress
+                  max={Math.max(1, sceneProgress.totalSamples || sceneProgress.totalScenes)}
+                  value={sceneProgress.totalSamples
+                    ? sceneProgress.completedSamples
+                    : sceneProgress.completedScenes}
+                />
+                <small>
+                  {sceneProgress.stage === 'quality-render'
+                    ? `${sceneProgress.completedSamples}/${sceneProgress.totalSamples} khung hình · ${sceneProgress.cachedSamples} từ cache`
+                    : `${sceneProgress.completedScenes}/${sceneProgress.totalScenes} scene · vòng ${sceneProgress.attempt + 1}`}
+                </small>
+              </div>
+            )}
+            <strong>{message || 'Đang xử lý yêu cầu sản xuất…'}</strong>
+            <p>Yêu cầu đang chạy. PAD Studio chỉ chuyển sang editor khi toàn bộ scene, kiểm tra khung hình và đồng bộ audio hoàn tất.</p>
+          </div>
+        </section>
+      )}
+      {state === 'error' && message && (
+        <section className="production-operation-status is-error" role="alert">
+          <div>
+            <strong>Yêu cầu chưa hoàn tất</strong>
+            <p>{message}</p>
+            <p>Những artifact đã hoàn tất trước khi lỗi vẫn được giữ nguyên; chỉ bước chưa hoàn thành cần thử lại.</p>
+            {failureKind === 'scene' && latestSceneFailure ? (
+              <div className="production-recovery-action">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={!canRecoverScene}
+                  onClick={() => void runProduction('regenerateScene', recoveryGuidance)}
+                >
+                  Tự khắc phục scene bằng Codex
+                </button>
+                <small>PAD Studio chỉ gửi lỗi scene cho Codex. Audio và kế hoạch hình ảnh hiện hành không bị tạo lại.</small>
+              </div>
+            ) : (
+              <small>{failureKind === 'audio'
+                ? 'Kiểm tra ElevenLabs, FFmpeg và cấu hình voice rồi bấm lại nút tạo audio.'
+                : failureKind === 'visual-plan'
+                  ? 'Kiểm tra kết nối Codex ở phần lập kế hoạch hình ảnh rồi bấm lại đúng thao tác vừa dùng.'
+                  : failureKind === 'scene'
+                    ? 'Kiểm tra kết nối và lựa chọn model Codex rồi bấm lại nút sinh scene.'
+                    : 'Bấm lại “Chuẩn bị editor có tiếng”; audio và scene hiện hành không cần sinh lại.'}</small>
+            )}
+          </div>
+        </section>
+      )}
+      {!busyAction && state !== 'error' && latestSceneFailure && (
+        <section className="production-operation-status is-error" role="alert">
+          <div>
+            <strong>Lần sinh scene gần nhất chưa hoàn tất</strong>
+            <p>{latestSceneFailure.firstIssueReason || latestSceneFailure.message}</p>
+            <p>PAD Studio đã giữ nguyên bản trước đó. Lỗi được ghi lúc {new Date(latestSceneFailure.failedAt).toLocaleString('vi-VN')} và sẽ vẫn hiển thị sau khi tải lại trang.</p>
+            <div className="production-recovery-action">
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={!canRecoverScene}
+                onClick={() => void runProduction('regenerateScene', recoveryGuidance)}
+              >
+                Tự khắc phục bằng Codex
+              </button>
+              <small>Không cần chép lỗi hay tự chỉnh mã scene. Lỗi được gửi kèm cho Codex; bản mới vẫn độc lập với scene hiện có.</small>
+            </div>
+          </div>
+        </section>
+      )}
       <div className="production-grid">
         <section className="production-card">
           <header>
@@ -410,15 +687,59 @@ export function ProductionPage({projectId}: {projectId: string}) {
           <CodexConnectionCard
             connection={codex}
             task="visualPlanner"
-            extraTasks={[{task: 'motionCanvas', label: 'Scene Motion Canvas'}]}
+            extraTasks={[{
+              task: 'motionCanvas',
+              label: 'Scene Motion Canvas',
+              workUnits: project.voiceVisualPlan?.sections.length ?? 1,
+            }]}
           />
           <div className="production-result">
-            <strong>AI Visual Planner</strong>
-            <p>Chọn model/reasoning riêng cho bước lập kế hoạch hình ảnh (title, mục tiêu, visual bible từng scene). Nếu không chọn hoặc AI lỗi, hệ thống tự dùng bộ lập kế hoạch tất định thay thế.</p>
+            <strong>AI lập kế hoạch hình ảnh</strong>
+            <p>Kế hoạch hình ảnh giữ lại đối tượng, quan hệ, hành động và điều người xem phải tự suy ra. Scene được ghép tự do từ các thành phần an toàn, không bị khóa vào một danh sách mẫu cố định.</p>
+            {audioReady && (
+              <div className="production-action">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={!codex.isTaskReady('visualPlanner') || busyAction !== null}
+                  onClick={() => void replanVisuals()}
+                >
+                  {busyAction === 'replanVisual' ? 'Đang lập lại kế hoạch hình ảnh…' : 'Lập lại hình ảnh, giữ nguyên voice'}
+                </button>
+                <small>Giữ nguyên audio, alignment, section/beat ID và timestamp. Chỉ kế hoạch hình ảnh, scene, đồng bộ và render phía sau được làm mới.</small>
+              </div>
+            )}
           </div>
           <div className="production-result">
             <strong>{syncReady ? 'Scene và audio đã đồng bộ' : sceneReady ? 'Scene đang cần đồng bộ' : 'Sẵn sàng phân tích trực tiếp'}</strong>
             <p>{syncReady ? `${project.motionCanvasBundle!.scenes.length} scene đã được ánh xạ theo timing giọng đọc thật.` : sceneReady ? 'Hệ thống sẽ tự chuẩn bị và ghép scene theo audio trước khi mở editor.' : 'Codex sinh scene, sau đó hệ thống tự ghép timing ElevenLabs.'}</p>
+            {project.motionCanvasBundle?.semanticValidation && (
+              <div className={`production-selection-note${project.motionCanvasBundle.semanticValidation.status === 'passed' ? '' : ' is-changed'}`}>
+                <span>
+                  {project.motionCanvasBundle.semanticValidation.status === 'passed'
+                    ? 'Đã bao phủ kế hoạch hình ảnh'
+                    : project.motionCanvasBundle.semanticValidation.status === 'degraded'
+                      ? 'Minh họa giản lược — cần kiểm tra'
+                      : 'Thiếu yêu cầu hình ảnh bắt buộc — chưa đạt'}
+                </span>
+                <small>
+                  {project.motionCanvasBundle.semanticValidation.scenes.filter(scene => scene.status !== 'passed').length} scene cần chú ý
+                </small>
+              </div>
+            )}
+            {sceneReady && (
+              <div className="production-action">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={!audioReady || !codex.isTaskReady('motionCanvas') || busyAction !== null}
+                  onClick={() => void runProduction('regenerateScene')}
+                >
+                  {busyAction === 'regenerateScene' ? 'Đang sinh lại scene…' : 'Sinh lại scene độc lập'}
+                </button>
+                <small>Luôn sinh như lần đầu từ kế hoạch hình ảnh và voice đã duyệt; không gửi hay tham chiếu scene hiện có. Bản hiện tại vẫn được lưu trong lịch sử.</small>
+              </div>
+            )}
             {sceneReady && !syncReady && (
               <div className="production-action">
                 <button
@@ -437,6 +758,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
                 <button
                   type="button"
                   className="secondary-button"
+                  disabled={busyAction !== null}
                   onClick={() => navigate(projectScenesPath(project.id))}
                 >
                   Mở editor có tiếng
@@ -468,13 +790,13 @@ export function ProductionPage({projectId}: {projectId: string}) {
       </div>
       <footer className="production-footer">
         <div>
-          <strong>{syncReady ? 'Bản đồng bộ đã sẵn sàng chỉnh' : sceneReady ? 'Scene cần đồng bộ với audio' : audioReady ? 'Audio đã sẵn sàng, tiếp tục sinh scene' : 'Sẵn sàng sản xuất'}</strong>
+          <strong>{busyAction ? 'Đang xử lý yêu cầu hiện tại' : syncReady ? 'Bản đồng bộ đã sẵn sàng chỉnh' : sceneReady ? 'Scene cần đồng bộ với audio' : audioReady ? 'Audio đã sẵn sàng, tiếp tục sinh scene' : 'Sẵn sàng sản xuất'}</strong>
           <p>{message || 'Mỗi dịch vụ chỉ được gọi khi phần trước đã sẵn sàng.'}</p>
         </div>
         {syncReady ? (
-          <button className="submit-button" type="button" onClick={() => navigate(projectScenesPath(project.id))}>Mở editor có tiếng</button>
+          <button className="submit-button" type="button" disabled={busyAction !== null} onClick={() => navigate(projectScenesPath(project.id))}>Mở editor có tiếng</button>
         ) : (
-          <button className="submit-button" type="button" disabled={busyAction !== null || (!audioReady && (!eleven.connected || !voiceId || !modelId))} onClick={() => void runProduction('combined')}>
+          <button className="submit-button" type="button" disabled={!canRunCombined} onClick={() => void runProduction('combined')}>
             {busyAction === 'combined' ? 'Đang xử lý…' : sceneReady ? 'Mở editor có tiếng' : audioReady ? 'Sinh scene & mở editor' : 'Tạo audio, scene & mở editor'}
           </button>
         )}

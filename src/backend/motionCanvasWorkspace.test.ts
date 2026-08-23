@@ -206,6 +206,7 @@ test('Motion Canvas workspace keeps bounded failure evidence after cleanup', asy
   context.after(() => rm(projectsDirectory, {recursive: true, force: true}));
   const workspace = createMotionCanvasWorkspace(projectsDirectory);
   assert.ok(workspace.recordFailure);
+  assert.ok(workspace.readLatestFailure);
   const generationId = randomUUID();
   const failedScene: MotionCanvasSourceScene = {
     id: randomUUID(),
@@ -224,7 +225,8 @@ test('Motion Canvas workspace keeps bounded failure evidence after cleanup', asy
       stage: 'render-quality',
       code: 'MOTION_CANVAS_VISUAL_QUALITY_FAILED',
       message: 'Pre-exit frame is empty.',
-      issues: [{code: 'empty-frame'}],
+      issues: [{code: 'empty-frame', reason: 'Pre-exit frame is empty.'}],
+      recoveryGuidance: 'Keep the primary visual visible until the exit window.',
       scenes: [failedScene],
     },
   );
@@ -235,6 +237,18 @@ test('Motion Canvas workspace keeps bounded failure evidence after cleanup', asy
   ) as {code: string; scenes: Array<{id: string}>};
   assert.equal(record.code, 'MOTION_CANVAS_VISUAL_QUALITY_FAILED');
   assert.equal(record.scenes[0]?.id, failedScene.id);
+  const failureSummary = await workspace.readLatestFailure(
+    'failure-evidence-project',
+  );
+  assert.equal(failureSummary?.generationId, generationId);
+  assert.equal(failureSummary?.stage, 'render-quality');
+  assert.equal(failureSummary?.code, 'MOTION_CANVAS_VISUAL_QUALITY_FAILED');
+  assert.equal(failureSummary?.message, 'Pre-exit frame is empty.');
+  assert.equal(failureSummary?.firstIssueReason, 'Pre-exit frame is empty.');
+  assert.equal(
+    failureSummary?.recoveryGuidance,
+    'Keep the primary visual visible until the exit window.',
+  );
   assert.equal(
     await readFile(
       path.join(evidenceDirectory, 'scenes', `01-${failedScene.id}.tsx`),

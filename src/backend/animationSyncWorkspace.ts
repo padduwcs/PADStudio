@@ -21,6 +21,7 @@ import type {
 } from '../shared/topic.ts';
 import {MOTION_CANVAS_VERSION} from './motionCanvasGenerator.ts';
 import {normalizeMotionCanvasColorFormats} from './motionCanvasSourceCompatibility.ts';
+import {resolveFfmpegExecutable} from './runtimeExecutablePaths.ts';
 
 const execFileAsync = promisify(execFile);
 const uuidPattern =
@@ -724,9 +725,10 @@ export function createAnimationSyncWorkspace(
     path.dirname(fileURLToPath(import.meta.url)),
     '../..',
   );
-  const ffmpegPath =
-    (options.ffmpegPath ?? process.env.FFMPEG_PATH ?? '').trim() ||
-    'ffmpeg';
+  const ffmpegPath = resolveFfmpegExecutable(
+    options.ffmpegPath,
+    repositoryRoot,
+  );
   const typescriptPath =
     options.typescriptPath ??
     path.join(repositoryRoot, 'node_modules', 'typescript', 'bin', 'tsc');

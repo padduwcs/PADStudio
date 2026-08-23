@@ -19,16 +19,19 @@ import {
   navigate,
   projectProductionPath,
   projectRenderPath,
+  registerNavigationGuard,
 } from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
 import {useMotionCanvasDraft} from './useMotionCanvasDraft.ts';
 import {useSyncSceneEditor} from './useSyncSceneEditor.ts';
 import {
   deriveSceneReviewPhase,
+  sceneReviewMutationIsRunning,
   sceneReviewOperationIsBusy,
   sceneReviewPrimaryAction,
   type SceneReviewPhase,
 } from './sceneReviewFlow.ts';
+import {useWorkflowOperationGuard} from './useWorkflowOperationGuard.ts';
 
 function defaultWatermark(type: RenderWatermark['type']): RenderWatermark {
   if (type === 'text') return {type, text: 'Tên kênh', opacity: 0.35, xPercent: 88, yPercent: 92, fontSize: 42, color: '#ffffff'};
@@ -39,12 +42,14 @@ function defaultWatermark(type: RenderWatermark['type']): RenderWatermark {
 function WatermarkSettings({
   watermark,
   uploading,
+  disabled,
   error,
   onChange,
   onUpload,
 }: {
   watermark: RenderWatermark;
   uploading: boolean;
+  disabled: boolean;
   error: string;
   onChange: (watermark: RenderWatermark) => void;
   onUpload: (file: File) => void;
@@ -53,10 +58,10 @@ function WatermarkSettings({
   return <details className="scene-review-watermark" open>
     <summary><span>Đầu ra</span><strong>Watermark</strong><small>{label}</small></summary>
     <div>
-      <label><span>Loại</span><select value={watermark.type} onChange={event => onChange(defaultWatermark(event.currentTarget.value as RenderWatermark['type']))}><option value="none">Không dùng</option><option value="text">Chữ</option><option value="image">Ảnh</option></select></label>
-      {watermark.type === 'text' && <><label><span>Nội dung</span><input value={watermark.text} onChange={event => onChange({...watermark, text: event.currentTarget.value})} placeholder="Tên kênh" /></label><label><span>Màu</span><input type="color" value={watermark.color} onChange={event => onChange({...watermark, color: event.currentTarget.value})} /></label></>}
-      {watermark.type === 'image' && <label><span>Ảnh PNG, JPEG hoặc WebP</span><input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) onUpload(file); }} /><small>{uploading ? 'Đang tải ảnh…' : watermark.assetId ? 'Ảnh đã sẵn sàng.' : 'Chưa chọn ảnh.'}</small></label>}
-      {watermark.type !== 'none' && <><label><span>Độ mờ</span><input type="range" min={0} max={1} step={0.05} value={watermark.opacity} onChange={event => onChange({...watermark, opacity: Number(event.currentTarget.value)})} /></label><label><span>Vị trí ngang</span><input type="range" min={0} max={100} step={1} value={watermark.xPercent} onChange={event => onChange({...watermark, xPercent: Number(event.currentTarget.value)})} /></label><label><span>Vị trí dọc</span><input type="range" min={0} max={100} step={1} value={watermark.yPercent} onChange={event => onChange({...watermark, yPercent: Number(event.currentTarget.value)})} /></label></>}
+      <label><span>Loại</span><select value={watermark.type} disabled={disabled} onChange={event => onChange(defaultWatermark(event.currentTarget.value as RenderWatermark['type']))}><option value="none">Không dùng</option><option value="text">Chữ</option><option value="image">Ảnh</option></select></label>
+      {watermark.type === 'text' && <><label><span>Nội dung</span><input value={watermark.text} disabled={disabled} onChange={event => onChange({...watermark, text: event.currentTarget.value})} placeholder="Tên kênh" /></label><label><span>Màu</span><input type="color" value={watermark.color} disabled={disabled} onChange={event => onChange({...watermark, color: event.currentTarget.value})} /></label></>}
+      {watermark.type === 'image' && <label><span>Ảnh PNG, JPEG hoặc WebP</span><input type="file" accept="image/png,image/jpeg,image/webp" disabled={disabled || uploading} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; if (file) onUpload(file); }} /><small>{uploading ? 'Đang tải ảnh…' : watermark.assetId ? 'Ảnh đã sẵn sàng.' : 'Chưa chọn ảnh.'}</small></label>}
+      {watermark.type !== 'none' && <><label><span>Độ mờ</span><input type="range" min={0} max={1} step={0.05} value={watermark.opacity} disabled={disabled} onChange={event => onChange({...watermark, opacity: Number(event.currentTarget.value)})} /></label><label><span>Vị trí ngang</span><input type="range" min={0} max={100} step={1} value={watermark.xPercent} disabled={disabled} onChange={event => onChange({...watermark, xPercent: Number(event.currentTarget.value)})} /></label><label><span>Vị trí dọc</span><input type="range" min={0} max={100} step={1} value={watermark.yPercent} disabled={disabled} onChange={event => onChange({...watermark, yPercent: Number(event.currentTarget.value)})} /></label></>}
       {error && <p className="submit-error" role="alert">{error}</p>}
     </div>
   </details>;
@@ -73,7 +78,46 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
   const [watermark, setWatermark] = useState<RenderWatermark>({type: 'none'});
   const [watermarkUploading, setWatermarkUploading] = useState(false);
   const [watermarkUploadError, setWatermarkUploadError] = useState('');
+  const [candidateStarting, setCandidateStarting] = useState(false);
   const synchronizationAttemptRevision = useRef<number | null>(null);
+
+  function operationState() {
+    return {
+      syncing,
+      layoutSaveState: syncEditor.saveState,
+      candidateGenerating: candidateStarting || motion.candidateGenerating,
+      candidateRepairing: motion.candidateRepairing,
+      candidateApplying: motion.candidateApplying,
+      candidatePending: motion.candidate?.decision === 'pending',
+      historyBusy: motion.historyBusy,
+    };
+  }
+
+  const sceneMutationRunning = sceneReviewMutationIsRunning(operationState());
+  const sceneConflict = motion.conflict || syncEditor.conflict;
+  const sceneProgressBlocked =
+    sceneReviewOperationIsBusy(operationState()) ||
+    watermarkUploading;
+  const allowNextWorkflowNavigation = useWorkflowOperationGuard(
+    sceneProgressBlocked,
+    motion.candidate?.decision === 'pending'
+      ? 'Hãy áp dụng hoặc bỏ candidate đang chờ trước khi chuyển bước hay đổi project.'
+      : 'PAD Studio đang lưu hoặc cập nhật scene. Hãy chờ tác vụ hoàn tất trước khi chuyển bước hay đổi project.',
+  );
+
+  useEffect(() => {
+    if (syncEditor.saveState !== 'error') return;
+    return registerNavigationGuard(() => window.confirm(
+      'Chỉnh sửa scene gần nhất chưa lưu được. Rời trang sẽ bỏ phần chỉnh sửa đang chờ lưu. Bạn vẫn muốn rời?',
+    ));
+  }, [syncEditor.saveState]);
+
+  useEffect(() => {
+    if (syncEditor.saveState !== 'error') return;
+    const preventUnload = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', preventUnload);
+    return () => window.removeEventListener('beforeunload', preventUnload);
+  }, [syncEditor.saveState]);
 
   useEffect(() => {
     const existing = motion.project?.layoutBundle?.renderSettings.watermark;
@@ -90,6 +134,7 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
   }
 
   function applyCandidateWithGuard(phase: SceneReviewPhase) {
+    if (sceneMutationRunning || watermarkUploading || sceneConflict) return;
     if (
       (phase === 'editing' || phase === 'layout-ready') &&
       !window.confirm(
@@ -102,39 +147,33 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
   }
 
   async function createCandidate() {
-    if (!guidance.trim() || selectedSceneIds.length === 0) return;
-    const status = await codex.verify();
-    if (status?.state !== 'connected') return;
-    const selection = codex.getGenerationSelection('motionCanvas');
-    if (!selection) return;
-    const candidate = await motion.createCandidate(
-      guidance,
-      {sceneIds: selectedSceneIds},
-      selection.model,
-      selection.reasoningEffort,
-    );
-    if (candidate) setGuidance('');
+    if (sceneMutationRunning || sceneConflict || !guidance.trim() || selectedSceneIds.length === 0) return;
+    setCandidateStarting(true);
+    try {
+      const status = await codex.verify();
+      if (status?.state !== 'connected') return;
+      const selection = codex.getGenerationSelection('motionCanvas');
+      if (!selection) return;
+      const candidate = await motion.createCandidate(
+        guidance,
+        {sceneIds: selectedSceneIds},
+        selection.model,
+        selection.reasoningEffort,
+      );
+      if (candidate) setGuidance('');
+    } finally {
+      setCandidateStarting(false);
+    }
   }
 
   function uploadWatermark(file: File) {
+    if (sceneMutationRunning || watermarkUploading || sceneConflict) return;
     setWatermarkUploading(true);
     setWatermarkUploadError('');
     void uploadWatermarkImage(projectId, file)
       .then(asset => setWatermark(current => current.type === 'image' ? {...current, assetId: asset.assetId} : current))
       .catch(error => setWatermarkUploadError(error instanceof ApiRequestError ? error.message : 'Không thể tải ảnh watermark.'))
       .finally(() => setWatermarkUploading(false));
-  }
-
-  function operationState() {
-    return {
-      syncing,
-      layoutSaveState: syncEditor.saveState,
-      candidateGenerating: motion.candidateGenerating,
-      candidateRepairing: motion.candidateRepairing,
-      candidateApplying: motion.candidateApplying,
-      candidatePending: motion.candidate?.decision === 'pending',
-      historyBusy: motion.historyBusy,
-    };
   }
 
   async function prepareSyncedEditor() {
@@ -220,6 +259,7 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
       if (!approved) {
         throw new Error(syncEditor.saveError || 'Không thể duyệt bản chỉnh sửa hiện tại.');
       }
+      allowNextWorkflowNavigation();
       navigate(projectRenderPath(approved.id));
     } catch (error) {
       setCompletionMessage(error instanceof Error ? error.message : 'Không thể duyệt bản chỉnh sửa hiện tại.');
@@ -243,11 +283,13 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
     syncStale,
     layoutReady,
   });
-  const showEditor = phase === 'editing' || phase === 'layout-ready';
+  const showEditor = !sceneConflict && (phase === 'editing' || phase === 'layout-ready');
   const watermarkImageUrl = watermark.type === 'image' && watermark.assetId
     ? watermarkAssetUrl(projectId, watermark.assetId)
     : '';
   const sceneOperationBusy = sceneReviewOperationIsBusy(operationState());
+  const semanticValidation = bundle.semanticValidation;
+  const semanticFailed = semanticValidation?.status === 'failed';
   const footerTitle = phase === 'motion-stale'
     ? 'Scene không còn khớp với nguồn hiện tại'
     : phase === 'preparing-sync'
@@ -269,7 +311,7 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
         : phase === 'editing'
           ? 'Duyệt bản chỉnh sửa & tiếp tục'
           : 'Xuất video';
-  const primaryDisabled = phase === 'preparing-sync' || sceneOperationBusy || watermarkUploading || !watermarkValid || (phase === 'editing' && (!project.layoutBundle || syncEditor.hasUnsavedChanges));
+  const primaryDisabled = Boolean(semanticFailed) || sceneConflict || phase === 'preparing-sync' || sceneOperationBusy || watermarkUploading || !watermarkValid || (phase === 'editing' && (!project.layoutBundle || syncEditor.hasUnsavedChanges));
 
   function handlePrimaryAction() {
     const action = sceneReviewPrimaryAction(phase);
@@ -297,22 +339,36 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
         <h1>Chỉnh scene theo giọng đọc</h1>
         <p>Chỉnh layer, chữ, vị trí và chuyển động ngay trên scene đã đồng bộ — nghe giọng đọc thật trong lúc chỉnh, rồi duyệt một lần khi hoàn tất.</p>
       </div>
-      {motion.actionError && <p className="submit-error" role="alert">{motion.actionError}</p>}
+      {motion.actionError && <p className="submit-error" role="alert">{motion.actionError}{sceneConflict && <button type="button" onClick={motion.reload}>Tải lại project</button>}</p>}
       {syncEditor.saveError && <p className="submit-error" role="alert">Không lưu được chỉnh sửa scene mới nhất: {syncEditor.saveError}</p>}
+      {semanticValidation && semanticValidation.status !== 'passed' && (
+        <section className="production-operation-status is-error" role={semanticFailed ? 'alert' : 'status'}>
+          <div>
+            <strong>{semanticFailed ? 'Scene chưa thể hiện đầy đủ kế hoạch hình ảnh' : 'Scene đang dùng minh họa giản lược'}</strong>
+            <p>{semanticFailed
+              ? 'Có đối tượng, quan hệ hoặc hành động bắt buộc chưa được liên kết vào hình. Việc xuất video bị chặn cho tới khi sinh/sửa lại scene.'
+              : 'Scene vẫn render và đồng bộ được, nhưng một số cảnh đến từ compiler fallback. Hãy xem hình có truyền đạt đúng bài học trước khi xuất.'}</p>
+            {semanticValidation.scenes.filter(scene => scene.status !== 'passed').map((scene, index) => (
+              <small key={scene.sceneId}>Scene {index + 1}: {Math.round(scene.coverage * 100)}% ý bắt buộc · {scene.fallbackLevel}{scene.missingIntentIds.length ? ` · thiếu ${scene.missingIntentIds.join(', ')}` : ''}</small>
+            ))}
+          </div>
+        </section>
+      )}
       {!showEditor && (phase === 'preparing-sync' || phase === 'motion-stale') && <p className="scene-review-sync-status" role="status">{phase === 'motion-stale' ? 'Scene không còn khớp với nguồn hiện tại; hãy sinh lại ở bước sản xuất.' : 'Đang tự động chuẩn bị scene với giọng đọc đồng bộ. Editor sẽ mở ngay khi hoàn tất.'}</p>}
       <div className="scene-review-grid">
         <section className="scene-review-card">
           <header><span>Chỉnh bằng AI</span><h2>Chỉ sửa scene bạn chọn</h2></header>
-          <div className="scene-review-list">{bundle.scenes.map((scene, index) => <label key={scene.id}><input type="checkbox" disabled={!showEditor} checked={selectedSceneIds.includes(scene.id)} onChange={() => toggle(scene.id)} /><span>{String(index + 1).padStart(2, '0')}</span><strong>{scene.name}</strong><small>{Math.round(scene.durationSeconds)} giây</small></label>)}</div>
-          <textarea rows={4} value={guidance} disabled={!showEditor} onChange={event => setGuidance(event.currentTarget.value)} placeholder="Ví dụ: Làm phần minh họa mảng trực quan hơn, giữ palette và nhịp chuyển động hiện có." />
-          <button className="secondary-button" type="button" disabled={!showEditor || motion.candidateGenerating || selectedSceneIds.length === 0 || guidance.trim().length < 3 || !codex.isTaskReady('motionCanvas')} onClick={() => void createCandidate()}>{motion.candidateGenerating ? 'Đang tạo candidate…' : 'Tạo candidate để so sánh'}</button>
-          {motion.candidate && <section className="scene-review-candidate"><strong>Candidate mới</strong><p>{motion.candidate.coherence.summary}</p>{motion.candidatePreviewState === 'ready' && motion.candidatePreviewUrl && <iframe title="Preview candidate scene" src={motion.candidatePreviewUrl} />}{motion.candidate.decision === 'pending' && <div><button type="button" disabled={motion.candidateApplying || motion.candidate.status === 'coherence_blocked' || motion.candidate.status === 'scope_expansion_required'} onClick={() => applyCandidateWithGuard(phase)}>Áp dụng candidate</button><button type="button" disabled={motion.historyBusy} onClick={() => void motion.rejectCandidate()}>Bỏ candidate</button></div>}</section>}
+          <div className="scene-review-list">{bundle.scenes.map((scene, index) => <label key={scene.id}><input type="checkbox" disabled={!showEditor || sceneMutationRunning || sceneConflict} checked={selectedSceneIds.includes(scene.id)} onChange={() => toggle(scene.id)} /><span>{String(index + 1).padStart(2, '0')}</span><strong>{scene.name}</strong><small>{Math.round(scene.durationSeconds)} giây</small></label>)}</div>
+          <textarea rows={4} value={guidance} disabled={!showEditor || sceneMutationRunning || sceneConflict} onChange={event => setGuidance(event.currentTarget.value)} placeholder="Ví dụ: Làm phần minh họa mảng trực quan hơn, giữ palette và nhịp chuyển động hiện có." />
+          <button className="secondary-button" type="button" disabled={!showEditor || sceneMutationRunning || sceneConflict || selectedSceneIds.length === 0 || guidance.trim().length < 3 || !codex.isTaskReady('motionCanvas')} onClick={() => void createCandidate()}>{candidateStarting || motion.candidateGenerating ? 'Đang tạo candidate…' : 'Tạo candidate để so sánh'}</button>
+          <small>Tạo candidate không đổi scene hiện hành. Chỉ nút “Áp dụng candidate” mới thay source và làm bản đồng bộ/chỉnh sửa phía sau cần tạo lại.</small>
+          {motion.candidate && <section className="scene-review-candidate"><strong>Candidate mới</strong><p>{motion.candidate.coherence.summary}</p>{motion.candidatePreviewState === 'ready' && motion.candidatePreviewUrl && <iframe title="Preview candidate scene" src={motion.candidatePreviewUrl} />}{motion.candidate.decision === 'pending' && <div><button type="button" disabled={sceneMutationRunning || sceneConflict || motion.candidate.status === 'coherence_blocked' || motion.candidate.status === 'scope_expansion_required'} onClick={() => applyCandidateWithGuard(phase)}>Áp dụng candidate</button><button type="button" disabled={sceneMutationRunning || sceneConflict} onClick={() => void motion.rejectCandidate()}>Bỏ candidate</button></div>}</section>}
         </section>
-        <aside className="scene-review-side"><CodexConnectionCard connection={codex} task="motionCanvas" workUnits={selectedSceneIds.length || bundle.scenes.length} /><WatermarkSettings watermark={watermark} uploading={watermarkUploading} error={watermarkUploadError} onChange={next => { setWatermarkUploadError(''); setWatermark(next); }} onUpload={uploadWatermark} /><p>{showEditor ? 'Chỉnh trực tiếp màu sắc, chữ, vị trí và chuyển động ở editor bên dưới — thay đổi được tự lưu.' : 'Watermark sẽ áp dụng khi editor có tiếng sẵn sàng.'}</p></aside>
+        <aside className="scene-review-side"><CodexConnectionCard connection={codex} task="motionCanvas" workUnits={selectedSceneIds.length || bundle.scenes.length} /><WatermarkSettings watermark={watermark} uploading={watermarkUploading} disabled={sceneMutationRunning || sceneConflict} error={watermarkUploadError} onChange={next => { setWatermarkUploadError(''); setWatermark(next); }} onUpload={uploadWatermark} /><p>{showEditor ? 'Màu sắc, chữ, vị trí, chuyển động và watermark được tự lưu. Nếu video đã render, mọi chỉnh sửa mới sẽ yêu cầu render lại.' : 'Watermark sẽ áp dụng khi editor có tiếng sẵn sàng.'}</p></aside>
       </div>
       {showEditor ? (
         <SceneSyncEditor motionCanvas={motion} syncEditor={syncEditor} watermark={watermark} watermarkImageUrl={watermarkImageUrl} />
-      ) : <section className="scene-review-sync-status" aria-live="polite"><span className="spinner dark" /><strong>{phase === 'motion-stale' ? 'Scene cần được sinh lại trước khi mở editor.' : 'Đang mở editor với scene và giọng đọc đồng bộ…'}</strong>{phase === 'preparing-sync' && !syncing && completionMessage && <button className="secondary-button" type="button" onClick={() => { synchronizationAttemptRevision.current = motion.project?.revision ?? null; void prepareSyncedEditor(); }}>Thử lại</button>}</section>}
+      ) : <section className="scene-review-sync-status" aria-live="polite">{!sceneConflict && <span className="spinner dark" />}<strong>{sceneConflict ? 'Project đã thay đổi ở một thao tác khác. Hãy tải lại project trước khi chỉnh tiếp.' : phase === 'motion-stale' ? 'Scene cần được sinh lại trước khi mở editor.' : 'Đang mở editor với scene và giọng đọc đồng bộ…'}</strong>{phase === 'preparing-sync' && !syncing && completionMessage && !sceneConflict && <button className="secondary-button" type="button" onClick={() => { synchronizationAttemptRevision.current = motion.project?.revision ?? null; void prepareSyncedEditor(); }}>Thử lại</button>}</section>}
       <footer className="scene-review-footer"><div><strong>{footerTitle}</strong><p>{footerDescription}</p></div><button className="submit-button" type="button" disabled={primaryDisabled} onClick={handlePrimaryAction}>{syncing ? 'Đang xử lý…' : primaryLabel}</button></footer>
     </main>
   );

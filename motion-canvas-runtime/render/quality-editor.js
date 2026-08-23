@@ -103,7 +103,9 @@ class QualityExporter {
   constructor(options) { this.options = options; }
   async handleFrame(canvas, frame, _sceneFrame, sceneName, signal) {
     if (signal.aborted || frame !== this.options.sample.frame) return;
-    const geometry = globalThis.__padQualityGeometry ?? [];
+    const geometry = globalThis.__padQualityGeometryBySample?.get(
+      this.options.sample.sampleId,
+    ) ?? [];
     const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
     if (!blob) throw new Error('Cannot encode quality PNG.');
     await json(`/__pad-quality/geometry?token=${encodeURIComponent(this.options.token)}`, {sampleId:this.options.sample.sampleId, frame, sceneName, nodes: geometry});
@@ -114,26 +116,51 @@ class QualityExporter {
 async function start(project) {
   const token = new URLSearchParams(location.search).get('token') ?? '';
   const response = await fetch(`/__pad-quality/config?token=${encodeURIComponent(token)}`); if (!response.ok) throw new Error('Cannot load quality configuration.');
-  const config = await response.json(); const renderer = new Renderer(project); let result = RendererResult.Error;
-  const original = renderer.stage.render.bind(renderer.stage);
-  renderer.stage.render = async (current, previous) => {
-    await original(current, previous);
-    globalThis.__padQualityGeometry = snapshot(current, config, globalThis.__padQualitySample);
-  };
-  const dispose = renderer.onFinished.subscribe(value => {result=value;});
+  const config = await response.json();
+  const samples = config.samples ?? [];
+  const workerCount = Math.max(1, Math.min(
+    Number(config.renderConcurrency) || 1,
+    samples.length,
+  ));
+  let nextSampleIndex = 0;
+  globalThis.__padQualityGeometryBySample = new Map();
   try {
     project.meta.rendering.exporter.exporters.push(QualityExporter);
-    for (const sample of config.samples ?? []) {
-      globalThis.__padQualitySample = sample;
-      globalThis.__padQualityGeometry = [];
-      result = RendererResult.Error;
-      await renderer.render({name:'quality',range:rendererRangeFromFrames([sample.frame, sample.frame],config.fps),fps:config.fps,size:new Vector2(config.width,config.height),resolutionScale:1,background:null,colorSpace:'srgb',audioOffset:0,exporter:{name:EXPORTER_ID,options:{token,sample}}});
-      if(result !== RendererResult.Success) throw new Error(`Motion Canvas quality render failed for ${sample.sampleId}.`);
-    }
+    await Promise.all(Array.from({length: workerCount}, async () => {
+      const renderer = new Renderer(project);
+      let result = RendererResult.Error;
+      let currentSample = null;
+      const original = renderer.stage.render.bind(renderer.stage);
+      renderer.stage.render = async (current, previous) => {
+        await original(current, previous);
+        if (currentSample) {
+          globalThis.__padQualityGeometryBySample.set(
+            currentSample.sampleId,
+            snapshot(current, config, currentSample),
+          );
+        }
+      };
+      const dispose = renderer.onFinished.subscribe(value => {result=value;});
+      try {
+        while (true) {
+          const sampleIndex = nextSampleIndex;
+          nextSampleIndex += 1;
+          if (sampleIndex >= samples.length) return;
+          const sample = samples[sampleIndex];
+          currentSample = sample;
+          globalThis.__padQualityGeometryBySample.delete(sample.sampleId);
+          result = RendererResult.Error;
+          await renderer.render({name:'quality',range:rendererRangeFromFrames([sample.frame, sample.frame],config.fps),fps:config.fps,size:new Vector2(config.width,config.height),resolutionScale:1,background:null,colorSpace:'srgb',audioOffset:0,exporter:{name:EXPORTER_ID,options:{token,sample}}});
+          if(result !== RendererResult.Success) throw new Error(`Motion Canvas quality render failed for ${sample.sampleId}.`);
+        }
+      } finally {
+        currentSample = null;
+        dispose();
+      }
+    }));
     await json(`/__pad-quality/status?token=${encodeURIComponent(token)}`,{state:'completed'});
   } finally {
-    globalThis.__padQualitySample = null;
-    dispose();
+    globalThis.__padQualityGeometryBySample = null;
   }
 }
 export function editor(project) {

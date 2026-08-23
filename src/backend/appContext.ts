@@ -59,6 +59,10 @@ import {
   type MotionCanvasGenerator
 } from './motionCanvasGenerator.ts';
 import {
+  createFileMotionCanvasGenerationProgressStore,
+  type MotionCanvasGenerationProgressStore,
+} from './motionCanvasGenerationProgressStore.ts';
+import {
   createFileMotionCanvasHistoryStore,
   type MotionCanvasHistoryStore
 } from './motionCanvasHistoryStore.ts';
@@ -127,6 +131,7 @@ export interface AppOptions {
   narrationDraftGenerator?: NarrationDraftGenerator;
   narrationVisualPlanner?: NarrationVisualPlannerService;
   motionCanvasGenerator?: MotionCanvasGenerator;
+  motionCanvasGenerationProgressStore?: MotionCanvasGenerationProgressStore;
   motionCanvasWorkspace?: MotionCanvasWorkspace;
   motionCanvasVisualQualityGate?: MotionCanvasVisualQualityGate;
   motionCanvasHistoryStore?: MotionCanvasHistoryStore;
@@ -205,10 +210,20 @@ export function createAppContext(options: AppOptions = {}) {
           ),
         }
         : {}),
+      ...(process.env.PAD_MOTION_CANVAS_CONCURRENCY?.trim()
+        ? {
+          concurrency: Number(
+            process.env.PAD_MOTION_CANVAS_CONCURRENCY.trim(),
+          ),
+        }
+        : {}),
     });
   const motionCanvasWorkspace =
     options.motionCanvasWorkspace ??
     createMotionCanvasWorkspace(projectsDirectory);
+  const motionCanvasGenerationProgressStore =
+    options.motionCanvasGenerationProgressStore ??
+    createFileMotionCanvasGenerationProgressStore(projectsDirectory);
   const motionCanvasVisualQualityGate = options.motionCanvasVisualQualityGate ??
     createMotionCanvasVisualQualityGate(createMotionCanvasRuntimeFrameRenderer());
   const motionCanvasHistoryStore =
@@ -349,7 +364,7 @@ export function createAppContext(options: AppOptions = {}) {
     }
   }
 
-  return {options, storedElevenLabsApiKey, projectsDirectory, frontendDirectory, repository, credentialStore, sharedCodexClient, codexConnection, elevenLabsConnection, elevenLabsVoiceService, elevenLabsConnectionFactory, narrationDraftGenerator, narrationVisualPlanner, motionCanvasGenerator, motionCanvasWorkspace, motionCanvasVisualQualityGate, motionCanvasHistoryStore, motionCanvasRevisionReviewService, voiceWorkspace, animationSyncWorkspace, layoutWorkspace, layoutPreviewService, watermarkAssetStore, pronunciationRuleStore, pronunciationAuditService, finalRenderService, runtimeDiagnostics, logger, narrationDraftGenerations, narrationPlanGenerations, motionCanvasGenerations, motionCanvasCandidateGenerations, voiceGenerations, voiceSectionGenerations, animationSyncGenerations, pronunciationAuditGenerations, finalRenderCommits, commitFinalRenderBundle, trackFinalRenderCommit, generateOnce};
+  return {options, storedElevenLabsApiKey, projectsDirectory, frontendDirectory, repository, credentialStore, sharedCodexClient, codexConnection, elevenLabsConnection, elevenLabsVoiceService, elevenLabsConnectionFactory, narrationDraftGenerator, narrationVisualPlanner, motionCanvasGenerator, motionCanvasGenerationProgressStore, motionCanvasWorkspace, motionCanvasVisualQualityGate, motionCanvasHistoryStore, motionCanvasRevisionReviewService, voiceWorkspace, animationSyncWorkspace, layoutWorkspace, layoutPreviewService, watermarkAssetStore, pronunciationRuleStore, pronunciationAuditService, finalRenderService, runtimeDiagnostics, logger, narrationDraftGenerations, narrationPlanGenerations, motionCanvasGenerations, motionCanvasCandidateGenerations, voiceGenerations, voiceSectionGenerations, animationSyncGenerations, pronunciationAuditGenerations, finalRenderCommits, commitFinalRenderBundle, trackFinalRenderCommit, generateOnce};
 }
 
 export type AppContext = ReturnType<typeof createAppContext>;

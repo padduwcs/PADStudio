@@ -48,6 +48,11 @@ async function navigationGuardsAllow() {
   return true;
 }
 
+/** Used before destructive actions which do not navigate until after commit. */
+export function requestNavigationPermission() {
+  return navigationGuardsAllow();
+}
+
 function commitNavigation(pathname: string, replace: boolean) {
   navigationRequestRevision++;
   const currentIndex = ensureCurrentHistoryIndex();

@@ -29,6 +29,7 @@ import {
   registerNavigationGuard,
 } from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
+import {useWorkflowOperationGuard} from './useWorkflowOperationGuard.ts';
 import {
   notifyTaskCompleted,
   prepareTaskCompletionNotifications,
@@ -195,6 +196,12 @@ export function ContentPage({projectId}: {projectId?: string}) {
     state !== 'loading' &&
     (JSON.stringify(form) !== JSON.stringify(savedForm) ||
       narrationGuidance.trim().length > 0);
+  const contentOperationBusy =
+    state === 'saving' || narrationGenerating || openingPronunciation;
+  const allowNextWorkflowNavigation = useWorkflowOperationGuard(
+    contentOperationBusy,
+    'PAD Studio đang lưu hoặc tạo nội dung. Hãy chờ tác vụ hoàn tất trước khi chuyển bước hay đổi project.',
+  );
 
   useEffect(() => {
     if (state === 'loading') return;
@@ -212,6 +219,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
   useEffect(() => {
     if (!hasUnsavedChanges) return;
     return registerNavigationGuard(() => {
+      if (contentOperationBusy) return true;
       if (skipNextNavigationGuardRef.current) {
         skipNextNavigationGuardRef.current = false;
         return true;
@@ -220,7 +228,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
         'Nội dung đang nhập chưa được lưu vào project. Bản nháp đã được giữ trong tab này. Bạn có muốn rời trang?',
       );
     });
-  }, [hasUnsavedChanges]);
+  }, [contentOperationBusy, hasUnsavedChanges]);
 
   useEffect(() => {
     if (!hasUnsavedChanges) return;
@@ -238,7 +246,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
   }
 
   async function openPronunciation() {
-    if (!project || openingPronunciation) return;
+    if (!project || contentOperationBusy) return;
     if (hasUnsavedChanges) {
       setError('Hãy lưu nội dung đang chỉnh sửa trước khi chuyển sang bước cách đọc.');
       return;
@@ -258,6 +266,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
         );
         setProject(current);
       }
+      allowNextWorkflowNavigation();
       navigate(projectPronunciationPath(current.id));
     } catch (reason) {
       setError(reason instanceof ApiRequestError
@@ -269,7 +278,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
   }
 
   async function createNarrationDraft() {
-    if (narrationGenerating) return;
+    if (contentOperationBusy) return;
     const topicInput = buildTopicInput(form);
     if (!topicInput.success) {
       setNarrationGenerationError(
@@ -321,6 +330,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (contentOperationBusy) return;
     const topicInput = buildTopicInput(form);
     const encodingIssue =
       textEncodingIssue(form.topic) ??
@@ -339,6 +349,31 @@ export function ContentPage({projectId}: {projectId?: string}) {
       setState('error');
       return;
     }
+    const topicChanged = Boolean(
+      project &&
+      JSON.stringify(topicInput.data) !== JSON.stringify(project.topicInput),
+    );
+    const narrationChanged = Boolean(
+      project &&
+      form.narrationSourceText.trim() !== project.narration?.sourceText,
+    );
+    const hasGeneratedOutput = Boolean(
+      project?.voiceBundle ||
+      project?.motionCanvasBundle ||
+      project?.animationSyncBundle ||
+      project?.layoutBundle ||
+      project?.renderBundle,
+    );
+    if (
+      project &&
+      hasGeneratedOutput &&
+      (topicChanged || narrationChanged) &&
+      !window.confirm(
+        narrationChanged
+          ? 'Lưu lời thoại mới sẽ yêu cầu duyệt lại cách đọc và làm audio, scene, đồng bộ, bản chỉnh sửa cùng video hiện tại hết hiệu lực. Các file cũ vẫn được giữ trong workspace. Tiếp tục?'
+          : 'Lưu thiết lập đầu vào mới sẽ làm kế hoạch hình ảnh, scene, đồng bộ, bản chỉnh sửa và video hiện tại hết hiệu lực. Audio được giữ nếu lời thoại và timeline không đổi. Tiếp tục?',
+      )
+    ) return;
     setState('saving');
     setError('');
     try {
@@ -350,8 +385,6 @@ export function ContentPage({projectId}: {projectId?: string}) {
           narrationSourceText: form.narrationSourceText.trim(),
         });
       } else {
-        const topicChanged = JSON.stringify(topicInput.data) !== JSON.stringify(project.topicInput);
-        const narrationChanged = form.narrationSourceText.trim() !== project.narration?.sourceText;
         saved = topicChanged
           ? await updateTopicProject(project.id, {topicInput: topicInput.data}, project.revision)
           : project;
@@ -373,6 +406,7 @@ export function ContentPage({projectId}: {projectId?: string}) {
       setState('saved');
       if (!project) {
         skipNextNavigationGuardRef.current = true;
+        allowNextWorkflowNavigation();
         navigate(projectContentPath(saved.id), true);
       }
     } catch (reason) {
@@ -398,31 +432,31 @@ export function ContentPage({projectId}: {projectId?: string}) {
       <form className="content-form" onSubmit={submit} noValidate>
         <section className="content-field">
           <span>Chủ đề</span>
-          <textarea autoFocus rows={2} value={form.topic} placeholder="Ví dụ: Vì sao tìm kiếm nhị phân nhanh hơn?" onChange={event => update('topic', event.currentTarget.value)} />
+          <textarea autoFocus rows={2} value={form.topic} disabled={contentOperationBusy} placeholder="Ví dụ: Vì sao tìm kiếm nhị phân nhanh hơn?" onChange={event => update('topic', event.currentTarget.value)} />
         </section>
         <div className="content-settings">
           <label className="content-field color-field">
             <span>Background</span>
-            <div><input type="color" value={form.backgroundColor} onChange={event => update('backgroundColor', event.currentTarget.value.toUpperCase())} /><code>{form.backgroundColor.toUpperCase()}</code></div>
+            <div><input type="color" value={form.backgroundColor} disabled={contentOperationBusy} onChange={event => update('backgroundColor', event.currentTarget.value.toUpperCase())} /><code>{form.backgroundColor.toUpperCase()}</code></div>
             <small>{form.backgroundColor.toUpperCase() === defaultVideoBackground.color ? 'Đây là màu mặc định đã chọn sẵn (đen), không phải ô trống — bấm để đổi.' : 'Màu nền cho toàn bộ video.'}</small>
           </label>
           <fieldset className="content-field frame-field">
             <legend>Khung hình</legend>
             <div className="frame-presets">
-              {framePresets.map(preset => <button key={preset.label} type="button" className={sameFrame(form.frame, preset.frame) ? 'is-selected' : ''} onClick={() => update('frame', preset.frame)}>{preset.label}</button>)}
-              <button type="button" className={!isPresetFrame(form.frame) ? 'is-selected' : ''} onClick={() => update('frame', {...form.frame, aspectRatio: 'custom'})}>Tùy chỉnh</button>
+              {framePresets.map(preset => <button key={preset.label} type="button" disabled={contentOperationBusy} className={sameFrame(form.frame, preset.frame) ? 'is-selected' : ''} onClick={() => update('frame', preset.frame)}>{preset.label}</button>)}
+              <button type="button" disabled={contentOperationBusy} className={!isPresetFrame(form.frame) ? 'is-selected' : ''} onClick={() => update('frame', {...form.frame, aspectRatio: 'custom'})}>Tùy chỉnh</button>
             </div>
             <div className="frame-details">
-              {form.frame.aspectRatio === 'custom' ? <><label>Rộng <input type="number" min={480} max={3840} step={2} value={form.frame.width} onChange={event => update('frame', {...form.frame, width: event.currentTarget.valueAsNumber})} /></label><span>×</span><label>Cao <input type="number" min={480} max={3840} step={2} value={form.frame.height} onChange={event => update('frame', {...form.frame, height: event.currentTarget.valueAsNumber})} /></label></> : <span>{form.frame.width} × {form.frame.height}</span>}
-              <label>FPS <select value={form.frame.fps} onChange={event => update('frame', {...form.frame, fps: Number(event.currentTarget.value) as VideoFrame['fps']})}><option value={24}>24</option><option value={30}>30</option><option value={60}>60</option></select></label>
+              {form.frame.aspectRatio === 'custom' ? <><label>Rộng <input type="number" min={480} max={3840} step={2} value={form.frame.width} disabled={contentOperationBusy} onChange={event => update('frame', {...form.frame, width: event.currentTarget.valueAsNumber})} /></label><span>×</span><label>Cao <input type="number" min={480} max={3840} step={2} value={form.frame.height} disabled={contentOperationBusy} onChange={event => update('frame', {...form.frame, height: event.currentTarget.valueAsNumber})} /></label></> : <span>{form.frame.width} × {form.frame.height}</span>}
+              <label>FPS <select value={form.frame.fps} disabled={contentOperationBusy} onChange={event => update('frame', {...form.frame, fps: Number(event.currentTarget.value) as VideoFrame['fps']})}><option value={24}>24</option><option value={30}>30</option><option value={60}>60</option></select></label>
             </div>
           </fieldset>
           <fieldset className="content-field duration-field">
             <legend>Thời lượng mục tiêu</legend>
             <div className="frame-presets">
-              {durationOptions.map(option => <button key={option.value} type="button" className={form.duration === option.value ? 'is-selected' : ''} onClick={() => update('duration', option.value)}>{option.label}</button>)}
+              {durationOptions.map(option => <button key={option.value} type="button" disabled={contentOperationBusy} className={form.duration === option.value ? 'is-selected' : ''} onClick={() => update('duration', option.value)}>{option.label}</button>)}
             </div>
-            {form.duration === 'custom' && <label className="custom-duration-control">Mục tiêu <input type="number" min={pipelineSafetyLimits.minimumCustomDurationMinutes} max={pipelineSafetyLimits.maximumCustomDurationMinutes} step="0.1" value={Number.isFinite(form.targetDurationMinutes) ? form.targetDurationMinutes : ''} onChange={event => update('targetDurationMinutes', event.currentTarget.valueAsNumber)} /> phút <small>Mục tiêu linh hoạt ±15% để lời thoại tự nhiên.</small></label>}
+            {form.duration === 'custom' && <label className="custom-duration-control">Mục tiêu <input type="number" min={pipelineSafetyLimits.minimumCustomDurationMinutes} max={pipelineSafetyLimits.maximumCustomDurationMinutes} step="0.1" value={Number.isFinite(form.targetDurationMinutes) ? form.targetDurationMinutes : ''} disabled={contentOperationBusy} onChange={event => update('targetDurationMinutes', event.currentTarget.valueAsNumber)} /> phút <small>Mục tiêu linh hoạt ±15% để lời thoại tự nhiên.</small></label>}
             <small>Chỉ dùng để định hướng AI soạn lời thoại bên dưới. Nếu bạn tự viết hoặc dán lời thoại, độ dài thật của video sẽ theo đúng nội dung đó, không theo lựa chọn này.</small>
           </fieldset>
         </div>
@@ -431,14 +465,14 @@ export function ContentPage({projectId}: {projectId?: string}) {
           <small>Đây là nội dung bạn muốn nói. Khi sang bước tiếp theo, hệ thống chỉ tự dọn dòng trống và khoảng trắng; mọi quy tắc cách đọc vẫn chờ bạn áp dụng.</small>
           <details className="content-narration-assist">
             <summary><span><strong>Chưa có lời thoại? Tạo nháp bằng AI</strong><small>Tùy chọn — nếu đã chuẩn bị kỹ, chỉ cần dán lời thoại của bạn và bỏ qua phần này.</small></span><em className={codex.status?.state === 'connected' ? 'is-connected' : ''}>{aiConnectionLabel}</em></summary>
-            <label><span>Gợi ý cho AI <small>Không bắt buộc</small></span><textarea rows={3} value={narrationGuidance} disabled={narrationGenerating} placeholder="Ví dụ: giải thích cho người mới, ưu tiên ví dụ đời thường, khoảng ba phút." onChange={event => setNarrationGuidance(event.currentTarget.value)} /></label>
+            <label><span>Gợi ý cho AI <small>Không bắt buộc</small></span><textarea rows={3} value={narrationGuidance} disabled={contentOperationBusy} placeholder="Ví dụ: giải thích cho người mới, ưu tiên ví dụ đời thường, khoảng ba phút." onChange={event => setNarrationGuidance(event.currentTarget.value)} /></label>
             <CodexConnectionCard connection={codex} task="narration" />
             <div className="narration-assist-actions">
               <button className="secondary-button" type="button" disabled={narrationGenerating || !codex.isTaskReady('narration') || form.topic.trim().length < 6} onClick={() => void createNarrationDraft()}>{narrationGenerating ? 'Đang soạn lời thoại…' : form.narrationSourceText.trim() ? 'Tạo bản nháp thay thế' : 'Để AI soạn lời thoại'}</button>
             </div>
             {narrationGenerationError && <p className="field-error" role="alert">{narrationGenerationError}</p>}
           </details>
-          <textarea className="narration-input" rows={15} value={form.narrationSourceText} placeholder="Dán hoặc viết toàn bộ lời thoại tại đây…" onChange={event => update('narrationSourceText', event.currentTarget.value)} />
+          <textarea className="narration-input" rows={15} value={form.narrationSourceText} disabled={contentOperationBusy} placeholder="Dán hoặc viết toàn bộ lời thoại tại đây…" onChange={event => update('narrationSourceText', event.currentTarget.value)} />
           <em>
             {form.narrationSourceText.trim().length.toLocaleString('vi-VN')} ký tự
             {form.narrationSourceText.trim() && ` · ước tính video dài ~${formatEstimatedDuration(estimateNarrationSeconds(form.narrationSourceText))}`}
@@ -448,8 +482,8 @@ export function ContentPage({projectId}: {projectId?: string}) {
         <footer className="content-actions">
           <p>{state === 'saved' ? 'Đã lưu. Bước tiếp theo sẽ là duyệt cách đọc.' : 'Lời thoại được lưu cục bộ trong project của bạn.'}</p>
           <div className="content-action-buttons">
-            <button className="submit-button" type="submit" disabled={state === 'saving'}>{state === 'saving' ? 'Đang lưu…' : project ? 'Lưu đầu vào' : 'Tạo project'}</button>
-            {project && <button className="secondary-button" type="button" disabled={openingPronunciation || state === 'saving'} onClick={() => void openPronunciation()}>{openingPronunciation ? 'Đang chuẩn bị…' : 'Chuẩn hóa cách đọc'}</button>}
+            <button className="submit-button" type="submit" disabled={contentOperationBusy || Boolean(project && !hasUnsavedChanges)}>{state === 'saving' ? 'Đang lưu…' : project ? 'Lưu đầu vào' : 'Tạo project'}</button>
+            {project && <button className="secondary-button" type="button" disabled={contentOperationBusy} onClick={() => void openPronunciation()}>{openingPronunciation ? 'Đang chuẩn bị…' : 'Chuẩn hóa cách đọc'}</button>}
           </div>
         </footer>
       </form>

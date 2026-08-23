@@ -12,7 +12,7 @@ import {
   TrashIcon,
   XIcon,
 } from './icons.tsx';
-import {projectStepLabel} from './router.ts';
+import {projectStepLabel, requestNavigationPermission} from './router.ts';
 
 const durationLabels: Record<TopicProject['topicInput']['duration'], string> = {
   concise: '1–2 phút',
@@ -111,6 +111,11 @@ export function ProjectLibrary({
   }, [onClose, open]);
 
   async function handleDelete(project: TopicProject) {
+    if (deletingId) return;
+    if (
+      activeProjectId === project.id &&
+      !(await requestNavigationPermission())
+    ) return;
     setDeletingId(project.id);
     setError('');
 
@@ -184,6 +189,7 @@ export function ProjectLibrary({
         <button
           className="new-project-button"
           type="button"
+          disabled={deletingId !== null}
           onClick={onCreate}
         >
           <PlusIcon />
@@ -239,6 +245,7 @@ export function ProjectLibrary({
                 <button
                   className="project-card-main"
                   type="button"
+                  disabled={deletingId !== null}
                   onClick={() => onOpenProject(project)}
                 >
                   <span className="project-step">
@@ -279,6 +286,7 @@ export function ProjectLibrary({
                   <div className="project-card-actions">
                     <button
                       type="button"
+                      disabled={deletingId !== null}
                       onClick={() => onEditProject(project)}
                     >
                       Chỉnh đầu vào
@@ -286,6 +294,7 @@ export function ProjectLibrary({
                     <button
                       className="danger-action"
                       type="button"
+                      disabled={deletingId !== null}
                       aria-label={`Xóa ${project.topicInput.topic}`}
                       onClick={() => setConfirmingId(project.id)}
                     >

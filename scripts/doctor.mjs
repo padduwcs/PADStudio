@@ -83,6 +83,7 @@ export function createDoctorReport({
     ffmpegPath: environment.FFMPEG_PATH,
     ffprobePath: environment.FFPROBE_PATH,
     browserPath: environment.PAD_RENDER_BROWSER_PATH,
+    repositoryRoot,
   });
   const browser = environment.PAD_RENDER_BROWSER_PATH?.trim()
     ? environment.PAD_RENDER_BROWSER_PATH.trim()

@@ -17,11 +17,12 @@ import {
 import {
   getProjectProductionRoute
 } from './projectRoutes.ts';
+import {voiceMatchesPlan} from './projectConsistency.ts';
 
 import type {AppContext} from './appContext.ts';
 import {RequestBodyError, sendApiError} from './appErrors.ts';
 import {readExpectedRevision, readJsonBody, sendProject, validationFields} from './httpTransport.ts';
-const PrepareNarrationProductionSchema = z.object({generationId: z.string().uuid(), plannerModel: z.string().trim().min(1).max(160).optional(), plannerReasoningEffort: CodexReasoningEffortSchema.optional()}).strict();
+const PrepareNarrationProductionSchema = z.object({generationId: z.string().uuid(), plannerModel: z.string().trim().min(1).max(160).optional(), plannerReasoningEffort: CodexReasoningEffortSchema.optional(), forceVisualReplan: z.boolean().optional()}).strict();
 
 import type {ApiRouteHandler} from './routeTypes.ts';
 
@@ -52,7 +53,7 @@ export function createProductionRouteHandler(context: ProductionRouteContext): A
         });
         return true;
       }
-      if (narrationArtifactsMatchReview(currentProject)) {
+      if (!parsed.data.forceVisualReplan && narrationArtifactsMatchReview(currentProject)) {
         sendProject(response, 200, currentProject);
         return true;
       }
@@ -70,11 +71,26 @@ export function createProductionRouteHandler(context: ProductionRouteContext): A
         );
       }
       const generationId = parsed.data.generationId.toLowerCase();
+      const preserveTimeline =
+        currentProject.voiceBundle &&
+        currentProject.outline &&
+        currentProject.voiceVisualPlan &&
+        voiceMatchesPlan(currentProject.voiceBundle, currentProject.voiceVisualPlan)
+          ? {
+              outline: currentProject.outline,
+              voiceVisualPlan: currentProject.voiceVisualPlan,
+            }
+          : null;
       const planFingerprint = hashJson({
         topicInput: currentProject.topicInput,
         narrationSourceHash: narration.review.sourceHash,
         plannerModel: parsed.data.plannerModel ?? null,
         plannerReasoningEffort: parsed.data.plannerReasoningEffort ?? null,
+        forceVisualReplan: parsed.data.forceVisualReplan ?? false,
+        previousVisualPlanContentRevision: currentProject.voiceVisualPlan?.contentRevision ?? null,
+        preservedVoiceGenerationId: preserveTimeline
+          ? currentProject.voiceBundle!.generation.generationId
+          : null,
       });
       let artifacts;
       try {
@@ -89,6 +105,7 @@ export function createProductionRouteHandler(context: ProductionRouteContext): A
             generationId,
             now: new Date().toISOString(),
             previousPlan: currentProject.voiceVisualPlan,
+            preserveTimeline,
             model: parsed.data.plannerModel,
             reasoningEffort: parsed.data.plannerReasoningEffort,
             timingCalibration: (await preferredNarrationCalibration(repository)) ?? DEFAULT_TIMING_CALIBRATION,
@@ -121,4 +138,3 @@ export function createProductionRouteHandler(context: ProductionRouteContext): A
     return false;
   };
 }
-

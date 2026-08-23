@@ -388,6 +388,8 @@ export function SceneSyncEditor({
   useEffect(() => {
     layoutCurrentRef.current = syncEditor.ready;
   }, [syncEditor.ready]);
+  const watermarkRef = useRef(watermark);
+  watermarkRef.current = watermark;
 
   const persistPendingRef = useRef<() => void>(() => {});
   const persistPending = useCallback(() => {
@@ -399,7 +401,7 @@ export function SceneSyncEditor({
       .then(async () => {
         const savedProject = await syncEditor.saveDesign(
           overrides,
-          {watermark},
+          {watermark: watermarkRef.current},
           sessionNonce,
         );
         if (!savedProject && !pendingOverridesRef.current) {
@@ -410,7 +412,7 @@ export function SceneSyncEditor({
         }
         if (pendingOverridesRef.current) persistPendingRef.current();
       });
-  }, [sessionNonce, syncEditor, watermark]);
+  }, [sessionNonce, syncEditor]);
   useEffect(() => {
     persistPendingRef.current = persistPending;
   }, [persistPending]);
@@ -423,8 +425,8 @@ export function SceneSyncEditor({
   const watermarkAppliedRef = useRef(watermark);
   useEffect(() => {
     if (watermarkEqual(watermarkAppliedRef.current, watermark)) return;
-    watermarkAppliedRef.current = watermark;
     if (!manifestStoredRef.current || !documentRef.current) return;
+    watermarkAppliedRef.current = watermark;
     pendingOverridesRef.current = documentRef.current.overrides;
     persistPendingRef.current();
   }, [watermark]);
@@ -518,9 +520,19 @@ export function SceneSyncEditor({
             return;
           }
           manifestStoredRef.current = true;
+          const watermarkChanged = !watermarkEqual(
+            watermarkAppliedRef.current,
+            watermarkRef.current,
+          );
+          if (watermarkChanged) {
+            watermarkAppliedRef.current = watermarkRef.current;
+          }
           // Opening the editor with zero edits must still produce a
           // layoutBundle — otherwise "approve" stays blocked forever.
-          if (!pendingOverridesRef.current && !layoutCurrentRef.current) {
+          if (
+            !pendingOverridesRef.current &&
+            (!layoutCurrentRef.current || watermarkChanged)
+          ) {
             pendingOverridesRef.current = documentRef.current?.overrides ?? [];
           }
           persistPendingRef.current();

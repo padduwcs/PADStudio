@@ -50,6 +50,14 @@ export function useSyncSceneEditor(
   const syncReady = project ? layoutPrerequisitesAreReady(project) : false;
 
   useEffect(() => {
+    setSaveState('idle');
+    setSaveError('');
+    setApproving(false);
+    setConflict(false);
+    saveChainRef.current = Promise.resolve();
+  }, [projectId, syncGenerationId]);
+
+  useEffect(() => {
     let active = true;
     if (!syncGenerationId || !syncReady) {
       setPreviewState('idle');

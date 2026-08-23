@@ -24,6 +24,7 @@ import {
 import {
   MotionCanvasVisualQualityError,
   assertVisualValidationCurrent,
+  buildMotionCanvasSemanticValidation,
   formatVisualQualityRetryGuidance,
   visualValidationIsReusable,
 } from './motionCanvasVisualQuality.ts';
@@ -102,7 +103,15 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
     const lifecycleFor = (scenes: Array<{outlineSectionId: string}>) => new Map(
       scenes.flatMap(scene => {
         const section = voiceVisualPlan.sections.find(item => item.outlineSectionId === scene.outlineSectionId);
-        return (section?.beats ?? []).map(beat => [beat.id, {stay: beat.visualLifecycle!.stay, primaryBlock: beat.primaryBlock, compositionContract: beat.compositionContract}] as const);
+        return (section?.beats ?? []).map(beat => [beat.id, {
+          stay: beat.visualLifecycle!.stay,
+          primaryBlock: beat.primaryBlock,
+          compositionContract: beat.compositionContract,
+          visualDescription: beat.visualDescription,
+          visualPurpose: beat.visualPurpose,
+          animationDescription: beat.animationDescription,
+          visualIntent: beat.visualIntent,
+        }] as const);
       }),
     );
     const handoffFor = (scenes: Array<{id: string; outlineSectionId: string}>) => new Map(
@@ -611,6 +620,10 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
         scenes: prepared.scenes,
         validation: prepared.validation,
         visualValidation: generation.result.visualValidation,
+        semanticValidation: buildMotionCanvasSemanticValidation(
+          generation.result.prepared.sourceScenes,
+          voiceVisualPlan,
+        ),
         generation: {
           generationId,
           provider: 'codex',
@@ -790,6 +803,10 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
         contentRevision: bundle.contentRevision + 1,
         sourceVoiceVisualContentRevision: voiceVisualPlan.contentRevision,
         visualValidation: candidateVisualValidation,
+        semanticValidation: buildMotionCanvasSemanticValidation(
+          candidateSources,
+          voiceVisualPlan,
+        ),
       };
       const updatedProject = await repository.updateProject(
         currentProject.id,
@@ -922,6 +939,10 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
           scenes: prepared.scenes,
           validation: prepared.validation,
           visualValidation,
+          semanticValidation: buildMotionCanvasSemanticValidation(
+            prepared.sourceScenes,
+            voiceVisualPlan,
+          ),
           generation: {
             ...sourceVersion.artifact.generation,
             generationId: restoreGenerationId,

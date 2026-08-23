@@ -83,6 +83,20 @@ export function reconcileProjectState(
   const narrationChanged =
     change.narration !== undefined &&
     !sameValue(change.narration, currentProject.narration);
+  const nextNarration =
+    change.narration !== undefined
+      ? change.narration
+      : currentProject.narration;
+  // Proposals, audit notes and approval timestamps do not change the audio
+  // source. Only source/normalized text changes invalidate generated voice.
+  const narrationSourceChanged = Boolean(
+    narrationChanged &&
+      (
+        nextNarration?.sourceText !== currentProject.narration?.sourceText ||
+        nextNarration?.review?.sourceHash !==
+          currentProject.narration?.review?.sourceHash
+      ),
+  );
   const nextOutline =
     change.outline ??
     (topicChanged && currentProject.outline
@@ -91,7 +105,7 @@ export function reconcileProjectState(
   const outlineChanged = !sameValue(nextOutline, currentProject.outline);
   const nextVoiceVisualPlan =
     change.voiceVisualPlan ??
-    ((topicChanged || narrationChanged || outlineChanged) && currentProject.voiceVisualPlan
+    ((topicChanged || narrationSourceChanged || outlineChanged) && currentProject.voiceVisualPlan
       ? {...currentProject.voiceVisualPlan, status: 'draft' as const}
       : currentProject.voiceVisualPlan);
   const voiceVisualContentChanged =
@@ -99,7 +113,7 @@ export function reconcileProjectState(
     currentProject.voiceVisualPlan?.contentRevision;
   const nextMotionCanvasBundle =
     change.motionCanvasBundle ??
-    ((topicChanged || narrationChanged || outlineChanged || voiceVisualContentChanged) &&
+    ((topicChanged || narrationSourceChanged || outlineChanged || voiceVisualContentChanged) &&
     currentProject.motionCanvasBundle
       ? {...currentProject.motionCanvasBundle, status: 'draft' as const}
       : currentProject.motionCanvasBundle);
@@ -110,7 +124,7 @@ export function reconcileProjectState(
   );
   const nextVoiceBundle =
     change.voiceBundle ??
-    ((topicChanged || narrationChanged || outlineChanged || voiceSourceChanged) &&
+    ((narrationSourceChanged || voiceSourceChanged) &&
     currentProject.voiceBundle
       ? {...currentProject.voiceBundle, status: 'draft' as const}
       : currentProject.voiceBundle);

@@ -24,6 +24,7 @@ import {
   registerNavigationGuard,
 } from './router.ts';
 import {useCodexConnection} from './useCodexConnection.ts';
+import {useWorkflowOperationGuard} from './useWorkflowOperationGuard.ts';
 import {
   notifyTaskCompleted,
   prepareTaskCompletionNotifications,
@@ -71,11 +72,13 @@ function sameRules(left: readonly PronunciationRule[], right: readonly Pronuncia
 function RuleList({
   title,
   rules,
+  disabled,
   onEdit,
   onRemove,
 }: {
   title: string;
   rules: PronunciationRule[];
+  disabled: boolean;
   onEdit: (rule: PronunciationRule) => void;
   onRemove: (rule: PronunciationRule) => void;
 }) {
@@ -84,8 +87,8 @@ function RuleList({
       <header><strong>{title}</strong><span>{rules.length}</span></header>
       {rules.length === 0 ? <p>Chưa có quy tắc.</p> : <ul>{rules.map(rule => (
         <li key={rule.id}>
-          <button type="button" className="rule-main" onClick={() => onEdit(rule)}><code>{rule.source}</code><span>→</span><strong>{rule.spoken}</strong></button>
-          <button type="button" className="rule-remove" aria-label={`Xóa quy tắc ${rule.source}`} onClick={() => onRemove(rule)}><TrashIcon /></button>
+          <button type="button" className="rule-main" disabled={disabled} onClick={() => onEdit(rule)}><code>{rule.source}</code><span>→</span><strong>{rule.spoken}</strong></button>
+          <button type="button" className="rule-remove" disabled={disabled} aria-label={`Xóa quy tắc ${rule.source}`} onClick={() => onRemove(rule)}><TrashIcon /></button>
         </li>
       ))}</ul>}
     </section>
@@ -192,6 +195,15 @@ export function NarrationPage({projectId}: {projectId: string}) {
   const approved = Boolean(
     !needsSave && narration?.review && narration.approvedSourceHash === narration.review.sourceHash,
   );
+  const narrationOperationBusy =
+    ruleSaving ||
+    state === 'saving' ||
+    state === 'auditing' ||
+    state === 'approving';
+  useWorkflowOperationGuard(
+    narrationOperationBusy,
+    'PAD Studio đang lưu, rà soát hoặc duyệt cách đọc. Hãy chờ tác vụ hoàn tất trước khi chuyển bước hay đổi project.',
+  );
 
   useEffect(() => {
     if (!hasRuleDraft(draft)) {
@@ -204,14 +216,12 @@ export function NarrationPage({projectId}: {projectId: string}) {
   useEffect(() => {
     if (!hasPendingChanges) return;
     return registerNavigationGuard(() => {
-      if (ruleSaving || state === 'saving' || state === 'auditing' || state === 'approving') {
-        return false;
-      }
+      if (narrationOperationBusy) return true;
       return window.confirm(
         'Cách đọc đang có thay đổi chưa được chốt. Bản nháp quy tắc đã được giữ trong tab này. Bạn có muốn rời trang?',
       );
     });
-  }, [hasPendingChanges, ruleSaving, state]);
+  }, [hasPendingChanges, narrationOperationBusy]);
 
   useEffect(() => {
     if (!hasPendingChanges) return;
@@ -254,6 +264,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
   }
 
   function applySuggestion() {
+    if (narrationOperationBusy) return;
     if (
       textDirty &&
       !window.confirm('Áp dụng đề xuất sẽ thay thế các chỉnh sửa thủ công chưa lưu trong ô cách đọc. Bạn có muốn tiếp tục?')
@@ -265,7 +276,14 @@ export function NarrationPage({projectId}: {projectId: string}) {
   }
 
   async function saveSnapshot() {
-    if (!project || !narration) return null;
+    if (!project || !narration || narrationOperationBusy) return null;
+    if (
+      project.voiceBundle &&
+      editableText !== savedText &&
+      !window.confirm(
+        'Lưu thay đổi trong bản đọc sẽ làm audio, kế hoạch hình ảnh, scene, đồng bộ, bản chỉnh sửa và video hiện tại hết hiệu lực. Các file cũ vẫn được giữ trong workspace. Tiếp tục?',
+      )
+    ) return null;
     setState('saving');
     setMessage('');
     try {
@@ -290,6 +308,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
   }
 
   async function runAudit() {
+    if (narrationOperationBusy) return;
     let current = project;
     if (!current || !narration) return;
     prepareTaskCompletionNotifications();
@@ -331,7 +350,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
   }
 
   async function approve() {
-    if (!project || !narration?.review) return;
+    if (!project || !narration?.review || narrationOperationBusy) return;
     if (needsSave) {
       setMessage('Hãy lưu bản đọc đang xem trước khi duyệt.');
       return;
@@ -353,6 +372,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
   }
 
   async function saveRule() {
+    if (narrationOperationBusy) return;
     const source = draft.source.trim();
     const spoken = draft.spoken.trim();
     if (!source || !spoken) {
@@ -389,6 +409,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
   }
 
   async function removeRule(rule: PronunciationRule) {
+    if (narrationOperationBusy) return;
     setRuleSaving(true);
     setMessage('');
     try {
@@ -430,7 +451,7 @@ export function NarrationPage({projectId}: {projectId: string}) {
               rows={15}
               maxLength={1_500_000}
               value={editableText}
-              disabled={state === 'saving' || state === 'auditing' || state === 'approving'}
+              disabled={narrationOperationBusy}
               onChange={event => setEditableText(event.currentTarget.value)}
             />
             <small>{editableText.trim().length.toLocaleString('vi-VN')} ký tự · thay đổi chỉ được lưu khi bạn bấm “Lưu bản đọc”</small>
@@ -439,25 +460,25 @@ export function NarrationPage({projectId}: {projectId: string}) {
             ? <DiffPreview before={editableText} after={suggestedText} title="Thay đổi được đề xuất (chưa áp dụng)" />
             : null}
           <div className="pronunciation-actions">
-            <button className="secondary-button" type="button" disabled={!suggestionPending || state === 'saving' || state === 'auditing' || state === 'approving'} onClick={applySuggestion}>Áp dụng đề xuất</button>
-            <button className="secondary-button" type="button" disabled={!needsSave || !editableText.trim() || state === 'saving' || state === 'auditing'} onClick={() => void saveSnapshot()}>{state === 'saving' ? 'Đang lưu…' : 'Lưu bản đọc'}</button>
-            <button className="secondary-button" type="button" disabled={state === 'auditing' || state === 'saving'} onClick={() => void runAudit()}>{state === 'auditing' ? 'AI đang rà soát…' : <><SparkIcon /> Rà soát bằng AI</>}</button>
-            <button className="submit-button" type="button" disabled={needsSave || state === 'approving'} onClick={() => void approve()}>{state === 'approving' ? 'Đang duyệt…' : 'Duyệt voice'}</button>
-            {approved && <button className="secondary-button" type="button" onClick={() => navigate(projectProductionPath(projectId))}>Tạo audio & scene</button>}
+            <button className="secondary-button" type="button" disabled={!suggestionPending || narrationOperationBusy} onClick={applySuggestion}>Áp dụng đề xuất</button>
+            <button className="secondary-button" type="button" disabled={!needsSave || !editableText.trim() || narrationOperationBusy} onClick={() => void saveSnapshot()}>{state === 'saving' ? 'Đang lưu…' : 'Lưu bản đọc'}</button>
+            <button className="secondary-button" type="button" disabled={narrationOperationBusy} onClick={() => void runAudit()}>{state === 'auditing' ? 'AI đang rà soát…' : <><SparkIcon /> Rà soát bằng AI</>}</button>
+            <button className="submit-button" type="button" disabled={approved || needsSave || narrationOperationBusy} onClick={() => void approve()}>{state === 'approving' ? 'Đang duyệt…' : approved ? 'Voice đã duyệt' : 'Duyệt voice'}</button>
+            {approved && <button className="secondary-button" type="button" disabled={narrationOperationBusy} onClick={() => navigate(projectProductionPath(projectId))}>Tạo audio & scene</button>}
           </div>
           {message && <p className={state === 'error' ? 'submit-error' : 'pronunciation-message'} role={state === 'error' ? 'alert' : 'status'}>{message}</p>}
-          {narration.review?.aiPatches.length ? <section className="ai-patches"><strong>AI vừa lưu ý</strong><ul>{narration.review.aiPatches.map(patch => <li key={`${patch.start}-${patch.end}`}><code>{patch.source}</code><span>→ {patch.spoken}</span><small>{patch.reason}</small>{patch.suggestedRule && <button type="button" onClick={() => setDraft({id: null, scope: 'project', source: patch.suggestedRule!.source, spoken: patch.suggestedRule!.spoken})}>Dùng làm quy tắc</button>}</li>)}</ul></section> : null}
+          {narration.review?.aiPatches.length ? <section className="ai-patches"><strong>AI vừa lưu ý</strong><ul>{narration.review.aiPatches.map(patch => <li key={`${patch.start}-${patch.end}`}><code>{patch.source}</code><span>→ {patch.spoken}</span><small>{patch.reason}</small>{patch.suggestedRule && <button type="button" disabled={narrationOperationBusy} onClick={() => setDraft({id: null, scope: 'project', source: patch.suggestedRule!.source, spoken: patch.suggestedRule!.spoken})}>Dùng làm quy tắc</button>}</li>)}</ul></section> : null}
         </section>
         <aside className="pronunciation-dictionary">
           <header><span className="preview-kicker">Từ điển cách đọc</span><p>Quy tắc mới chỉ cập nhật đề xuất. Bấm “Áp dụng đề xuất” để đưa chúng vào bản đọc. “Dùng chung” sẽ xuất hiện ở các project sau.</p></header>
           <div className="rule-editor">
-            <label><span>Văn bản gốc</span><input value={draft.source} maxLength={300} disabled={ruleSaving} placeholder="Ví dụ: logarithm, O(n), a[i]" onChange={event => { const source = event.currentTarget.value; setDraft(current => ({...current, source})); }} /></label>
-            <label><span>Cách ElevenLabs đọc</span><input value={draft.spoken} maxLength={600} disabled={ruleSaving} placeholder="Ví dụ: lô-ga-rít" onChange={event => { const spoken = event.currentTarget.value; setDraft(current => ({...current, spoken})); }} /></label>
-            <div className="rule-editor-actions"><label><span>Phạm vi</span><select value={draft.scope} disabled={Boolean(draft.id) || ruleSaving} onChange={event => { const scope = event.currentTarget.value as RuleDraft['scope']; setDraft(current => ({...current, scope})); }}><option value="project">Project này</option><option value="library">Dùng chung</option></select></label><button type="button" className="secondary-button" disabled={ruleSaving || !draft.source.trim() || !draft.spoken.trim()} onClick={() => void saveRule()}><PlusIcon /> {ruleSaving ? 'Đang lưu…' : draft.id ? 'Lưu quy tắc' : 'Thêm quy tắc'}</button></div>
-            {draft.id && <button type="button" className="text-button" onClick={() => setDraft(emptyRule)}>Hủy chỉnh sửa</button>}
+            <label><span>Văn bản gốc</span><input value={draft.source} maxLength={300} disabled={narrationOperationBusy} placeholder="Ví dụ: logarithm, O(n), a[i]" onChange={event => { const source = event.currentTarget.value; setDraft(current => ({...current, source})); }} /></label>
+            <label><span>Cách ElevenLabs đọc</span><input value={draft.spoken} maxLength={600} disabled={narrationOperationBusy} placeholder="Ví dụ: lô-ga-rít" onChange={event => { const spoken = event.currentTarget.value; setDraft(current => ({...current, spoken})); }} /></label>
+            <div className="rule-editor-actions"><label><span>Phạm vi</span><select value={draft.scope} disabled={Boolean(draft.id) || narrationOperationBusy} onChange={event => { const scope = event.currentTarget.value as RuleDraft['scope']; setDraft(current => ({...current, scope})); }}><option value="project">Project này</option><option value="library">Dùng chung</option></select></label><button type="button" className="secondary-button" disabled={narrationOperationBusy || !draft.source.trim() || !draft.spoken.trim()} onClick={() => void saveRule()}><PlusIcon /> {ruleSaving ? 'Đang lưu…' : draft.id ? 'Lưu quy tắc' : 'Thêm quy tắc'}</button></div>
+            {draft.id && <button type="button" className="text-button" disabled={narrationOperationBusy} onClick={() => setDraft(emptyRule)}>Hủy chỉnh sửa</button>}
           </div>
-          <RuleList title="Project này" rules={projectRules} onEdit={rule => setDraft({id: rule.id, scope: 'project', source: rule.source, spoken: rule.spoken})} onRemove={rule => void removeRule(rule)} />
-          <RuleList title="Dùng chung" rules={libraryRules} onEdit={rule => setDraft({id: rule.id, scope: 'library', source: rule.source, spoken: rule.spoken})} onRemove={rule => void removeRule(rule)} />
+          <RuleList title="Project này" rules={projectRules} disabled={narrationOperationBusy} onEdit={rule => setDraft({id: rule.id, scope: 'project', source: rule.source, spoken: rule.spoken})} onRemove={rule => void removeRule(rule)} />
+          <RuleList title="Dùng chung" rules={libraryRules} disabled={narrationOperationBusy} onEdit={rule => setDraft({id: rule.id, scope: 'library', source: rule.source, spoken: rule.spoken})} onRemove={rule => void removeRule(rule)} />
         </aside>
       </div>
     </main>

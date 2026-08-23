@@ -41,6 +41,7 @@ const SCENE_IDS = [
   '30000000-0000-4000-8000-000000000001',
   '30000000-0000-4000-8000-000000000002',
 ] as const;
+const NARRATION_HASH = 'f'.repeat(64);
 
 function event(beatId: string, edge: 'start' | 'end') {
   return `beat:${beatId}:${edge}`;
@@ -134,6 +135,21 @@ function createReadyProject(): TopicProject {
 
   return {
     topicInput,
+    narration: {
+      sourceText: 'Narration for beat 1. Narration for beat 2.',
+      projectRules: [],
+      review: {
+        sourceText: 'Narration for beat 1. Narration for beat 2.',
+        normalizedText: 'Narration for beat 1. Narration for beat 2.',
+        rules: [],
+        aiPatches: [],
+        sourceHash: NARRATION_HASH,
+        rulesHash: 'e'.repeat(64),
+        reviewedAt: '2026-08-18T00:00:00.000Z',
+      },
+      approvedSourceHash: NARRATION_HASH,
+      approvedAt: '2026-08-18T00:00:00.000Z',
+    },
     outline: {
       status: 'approved',
       contentRevision: 2,
@@ -144,6 +160,7 @@ function createReadyProject(): TopicProject {
       status: 'approved',
       contentRevision: 3,
       narrationRevision: 4,
+      sourceNarrationHash: NARRATION_HASH,
       sourceOutlineContentRevision: 2,
       sections: planSections,
     },
@@ -284,6 +301,14 @@ test('voice-visual readiness and staleness include revision and section mapping'
       name: 'outline is no longer approved',
       mutate: (project) => {
         project.outline!.status = 'draft';
+      },
+      expected: [false, true],
+    },
+    {
+      name: 'narration approval is pending without changing its source',
+      mutate: (project) => {
+        project.narration!.approvedSourceHash = null;
+        project.narration!.approvedAt = null;
       },
       expected: [false, true],
     },
@@ -670,6 +695,20 @@ test('final render stays locked to the exact approved Layout generation', () => 
     ],
     [true, true, true, false],
   );
+
+  project.narration!.approvedSourceHash = null;
+  project.narration!.approvedAt = null;
+  assert.deepEqual(
+    [
+      finalRenderPrerequisitesAreReady(project),
+      finalRenderIsCurrent(project),
+      finalRenderIsReady(project),
+      finalRenderIsStale(project),
+    ],
+    [false, false, false, true],
+  );
+  project.narration!.approvedSourceHash = NARRATION_HASH;
+  project.narration!.approvedAt = '2026-08-18T00:00:00.000Z';
 
   project.layoutBundle!.renderSettings.watermark = {
     type: 'text',

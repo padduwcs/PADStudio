@@ -58,14 +58,13 @@ export interface SceneReviewOperationState {
   historyBusy: boolean;
 }
 
-/** Operations which can change the Motion source must settle before approval/output. */
-export function sceneReviewOperationIsBusy({
+/** In-flight mutations; a pending candidate is a decision, not a running job. */
+export function sceneReviewMutationIsRunning({
   syncing,
   layoutSaveState,
   candidateGenerating,
   candidateRepairing,
   candidateApplying,
-  candidatePending,
   historyBusy,
 }: SceneReviewOperationState) {
   return (
@@ -74,7 +73,17 @@ export function sceneReviewOperationIsBusy({
     candidateGenerating ||
     candidateRepairing ||
     candidateApplying ||
-    candidatePending ||
     historyBusy
   );
+}
+
+/** Operations which can change the Motion source must settle before approval/output. */
+export function sceneReviewOperationIsBusy({
+  candidatePending,
+  ...operation
+}: SceneReviewOperationState) {
+  return candidatePending || sceneReviewMutationIsRunning({
+    ...operation,
+    candidatePending,
+  });
 }

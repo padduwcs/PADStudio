@@ -116,7 +116,7 @@ export function createVoiceRouteHandler(context: VoiceRouteContext): ApiRouteHan
         throw new RequestBodyError(
           409,
           'VOICE_PREREQUISITES_NOT_APPROVED',
-          'Hãy chốt voice–visual và Motion Canvas hiện tại trước khi tạo voice.',
+          'Hãy duyệt cách đọc và chuẩn bị kế hoạch hình ảnh hiện hành trước khi tạo voice.',
         );
       }
 

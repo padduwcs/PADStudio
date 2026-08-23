@@ -20,6 +20,10 @@ import type {GeneratedVoiceNarration} from './voiceWorkspace.ts';
 import {closePadStudioServerServices, createPadStudioServer} from './app.ts';
 import {MotionCanvasVisualQualityError, VISUAL_QUALITY_GATE_VERSION, motionCanvasSceneSourceHash} from './motionCanvasVisualQuality.ts';
 import type {MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
+import type {
+  MotionCanvasFailureRecord,
+  MotionCanvasFailureSummary,
+} from './motionCanvasWorkspace.ts';
 
 const now = '2026-08-18T00:00:00.000Z';
 const digest = (value: unknown) => hashJson(value);
@@ -44,7 +48,8 @@ function fakeDependencies(root: string) {
   const videoPath = path.join(root, 'fake-render.mp4');
   const nodeFingerprint = digest('fake-layout-node');
   const manifests = new Map<string, ReturnType<typeof LayoutEditorManifestSchema.parse>>();
-  const motionCanvasRequests: Array<{model?: string; reasoningEffort?: string; guidance?: string}> = [];
+  let latestMotionFailure: MotionCanvasFailureSummary | null = null;
+  const motionCanvasRequests: Array<{model?: string; reasoningEffort?: string; guidance?: string; regenerateFromScratch?: boolean; hasCurrentScenes: boolean}> = [];
   const plannerRequests: Array<{
     model?: string;
     reasoningEffort?: string;
@@ -60,9 +65,11 @@ function fakeDependencies(root: string) {
       voiceVisualPlan: TopicProject['voiceVisualPlan'];
       sectionIndexes?: number[];
       guidance?: string;
+      regenerateFromScratch?: boolean;
+      currentScenes?: Array<{id: string}>;
     }) {
       motionCalls += 1;
-      motionCanvasRequests.push({model: request.model, reasoningEffort: request.reasoningEffort, guidance: request.guidance});
+      motionCanvasRequests.push({model: request.model, reasoningEffort: request.reasoningEffort, guidance: request.guidance, regenerateFromScratch: request.regenerateFromScratch, hasCurrentScenes: Boolean(request.currentScenes?.length)});
       const plan = request.voiceVisualPlan!;
       const indexes = request.sectionIndexes ?? plan.sections.map((_section, index) => index);
       return {
@@ -155,6 +162,32 @@ function fakeDependencies(root: string) {
       return {projectDirectory: root, workspaceDirectory: root, projectFile: path.join(root, bundle.projectFile), sourceHash: bundle.validation.sourceHash};
     },
     async discard() {},
+    async recordFailure(
+      _projectId: string,
+      generationId: string,
+      failure: MotionCanvasFailureRecord,
+    ) {
+      const firstIssue = failure.issues?.find(
+        issue =>
+          typeof issue === 'object' &&
+          issue !== null &&
+          'reason' in issue &&
+          typeof issue.reason === 'string',
+      ) as {reason: string} | undefined;
+      latestMotionFailure = {
+        generationId,
+        failedAt: now,
+        stage: failure.stage,
+        code: failure.code,
+        message: failure.message,
+        firstIssueReason: firstIssue?.reason ?? null,
+        recoveryGuidance: failure.recoveryGuidance ?? null,
+      };
+      return path.join(root, 'motion-canvas', 'failures', generationId);
+    },
+    async readLatestFailure() {
+      return latestMotionFailure;
+    },
   };
 
   const elevenLabsVoiceService = {
@@ -310,10 +343,39 @@ async function toScenes(baseUrl: string) {
   assert.equal('visual' in project.motionCanvasBundle!.validation, false);
   const blockedSync = await request(baseUrl, project, 'POST', `/api/projects/${project.id}/sync/generate`, {generationId: randomUUID()});
   assert.equal(blockedSync.status, 409);
-  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/approve`, {}));
+  if (project.motionCanvasBundle!.semanticValidation?.status === 'degraded') {
+    const unconfirmed = await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/approve`, {});
+    assert.equal(unconfirmed.status, 409, 'degraded semantic output requires explicit user acceptance');
+  }
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/approve`, {acceptDegradedSemantic: true}));
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/sync/generate`, {generationId: randomUUID()}));
   return projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/sync/approve`, {}));
 }
+
+test('fresh scene regeneration sends optional recovery guidance without supplying existing scene source', async t => {
+  const {baseUrl, metrics} = await start(t);
+  let project = await toScenes(baseUrl);
+  const previousGeneration = project.motionCanvasBundle!.generation.generationId;
+  project = await projectFrom(await request(
+    baseUrl,
+    project,
+    'POST',
+    `/api/projects/${project.id}/motion-canvas/generate`,
+    {
+      generationId: randomUUID(),
+      regenerateFromScratch: true,
+      guidance: 'Repair the previous contrast and overlap failures.',
+    },
+  ));
+  assert.notEqual(project.motionCanvasBundle!.generation.generationId, previousGeneration);
+  const requestToGenerator = metrics.motionCanvasRequests.at(-1);
+  assert.equal(requestToGenerator?.regenerateFromScratch, true);
+  assert.equal(requestToGenerator?.hasCurrentScenes, false);
+  assert.equal(
+    requestToGenerator?.guidance,
+    'Repair the previous contrast and overlap failures.',
+  );
+});
 
 test('golden HTTP workflow runs all five steps with schema-valid fake providers', async t => {
   const {baseUrl, metrics, projectsDirectory} = await start(t);
@@ -334,7 +396,7 @@ test('golden HTTP workflow runs all five steps with schema-valid fake providers'
   assert.equal(reusedVoiceGeneration.status, 409, await reusedVoiceGeneration.text());
   const audio = await fetch(`${baseUrl}/api/projects/${project.id}/voice/audio/${project.voiceBundle!.sections[0]!.outlineSectionId}`); assert.equal(audio.status, 200); assert.deepEqual(Buffer.from(await audio.arrayBuffer()), Buffer.from('fake-audio'));
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/generate`, {generationId: randomUUID()}));
-  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/approve`, {}));
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/approve`, {acceptDegradedSemantic: true}));
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/sync/generate`, {generationId: randomUUID()}));
   assert.equal(project.animationSyncBundle!.status, 'draft'); assert.equal(project.currentStep, 'production');
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/sync/approve`, {})); assert.equal(project.currentStep, 'scenes');
@@ -440,6 +502,67 @@ test('AI Visual Planner fallback về deterministic khi không có planner selec
   assert.equal(project.outline!.status, 'approved');
 });
 
+test('visual replan preserves generated voice files, alignment identities, and timestamps', async t => {
+  const {baseUrl, metrics} = await start(t);
+  let project = await create(baseUrl);
+  project = await projectFrom(await request(baseUrl, project, 'PUT', `/api/projects/${project.id}/narration`, {sourceText: narrationSourceText, projectRules: []}));
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/narration/approve`, {sourceHash: project.narration!.review!.sourceHash, rulesHash: project.narration!.review!.rulesHash}));
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/production/prepare`, {generationId: randomUUID()}));
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/voice/generate`, voiceRequest(randomUUID())));
+
+  const voiceBefore = structuredClone(project.voiceBundle!);
+  const outlineBefore = structuredClone(project.outline!);
+  const beatIdsBefore = project.voiceVisualPlan!.sections.flatMap(section => section.beats.map(beat => beat.id));
+  const planRevisionBefore = project.voiceVisualPlan!.contentRevision;
+  const plannerCallsBefore = metrics.plannerRequests.length;
+
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/production/prepare`, {
+    generationId: randomUUID(),
+    forceVisualReplan: true,
+    plannerModel: 'planner-model',
+    plannerReasoningEffort: 'high',
+  }));
+
+  assert.equal(metrics.plannerRequests.length, plannerCallsBefore + 1);
+  assert.deepEqual(project.voiceBundle, voiceBefore, 'visual-only planning must not mutate audio paths, alignment, or timestamps');
+  assert.deepEqual(project.outline, outlineBefore, 'the section skeleton consumed by VoiceBundle must stay byte-for-byte stable');
+  assert.deepEqual(project.voiceVisualPlan!.sections.flatMap(section => section.beats.map(beat => beat.id)), beatIdsBefore);
+  assert.equal(project.voiceVisualPlan!.narrationRevision, voiceBefore.sourceNarrationRevision);
+  assert.equal(project.voiceVisualPlan!.contentRevision, planRevisionBefore + 1);
+  assert.ok(project.voiceVisualPlan!.sections.every(section => section.beats.every(beat => beat.visualIntent)));
+  assert.equal(project.voiceBundle!.status, 'approved');
+});
+
+test('editing visual input preserves voice and replans against the new current input', async t => {
+  const {baseUrl} = await start(t);
+  let project = await create(baseUrl);
+  project = await projectFrom(await request(baseUrl, project, 'PUT', `/api/projects/${project.id}/narration`, {sourceText: narrationSourceText, projectRules: []}));
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/narration/approve`, {sourceHash: project.narration!.review!.sourceHash, rulesHash: project.narration!.review!.rulesHash}));
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/production/prepare`, {generationId: randomUUID()}));
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/voice/generate`, voiceRequest(randomUUID())));
+  const voiceBefore = structuredClone(project.voiceBundle!);
+
+  const changedTopicInput = {
+    ...project.topicInput,
+    background: {mode: 'dark' as const, color: '#223344'},
+    videoFrame: {...project.topicInput.videoFrame!, fps: 24 as const},
+  };
+  project = await projectFrom(await request(baseUrl, project, 'PUT', `/api/projects/${project.id}`, {topicInput: changedTopicInput}));
+  assert.deepEqual(project.voiceBundle, voiceBefore);
+  assert.equal(project.voiceBundle!.status, 'approved');
+  assert.equal(project.outline!.status, 'draft');
+  assert.equal(project.voiceVisualPlan!.status, 'draft');
+
+  project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/production/prepare`, {
+    generationId: randomUUID(),
+    forceVisualReplan: true,
+  }));
+  assert.deepEqual(project.voiceBundle, voiceBefore);
+  assert.deepEqual(project.outline!.sourceInput, changedTopicInput);
+  assert.equal(project.outline!.status, 'approved');
+  assert.equal(project.voiceVisualPlan!.status, 'approved');
+});
+
 test('voice regeneration invalidates only downstream sync, layout, and render', async t => {
   const {baseUrl, metrics} = await start(t);
   let project = await toScenes(baseUrl);
@@ -494,7 +617,7 @@ test('candidate apply and visual design HTTP transitions stay in scenes and inva
   // AI-authored draft before it is approved and synced.
   const rawPreview = await fetch(`${baseUrl}/api/projects/${project.id}/motion-canvas/preview`, {headers: {'X-Pad-Parent-Origin': 'http://127.0.0.1'}}); assert.equal(rawPreview.status, 200);
   if (project.motionCanvasBundle!.status !== 'approved') {
-    project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/approve`, {}));
+    project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/approve`, {acceptDegradedSemantic: true}));
   }
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/sync/generate`, {generationId: randomUUID()}));
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/sync/approve`, {}));
@@ -640,7 +763,7 @@ test('rendered-quality failures use bounded retries, re-validate the whole bundl
   const retryRequest = retried.metrics.motionCanvasRequests.at(-1);
   assert.match(retryRequest?.guidance ?? '', /Visible content covers too little of the frame/);
   // Approve only passes because the stored hash covers the whole merged bundle.
-  project = await projectFrom(await request(retried.baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/approve`, {}));
+  project = await projectFrom(await request(retried.baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/approve`, {acceptDegradedSemantic: true}));
   assert.equal(project.motionCanvasBundle!.status, 'approved');
 
   const alwaysFail = {
@@ -655,8 +778,82 @@ test('rendered-quality failures use bounded retries, re-validate the whole bundl
   assert.equal(failedResponse.status, 422);
   const failedBody = await failedResponse.json() as {error: {code: string}};
   assert.equal(failedBody.error.code, 'MOTION_CANVAS_VISUAL_QUALITY_FAILED');
+  const failureStatus = await fetch(
+    `${blocked.baseUrl}/api/projects/${stuck.id}/motion-canvas/failure`,
+  );
+  assert.equal(failureStatus.status, 200);
+  const failurePayload = await failureStatus.json() as {
+    failure: MotionCanvasFailureSummary | null;
+  };
+  assert.match(
+    failurePayload.failure?.recoveryGuidance ?? '',
+    /Visible content covers too much of the frame/,
+  );
   const reloaded = await projectFrom(await request(blocked.baseUrl, null, 'GET', `/api/projects/${stuck.id}`));
   assert.ok(!reloaded.motionCanvasBundle);
   const approveWithoutBundle = await request(blocked.baseUrl, reloaded, 'POST', `/api/projects/${reloaded.id}/motion-canvas/approve`, {});
   assert.equal(approveWithoutBundle.status, 409);
+});
+
+test('renderer infrastructure retry stays local and never spends another Codex scene turn', async t => {
+  const failedAt = '2026-01-01T00:00:00.000Z';
+  let validations = 0;
+  const flakyRenderer = {
+    async validate(input: {scenes: MotionCanvasSourceScene[]}) {
+      validations += 1;
+      if (validations === 1) {
+        throw new MotionCanvasVisualQualityError({
+          version: VISUAL_QUALITY_GATE_VERSION,
+          status: 'failed',
+          validatedAt: failedAt,
+          sourceHash: 'a'.repeat(64),
+          scenes: [],
+          issues: [{
+            code: 'renderer-error',
+            sceneId: input.scenes[0]!.id,
+            beatId: null,
+            timeSeconds: 0,
+            semanticKey: null,
+            bounds: null,
+            reason: 'Headless browser timed out.',
+          }],
+        });
+      }
+      return {
+        version: VISUAL_QUALITY_GATE_VERSION as typeof VISUAL_QUALITY_GATE_VERSION,
+        status: 'passed' as const,
+        validatedAt: failedAt,
+        sourceHash: motionCanvasSceneSourceHash(input.scenes),
+        scenes: [],
+        issues: [],
+      };
+    },
+  };
+  const app = await start(t, {
+    narrationVisualPlanner: twoScenePlanner(),
+    motionCanvasVisualQualityGate: flakyRenderer,
+  });
+  let project = await prepareTwoScenes(app.baseUrl);
+  const generationId = randomUUID();
+  const beforeCalls = app.metrics.motionCalls();
+  project = await projectFrom(await request(
+    app.baseUrl,
+    project,
+    'POST',
+    `/api/projects/${project.id}/motion-canvas/generate`,
+    {generationId},
+  ));
+
+  assert.equal(validations, 2);
+  assert.equal(app.metrics.motionCalls() - beforeCalls, 1);
+  assert.ok(project.motionCanvasBundle);
+  const progressResponse = await fetch(
+    `${app.baseUrl}/api/projects/${project.id}/motion-canvas/status`,
+  );
+  assert.equal(progressResponse.status, 200);
+  const progressBody = await progressResponse.json() as {
+    progress: {generationId: string; state: string};
+  };
+  assert.equal(progressBody.progress.generationId, generationId);
+  assert.equal(progressBody.progress.state, 'completed');
 });

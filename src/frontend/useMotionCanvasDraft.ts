@@ -824,9 +824,14 @@ export function useMotionCanvasDraft(projectId: string) {
           if (motionCanvasIsStale(currentProject)) {
             throw new MotionCanvasOutdatedError();
           }
+          const degraded = currentProject.motionCanvasBundle?.semanticValidation?.status === 'degraded';
+          if (degraded && !window.confirm('Scene đang dùng minh họa giản lược. Bạn đã kiểm tra ý nghĩa hình ảnh và muốn tiếp tục với bản này?')) {
+            throw new MotionCanvasOperationCancelledError();
+          }
           return approveMotionCanvas(
             projectId,
             currentProject.revision,
+            degraded ? {acceptDegradedSemantic: true} : {},
           );
         },
       );

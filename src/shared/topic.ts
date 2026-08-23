@@ -357,6 +357,94 @@ export const BeatCompositionContractSchema = z
 
 export type BeatCompositionContract = z.infer<typeof BeatCompositionContractSchema>;
 
+/**
+ * Meaning that must survive the Visual Plan -> Scene Spec boundary.
+ *
+ * `kind`, relation `type`, and action `verb` intentionally use bounded open
+ * vocabularies. They describe the lesson, not executable renderer operations,
+ * so a new subject never needs a schema release merely to name a new object or
+ * relationship. Scene Spec keeps the executable drawing vocabulary closed.
+ */
+export const VisualIntentSchema = z
+  .object({
+    message: z.string().trim().min(12).max(500),
+    viewerShouldInfer: z.string().trim().min(12).max(500),
+    abstraction: z.enum(['concrete', 'schematic', 'metaphorical', 'mixed']),
+    entities: z
+      .array(
+        z
+          .object({
+            id: z.string().regex(semanticKeyPattern),
+            kind: z.string().trim().min(2).max(80),
+            label: z.string().trim().min(1).max(32).nullable(),
+            role: z.enum(['primary', 'support', 'context']),
+            appearance: z.string().trim().min(8).max(300),
+            state: z.string().trim().min(2).max(160).nullable(),
+            mustShow: z.boolean(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(10),
+    relations: z
+      .array(
+        z
+          .object({
+            id: z.string().regex(semanticKeyPattern),
+            type: z.string().trim().min(2).max(80),
+            from: z.string().regex(semanticKeyPattern),
+            to: z.string().regex(semanticKeyPattern),
+            description: z.string().trim().min(8).max(300),
+            mustShow: z.boolean(),
+          })
+          .strict(),
+      )
+      .max(14),
+    actions: z
+      .array(
+        z
+          .object({
+            id: z.string().regex(semanticKeyPattern),
+            actor: z.string().regex(semanticKeyPattern),
+            verb: z.string().trim().min(2).max(80),
+            target: z.string().regex(semanticKeyPattern).nullable(),
+            description: z.string().trim().min(8).max(300),
+            fromState: z.string().trim().min(2).max(120).nullable(),
+            toState: z.string().trim().min(2).max(120).nullable(),
+            mustShow: z.boolean(),
+          })
+          .strict(),
+      )
+      .max(4),
+  })
+  .strict()
+  .superRefine((intent, context) => {
+    const entityIds = new Set(intent.entities.map(entity => entity.id));
+    if (intent.entities.filter(entity => entity.role === 'primary').length !== 1) {
+      context.addIssue({code: 'custom', path: ['entities'], message: 'Visual Intent must declare exactly one primary entity.'});
+    }
+    const allIds = [
+      ...intent.entities.map(entity => entity.id),
+      ...intent.relations.map(relation => relation.id),
+      ...intent.actions.map(action => action.id),
+    ];
+    if (new Set(allIds).size !== allIds.length) {
+      context.addIssue({code: 'custom', message: 'Visual Intent ids must be unique.'});
+    }
+    for (const [index, relation] of intent.relations.entries()) {
+      if (!entityIds.has(relation.from) || !entityIds.has(relation.to)) {
+        context.addIssue({code: 'custom', path: ['relations', index], message: 'Visual Intent relation endpoints must reference declared entities.'});
+      }
+    }
+    for (const [index, action] of intent.actions.entries()) {
+      if (!entityIds.has(action.actor) || (action.target && !entityIds.has(action.target))) {
+        context.addIssue({code: 'custom', path: ['actions', index], message: 'Visual Intent action participants must reference declared entities.'});
+      }
+    }
+  });
+
+export type VisualIntent = z.infer<typeof VisualIntentSchema>;
+
 export const VoiceVisualBeatSchema = z
   .object({
     id: z.string().uuid(),
@@ -401,6 +489,8 @@ export const VoiceVisualBeatSchema = z
       .regex(/^block-[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/)
       .optional(),
     compositionContract: BeatCompositionContractSchema.optional(),
+    /** Optional only for project migration; all newly prepared plans require it. */
+    visualIntent: VisualIntentSchema.optional(),
     visualHoldSeconds: z
       .number()
       .int()
@@ -630,7 +720,8 @@ export type MotionCanvasScene = z.infer<typeof MotionCanvasSceneSchema>;
 export const visualQualityIssueCodeValues = [
   'empty-frame', 'unexpected-block', 'missing-active-block', 'clipped-block', 'outside-safe-area', 'block-overlap', 'text-clipped', 'text-too-small', 'text-low-contrast', 'static-beats', 'renderer-error',
   'frame-too-sparse', 'frame-too-dense', 'primary-block-not-prominent', 'primary-block-off-center', 'insufficient-spacing', 'text-hierarchy-violation', 'text-overflow', 'content-occluded', 'layout-jump-excessive', 'palette-drift', 'typography-drift',
-  'caption-too-long', 'text-overrepresented',
+  'caption-too-long', 'text-overrepresented', 'text-overlap',
+  'diagram-underrepresented', 'plan-misaligned',
 ] as const;
 
 export const MotionCanvasBundleSchema = z
@@ -658,9 +749,14 @@ export const MotionCanvasBundleSchema = z
       reason: z.string().trim().min(3).max(4_000),
       outcome: z.enum(['passed', 'failed', 'used_fallback', 'skipped']),
     }).strict()).max(32).optional(),
-    /** Rendered-frame evidence, tied to the exact source hash. */
+    /**
+     * Rendered-frame evidence, tied to the exact source hash. Historical
+     * v3 evidence stays readable so an upgraded app never locks a project
+     * out. Runtime gates still require the current version before reuse,
+     * approval, or rendering (see motionCanvasVisualQuality.ts).
+     */
     visualValidation: z.object({
-      version: z.literal(3),
+      version: z.union([z.literal(3), z.literal(4)]),
       status: z.enum(['passed', 'failed']),
       validatedAt: z.string().datetime(),
       sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
@@ -677,6 +773,21 @@ export const MotionCanvasBundleSchema = z
         code: z.enum(visualQualityIssueCodeValues), sceneId: z.string().uuid(), beatId: z.string().uuid().nullable(), timeSeconds: z.number().nonnegative(), semanticKey: z.string().nullable(),
         bounds: z.object({x: z.number(), y: z.number(), width: z.number().nonnegative(), height: z.number().nonnegative()}).nullable(), reason: z.string().min(1).max(600),
       }).strict()).max(64),
+    }).strict().optional(),
+    /** Semantic evidence is separate from technical/render evidence. */
+    semanticValidation: z.object({
+      version: z.literal(1),
+      status: z.enum(['passed', 'degraded', 'failed']),
+      validatedAt: z.string().datetime(),
+      sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+      scenes: z.array(z.object({
+        sceneId: z.string().uuid(),
+        status: z.enum(['passed', 'degraded', 'failed']),
+        coverage: z.number().min(0).max(1),
+        fallbackLevel: z.enum(['none', 'simplified', 'placeholder']),
+        missingIntentIds: z.array(z.string().regex(semanticKeyPattern)).max(34),
+        reason: z.string().trim().min(1).max(600).nullable(),
+      }).strict()).max(128),
     }).strict().optional(),
     scenes: z
       .array(MotionCanvasSceneSchema)
@@ -1120,6 +1231,10 @@ export const GenerateMotionCanvasSchema = z
     generationId: CreationIdSchema,
     model: z.string().trim().min(1).max(160).optional(),
     reasoningEffort: CodexReasoningEffortSchema.optional(),
+    // A clean first-pass scene generation: no existing scene source or
+    // revision context is sent to the model. The prior bundle is preserved
+    // by the route's normal history snapshot before replacement.
+    regenerateFromScratch: z.literal(true).optional(),
     guidance: z
       .string()
       .trim()

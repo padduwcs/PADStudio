@@ -61,7 +61,22 @@ export interface MotionCanvasFailureRecord {
   message: string;
   details?: string | null;
   issues?: unknown[];
+  /** Bounded, model-ready remediation derived from rendered-frame evidence. */
+  recoveryGuidance?: string | null;
   scenes?: MotionCanvasSourceScene[];
+}
+
+/** Safe, compact status for the UI; source files and raw diagnostics remain
+ * inspectable only in the project failure evidence directory. */
+export interface MotionCanvasFailureSummary {
+  generationId: string;
+  failedAt: string;
+  stage: MotionCanvasFailureRecord['stage'];
+  code: string;
+  message: string;
+  firstIssueReason: string | null;
+  /** Safe remediation context that a fresh Codex generation can use. */
+  recoveryGuidance: string | null;
 }
 
 export interface MotionCanvasWorkspace {
@@ -96,6 +111,10 @@ export interface MotionCanvasWorkspace {
     generationId: string,
     failure: MotionCanvasFailureRecord,
   ): Promise<string>;
+  /** Reads the newest retained failure without exposing generated source. */
+  readLatestFailure?(
+    projectId: string,
+  ): Promise<MotionCanvasFailureSummary | null>;
 }
 
 const StoredMotionCanvasManifestSchema = z
@@ -103,6 +122,19 @@ const StoredMotionCanvasManifestSchema = z
     generationId: z.string().uuid(),
     motionCanvasVersion: z.string().trim().min(1).max(40),
     sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .passthrough();
+
+const StoredMotionCanvasFailureSchema = z
+  .object({
+    version: z.literal(1),
+    generationId: z.string().uuid(),
+    failedAt: z.string().datetime(),
+    stage: z.enum(['compile', 'render-quality', 'generation']),
+    code: z.string().trim().min(1).max(160),
+    message: z.string().trim().min(1).max(2_000),
+    issues: z.array(z.object({reason: z.string().trim().min(1).max(600)}).passthrough()).max(64),
+    recoveryGuidance: z.string().trim().min(1).max(4_000).nullable().optional(),
   })
   .passthrough();
 
@@ -768,6 +800,7 @@ declare type Callback = (...args: any[]) => void;
           message: failure.message,
           details: failure.details ?? null,
           issues: failure.issues ?? [],
+          recoveryGuidance: failure.recoveryGuidance ?? null,
           scenes: scenes.map(({source: _source, ...scene}) => scene),
         }, null, 2)}\n`,
         'utf8',
@@ -789,6 +822,53 @@ declare type Callback = (...args: any[]) => void;
         });
       }
       return target;
+    },
+
+    async readLatestFailure(projectId) {
+      assertProjectId(projectId);
+      const root = projectDirectory(projectId);
+      const failuresRoot = path.join(root, 'motion-canvas', 'failures');
+      let entries;
+      try {
+        entries = await readdir(failuresRoot, {withFileTypes: true});
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+        throw error;
+      }
+      const candidates = await Promise.all(
+        entries
+          .filter(entry => entry.isDirectory() && uuidPattern.test(entry.name))
+          .map(async entry => ({
+            generationId: entry.name,
+            modified: (await stat(path.join(failuresRoot, entry.name))).mtimeMs,
+          })),
+      );
+      for (const candidate of candidates.sort((left, right) => right.modified - left.modified)) {
+        const failurePath = path.join(
+          failuresRoot,
+          candidate.generationId,
+          'failure.json',
+        );
+        let parsed;
+        try {
+          parsed = StoredMotionCanvasFailureSchema.safeParse(
+            JSON.parse(await readFile(failurePath, 'utf8')),
+          );
+        } catch {
+          continue;
+        }
+        if (!parsed.success) continue;
+        return {
+          generationId: parsed.data.generationId,
+          failedAt: parsed.data.failedAt,
+          stage: parsed.data.stage,
+          code: parsed.data.code,
+          message: parsed.data.message,
+          firstIssueReason: parsed.data.issues[0]?.reason ?? null,
+          recoveryGuidance: parsed.data.recoveryGuidance ?? null,
+        };
+      }
+      return null;
     },
 
     async discard(projectId, generationId) {

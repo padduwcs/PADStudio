@@ -12,6 +12,8 @@ import {
   assessMotionCanvasSceneQuality,
   applyMotionCanvasDefaultFont,
   createCodexMotionCanvasGenerator,
+  DEFAULT_MOTION_CANVAS_GENERATION_CONCURRENCY,
+  MAXIMUM_MOTION_CANVAS_GENERATION_CONCURRENCY,
   MOTION_CANVAS_DEFAULT_FONT_FAMILY,
   MotionCanvasGenerationError,
   type MotionCanvasGenerationRequest,
@@ -28,7 +30,9 @@ import {
 } from './motionCanvasSourceCompatibility.ts';
 import {createMotionCanvasWorkspace} from './motionCanvasWorkspace.ts';
 import {
+  compileMotionCanvasSceneSpec,
   extractMotionCanvasSceneSpec,
+  isMotionCanvasSceneSpecV2,
   type MotionCanvasSceneSpec,
 } from './motionCanvasSceneSpec.ts';
 
@@ -966,21 +970,24 @@ test('PAD Studio compiles declarative Scene Spec into safe lifecycle TSX', async
     undefined,
     false,
     (_turnNumber, beatIds) => ({
-      version: 1,
+      version: 2,
       visualAnchor: 'Priority decisions flow through one stable queue.',
       beats: beatIds.map((beatId, index) => ({
         beatId,
         visualId: `priority-queue-${['opening', 'middle', 'closing'][index] ?? 'detail'}`,
         headline: 'Ưu tiên việc quan trọng',
         caption: 'Thứ tự rõ ràng',
-        visualKind: 'queue',
-        motion: 'flow',
+        template: 'queue',
         focus: 'center',
-        items: [
-          {label: 'Khẩn cấp', value: 'P1', emphasis: 'primary'},
-          {label: 'Quan trọng', value: 'P2', emphasis: 'secondary'},
-          {label: 'Có thể chờ', value: 'P3', emphasis: 'muted'},
+        planAlignment: {planTerms: ['thanh']},
+        elements: [
+          {type: 'node', id: 'urgent-work', shape: 'pill', label: 'Khẩn cấp', value: 'P1', emphasis: 'primary', concepts: ['thanh']},
+          {type: 'node', id: 'important-work', shape: 'pill', label: 'Quan trọng', value: 'P2', emphasis: 'secondary', concepts: ['thanh']},
+          {type: 'gate', id: 'waiting-gate', state: 'open', label: 'Chờ', value: 'P3', emphasis: 'muted', concepts: ['thanh']},
         ],
+        relationships: [{id: 'priority-flow', type: 'arrow', from: 'urgent-work', to: 'important-work', via: [], label: null, emphasis: 'primary'}],
+        groups: [],
+        motions: [{kind: 'flow', targets: ['urgent-work', 'important-work'], direction: 'right'}],
       })),
     }),
   );
@@ -994,8 +1001,29 @@ test('PAD Studio compiles declarative Scene Spec into safe lifecycle TSX', async
   const source = result.scenes[0]!.source;
   const beats = request.voiceVisualPlan.sections[0]!.beats;
 
-  assert.match(result.model, /scene-spec-compiler-v1/u);
+  assert.match(result.model, /scene-spec-compiler-v2/u);
   assert.equal(extractMotionCanvasSceneSpec(source)?.beats[0]?.beatId, beats[0]!.id);
+  const outputSchema = (
+    client.calls.find(call => call.method === 'turn/start')?.params as {
+      outputSchema?: unknown;
+    }
+  ).outputSchema;
+  assert.doesNotMatch(
+    JSON.stringify(outputSchema),
+    /"oneOf"/u,
+    'Codex rejects response schemas containing oneOf.',
+  );
+  assert.match(
+    source,
+    /<Rect key="[^"]*waiting-gate-shape"[^>]*>[\s\S]*<Txt key="[^"]*waiting-gate-label"/u,
+    'Gate text must remain inside its colored surface so contrast is measured against that surface.',
+  );
+  assert.match(source, /priority-queue-opening-queue-rail/u);
+  assert.match(source, /priority-queue-opening-queue-direction/u);
+  assert.match(source, /text=\{"Khẩn cấp · P1"\}/u);
+  assert.doesNotMatch(source, /urgent-work-value/u, 'one component must not grow a second value label');
+  assert.match(source, /fill=\{"#1B263B"\}/u);
+  assert.match(source, /stroke=\{"#86C5FF"\}/u);
   assert.match(source, /ref=\{lifecycleNode1\}/u);
   assert.match(source, /beatEndTime1 - useThread\(\)\.time\(\) - exitDuration1/u);
   validateMotionCanvasSceneSource(source);
@@ -1011,6 +1039,50 @@ test('PAD Studio compiles declarative Scene Spec into safe lifecycle TSX', async
     request.topicInput.videoFrame,
   );
   assert.equal(prepared.scenes.length, 1);
+});
+
+test('compiler resolves an explicit Visual Plan metaphor instead of rejecting a valid Scene Spec enum choice', () => {
+  const request = createSingleSceneGenerationRequest();
+  const beat = request.voiceVisualPlan.sections[0]!.beats[0]!;
+  beat.visualDescription = 'Hai nhánh đặt cạnh nhau để đối chiếu cùng một mức ưu tiên.';
+  beat.visualPurpose = 'Đối chiếu hai lựa chọn bằng hình ảnh.';
+  beat.animationDescription = 'Hai nhánh cùng tiến về cổng giữa.';
+  const spec: MotionCanvasSceneSpec = {
+    version: 2,
+    visualAnchor: 'Two alternatives meet at one selection gate.',
+    beats: [{
+      beatId: beat.id,
+      visualId: 'two-option-comparison',
+      headline: 'So sánh hai lựa chọn',
+      caption: null,
+      // A model may reasonably choose this generic enum.  The compiler must
+      // make the reviewed, explicit comparison metaphor authoritative.
+      template: 'process',
+      focus: 'center',
+      planAlignment: {planTerms: ['đối chiếu']},
+      elements: [
+        {type: 'node', id: 'left-option', shape: 'pill', label: 'Nhánh trái', value: null, emphasis: 'primary', concepts: ['đối chiếu']},
+        {type: 'node', id: 'right-option', shape: 'pill', label: 'Nhánh phải', value: null, emphasis: 'secondary', concepts: ['đối chiếu']},
+      ],
+      relationships: [{id: 'shared-selection', type: 'edge', from: 'left-option', to: 'right-option', via: [], label: null, emphasis: 'secondary'}],
+      groups: [],
+      motions: [{kind: 'compare', targets: ['left-option', 'right-option'], direction: null}],
+    }],
+  };
+  const source = compileMotionCanvasSceneSpec({
+    spec,
+    beats: [beat],
+    outlineTitle: request.outline.sections[0]!.title,
+    frame: request.videoFrame!,
+    backgroundColor: request.topicInput.background.color,
+    visualBible: request.voiceVisualPlan.visualBible,
+  });
+
+  const compiledSpec = extractMotionCanvasSceneSpec(source);
+  assert.ok(isMotionCanvasSceneSpecV2(compiledSpec));
+  assert.equal(compiledSpec.beats[0]?.template, 'comparison');
+  assert.match(source, /two-option-comparison-comparison-divider/u);
+  validateMotionCanvasSceneSource(source);
 });
 
 test('Motion Canvas generator chỉ sinh section được chọn và giữ scene identity', async context => {
@@ -1216,6 +1288,33 @@ test('Motion Canvas generator tự sửa source TSX lỗi trước khi trả gen
   );
 });
 
+test('Motion Canvas defaults to four workers and reports per-scene progress', async context => {
+  assert.equal(DEFAULT_MOTION_CANVAS_GENERATION_CONCURRENCY, 4);
+  assert.equal(MAXIMUM_MOTION_CANVAS_GENERATION_CONCURRENCY, 4);
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-progress-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const events: Array<{completedScenes: number; outcome: string}> = [];
+  const request = createGenerationRequest();
+  request.onProgress = progress => events.push(progress);
+  const generator = createCodexMotionCanvasGenerator(new FakeCodexClient(), {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+    qualityRetryLimit: 0,
+  });
+
+  const result = await generator.generate(request);
+
+  assert.equal(result.scenes.length, 2);
+  assert.deepEqual(events.map(event => event.outcome), [
+    'started',
+    'completed',
+    'completed',
+  ]);
+  assert.equal(events.at(-1)?.completedScenes, 2);
+});
+
 test('Motion Canvas generator sinh mới từ đầu khi lượt sửa TSX vẫn lỗi', async (context) => {
   const runtimeDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-studio-motion-clean-regeneration-'),
@@ -1313,7 +1412,11 @@ test('Motion Canvas generator hoàn tất bằng fallback an toàn khi cả lư�
     request.voiceVisualPlan.sections[0]!.beats,
   );
   validateMotionCanvasBeatLifecycle(result.scenes[0]!.source, request.voiceVisualPlan.sections[0]!.beats, request.videoFrame);
-  assert.match(result.scenes[0]!.source, /yield\* waitFor\(Math\.max\(0, beatDuration1 - enterDuration1 - exitDuration1\)\);\n  yield\* all\(\n    lifecycleNode1\(\)\.opacity\(0, exitDuration1\)/u);
+  assert.match(result.scenes[0]!.source, /const beatEndTime1 = useThread\(\)\.time\(\) \+ beatDuration1;/u);
+  assert.match(result.scenes[0]!.source, /yield\* waitFor\(Math\.max\(0, beatEndTime1 - useThread\(\)\.time\(\) - exitDuration1\)\);\n  yield\* all\(\n    beatDetail1\(\)\.opacity\(0, exitDuration1/u);
+  // Invalid-source recovery is bounded at three Codex turns. The old fourth
+  // turn was a speculative richness retry of the local fallback and duplicated
+  // the rendered/semantic gate that follows this generator.
   assert.equal(
     client.calls.filter((call) => call.method === 'turn/start').length,
     3,
@@ -1413,7 +1516,8 @@ test('Motion Canvas generator có fallback cục bộ sau khi compiler repair v�
     `${generated.scenes[0]!.filePath}(12,3): error TS9999`,
   );
   assert.match(recovered.model, /local-safe-fallback/);
-  assert.match(recovered.scenes[0]!.source, /safe fallback|concept-card/i);
+  assert.match(recovered.scenes[0]!.source, /pad-scene-spec-v2/u);
+  assert.doesNotMatch(recovered.scenes[0]!.source, /fallback-beat-/u);
   validateMotionCanvasSceneSource(recovered.scenes[0]!.source);
   validateMotionCanvasTimingContract(
     recovered.scenes[0]!.source,

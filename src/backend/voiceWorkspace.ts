@@ -12,6 +12,7 @@ import {
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {promisify} from 'node:util';
+import {fileURLToPath} from 'node:url';
 import {z} from 'zod';
 import {
   calibrationFromActualNarration,
@@ -31,6 +32,7 @@ import type {
 import type {
   NarrationSourceSection,
 } from './narrationSource.ts';
+import {resolveFfmpegExecutable, resolveFfprobeExecutable} from './runtimeExecutablePaths.ts';
 
 const execFileAsync = promisify(execFile);
 const uuidPattern =
@@ -284,17 +286,6 @@ export function voiceMasterTimeoutMs(durationSeconds: number) {
   );
 }
 
-function ffprobeExecutable(ffmpegPath: string, configured?: string) {
-  if (configured) return configured;
-  if (!path.dirname(ffmpegPath) || path.dirname(ffmpegPath) === '.') {
-    return process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe';
-  }
-  return path.join(
-    path.dirname(ffmpegPath),
-    `ffprobe${path.extname(ffmpegPath)}`,
-  );
-}
-
 async function probeAudioDuration(ffprobePath: string, audioPath: string) {
   try {
     const {stdout} = await execFileAsync(
@@ -521,10 +512,18 @@ export function createVoiceWorkspace(
   options: {ffmpegPath?: string; ffprobePath?: string} = {},
 ): VoiceWorkspace {
   const resolvedProjectsDirectory = path.resolve(projectsDirectory);
-  const ffmpegPath = options.ffmpegPath ?? process.env.FFMPEG_PATH ?? 'ffmpeg';
-  const ffprobePath = ffprobeExecutable(
+  const repositoryRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    '../..',
+  );
+  const ffmpegPath = resolveFfmpegExecutable(
+    options.ffmpegPath,
+    repositoryRoot,
+  );
+  const ffprobePath = resolveFfprobeExecutable(
+    options.ffprobePath,
     ffmpegPath,
-    options.ffprobePath ?? process.env.FFPROBE_PATH,
+    repositoryRoot,
   );
 
   function projectDirectory(projectId: string) {

@@ -32,6 +32,7 @@ export function createApiRequestHandler(context: AppContext) {
     motionCanvasCandidateGenerations,
     motionCanvasGenerations,
     motionCanvasGenerator,
+    motionCanvasGenerationProgressStore,
     motionCanvasHistoryStore,
     motionCanvasRevisionReviewService,
     motionCanvasWorkspace,
@@ -82,6 +83,7 @@ export function createApiRequestHandler(context: AppContext) {
     createMotionCanvasRouteHandler({
       repository,
       motionCanvasGenerator,
+      motionCanvasGenerationProgressStore,
       motionCanvasWorkspace,
       motionCanvasVisualQualityGate,
       motionCanvasHistoryStore,
@@ -164,4 +166,3 @@ export function createApiRequestHandler(context: AppContext) {
     }
   };
 }
-

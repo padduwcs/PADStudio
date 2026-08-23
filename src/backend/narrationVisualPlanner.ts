@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {z} from 'zod';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
-import {compositionDensityValues, compositionLayoutValues, compositionSemanticRoleValues, type CodexTokenUsage, type TopicInput} from '../shared/topic.ts';
+import {VisualIntentSchema, compositionDensityValues, compositionLayoutValues, compositionSemanticRoleValues, type CodexTokenUsage, type TopicInput, type VisualIntent} from '../shared/topic.ts';
 import type {CodexAppServerClient} from './codexConnection.ts';
 import {
   CodexStructuredGenerationError,
@@ -11,7 +11,7 @@ import {
 } from './codexStructuredGeneration.ts';
 
 export const NARRATION_VISUAL_PLANNER_PROMPT_VERSION =
-  'narration-visual-planner-v4';
+  'narration-visual-v6-semantic-director';
 
 /** One timing-safe spoken unit paired with its original semantic wording. The
  * AI may only reference the stable ID; it never authors narration text. */
@@ -33,6 +33,54 @@ export class NarrationVisualPlannerError extends Error {
 }
 
 const hexColor = /^#[0-9a-fA-F]{6}$/;
+const semanticKey = /^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/;
+
+/**
+ * The model owns subject-matter meaning only. Cross-reference repair and all
+ * compiler-facing lifecycle/composition fields are derived locally below.
+ * Keeping those technical invariants out of structured output makes a useful
+ * visual plan much less likely to be discarded for a harmless key mismatch.
+ */
+const plannerVisualIntentSchema = z.object({
+  message: z.string().trim().min(12).max(500),
+  viewerShouldInfer: z.string().trim().min(12).max(500),
+  abstraction: z.enum(['concrete', 'schematic', 'metaphorical', 'mixed']),
+  entities: z.array(z.object({
+    id: z.string().regex(semanticKey),
+    kind: z.string().trim().min(2).max(80),
+    label: z.string().trim().min(1).max(32).nullable(),
+    role: z.enum(['primary', 'support', 'context']),
+    appearance: z.string().trim().min(8).max(300),
+    state: z.string().trim().min(2).max(160).nullable(),
+    mustShow: z.boolean(),
+  })).min(1).max(10),
+  relations: z.array(z.object({
+    id: z.string().regex(semanticKey),
+    type: z.string().trim().min(2).max(80),
+    from: z.string().regex(semanticKey),
+    to: z.string().regex(semanticKey),
+    description: z.string().trim().min(8).max(300),
+    mustShow: z.boolean(),
+  })).max(14),
+  actions: z.array(z.object({
+    id: z.string().regex(semanticKey),
+    actor: z.string().regex(semanticKey),
+    verb: z.string().trim().min(2).max(80),
+    target: z.string().regex(semanticKey).nullable(),
+    description: z.string().trim().min(8).max(300),
+    fromState: z.string().trim().min(2).max(120).nullable(),
+    toState: z.string().trim().min(2).max(120).nullable(),
+    mustShow: z.boolean(),
+  })).max(4),
+});
+
+const plannerSemanticUnitSchema = z.object({
+  unitId: z.string().trim().regex(/^unit-\d+$/),
+  visualPurpose: z.string().trim().min(12).max(500),
+  visualDescription: z.string().trim().min(12).max(900),
+  animationDescription: z.string().trim().min(8).max(500),
+  visualIntent: plannerVisualIntentSchema,
+});
 
 const plannerUnitBlueprintSchema = z
   .object({
@@ -71,6 +119,10 @@ const plannerUnitBlueprintSchema = z
         spacingNotes: z.string().trim().min(12, 'Spacing notes phải rõ ràng.').max(300),
       })
       .strict(),
+    // Optional in the TypeScript boundary so legacy test doubles and stored
+    // planner payloads remain readable. The real structured-output parser
+    // below requires it for every newly generated unit.
+    visualIntent: VisualIntentSchema.optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -129,6 +181,23 @@ const plannerVisualBibleSchema = z
   })
   .strict();
 
+const plannerSemanticSceneSchema = z.object({
+  title: z.string().trim().min(3).max(160),
+  goal: z.string().trim().min(6).max(400),
+  stateHandoffIncoming: z.string().trim().min(3).max(500).nullable(),
+  stateHandoffOutgoing: z.string().trim().min(3).max(500).nullable(),
+  units: z.array(plannerSemanticUnitSchema)
+    .min(1)
+    .max(pipelineSafetyLimits.maximumTotalBeats),
+});
+
+const narrationVisualPlannerSemanticOutputSchema = z.object({
+  scenes: z.array(plannerSemanticSceneSchema)
+    .min(pipelineSafetyLimits.minimumSections)
+    .max(pipelineSafetyLimits.maximumSections),
+  visualBible: plannerVisualBibleSchema,
+}).strict();
+
 const narrationVisualPlannerOutputSchema = z
   .object({
     scenes: z
@@ -143,6 +212,134 @@ export type NarrationVisualPlannerOutput = z.infer<
   typeof narrationVisualPlannerOutputSchema
 >;
 export type NarrationVisualPlannerScene = z.infer<typeof plannerSceneSchema>;
+
+type PlannerVisualIntent = z.infer<typeof plannerVisualIntentSchema>;
+
+function nextUniqueSemanticId(candidate: string, used: Set<string>) {
+  if (!used.has(candidate)) {
+    used.add(candidate);
+    return candidate;
+  }
+  for (let suffix = 2; ; suffix += 1) {
+    const resolved = `${candidate}-variant-${suffix}`;
+    if (used.has(resolved)) continue;
+    used.add(resolved);
+    return resolved;
+  }
+}
+
+/** Repairs only identity bookkeeping; it never invents subject matter. */
+function normalizePlannerVisualIntent(input: PlannerVisualIntent): VisualIntent {
+  const used = new Set<string>();
+  const firstNormalizedId = new Map<string, string>();
+  const selectedPrimary = Math.max(
+    0,
+    input.entities.findIndex(entity => entity.role === 'primary'),
+  );
+  const entities = input.entities.map((entity, index) => {
+    const id = nextUniqueSemanticId(entity.id, used);
+    if (!firstNormalizedId.has(entity.id)) firstNormalizedId.set(entity.id, id);
+    return {
+      ...entity,
+      id,
+      role: index === selectedPrimary
+        ? 'primary' as const
+        : entity.role === 'primary'
+          ? 'support' as const
+          : entity.role,
+    };
+  });
+  const primary = entities[selectedPrimary]!;
+  const secondary = entities.find((entity, index) => index !== selectedPrimary) ?? primary;
+  const resolveEntity = (id: string, fallback: string) =>
+    firstNormalizedId.get(id) ?? fallback;
+  const relations = input.relations.map(relation => ({
+    ...relation,
+    id: nextUniqueSemanticId(relation.id, used),
+    from: resolveEntity(relation.from, primary.id),
+    to: resolveEntity(relation.to, secondary.id),
+  }));
+  const actions = input.actions.map(action => ({
+    ...action,
+    id: nextUniqueSemanticId(action.id, used),
+    actor: resolveEntity(action.actor, primary.id),
+    target: action.target
+      ? resolveEntity(action.target, secondary.id)
+      : null,
+  }));
+  return VisualIntentSchema.parse({...input, entities, relations, actions});
+}
+
+function technicalBlueprintForIntent(
+  intent: VisualIntent,
+  unit: z.infer<typeof plannerSemanticUnitSchema>,
+) {
+  const primaryEntity =
+    intent.entities.find(entity => entity.role === 'primary') ?? intent.entities[0]!;
+  const primaryBlock = `block-${primaryEntity.id}`;
+  const detailKey = `visual-detail-${primaryEntity.id}`;
+  const relationLooksComparative = intent.relations.some(relation =>
+    /contrast|compare|difference|versus|đối chiếu|so sánh/iu.test(
+      `${relation.type} ${relation.description}`,
+    ),
+  );
+  const semanticRole = intent.actions.length > 0
+    ? 'process' as const
+    : relationLooksComparative
+      ? 'contrast' as const
+      : 'claim' as const;
+  const layout = intent.entities.length >= 4
+    ? 'grid' as const
+    : intent.entities.length === 2
+      ? 'left-right-split' as const
+      : intent.abstraction === 'concrete' || intent.abstraction === 'mixed'
+        ? 'full-bleed' as const
+        : 'center-focus' as const;
+  const density = intent.entities.length <= 2
+    ? 'sparse' as const
+    : intent.entities.length <= 5
+      ? 'balanced' as const
+      : 'dense' as const;
+  return {
+    primaryBlock,
+    visualLifecycle: {
+      enter: [primaryBlock, detailKey],
+      stay: [primaryBlock, detailKey],
+      exit: [primaryBlock, detailKey],
+    },
+    compositionContract: {
+      visualFocus: intent.message.slice(0, 300),
+      hierarchy: [primaryBlock, detailKey],
+      semanticRole,
+      layout,
+      density,
+      spacingNotes:
+        `Keep the main ${primaryEntity.kind} readable with clear separation between meaningful objects and relations.`.slice(0, 300),
+    },
+    visualPurpose: unit.visualPurpose,
+    visualDescription: unit.visualDescription,
+    animationDescription: unit.animationDescription,
+    visualIntent: intent,
+  };
+}
+
+function directSemanticPlan(
+  input: z.infer<typeof narrationVisualPlannerSemanticOutputSchema>,
+): NarrationVisualPlannerOutput {
+  return narrationVisualPlannerOutputSchema.parse({
+    visualBible: input.visualBible,
+    scenes: input.scenes.map(scene => ({
+      ...scene,
+      units: scene.units.map(unit => {
+        const visualIntent = normalizePlannerVisualIntent(unit.visualIntent);
+        return {
+          unitId: unit.unitId,
+          ...technicalBlueprintForIntent(visualIntent, unit),
+        };
+      }),
+    })),
+  });
+}
 
 /** Splits at unit boundaries only; narration IDs and their order are untouched. */
 export function splitPlannerScenesAtBeatLimit(
@@ -172,9 +369,12 @@ export function splitPlannerScenesAtBeatLimit(
   return result;
 }
 
-const outputJsonSchema = z.toJSONSchema(narrationVisualPlannerOutputSchema, {
+const outputJsonSchema = z.toJSONSchema(
+  narrationVisualPlannerSemanticOutputSchema,
+  {
   target: 'draft-7',
-});
+  },
+);
 
 /** Every unit must appear exactly once, in the exact reviewed order. This is
  * a single positional-equality check: any duplicate, drop, or reorder makes
@@ -193,7 +393,7 @@ export function validatePlannerCoversUnitsInOrder(
   if (!matches) {
     throw new NarrationVisualPlannerError(
       'CODEX_NARRATION_PLANNER_INVARIANT_VIOLATION',
-      'AI visual planner đã bỏ sót, lặp lại hoặc đổi thứ tự lời thoại đã duyệt.',
+      'AI lập kế hoạch hình ảnh đã bỏ sót, lặp lại hoặc đổi thứ tự lời thoại đã duyệt.',
     );
   }
 }
@@ -216,6 +416,13 @@ function collectPlannerStrings(output: NarrationVisualPlannerOutput) {
         ...unit.visualLifecycle.enter,
         ...unit.visualLifecycle.stay,
         ...unit.visualLifecycle.exit,
+        ...(unit.visualIntent ? [
+          unit.visualIntent.message,
+          unit.visualIntent.viewerShouldInfer,
+          ...unit.visualIntent.entities.flatMap(entity => [entity.id, entity.kind, entity.label ?? '', entity.appearance, entity.state ?? '']),
+          ...unit.visualIntent.relations.flatMap(relation => [relation.id, relation.type, relation.description]),
+          ...unit.visualIntent.actions.flatMap(action => [action.id, action.verb, action.description, action.fromState ?? '', action.toState ?? '']),
+        ] : []),
       );
     }
   }
@@ -239,7 +446,7 @@ export function assertPlannerOutputHasNoCodeArtifacts(
   if (collectPlannerStrings(output).some((text) => text.includes('```'))) {
     throw new NarrationVisualPlannerError(
       'CODEX_NARRATION_PLANNER_INVALID_RESPONSE',
-      'AI visual planner trả về nội dung có mã nguồn hoặc Markdown fence thay vì blueprint.',
+      'AI lập kế hoạch hình ảnh trả về nội dung có mã nguồn hoặc Markdown fence thay vì bản mô tả.',
     );
   }
 }
@@ -268,8 +475,7 @@ export interface NarrationVisualPlannerService {
 function buildPrompt(request: NarrationVisualPlannerRequest) {
   return [
     'Group all units in their exact input order into consecutive, non-overlapping scenes. Prefer 3–4 beats per scene and never exceed 5; split at unit boundaries.',
-    'For every unit provide primaryBlock (a stable block-* JSX key) plus visualLifecycle.enter, visualLifecycle.stay and visualLifecycle.exit. Each list is non-empty and contains stable kebab-case JSX keys. primaryBlock must occur in stay; within the same beat, stay may contain at most two block-* keys (this is not a limit on different blocks used sequentially across the scene); exit means hidden completely or moved outside the frame.',
-    `Composition contract: for every unit provide compositionContract with visualFocus (one single dominant point of interest in the frame, in plain language), hierarchy (2–6 semantic keys ordered from dominant to subordinate visual weight; hierarchy[0] must equal primaryBlock and every key must be in visualLifecycle.stay), semanticRole (one of ${compositionSemanticRoleValues.join(', ')}), layout (one of ${compositionLayoutValues.join(', ')}), density (one of ${compositionDensityValues.join(', ')}) and spacingNotes (padding and breathing-room intent). Exactly one element dominates each frame; use transition only for a beat that genuinely justifies a hard layout cut.`,
+    'Do not return renderer lifecycle keys, templates, coordinates, layout enums, or compiler primitives. PAD Studio derives those technical constraints locally after your semantic plan succeeds.',
     'Bạn là AI Visual Planner. Bạn CHỈ lập kế hoạch hình ảnh; tuyệt đối không được viết, sửa, rút gọn, dịch hay diễn giải lại lời thoại.',
     'semanticSourceText và semanticText là nội dung gốc ở bước 1, là nguồn sự thật để hiểu ngữ nghĩa, công thức, thuật ngữ và tên riêng.',
     'spokenText chỉ là cách đọc đã duyệt dành cho TTS và timing. Không được dùng cách viết phiên âm trong spokenText để suy diễn sai khái niệm hình ảnh.',
@@ -277,10 +483,13 @@ function buildPrompt(request: NarrationVisualPlannerRequest) {
     'Nhóm TOÀN BỘ unit theo đúng thứ tự xuất hiện trong units thành các scene liên tiếp không chồng lấn: mọi unitId phải xuất hiện đúng một lần, không bỏ sót, không lặp lại, không đổi thứ tự.',
     'Mỗi scene cần title và teaching goal cụ thể cho đúng nội dung của các unit trong scene đó; không dùng nhãn chung chung như "Đoạn N".',
     'Với mỗi unit, viết visualPurpose (ý nào trong lời thoại trở thành quan hệ nhìn thấy được), visualDescription (hình gì, bố cục nào) và animationDescription (chuyển động gì) cụ thể cho riêng unit đó; không dùng caption lặp lại lời thoại.',
-    'Visual-first: visualDescription và animationDescription phải xoay quanh một ẩn dụ hình vẽ (sơ đồ, icon, khối hình học) mà một mình nó truyền tải được ý chính của unit. Chữ trên khung hình chỉ được dùng cho tiêu đề hoặc nhãn ngắn — không phải phương tiện chính để truyền đạt nội dung; nếu một unit không nghĩ ra được hình vẽ nào mang ý nghĩa, hãy đổi visualDescription sang một sơ đồ/biểu tượng trừu tượng hoá ý đó thay vì để chữ gánh nội dung.',
+    'Visual-first: visualDescription và animationDescription phải xoay quanh vật thể, môi trường, quan hệ hoặc ẩn dụ nhìn thấy được mà một mình nó truyền tải được ý chính của unit. Chữ trên khung hình chỉ được dùng cho tiêu đề hoặc nhãn ngắn — không phải phương tiện chính để truyền đạt nội dung.',
+    'topicInput.videoDirection và learningGoal là ràng buộc sáng tạo ưu tiên cao. Nếu người dùng yêu cầu một vật thể cụ thể hoặc cấm node/card/sơ đồ chung chung, kế hoạch phải giữ đúng yêu cầu đó ở entities, appearance, relations và actions.',
     'stateHandoffIncoming mô tả scene kế thừa gì từ scene trước (null nếu là scene đầu); stateHandoffOutgoing mô tả scene để lại gì cho scene sau (null nếu là scene cuối).',
     'visualBible áp dụng cho toàn video: palette (không gồm màu nền, hệ thống tự khóa theo lựa chọn người dùng), typography scale, ngôn ngữ hình khối/sơ đồ, nhịp chuyển động, quy ước chuyển scene, và một visual anchor xuyên suốt toàn video.',
     'Không trả TSX, mã nguồn, Markdown fence, hay bất kỳ nội dung lời thoại mới nào. Chỉ trả đúng JSON theo schema.',
+    'For every unit, visualIntent is REQUIRED and is the lossless semantic handoff. message states the visual claim; viewerShouldInfer states what a viewer should understand without reading narration; abstraction selects concrete/schematic/metaphorical/mixed. Declare 1-10 concrete entities with stable semantic kebab-case ids, open-vocabulary kind, visible appearance/state, role, and mustShow. Exactly one entity is primary. Declare every meaningful relation and action using those exact entity ids; mustShow marks obligations that the compiled scene must visibly bind. Do not collapse distinct people, objects, places, states, or data structures into generic nodes.',
+    'Visual Intent describes subject matter and is deliberately open vocabulary. Do not choose renderer primitives, templates, coordinates, cards, or implementation details here. Name what the object is and why it matters; the downstream Visual Director will choose a safe composition.',
     JSON.stringify({
       topicInput: request.topicInput,
       semanticSourceText: request.semanticSourceText,
@@ -304,12 +513,12 @@ function mapStructuredError(error: CodexStructuredGenerationError) {
           : 'CODEX_NARRATION_PLANNER_FAILED';
   const message =
     error.reason === 'timeout'
-      ? 'AI visual planner mất quá nhiều thời gian.'
+      ? 'AI lập kế hoạch hình ảnh mất quá nhiều thời gian.'
       : error.reason === 'tool_used'
-        ? 'AI visual planner đã cố dùng công cụ trong lượt chỉ được phép lập kế hoạch.'
+        ? 'AI lập kế hoạch hình ảnh đã cố dùng công cụ trong lượt chỉ được phép lập kế hoạch.'
         : error.reason === 'empty_response'
-          ? 'AI visual planner không trả về nội dung.'
-          : 'AI visual planner không hoàn tất được.';
+          ? 'AI lập kế hoạch hình ảnh không trả về nội dung.'
+          : 'AI lập kế hoạch hình ảnh không hoàn tất được.';
   return new NarrationVisualPlannerError(code, message, {cause: error});
 }
 
@@ -345,23 +554,29 @@ export function createCodexNarrationVisualPlanner(
         } catch (error) {
           throw new NarrationVisualPlannerError(
             'CODEX_NARRATION_PLANNER_INVALID_RESPONSE',
-            'AI visual planner trả về JSON không hợp lệ.',
+            'AI lập kế hoạch hình ảnh trả về JSON không hợp lệ.',
             {cause: error},
           );
         }
         const parsed =
-          narrationVisualPlannerOutputSchema.safeParse(responseJson);
+          narrationVisualPlannerSemanticOutputSchema.safeParse(responseJson);
         if (!parsed.success) {
           throw new NarrationVisualPlannerError(
             'CODEX_NARRATION_PLANNER_INVALID_RESPONSE',
-            'AI visual planner trả về cấu trúc chưa đúng schema.',
+            'AI lập kế hoạch hình ảnh trả về cấu trúc chưa đúng schema.',
             {cause: parsed.error},
           );
         }
-        const output = {
+        const semanticOutput = {
           ...parsed.data,
-          scenes: splitPlannerScenesAtBeatLimit(parsed.data.scenes),
+          scenes: splitPlannerScenesAtBeatLimit(
+            directSemanticPlan(parsed.data).scenes,
+          ),
         };
+        const output = narrationVisualPlannerOutputSchema.parse({
+          ...semanticOutput,
+          visualBible: parsed.data.visualBible,
+        });
         validatePlannerCoversUnitsInOrder(request.units, output.scenes);
         assertPlannerOutputHasNoCodeArtifacts(output);
         return {

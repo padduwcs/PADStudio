@@ -13,6 +13,7 @@ import {
   projectStepLabel,
   projectWorkflowPath,
   registerNavigationGuard,
+  requestNavigationPermission,
   workflowStepIndex,
 } from './router.ts';
 
@@ -104,6 +105,7 @@ test('navigate chờ navigation guard và có thể bỏ qua guard khi cần', a
 
   let unregister = registerNavigationGuard(() => false);
   try {
+    assert.equal(await requestNavigationPermission(), false);
     navigate('/blocked');
     await new Promise<void>(resolve => setImmediate(resolve));
     assert.deepEqual(navigations, []);
@@ -112,6 +114,7 @@ test('navigate chờ navigation guard và có thể bỏ qua guard khi cần', a
     navigations.length = 0;
     unregister();
     unregister = registerNavigationGuard(async () => true);
+    assert.equal(await requestNavigationPermission(), true);
     navigate('/saved');
     await new Promise<void>(resolve => setImmediate(resolve));
     assert.deepEqual(navigations, [{path: '/saved', replace: false}]);

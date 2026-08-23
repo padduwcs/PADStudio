@@ -46,6 +46,7 @@ import {
   type LayoutWorkspace,
 } from './layoutWorkspace.ts';
 import {copyPreviewWorkspace} from './previewWorkspaceCopy.ts';
+import {resolveFfmpegExecutable, resolveFfprobeExecutable} from './runtimeExecutablePaths.ts';
 import {
   createWatermarkAssetStore,
   type WatermarkAssetStore,
@@ -59,6 +60,11 @@ const execFileAsync = promisify(execFile);
 const DEFAULT_FPS = 30;
 const MAX_FRAME_BYTES = 32 * 1024 * 1024;
 const MAX_STATUS_BYTES = 64 * 1024;
+// A healthy local Chrome export starts streaming its first PNG in seconds.
+// Keep this generous for cold starts, but never spend the full render timeout
+// waiting on a silent browser/page deadlock.
+const FIRST_FRAME_STALL_TIMEOUT_MS = 45_000;
+const MAX_SEGMENT_BROWSER_ATTEMPTS = 2;
 const RENDER_MANIFEST_FILE = 'manifest.json';
 const VIDEO_FILE = 'video.mp4' as const;
 const RENDER_JOBS_DIRECTORY = 'jobs';
@@ -551,38 +557,25 @@ export function findBrowserExecutable(configured?: string) {
   return candidates.find(candidate => existsSync(candidate)) ?? null;
 }
 
-function ffprobeExecutable(ffmpegPath: string, configured?: string) {
-  if (configured) return configured;
-  if (!path.dirname(ffmpegPath) || path.dirname(ffmpegPath) === '.') {
-    return process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe';
-  }
-  const extension = path.extname(ffmpegPath);
-  return path.join(path.dirname(ffmpegPath), `ffprobe${extension}`);
-}
-
 export function resolveFinalRenderExecutables(options: {
   browserPath?: string;
   ffmpegPath?: string;
   ffprobePath?: string;
+  repositoryRoot?: string;
 } = {}) {
   const browserPath = findBrowserExecutable(options.browserPath);
-  const ffmpegPath =
-    (
-      options.ffmpegPath ??
-      process.env.PAD_FFMPEG_PATH ??
-      process.env.FFMPEG_PATH ??
-      ''
-    ).trim() || 'ffmpeg';
-  const configuredFfprobe = (
-    options.ffprobePath ??
-    process.env.PAD_FFPROBE_PATH ??
-    process.env.FFPROBE_PATH ??
-    ''
-  ).trim();
+  const ffmpegPath = resolveFfmpegExecutable(
+    options.ffmpegPath,
+    options.repositoryRoot,
+  );
   return {
     browserPath,
     ffmpegPath,
-    ffprobePath: ffprobeExecutable(ffmpegPath, configuredFfprobe || undefined),
+    ffprobePath: resolveFfprobeExecutable(
+      options.ffprobePath,
+      ffmpegPath,
+      options.repositoryRoot,
+    ),
   };
 }
 
@@ -1409,6 +1402,15 @@ export function createFinalRenderService(
       segmentCompletion = null;
       pending.reject(error);
     };
+    // An empty browser segment is an infrastructure fault, not proof that the
+    // Scene Graph is bad. Allow the outer loop to restart it with a clean
+    // browser profile before declaring the render failed.
+    const abortSegment = (error: Error) => {
+      const pending = segmentCompletion;
+      if (!pending) return;
+      segmentCompletion = null;
+      pending.reject(error);
+    };
     const stopActiveRender = () => {
       failRender(
         new FinalRenderError(
@@ -1700,6 +1702,7 @@ export function createFinalRenderService(
       );
       const deadline = Date.now() + timeoutMs;
       let segmentIndex = 0;
+      let emptySegmentBrowserAttempts = 0;
       while (framesReceived < estimatedTotalFrames) {
         const segmentStartFrame = framesReceived;
         const segmentEndFrame = Math.min(
@@ -1719,11 +1722,12 @@ export function createFinalRenderService(
             '--disable-dev-shm-usage',
             '--disable-extensions',
             '--disable-features=Translate',
+            '--disable-gpu',
             '--disable-sync',
             '--no-first-run',
             '--no-default-browser-check',
             '--autoplay-policy=no-user-gesture-required',
-            `--user-data-dir=${path.join(cacheDirectory, `browser-profile-${segmentIndex}`)}`,
+            `--user-data-dir=${path.join(cacheDirectory, `browser-profile-${segmentIndex}-attempt-${emptySegmentBrowserAttempts + 1}`)}`,
             renderUrl.toString(),
           ],
           {stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true},
@@ -1734,7 +1738,7 @@ export function createFinalRenderService(
           if (browserErrors.length > 40) browserErrors.shift();
         });
         browser.once('error', error =>
-          failRender(
+          abortSegment(
             new FinalRenderError(
               'FINAL_RENDER_BROWSER_UNAVAILABLE',
               'Không thể khởi động Chrome/Edge cho final render.',
@@ -1752,7 +1756,7 @@ export function createFinalRenderService(
         browser.once('exit', code => {
           if (segmentCompletion) {
             const details = browserErrors.join('').slice(-4_000).trim();
-            failRender(
+            abortSegment(
               new FinalRenderError(
                 'FINAL_RENDER_BROWSER_STOPPED',
                 `Trình duyệt render dừng sớm với mã ${String(code)}.`,
@@ -1773,6 +1777,7 @@ export function createFinalRenderService(
           throw new Error('Final render vượt quá thời gian cho phép.');
         }
         let timer: NodeJS.Timeout | null = null;
+        let firstFrameTimer: NodeJS.Timeout | null = null;
         const timeout = new Promise<never>((_, reject) => {
           timer = setTimeout(
             () => reject(new Error('Final render vượt quá thời gian cho phép.')),
@@ -1780,19 +1785,74 @@ export function createFinalRenderService(
           );
           timer.unref();
         });
+        const firstFrameTimeout = new Promise<never>((_, reject) => {
+          firstFrameTimer = setTimeout(() => {
+            if (framesReceived > segmentStartFrame) return;
+            const details = browserErrors.join('').slice(-4_000).trim();
+            const error = new FinalRenderError(
+              'FINAL_RENDER_BROWSER_STALLED',
+              `Chrome không xuất frame đầu trong ${Math.round(FIRST_FRAME_STALL_TIMEOUT_MS / 1_000)} giây.`,
+              {
+                diagnostic: backendRenderDiagnostic(
+                  'browser',
+                  details || 'Chrome did not request or stream the first render frame.',
+                  {frame: segmentStartFrame},
+                ),
+              },
+            );
+            abortSegment(error);
+            reject(error);
+          }, FIRST_FRAME_STALL_TIMEOUT_MS);
+          firstFrameTimer.unref();
+        });
         try {
-          await Promise.race([completion, timeout]);
+          await Promise.race([completion, timeout, firstFrameTimeout]);
+        } catch (error) {
+          const browserStartError = error instanceof Error
+            ? error
+            : new Error('Chrome could not start the render segment.');
+          abortSegment(browserStartError);
+          await terminateChildProcess(browser);
+          browser = null;
+          const canRetryEmptySegment =
+            framesReceived === segmentStartFrame &&
+            emptySegmentBrowserAttempts + 1 < MAX_SEGMENT_BROWSER_ATTEMPTS &&
+            browserStartError instanceof FinalRenderError &&
+            /^(?:FINAL_RENDER_BROWSER_UNAVAILABLE|FINAL_RENDER_BROWSER_STOPPED|FINAL_RENDER_BROWSER_STALLED)$/u.test(browserStartError.code);
+          if (canRetryEmptySegment) {
+            emptySegmentBrowserAttempts += 1;
+            updateStatus(projectId, generationId, {
+              state: 'rendering',
+              progress: 0.04,
+              renderedFrames: framesReceived,
+              message: 'Chrome chưa trả frame đầu; đang khởi động lại an toàn…',
+            });
+            continue;
+          }
+          throw browserStartError;
         } finally {
           if (timer) clearTimeout(timer);
+          if (firstFrameTimer) clearTimeout(firstFrameTimer);
         }
         await terminateChildProcess(browser);
         browser = null;
         if (framesReceived <= segmentStartFrame) {
+          if (emptySegmentBrowserAttempts + 1 < MAX_SEGMENT_BROWSER_ATTEMPTS) {
+            emptySegmentBrowserAttempts += 1;
+            updateStatus(projectId, generationId, {
+              state: 'rendering',
+              progress: 0.04,
+              renderedFrames: framesReceived,
+              message: 'Chrome chưa trả frame đầu; đang khởi động lại an toàn…',
+            });
+            continue;
+          }
           throw new FinalRenderError(
             'FINAL_RENDER_EMPTY_SEGMENT',
             `Motion Canvas không xuất frame cho segment bắt đầu tại ${segmentStartFrame}.`,
           );
         }
+        emptySegmentBrowserAttempts = 0;
         await persistProgressMarker(
           projectId,
           layoutBundle,

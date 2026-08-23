@@ -29,11 +29,20 @@ import {
   MotionCanvasSceneSpecSchema,
   compileMotionCanvasSceneSpec,
   extractMotionCanvasSceneSpec,
-  motionCanvasMotionValues,
-  motionCanvasVisualKindValues,
+  isMotionCanvasSceneSpecV2,
+  templateRequiredByVisualPlan,
+  type MotionCanvasSceneSpec,
 } from './motionCanvasSceneSpec.ts';
+import {
+  MotionCanvasSceneSpecV3Schema,
+  compileMotionCanvasSceneSpecV3,
+  extractMotionCanvasSceneSpecV3,
+  isMotionCanvasSceneSpecV3,
+  sceneSpecV3ActionKindValues,
+  type MotionCanvasSceneSpecV3,
+} from './motionCanvasSceneSpecV3.ts';
 
-export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v15-scene-spec';
+export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v17-scene-graph-v3';
 export const MOTION_CANVAS_VERSION = '3.17.2';
 export const MOTION_CANVAS_FPS = 30;
 export const MOTION_CANVAS_DEFAULT_FONT_FAMILY =
@@ -41,6 +50,8 @@ export const MOTION_CANVAS_DEFAULT_FONT_FAMILY =
 export const MOTION_CANVAS_SAFE_MARGIN_X_RATIO = 0.08;
 export const MOTION_CANVAS_SAFE_MARGIN_Y_RATIO = 0.07;
 export const MAX_CONCURRENT_PRIMARY_BLOCKS = 2;
+export const DEFAULT_MOTION_CANVAS_GENERATION_CONCURRENCY = 4;
+export const MAXIMUM_MOTION_CANVAS_GENERATION_CONCURRENCY = 4;
 const DEFAULT_SCENE_TIMEOUT_MS = 20 * 60 * 1000;
 // One focused repair plus one clean regeneration is both more reliable and
 // more token-efficient than repeatedly feeding an increasingly broken source
@@ -63,7 +74,7 @@ const generatedMotionCanvasSceneSchema = z
       .max(pipelineSafetyLimits.maximumSceneSourceCharacters)
       .nullable()
       .optional(),
-    spec: MotionCanvasSceneSpecSchema.nullable().optional(),
+    spec: z.union([MotionCanvasSceneSpecV3Schema, MotionCanvasSceneSpecSchema]).nullable().optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -119,8 +130,18 @@ export interface MotionCanvasGenerationRequest {
   outline: TeachingOutline;
   voiceVisualPlan: VoiceVisualPlan;
   sectionIndexes?: number[];
+  /** A first-pass generation deliberately detached from an existing bundle. */
+  regenerateFromScratch?: boolean;
   guidance?: string;
   currentScenes?: MotionCanvasSourceScene[];
+  /** Reports bounded per-scene progress without coupling the generator to an
+   * HTTP request. Callers must keep this callback non-blocking. */
+  onProgress?: (progress: {
+    completedScenes: number;
+    totalScenes: number;
+    sectionIndex: number | null;
+    outcome: 'started' | 'completed' | 'failed';
+  }) => void;
 }
 
 export interface MotionCanvasGenerationResult {
@@ -421,6 +442,7 @@ function generationPayload(
         primaryBlock: beat.primaryBlock,
         visualLifecycle: beat.visualLifecycle,
         compositionContract: beat.compositionContract,
+        visualIntent: beat.visualIntent,
         durationSeconds: beat.durationSeconds,
       })),
       stateHandoff: voiceVisualSection.stateHandoff,
@@ -437,9 +459,8 @@ function generationPayload(
       ? {
           currentScene: {
             name: request.currentScenes[sectionIndex]!.name,
-            spec: extractMotionCanvasSceneSpec(
-              request.currentScenes[sectionIndex]!.source,
-            ),
+            spec: extractMotionCanvasSceneSpecV3(request.currentScenes[sectionIndex]!.source) ??
+              extractMotionCanvasSceneSpec(request.currentScenes[sectionIndex]!.source),
           },
         }
       : {}),
@@ -451,11 +472,18 @@ function buildPrompt(
   sectionIndex: number,
 ) {
   return [
-    'Create one declarative Scene Spec for the requested teaching section. PAD Studio, not you, owns TSX generation, refs, layout safety, imports, and timeline arithmetic.',
-    'Return JSON exactly as {"name":"...","source":null,"spec":{"version":1,"visualAnchor":"...","beats":[...]}}. Do not return TSX, JavaScript, Motion Canvas code, Markdown, refs, coordinates, durations, or lifecycle comments.',
+    'Create one declarative Scene Graph v3 for the requested teaching section. PAD Studio, not you, owns TSX generation, refs, layout safety, imports, and timeline arithmetic.',
+    'Return JSON exactly as {"name":"...","source":null,"spec":{"version":3,"visualAnchor":"...","beats":[...]}}. Do not return TSX, JavaScript, Motion Canvas code, Markdown, durations, or lifecycle comments.',
     'Emit exactly one spec beat for every scene.beats entry, in the same order, and copy its UUID exactly into beatId. visualId must be a unique, stable, descriptive lowercase kebab-case identifier; never use UUIDs, indexes, random text, or displayed labels as identity.',
-    `Choose visualKind from ${motionCanvasVisualKindValues.join(', ')} and motion from ${motionCanvasMotionValues.join(', ')}. Use 2-5 short information-bearing items per beat. Each item has label (max 28 characters), value (max 18 characters or null), and emphasis (primary, secondary, or muted).`,
-    'headline is a short title (max 44 characters); caption is a short optional note (max 64 characters or null). Shapes and relationships must carry the lesson; do not copy full voiceover sentences into text.',
+    'Do not choose from a template catalog. Compose freely with normalized entity boxes and closed safe primitives (rect, circle, ellipse, line, polygon, path, icon, text). A semantic entity may contain multiple parts, allowing a patient, vehicle, machine, room, heap item, hand, document, or any new subject to become a recognizable composite illustration.',
+    `Any part that must read as a specific real-world object or symbol (a leaf, a person, a sun, a car, an organ, a device, a building, a weather condition, and so on) uses primitive "icon" with iconId set to a real glyph from Material Design Icons or Phosphor, written exactly as "mdi:name" or "ph:name" (examples: mdi:leaf, mdi:white-balance-sunny, mdi:water, mdi:snowflake, mdi:brain, mdi:atom, mdi:dna, mdi:account, mdi:hospital-box, mdi:car, ph:tree, ph:plant, ph:sun, ph:cloud-rain). Prefer the plainest, most common name for the concept. Never hand-draw a recognizable object with pathData; every iconId is checked against the real icon library and an unknown one is rejected.`,
+    'The path primitive is only for abstract, non-representational decorative curves and motion trails (an airflow line, a subtle accent swirl) that are not meant to look like a specific object.',
+    'Treat scene.beats[].visualIntent as the binding contract. Every mustShow entity needs one composite entity whose intentId exactly equals that entity id. Every mustShow relation needs a visible relationship with its exact intentId. Every mustShow action needs an action with its exact intentId. Do not replace a concrete entity with an unlabeled generic node and do not invent semantic ids.',
+    `Actions use only ${sceneSpecV3ActionKindValues.join(', ')}. Subject-matter verbs remain in Visual Intent; map them to these safe executable actions. Relationships connect declared entity ids and may use line, arrow, dashed, or curved styles.`,
+    'Each entity needs description, role, normalized box, optional short label, and 1-12 primitive parts. All box, part, point, and SVG pathData coordinates are local, centered normalized coordinates: use roughly -0.5..0.5 for boxes/points and a 0..1 viewbox for pathData. Decoration coordinates are local to the beat canvas. Use fillRole/strokeRole from background, surface, primary, accent, text, transparent. When a concrete distinction depends on its real colour, preserve it with optional fillColor/strokeColor as #RRGGBB rather than collapsing red, orange, warning, blood, heat, or state colours into one accent. Lines/polygons require points. Path parts require pathData made only of SVG path commands/numbers. Other parts omit pathData. Only text parts may have text.',
+    'Use relationship style spatial when containment, overlap, attachment, adjacency, or another meaningful placement already makes the relation visible; reserve line, arrow, dashed, and curved for relations that genuinely need a connector.',
+    'Set fidelity:"designed" for Codex output. headline is optional and usually null. Total text is capped at 150 characters / 26 words; visual form, spatial relation, state, and motion must carry the lesson. Never copy voiceover sentences into labels.',
+    'motifHints are open descriptive hints, not compiler templates. Preserve the Visual Intent metaphor, concrete objects, environment, state change, and visual hierarchy even when the subject has never appeared in another project.',
     'Keep a coherent visual anchor across the scene while making each beat a meaningful visual progression. Match visualPurpose, visualDescription, animationDescription, compositionContract, visualBible, and stateHandoff.',
     'Lifecycle binding invariant is compiler-owned: PAD Studio deterministically maps every planned lifecycle key to one explicit JSX node with a ref and reserves the exit window at the end of each beat. Do not attempt to encode this in the spec.',
     `The required background is ${request.topicInput.background.color} (${videoBackgroundTone(request.topicInput.background)}); PAD Studio applies it and the project visualBible during compilation.`,
@@ -469,12 +497,13 @@ function buildRepairPrompt(
   currentScene: MotionCanvasSourceScene,
   compilerDiagnostics: string,
 ) {
-  const currentSpec = extractMotionCanvasSceneSpec(currentScene.source);
+  const currentSpec = extractMotionCanvasSceneSpecV3(currentScene.source) ??
+    extractMotionCanvasSceneSpec(currentScene.source);
   if (currentSpec) {
     return [
       buildPrompt(request, sectionIndex),
       'Revise the Scene Spec as a whole so the rendered scene fixes every diagnostic below. Keep every beatId exactly unchanged and return source:null with a complete replacement spec.',
-      'When a frame is empty or sparse, keep the information-bearing visual active through the middle of the beat; PAD Studio automatically reserves the final exit window. Improve the visualKind, focus, labels, values, and emphasis instead of attempting to write timing code.',
+      'When a frame is empty or sparse, keep the information-bearing visual active through the middle of the beat; PAD Studio automatically reserves the final exit window. Improve composite entities, spatial relationships, actions, decorations, and concise labels instead of attempting to write timing code.',
       `Diagnostics:\n${compilerDiagnostics}`,
       JSON.stringify({currentSpec}),
     ].join('\n');
@@ -1599,6 +1628,277 @@ interface GeneratedSceneResult {
   scene: MotionCanvasSourceScene;
   model: string;
   usage: CodexTokenUsage | null;
+  fallbackReason?: string | null;
+}
+
+function fallbackPlanTerm(description: string) {
+  const keyword = [
+    'hàng đợi', 'ưu tiên', 'phần tử', 'cổng', 'đường ray', 'làn', 'vòng',
+    'heap', 'cha', 'con', 'đỉnh', 'cây', 'đường', 'khối',
+  ].find(term => description.normalize('NFD').replace(/[\u0300-\u036f]/gu, '').toLowerCase().includes(
+    term.normalize('NFD').replace(/[\u0300-\u036f]/gu, '').toLowerCase(),
+  ));
+  if (keyword) return keyword;
+  return description.match(/[\p{L}\p{N}]{3,}/u)?.[0] ?? 'minh họa';
+}
+
+function fallbackTemplate(description: string): MotionCanvasSceneSpec['beats'][number]['template'] {
+  return templateRequiredByVisualPlan({
+    visualDescription: description,
+    visualPurpose: '',
+    animationDescription: '',
+  }) ?? 'process';
+}
+
+type ScenePartV3 = MotionCanvasSceneSpecV3['beats'][number]['entities'][number]['parts'][number];
+
+function fallbackCompositeParts(kind: string): ScenePartV3[] {
+  const normalized = kind.normalize('NFD').replace(/[\u0300-\u036f]/gu, '').replace(/đ/giu, 'd').toLowerCase();
+  const part = (value: Partial<ScenePartV3> & Pick<ScenePartV3, 'id' | 'primitive'>): ScenePartV3 => ({
+    x: 0,
+    y: 0,
+    width: 0.7,
+    height: 0.7,
+    rotation: 0,
+    fillRole: 'primary',
+    strokeRole: 'text',
+    strokeWidth: 0.008,
+    cornerRadius: 0.12,
+    points: [],
+    text: null,
+    ...value,
+  });
+  if (/person|patient|doctor|student|teacher|nguoi|benh nhan|bac si/u.test(normalized)) {
+    return [
+      part({id: 'person-head', primitive: 'circle', y: -0.3, width: 0.34, height: 0.34, fillRole: 'accent'}),
+      part({id: 'person-body', primitive: 'rect', y: 0.18, width: 0.58, height: 0.58, cornerRadius: 0.3}),
+      part({id: 'person-badge', primitive: 'rect', x: 0.17, y: 0.08, width: 0.14, height: 0.12, fillRole: 'surface', cornerRadius: 0.2}),
+    ];
+  }
+  if (/vehicle|car|truck|bus|xe/u.test(normalized)) {
+    return [
+      part({id: 'vehicle-body', primitive: 'rect', y: -0.03, width: 0.88, height: 0.42, cornerRadius: 0.18}),
+      part({id: 'vehicle-cabin', primitive: 'polygon', x: 0.12, y: -0.24, width: 0.55, height: 0.3, fillRole: 'accent', points: [{x: -0.35, y: 0.3}, {x: -0.12, y: -0.3}, {x: 0.3, y: -0.3}, {x: 0.42, y: 0.3}]}),
+      part({id: 'vehicle-wheel-left', primitive: 'circle', x: -0.27, y: 0.28, width: 0.22, height: 0.22, fillRole: 'surface'}),
+      part({id: 'vehicle-wheel-right', primitive: 'circle', x: 0.27, y: 0.28, width: 0.22, height: 0.22, fillRole: 'surface'}),
+    ];
+  }
+  if (/building|hospital|school|house|room|nha|phong/u.test(normalized)) {
+    return [
+      part({id: 'building-shell', primitive: 'rect', y: 0.08, width: 0.78, height: 0.72, cornerRadius: 0.05}),
+      part({id: 'building-roof', primitive: 'polygon', y: -0.36, width: 0.9, height: 0.3, fillRole: 'accent', points: [{x: -0.48, y: 0.35}, {x: 0, y: -0.4}, {x: 0.48, y: 0.35}]}),
+      part({id: 'building-door', primitive: 'rect', y: 0.25, width: 0.22, height: 0.38, fillRole: 'surface', cornerRadius: 0.04}),
+    ];
+  }
+  if (/database|container|queue|stack|heap|data|box|record|hang doi|du lieu/u.test(normalized)) {
+    return [
+      part({id: 'container-shell', primitive: 'rect', width: 0.9, height: 0.72, fillRole: 'surface', strokeRole: 'primary', cornerRadius: 0.16}),
+      part({id: 'container-core', primitive: 'ellipse', width: 0.56, height: 0.34, fillRole: 'accent'}),
+      part({id: 'container-state', primitive: 'line', width: 0.8, height: 0.8, fillRole: 'transparent', strokeRole: 'text', points: [{x: -0.3, y: 0.28}, {x: 0.3, y: 0.28}]}),
+    ];
+  }
+  return [
+    part({id: 'symbol-outer', primitive: 'ellipse', width: 0.82, height: 0.72, fillRole: 'surface', strokeRole: 'primary'}),
+    part({id: 'symbol-inner', primitive: 'polygon', width: 0.55, height: 0.55, fillRole: 'accent', points: [{x: 0, y: -0.48}, {x: 0.46, y: 0.36}, {x: -0.46, y: 0.36}]}),
+  ];
+}
+
+function fallbackEntityBox(index: number, count: number) {
+  const positions = count === 1
+    ? [{x: 0, y: 0.02}]
+    : [
+        {x: 0, y: -0.18},
+        {x: -0.3, y: 0.08},
+        {x: 0.3, y: 0.08},
+        {x: -0.3, y: 0.3},
+        {x: 0, y: 0.3},
+        {x: 0.3, y: 0.3},
+        {x: -0.4, y: -0.2},
+        {x: 0.4, y: -0.2},
+        {x: -0.15, y: 0.12},
+        {x: 0.15, y: 0.12},
+      ];
+  const position = positions[index] ?? {x: 0, y: 0};
+  const compact = count > 6;
+  return {...position, width: compact ? 0.15 : 0.2, height: compact ? 0.13 : 0.17};
+}
+
+function fallbackActionKind(verb: string): typeof sceneSpecV3ActionKindValues[number] {
+  const value = verb.toLowerCase();
+  if (/move|travel|enter|leave|arrive|dispatch|flow|chuyen|di/u.test(value)) return 'flow';
+  if (/change|convert|transform|bien/u.test(value)) return 'transform';
+  if (/compare|contrast|compare|so sanh/u.test(value)) return 'compare';
+  if (/swap|exchange|doi/u.test(value)) return 'swap';
+  return 'focus';
+}
+
+function simplifiedV3FallbackSpec(request: MotionCanvasGenerationRequest, sectionIndex: number): MotionCanvasSceneSpecV3 {
+  const outlineSection = request.outline.sections[sectionIndex]!;
+  const planSection = request.voiceVisualPlan.sections[sectionIndex]!;
+  return {
+    version: 3,
+    visualAnchor: request.voiceVisualPlan.visualBible?.visualAnchor ?? `Semantic illustration for ${outlineSection.title}.`,
+    beats: planSection.beats.map((beat, beatIndex) => {
+      const intent = beat.visualIntent!;
+      const entities = intent.entities.map((entity, entityIndex) => ({
+        id: entity.id,
+        intentId: entity.id,
+        description: entity.appearance,
+        role: entity.role === 'primary' ? 'primary' as const : entity.role === 'support' ? 'secondary' as const : 'muted' as const,
+        box: fallbackEntityBox(entityIndex, intent.entities.length),
+        label: entity.label?.slice(0, 12) ?? null,
+        parts: fallbackCompositeParts(entity.kind),
+      }));
+      const relationships = intent.relations.map(relation => ({
+        id: relation.id,
+        intentId: relation.id,
+        from: relation.from,
+        to: relation.to,
+        style: 'arrow' as const,
+        label: null,
+        emphasis: relation.mustShow ? 'primary' as const : 'secondary' as const,
+        via: [],
+      }));
+      const occupiedIds = new Set([
+        ...entities.map(entity => entity.id),
+        ...relationships.map(relation => relation.id),
+        ...intent.actions.map(action => action.id),
+      ]);
+      let fallbackActionId = 'fallback-focus-action';
+      while (occupiedIds.has(fallbackActionId)) fallbackActionId = `${fallbackActionId}-safe`;
+      const actions = intent.actions.length
+        ? intent.actions.map(action => ({
+            id: action.id,
+            intentId: action.id,
+            kind: fallbackActionKind(action.verb),
+            targets: [action.actor, ...(action.target ? [action.target] : [])].slice(0, 4),
+            direction: 'right' as const,
+            amount: 0.06,
+          }))
+        : [{id: fallbackActionId, intentId: null, kind: 'focus' as const, targets: [entities[0]!.id], direction: null, amount: 0.05}];
+      return {
+        beatId: beat.id,
+        visualId: `semantic-beat-${['one', 'two', 'three', 'four', 'five'][beatIndex] ?? 'later'}-${toSlug(beat.primaryBlock ?? 'visual')}`,
+        headline: null,
+        motifHints: [intent.abstraction, ...intent.entities.slice(0, 3).map(entity => entity.kind)].map(value => value.slice(0, 80)),
+        fidelity: 'simplified',
+        entities,
+        relationships,
+        actions,
+        decorations: [],
+      };
+    }),
+  };
+}
+
+/**
+ * Last-resort generation remains an illustration, never a paragraph placed on
+ * a coloured card.  It deterministically preserves each plan beat and uses
+ * the same Scene Spec compiler as Codex output, so its source is safe while
+ * still exposing nodes, a directional relationship, and an active gate.
+ */
+function illustratedFallbackSceneSource(
+  request: MotionCanvasGenerationRequest,
+  sectionIndex: number,
+) {
+  const outlineSection = request.outline.sections[sectionIndex]!;
+  const planSection = request.voiceVisualPlan.sections[sectionIndex]!;
+  if (planSection.beats.every(beat => beat.visualIntent)) {
+    return compileMotionCanvasSceneSpecV3({
+      spec: simplifiedV3FallbackSpec(request, sectionIndex),
+      beats: planSection.beats,
+      outlineTitle: outlineSection.title,
+      frame: request.videoFrame ?? request.topicInput.videoFrame ?? defaultVideoFrame,
+      backgroundColor: request.topicInput.background.color,
+      visualBible: request.voiceVisualPlan.visualBible,
+    });
+  }
+  const spec: MotionCanvasSceneSpec = {
+    version: 2,
+    visualAnchor:
+      request.voiceVisualPlan.visualBible?.visualAnchor ??
+      `A visible anchor for ${outlineSection.title}.`,
+    beats: planSection.beats.map((beat, beatIndex) => {
+      const term = fallbackPlanTerm(beat.visualDescription);
+      const template = fallbackTemplate(beat.visualDescription);
+      const visualId = `fallback-${toSlug(beat.primaryBlock ?? `visual-${beatIndex + 1}`)}`;
+      const concepts = [term];
+      return {
+        beatId: beat.id,
+        visualId,
+        headline: outlineSection.title.slice(0, 34),
+        caption: null,
+        template,
+        focus: 'center',
+        planAlignment: {planTerms: [term]},
+        elements: [
+          {
+            type: 'node',
+            id: 'incoming-item',
+            shape: template === 'tree' ? 'circle' : 'pill',
+            label: 'Đến',
+            value: null,
+            emphasis: 'secondary',
+            concepts,
+          },
+          {
+            type: 'node',
+            id: 'priority-anchor',
+            shape: 'diamond',
+            label: 'Ưu tiên',
+            value: null,
+            emphasis: 'primary',
+            concepts,
+          },
+          {
+            type: 'gate',
+            id: 'processing-gate',
+            state: 'open',
+            label: 'Xử lý',
+            value: null,
+            emphasis: 'secondary',
+            concepts,
+          },
+        ],
+        relationships: [
+          {
+            id: 'priority-flow',
+            type: template === 'tree' ? 'edge' : 'arrow',
+            from: 'incoming-item',
+            to: 'priority-anchor',
+            via: [],
+            label: null,
+            emphasis: 'primary',
+          },
+          {
+            id: 'dispatch-flow',
+            type: 'arrow',
+            from: 'priority-anchor',
+            to: 'processing-gate',
+            via: [],
+            label: null,
+            emphasis: 'secondary',
+          },
+        ],
+        groups: [],
+        motions: [
+          {
+            kind: template === 'orbit' ? 'orbit' : 'flow',
+            targets: ['incoming-item', 'priority-anchor'],
+            direction: template === 'orbit' ? 'clockwise' : 'right',
+          },
+        ],
+      };
+    }),
+  };
+  return compileMotionCanvasSceneSpec({
+    spec,
+    beats: planSection.beats,
+    outlineTitle: outlineSection.title,
+    frame: request.videoFrame ?? request.topicInput.videoFrame ?? defaultVideoFrame,
+    backgroundColor: request.topicInput.background.color,
+    visualBible: request.voiceVisualPlan.visualBible,
+  });
 }
 
 /** Deterministic geometry for one declared composition archetype. Ratios are
@@ -1935,6 +2235,11 @@ function repairDiagnostics(error: unknown) {
       }
     }
   }
+  if (error instanceof MotionCanvasGenerationError && error.cause instanceof z.ZodError) {
+    for (const issue of error.cause.issues.slice(0, 20)) {
+      lines.push(`spec.${issue.path.join('.')}: ${issue.message}`);
+    }
+  }
   return [...new Set(lines)].join('\n').slice(0, 12_000);
 }
 
@@ -1956,11 +2261,17 @@ export function createCodexMotionCanvasGenerator(
   const configuredTimeoutMs = options.timeoutMs;
   const concurrency = Math.max(
     1,
-    Math.min(4, Math.floor(options.concurrency ?? 2)),
+    Math.min(
+      MAXIMUM_MOTION_CANVAS_GENERATION_CONCURRENCY,
+      Math.floor(
+        options.concurrency ?? DEFAULT_MOTION_CANVAS_GENERATION_CONCURRENCY,
+      ),
+    ),
   );
   // Structural richness is telemetry, not proof that a semantic blueprint
-  // failed, so it may trigger at most a couple of bounded regeneration turns
-  // per batch — never an approval signal, never unbounded AI spend.
+  // failed. Rendered-frame and semantic validation own repair decisions, so
+  // this speculative pre-render Codex retry is opt-in and bounded per batch —
+  // never an approval signal and never an unbounded AI expense.
   const qualityRetryLimit = Math.max(
     0,
     Math.min(
@@ -1968,7 +2279,7 @@ export function createCodexMotionCanvasGenerator(
       Math.floor(
         Number.isFinite(options.qualityRetryLimit)
           ? options.qualityRetryLimit!
-          : 1,
+          : 0,
       ),
     ),
   );
@@ -2104,24 +2415,36 @@ export function createCodexMotionCanvasGenerator(
     let sceneSource: string;
     try {
       sceneSource = parsed.data.spec
-        ? compileMotionCanvasSceneSpec({
-            spec: parsed.data.spec,
-            beats: voiceVisualSection.beats,
-            outlineTitle: outlineSection.title,
-            frame:
-              request.videoFrame ??
-              request.topicInput.videoFrame ??
-              defaultVideoFrame,
-            backgroundColor: request.topicInput.background.color,
-            visualBible: request.voiceVisualPlan.visualBible,
-          })
+        ? isMotionCanvasSceneSpecV3(parsed.data.spec)
+          ? compileMotionCanvasSceneSpecV3({
+              spec: parsed.data.spec,
+              beats: voiceVisualSection.beats,
+              outlineTitle: outlineSection.title,
+              frame: request.videoFrame ?? request.topicInput.videoFrame ?? defaultVideoFrame,
+              backgroundColor: request.topicInput.background.color,
+              visualBible: request.voiceVisualPlan.visualBible,
+            })
+          : compileMotionCanvasSceneSpec({
+              spec: parsed.data.spec,
+              beats: voiceVisualSection.beats,
+              outlineTitle: outlineSection.title,
+              frame:
+                request.videoFrame ??
+                request.topicInput.videoFrame ??
+                defaultVideoFrame,
+              backgroundColor: request.topicInput.background.color,
+              visualBible: request.voiceVisualPlan.visualBible,
+            })
         : applyMotionCanvasDefaultFont(
             normalizeMotionCanvasColorFormats(parsed.data.source!.trim()),
           );
     } catch (error) {
+      const detail = error instanceof Error
+        ? error.message.slice(0, 2_000)
+        : 'Compiler could not map the Scene Spec to the visual plan.';
       throw new MotionCanvasGenerationError(
         'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
-        'Scene Spec không khớp với kế hoạch beat của scene.',
+        `Scene Spec cannot be compiled against this scene's visual plan: ${detail}`,
         {cause: error},
       );
     }
@@ -2146,7 +2469,7 @@ export function createCodexMotionCanvasGenerator(
         source: `${sceneSource.trim()}\n`,
       },
       model: parsed.data.spec
-        ? [...new Set([model, 'scene-spec-compiler-v1'].filter(Boolean))]
+        ? [...new Set([model, isMotionCanvasSceneSpecV3(parsed.data.spec) ? 'scene-graph-compiler-v3' : 'scene-spec-compiler-v2'].filter(Boolean))]
             .join(', ')
             .slice(0, 160)
         : model,
@@ -2249,14 +2572,13 @@ export function createCodexMotionCanvasGenerator(
           endEvent: `beat:${beat.id}:end`,
           plannedDurationSeconds: beat.durationSeconds,
         })),
-        source: applyMotionCanvasDefaultFont(
-          fallbackSceneSource(request, sectionIndex),
-        ),
+        source: illustratedFallbackSceneSource(request, sectionIndex),
       },
       model: [...new Set([model, 'local-safe-fallback'].filter(Boolean))]
         .join(', ')
         .slice(0, 160),
       usage,
+      fallbackReason: 'Codex did not return a compiler-safe Scene Spec after the bounded repair and clean-regeneration attempts.',
     };
     return validateSceneResult(request, sectionIndex, result);
   }
@@ -2563,7 +2885,7 @@ export function createCodexMotionCanvasGenerator(
     async generate(request) {
       for (const section of request.voiceVisualPlan.sections) {
         if (section.beats.length > pipelineSafetyLimits.maximumBeatsPerSection || section.beats.some(beat => !beat.primaryBlock || !beat.visualLifecycle || !beat.visualLifecycle.stay.includes(beat.primaryBlock) || beat.visualLifecycle.stay.filter(key => key.startsWith('block-')).length > MAX_CONCURRENT_PRIMARY_BLOCKS)) {
-          throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_REQUEST', 'Voice–visual plan must contain at most five beats per scene and a complete lifecycle for each beat.');
+          throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_REQUEST', 'Kế hoạch hình ảnh chỉ được có tối đa năm beat trong mỗi scene và phải khai báo đầy đủ vòng đời cho từng beat.');
         }
       }
       const sectionIndexes = request.sectionIndexes ??
@@ -2586,6 +2908,13 @@ export function createCodexMotionCanvasGenerator(
       const results = new Array<GeneratedSceneResult>(sectionIndexes.length);
       const failures: Array<{index: number; error: unknown}> = [];
       let nextIndex = 0;
+      let completedScenes = 0;
+      request.onProgress?.({
+        completedScenes,
+        totalScenes: sectionIndexes.length,
+        sectionIndex: null,
+        outcome: 'started',
+      });
       const workerCount = Math.min(
         concurrency,
         sectionIndexes.length,
@@ -2602,8 +2931,22 @@ export function createCodexMotionCanvasGenerator(
               request,
               sectionIndex,
             );
+            completedScenes += 1;
+            request.onProgress?.({
+              completedScenes,
+              totalScenes: sectionIndexes.length,
+              sectionIndex,
+              outcome: 'completed',
+            });
           } catch (error) {
             failures.push({index: resultIndex, error});
+            completedScenes += 1;
+            request.onProgress?.({
+              completedScenes,
+              totalScenes: sectionIndexes.length,
+              sectionIndex,
+              outcome: 'failed',
+            });
           }
         }
       });
@@ -2624,10 +2967,12 @@ export function createCodexMotionCanvasGenerator(
             .length,
         ),
       );
-      const qualityRetryIndexes: number[] = [];
+      const qualityRetryIndexes = new Set<number>();
+      const qualityRetryDiagnostics: NonNullable<MotionCanvasBundle['generationDiagnostics']> = [];
       for (let index = 0; index < assessments.length; index++) {
         const assessment = assessments[index]!;
         const sectionIndex = sectionIndexes[index]!;
+        const result = results[index]!;
         const beatCount =
           request.voiceVisualPlan.sections[sectionIndex]!.beats.length;
         const previousRichness = assessments
@@ -2640,18 +2985,30 @@ export function createCodexMotionCanvasGenerator(
                 Math.floor((previousRichness.length - 1) / 2)
               ]!
             : null;
-        const severeAbsoluteDrop =
-          beatCount >= 3 && assessment.score < 45;
-        const relativeDrop =
-          baseline !== null &&
-          baseline >= 12 &&
-          assessment.richnessPerBeat < baseline * 0.72;
-        void severeAbsoluteDrop;
-        void relativeDrop;
+        // Richness comparisons are meaningful only for compiler-owned v2
+        // scenes.  Legacy hand-authored TSX has a different primitive count,
+        // so comparing it would spend an unnecessary Codex turn on a false
+        // signal.  Every new scene is v2; old scenes retain compatibility.
+        const compilerOwned = Boolean(
+          extractMotionCanvasSceneSpecV3(result.scene.source),
+        ) || isMotionCanvasSceneSpecV2(
+          extractMotionCanvasSceneSpec(result.scene.source),
+        );
+        const severeAbsoluteDrop = compilerOwned && beatCount >= 3 && assessment.score < 45;
+        const relativeDrop = compilerOwned && baseline !== null && baseline >= 12 && assessment.richnessPerBeat < baseline * 0.72;
+        if (result.fallbackReason) {
+          qualityRetryIndexes.add(index);
+          qualityRetryDiagnostics.push({
+            stage: 'fallback',
+            attempt: 1,
+            reason: `Scene "${result.scene.name.slice(0, 80)}" used the illustrated compiler fallback. ${result.fallbackReason}`.slice(0, 4_000),
+            outcome: 'used_fallback',
+          });
+        }
+        if (severeAbsoluteDrop || relativeDrop) qualityRetryIndexes.add(index);
       }
 
-      const qualityRetryDiagnostics: NonNullable<MotionCanvasBundle['generationDiagnostics']> = [];
-      for (const resultIndex of qualityRetryIndexes.slice(
+      for (const resultIndex of [...qualityRetryIndexes].slice(
         0,
         qualityRetryLimit,
       )) {
@@ -2836,9 +3193,7 @@ export function createCodexMotionCanvasGenerator(
         const fallback = {
           ...scene,
           name: `${scene.name} · safe fallback`.slice(0, 120),
-          source: applyMotionCanvasDefaultFont(
-            fallbackSceneSource(request, sectionIndex),
-          ),
+          source: illustratedFallbackSceneSource(request, sectionIndex),
         };
         validateSceneSourceContracts(request, sectionIndex, fallback.source);
         return fallback;

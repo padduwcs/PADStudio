@@ -1,10 +1,10 @@
 // Runtime bridge intentionally crosses Vite's untyped middleware boundary.
 // @ts-nocheck
-import {randomBytes} from 'node:crypto';
+import {createHash, randomBytes} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
-import {mkdir} from 'node:fs/promises';
+import {mkdir, readFile, readdir, rename, rm, stat, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {copyPreviewWorkspace} from './previewWorkspaceCopy.ts';
@@ -14,6 +14,9 @@ import {withTemporaryVisualQualityWorkspace, type MotionCanvasFrameRenderer, typ
 
 const MAX_FRAME_BYTES = 32 * 1024 * 1024;
 const MAX_GEOMETRY_BYTES = 512 * 1024;
+const QUALITY_FRAME_CACHE_VERSION = 1;
+const MAXIMUM_CACHED_QUALITY_SAMPLES = 500;
+const QUALITY_RENDER_CONCURRENCY = 3;
 function debugQuality(message: string) {
   if (process.env.PAD_QUALITY_DEBUG === '1') process.stderr.write(`[motion-quality] ${message}\n`);
 }
@@ -60,6 +63,90 @@ async function stopBrowser(child: ReturnType<typeof spawn> | null) {
   ]);
 }
 
+function qualityCacheDirectory(workspaceDirectory: string) {
+  return path.join(
+    path.dirname(path.resolve(workspaceDirectory)),
+    `.pad-quality-cache-v${QUALITY_FRAME_CACHE_VERSION}`,
+  );
+}
+
+function qualityCacheKey(options: any, sample: any) {
+  const scene = options.scenes.find((candidate: any) => candidate.id === sample.sceneId);
+  if (!scene) throw new Error(`Quality sample ${sample.sampleId} references an unknown scene.`);
+  return createHash('sha256').update(JSON.stringify({
+    version: QUALITY_FRAME_CACHE_VERSION,
+    sceneId: scene.id,
+    filePath: scene.filePath,
+    source: scene.source,
+    durationSeconds: scene.durationSeconds,
+    timingEvents: scene.timingEvents,
+    sample,
+    frame: options.frame,
+    managedKeys: options.managedKeysByBeat?.get(sample.beatId) ?? [],
+  })).digest('hex');
+}
+
+async function readQualityCache(directory: string, key: string) {
+  try {
+    const [png, geometry] = await Promise.all([
+      readFile(path.join(directory, `${key}.png`)),
+      readFile(path.join(directory, `${key}.json`), 'utf8'),
+    ]);
+    const nodes = JSON.parse(geometry);
+    if (!Array.isArray(nodes)) throw new Error('Cached geometry is invalid.');
+    decodePngRgba(png);
+    return {png, nodes};
+  } catch {
+    return null;
+  }
+}
+
+async function writeQualityCache(
+  directory: string,
+  key: string,
+  value: {png: Buffer; nodes: any[]},
+) {
+  await mkdir(directory, {recursive: true});
+  const nonce = randomBytes(8).toString('hex');
+  const pngPath = path.join(directory, `${key}.png`);
+  const jsonPath = path.join(directory, `${key}.json`);
+  const temporaryPng = `${pngPath}.${nonce}.tmp`;
+  const temporaryJson = `${jsonPath}.${nonce}.tmp`;
+  try {
+    await Promise.all([
+      writeFile(temporaryPng, value.png),
+      writeFile(temporaryJson, JSON.stringify(value.nodes), 'utf8'),
+    ]);
+    await Promise.all([rm(pngPath, {force: true}), rm(jsonPath, {force: true})]);
+    await Promise.all([rename(temporaryPng, pngPath), rename(temporaryJson, jsonPath)]);
+  } finally {
+    await Promise.all([
+      rm(temporaryPng, {force: true}).catch(() => undefined),
+      rm(temporaryJson, {force: true}).catch(() => undefined),
+    ]);
+  }
+}
+
+async function trimQualityCache(directory: string) {
+  const names = await readdir(directory).catch(() => []);
+  const pngNames = names.filter(name => /^[a-f0-9]{64}\.png$/.test(name));
+  if (pngNames.length <= MAXIMUM_CACHED_QUALITY_SAMPLES) return;
+  const entries = await Promise.all(pngNames.map(async name => ({
+    name,
+    modified: (await stat(path.join(directory, name))).mtimeMs,
+  })));
+  entries.sort((left, right) => left.modified - right.modified);
+  await Promise.all(entries
+    .slice(0, entries.length - MAXIMUM_CACHED_QUALITY_SAMPLES)
+    .flatMap(entry => {
+      const key = entry.name.slice(0, -4);
+      return [
+        rm(path.join(directory, `${key}.png`), {force: true}),
+        rm(path.join(directory, `${key}.json`), {force: true}),
+      ];
+    }));
+}
+
 export function createMotionCanvasRuntimeFrameRenderer(runtimeOptions: {browserNoSandbox?: boolean} = {}): MotionCanvasFrameRenderer {
   return {async render(options) {
     const workspaceDirectory = (options as typeof options & {workspaceDirectory?:string}).workspaceDirectory;
@@ -101,6 +188,37 @@ export function createMotionCanvasRuntimeFrameRenderer(runtimeOptions: {browserN
         png?: Buffer;
         nodes?: any[];
       }>();
+      const cacheDirectory = qualityCacheDirectory(workspaceDirectory);
+      const cacheKeys = new Map(options.samples.map(sample => [
+        sample.sampleId,
+        qualityCacheKey(options, sample),
+      ]));
+      await mkdir(cacheDirectory, {recursive: true});
+      await Promise.all(options.samples.map(async sample => {
+        const key = cacheKeys.get(sample.sampleId)!;
+        const cached = await readQualityCache(cacheDirectory, key);
+        if (cached) outputs.set(sample.sampleId, {
+          frame: sample.frame,
+          sceneName: expectedSamples.get(sample.sampleId)!.expectedSceneName,
+          ...cached,
+        });
+      }));
+      const cachedSamples = outputs.size;
+      let completedSamples = cachedSamples;
+      const cacheWrites: Array<Promise<void>> = [];
+      options.onProgress?.({
+        completedSamples,
+        totalSamples: options.samples.length,
+        cachedSamples,
+      });
+      const missingSamples = options.samples.filter(
+        sample => !outputs.has(sample.sampleId),
+      );
+      if (missingSamples.length === 0) {
+        const cachedResult=new Map<string,QualityRenderedFrame>();
+        for(const sample of options.samples){const rendered=outputs.get(sample.sampleId)!;const decoded=decodePngRgba(rendered.png!);cachedResult.set(sample.sampleId,{...decoded,nodes:rendered.nodes!});}
+        return cachedResult;
+      }
       let finish:(error?:Error)=>void=()=>{};
       const complete=new Promise<void>((resolve,reject)=>{finish=error=>error?reject(error):resolve();});
       const [viteModule,pluginModule]=await Promise.all([import(pathToFileURL(viteEntry).href),import(pathToFileURL(pluginEntry).href)]);
@@ -113,7 +231,26 @@ export function createMotionCanvasRuntimeFrameRenderer(runtimeOptions: {browserN
         if (sceneName !== expected.expectedSceneName) throw new Error(`Quality sample ${sampleId} rendered scene ${sceneName || '(empty)'}, expected ${expected.expectedSceneName}.`);
         return expected;
       };
-      const plugin={name:'pad-quality-bridge',configureServer(server:any){server.middlewares.use((req:any,res:any,next:any)=>{void (async()=>{const url=new URL(req.url??'/','http://127.0.0.1');if(!url.pathname.startsWith('/__pad-quality/'))return next();if(url.searchParams.get('token')!==token)return send(res,403,{error:'token'});if(url.pathname==='/__pad-quality/config'&&req.method==='GET')return send(res,200,{fps:options.frame.fps,width:options.frame.width,height:options.frame.height,samples:[...expectedSamples.values()],managedKeysByScene});if(url.pathname==='/__pad-quality/geometry'&&req.method==='POST'){const data=JSON.parse((await body(req,MAX_GEOMETRY_BYTES)).toString('utf8'));const sampleId=String(data.sampleId??'');const frame=Number(data.frame);const sceneName=String(data.sceneName??'');validateSample(sampleId,frame,sceneName);const previous=outputs.get(sampleId);if(previous?.nodes)throw new Error(`Duplicate geometry for quality sample ${sampleId}.`);outputs.set(sampleId,{frame,sceneName,...previous,nodes:Array.isArray(data.nodes)?data.nodes:[]});return send(res,200,{ok:true});}if(url.pathname==='/__pad-quality/frame'&&req.method==='POST'){const sampleId=url.searchParams.get('sampleId')??'';const frame=Number(url.searchParams.get('frame'));const sceneName=url.searchParams.get('sceneName')??'';validateSample(sampleId,frame,sceneName);const previous=outputs.get(sampleId);if(previous?.png)throw new Error(`Duplicate PNG for quality sample ${sampleId}.`);const png=await body(req,MAX_FRAME_BYTES);outputs.set(sampleId,{frame,sceneName,...previous,png});return send(res,200,{ok:true});}if(url.pathname==='/__pad-quality/status'&&req.method==='POST'){const data=JSON.parse((await body(req,64*1024)).toString('utf8'));finish(data.state==='completed'?undefined:new Error(String(data.message??'Quality renderer failed.')));return send(res,200,{ok:true});}send(res,404,{error:'route'});})().catch(error=>{finish(error instanceof Error?error:new Error(String(error)));if(!res.headersSent)send(res,500,{error:'bridge'});else if(!res.writableEnded)res.end();});});}};
+      const recordOutput = (sampleId: string, next: {frame: number; sceneName: string; png?: Buffer; nodes?: any[]}) => {
+        const previous = outputs.get(sampleId);
+        const wasComplete = Boolean(previous?.png && previous?.nodes);
+        const merged = {...previous, ...next};
+        outputs.set(sampleId, merged);
+        if (!wasComplete && merged.png && merged.nodes) {
+          completedSamples += 1;
+          cacheWrites.push(writeQualityCache(
+            cacheDirectory,
+            cacheKeys.get(sampleId)!,
+            {png: merged.png, nodes: merged.nodes},
+          ));
+          options.onProgress?.({
+            completedSamples,
+            totalSamples: options.samples.length,
+            cachedSamples,
+          });
+        }
+      };
+      const plugin={name:'pad-quality-bridge',configureServer(server:any){server.middlewares.use((req:any,res:any,next:any)=>{void (async()=>{const url=new URL(req.url??'/','http://127.0.0.1');if(!url.pathname.startsWith('/__pad-quality/'))return next();if(url.searchParams.get('token')!==token)return send(res,403,{error:'token'});if(url.pathname==='/__pad-quality/config'&&req.method==='GET')return send(res,200,{fps:options.frame.fps,width:options.frame.width,height:options.frame.height,renderConcurrency:QUALITY_RENDER_CONCURRENCY,samples:missingSamples.map(sample=>expectedSamples.get(sample.sampleId)),managedKeysByScene});if(url.pathname==='/__pad-quality/geometry'&&req.method==='POST'){const data=JSON.parse((await body(req,MAX_GEOMETRY_BYTES)).toString('utf8'));const sampleId=String(data.sampleId??'');const frame=Number(data.frame);const sceneName=String(data.sceneName??'');validateSample(sampleId,frame,sceneName);const previous=outputs.get(sampleId);if(previous?.nodes)throw new Error(`Duplicate geometry for quality sample ${sampleId}.`);recordOutput(sampleId,{frame,sceneName,nodes:Array.isArray(data.nodes)?data.nodes:[]});return send(res,200,{ok:true});}if(url.pathname==='/__pad-quality/frame'&&req.method==='POST'){const sampleId=url.searchParams.get('sampleId')??'';const frame=Number(url.searchParams.get('frame'));const sceneName=url.searchParams.get('sceneName')??'';validateSample(sampleId,frame,sceneName);const previous=outputs.get(sampleId);if(previous?.png)throw new Error(`Duplicate PNG for quality sample ${sampleId}.`);const png=await body(req,MAX_FRAME_BYTES);recordOutput(sampleId,{frame,sceneName,png});return send(res,200,{ok:true});}if(url.pathname==='/__pad-quality/status'&&req.method==='POST'){const data=JSON.parse((await body(req,64*1024)).toString('utf8'));finish(data.state==='completed'?undefined:new Error(String(data.message??'Quality renderer failed.')));return send(res,200,{ok:true});}send(res,404,{error:'route'});})().catch(error=>{finish(error instanceof Error?error:new Error(String(error)));if(!res.headersSent)send(res,500,{error:'bridge'});else if(!res.writableEnded)res.end();});});}};
       let server:ViteServer|null=null;
       let child:ReturnType<typeof spawn>|null=null;
       const browserErrors: string[] = [];
@@ -142,10 +279,15 @@ export function createMotionCanvasRuntimeFrameRenderer(runtimeOptions: {browserN
         debugQuality('waiting for browser samples');
         await withTimeout(
           complete,
-          Math.max(30_000, options.samples.length * 10_000),
+          Math.max(
+            30_000,
+            Math.ceil(missingSamples.length / QUALITY_RENDER_CONCURRENCY) * 15_000,
+          ),
           () => `Motion Canvas quality render timed out. ${browserErrors.join('').slice(-4_000)}`,
         );
         debugQuality('browser samples complete');
+        await Promise.allSettled(cacheWrites);
+        await trimQualityCache(cacheDirectory).catch(() => undefined);
         const result=new Map<string,QualityRenderedFrame>();
         for(const sample of options.samples){
           const rendered=outputs.get(sample.sampleId);
@@ -167,6 +309,7 @@ export function createMotionCanvasRuntimeFrameRenderer(runtimeOptions: {browserN
             new Promise<void>(resolve => setTimeout(resolve, 5_000)),
           ]);
         }
+        await Promise.allSettled(cacheWrites);
         debugQuality('runtime cleanup complete');
       }
     });

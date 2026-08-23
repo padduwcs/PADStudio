@@ -34,6 +34,15 @@ export function outlineIsStale(project: TopicProject): boolean {
   return Boolean(project.outline && !outlineIsCurrent(project));
 }
 
+export function narrationIsApproved(project: TopicProject): boolean {
+  const narration = project.narration;
+  return Boolean(
+    narration?.review &&
+      narration.approvedAt &&
+      narration.approvedSourceHash === narration.review.sourceHash,
+  );
+}
+
 export function voiceVisualMatchesOutline(
   plan: Pick<VoiceVisualPlanContent, 'sections'>,
   outline: Pick<TeachingOutline, 'sections'>,
@@ -53,8 +62,10 @@ export function voiceVisualIsReady(project: TopicProject): boolean {
 
   return Boolean(
     outline &&
+      narrationIsApproved(project) &&
       outlineIsReady(project) &&
       plan?.status === 'approved' &&
+      plan.sourceNarrationHash === project.narration?.review?.sourceHash &&
       plan.sourceOutlineContentRevision === outline.contentRevision &&
       voiceVisualMatchesOutline(plan, outline),
   );
@@ -67,7 +78,9 @@ export function voiceVisualIsStale(project: TopicProject): boolean {
 
   return Boolean(
     !outline ||
+      !narrationIsApproved(project) ||
       !outlineIsReady(project) ||
+      plan.sourceNarrationHash !== project.narration?.review?.sourceHash ||
       plan.sourceOutlineContentRevision !== outline.contentRevision ||
       !voiceVisualMatchesOutline(plan, outline),
   );
@@ -313,7 +326,9 @@ export function layoutIsStale(project: TopicProject): boolean {
 export function finalRenderPrerequisitesAreReady(
   project: TopicProject,
 ): boolean {
-  return layoutIsReady(project);
+  return narrationIsApproved(project) &&
+    layoutIsReady(project) &&
+    project.motionCanvasBundle?.semanticValidation?.status !== 'failed';
 }
 
 export function finalRenderMatchesLayout(
@@ -375,13 +390,7 @@ export function finalRenderIsStale(project: TopicProject): boolean {
 
 /** The product workflow owns resume state; artifacts remain implementation detail. */
 export function nextWorkflowStep(project: TopicProject): TopicProject['currentStep'] {
-  const narration = project.narration;
-  const narrationApproved = Boolean(
-    narration?.review &&
-      narration.approvedAt &&
-      narration.approvedSourceHash === narration.review.sourceHash,
-  );
-  if (!narrationApproved) return 'pronunciation';
+  if (!narrationIsApproved(project)) return 'pronunciation';
 
   const productionReady = Boolean(
     project.voiceBundle?.status === 'approved' &&

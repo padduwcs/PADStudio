@@ -11,6 +11,7 @@ coverage/
 .vite/
 tmp/
 temp/
+.runtime-tools/
 
 # Environment variables and secrets
 .env

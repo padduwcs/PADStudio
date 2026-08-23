@@ -62,6 +62,35 @@ function validUnitBlueprint(unitId: string) {
     visualPurpose: 'Biến ý chính của câu thành một quan hệ nhìn thấy được.',
     visualDescription: 'Một sơ đồ trung tâm minh họa quan hệ được nhắc tới.',
     animationDescription: 'Phần tử chính di chuyển vào vị trí rồi giữ hình.',
+    visualIntent: {
+      message: 'Vùng tìm kiếm đang thu hẹp quanh đáp án cần tìm.',
+      viewerShouldInfer: 'Mỗi bước loại bỏ một nửa vùng không thể chứa đáp án.',
+      abstraction: 'schematic' as const,
+      entities: [
+        {
+          id: 'search-range',
+          kind: 'sorted search range',
+          label: 'Vùng tìm',
+          role: 'primary' as const,
+          appearance: 'Một dải ô đã sắp xếp với vùng còn lại được tô sáng.',
+          state: 'Đang được thu hẹp',
+          mustShow: true,
+        },
+      ],
+      relations: [],
+      actions: [
+        {
+          id: 'range-shrinks',
+          actor: 'search-range',
+          verb: 'shrinks',
+          target: null,
+          description: 'Hai đầu vùng tìm kiếm tiến lại gần nhau.',
+          fromState: 'Toàn bộ dải',
+          toState: 'Một nửa dải',
+          mustShow: true,
+        },
+      ],
+    },
   };
 }
 

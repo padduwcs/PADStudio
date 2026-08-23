@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   deriveSceneReviewPhase,
+  sceneReviewMutationIsRunning,
   sceneReviewOperationIsBusy,
   sceneReviewPrimaryAction,
 } from './sceneReviewFlow.ts';
@@ -66,7 +67,10 @@ test('source-changing scene operations block approval and output', () => {
     candidateApplying: false, candidatePending: false, historyBusy: false,
   };
   assert.equal(sceneReviewOperationIsBusy(idle), false);
+  assert.equal(sceneReviewMutationIsRunning(idle), false);
   assert.equal(sceneReviewOperationIsBusy({...idle, layoutSaveState: 'saving'}), true);
   assert.equal(sceneReviewOperationIsBusy({...idle, candidatePending: true}), true);
+  assert.equal(sceneReviewMutationIsRunning({...idle, candidatePending: true}), false);
+  assert.equal(sceneReviewMutationIsRunning({...idle, candidateGenerating: true}), true);
   assert.equal(sceneReviewOperationIsBusy({...idle, historyBusy: true}), true);
 });

@@ -4,6 +4,7 @@ import type {
   CodexModelSummary,
 } from '../shared/codex.ts';
 import type {RuntimeDiagnostics} from '../shared/runtimeDiagnostics.ts';
+import type {MotionCanvasGenerationProgress} from '../shared/motionCanvasGenerationProgress.ts';
 import type {
   ElevenLabsCatalog,
   ElevenLabsConnectionStatus,
@@ -61,6 +62,16 @@ export class ApiRequestError extends Error {
     this.fields = fields;
     this.currentProject = currentProject;
   }
+}
+
+export interface MotionCanvasFailureSummary {
+  generationId: string;
+  failedAt: string;
+  stage: 'compile' | 'render-quality' | 'generation';
+  code: string;
+  message: string;
+  firstIssueReason: string | null;
+  recoveryGuidance: string | null;
 }
 
 function previewRequestOptions(): RequestInit | undefined {
@@ -285,6 +296,7 @@ export async function prepareNarrationProduction(
     generationId: string;
     plannerModel?: string;
     plannerReasoningEffort?: string;
+    forceVisualReplan?: boolean;
   },
   expectedRevision: number,
 ) {
@@ -357,6 +369,41 @@ export async function generateMotionCanvas(
 
   assertSuccessful(response, payload);
   return getProjectPayload(payload);
+}
+
+export async function getLatestMotionCanvasFailure(projectId: string) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/failure`,
+  );
+  const payload = await readPayload<{failure: MotionCanvasFailureSummary | null}>(
+    response,
+  );
+  assertSuccessful(response, payload);
+  if (!payload || !('failure' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi trạng thái sinh scene không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.failure;
+}
+
+export async function getMotionCanvasGenerationProgress(projectId: string) {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/status`,
+    {cache: 'no-store'},
+  );
+  const payload = await readPayload<{
+    progress: MotionCanvasGenerationProgress | null;
+  }>(response);
+  assertSuccessful(response, payload);
+  if (!payload || !('progress' in payload)) {
+    throw new ApiRequestError(
+      'Phản hồi tiến độ sinh scene không hợp lệ.',
+      'INVALID_RESPONSE',
+    );
+  }
+  return payload.progress;
 }
 
 export async function getMotionCanvasHistory(projectId: string) {
@@ -588,12 +635,14 @@ export async function getMotionCanvasPreview(
 export async function approveMotionCanvas(
   projectId: string,
   expectedRevision: number,
+  options: {acceptDegradedSemantic?: true} = {},
 ) {
   const response = await fetch(
     `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/approve`,
     {
       method: 'POST',
-      headers: {'If-Match': `"${expectedRevision}"`},
+      headers: {'Content-Type': 'application/json', 'If-Match': `"${expectedRevision}"`},
+      body: JSON.stringify(options),
     },
   );
   const payload = await readPayload<{project: TopicProject}>(response);

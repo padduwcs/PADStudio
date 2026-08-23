@@ -2,7 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {DEFAULT_NARRATION_CALIBRATION, plannedBeatDurationSeconds} from '../shared/narrationTiming.ts';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
 import {normalizePronunciationBaseText} from '../shared/pronunciation.ts';
-import {TeachingOutlineSchema, VoiceVisualPlanSchema, type NarrationDocument, type TeachingOutline, type TopicProject, type VoiceVisualBeat, type VoiceVisualPlan, type VoiceVisualPlanContent} from '../shared/topic.ts';
+import {TeachingOutlineSchema, VoiceVisualPlanSchema, type NarrationDocument, type TeachingOutline, type TopicProject, type VisualIntent, type VoiceVisualBeat, type VoiceVisualPlan, type VoiceVisualPlanContent} from '../shared/topic.ts';
 import {
   NARRATION_VISUAL_PLANNER_PROMPT_VERSION,
   splitPlannerScenesAtBeatLimit,
@@ -12,7 +12,7 @@ import {
   type NarrationVisualPlannerService,
 } from './narrationVisualPlanner.ts';
 
-export const NARRATION_STRUCTURE_VERSION = 'semantic-visual-plan-v5';
+export const NARRATION_STRUCTURE_VERSION = 'semantic-visual-plan-v6-visual-intent';
 
 export const DEFAULT_TIMING_CALIBRATION: VoiceVisualPlanContent['timingCalibration'] = {
   source: 'default',
@@ -87,6 +87,55 @@ function describeVisual(text: string, topic: string) {
   const focus = keywords(text).slice(0, 3).join(' · ') || topic;
   return `Đặt “${focus}” vào visual anchor; dùng thẻ nhãn và đường nối để cho thấy quan hệ được nói trong beat.`;
 }
+
+function semanticId(value: string, prefix: string, index: number) {
+  const slug = value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/gu, '')
+    .replace(/đ/giu, 'd')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, '-')
+    .replace(/^-+|-+$/gu, '')
+    .slice(0, 28);
+  return `${prefix}-${slug || `item-${index + 1}`}`;
+}
+
+/**
+ * Emergency planner fallback. It is intentionally semantic and topic-derived:
+ * every visible item comes from the reviewed wording, never from a universal
+ * "input / priority / output" diagram. The later semantic gate can therefore
+ * distinguish simplified coverage from an unrelated placeholder.
+ */
+function fallbackVisualIntent(text: string, topic: string): VisualIntent {
+  const terms = [...new Set(keywords(text))].slice(0, 4);
+  if (terms.length === 0) terms.push(topic.trim().slice(0, 40) || 'topic');
+  const entities = terms.map((term, index) => ({
+    id: semanticId(term, 'concept', index),
+    kind: 'lesson concept',
+    label: term.slice(0, 32),
+    role: index === 0 ? 'primary' as const : 'support' as const,
+    appearance: `A distinct visual symbol representing ${term}.`,
+    state: null,
+    mustShow: true,
+  }));
+  const numberNames = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+  const relations = entities.slice(1).map((entity, index) => ({
+    id: `relation-${numberNames[index] ?? 'later'}-meaning`,
+    type: 'semantic relationship',
+    from: entities[0]!.id,
+    to: entity.id,
+    description: `${entities[0]!.label} is visibly related to ${entity.label}.`,
+    mustShow: true,
+  }));
+  return {
+    message: `Show the central meaning of: ${text}`.slice(0, 500),
+    viewerShouldInfer: `The viewer can infer how ${terms.join(', ')} belong to the lesson without reading narration.`.slice(0, 500),
+    abstraction: 'schematic',
+    entities,
+    relations,
+    actions: [],
+  };
+}
 function fallbackBeatLifecycle() {
   return {
     primaryBlock: 'block-concept-card',
@@ -141,7 +190,7 @@ export function narrationArtifactsAreCurrent(outline: TeachingOutline | null | u
 export function narrationArtifactsMatchReview(project: Pick<TopicProject, 'outline' | 'voiceVisualPlan' | 'narration'>) {
   // A v1 plan remains readable, but production preparation upgrades it to a
   // v2 semantic blueprint; it cannot silently masquerade as a reviewed v2 plan.
-  return Boolean(project.narration?.review && project.narration.approvedSourceHash === project.narration.review.sourceHash && narrationArtifactsAreCurrent(project.outline, project.voiceVisualPlan) && project.voiceVisualPlan?.visualBible && project.voiceVisualPlan.sections.every(section => section.beats.length <= pipelineSafetyLimits.maximumBeatsPerSection && section.beats.every(beat => beat.primaryBlock && beat.visualLifecycle && beat.visualLifecycle.stay.includes(beat.primaryBlock) && beat.visualLifecycle.stay.filter(key => key.startsWith('block-')).length <= 2 && beatCompositionContractIsComplete(beat))) && narrationPlanMatchesReviewedNarration(project.narration, project.voiceVisualPlan));
+  return Boolean(project.narration?.review && project.narration.approvedSourceHash === project.narration.review.sourceHash && narrationArtifactsAreCurrent(project.outline, project.voiceVisualPlan) && project.voiceVisualPlan?.visualBible && project.voiceVisualPlan.sections.every(section => section.beats.length <= pipelineSafetyLimits.maximumBeatsPerSection && section.beats.every(beat => beat.primaryBlock && beat.visualLifecycle && beat.visualLifecycle.stay.includes(beat.primaryBlock) && beat.visualLifecycle.stay.filter(key => key.startsWith('block-')).length <= 2 && beatCompositionContractIsComplete(beat) && beat.visualIntent)) && narrationPlanMatchesReviewedNarration(project.narration, project.voiceVisualPlan));
 }
 /** Proof that the plan preserves all reviewed narration and its order. */
 export function narrationPlanMatchesReviewedNarration(narration: NarrationDocument, plan: VoiceVisualPlan) {
@@ -159,11 +208,81 @@ export function validateSemanticVisualPlan(narration: NarrationDocument, outline
   if (plan.sections.some(section => section.beats.some(beat => (beat.visualLifecycle?.stay ?? []).filter(key => key.startsWith('block-')).length > 2))) diagnostics.push('beat exceeds maximum active block count');
   if (plan.sections.some(section => !section.stateHandoff || section.beats.some(beat => !beat.visualPurpose || !beat.visualDescription || !beat.animationDescription || !beat.primaryBlock || !beat.visualLifecycle || !beat.visualLifecycle.stay.includes(beat.primaryBlock)))) diagnostics.push('beat blueprint, lifecycle, or scene handoff is incomplete');
   if (plan.sections.some(section => section.beats.some(beat => !beatCompositionContractIsComplete(beat)))) diagnostics.push('beat composition contract is missing or inconsistent');
+  if (plan.sections.some(section => section.beats.some(beat => !beat.visualIntent))) diagnostics.push('beat còn thiếu yêu cầu hình ảnh có cấu trúc');
   if (!narrationPlanMatchesReviewedNarration(narration, plan)) diagnostics.push('spoken narration was changed, omitted, or reordered');
-  if (diagnostics.length) throw new Error(`Semantic visual plan invalid: ${diagnostics.join('; ')}.`);
+  if (diagnostics.length) throw new Error(`Kế hoạch hình ảnh chưa hợp lệ: ${diagnostics.join('; ')}.`);
 }
 
-export function createNarrationArtifacts({topicInput, narration, generationId, now, previousPlan, timingCalibration = DEFAULT_TIMING_CALIBRATION}: {topicInput: TopicProject['topicInput']; narration: NarrationDocument; generationId: string; now: string; previousPlan: VoiceVisualPlan | null | undefined; timingCalibration?: VoiceVisualPlanContent['timingCalibration'];}): {outline: TeachingOutline; voiceVisualPlan: VoiceVisualPlan} {
+export interface PreservedNarrationTimeline {
+  outline: TeachingOutline;
+  voiceVisualPlan: VoiceVisualPlan;
+}
+
+/**
+ * Replaces only visual planning fields while retaining the identity consumed
+ * by an existing VoiceBundle: outline section ids, beat ids, narration
+ * revision, spoken text, grouping, and planned durations. Actual audio files,
+ * alignment, and timestamps live in VoiceBundle and are never rewritten here.
+ */
+function applyPreservedNarrationTimeline(
+  artifacts: {outline: TeachingOutline; voiceVisualPlan: VoiceVisualPlan},
+  preserved: PreservedNarrationTimeline | null | undefined,
+) {
+  if (!preserved) return artifacts;
+  const incomingBeats = artifacts.voiceVisualPlan.sections.flatMap(section => section.beats);
+  const existingBeats = preserved.voiceVisualPlan.sections.flatMap(section => section.beats);
+  if (
+    incomingBeats.length !== existingBeats.length ||
+    incomingBeats.some((beat, index) =>
+      compactWhitespace(beat.spokenVoiceover ?? beat.voiceover) !==
+      compactWhitespace(existingBeats[index]!.spokenVoiceover ?? existingBeats[index]!.voiceover),
+    )
+  ) {
+    throw new Error('Visual replan cannot change the approved voice timeline.');
+  }
+
+  let cursor = 0;
+  const sections = preserved.voiceVisualPlan.sections.map(section => ({
+    ...section,
+    beats: section.beats.map(existing => {
+      const visual = incomingBeats[cursor++]!;
+      return {
+        ...existing,
+        visualPurpose: visual.visualPurpose,
+        visualDescription: visual.visualDescription,
+        animationDescription: visual.animationDescription,
+        visualLifecycle: visual.visualLifecycle,
+        primaryBlock: visual.primaryBlock,
+        compositionContract: visual.compositionContract,
+        visualIntent: visual.visualIntent,
+      };
+    }),
+  }));
+  const voiceVisualPlan: VoiceVisualPlan = {
+    ...preserved.voiceVisualPlan,
+    voiceDirection: artifacts.voiceVisualPlan.voiceDirection,
+    visualDirection: artifacts.voiceVisualPlan.visualDirection,
+    visualBible: artifacts.voiceVisualPlan.visualBible,
+    sections,
+    status: 'approved',
+    contentRevision: preserved.voiceVisualPlan.contentRevision + 1,
+    generation: artifacts.voiceVisualPlan.generation,
+    timingCalibration: preserved.voiceVisualPlan.timingCalibration,
+  };
+  return {
+    // The spoken structure remains immutable, while sourceInput must follow
+    // visual-only settings (background/frame/direction) edited in step 1 so
+    // the preserved outline is still current for the project.
+    outline: {
+      ...preserved.outline,
+      sourceInput: artifacts.outline.sourceInput,
+      status: 'approved' as const,
+    },
+    voiceVisualPlan,
+  };
+}
+
+export function createNarrationArtifacts({topicInput, narration, generationId, now, previousPlan, preserveTimeline, timingCalibration = DEFAULT_TIMING_CALIBRATION}: {topicInput: TopicProject['topicInput']; narration: NarrationDocument; generationId: string; now: string; previousPlan: VoiceVisualPlan | null | undefined; preserveTimeline?: PreservedNarrationTimeline | null; timingCalibration?: VoiceVisualPlanContent['timingCalibration'];}): {outline: TeachingOutline; voiceVisualPlan: VoiceVisualPlan} {
   const review = narration.review;
   if (!review || narration.approvedSourceHash !== review.sourceHash) throw new Error('Bản cách đọc chưa được duyệt.');
   const beats = narrationPlannerUnits(narration);
@@ -174,12 +293,13 @@ export function createNarrationArtifacts({topicInput, narration, generationId, n
   const generation = {generationId, provider: 'local' as const, tool: 'narration-structure' as const, algorithmVersion: NARRATION_STRUCTURE_VERSION, generatedAt: now};
   const ids = groups.map(() => randomUUID());
   const outline: TeachingOutline = {brief: {summary: `Video về ${topicInput.topic} được dựng từ nội dung gốc và canh thời gian theo bản đọc đã duyệt.`, assumptions: ['Semantic planner chỉ phân đoạn và mô tả visual; không viết lại lời thoại.']}, centralMessage: centralMessage(topicInput.topic), sections: groups.map((group, index) => {const semanticTexts = group.map(beat => beat.semanticText); return {id: ids[index]!, title: semanticTitle(topicInput.topic, semanticTexts, index), goal: teachingGoal(semanticTexts), content: semanticTexts.join(' '), estimatedSeconds: Math.max(pipelineSafetyLimits.minimumSectionDurationSeconds, group.reduce((total, beat) => total + plannedBeatDurationSeconds(beat.text, 0, timingCalibration), 0))};}), status: 'approved', contentRevision: (previousPlan?.sourceOutlineContentRevision ?? 0) + 1, sourceInput: topicInput, sourceNarrationHash: review.sourceHash, sourceNarrationRevision: narrationRevision, generation};
-  const plan: VoiceVisualPlan = {voiceDirection: 'Đọc nguyên văn bản cách đọc đã được người dùng duyệt.', visualDirection: 'Hiểu ngữ nghĩa từ nội dung gốc bước 1; chỉ dùng bản cách đọc cho voice và timing.', visualBible: visualBible(topicInput.background.color, topicInput.topic), timingCalibration, sections: groups.map((group, index) => ({outlineSectionId: ids[index]!, stateHandoff: {incoming: index ? `Kế thừa ${topicInput.topic} visual anchor từ scene ${index}.` : null, outgoing: index < groups.length - 1 ? `Giữ ${topicInput.topic} visual anchor để scene ${index + 2} tiếp tục.` : null}, beats: group.map(unit => ({id: randomUUID(), voiceover: unit.semanticText, spokenVoiceover: unit.text, visualPurpose: `Biến ý “${keywords(unit.semanticText).slice(0, 3).join(' ') || topicInput.topic}” thành một quan hệ nhìn thấy được thay vì chỉ lặp caption.`, visualDescription: describeVisual(unit.semanticText, topicInput.topic), animationDescription: 'Đưa quan hệ chính vào focus, chuyển trạng thái một lần theo nhịp lời đọc, rồi giữ hình để đọc.', visualHoldSeconds: 0, durationSeconds: plannedBeatDurationSeconds(unit.text, 0, timingCalibration)}))})), status: 'approved', contentRevision: (previousPlan?.contentRevision ?? 0) + 1, narrationRevision, sourceOutlineContentRevision: outline.contentRevision, sourceNarrationHash: review.sourceHash, sourceNarrationRevision: narrationRevision, generation};
+  const plan: VoiceVisualPlan = {voiceDirection: 'Đọc nguyên văn bản cách đọc đã được người dùng duyệt.', visualDirection: 'Hiểu ngữ nghĩa từ nội dung gốc bước 1; chỉ dùng bản cách đọc cho voice và timing.', visualBible: visualBible(topicInput.background.color, topicInput.topic), timingCalibration, sections: groups.map((group, index) => ({outlineSectionId: ids[index]!, stateHandoff: {incoming: index ? `Kế thừa ${topicInput.topic} visual anchor từ scene ${index}.` : null, outgoing: index < groups.length - 1 ? `Giữ ${topicInput.topic} visual anchor để scene ${index + 2} tiếp tục.` : null}, beats: group.map(unit => ({id: randomUUID(), voiceover: unit.semanticText, spokenVoiceover: unit.text, visualPurpose: `Biến ý “${keywords(unit.semanticText).slice(0, 3).join(' ') || topicInput.topic}” thành một quan hệ nhìn thấy được thay vì chỉ lặp caption.`, visualDescription: describeVisual(unit.semanticText, topicInput.topic), animationDescription: 'Đưa quan hệ chính vào focus, chuyển trạng thái một lần theo nhịp lời đọc, rồi giữ hình để đọc.', visualIntent: fallbackVisualIntent(unit.semanticText, topicInput.topic), visualHoldSeconds: 0, durationSeconds: plannedBeatDurationSeconds(unit.text, 0, timingCalibration)}))})), status: 'approved', contentRevision: (previousPlan?.contentRevision ?? 0) + 1, narrationRevision, sourceOutlineContentRevision: outline.contentRevision, sourceNarrationHash: review.sourceHash, sourceNarrationRevision: narrationRevision, generation};
   for (const section of plan.sections) {
     for (const beat of section.beats) Object.assign(beat, fallbackBeatLifecycle(), {compositionContract: fallbackBeatComposition()});
   }
-  const validatedOutline = TeachingOutlineSchema.parse(outline);
-  const validatedPlan = VoiceVisualPlanSchema.parse(plan);
+  const preservedArtifacts = applyPreservedNarrationTimeline({outline, voiceVisualPlan: plan}, preserveTimeline);
+  const validatedOutline = TeachingOutlineSchema.parse(preservedArtifacts.outline);
+  const validatedPlan = VoiceVisualPlanSchema.parse(preservedArtifacts.voiceVisualPlan);
   validateSemanticVisualPlan(narration, validatedOutline, validatedPlan);
   return {outline: validatedOutline, voiceVisualPlan: validatedPlan};
 }
@@ -192,7 +312,7 @@ function boundedText(value: string, max: number) {
 /** Turns validated AI planner output back into TeachingOutline/VoiceVisualPlan.
  * Step-1 wording is preserved for visual semantics and the approved step-2
  * wording is preserved verbatim for voice. The AI supplies neither text. */
-export function reconstructArtifactsFromPlannerOutput({topicInput, narration, units, output, generation, previousPlan, timingCalibration = DEFAULT_TIMING_CALIBRATION}: {topicInput: TopicProject['topicInput']; narration: NarrationDocument; units: NarrationPlannerUnit[]; output: NarrationVisualPlannerOutput; generation: Extract<TeachingOutline['generation'], {provider: 'codex'}>; previousPlan: VoiceVisualPlan | null | undefined; timingCalibration?: VoiceVisualPlanContent['timingCalibration'];}): {outline: TeachingOutline; voiceVisualPlan: VoiceVisualPlan} {
+export function reconstructArtifactsFromPlannerOutput({topicInput, narration, units, output, generation, previousPlan, preserveTimeline, timingCalibration = DEFAULT_TIMING_CALIBRATION}: {topicInput: TopicProject['topicInput']; narration: NarrationDocument; units: NarrationPlannerUnit[]; output: NarrationVisualPlannerOutput; generation: Extract<TeachingOutline['generation'], {provider: 'codex'}>; previousPlan: VoiceVisualPlan | null | undefined; preserveTimeline?: PreservedNarrationTimeline | null; timingCalibration?: VoiceVisualPlanContent['timingCalibration'];}): {outline: TeachingOutline; voiceVisualPlan: VoiceVisualPlan} {
   output = {...output, scenes: splitPlannerScenesAtBeatLimit(output.scenes)};
   validatePlannerCoversUnitsInOrder(units, output.scenes);
   const review = narration.review!;
@@ -205,7 +325,7 @@ export function reconstructArtifactsFromPlannerOutput({topicInput, narration, un
     cursor += scene.units.length;
   }
 
-  const outline: TeachingOutline = {brief: {summary: `Video về ${topicInput.topic} được dựng từ nội dung gốc và canh thời gian theo bản đọc đã duyệt.`, assumptions: ['AI visual planner chỉ phân đoạn và mô tả visual; không viết lại lời thoại.']}, centralMessage: centralMessage(topicInput.topic), sections: output.scenes.map((scene, index) => ({id: sceneIds[index]!, title: scene.title, goal: scene.goal, content: sceneUnitSlices[index]!.map(unit => unit.semanticText).join(' '), estimatedSeconds: Math.max(pipelineSafetyLimits.minimumSectionDurationSeconds, sceneUnitSlices[index]!.reduce((total, unit) => total + plannedBeatDurationSeconds(unit.text, 0, timingCalibration), 0))})), status: 'approved', contentRevision: (previousPlan?.sourceOutlineContentRevision ?? 0) + 1, sourceInput: topicInput, sourceNarrationHash: review.sourceHash, sourceNarrationRevision: narrationRevision, generation};
+  const outline: TeachingOutline = {brief: {summary: `Video về ${topicInput.topic} được dựng từ nội dung gốc và canh thời gian theo bản đọc đã duyệt.`, assumptions: ['AI lập kế hoạch hình ảnh chỉ phân đoạn và mô tả hình ảnh; không viết lại lời thoại.']}, centralMessage: centralMessage(topicInput.topic), sections: output.scenes.map((scene, index) => ({id: sceneIds[index]!, title: scene.title, goal: scene.goal, content: sceneUnitSlices[index]!.map(unit => unit.semanticText).join(' '), estimatedSeconds: Math.max(pipelineSafetyLimits.minimumSectionDurationSeconds, sceneUnitSlices[index]!.reduce((total, unit) => total + plannedBeatDurationSeconds(unit.text, 0, timingCalibration), 0))})), status: 'approved', contentRevision: (previousPlan?.sourceOutlineContentRevision ?? 0) + 1, sourceInput: topicInput, sourceNarrationHash: review.sourceHash, sourceNarrationRevision: narrationRevision, generation};
 
   const voiceVisualPlan: VoiceVisualPlan = {voiceDirection: 'Đọc nguyên văn bản cách đọc đã được người dùng duyệt.', visualDirection: 'Hiểu ngữ nghĩa từ nội dung gốc bước 1; chỉ dùng bản cách đọc cho voice và timing.', visualBible: {...output.visualBible, palette: {...output.visualBible.palette, background: topicInput.background.color}}, timingCalibration, sections: output.scenes.map((scene, index) => ({outlineSectionId: sceneIds[index]!, stateHandoff: {incoming: scene.stateHandoffIncoming, outgoing: scene.stateHandoffOutgoing}, beats: sceneUnitSlices[index]!.map((unit, unitIndex) => {const blueprint = scene.units[unitIndex]!; return {id: randomUUID(), voiceover: unit.semanticText, spokenVoiceover: unit.text, visualPurpose: blueprint.visualPurpose, visualDescription: blueprint.visualDescription, animationDescription: blueprint.animationDescription, visualHoldSeconds: 0, durationSeconds: plannedBeatDurationSeconds(unit.text, 0, timingCalibration)};})})), status: 'approved', contentRevision: (previousPlan?.contentRevision ?? 0) + 1, narrationRevision, sourceOutlineContentRevision: outline.contentRevision, sourceNarrationHash: review.sourceHash, sourceNarrationRevision: narrationRevision, generation};
 
@@ -215,9 +335,11 @@ export function reconstructArtifactsFromPlannerOutput({topicInput, narration, un
     primaryBlock: blueprintBeats[index]!.primaryBlock,
     visualLifecycle: blueprintBeats[index]!.visualLifecycle,
     compositionContract: blueprintBeats[index]!.compositionContract,
+    visualIntent: blueprintBeats[index]!.visualIntent ?? fallbackVisualIntent(beat.voiceover, topicInput.topic),
   }));
-  validateSemanticVisualPlan(narration, outline, voiceVisualPlan);
-  return {outline, voiceVisualPlan};
+  const preservedArtifacts = applyPreservedNarrationTimeline({outline, voiceVisualPlan}, preserveTimeline);
+  validateSemanticVisualPlan(narration, preservedArtifacts.outline, preservedArtifacts.voiceVisualPlan);
+  return preservedArtifacts;
 }
 
 /**
@@ -227,7 +349,7 @@ export function reconstructArtifactsFromPlannerOutput({topicInput, narration, un
  * model-authored narration. Any AI/schema/invariant failure falls back to the
  * deterministic semantic planner and records why in `plannerDiagnostics`.
  */
-export async function planNarrationArtifacts({planner, topicInput, narration, generationId, now, previousPlan, model, reasoningEffort, timingCalibration = DEFAULT_TIMING_CALIBRATION}: {planner: NarrationVisualPlannerService; topicInput: TopicProject['topicInput']; narration: NarrationDocument; generationId: string; now: string; previousPlan: VoiceVisualPlan | null | undefined; model?: string; reasoningEffort?: string; timingCalibration?: VoiceVisualPlanContent['timingCalibration'];}): Promise<{outline: TeachingOutline; voiceVisualPlan: VoiceVisualPlan}> {
+export async function planNarrationArtifacts({planner, topicInput, narration, generationId, now, previousPlan, preserveTimeline, model, reasoningEffort, timingCalibration = DEFAULT_TIMING_CALIBRATION}: {planner: NarrationVisualPlannerService; topicInput: TopicProject['topicInput']; narration: NarrationDocument; generationId: string; now: string; previousPlan: VoiceVisualPlan | null | undefined; preserveTimeline?: PreservedNarrationTimeline | null; model?: string; reasoningEffort?: string; timingCalibration?: VoiceVisualPlanContent['timingCalibration'];}): Promise<{outline: TeachingOutline; voiceVisualPlan: VoiceVisualPlan}> {
   const review = narration.review;
   if (!review || narration.approvedSourceHash !== review.sourceHash) throw new Error('Bản cách đọc chưa được duyệt.');
   const units = narrationPlannerUnits(narration);
@@ -242,7 +364,7 @@ export async function planNarrationArtifacts({planner, topicInput, narration, ge
       reasoningEffort,
     });
     const generation = {generationId, provider: 'codex' as const, model: plannerResult.model, ...(model ? {requestedModel: model} : {}), ...(reasoningEffort ? {reasoningEffort} : {}), promptVersion: NARRATION_VISUAL_PLANNER_PROMPT_VERSION, generatedAt: now, usage: plannerResult.usage};
-    const reconstructed = reconstructArtifactsFromPlannerOutput({topicInput, narration, units, output: plannerResult.output, generation, previousPlan, timingCalibration});
+    const reconstructed = reconstructArtifactsFromPlannerOutput({topicInput, narration, units, output: plannerResult.output, generation, previousPlan, preserveTimeline, timingCalibration});
     // Belt-and-suspenders: the AI-facing schema is hand-matched to the
     // downstream artifact schemas, but a full re-parse is what actually
     // guarantees a broken/edge-case reconstruction falls back instead of
@@ -255,9 +377,9 @@ export async function planNarrationArtifacts({planner, topicInput, narration, ge
       voiceVisualPlan: {...validatedPlan, plannerDiagnostics: [{stage: 'ai-plan', model: plannerResult.model, reason: null, outcome: 'used_ai'}]},
     };
   } catch (error) {
-    const deterministic = createNarrationArtifacts({topicInput, narration, generationId, now, previousPlan, timingCalibration});
+    const deterministic = createNarrationArtifacts({topicInput, narration, generationId, now, previousPlan, preserveTimeline, timingCalibration});
     const reason = boundedText(
-      error instanceof Error ? error.message : 'AI visual planner thất bại.',
+      error instanceof Error ? error.message : 'AI lập kế hoạch hình ảnh thất bại.',
       2_000,
     );
     return {

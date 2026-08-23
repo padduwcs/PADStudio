@@ -16,7 +16,7 @@ import {
   MOTION_CANVAS_PROMPT_VERSION,
   mergeMotionCanvasGenerationUsage,
 } from './motionCanvasGenerator.ts';
-import {MotionCanvasVisualQualityError, assertVisualValidationCurrent, formatVisualQualityRetryGuidance} from './motionCanvasVisualQuality.ts';
+import {MotionCanvasVisualQualityError, assertVisualValidationCurrent, buildMotionCanvasSemanticValidation, formatVisualQualityRetryGuidance, semanticValidationIsCurrent, visualQualityFailureIsRendererOnly} from './motionCanvasVisualQuality.ts';
 import {
   hashMotionCanvasBundle
 } from './motionCanvasHistoryStore.ts';
@@ -40,15 +40,74 @@ import {RequestBodyError, sendApiError} from './appErrors.ts';
 import {assertSameCodexGenerationSelection, outlineContent, projectVideoFrame, voiceVisualContent} from './appRouteSupport.ts';
 import {readExpectedRevision, readJsonBody, requestParentOrigin, sendJson, sendProject, validationFields} from './httpTransport.ts';
 import type {ApiRouteHandler} from './routeTypes.ts';
+import {z} from 'zod';
 
-type MotionCanvasRouteContext = Pick<AppContext, 'repository' | 'motionCanvasGenerator' | 'motionCanvasWorkspace' | 'motionCanvasVisualQualityGate' | 'motionCanvasHistoryStore' | 'motionCanvasGenerations' | 'layoutPreviewService' | 'generateOnce' | 'logger'>;
+const ApproveMotionCanvasSchema = z.object({acceptDegradedSemantic: z.literal(true).optional()}).strict();
+
+type MotionCanvasRouteContext = Pick<AppContext, 'repository' | 'motionCanvasGenerator' | 'motionCanvasGenerationProgressStore' | 'motionCanvasWorkspace' | 'motionCanvasVisualQualityGate' | 'motionCanvasHistoryStore' | 'motionCanvasGenerations' | 'layoutPreviewService' | 'generateOnce' | 'logger'>;
+
+/** Compiler/generation failures deserve the same recovery path as rendered
+ * quality failures.  Persist concise, model-ready context rather than leaving
+ * the user with a message that cannot be acted on from the UI. */
+function generationRecoveryGuidance(error: unknown) {
+  const reason = error instanceof Error
+    ? error.message.slice(0, 1_800)
+    : 'The previous Scene Spec generation did not complete.';
+  return [
+    'Generate a completely fresh Scene Graph v3 from the approved Visual Intent and voice. Do not reuse prior scene source.',
+    `Previous generation failure: ${reason}`,
+    'Keep every beat UUID and exact mustShow intent binding. Use concise labels, recognizable composite entities, explicit relationships, and meaningful actions.',
+  ].join('\n').slice(0, 4_000);
+}
 
 export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext): ApiRouteHandler {
-  const {repository, motionCanvasGenerator, motionCanvasWorkspace, motionCanvasVisualQualityGate, motionCanvasHistoryStore, motionCanvasGenerations, layoutPreviewService, generateOnce, logger} = context;
+  const {repository, motionCanvasGenerator, motionCanvasGenerationProgressStore, motionCanvasWorkspace, motionCanvasVisualQualityGate, motionCanvasHistoryStore, motionCanvasGenerations, layoutPreviewService, generateOnce, logger} = context;
   return async (request: IncomingMessage, response: ServerResponse, requestUrl: URL) => {
     const motionCanvasRoute = getProjectMotionCanvasRoute(
       requestUrl.pathname,
     );
+
+    if (
+      motionCanvasRoute?.action === 'status' &&
+      request.method === 'GET'
+    ) {
+      const currentProject = await repository.getProject(
+        motionCanvasRoute.projectId,
+      );
+      if (!currentProject) {
+        sendApiError(response, 404, {
+          code: 'PROJECT_NOT_FOUND',
+          message: 'Không tìm thấy project.',
+        });
+        return true;
+      }
+      const progress = await motionCanvasGenerationProgressStore.get(
+        currentProject.id,
+      );
+      sendJson(response, 200, {progress});
+      return true;
+    }
+
+    if (
+      motionCanvasRoute?.action === 'failure' &&
+      request.method === 'GET'
+    ) {
+      const currentProject = await repository.getProject(
+        motionCanvasRoute.projectId,
+      );
+      if (!currentProject) {
+        sendApiError(response, 404, {
+          code: 'PROJECT_NOT_FOUND',
+          message: 'Không tìm thấy project.',
+        });
+        return true;
+      }
+      const failure = await motionCanvasWorkspace.readLatestFailure?.(
+        currentProject.id,
+      ) ?? null;
+      sendJson(response, 200, {failure});
+      return true;
+    }
 
     if (
       motionCanvasRoute?.action === 'generate' &&
@@ -135,7 +194,9 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
           outline,
         ),
       );
-      if (currentBundleUsable) {
+      const regenerateFromScratch =
+        parsedRequest.data.regenerateFromScratch === true;
+      if (currentBundleUsable && !regenerateFromScratch) {
         throw new RequestBodyError(
           409,
           'MOTION_CANVAS_CANDIDATE_REQUIRED',
@@ -156,6 +217,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
 
       const currentScenes =
         parsedRequest.data.guidance &&
+          !regenerateFromScratch &&
           currentBundleUsable &&
           currentProject.motionCanvasBundle
           ? await motionCanvasWorkspace.readSceneSources(
@@ -172,9 +234,22 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
         voiceVisualContentRevision: voiceVisualPlan.contentRevision,
         model: parsedRequest.data.model,
         reasoningEffort: parsedRequest.data.reasoningEffort,
+        regenerateFromScratch,
         guidance: parsedRequest.data.guidance,
         currentScenes,
       });
+      await motionCanvasGenerationProgressStore.start({
+        projectId: currentProject.id,
+        generationId,
+        totalScenes: voiceVisualPlan.sections.length,
+      });
+      const reportProgress = (
+        patch: Parameters<typeof motionCanvasGenerationProgressStore.update>[2],
+      ) => {
+        void motionCanvasGenerationProgressStore
+          .update(currentProject.id, generationId, patch)
+          .catch(error => logger.error(error));
+      };
       const generation = await generateOnce(
         motionCanvasGenerations,
         generationKey,
@@ -185,15 +260,54 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
             generationId,
             model: parsedRequest.data.model,
             reasoningEffort: parsedRequest.data.reasoningEffort,
+            regenerateFromScratch,
             topicInput: currentProject.topicInput,
             videoFrame: projectVideoFrame(currentProject),
             outline,
             voiceVisualPlan,
             guidance: parsedRequest.data.guidance,
             currentScenes,
+            onProgress: (progress: {
+              completedScenes: number;
+              totalScenes: number;
+              outcome: 'started' | 'completed' | 'failed';
+            }) => reportProgress({
+              stage: 'generating-scenes',
+              message: progress.outcome === 'started'
+                ? `Codex đang sinh ${progress.totalScenes} scene bằng tối đa 4 worker.`
+                : `Codex đã xử lý ${progress.completedScenes}/${progress.totalScenes} scene.`,
+              completedScenes: progress.completedScenes,
+              totalScenes: progress.totalScenes,
+              completedSamples: 0,
+              totalSamples: 0,
+              cachedSamples: 0,
+            }),
           };
-          let generated =
-            await motionCanvasGenerator.generate(generationRequest);
+          let generated = await motionCanvasGenerator
+            .generate(generationRequest)
+            .catch(async error => {
+              await motionCanvasWorkspace.recordFailure?.(
+                currentProject.id,
+                generationId,
+                {
+                  stage: 'generation',
+                  code: 'MOTION_CANVAS_GENERATION_FAILED',
+                  message:
+                    error instanceof Error ? error.message : String(error),
+                  details: null,
+                  issues: [],
+                  recoveryGuidance: generationRecoveryGuidance(error),
+                  scenes: [],
+                },
+              ).catch(recordError => logger.error(recordError));
+              throw error;
+            });
+          reportProgress({
+            stage: 'compiling',
+            message: `Đã sinh ${generated.scenes.length} scene; đang biên dịch workspace an toàn.`,
+            completedScenes: generated.scenes.length,
+            totalScenes: generated.scenes.length,
+          });
           const qualityRetryDiagnostics = [...(generated.qualityRetryDiagnostics ?? [])];
           let prepared: PreparedMotionCanvasWorkspace | null = null;
           let acceptedWorkspace = false;
@@ -218,6 +332,11 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                 repairAttempts < 1
               ) {
                 repairAttempts += 1;
+                reportProgress({
+                  stage: 'quality-retry',
+                  message: 'Compiler phát hiện source chưa hợp lệ; Codex đang sửa đúng scene liên quan.',
+                  attempt: repairAttempts,
+                });
                 generationDiagnostics.push({stage: 'repair', attempt: repairAttempts, reason: error.details.slice(0, 4_000), outcome: 'failed'});
                 try {
                   generated = await motionCanvasGenerator.repair(
@@ -267,7 +386,15 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
             const lifecycleFor = (scenes: typeof generated.scenes) => new Map(
             scenes.flatMap(scene => {
               const section = voiceVisualPlan.sections.find(item => item.outlineSectionId === scene.outlineSectionId);
-              return (section?.beats ?? []).map(beat => [beat.id, {stay: beat.visualLifecycle!.stay, primaryBlock: beat.primaryBlock, compositionContract: beat.compositionContract}] as const);
+              return (section?.beats ?? []).map(beat => [beat.id, {
+                stay: beat.visualLifecycle!.stay,
+                primaryBlock: beat.primaryBlock,
+                compositionContract: beat.compositionContract,
+                visualDescription: beat.visualDescription,
+                visualPurpose: beat.visualPurpose,
+                animationDescription: beat.animationDescription,
+                visualIntent: beat.visualIntent,
+              }] as const);
             }),
           );
             const handoffFor = (scenes: typeof generated.scenes) => new Map(
@@ -278,9 +405,35 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
           );
             let visualValidation;
             const maximumQualityRetries = 2;
+            const maximumRendererRetries = 1;
+            let contentRepairAttempts = 0;
+            let rendererRetryAttempts = 0;
             let lastRepairedSceneCount = 0;
-            for (let attempt = 0; ; attempt += 1) {
+            let smokePassed =
+              motionCanvasVisualQualityGate.supportsSmokeMode !== true;
+            for (;;) {
               try {
+                const qualityMode = smokePassed ? 'full' as const : 'smoke' as const;
+                const totalSamples = generated.scenes.reduce(
+                  (total, scene) => total +
+                    (scene.timingEvents?.length ?? 0) *
+                    (qualityMode === 'smoke' ? 1 : 3),
+                  0,
+                );
+                reportProgress({
+                  stage: 'quality-render',
+                  message: rendererRetryAttempts > 0
+                    ? 'Renderer đang thử lại tại chỗ; Codex không bị gọi cho lỗi kỹ thuật này.'
+                    : qualityMode === 'smoke'
+                      ? `Đang kiểm tra nhanh ${totalSamples} khung giữa trước khi chạy kiểm định đầy đủ.`
+                      : `Đang kiểm định đầy đủ ${totalSamples} khung hình; khung đã cache sẽ được dùng lại.`,
+                  completedSamples: 0,
+                  totalSamples,
+                  cachedSamples: 0,
+                  attempt: contentRepairAttempts,
+                });
+                let lastReportedQualityAt = 0;
+                let lastReportedQualityCompleted = -1;
                 visualValidation = await motionCanvasVisualQualityGate.validate({
                   scenes: prepared.sourceScenes,
                   lifecycle: lifecycleFor(generated.scenes),
@@ -290,19 +443,69 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                   sceneHandoff: handoffFor(generated.scenes),
                   workspaceDirectory: prepared.workspaceDirectory,
                   projectFile: prepared.projectFilePath,
+                  mode: qualityMode,
+                  onProgress: progress => {
+                    const timestamp = Date.now();
+                    const completed = progress.completedSamples === progress.totalSamples;
+                    if (
+                      !completed &&
+                      lastReportedQualityCompleted >= 0 &&
+                      timestamp - lastReportedQualityAt < 500
+                    ) return;
+                    lastReportedQualityAt = timestamp;
+                    lastReportedQualityCompleted = progress.completedSamples;
+                    reportProgress({
+                      stage: 'quality-render',
+                      message: `Đã kiểm định ${progress.completedSamples}/${progress.totalSamples} khung hình${progress.cachedSamples ? ` (${progress.cachedSamples} từ cache)` : ''}.`,
+                      completedSamples: progress.completedSamples,
+                      totalSamples: progress.totalSamples,
+                      cachedSamples: progress.cachedSamples,
+                      attempt: contentRepairAttempts,
+                    });
+                  },
                 });
-                if (attempt > 0) {
-                  generationDiagnostics.push({stage: 'quality-retry', attempt, reason: `Re-rendered ${lastRepairedSceneCount} failed scene(s); the merged ${generated.scenes.length}-scene bundle passed rendered-frame validation.`, outcome: 'passed'});
+                if (qualityMode === 'smoke') {
+                  smokePassed = true;
+                  rendererRetryAttempts = 0;
+                  reportProgress({
+                    stage: 'quality-render',
+                    message: 'Kiểm tra nhanh đã đạt; đang chuyển sang kiểm định đầy đủ.',
+                    completedSamples: 0,
+                    totalSamples: generated.scenes.reduce(
+                      (total, scene) => total +
+                        (scene.timingEvents?.length ?? 0) * 3,
+                      0,
+                    ),
+                    cachedSamples: totalSamples,
+                  });
+                  continue;
+                }
+                if (contentRepairAttempts > 0) {
+                  generationDiagnostics.push({stage: 'quality-retry', attempt: contentRepairAttempts, reason: `Re-rendered ${lastRepairedSceneCount} failed scene(s); the merged ${generated.scenes.length}-scene bundle passed rendered-frame validation.`, outcome: 'passed'});
                 }
                 break;
               } catch (error) {
                 if (!(error instanceof MotionCanvasVisualQualityError)) throw error;
+                if (visualQualityFailureIsRendererOnly(error.summary)) {
+                  if (rendererRetryAttempts >= maximumRendererRetries) throw error;
+                  rendererRetryAttempts += 1;
+                  generationDiagnostics.push({stage: 'quality-retry', attempt: rendererRetryAttempts, reason: `Renderer infrastructure failed and was retried locally without Codex: ${error.summary.issues[0]?.reason ?? error.message}`.slice(0, 4_000), outcome: 'failed'});
+                  reportProgress({
+                    stage: 'quality-render',
+                    message: 'Renderer gặp lỗi kỹ thuật; đang khởi động lại và thử một lần, không tiêu quota Codex.',
+                    attempt: rendererRetryAttempts,
+                  });
+                  continue;
+                }
                 const failedSceneIds = [...new Set(error.summary.issues.map(issue => issue.sceneId))];
                 const failedIndexes = generated.scenes
                   .map((scene, index) => failedSceneIds.includes(scene.id) ? index : -1)
                   .filter(index => index >= 0);
-                generationDiagnostics.push({stage: 'quality-retry', attempt: attempt + 1, reason: error.summary.issues.map(issue => `${issue.sceneId}/${issue.beatId ?? 'scene'}: ${issue.reason}`).join('; ').slice(0, 4_000), outcome: 'failed'});
-                if (failedIndexes.length === 0 || attempt >= maximumQualityRetries) throw error;
+                contentRepairAttempts += 1;
+                smokePassed =
+                  motionCanvasVisualQualityGate.supportsSmokeMode !== true;
+                generationDiagnostics.push({stage: 'quality-retry', attempt: contentRepairAttempts, reason: error.summary.issues.map(issue => `${issue.sceneId}/${issue.beatId ?? 'scene'}: ${issue.reason}`).join('; ').slice(0, 4_000), outcome: 'failed'});
+                if (failedIndexes.length === 0 || contentRepairAttempts > maximumQualityRetries) throw error;
 
                 const sectionIndexes = failedIndexes.map(index =>
                   voiceVisualPlan.sections.findIndex(section =>
@@ -317,6 +520,13 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                   currentProject.id,
                   generationId,
                 );
+                reportProgress({
+                  stage: 'quality-retry',
+                  message: `Codex chỉ đang sửa ${failedIndexes.length} scene không qua kiểm định; các scene còn lại được giữ nguyên.`,
+                  completedScenes: 0,
+                  totalScenes: failedIndexes.length,
+                  attempt: contentRepairAttempts,
+                });
                 const repaired = await motionCanvasGenerator.generate({
                   ...generationRequest,
                   sectionIndexes,
@@ -371,6 +581,11 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                     ? error.details
                     : null,
                 issues: visualFailure?.summary.issues ?? [],
+                recoveryGuidance: visualFailure
+                  ? formatVisualQualityRetryGuidance(
+                    visualFailure.summary.issues,
+                  )
+                  : generationRecoveryGuidance(error),
                 scenes: generated.scenes,
               },
             ).catch(recordError => logger.error(recordError));
@@ -381,7 +596,12 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
             }
           }
         },
-      );
+      ).catch(async error => {
+        await motionCanvasGenerationProgressStore
+          .fail(currentProject.id, generationId, error)
+          .catch(progressError => logger.error(progressError));
+        throw error;
+      });
       const preparedWorkspace = generation.result.prepared;
       const motionCanvasBundle: MotionCanvasBundle = {
         status: 'draft',
@@ -404,6 +624,10 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
         scenes: preparedWorkspace.scenes,
         validation: preparedWorkspace.validation,
         visualValidation: generation.result.visualValidation,
+        semanticValidation: buildMotionCanvasSemanticValidation(
+          preparedWorkspace.sourceScenes,
+          voiceVisualPlan,
+        ),
         generation: {
           generationId,
           provider: 'codex',
@@ -420,7 +644,9 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
           .ensureVersion({
             projectId: currentProject.id,
             origin: 'baseline',
-            label: 'Trước khi sinh lại theo voice–visual mới',
+            label: regenerateFromScratch
+              ? 'Trước khi sinh lại scene độc lập'
+              : 'Trước khi sinh lại theo voice–visual mới',
             parentVersionId: null,
             restoredFromVersionId: null,
             candidateId: null,
@@ -434,6 +660,14 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
       }
       let updatedProject;
       try {
+        await motionCanvasGenerationProgressStore.update(
+          currentProject.id,
+          generationId,
+          {
+            stage: 'committing',
+            message: 'Kiểm định đã đạt; đang lưu generation mới vào project.',
+          },
+        );
         updatedProject = await repository.updateProject(
           currentProject.id,
           {motionCanvasBundle},
@@ -441,6 +675,9 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
         );
       } catch (error) {
         await motionCanvasWorkspace.discard(currentProject.id, generationId).catch(cleanupError => logger.error(cleanupError));
+        await motionCanvasGenerationProgressStore
+          .fail(currentProject.id, generationId, error)
+          .catch(progressError => logger.error(progressError));
         throw error;
       }
 
@@ -468,6 +705,10 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
         .catch(error => logger.error(error));
 
       motionCanvasGenerator.discardGeneration?.(
+        currentProject.id,
+        generationId,
+      );
+      await motionCanvasGenerationProgressStore.complete(
         currentProject.id,
         generationId,
       );
@@ -557,6 +798,11 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
       request.method === 'POST'
     ) {
       const expectedRevision = readExpectedRevision(request);
+      const parsedApproval = ApproveMotionCanvasSchema.safeParse(await readJsonBody(request));
+      if (!parsedApproval.success) {
+        sendApiError(response, 422, {code: 'VALIDATION_ERROR', message: 'Yêu cầu chốt scene chưa hợp lệ.', fields: validationFields(parsedApproval.error.issues)});
+        return true;
+      }
       const currentProject = await repository.getProject(
         motionCanvasRoute.projectId,
       );
@@ -602,13 +848,32 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
 
       // Approval is only ever as good as the rendered-frame evidence attached
       // to these exact sources; nothing else may stand in for it.
-      assertVisualValidationCurrent(
+      const approvalSources = await motionCanvasWorkspace.readSceneSources(
+        currentProject.id,
         motionCanvasBundle,
-        await motionCanvasWorkspace.readSceneSources(
-          currentProject.id,
-          motionCanvasBundle,
-        ),
       );
+      assertVisualValidationCurrent(motionCanvasBundle, approvalSources);
+      if (
+        motionCanvasBundle.semanticValidation &&
+        (!semanticValidationIsCurrent(motionCanvasBundle.semanticValidation, approvalSources) ||
+          motionCanvasBundle.semanticValidation.status === 'failed')
+      ) {
+        throw new RequestBodyError(
+          409,
+          'MOTION_CANVAS_SEMANTIC_VALIDATION_REQUIRED',
+          'Scene chưa bao phủ đủ các yêu cầu bắt buộc của kế hoạch hình ảnh hiện hành. Hãy sinh hoặc sửa lại scene trước khi chốt.',
+        );
+      }
+      if (
+        motionCanvasBundle.semanticValidation?.status === 'degraded' &&
+        !parsedApproval.data.acceptDegradedSemantic
+      ) {
+        throw new RequestBodyError(
+          409,
+          'MOTION_CANVAS_DEGRADED_CONFIRMATION_REQUIRED',
+          'Scene đang dùng minh họa giản lược. Hãy kiểm tra và xác nhận rõ trước khi tiếp tục.',
+        );
+      }
 
       const approvedBundle: MotionCanvasBundle = {
         ...motionCanvasBundle,

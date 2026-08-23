@@ -41,7 +41,7 @@ export function getProjectId(pathname: string) {
 }
 
 export function getProjectMotionCanvasRoute(pathname: string) {
-  const match = /^\/api\/projects\/([^/]+)\/motion-canvas(?:\/(generate|approve|files|preview))?$/.exec(pathname);
+  const match = /^\/api\/projects\/([^/]+)\/motion-canvas(?:\/(generate|approve|files|preview|failure|status))?$/.exec(pathname);
   const projectId = match?.[1] ? decodeProjectId(match[1]) : null;
   return projectId ? {projectId, action: match?.[2] ?? 'read'} : null;
 }

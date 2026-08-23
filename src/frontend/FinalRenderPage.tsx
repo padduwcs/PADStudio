@@ -10,6 +10,7 @@ import {
 import {finalRenderVideoUrl} from './api.ts';
 import {navigate, projectScenesPath} from './router.ts';
 import {useFinalRender} from './useFinalRender.ts';
+import {useWorkflowOperationGuard} from './useWorkflowOperationGuard.ts';
 
 function formatTime(seconds: number) {
   const rounded = Math.max(0, Math.round(seconds));
@@ -42,6 +43,10 @@ const stateLabels = {
 
 export function FinalRenderPage({projectId}: {projectId: string}) {
   const render = useFinalRender(projectId);
+  useWorkflowOperationGuard(
+    render.rendering,
+    'Video đang được render. Hãy chờ hoàn tất trước khi chuyển bước, đổi project hoặc đóng PAD Studio.',
+  );
 
   if (render.loadState === 'loading') {
     return (

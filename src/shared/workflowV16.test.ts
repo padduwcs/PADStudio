@@ -43,12 +43,76 @@ function projectFixture(): TopicProject {
   };
 }
 
+function legacyVisualValidationBundle() {
+  const now = '2026-08-18T00:00:00.000Z';
+  const sceneId = '10000000-0000-4000-8000-000000000001';
+  const beatId = '20000000-0000-4000-8000-000000000001';
+  return {
+    status: 'draft' as const,
+    contentRevision: 1,
+    sourceVoiceVisualContentRevision: 1,
+    workspacePath:
+      'motion-canvas/generations/30000000-0000-4000-8000-000000000001',
+    projectFile: 'src/project.ts' as const,
+    width: 1080,
+    height: 1920,
+    fps: 30,
+    visualValidation: {
+      version: 3 as const,
+      status: 'passed' as const,
+      validatedAt: now,
+      sourceHash: 'a'.repeat(64),
+      scenes: [],
+      issues: [],
+    },
+    scenes: [
+      {
+        id: sceneId,
+        outlineSectionId: '40000000-0000-4000-8000-000000000001',
+        name: 'Priority queue demo',
+        filePath: 'src/scenes/priority-queue.tsx',
+        durationSeconds: 4,
+        timingEvents: [
+          {
+            beatId,
+            startEvent: `beat:${beatId}:start`,
+            endEvent: `beat:${beatId}:end`,
+            plannedDurationSeconds: 4,
+          },
+        ],
+      },
+    ],
+    validation: {
+      validatedAt: now,
+      sourceHash: 'b'.repeat(64),
+      motionCanvasVersion: '3.17.2',
+    },
+    generation: {
+      generationId: '50000000-0000-4000-8000-000000000001',
+      provider: 'codex' as const,
+      model: 'test-model',
+      promptVersion: 'test-v1',
+      generatedAt: now,
+      usage: null,
+    },
+  };
+}
+
 test('project format v17 parses and rejects every older format', () => {
   const project = projectFixture();
   assert.deepEqual(parseTopicProject(project), project);
   assert.equal(TopicProjectSchema.safeParse(project).success, true);
   assert.throws(() => parseTopicProject({...project, version: 15}));
   assert.equal(TopicProjectSchema.safeParse({...project, currentStep: 'voice'}).success, false);
+});
+
+test('a project with legacy visual-quality v3 evidence remains readable', () => {
+  const project = projectFixture();
+  const parsed = parseTopicProject({
+    ...project,
+    motionCanvasBundle: legacyVisualValidationBundle(),
+  });
+  assert.equal(parsed.motionCanvasBundle?.visualValidation?.version, 3);
 });
 
 test('v16 projects with the removed visualDesignBundle field migrate to v17 on load', () => {

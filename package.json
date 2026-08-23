@@ -15,11 +15,13 @@
     "dev:frontend": "vite",
     "dev:backend": "node --watch src/backend/server.ts",
     "motion:serve": "node scripts/motion-canvas.mjs serve",
+    "motion:recompile": "node scripts/recompile-motion.mjs",
     "sync:serve": "node scripts/motion-canvas.mjs serve --stage sync",
     "validate:motion": "node scripts/validate-motion-canvas.mjs",
     "validate:sync": "node scripts/validate-motion-canvas.mjs --stage sync",
     "check:media": "node scripts/check-media-policy.mjs",
     "smoke:live": "node scripts/live-integrations.mjs",
+    "smoke:e2e": "node scripts/e2e-smoke.mjs",
     "build": "tsc --noEmit && vite build",
     "start": "node src/backend/server.ts",
     "test:app": "node scripts/run-tests.mjs",
@@ -30,6 +32,8 @@
     "validate": "npm run check:media && npm run test && npm run test:pronunciation && npm run build && npm run validate:motion && npm run validate:sync"
   },
   "dependencies": {
+    "@iconify-json/mdi": "^1.2.3",
+    "@iconify-json/ph": "^1.2.2",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "zod": "4.4.3"

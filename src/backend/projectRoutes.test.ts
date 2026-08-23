@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   getProjectLayoutRoute,
+  getProjectMotionCanvasRoute,
   getProjectMotionCanvasHistoryRoute,
   getProjectProductionRoute,
   getPronunciationLibraryRuleRoute,
@@ -13,6 +14,12 @@ const projectId = 'binary-search-20260101-12345678';
 const recordId = '10000000-0000-4000-8000-000000000001';
 
 test('project route parsers only accept stable project and record identities', () => {
+  assert.deepEqual(
+    getProjectMotionCanvasRoute(
+      `/api/projects/${projectId}/motion-canvas/failure`,
+    ),
+    {projectId, action: 'failure'},
+  );
   assert.deepEqual(
     getProjectMotionCanvasHistoryRoute(
       `/api/projects/${projectId}/motion-canvas/candidates/${recordId}/apply`,
