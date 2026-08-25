@@ -29,6 +29,11 @@ import {
   validateMotionCanvasRuntimeSafety,
   type MotionCanvasSourceScene,
 } from './motionCanvasGenerator.ts';
+import {
+  extractReferencedMotionCanvasIconIds,
+  generateMotionCanvasIconAtlasSource,
+  isKnownMotionCanvasIconId,
+} from './motionCanvasIconLibrary.ts';
 import {normalizeMotionCanvasColorFormats} from './motionCanvasSourceCompatibility.ts';
 
 const execFileAsync = promisify(execFile);
@@ -529,6 +534,21 @@ export function createMotionCanvasWorkspace(
         }
       }
 
+      // Codex authors TSX directly and can no longer rely on a backend
+      // compiler to resolve icon ids, so this is a defensive backstop:
+      // generation-time validation should already have rejected an unknown
+      // icon id before a scene ever reaches the workspace.
+      const referencedIconIds = [...new Set(
+        normalizedScenes.flatMap(scene => extractReferencedMotionCanvasIconIds(scene.source)),
+      )];
+      const unknownIconIds = referencedIconIds.filter(id => !isKnownMotionCanvasIconId(id));
+      if (unknownIconIds.length > 0) {
+        throw new MotionCanvasWorkspaceError(
+          'MOTION_CANVAS_VALIDATION_FAILED',
+          `Scene Motion Canvas tham chiếu icon không tồn tại: ${unknownIconIds.join(', ')}`,
+        );
+      }
+
       const files: MotionCanvasWorkspaceFile[] = [
         {path: 'src/project.ts', source: projectSource(normalizedScenes)},
         {path: 'src/project.meta', source: projectMetaSource(frame)},
@@ -542,6 +562,7 @@ export function createMotionCanvasWorkspace(
 declare type Callback = (...args: any[]) => void;
 `,
         },
+        {path: 'src/iconAtlas.tsx', source: generateMotionCanvasIconAtlasSource(referencedIconIds)},
         {
           path: 'tsconfig.json',
           source: tsconfigSource(
@@ -691,6 +712,7 @@ declare type Callback = (...args: any[]) => void;
         bundle.projectFile,
         'src/project.meta',
         'src/motion-canvas.d.ts',
+        'src/iconAtlas.tsx',
         'tsconfig.json',
         ...bundle.scenes.flatMap((scene) => [
           scene.filePath,

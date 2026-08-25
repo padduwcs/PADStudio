@@ -32,6 +32,11 @@ import {
   type SceneReviewPhase,
 } from './sceneReviewFlow.ts';
 import {useWorkflowOperationGuard} from './useWorkflowOperationGuard.ts';
+import {
+  notifyTaskCompleted,
+  notifyTaskFailed,
+  prepareTaskCompletionNotifications,
+} from './taskCompletionNotifications.ts';
 
 function defaultWatermark(type: RenderWatermark['type']): RenderWatermark {
   if (type === 'text') return {type, text: 'Tên kênh', opacity: 0.35, xPercent: 88, yPercent: 92, fontSize: 42, color: '#ffffff'};
@@ -178,6 +183,7 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
 
   async function prepareSyncedEditor() {
     if (sceneReviewOperationIsBusy(operationState())) return;
+    const taskId = crypto.randomUUID();
     setSyncing(true);
     setCompletionMessage('');
     try {
@@ -210,8 +216,21 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
       }
       motion.adoptProject(current);
       setCompletionMessage('Editor đã sẵn sàng với scene và giọng đọc đồng bộ.');
+      notifyTaskCompleted({
+        id: `prepare-synced-editor:${taskId}`,
+        title: 'Editor có tiếng đã sẵn sàng',
+        message: 'Scene và giọng đọc đã được đồng bộ để bạn tiếp tục chỉnh sửa.',
+      });
     } catch (error) {
-      setCompletionMessage(error instanceof Error ? error.message : 'Không thể chuẩn bị editor có tiếng lúc này.');
+      const errorMessage = error instanceof Error
+        ? error.message
+        : 'Không thể chuẩn bị editor có tiếng lúc này.';
+      setCompletionMessage(errorMessage);
+      notifyTaskFailed({
+        id: `prepare-synced-editor:${taskId}`,
+        title: 'Chuẩn bị editor thất bại',
+        message: errorMessage,
+      });
     } finally {
       setSyncing(false);
     }
@@ -342,14 +361,25 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
       {motion.actionError && <p className="submit-error" role="alert">{motion.actionError}{sceneConflict && <button type="button" onClick={motion.reload}>Tải lại project</button>}</p>}
       {syncEditor.saveError && <p className="submit-error" role="alert">Không lưu được chỉnh sửa scene mới nhất: {syncEditor.saveError}</p>}
       {semanticValidation && semanticValidation.status !== 'passed' && (
-        <section className="production-operation-status is-error" role={semanticFailed ? 'alert' : 'status'}>
+        <section className={`production-operation-status${semanticFailed ? ' is-error' : ''}`} role={semanticFailed ? 'alert' : 'status'}>
           <div>
-            <strong>{semanticFailed ? 'Scene chưa thể hiện đầy đủ kế hoạch hình ảnh' : 'Scene đang dùng minh họa giản lược'}</strong>
+            <strong>{semanticFailed ? 'Scene chưa thể hiện đầy đủ kế hoạch hình ảnh' : 'Scene viết tay theo kế hoạch hình ảnh'}</strong>
             <p>{semanticFailed
               ? 'Có đối tượng, quan hệ hoặc hành động bắt buộc chưa được liên kết vào hình. Việc xuất video bị chặn cho tới khi sinh/sửa lại scene.'
-              : 'Scene vẫn render và đồng bộ được, nhưng một số cảnh đến từ compiler fallback. Hãy xem hình có truyền đạt đúng bài học trước khi xuất.'}</p>
-            {semanticValidation.scenes.filter(scene => scene.status !== 'passed').map((scene, index) => (
-              <small key={scene.sceneId}>Scene {index + 1}: {Math.round(scene.coverage * 100)}% ý bắt buộc · {scene.fallbackLevel}{scene.missingIntentIds.length ? ` · thiếu ${scene.missingIntentIds.join(', ')}` : ''}</small>
+              : 'Scene được viết tay nên hệ thống chưa thể tự động xác minh đầy đủ theo kế hoạch hình ảnh. Hãy xem hình có truyền đạt đúng bài học trước khi xuất.'}</p>
+            {semanticFailed && semanticValidation.scenes.filter(scene => scene.status === 'failed').map((scene, index) => (
+              <small key={scene.sceneId}>Scene {index + 1}{scene.missingIntentIds.length ? ` · thiếu ${scene.missingIntentIds.join(', ')}` : ''}</small>
+            ))}
+          </div>
+        </section>
+      )}
+      {bundle.qualityWaivedScenes && bundle.qualityWaivedScenes.length > 0 && (
+        <section className="production-operation-status is-error" role="status">
+          <div>
+            <strong>Một số scene được chấp nhận dù còn cảnh báo kiểm định khung hình</strong>
+            <p>Sau nhiều lượt Codex sinh lại không hội tụ, PAD Studio đã dùng minh họa an toàn cho các scene này thay vì tiếp tục tốn quota. Hãy xem lại và cân nhắc sinh lại thủ công nếu cần.</p>
+            {bundle.qualityWaivedScenes.map((scene, index) => (
+              <small key={scene.sceneId}>Scene {index + 1}: {scene.issueCodes.join(', ')} — {scene.reason}</small>
             ))}
           </div>
         </section>
@@ -368,7 +398,7 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
       </div>
       {showEditor ? (
         <SceneSyncEditor motionCanvas={motion} syncEditor={syncEditor} watermark={watermark} watermarkImageUrl={watermarkImageUrl} />
-      ) : <section className="scene-review-sync-status" aria-live="polite">{!sceneConflict && <span className="spinner dark" />}<strong>{sceneConflict ? 'Project đã thay đổi ở một thao tác khác. Hãy tải lại project trước khi chỉnh tiếp.' : phase === 'motion-stale' ? 'Scene cần được sinh lại trước khi mở editor.' : 'Đang mở editor với scene và giọng đọc đồng bộ…'}</strong>{phase === 'preparing-sync' && !syncing && completionMessage && !sceneConflict && <button className="secondary-button" type="button" onClick={() => { synchronizationAttemptRevision.current = motion.project?.revision ?? null; void prepareSyncedEditor(); }}>Thử lại</button>}</section>}
+      ) : <section className="scene-review-sync-status" aria-live="polite">{!sceneConflict && <span className="spinner dark" />}<strong>{sceneConflict ? 'Project đã thay đổi ở một thao tác khác. Hãy tải lại project trước khi chỉnh tiếp.' : phase === 'motion-stale' ? 'Scene cần được sinh lại trước khi mở editor.' : 'Đang mở editor với scene và giọng đọc đồng bộ…'}</strong>{phase === 'preparing-sync' && !syncing && completionMessage && !sceneConflict && <button className="secondary-button" type="button" onClick={() => { prepareTaskCompletionNotifications(); synchronizationAttemptRevision.current = motion.project?.revision ?? null; void prepareSyncedEditor(); }}>Thử lại</button>}</section>}
       <footer className="scene-review-footer"><div><strong>{footerTitle}</strong><p>{footerDescription}</p></div><button className="submit-button" type="button" disabled={primaryDisabled} onClick={handlePrimaryAction}>{syncing ? 'Đang xử lý…' : primaryLabel}</button></footer>
     </main>
   );

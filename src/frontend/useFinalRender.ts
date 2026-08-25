@@ -13,6 +13,7 @@ import {
 } from './api.ts';
 import {
   notifyTaskCompleted,
+  notifyTaskFailed,
   prepareTaskCompletionNotifications,
 } from './taskCompletionNotifications.ts';
 
@@ -115,9 +116,13 @@ export function useFinalRender(projectId: string) {
             if (completedProjectRetries < 20) {
               timer = window.setTimeout(poll, 700);
             } else {
-              setActionError(
-                'Video đã dựng xong nhưng project đã thay đổi trước khi ghi nhận kết quả. Hãy kiểm tra lại nguồn và render lại.',
-              );
+              const errorMessage = 'Video đã dựng xong nhưng project đã thay đổi trước khi ghi nhận kết quả. Hãy kiểm tra lại nguồn và render lại.';
+              setActionError(errorMessage);
+              notifyTaskFailed({
+                id: `final-render:${generationId}`,
+                title: 'Không thể ghi nhận video đã render',
+                message: errorMessage,
+              });
             }
             return;
           }
@@ -128,6 +133,11 @@ export function useFinalRender(projectId: string) {
           });
         } else if (nextStatus.state === 'failed') {
           setActionError(nextStatus.message);
+          notifyTaskFailed({
+            id: `final-render:${generationId}`,
+            title: 'Render video thất bại',
+            message: nextStatus.message,
+          });
         }
         if (jobIsActive(nextStatus)) {
           timer = window.setTimeout(poll, 700);
@@ -197,6 +207,14 @@ export function useFinalRender(projectId: string) {
         });
         return updatedProject;
       }
+      if (startedStatus.state === 'failed') {
+        setActionError(startedStatus.message);
+        notifyTaskFailed({
+          id: `final-render:${nextGenerationId}`,
+          title: 'Render video thất bại',
+          message: startedStatus.message,
+        });
+      }
       return currentProject;
     } catch (error) {
       renderingRef.current = false;
@@ -241,6 +259,11 @@ export function useFinalRender(projectId: string) {
             }
           : previous,
       );
+      notifyTaskFailed({
+        id: `final-render:${nextGenerationId}`,
+        title: 'Render video thất bại',
+        message,
+      });
       return null;
     }
   }

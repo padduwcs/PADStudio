@@ -11,7 +11,7 @@ import {
 } from './codexStructuredGeneration.ts';
 
 export const NARRATION_VISUAL_PLANNER_PROMPT_VERSION =
-  'narration-visual-v6-semantic-director';
+  'narration-visual-v7-structural';
 
 /** One timing-safe spoken unit paired with its original semantic wording. The
  * AI may only reference the stable ID; it never authors narration text. */
@@ -489,6 +489,7 @@ function buildPrompt(request: NarrationVisualPlannerRequest) {
     'visualBible áp dụng cho toàn video: palette (không gồm màu nền, hệ thống tự khóa theo lựa chọn người dùng), typography scale, ngôn ngữ hình khối/sơ đồ, nhịp chuyển động, quy ước chuyển scene, và một visual anchor xuyên suốt toàn video.',
     'Không trả TSX, mã nguồn, Markdown fence, hay bất kỳ nội dung lời thoại mới nào. Chỉ trả đúng JSON theo schema.',
     'For every unit, visualIntent is REQUIRED and is the lossless semantic handoff. message states the visual claim; viewerShouldInfer states what a viewer should understand without reading narration; abstraction selects concrete/schematic/metaphorical/mixed. Declare 1-10 concrete entities with stable semantic kebab-case ids, open-vocabulary kind, visible appearance/state, role, and mustShow. Exactly one entity is primary. Declare every meaningful relation and action using those exact entity ids; mustShow marks obligations that the compiled scene must visibly bind. Do not collapse distinct people, objects, places, states, or data structures into generic nodes.',
+    "When a unit's subject is a concrete data structure with countable elements (array, list, stack, queue, heap, tree, graph, hash table, matrix, and so on), do not declare one entity for the whole structure and leave its internal complexity to prose appearance text. Instead declare one entity per element actually being discussed (an array cell, a heap/tree node, a graph vertex) with a concrete sample value in its label or appearance — invent small consistent example values (numbers, short keys) when the source material implies content but never states literal numbers — and declare explicit relations between those element entities that mirror the real topology: parent/child edges for a tree or heap, sequential adjacency for a list/array/stack/queue, named edges for a graph. A single container/boundary entity is fine only in addition to its visible element entities, never instead of them.",
     'Visual Intent describes subject matter and is deliberately open vocabulary. Do not choose renderer primitives, templates, coordinates, cards, or implementation details here. Name what the object is and why it matters; the downstream Visual Director will choose a safe composition.',
     JSON.stringify({
       topicInput: request.topicInput,

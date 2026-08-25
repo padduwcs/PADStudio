@@ -205,7 +205,12 @@ async function loadLayoutPreview(url, browserExecutable) {
         '--no-first-run',
         '--no-default-browser-check',
         '--no-sandbox',
-        '--virtual-time-budget=8000',
+        // The Motion Canvas layout runtime has to mount every scene and walk
+        // its full node tree before it can POST the manifest back; 8s of
+        // virtual time was enough for a single toy scene but cut the browser
+        // off mid-handshake for a real project, surfacing as a spurious
+        // LAYOUT_PREVIEW_MANIFEST_UNAVAILABLE 409 unrelated to any real bug.
+        '--virtual-time-budget=20000',
         `--user-data-dir=${profile}`,
         '--dump-dom',
         url,
@@ -213,7 +218,7 @@ async function loadLayoutPreview(url, browserExecutable) {
       const timeout = setTimeout(() => {
         browser.kill();
         reject(new Error('Layout preview browser handshake timed out.'));
-      }, 30_000);
+      }, 45_000);
       browser.once('error', (error) => {
         clearTimeout(timeout);
         reject(error);
@@ -388,29 +393,45 @@ try {
   });
 
   project = await step('Open editor contract and commit unchanged layout', async () => {
-    const preview = (
-      await api(`/api/projects/${project.id}/layout/preview`, {
-        headers: {'X-Pad-Parent-Origin': baseUrl},
-      })
-    ).preview;
-    await loadLayoutPreview(
-      preview.url,
-      diagnostics.tools.browser.executablePath,
-    );
-    return projectFrom(
-      await api(`/api/projects/${project.id}/layout/design`, {
-        method: 'PUT',
-        revision: project.revision,
-        body: {
-          generationId: randomUUID(),
-          baseGenerationId: null,
-          sourceAnimationSyncGenerationId: preview.sourceSyncGenerationId,
-          sessionNonce: preview.sessionNonce,
-          overrides: [],
-          renderSettings: {watermark: {type: 'none'}},
-        },
-      }),
-    );
+    // The headless handshake races a real Vite compile/dev-server round trip
+    // against Chrome's --virtual-time-budget page-timer clock, so no fixed
+    // budget can be 100% reliable — a cold module transform can occasionally
+    // outrun even a generous budget. Retrying with a fresh preview session is
+    // the robust fix (no extra Codex/ElevenLabs quota, since this stage is
+    // pure browser automation) rather than chasing a larger magic number.
+    const attempts = 3;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      const preview = (
+        await api(`/api/projects/${project.id}/layout/preview`, {
+          headers: {'X-Pad-Parent-Origin': baseUrl},
+        })
+      ).preview;
+      await loadLayoutPreview(
+        preview.url,
+        diagnostics.tools.browser.executablePath,
+      );
+      try {
+        return projectFrom(
+          await api(`/api/projects/${project.id}/layout/design`, {
+            method: 'PUT',
+            revision: project.revision,
+            body: {
+              generationId: randomUUID(),
+              baseGenerationId: null,
+              sourceAnimationSyncGenerationId: preview.sourceSyncGenerationId,
+              sessionNonce: preview.sessionNonce,
+              overrides: [],
+              renderSettings: {watermark: {type: 'none'}},
+            },
+          }),
+        );
+      } catch (error) {
+        const isManifestRace = error instanceof Error && error.message.includes('LAYOUT_PREVIEW_MANIFEST_UNAVAILABLE');
+        if (!isManifestRace || attempt === attempts) throw error;
+        console.info(`[info]  Layout preview handshake lost the race on attempt ${attempt}/${attempts}; reloading a fresh preview session.`);
+      }
+    }
+    throw new Error('unreachable');
   });
 
   project = await step('Approve layout', async () =>
@@ -442,6 +463,13 @@ try {
   await videoResponse.body?.cancel();
 
   const totalMs = Date.now() - startedAt;
+  const generationDiagnostics = project.motionCanvasBundle.generationDiagnostics ?? [];
+  const qualityRetryRounds = new Set(
+    generationDiagnostics.filter((entry) => entry.stage === 'quality-retry').map((entry) => entry.attempt),
+  ).size;
+  const fallbackScenesUsed = generationDiagnostics.filter(
+    (entry) => entry.stage === 'fallback' && entry.outcome === 'used_fallback',
+  ).length;
   console.info('\nPAD_STUDIO_E2E_SMOKE=PASS');
   console.info(`projectId=${project.id}`);
   console.info(`narrationCharacters=${narrationResult.draft.text.length}`);
@@ -450,6 +478,14 @@ try {
   console.info(`scenes=${project.motionCanvasBundle.scenes.length}`);
   console.info(`semantic=${project.motionCanvasBundle.semanticValidation.status}`);
   console.info(`visual=${project.motionCanvasBundle.visualValidation.status}`);
+  // Retry-circuit-breaker visibility: how many content-repair rounds this
+  // generation needed, and how many scenes were force-fallbacked (stalled or
+  // budget-exhausted) rather than exhausting Codex quota on a non-converging
+  // scene. See motionCanvasRoutes.ts's quality-retry loop.
+  console.info(`qualityRetryRounds=${qualityRetryRounds}`);
+  console.info(`fallbackScenesUsed=${fallbackScenesUsed}`);
+  console.info(`qualityWaivedScenes=${project.motionCanvasBundle.qualityWaivedScenes?.length ?? 0}`);
+  console.info(`compositionSlotWarnings=${project.motionCanvasBundle.visualValidation.warnings?.length ?? 0}`);
   console.info(`durationSeconds=${project.renderBundle.durationSeconds}`);
   console.info(`videoBytes=${project.renderBundle.fileSizeBytes}`);
   console.info(`total=${elapsed(totalMs)}`);

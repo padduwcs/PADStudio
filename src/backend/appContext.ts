@@ -275,6 +275,7 @@ export function createAppContext(options: AppOptions = {}) {
     prepared: PreparedMotionCanvasWorkspace;
     generationDiagnostics: NonNullable<MotionCanvasBundle['generationDiagnostics']>;
     visualValidation: NonNullable<MotionCanvasBundle['visualValidation']>;
+    qualityWaivedScenes?: MotionCanvasBundle['qualityWaivedScenes'];
   }>();
   const motionCanvasCandidateGenerations = createInMemoryGenerationRegistry<{
     generated: MotionCanvasGenerationResult;

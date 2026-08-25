@@ -32,6 +32,7 @@ import {useCodexConnection} from './useCodexConnection.ts';
 import {useWorkflowOperationGuard} from './useWorkflowOperationGuard.ts';
 import {
   notifyTaskCompleted,
+  notifyTaskFailed,
   prepareTaskCompletionNotifications,
 } from './taskCompletionNotifications.ts';
 import {
@@ -318,11 +319,15 @@ export function ContentPage({projectId}: {projectId?: string}) {
         message: 'Bản nháp mới đã sẵn sàng để bạn đọc và chỉnh sửa.',
       });
     } catch (reason) {
-      setNarrationGenerationError(
-        reason instanceof ApiRequestError || reason instanceof Error
-          ? reason.message
-          : 'Không thể tạo lời thoại lúc này.',
-      );
+      const errorMessage = reason instanceof ApiRequestError || reason instanceof Error
+        ? reason.message
+        : 'Không thể tạo lời thoại lúc này.';
+      setNarrationGenerationError(errorMessage);
+      notifyTaskFailed({
+        id: `narration-draft:${generationId}`,
+        title: 'Không thể soạn lời thoại',
+        message: errorMessage,
+      });
     } finally {
       setNarrationGenerating(false);
     }

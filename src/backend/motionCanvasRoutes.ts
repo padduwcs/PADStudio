@@ -13,10 +13,11 @@ import {
   type MotionCanvasBundle
 } from '../shared/topic.ts';
 import {
+  MAXIMUM_MOTION_CANVAS_GENERATION_CONCURRENCY,
   MOTION_CANVAS_PROMPT_VERSION,
   mergeMotionCanvasGenerationUsage,
 } from './motionCanvasGenerator.ts';
-import {MotionCanvasVisualQualityError, assertVisualValidationCurrent, buildMotionCanvasSemanticValidation, formatVisualQualityRetryGuidance, semanticValidationIsCurrent, visualQualityFailureIsRendererOnly} from './motionCanvasVisualQuality.ts';
+import {MotionCanvasVisualQualityError, assertVisualValidationCurrent, buildMotionCanvasSemanticValidation, formatVisualQualityRetryGuidance, partitionWaivedVisualQualityIssues, semanticValidationIsCurrent, visualQualityFailureIsRendererOnly} from './motionCanvasVisualQuality.ts';
 import {
   hashMotionCanvasBundle
 } from './motionCanvasHistoryStore.ts';
@@ -69,17 +70,50 @@ export function motionCanvasGuidanceOnStaleBundleIsUnsafe(options: {
 
 type MotionCanvasRouteContext = Pick<AppContext, 'repository' | 'motionCanvasGenerator' | 'motionCanvasGenerationProgressStore' | 'motionCanvasWorkspace' | 'motionCanvasVisualQualityGate' | 'motionCanvasHistoryStore' | 'motionCanvasGenerations' | 'layoutPreviewService' | 'generateOnce' | 'logger'>;
 
+/**
+ * Circuit-breaker decision for the quality-retry loop: a scene whose
+ * rendered-frame issue-code set has not strictly shrunk from the previous
+ * round to this one is treated as non-converging, since another identical
+ * kind of Codex re-roll is unlikely to fix it (see the quality-retry loop in
+ * `createMotionCanvasRouteHandler`, which forces a newly-stalled scene to a
+ * local safe fallback instead of spending another Codex call on it).
+ * Already-stalled scenes are skipped — their recurrence is a waiver
+ * decision (`partitionWaivedVisualQualityIssues`), not a new stall decision.
+ * Mutates `issueCodesByScene` with this round's codes so the caller's next
+ * call (representing the following round) can compare against it.
+ */
+export function computeNewlyStalledMotionCanvasScenes(
+  issues: readonly {sceneId: string; code: string}[],
+  issueCodesByScene: Map<string, Set<string>>,
+  stalledSceneIds: ReadonlySet<string>,
+): Set<string> {
+  const currentIssueCodesByScene = new Map<string, Set<string>>();
+  for (const issue of issues) {
+    if (stalledSceneIds.has(issue.sceneId)) continue;
+    const codes = currentIssueCodesByScene.get(issue.sceneId) ?? new Set<string>();
+    codes.add(issue.code);
+    currentIssueCodesByScene.set(issue.sceneId, codes);
+  }
+  const newlyStalledSceneIds = new Set<string>();
+  for (const [sceneId, codes] of currentIssueCodesByScene) {
+    const previousCodes = issueCodesByScene.get(sceneId);
+    if (previousCodes && codes.size >= previousCodes.size) newlyStalledSceneIds.add(sceneId);
+    issueCodesByScene.set(sceneId, codes);
+  }
+  return newlyStalledSceneIds;
+}
+
 /** Compiler/generation failures deserve the same recovery path as rendered
  * quality failures.  Persist concise, model-ready context rather than leaving
  * the user with a message that cannot be acted on from the UI. */
 function generationRecoveryGuidance(error: unknown) {
   const reason = error instanceof Error
     ? error.message.slice(0, 1_800)
-    : 'The previous Scene Spec generation did not complete.';
+    : 'The previous scene generation did not complete.';
   return [
-    'Generate a completely fresh Scene Graph v3 from the approved Visual Intent and voice. Do not reuse prior scene source.',
+    'Write a completely fresh Motion Canvas TSX scene from the approved Visual Intent and voice. Do not reuse prior scene source.',
     `Previous generation failure: ${reason}`,
-    'Keep every beat UUID and exact mustShow intent binding. Use concise labels, recognizable composite entities, explicit relationships, and meaningful actions.',
+    'Keep every beat UUID and exact mustShow intent binding. Use concise labels, recognizable shapes (icons for concrete objects), explicit relationships, and meaningful animations.',
   ].join('\n').slice(0, 4_000);
 }
 
@@ -300,7 +334,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
             }) => reportProgress({
               stage: 'generating-scenes',
               message: progress.outcome === 'started'
-                ? `Codex đang sinh ${progress.totalScenes} scene bằng tối đa 4 worker.`
+                ? `Codex đang sinh ${progress.totalScenes} scene bằng tối đa ${MAXIMUM_MOTION_CANVAS_GENERATION_CONCURRENCY} worker.`
                 : `Codex đã xử lý ${progress.completedScenes}/${progress.totalScenes} scene.`,
               completedScenes: progress.completedScenes,
               totalScenes: progress.totalScenes,
@@ -416,9 +450,6 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                 stay: beat.visualLifecycle!.stay,
                 primaryBlock: beat.primaryBlock,
                 compositionContract: beat.compositionContract,
-                visualDescription: beat.visualDescription,
-                visualPurpose: beat.visualPurpose,
-                animationDescription: beat.animationDescription,
                 visualIntent: beat.visualIntent,
               }] as const);
             }),
@@ -430,11 +461,33 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
             }),
           );
             let visualValidation;
-            const maximumQualityRetries = 2;
+            // Each retry re-sends the exact rendered-frame issues (overlap,
+            // clipping, spacing, ...) back to Codex as guidance, so extra
+            // attempts cost more Codex calls and time but materially raise
+            // the odds a borderline layout (e.g. a few points over the text
+            // overlap threshold) converges instead of failing the whole run.
+            // The real cost control is the non-convergence circuit breaker
+            // below, not this cap: a scene that isn't improving drops out of
+            // Codex spend after ~2 rounds regardless of how high this is set,
+            // so raising it only gives genuinely-converging scenes more room
+            // rather than letting a permanently-broken scene burn the full
+            // budget every round.
+            const maximumQualityRetries = 4;
             const maximumRendererRetries = 1;
             let contentRepairAttempts = 0;
             let rendererRetryAttempts = 0;
             let lastRepairedSceneCount = 0;
+            // Non-convergence circuit breaker: a scene whose rendered-frame
+            // issue set does not shrink round over round is never going to be
+            // fixed by yet another identical Codex re-roll. Once a scene is
+            // in stalledSceneIds it is force-fallbacked (see below) and never
+            // sent to Codex again for the rest of this generation — this is
+            // what keeps a batch where most scenes are genuinely broken from
+            // spending the full maximumQualityRetries budget on every scene,
+            // every round.
+            const issueCodesByScene = new Map<string, Set<string>>();
+            const stalledSceneIds = new Set<string>();
+            const qualityWaivedScenes: NonNullable<MotionCanvasBundle['qualityWaivedScenes']> = [];
             let smokePassed =
               motionCanvasVisualQualityGate.supportsSmokeMode !== true;
             for (;;) {
@@ -512,6 +565,24 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                 break;
               } catch (error) {
                 if (!(error instanceof MotionCanvasVisualQualityError)) throw error;
+                // Backstop: a scene already forced to the local safe fallback
+                // (below) failed the gate again. Another Codex round cannot
+                // help a scene that has no more Codex-owned content left to
+                // change, and re-running the exact same deterministic
+                // fallback would only repeat this forever — waive it instead
+                // of retrying, and let the batch finish.
+                if (stalledSceneIds.size > 0 && error.summary.issues.every(issue => stalledSceneIds.has(issue.sceneId))) {
+                  const {summary: waivedSummary, waived} = partitionWaivedVisualQualityIssues(error.summary, stalledSceneIds);
+                  qualityWaivedScenes.push(...waived);
+                  generationDiagnostics.push({
+                    stage: 'quality-retry',
+                    attempt: contentRepairAttempts,
+                    reason: `Local safe fallback for previously-stalled scene(s) still did not clear the render gate; waived rather than retried further: ${waived.map(item => item.sceneId).join(', ')}`.slice(0, 4_000),
+                    outcome: 'skipped',
+                  });
+                  visualValidation = waivedSummary;
+                  break;
+                }
                 if (visualQualityFailureIsRendererOnly(error.summary)) {
                   if (rendererRetryAttempts >= maximumRendererRetries) throw error;
                   rendererRetryAttempts += 1;
@@ -524,14 +595,81 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                   continue;
                 }
                 const failedSceneIds = [...new Set(error.summary.issues.map(issue => issue.sceneId))];
-                const failedIndexes = generated.scenes
-                  .map((scene, index) => failedSceneIds.includes(scene.id) ? index : -1)
-                  .filter(index => index >= 0);
+
+                // Non-convergence detection: compare this round's issue-code
+                // set for each still-failing scene against its previous
+                // round's set (computeNewlyStalledMotionCanvasScenes). A scene
+                // whose set hasn't strictly shrunk is not being fixed by
+                // another identical kind of Codex re-roll — mark it for
+                // forced fallback below instead of retrying it again.
+                // Already-stalled scenes are excluded (their recurrence is
+                // handled by the backstop waiver above), and this whole
+                // mechanism is skipped when the generator has no recover()
+                // to fall back to, preserving the old throw-on-exhaustion
+                // behavior for such generators.
+                const newlyStalledSceneIds = motionCanvasGenerator.recover
+                  ? computeNewlyStalledMotionCanvasScenes(error.summary.issues, issueCodesByScene, stalledSceneIds)
+                  : new Set<string>();
+
                 contentRepairAttempts += 1;
+                // Once the retry budget itself is exhausted, every scene
+                // still failing is in the same position as a stalled one —
+                // another identical round would only repeat, not fix, its
+                // issues. Force all of them to the local fallback too, so the
+                // batch still completes instead of throwing away every scene
+                // (including ones that already passed) once the last round
+                // runs out.
+                if (motionCanvasGenerator.recover && contentRepairAttempts > maximumQualityRetries) {
+                  for (const sceneId of failedSceneIds) if (!stalledSceneIds.has(sceneId)) newlyStalledSceneIds.add(sceneId);
+                }
+
+                if (newlyStalledSceneIds.size > 0) {
+                  const scenesToFallback = generated.scenes.filter(scene => newlyStalledSceneIds.has(scene.id));
+                  generated = motionCanvasGenerator.recover!(
+                    generationRequest,
+                    generated,
+                    `Force local fallback for stalled scene(s), no longer sending to Codex: ${scenesToFallback.map(scene => scene.filePath).join(', ')}`,
+                  );
+                  for (const sceneId of newlyStalledSceneIds) stalledSceneIds.add(sceneId);
+                  generationDiagnostics.push({
+                    stage: 'fallback',
+                    attempt: contentRepairAttempts,
+                    reason: `Scene(s) stopped converging across quality-retry rounds (or the retry budget ran out); forced to local safe fallback without further Codex spend: ${scenesToFallback.map(scene => scene.id).join(', ')}`.slice(0, 4_000),
+                    outcome: 'used_fallback',
+                  });
+                  reportProgress({
+                    stage: 'quality-retry',
+                    message: `${scenesToFallback.length} scene không hội tụ sau nhiều lượt sửa; đã chuyển sang minh hoạ an toàn tại chỗ, không tiêu thêm quota Codex.`,
+                    attempt: contentRepairAttempts,
+                  });
+                }
+
+                const failedIndexes = generated.scenes
+                  .map((scene, index) => failedSceneIds.includes(scene.id) && !stalledSceneIds.has(scene.id) ? index : -1)
+                  .filter(index => index >= 0);
                 smokePassed =
                   motionCanvasVisualQualityGate.supportsSmokeMode !== true;
                 generationDiagnostics.push({stage: 'quality-retry', attempt: contentRepairAttempts, reason: error.summary.issues.map(issue => `${issue.sceneId}/${issue.beatId ?? 'scene'}: ${issue.reason}`).join('; ').slice(0, 4_000), outcome: 'failed'});
-                if (failedIndexes.length === 0 || contentRepairAttempts > maximumQualityRetries) throw error;
+
+                if (failedIndexes.length === 0) {
+                  // Every failing scene this round was just handled above
+                  // (already stalled, newly stalled, or budget-exhausted) —
+                  // nothing left for Codex this round. Re-prepare the
+                  // workspace with the updated fallback sources and loop
+                  // back to re-validate.
+                  await motionCanvasWorkspace.discard(currentProject.id, generationId);
+                  prepared = await motionCanvasWorkspace.prepare(
+                    currentProject.id,
+                    generationId,
+                    generated.scenes,
+                    projectVideoFrame(currentProject),
+                  );
+                  continue;
+                }
+                // Only reachable when the generator has no recover(): the
+                // budget is exhausted and there is no local fallback lever,
+                // so this preserves the pre-breaker behavior of throwing.
+                if (contentRepairAttempts > maximumQualityRetries) throw error;
 
                 const sectionIndexes = failedIndexes.map(index =>
                   voiceVisualPlan.sections.findIndex(section =>
@@ -585,7 +723,13 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
             generationDiagnostics.push({stage: 'generate', attempt: 0, reason: 'Source attachment/container/timing policy, compiler preparation, and rendered-frame quality gate passed.', outcome: 'passed'});
             generationDiagnostics.push(...qualityRetryDiagnostics);
             acceptedWorkspace = true;
-            return {generated, prepared, generationDiagnostics, visualValidation};
+            return {
+              generated,
+              prepared,
+              generationDiagnostics,
+              visualValidation,
+              qualityWaivedScenes: qualityWaivedScenes.length ? qualityWaivedScenes : undefined,
+            };
           } catch (error) {
             const visualFailure =
               error instanceof MotionCanvasVisualQualityError ? error : null;
@@ -650,6 +794,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
         scenes: preparedWorkspace.scenes,
         validation: preparedWorkspace.validation,
         visualValidation: generation.result.visualValidation,
+        ...(generation.result.qualityWaivedScenes ? {qualityWaivedScenes: generation.result.qualityWaivedScenes} : {}),
         semanticValidation: buildMotionCanvasSemanticValidation(
           preparedWorkspace.sourceScenes,
           voiceVisualPlan,

@@ -8,8 +8,6 @@ import {findBrowserExecutable} from './finalRenderService.ts';
 import type {VoiceVisualBeat} from '../shared/topic.ts';
 import type {MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
 import {createMotionCanvasRuntimeFrameRenderer} from './motionCanvasRuntimeFrameRenderer.ts';
-import {compileMotionCanvasSceneSpec} from './motionCanvasSceneSpec.ts';
-import {compileMotionCanvasSceneSpecV3} from './motionCanvasSceneSpecV3.ts';
 import {createMotionCanvasWorkspace} from './motionCanvasWorkspace.ts';
 import {MotionCanvasVisualQualityError, validateRenderedMotionCanvas} from './motionCanvasVisualQuality.ts';
 
@@ -218,11 +216,37 @@ test('real Chrome geometry trips the composition checks on two deliberately brok
   assert.ok(!codes.has('renderer-error'), 'the real renderer must return every requested sample');
 });
 
-test('compiled Scene Spec stays visible through pre-exit rendered sampling', {
+/**
+ * Hand-authored equivalent of what used to be a compiled Scene Spec fixture:
+ * one primary `block-*` card carrying a title/caption pair plus a small
+ * secondary decoration (`diagram-priority-flow`, not `block-`-prefixed so it
+ * is not itself tracked as an active block). Every colour is taken verbatim
+ * from `integrationBible.palette` so the palette-drift check passes exactly.
+ */
+function priorityQueueSource() {
+  return `import {Rect, Txt, makeScene2D} from '@motion-canvas/2d';
+import {waitFor} from '@motion-canvas/core';
+
+export default makeScene2D(function* (view) {
+  view.add(
+    <Rect key="scene-background" width={540} height={960} fill="#10231D">
+      <Rect key="block-priority-queue" width={400} height={460} radius={24} fill="#173B31">
+        <Txt key="priority-queue-title" text="Xử lý theo ưu tiên" y={-140} width={340} fontSize={50} fill="#F7FBF8" textAlign="center" />
+        <Txt key="priority-queue-caption" text="Quan trọng trước, có thể chờ sau" y={140} width={340} fontSize={26} fill="#F7FBF8" textAlign="center" />
+      </Rect>
+      <Rect key="diagram-priority-flow" y={330} width={160} height={10} fill="#F5C451" />
+    </Rect>,
+  );
+  yield* waitFor(8);
+});
+`;
+}
+
+test('hand-authored priority queue scene stays visible through pre-exit rendered sampling', {
   skip: browser ? false : 'Chrome or Edge is unavailable.',
   timeout: 120_000,
 }, async context => {
-  const projectsDirectory = await mkdtemp(path.join(os.tmpdir(), 'pad-scene-spec-render-'));
+  const projectsDirectory = await mkdtemp(path.join(os.tmpdir(), 'pad-scene-render-'));
   context.after(() => rm(projectsDirectory, {recursive: true, force: true}));
   const beatId = randomUUID();
   const beat: VoiceVisualBeat = {
@@ -253,43 +277,11 @@ test('compiled Scene Spec stays visible through pre-exit rendered sampling', {
     ...integrationBible,
     typographyScale: {title: 50, label: 26, body: 22},
   };
-  const compiled = compileMotionCanvasSceneSpec({
-    spec: {
-      version: 2,
-      visualAnchor: 'A stable priority queue flow.',
-      beats: [{
-        beatId,
-        visualId: 'priority-queue-process',
-        headline: 'Xử lý theo ưu tiên',
-        caption: 'Quan trọng trước, có thể chờ sau',
-        template: 'comparison',
-        focus: 'center',
-        planAlignment: {planTerms: ['Hàng đợi']},
-        elements: [
-          {type: 'node', id: 'urgent-work', shape: 'pill', label: 'Khẩn cấp', value: 'P1', emphasis: 'primary', concepts: ['Hàng đợi']},
-          {type: 'node', id: 'important-work', shape: 'circle', label: 'Quan trọng', value: 'P2', emphasis: 'secondary', concepts: ['Hàng đợi']},
-          {type: 'gate', id: 'waiting-gate', state: 'open', label: 'Chờ', value: 'P3', emphasis: 'primary', concepts: ['Hàng đợi']},
-          {type: 'node', id: 'priority-anchor', shape: 'diamond', label: 'Đỉnh', value: 'P0', emphasis: 'secondary', concepts: ['Hàng đợi']},
-          {type: 'node', id: 'normal-work', shape: 'pill', label: 'Thường', value: 'P4', emphasis: 'muted', concepts: ['Hàng đợi']},
-          {type: 'node', id: 'deferred-work', shape: 'circle', label: 'Hoãn', value: 'P5', emphasis: 'primary', concepts: ['Hàng đợi']},
-          {type: 'node', id: 'reserve-slot', shape: 'diamond', label: 'Dự phòng', value: 'P6', emphasis: 'muted', concepts: ['Hàng đợi']},
-        ],
-        relationships: [{id: 'priority-flow', type: 'arrow', from: 'urgent-work', to: 'important-work', via: [], label: null, emphasis: 'primary'}],
-        groups: [],
-        motions: [{kind: 'flow', targets: ['urgent-work', 'important-work'], direction: 'right'}],
-      }],
-    },
-    beats: [beat],
-    outlineTitle: 'Hàng đợi ưu tiên',
-    frame,
-    backgroundColor: '#10231D',
-    visualBible,
-  });
   const scene: MotionCanvasSourceScene = {
     id: randomUUID(),
     outlineSectionId: randomUUID(),
-    name: 'Compiled priority queue',
-    filePath: 'src/scenes/01-compiled-priority.tsx',
+    name: 'Hand-authored priority queue',
+    filePath: 'src/scenes/01-priority-queue.tsx',
     durationSeconds: 8,
     timingEvents: [{
       beatId,
@@ -297,10 +289,10 @@ test('compiled Scene Spec stays visible through pre-exit rendered sampling', {
       endEvent: `beat:${beatId}:end`,
       plannedDurationSeconds: 8,
     }],
-    source: compiled,
+    source: priorityQueueSource(),
   };
   const prepared = await createMotionCanvasWorkspace(projectsDirectory).prepare(
-    'scene-spec-render',
+    'priority-queue-render',
     randomUUID(),
     [scene],
     frame,
@@ -331,11 +323,40 @@ test('compiled Scene Spec stays visible through pre-exit rendered sampling', {
   ));
 });
 
-test('compiled Scene Graph v3 renders composite semantic entities through every stable sample', {
+/**
+ * Hand-authored equivalent of what used to be a compiled Scene Graph v3
+ * fixture: one primary `block-*` card containing three simple composite
+ * "figures" (two patients and a treatment doorway) plus a title/caption, so
+ * the scene still tells the same visually-composite story without any
+ * declarative spec or compiler in between. Colours are taken verbatim from
+ * `integrationBible.palette`.
+ */
+function hospitalPrioritySource() {
+  return `import {Circle, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
+import {waitFor} from '@motion-canvas/core';
+
+export default makeScene2D(function* (view) {
+  view.add(
+    <Rect key="scene-background" width={540} height={960} fill="#10231D">
+      <Rect key="block-hospital-priority" width={420} height={520} radius={24} fill="#173B31">
+        <Txt key="hospital-priority-title" text="Điều trị theo ưu tiên" y={-210} width={360} fontSize={50} fill="#F7FBF8" textAlign="center" />
+        <Circle key="waiting-patient-figure" x={-130} y={20} width={90} height={90} fill="#51B68E" />
+        <Circle key="urgent-patient-figure" x={0} y={0} width={110} height={110} fill="#F5C451" />
+        <Rect key="treatment-door-figure" x={130} y={20} width={90} height={130} radius={12} fill="#51B68E" />
+        <Txt key="hospital-priority-caption" text="Khẩn cấp đi trước" y={210} width={360} fontSize={26} fill="#F7FBF8" textAlign="center" />
+      </Rect>
+    </Rect>,
+  );
+  yield* waitFor(8);
+});
+`;
+}
+
+test('hand-authored hospital priority scene renders composite figures through every stable sample', {
   skip: browser ? false : 'Chrome or Edge is unavailable.',
   timeout: 120_000,
 }, async context => {
-  const projectsDirectory = await mkdtemp(path.join(os.tmpdir(), 'pad-scene-graph-v3-render-'));
+  const projectsDirectory = await mkdtemp(path.join(os.tmpdir(), 'pad-hospital-priority-render-'));
   context.after(() => rm(projectsDirectory, {recursive: true, force: true}));
   const beatId = randomUUID();
   const frame = {aspectRatio: 'portrait' as const, width: 540, height: 960, fps: 24 as const};
@@ -368,21 +389,8 @@ test('compiled Scene Graph v3 renders composite semantic entities through every 
   beat.visualLifecycle!.stay.push('urgent-patient-figure');
   beat.visualLifecycle!.enter.push('urgent-patient-figure');
   beat.visualLifecycle!.exit.push('urgent-patient-figure');
-  const base = {x: 0, y: 0, width: 0.7, height: 0.7, rotation: 0, fillRole: 'primary' as const, strokeRole: 'text' as const, strokeWidth: 0.006, cornerRadius: 0.16, points: [] as Array<{x: number; y: number}>, text: null};
-  const compiled = compileMotionCanvasSceneSpecV3({
-    spec: {version: 3, visualAnchor: 'Persistent hospital priority story.', beats: [{beatId, visualId: 'hospital-priority-story', headline: null, motifHints: ['hospital waiting area'], fidelity: 'designed', entities: [
-      {id: 'waiting-patient-figure', intentId: 'waiting-patient', description: 'A calm patient waiting on the left.', role: 'secondary', box: {x: -0.3, y: 0.1, width: 0.22, height: 0.22}, label: 'Chờ', parts: [{...base, id: 'waiting-head-shape', primitive: 'circle', y: -0.28, width: 0.3, height: 0.3}, {...base, id: 'waiting-body-shape', primitive: 'rect', y: 0.18, width: 0.55, height: 0.58}]},
-      {id: 'urgent-patient-figure', intentId: 'urgent-patient', description: 'An urgent patient moving through the center.', role: 'primary', box: {x: 0, y: -0.05, width: 0.24, height: 0.24}, label: 'Khẩn', parts: [{...base, id: 'urgent-head-shape', primitive: 'circle', y: -0.28, width: 0.3, height: 0.3, fillRole: 'accent'}, {...base, id: 'urgent-body-shape', primitive: 'rect', y: 0.18, width: 0.55, height: 0.58, fillRole: 'accent'}]},
-      {id: 'treatment-door-figure', intentId: 'treatment-door', description: 'An open treatment doorway on the right.', role: 'muted', box: {x: 0.32, y: 0.08, width: 0.24, height: 0.3}, label: 'Điều trị', parts: [{...base, id: 'door-shell-shape', primitive: 'rect', width: 0.75, height: 0.9, fillRole: 'surface'}]},
-    ], relationships: [{id: 'urgent-treatment-arrow', intentId: 'urgent-dispatch-path', from: 'urgent-patient-figure', to: 'treatment-door-figure', style: 'arrow', label: null, emphasis: 'primary', via: []}], actions: [{id: 'urgent-movement-action', intentId: 'urgent-moves-first', kind: 'flow', targets: ['urgent-patient-figure'], direction: 'right', amount: 0.06}], decorations: []}]},
-    beats: [beat],
-    outlineTitle: 'Hospital priority',
-    frame,
-    backgroundColor: '#10231D',
-    visualBible: {...integrationBible, typographyScale: {title: 50, label: 26, body: 22}},
-  });
-  const scene: MotionCanvasSourceScene = {id: randomUUID(), outlineSectionId: randomUUID(), name: 'Hospital priority', filePath: 'src/scenes/01-hospital-priority.tsx', durationSeconds: 8, timingEvents: [{beatId, startEvent: `beat:${beatId}:start`, endEvent: `beat:${beatId}:end`, plannedDurationSeconds: 8}], source: compiled};
-  const prepared = await createMotionCanvasWorkspace(projectsDirectory).prepare('scene-graph-v3-render', randomUUID(), [scene], frame);
+  const scene: MotionCanvasSourceScene = {id: randomUUID(), outlineSectionId: randomUUID(), name: 'Hospital priority', filePath: 'src/scenes/01-hospital-priority.tsx', durationSeconds: 8, timingEvents: [{beatId, startEvent: `beat:${beatId}:start`, endEvent: `beat:${beatId}:end`, plannedDurationSeconds: 8}], source: hospitalPrioritySource()};
+  const prepared = await createMotionCanvasWorkspace(projectsDirectory).prepare('hospital-priority-render', randomUUID(), [scene], frame);
   const summary = await validateRenderedMotionCanvas({scenes: prepared.sourceScenes, lifecycle: new Map([[beatId, {stay: beat.visualLifecycle!.stay, primaryBlock: beat.primaryBlock, compositionContract: beat.compositionContract, visualIntent}]]), frame, backgroundColor: '#10231D', visualBible: {...integrationBible, typographyScale: {title: 50, label: 26, body: 22}}, renderer: createMotionCanvasRuntimeFrameRenderer({browserNoSandbox: true}), workspaceDirectory: prepared.workspaceDirectory, projectFile: prepared.projectFilePath}).catch(error => {
     if (error instanceof MotionCanvasVisualQualityError) {
       assert.fail(error.summary.issues.map(issue => `${issue.code}: ${issue.reason}`).join(' | '));

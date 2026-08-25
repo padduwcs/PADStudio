@@ -13,6 +13,7 @@ import {NarrationPage} from './NarrationPage.tsx';
 import {ProductionPage} from './ProductionPage.tsx';
 import {ProjectLibrary} from './ProjectLibrary.tsx';
 import {TaskCompletionNotifications} from './TaskCompletionNotifications.tsx';
+import {TaskNotificationModeControl} from './TaskNotificationModeControl.tsx';
 import {RouteErrorBoundary} from './RouteErrorBoundary.tsx';
 import {
   navigate,
@@ -107,6 +108,7 @@ function PipelineSidebar({
         {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
         <span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>
       </button>
+      <TaskNotificationModeControl />
       <div className="sidebar-heading">
         <span>Quy trình sản xuất</span>
         <strong>{String(activeStep + 1).padStart(2, '0')} / 05</strong>

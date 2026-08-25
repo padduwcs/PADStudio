@@ -4,8 +4,7 @@ import test from 'node:test';
 import {randomUUID} from 'node:crypto';
 import type {MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
 import type {BeatCompositionContract} from '../shared/topic.ts';
-import {MotionCanvasVisualQualityError, MotionCanvasVisualValidationGateError, VISUAL_QUALITY_GATE_VERSION, assertVisualValidationCurrent, motionCanvasSceneSourceHash, retryRenderedSceneQualityOnce, validateRenderedMotionCanvas, visualQualityFailureIsRendererOnly, visualQualitySamples, visualValidationIsCurrent, visualValidationIsReusable, withTemporaryVisualQualityWorkspace, type BeatQualityContract, type QualityRenderedFrame} from './motionCanvasVisualQuality.ts';
-import {encodeMotionCanvasSceneSpec} from './motionCanvasSceneSpec.ts';
+import {MotionCanvasVisualQualityError, MotionCanvasVisualValidationGateError, VISUAL_QUALITY_GATE_VERSION, assertVisualValidationCurrent, motionCanvasSceneSourceHash, partitionWaivedVisualQualityIssues, retryRenderedSceneQualityOnce, validateRenderedMotionCanvas, visualQualityFailureIsRendererOnly, visualQualitySamples, visualValidationIsCurrent, visualValidationIsReusable, withTemporaryVisualQualityWorkspace, type BeatQualityContract, type QualityRenderedFrame, type VisualQualitySummary} from './motionCanvasVisualQuality.ts';
 
 const sceneId = '10000000-0000-4000-8000-000000000001';
 const beatOne = '10000000-0000-4000-8000-000000000011';
@@ -24,6 +23,30 @@ test('renderer-only quality failures are infrastructure faults, not scene repair
   assert.equal(visualQualityFailureIsRendererOnly({issues:[rendererIssue]}), true);
   assert.equal(visualQualityFailureIsRendererOnly({issues:[rendererIssue,contentIssue]}), false);
   assert.equal(visualQualityFailureIsRendererOnly({issues:[]}), false);
+});
+
+test('partitionWaivedVisualQualityIssues moves a stalled scene\'s issues out and can turn a failing summary into a passing one', () => {
+  const otherSceneId = '10000000-0000-4000-8000-000000000099';
+  const stalledIssue = {code:'plan-misaligned' as const, sceneId, beatId:null, timeSeconds:0, semanticKey:null, bounds:null, reason:'Scene không hội tụ.'};
+  const otherIssue = {code:'block-overlap' as const, sceneId: otherSceneId, beatId:null, timeSeconds:0, semanticKey:null, bounds:null, reason:'Chồng khối khác.'};
+  const summary: VisualQualitySummary = {version: VISUAL_QUALITY_GATE_VERSION, status:'failed', validatedAt:'2026-01-01T00:00:00.000Z', sourceHash:'a'.repeat(64), scenes:[], issues:[stalledIssue]};
+
+  const onlyStalled = partitionWaivedVisualQualityIssues(summary, new Set([sceneId]));
+  assert.equal(onlyStalled.summary.status, 'passed');
+  assert.deepEqual(onlyStalled.summary.issues, []);
+  assert.equal(onlyStalled.waived.length, 1);
+  assert.equal(onlyStalled.waived[0]!.sceneId, sceneId);
+  assert.deepEqual(onlyStalled.waived[0]!.issueCodes, ['plan-misaligned']);
+
+  const mixed = partitionWaivedVisualQualityIssues({...summary, issues:[stalledIssue, otherIssue]}, new Set([sceneId]));
+  assert.equal(mixed.summary.status, 'failed');
+  assert.deepEqual(mixed.summary.issues, [otherIssue]);
+  assert.equal(mixed.waived.length, 1);
+  assert.equal(mixed.waived[0]!.sceneId, sceneId);
+
+  const noneWaived = partitionWaivedVisualQualityIssues(summary, new Set());
+  assert.equal(noneWaived.summary.status, 'failed');
+  assert.deepEqual(noneWaived.waived, []);
 });
 
 test('smoke quality mode renders only the middle frame of each beat', async () => {
@@ -243,60 +266,6 @@ test('frame density detects an almost empty and an overfilled frame', async () =
   assert.ok((await codesOf(run({lifecycle, nodes: () => [{...safe('block-one'), bounds: {x: 45, y: 45, width: 6, height: 6}, visibleBounds: {x: 45, y: 45, width: 6, height: 6}}]}))).includes('frame-too-sparse'));
   assert.ok((await codesOf(run({lifecycle, nodes: () => [{...safe('block-one'), bounds: {x: 0, y: 0, width: 100, height: 100}, visibleBounds: {x: 0, y: 0, width: 100, height: 100}}]}))).includes('frame-too-dense'));
   assert.ok((await codesOf(run({lifecycle, nodes: () => [safe('block-one'), ...Array.from({length: 44}, (_, index) => ({key: `chip-${index}`, kind: 'other' as const, bounds: {x: 12, y: 12, width: 4, height: 4}, visibleBounds: {x: 12, y: 12, width: 4, height: 4}, opacity: 1}))]}))).includes('frame-too-dense'));
-});
-
-test('Scene Spec v2 counts conceptual components, not compiler drawing primitives', async () => {
-  const sceneSpec = {
-    version: 2 as const,
-    visualAnchor: 'A compact semantic density example.',
-    beats: [{
-      beatId: beatOne,
-      visualId: 'semantic-density',
-      headline: 'Mật độ hình',
-      caption: null,
-      template: 'comparison' as const,
-      focus: 'center' as const,
-      planAlignment: {planTerms: ['thành phần']},
-      elements: [
-        {type: 'node' as const, id: 'left-part', shape: 'pill' as const, label: 'Trái', value: null, emphasis: 'primary' as const, concepts: ['thành phần']},
-        {type: 'node' as const, id: 'right-part', shape: 'pill' as const, label: 'Phải', value: null, emphasis: 'secondary' as const, concepts: ['thành phần']},
-      ],
-      relationships: [],
-      groups: [],
-      motions: [{kind: 'compare' as const, targets: ['left-part'], direction: null}],
-    }],
-  };
-  const v2Scene = {
-    ...scene,
-    source: `// pad-scene-spec-v2:${encodeMotionCanvasSceneSpec(sceneSpec)}`,
-  };
-  const codes = await codesOf(run({
-    scenes: [v2Scene],
-    lifecycle,
-    nodes: sample => {
-      if (sample.beatId === beatTwo) return [safe('block-two')];
-      return [
-        safe('block-one'),
-        ...['left-part', 'right-part'].map(id => ({
-          key: `semantic-density-${id}-element`,
-          kind: 'other' as const,
-          bounds: {x: 15, y: 15, width: 12, height: 12},
-          visibleBounds: {x: 15, y: 15, width: 12, height: 12},
-          opacity: 1,
-          ancestorKeys: ['block-one'],
-        })),
-        ...Array.from({length: 40}, (_, index) => ({
-          key: `semantic-density-compiler-primitive-${index}`,
-          kind: 'other' as const,
-          bounds: {x: 15, y: 15, width: 2, height: 2},
-          visibleBounds: {x: 15, y: 15, width: 2, height: 2},
-          opacity: 1,
-          ancestorKeys: ['block-one'],
-        })),
-      ];
-    },
-  }));
-  assert.ok(!codes.includes('frame-too-dense'));
 });
 
 test('primary block must dominate and sit inside its declared focus zone', async () => {

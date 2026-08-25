@@ -358,12 +358,13 @@ export const BeatCompositionContractSchema = z
 export type BeatCompositionContract = z.infer<typeof BeatCompositionContractSchema>;
 
 /**
- * Meaning that must survive the Visual Plan -> Scene Spec boundary.
+ * Meaning that must survive the Visual Plan -> Motion Canvas TSX boundary.
  *
  * `kind`, relation `type`, and action `verb` intentionally use bounded open
  * vocabularies. They describe the lesson, not executable renderer operations,
  * so a new subject never needs a schema release merely to name a new object or
- * relationship. Scene Spec keeps the executable drawing vocabulary closed.
+ * relationship — the generated scene's hand-authored JSX is what has to turn
+ * each `mustShow` entity/relation/action into an explicit, keyed visual node.
  */
 export const VisualIntentSchema = z
   .object({
@@ -724,6 +725,16 @@ export const visualQualityIssueCodeValues = [
   'diagram-underrepresented', 'plan-misaligned',
 ] as const;
 
+/**
+ * Non-blocking observability codes: kept in a separate vocabulary from
+ * visualQualityIssueCodeValues on purpose so a warning can never be
+ * accidentally merged into the blocking issues list and start failing the
+ * gate or triggering a quality-retry round.
+ */
+export const visualQualityWarningCodeValues = [
+  'entity-outside-composition-slot',
+] as const;
+
 export const MotionCanvasBundleSchema = z
   .object({
     status: z.enum(motionCanvasStatusValues),
@@ -773,7 +784,35 @@ export const MotionCanvasBundleSchema = z
         code: z.enum(visualQualityIssueCodeValues), sceneId: z.string().uuid(), beatId: z.string().uuid().nullable(), timeSeconds: z.number().nonnegative(), semanticKey: z.string().nullable(),
         bounds: z.object({x: z.number(), y: z.number(), width: z.number().nonnegative(), height: z.number().nonnegative()}).nullable(), reason: z.string().min(1).max(600),
       }).strict()).max(64),
+      /**
+       * Non-blocking observability, never part of pass/fail. Historical:
+       * `entity-outside-composition-slot` was emitted only for compiler-owned
+       * declarative Scene Spec entities, which no longer exist now that Codex
+       * authors Motion Canvas TSX directly — no code path emits a warning of
+       * this shape any more, but the field is kept readable so an upgraded
+       * app never locks an older stored bundle out. status is derived from
+       * `issues` alone (see motionCanvasVisualQuality.ts), so a warning can
+       * never fail the gate or trigger a quality-retry round.
+       */
+      warnings: z.array(z.object({
+        code: z.enum(visualQualityWarningCodeValues), sceneId: z.string().uuid(), beatId: z.string().uuid().nullable(), timeSeconds: z.number().nonnegative(), semanticKey: z.string().nullable(),
+        bounds: z.object({x: z.number(), y: z.number(), width: z.number().nonnegative(), height: z.number().nonnegative()}).nullable(), reason: z.string().min(1).max(600),
+      }).strict()).max(64).optional(),
     }).strict().optional(),
+    /**
+     * Scenes whose rendered-frame issues were deliberately waived rather than
+     * retried further: their issue set stopped shrinking across quality-retry
+     * rounds (or the retry budget ran out), so PAD Studio forced them to a
+     * local safe fallback instead of spending Codex calls that historically
+     * could not fix the same issue set. Absent/empty on a normal generation
+     * where every scene converged. See motionCanvasRoutes.ts's quality-retry
+     * loop and motionCanvasVisualQuality.ts's partitionWaivedVisualQualityIssues.
+     */
+    qualityWaivedScenes: z.array(z.object({
+      sceneId: z.string().uuid(),
+      issueCodes: z.array(z.enum(visualQualityIssueCodeValues)).max(8),
+      reason: z.string().trim().min(1).max(600),
+    }).strict()).max(pipelineSafetyLimits.maximumSections).optional(),
     /** Semantic evidence is separate from technical/render evidence. */
     semanticValidation: z.object({
       version: z.literal(1),

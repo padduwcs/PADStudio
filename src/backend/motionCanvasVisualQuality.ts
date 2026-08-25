@@ -3,11 +3,9 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import {z} from 'zod';
-import {visualQualityIssueCodeValues, type BeatCompositionContract, type MotionCanvasBundle, type VisualIntent, type VoiceVisualPlan, type VoiceVisualPlanContent} from '../shared/topic.ts';
+import {visualQualityIssueCodeValues, visualQualityWarningCodeValues, type BeatCompositionContract, type MotionCanvasBundle, type VisualIntent, type VoiceVisualPlan, type VoiceVisualPlanContent} from '../shared/topic.ts';
 import type {MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
 import {analyzeRgbaFrame, parseHexColor, wcagContrastRatio} from './visualViability.ts';
-import {extractMotionCanvasSceneSpec, isMotionCanvasSceneSpecV2, resolveMotionCanvasPresentationPalette, sceneSpecPlanAlignmentIssues} from './motionCanvasSceneSpec.ts';
-import {extractMotionCanvasSceneSpecV3, isMotionCanvasSceneSpecV3, sceneSpecV3PlanAlignmentIssues, sceneSpecV3SemanticCoverage} from './motionCanvasSceneSpecV3.ts';
 
 export const VISUAL_QUALITY_GATE_VERSION = 4;
 export const visualQualityThresholds = {
@@ -50,10 +48,18 @@ export const VisualQualityIssueSchema = z.object({
 }).strict();
 export type VisualQualityIssue = z.infer<typeof VisualQualityIssueSchema>;
 
+/** Same shape as an issue but a disjoint code vocabulary, so a warning can
+ * never be accidentally treated as (or merged into) a blocking issue. */
+export const VisualQualityWarningSchema = VisualQualityIssueSchema.extend({code: z.enum(visualQualityWarningCodeValues)});
+export type VisualQualityWarning = z.infer<typeof VisualQualityWarningSchema>;
+
 export const VisualQualitySummarySchema = z.object({
   version: z.literal(VISUAL_QUALITY_GATE_VERSION), status: z.enum(['passed', 'failed']), validatedAt: z.string().datetime(), sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
   scenes: z.array(z.object({sceneId: z.string().uuid(), samples: z.array(z.object({beatId: z.string().uuid(), phase: z.enum(['stable-start', 'middle', 'pre-exit']), timeSeconds: z.number().nonnegative(), frame: z.number().int().nonnegative(), metrics: z.object({verdict: z.string(), contentRatio: z.number(), dominantColorRatio: z.number()}).strict(), activeBlocks: z.array(z.string()).max(12), imageDeltaFromPreviousBeat: z.number().nullable()}).strict()).max(30)}).strict()).max(128),
   issues: z.array(VisualQualityIssueSchema).max(visualQualityThresholds.maximumIssues),
+  /** Non-blocking observability; never read by `status` or by anything that
+   * could turn a warning into a retry or a failed gate. */
+  warnings: z.array(VisualQualityWarningSchema).max(visualQualityThresholds.maximumIssues).optional(),
 }).strict();
 export type VisualQualitySummary = z.infer<typeof VisualQualitySummarySchema>;
 
@@ -65,10 +71,6 @@ export interface BeatQualityContract {
   stay: string[];
   primaryBlock?: string;
   compositionContract?: BeatCompositionContract;
-  /** Retained solely for deterministic Scene Spec v2 plan-alignment checks. */
-  visualDescription?: string;
-  visualPurpose?: string;
-  animationDescription?: string;
   visualIntent?: VisualIntent;
 }
 export type QualityVisualBible = NonNullable<VoiceVisualPlanContent['visualBible']>;
@@ -102,25 +104,24 @@ export function buildMotionCanvasSemanticValidation(
 ): NonNullable<MotionCanvasBundle['semanticValidation']> {
   const results: NonNullable<MotionCanvasBundle['semanticValidation']>['scenes'] = scenes.map(scene => {
     const section = plan.sections.find(item => item.outlineSectionId === scene.outlineSectionId);
-    const v3 = extractMotionCanvasSceneSpecV3(scene.source);
     if (!section) return {sceneId: scene.id, status: 'failed' as const, coverage: 0, fallbackLevel: 'placeholder' as const, missingIntentIds: [], reason: 'Scene không ánh xạ được tới phần tương ứng trong kế hoạch hình ảnh.'};
-    if (!v3) {
-      const legacy = extractMotionCanvasSceneSpec(scene.source);
-      return {sceneId: scene.id, status: 'degraded' as const, coverage: 0, fallbackLevel: 'simplified' as const, missingIntentIds: section.beats.flatMap(beat => beat.visualIntent ? [...beat.visualIntent.entities, ...beat.visualIntent.relations, ...beat.visualIntent.actions].filter(item => item.mustShow).map(item => item.id) : []), reason: legacy ? 'Scene Spec cũ chưa có liên kết chính xác với yêu cầu của kế hoạch hình ảnh.' : 'Scene cũ được viết thủ công nên chưa thể kiểm chứng tự động theo kế hoạch hình ảnh.'};
-    }
-    const coverages = section.beats.map(planBeat => {
-      const specBeat = v3.beats.find(beat => beat.beatId === planBeat.id);
-      return specBeat
-        ? sceneSpecV3SemanticCoverage(specBeat, planBeat.visualIntent)
-        : {coverage: 0, missingIntentIds: planBeat.visualIntent ? [...planBeat.visualIntent.entities, ...planBeat.visualIntent.relations, ...planBeat.visualIntent.actions].filter(item => item.mustShow).map(item => item.id) : [], status: 'failed' as const};
-    });
-    const missingIntentIds = [...new Set(coverages.flatMap(item => item.missingIntentIds))];
-    const coverage = coverages.length ? coverages.reduce((total, item) => total + item.coverage, 0) / coverages.length : 0;
-    const fallbackLevel = v3.beats.some(beat => beat.fidelity === 'placeholder') ? 'placeholder' as const : v3.beats.some(beat => beat.fidelity === 'simplified') ? 'simplified' as const : 'none' as const;
-    const status = coverages.some(item => item.status === 'failed') ? 'failed' as const : coverages.some(item => item.status === 'degraded') ? 'degraded' as const : 'passed' as const;
-    return {sceneId: scene.id, status, coverage, fallbackLevel, missingIntentIds, reason: status === 'passed' ? null : status === 'degraded' ? 'Scene có đủ yêu cầu bắt buộc nhưng đang dùng minh họa giản lược.' : 'Scene còn thiếu một hoặc nhiều yêu cầu bắt buộc của kế hoạch hình ảnh.'};
+    // Every scene is now hand-authored Motion Canvas TSX (Codex writes the
+    // full file directly instead of a declarative spec a compiler could
+    // inspect), so coverage can never be verified automatically here. This
+    // is the expected, permanent shape of every generation going forward —
+    // 'passed' can no longer occur — not a fallback exception; see
+    // missingIntentIds below, which still lists the plan's mustShow items
+    // since that part is plan-derived, not scene-derived.
+    return {
+      sceneId: scene.id,
+      status: 'degraded' as const,
+      coverage: 0,
+      fallbackLevel: 'simplified' as const,
+      missingIntentIds: section.beats.flatMap(beat => beat.visualIntent ? [...beat.visualIntent.entities, ...beat.visualIntent.relations, ...beat.visualIntent.actions].filter(item => item.mustShow).map(item => item.id) : []),
+      reason: 'Scene được viết thủ công nên chưa thể kiểm chứng tự động theo kế hoạch hình ảnh.',
+    };
   });
-  const status = results.some(scene => scene.status === 'failed') ? 'failed' as const : results.some(scene => scene.status === 'degraded') ? 'degraded' as const : 'passed' as const;
+  const status = results.some(scene => scene.status === 'failed') ? 'failed' as const : 'degraded' as const;
   return {version: 1, status, validatedAt: now, sourceHash: motionCanvasSceneSourceHash(scenes), scenes: results};
 }
 
@@ -132,6 +133,42 @@ export function visualQualityFailureIsRendererOnly(
   return summary.issues.length > 0 &&
     summary.issues.every(issue => issue.code === 'renderer-error');
 }
+export interface WaivedVisualQualityScene {
+  sceneId: string;
+  issueCodes: (typeof visualQualityIssueCodeValues)[number][];
+  reason: string;
+}
+
+/** Splits a failed summary's issues into ones belonging to a scene PAD Studio
+ * has already forced to a local safe fallback and given up retrying (moved
+ * out, grouped per scene into `waived`) versus every other issue, which stays
+ * in `summary.issues` unchanged. `status` is recomputed from the remaining
+ * issues only — so waiving every issue turns a failing summary into a passing
+ * one without silently dropping evidence, since the waived issues are still
+ * returned for the caller to persist as `qualityWaivedScenes`. */
+export function partitionWaivedVisualQualityIssues(
+  summary: VisualQualitySummary,
+  waivedSceneIds: ReadonlySet<string>,
+): {summary: VisualQualitySummary; waived: WaivedVisualQualityScene[]} {
+  const remaining = summary.issues.filter(issue => !waivedSceneIds.has(issue.sceneId));
+  const waivedBySceneId = new Map<string, VisualQualityIssue[]>();
+  for (const issue of summary.issues) {
+    if (!waivedSceneIds.has(issue.sceneId)) continue;
+    const list = waivedBySceneId.get(issue.sceneId) ?? [];
+    list.push(issue);
+    waivedBySceneId.set(issue.sceneId, list);
+  }
+  const waived: WaivedVisualQualityScene[] = [...waivedBySceneId.entries()].map(([sceneId, issues]) => ({
+    sceneId,
+    issueCodes: [...new Set(issues.map(issue => issue.code))],
+    reason: `Sau nhiều lượt sinh lại không hội tụ, PAD Studio đã dùng minh hoạ an toàn cho scene này: ${issues.map(issue => issue.reason).join('; ')}`.slice(0, 600),
+  }));
+  return {
+    summary: {...summary, status: remaining.length ? 'failed' as const : 'passed' as const, issues: remaining},
+    waived,
+  };
+}
+
 export function visualValidationIsCurrent(summary: Pick<VisualQualitySummary, 'sourceHash'>, scenes: MotionCanvasSourceScene[]) { return summary.sourceHash === motionCanvasSceneSourceHash(scenes); }
 export function semanticValidationIsCurrent(summary: Pick<NonNullable<MotionCanvasBundle['semanticValidation']>, 'sourceHash'>, scenes: MotionCanvasSourceScene[]) { return summary.sourceHash === motionCanvasSceneSourceHash(scenes); }
 
@@ -197,47 +234,6 @@ const structuralKeys = new Set([
   'block-lifecycle-support-layer',
 ]);
 
-/**
- * Scene Spec v2 compiles one conceptual component into several Motion Canvas
- * primitives (surface, text, glyph strokes, and so on).  The density policy
- * is about the lesson's visible components, not those implementation details.
- * With the v2 schema caps, the counted parts of one beat are bounded well
- * below maximumVisibleSemanticNodes: lifecycle visuals + 7 elements + 10
- * relationships + 3 groups + headline/caption/template decoration.
- */
-const sceneSpecConceptualSuffixes = [
-  '-element',
-  '-entity',
-  '-relationship',
-  '-group',
-  '-headline',
-  '-caption',
-  '-orbit-ring',
-  '-gauge-ring',
-  '-comparison-divider',
-  '-queue-rail',
-  '-queue-direction',
-  '-process-flowline',
-  '-trajectory-path',
-  '-tree-canopy',
-  '-stack-frame',
-  '-grid-frame',
-] as const;
-
-function visibleSemanticNodeCount(
-  contentNodes: QualityNodeSnapshot[],
-  specBeat: {visualId: string} | null,
-  lifecycle: BeatQualityContract,
-) {
-  if (!specBeat) return contentNodes.length;
-  const activeLifecycleVisuals = new Set(lifecycle.stay);
-  return contentNodes.filter(node =>
-    activeLifecycleVisuals.has(node.key) ||
-    (node.key.startsWith(`${specBeat.visualId}-`) &&
-      sceneSpecConceptualSuffixes.some(suffix => node.key.endsWith(suffix))),
-  ).length;
-}
-
 function matchesPalette(fill: string, palette: QualityVisualBible['palette']) {
   const value = parseHexColor(fill);
   if (!value) return true; // Non-hex or translucent literals are not judged here.
@@ -285,48 +281,21 @@ export async function validateRenderedMotionCanvas(options: {scenes: MotionCanva
     issues.push(issue);
     issueCountsByScene.set(issue.sceneId, sceneCount + 1);
   };
-  const sceneSpecsById = new Map(options.scenes.map(scene => [scene.id, extractMotionCanvasSceneSpecV3(scene.source) ?? extractMotionCanvasSceneSpec(scene.source)]));
-  // Apply the legacy palette upgrade only to compiler-owned v2 scenes.  A
-  // hand-authored legacy source is judged against the palette it explicitly
-  // declared, whereas a v2 compiler will render with the resolved palette.
-  const containsCompilerOwnedScene = [...sceneSpecsById.values()].some(spec => isMotionCanvasSceneSpecV3(spec) || isMotionCanvasSceneSpecV2(spec));
-  const bible = options.visualBible
-    ? {...options.visualBible, palette: containsCompilerOwnedScene ? resolveMotionCanvasPresentationPalette(options.visualBible.palette, options.backgroundColor ?? options.visualBible.palette.background) : options.visualBible.palette}
-    : null;
+  const warnings: VisualQualityWarning[] = [];
+  const pushWarning = (warning: VisualQualityWarning) => {
+    if (warnings.length >= visualQualityThresholds.maximumIssues) return;
+    warnings.push(warning);
+  };
+  // Every scene is hand-authored TSX judged against the palette it
+  // explicitly declared — there is no compiler stage left that could
+  // require resolving/upgrading the declared palette before comparison.
+  const bible = options.visualBible ?? null;
   let rendered: Map<string, QualityRenderedFrame>;
   try { rendered = await options.renderer.render({scenes: options.scenes, samples, frame: options.frame, workspaceDirectory: options.workspaceDirectory, projectFile: options.projectFile, managedKeysByBeat: new Map([...options.lifecycle].map(([id,value])=>[id,value.stay])), onProgress: options.onProgress}); } catch (error) { const scene = options.scenes[0]!; const summary = {version: VISUAL_QUALITY_GATE_VERSION, status: 'failed' as const, validatedAt: options.now ?? new Date().toISOString(), sourceHash: motionCanvasSceneSourceHash(options.scenes), scenes: [], issues: [{code: 'renderer-error' as const, sceneId: scene.id, beatId: null, timeSeconds: 0, semanticKey: null, bounds: null, reason: error instanceof Error ? error.message.slice(0,600) : 'Renderer failed.'}]}; throw new MotionCanvasVisualQualityError(VisualQualitySummarySchema.parse(summary), 'Motion Canvas frame renderer failed.'); }
   const sceneEntries: VisualQualitySummary['scenes'] = []; const middleByScene = new Map<string, QualityRenderedFrame[]>();
   /** Anchor position of each beat's primary block, in beat order, per scene. */
   const anchorsByScene = new Map<string, Array<{beatId: string; key: string; point: {x: number; y: number}; timeSeconds: number; role?: BeatCompositionContract['semanticRole']}>>();
   const managedBlocksByScene = new Map(options.scenes.map(scene => [scene.id, new Set(samples.filter(sample => sample.sceneId === scene.id).flatMap(sample => options.lifecycle.get(sample.beatId)?.stay ?? []).filter(key => key.startsWith('block-')))]));
-  for (const scene of options.scenes) {
-    const spec = sceneSpecsById.get(scene.id) ?? null;
-    if (!isMotionCanvasSceneSpecV2(spec) && !isMotionCanvasSceneSpecV3(spec)) continue;
-    for (const event of scene.timingEvents ?? []) {
-      const contract = options.lifecycle.get(event.beatId);
-      if (!contract?.visualDescription || !contract.animationDescription) continue;
-      const alignmentIssues = isMotionCanvasSceneSpecV3(spec)
-        ? (() => {
-            const specBeat = spec.beats.find(beat => beat.beatId === event.beatId);
-            return specBeat
-              ? sceneSpecV3PlanAlignmentIssues(specBeat, {visualIntent: contract.visualIntent})
-              : ['The embedded Scene Spec has no matching beat.'];
-          })()
-        : (() => {
-            const specBeat = spec.beats.find(beat => beat.beatId === event.beatId);
-            return specBeat
-              ? sceneSpecPlanAlignmentIssues(specBeat, {
-                  visualDescription: contract.visualDescription,
-                  visualPurpose: contract.visualPurpose,
-                  animationDescription: contract.animationDescription,
-                })
-              : ['The embedded Scene Spec has no matching beat.'];
-          })();
-      for (const reason of alignmentIssues) {
-        push({code: 'plan-misaligned', sceneId: scene.id, beatId: event.beatId, timeSeconds: 0, semanticKey: null, bounds: null, reason});
-      }
-    }
-  }
   for (const scene of options.scenes) { const sampleRows: VisualQualitySummary['scenes'][number]['samples'] = []; for (const sample of samples.filter(x=>x.sceneId===scene.id)) { const render = rendered.get(keyOf(sample)); const lifecycle = options.lifecycle.get(sample.beatId); if (!render || !lifecycle) { push({code:'renderer-error', sceneId:scene.id, beatId:sample.beatId, timeSeconds:sample.timeSeconds, semanticKey:null, bounds:null, reason:!render?'Renderer did not return requested frame.':'Missing beat lifecycle.'}); continue; } const metrics = analyzeRgbaFrame({frame:sample.frame,timeSeconds:sample.timeSeconds,sceneId:scene.id,width:render.width,height:render.height,rgba:render.rgba,backgroundColor:options.backgroundColor}); if (metrics.verdict !== 'viable') push({code:'empty-frame',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:null,bounds:null,reason:`RGBA verdict is ${metrics.verdict}.`}); const managedBlocks = managedBlocksByScene.get(scene.id)!; const activeBlocks = render.nodes.filter(node=>node.key.startsWith('block-') && managedBlocks.has(node.key) && isVisible(node)); const expected = new Set(lifecycle.stay.filter(key=>key.startsWith('block-'))); for (const node of activeBlocks) if (!expected.has(node.key)) push({code:'unexpected-block',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:node.key,bounds:node.bounds,reason:'Visible lifecycle-managed block is not in this beat lifecycle.stay.'}); for (const key of expected) if (!activeBlocks.some(n=>n.key===key)) push({code:'missing-active-block',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:key,bounds:null,reason:'Expected active block is not visibly rendered.'}); const safe={x:render.width*visualQualityThresholds.safeMarginXRatio,y:render.height*visualQualityThresholds.safeMarginYRatio,width:render.width*(1-2*visualQualityThresholds.safeMarginXRatio),height:render.height*(1-2*visualQualityThresholds.safeMarginYRatio)}; for (const node of activeBlocks) { const visible=node.visibleBounds??node.bounds; if (area(visible)<area(node.bounds)*visualQualityThresholds.minimumVisibleRatio) push({code:'clipped-block',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:node.key,bounds:node.bounds,reason:'Runtime visible area is clipped.'}); if (node.bounds.x<safe.x || node.bounds.y<safe.y || node.bounds.x+node.bounds.width>safe.x+safe.width || node.bounds.y+node.bounds.height>safe.y+safe.height) push({code:'outside-safe-area',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:node.key,bounds:node.bounds,reason:'Active block exceeds quantified safe area.'}); } for(let i=0;i<activeBlocks.length;i++) for(let j=i+1;j<activeBlocks.length;j++){const a=activeBlocks[i]!,b=activeBlocks[j]!;if(nested(a,b))continue;const shared=intersection(a.bounds,b.bounds); if(shared/Math.max(1,Math.min(area(a.bounds),area(b.bounds)))>visualQualityThresholds.maximumBlockOverlapRatio) push({code:'block-overlap',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:`${a.key},${b.key}`,bounds:a.bounds,reason:'Independent active blocks overlap above threshold.'}); else if(shared===0 && separation(a.bounds,b.bounds)<Math.min(render.width,render.height)*visualQualityThresholds.minimumBlockGapRatio) push({code:'insufficient-spacing',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:`${a.key},${b.key}`,bounds:a.bounds,reason:'Adjacent active blocks are closer than the minimum breathing room.'});}
     const textNodes = render.nodes.filter(node=>node.kind==='text'&&isVisible(node));
     for (let left = 0; left < textNodes.length; left += 1) {
@@ -337,32 +306,6 @@ export async function validateRenderedMotionCanvas(options: {scenes: MotionCanva
           Math.max(1, Math.min(area(first.visibleBounds ?? first.bounds), area(second.visibleBounds ?? second.bounds)));
         if (overlap > visualQualityThresholds.maximumTextOverlapRatio) {
           push({code: 'text-overlap', sceneId: scene.id, beatId: sample.beatId, timeSeconds: sample.timeSeconds, semanticKey: `${first.key},${second.key}`, bounds: first.bounds, reason: `Independent text boxes overlap by ${(overlap * 100).toFixed(1)}%.`});
-        }
-      }
-    }
-    const sceneSpec = sceneSpecsById.get(scene.id) ?? null;
-    if (isMotionCanvasSceneSpecV2(sceneSpec)) {
-      const specBeat = sceneSpec.beats.find(beat => beat.beatId === sample.beatId);
-      if (specBeat) {
-        const renderedElements = render.nodes.filter(node =>
-          node.key.startsWith(specBeat.visualId) &&
-          node.key.endsWith('-element') &&
-          isVisible(node),
-        ).length;
-        if (renderedElements < specBeat.elements.length) {
-          push({code: 'diagram-underrepresented', sceneId: scene.id, beatId: sample.beatId, timeSeconds: sample.timeSeconds, semanticKey: null, bounds: null, reason: `Rendered ${renderedElements}/${specBeat.elements.length} declared visual elements.`});
-        }
-      }
-    } else if (isMotionCanvasSceneSpecV3(sceneSpec)) {
-      const specBeat = sceneSpec.beats.find(beat => beat.beatId === sample.beatId);
-      if (specBeat) {
-        const renderedEntities = render.nodes.filter(node =>
-          node.key.startsWith(specBeat.visualId) &&
-          node.key.endsWith('-entity') &&
-          isVisible(node),
-        ).length;
-        if (renderedEntities < specBeat.entities.length) {
-          push({code: 'diagram-underrepresented', sceneId: scene.id, beatId: sample.beatId, timeSeconds: sample.timeSeconds, semanticKey: null, bounds: null, reason: `Rendered ${renderedEntities}/${specBeat.entities.length} declared semantic entities.`});
         }
       }
     }
@@ -377,14 +320,10 @@ export async function validateRenderedMotionCanvas(options: {scenes: MotionCanva
     const contentNodes = render.nodes.filter(node => isVisible(node) && !structuralKeys.has(node.key));
     const contentKeys = new Set(contentNodes.map(node => node.key));
     const outermost = contentNodes.filter(node => !(node.ancestorKeys ?? []).some(key => contentKeys.has(key)));
-    const specBeatForDensity = isMotionCanvasSceneSpecV2(sceneSpec) || isMotionCanvasSceneSpecV3(sceneSpec)
-      ? sceneSpec.beats.find(beat => beat.beatId === sample.beatId) ?? null
-      : null;
-    const visibleSemanticNodes = visibleSemanticNodeCount(
-      contentNodes,
-      specBeatForDensity,
-      lifecycle,
-    );
+    // Every scene is now hand-authored TSX: each visible content node was
+    // deliberately written by Codex, so the raw count is the right density
+    // signal (no compiler-generated sub-primitives to look past).
+    const visibleSemanticNodes = contentNodes.length;
     const occupiedArea = outermost.reduce((total, node) => total + area(clipTo(node.visibleBounds ?? node.bounds, render.width, render.height)), 0);
     const occupancy = occupiedArea / Math.max(1, render.width * render.height);
     // What fraction of the occupied screen real estate is drawn glyphs versus
@@ -409,15 +348,7 @@ export async function validateRenderedMotionCanvas(options: {scenes: MotionCanva
       const sized = textNodes.filter(node => typeof node.fontSize === 'number' && node.fontSize > 0);
       const largest = Math.max(0, ...sized.map(node => node.fontSize!));
       if (largest > 0) {
-        const v3Beat = isMotionCanvasSceneSpecV3(sceneSpec)
-          ? sceneSpec.beats.find(beat => beat.beatId === sample.beatId)
-          : null;
-        // A visual-first v3 beat may deliberately omit a frame headline. In
-        // that case the label step, not an absent title step, is the largest
-        // expected typography size.
-        const largestBibleStep = v3Beat && !v3Beat.headline
-          ? bible.typographyScale.label
-          : bible.typographyScale.title;
+        const largestBibleStep = bible.typographyScale.title;
         const allowed = [
           1,
           bible.typographyScale.label / largestBibleStep,
@@ -455,7 +386,7 @@ export async function validateRenderedMotionCanvas(options: {scenes: MotionCanva
     if (previous && next) reportJump(nextScene.id, previous, next, 'the scene handoff boundary');
   }
   if (sceneEntries.some(scene => scene.samples.length !== samples.filter(sample=>sample.sceneId===scene.sceneId).length)) push({code:'renderer-error',sceneId:options.scenes[0]!.id,beatId:null,timeSeconds:0,semanticKey:null,bounds:null,reason:'One or more required beat samples are missing.'});
-  const summary=VisualQualitySummarySchema.parse({version:VISUAL_QUALITY_GATE_VERSION,status:issues.length?'failed':'passed',validatedAt:options.now??new Date().toISOString(),sourceHash:motionCanvasSceneSourceHash(options.scenes),scenes:sceneEntries,issues}); if(summary.status==='failed') throw new MotionCanvasVisualQualityError(summary); return summary;
+  const summary=VisualQualitySummarySchema.parse({version:VISUAL_QUALITY_GATE_VERSION,status:issues.length?'failed':'passed',validatedAt:options.now??new Date().toISOString(),sourceHash:motionCanvasSceneSourceHash(options.scenes),scenes:sceneEntries,issues,warnings:warnings.length?warnings:undefined}); if(summary.status==='failed') throw new MotionCanvasVisualQualityError(summary); return summary;
 }
 
 export function createMotionCanvasVisualQualityGate(renderer: MotionCanvasFrameRenderer): MotionCanvasVisualQualityGate {

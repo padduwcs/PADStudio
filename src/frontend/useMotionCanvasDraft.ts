@@ -38,6 +38,7 @@ import {
 import {ProjectOperationQueue} from './projectOperationQueue.ts';
 import {
   notifyTaskCompleted,
+  notifyTaskFailed,
   prepareTaskCompletionNotifications,
 } from './taskCompletionNotifications.ts';
 
@@ -298,9 +299,14 @@ export function useMotionCanvasDraft(projectId: string) {
           );
         }
         setHistory(await getMotionCanvasHistory(projectId));
-        notifyTaskCompleted({
+        const notifyCandidateResult = result.repairError
+          ? notifyTaskFailed
+          : notifyTaskCompleted;
+        notifyCandidateResult({
           id: `candidate-resume:${operationId}`,
-          title: 'Candidate scene đã sẵn sàng',
+          title: result.repairError
+            ? 'Candidate cần bạn kiểm tra'
+            : 'Candidate scene đã sẵn sàng',
           message: result.repairError
             ? 'Bản candidate đầu tiên đã sẵn sàng để xem; lượt tự sửa cần bạn kiểm tra lại.'
             : 'Codex đã hoàn tất candidate scene đang được khôi phục.',
@@ -322,6 +328,13 @@ export function useMotionCanvasDraft(projectId: string) {
             ? error.message
             : 'Không thể nối lại lượt sinh scene sau khi trang tải lại.',
         );
+        notifyTaskFailed({
+          id: `candidate-resume:${operationId}`,
+          title: 'Không thể nối lại lượt sinh scene',
+          message: error instanceof ApiRequestError
+            ? error.message
+            : 'Lượt tạo candidate chưa thể hoàn tất sau khi trang tải lại.',
+        });
       })
       .finally(() => {
         if (!active || sessionRef.current !== session) return;
@@ -450,9 +463,11 @@ export function useMotionCanvasDraft(projectId: string) {
           elapsedMs: Date.now() - startedAt,
         });
       }
+      let previewLoadFailed = false;
       try {
         await loadFiles(updatedProject, session);
       } catch {
+        previewLoadFailed = true;
         if (sessionRef.current === session) {
           setFiles([]);
           setServeCommand(
@@ -463,10 +478,17 @@ export function useMotionCanvasDraft(projectId: string) {
           );
         }
       }
-      notifyTaskCompleted({
+      const notifyGenerationResult = previewLoadFailed
+        ? notifyTaskFailed
+        : notifyTaskCompleted;
+      notifyGenerationResult({
         id: `motion-canvas:${taskNoticeId}`,
-        title: 'Scene đã sinh xong',
-        message: 'Source Motion Canvas mới đã sẵn sàng để preview và chỉnh sửa.',
+        title: previewLoadFailed
+          ? 'Scene đã sinh nhưng preview gặp lỗi'
+          : 'Scene đã sinh xong',
+        message: previewLoadFailed
+          ? 'Source scene đã được tạo nhưng chưa thể tải preview. Hãy tải lại trang để kiểm tra.'
+          : 'Source Motion Canvas mới đã sẵn sàng để preview và chỉnh sửa.',
       });
       return updatedProject;
     } catch (error) {
@@ -475,7 +497,7 @@ export function useMotionCanvasDraft(projectId: string) {
         error instanceof ApiRequestError &&
         error.code === 'PROJECT_CONFLICT';
       if (isConflict) setConflict(true);
-      setActionError(
+      const errorMessage =
         error instanceof MotionCanvasInputNotReadyError
           ? 'Hãy chốt kế hoạch voice–visual trước khi sinh scene.'
           : error instanceof MotionCanvasCandidateRequiredError
@@ -484,8 +506,19 @@ export function useMotionCanvasDraft(projectId: string) {
             ? 'Kế hoạch voice–visual đã thay đổi. Hãy sinh lại toàn bộ scene.'
             : error instanceof ApiRequestError
               ? error.message
-              : 'Không thể sinh scene Motion Canvas lúc này.',
-      );
+              : 'Không thể sinh scene Motion Canvas lúc này.';
+      setActionError(errorMessage);
+      if (
+        !(error instanceof MotionCanvasInputNotReadyError) &&
+        !(error instanceof MotionCanvasCandidateRequiredError) &&
+        !(error instanceof MotionCanvasOutdatedError)
+      ) {
+        notifyTaskFailed({
+          id: `motion-canvas:${taskNoticeId}`,
+          title: 'Sinh scene thất bại',
+          message: errorMessage,
+        });
+      }
       return null;
     } finally {
       setGenerating(false);
@@ -619,9 +652,14 @@ export function useMotionCanvasDraft(projectId: string) {
           elapsedMs: Date.now() - startedAt,
         });
       }
-      notifyTaskCompleted({
+      const notifyCandidateResult = result.repairError
+        ? notifyTaskFailed
+        : notifyTaskCompleted;
+      notifyCandidateResult({
         id: `motion-canvas-candidate:${taskNoticeId}`,
-        title: 'Candidate scene đã sẵn sàng',
+        title: result.repairError
+          ? 'Candidate cần bạn kiểm tra'
+          : 'Candidate scene đã sẵn sàng',
         message: result.repairError
           ? 'Bản candidate đầu tiên đã sẵn sàng để xem; lượt tự sửa cần bạn kiểm tra lại.'
           : 'Codex đã tạo xong phương án mới để bạn so sánh.',
@@ -639,15 +677,25 @@ export function useMotionCanvasDraft(projectId: string) {
         error instanceof ApiRequestError &&
         error.code === 'PROJECT_CONFLICT'
       ) setConflict(true);
-      setActionError(
+      const errorMessage =
         error instanceof MotionCanvasGuidanceRequiredError
           ? 'Hãy nhập góp ý cụ thể cho scene đã chọn.'
           : error instanceof MotionCanvasOutdatedError
             ? 'Voice–visual đã thay đổi. Hãy sinh lại toàn bộ scene trước.'
             : error instanceof ApiRequestError
               ? error.message
-              : 'Không thể tạo candidate scene lúc này.',
-      );
+              : 'Không thể tạo candidate scene lúc này.';
+      setActionError(errorMessage);
+      if (
+        !(error instanceof MotionCanvasGuidanceRequiredError) &&
+        !(error instanceof MotionCanvasOutdatedError)
+      ) {
+        notifyTaskFailed({
+          id: `motion-canvas-candidate:${taskNoticeId}`,
+          title: 'Tạo candidate scene thất bại',
+          message: errorMessage,
+        });
+      }
       return null;
     } finally {
       setCandidateRepairing(false);

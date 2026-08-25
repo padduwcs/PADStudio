@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from 'react';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import type {ElevenLabsCatalog} from '../shared/elevenLabs.ts';
 import type {MotionCanvasGenerationProgress} from '../shared/motionCanvasGenerationProgress.ts';
 import type {TopicProject} from '../shared/topic.ts';
@@ -30,6 +30,7 @@ import {useWorkflowOperationGuard} from './useWorkflowOperationGuard.ts';
 import {RuntimeDiagnosticsCard} from './RuntimeDiagnosticsCard.tsx';
 import {
   notifyTaskCompleted,
+  notifyTaskFailed,
   prepareTaskCompletionNotifications,
 } from './taskCompletionNotifications.ts';
 
@@ -75,6 +76,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
     useState<string | null>(null);
   const [sceneProgress, setSceneProgress] =
     useState<MotionCanvasGenerationProgress | null>(null);
+  const resumedSceneGenerationRef = useRef<string | null>(null);
   const eleven = useElevenLabsConnection();
   const codex = useCodexConnection();
 
@@ -90,6 +92,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
         setProject(value);
         setSceneProgress(progress);
         if (progress?.state === 'running') {
+          resumedSceneGenerationRef.current = progress.generationId;
           setActiveSceneGenerationId(progress.generationId);
           setBusyAction('generateScene');
           setMessage('Đang nối lại màn hình tiến độ của lượt sinh scene trên máy chủ…');
@@ -138,12 +141,29 @@ export function ProductionPage({projectId}: {projectId: string}) {
           setBusyAction(null);
           setState('ready');
           setMessage('Scene đã được tạo và kiểm định xong. Bạn có thể tiếp tục chuẩn bị editor có tiếng.');
+          if (resumedSceneGenerationRef.current === progress.generationId) {
+            notifyTaskCompleted({
+              id: `scene-resume:${progress.generationId}`,
+              title: 'Scene đã sinh xong',
+              message: 'Lượt sinh scene được nối lại đã hoàn tất và sẵn sàng để kiểm tra.',
+            });
+            resumedSceneGenerationRef.current = null;
+          }
         } else if (progress.state === 'failed' || progress.state === 'interrupted') {
+          const errorMessage = progress.error || progress.message;
           setActiveSceneGenerationId(null);
           setBusyAction(null);
           setFailureKind('scene');
           setState('error');
-          setMessage(progress.error || progress.message);
+          setMessage(errorMessage);
+          if (resumedSceneGenerationRef.current === progress.generationId) {
+            notifyTaskFailed({
+              id: `scene-resume:${progress.generationId}`,
+              title: 'Lượt sinh scene gặp lỗi',
+              message: errorMessage,
+            });
+            resumedSceneGenerationRef.current = null;
+          }
         }
       } catch {
         // The original generation request remains authoritative. A missed
@@ -250,6 +270,8 @@ export function ProductionPage({projectId}: {projectId: string}) {
       'Lập lại kế hoạch hình ảnh sẽ giữ nguyên file audio, alignment và toàn bộ timestamp hiện có. Scene, đồng bộ và render phía sau sẽ cần tạo lại. Tiếp tục?',
     );
     if (!confirmed) return;
+    const taskId = newGenerationId();
+    prepareTaskCompletionNotifications();
     setBusyAction('replanVisual');
     setState('ready');
     setFailureKind(null);
@@ -264,14 +286,22 @@ export function ProductionPage({projectId}: {projectId: string}) {
       setLatestSceneFailure(null);
       setMessage('Kế hoạch hình ảnh đã được làm mới. Audio, alignment và timestamp được giữ nguyên; hãy sinh lại scene để áp dụng ý đồ mới.');
       notifyTaskCompleted({
-        id: `visual-replan:${current.voiceVisualPlan?.contentRevision ?? current.revision}`,
+        id: `visual-replan:${taskId}`,
         title: 'Kế hoạch hình ảnh đã được làm mới',
         message: 'Voice và timestamp không thay đổi. Scene cũ được giữ trong lịch sử và đã hết hiệu lực cho plan mới.',
       });
     } catch (error) {
+      const errorMessage = error instanceof ApiRequestError || error instanceof Error
+        ? error.message
+        : 'Không thể lập lại kế hoạch hình ảnh.';
       setState('error');
       setFailureKind('visual-plan');
-      setMessage(error instanceof ApiRequestError || error instanceof Error ? error.message : 'Không thể lập lại kế hoạch hình ảnh.');
+      setMessage(errorMessage);
+      notifyTaskFailed({
+        id: `visual-replan:${taskId}`,
+        title: 'Lập kế hoạch hình ảnh thất bại',
+        message: errorMessage,
+      });
     } finally {
       setBusyAction(null);
     }
@@ -310,9 +340,17 @@ export function ProductionPage({projectId}: {projectId: string}) {
         message: 'Bạn có thể nghe lại audio ngay trong bước Giọng đọc & scene.',
       });
     } catch (error) {
+      const errorMessage = error instanceof ApiRequestError || error instanceof Error
+        ? error.message
+        : 'Không thể tạo lại audio.';
       setState('error');
       setFailureKind('audio');
-      setMessage(error instanceof ApiRequestError || error instanceof Error ? error.message : 'Không thể tạo lại audio.');
+      setMessage(errorMessage);
+      notifyTaskFailed({
+        id: `regenerate-audio:${taskId}`,
+        title: 'Tạo lại audio thất bại',
+        message: errorMessage,
+      });
     } finally {
       setBusyAction(null);
     }
@@ -345,9 +383,17 @@ export function ProductionPage({projectId}: {projectId: string}) {
         message: 'Giọng đọc đã sẵn sàng để nghe thử và dùng khi sinh scene.',
       });
     } catch (error) {
+      const errorMessage = error instanceof ApiRequestError || error instanceof Error
+        ? error.message
+        : 'Không thể tạo audio.';
       setState('error');
       setFailureKind('audio');
-      setMessage(error instanceof ApiRequestError || error instanceof Error ? error.message : 'Không thể tạo audio.');
+      setMessage(errorMessage);
+      notifyTaskFailed({
+        id: `create-audio:${taskId}`,
+        title: 'Tạo audio thất bại',
+        message: errorMessage,
+      });
     } finally {
       setBusyAction(null);
     }
@@ -425,6 +471,11 @@ export function ProductionPage({projectId}: {projectId: string}) {
         if (semanticStatus === 'degraded' && !acceptDegradedSemantic) {
           setProject(current);
           setMessage('Đã giữ scene giản lược ở trạng thái nháp. Bạn có thể sinh lại hoặc mở bước scene để đánh giá trước.');
+          notifyTaskCompleted({
+            id: `production:${taskId}`,
+            title: 'Scene nháp đã sẵn sàng',
+            message: 'Scene giản lược đã được tạo và giữ ở trạng thái nháp để bạn kiểm tra.',
+          });
           return;
         }
         setMessage('Đang chuẩn bị scene để ghép theo timing giọng đọc…');
@@ -472,7 +523,21 @@ export function ProductionPage({projectId}: {projectId: string}) {
         if (failure) setLatestSceneFailure(failure);
       }
       setState('error');
-      setMessage(error instanceof ApiRequestError || error instanceof Error ? error.message : 'Không thể hoàn tất lượt tạo này.');
+      const errorMessage = error instanceof ApiRequestError || error instanceof Error
+        ? error.message
+        : 'Không thể hoàn tất lượt tạo này.';
+      setMessage(errorMessage);
+      notifyTaskFailed({
+        id: `production:${taskId}`,
+        title: operationStage === 'audio'
+          ? 'Tạo audio thất bại'
+          : operationStage === 'sync'
+            ? 'Đồng bộ scene thất bại'
+            : operationStage === 'scene'
+              ? 'Sinh scene thất bại'
+              : 'Chuẩn bị kế hoạch thất bại',
+        message: errorMessage,
+      });
     } finally {
       setBusyAction(null);
     }
@@ -714,17 +779,17 @@ export function ProductionPage({projectId}: {projectId: string}) {
             <strong>{syncReady ? 'Scene và audio đã đồng bộ' : sceneReady ? 'Scene đang cần đồng bộ' : 'Sẵn sàng phân tích trực tiếp'}</strong>
             <p>{syncReady ? `${project.motionCanvasBundle!.scenes.length} scene đã được ánh xạ theo timing giọng đọc thật.` : sceneReady ? 'Hệ thống sẽ tự chuẩn bị và ghép scene theo audio trước khi mở editor.' : 'Codex sinh scene, sau đó hệ thống tự ghép timing ElevenLabs.'}</p>
             {project.motionCanvasBundle?.semanticValidation && (
-              <div className={`production-selection-note${project.motionCanvasBundle.semanticValidation.status === 'passed' ? '' : ' is-changed'}`}>
+              <div className={`production-selection-note${project.motionCanvasBundle.semanticValidation.status === 'failed' ? ' is-changed' : ''}`}>
                 <span>
-                  {project.motionCanvasBundle.semanticValidation.status === 'passed'
-                    ? 'Đã bao phủ kế hoạch hình ảnh'
-                    : project.motionCanvasBundle.semanticValidation.status === 'degraded'
-                      ? 'Minh họa giản lược — cần kiểm tra'
-                      : 'Thiếu yêu cầu hình ảnh bắt buộc — chưa đạt'}
+                  {project.motionCanvasBundle.semanticValidation.status === 'failed'
+                    ? 'Thiếu yêu cầu hình ảnh bắt buộc — chưa đạt'
+                    : 'Scene viết tay theo kế hoạch hình ảnh — nên xem lại trước khi duyệt'}
                 </span>
-                <small>
-                  {project.motionCanvasBundle.semanticValidation.scenes.filter(scene => scene.status !== 'passed').length} scene cần chú ý
-                </small>
+                {project.motionCanvasBundle.semanticValidation.status === 'failed' && (
+                  <small>
+                    {project.motionCanvasBundle.semanticValidation.scenes.filter(scene => scene.status === 'failed').length} scene cần chú ý
+                  </small>
+                )}
               </div>
             )}
             {sceneReady && (

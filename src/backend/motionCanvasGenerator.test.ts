@@ -20,21 +20,17 @@ import {
   validateMotionCanvasBackground,
   validateMotionCanvasBeatLifecycle,
   validateMotionCanvasContainerContract,
+  validateMotionCanvasIconReferences,
   validateMotionCanvasResponsiveLayout,
   validateMotionCanvasSceneSource,
   validateMotionCanvasTimingContract,
 } from './motionCanvasGenerator.ts';
+import {MOTION_CANVAS_ICON_ATLAS_IMPORT_SPECIFIER} from './motionCanvasIconLibrary.ts';
 import {
   findUnsupportedMotionCanvasColorLiterals,
   normalizeMotionCanvasColorFormats,
 } from './motionCanvasSourceCompatibility.ts';
 import {createMotionCanvasWorkspace} from './motionCanvasWorkspace.ts';
-import {
-  compileMotionCanvasSceneSpec,
-  extractMotionCanvasSceneSpec,
-  isMotionCanvasSceneSpecV2,
-  type MotionCanvasSceneSpec,
-} from './motionCanvasSceneSpec.ts';
 
 const sceneSource = `import {makeScene2D, Rect} from '@motion-canvas/2d';
 import {waitFor} from '@motion-canvas/core';
@@ -574,7 +570,7 @@ class FakeCodexClient implements CodexAppServerClient {
   private readonly sourceFactory?: (
     turnNumber: number,
     beatIds: string[],
-  ) => string | MotionCanvasSceneSpec;
+  ) => string;
 
   constructor(
     failFirstTurn = false,
@@ -605,7 +601,7 @@ class FakeCodexClient implements CodexAppServerClient {
     sourceFactory?: (
       turnNumber: number,
       beatIds: string[],
-    ) => string | MotionCanvasSceneSpec,
+    ) => string,
   ) {
     this.failFirstTurn = failFirstTurn;
     this.models = models;
@@ -653,23 +649,16 @@ class FakeCodexClient implements CodexAppServerClient {
       if (!(this.failFirstTurn && turnNumber === 1)) {
         queueMicrotask(() => {
           const generatedOutput = this.sourceFactory?.(turnNumber, beatIds);
-          const response =
-            generatedOutput && typeof generatedOutput !== 'string'
-              ? {
-                  name: `Scene ${turnNumber}`,
-                  source: null,
-                  spec: generatedOutput,
-                }
-              : {
-                  name: `Scene ${turnNumber}`,
-                  source:
-                    turnNumber <= this.invalidTurnCount
-                      ? timedSceneSource(beatIds).replace(
-                          'width={canvasWidth}',
-                          'width={',
-                        )
-                      : generatedOutput ?? timedSceneSource(beatIds),
-                };
+          const response = {
+            name: `Scene ${turnNumber}`,
+            source:
+              turnNumber <= this.invalidTurnCount
+                ? timedSceneSource(beatIds).replace(
+                    'width={canvasWidth}',
+                    'width={',
+                  )
+                : generatedOutput ?? timedSceneSource(beatIds),
+          };
           this.emit({
             method: 'item/completed',
             params: {
@@ -959,132 +948,6 @@ function createSingleSceneGenerationRequest() {
   } satisfies MotionCanvasGenerationRequest;
 }
 
-test('PAD Studio compiles declarative Scene Spec into safe lifecycle TSX', async context => {
-  const runtimeDirectory = await mkdtemp(
-    path.join(os.tmpdir(), 'pad-studio-scene-spec-'),
-  );
-  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
-  const request = createSingleSceneGenerationRequest();
-  const client = new FakeCodexClient(
-    false,
-    undefined,
-    false,
-    (_turnNumber, beatIds) => ({
-      version: 2,
-      visualAnchor: 'Priority decisions flow through one stable queue.',
-      beats: beatIds.map((beatId, index) => ({
-        beatId,
-        visualId: `priority-queue-${['opening', 'middle', 'closing'][index] ?? 'detail'}`,
-        headline: 'Ưu tiên việc quan trọng',
-        caption: 'Thứ tự rõ ràng',
-        template: 'queue',
-        focus: 'center',
-        planAlignment: {planTerms: ['thanh']},
-        elements: [
-          {type: 'node', id: 'urgent-work', shape: 'pill', label: 'Khẩn cấp', value: 'P1', emphasis: 'primary', concepts: ['thanh']},
-          {type: 'node', id: 'important-work', shape: 'pill', label: 'Quan trọng', value: 'P2', emphasis: 'secondary', concepts: ['thanh']},
-          {type: 'gate', id: 'waiting-gate', state: 'open', label: 'Chờ', value: 'P3', emphasis: 'muted', concepts: ['thanh']},
-        ],
-        relationships: [{id: 'priority-flow', type: 'arrow', from: 'urgent-work', to: 'important-work', via: [], label: null, emphasis: 'primary'}],
-        groups: [],
-        motions: [{kind: 'flow', targets: ['urgent-work', 'important-work'], direction: 'right'}],
-      })),
-    }),
-  );
-  const generator = createCodexMotionCanvasGenerator(client, {
-    runtimeDirectory,
-    timeoutMs: 1_000,
-    qualityRetryLimit: 0,
-  });
-
-  const result = await generator.generate(request);
-  const source = result.scenes[0]!.source;
-  const beats = request.voiceVisualPlan.sections[0]!.beats;
-
-  assert.match(result.model, /scene-spec-compiler-v2/u);
-  assert.equal(extractMotionCanvasSceneSpec(source)?.beats[0]?.beatId, beats[0]!.id);
-  const outputSchema = (
-    client.calls.find(call => call.method === 'turn/start')?.params as {
-      outputSchema?: unknown;
-    }
-  ).outputSchema;
-  assert.doesNotMatch(
-    JSON.stringify(outputSchema),
-    /"oneOf"/u,
-    'Codex rejects response schemas containing oneOf.',
-  );
-  assert.match(
-    source,
-    /<Rect key="[^"]*waiting-gate-shape"[^>]*>[\s\S]*<Txt key="[^"]*waiting-gate-label"/u,
-    'Gate text must remain inside its colored surface so contrast is measured against that surface.',
-  );
-  assert.match(source, /priority-queue-opening-queue-rail/u);
-  assert.match(source, /priority-queue-opening-queue-direction/u);
-  assert.match(source, /text=\{"Khẩn cấp · P1"\}/u);
-  assert.doesNotMatch(source, /urgent-work-value/u, 'one component must not grow a second value label');
-  assert.match(source, /fill=\{"#1B263B"\}/u);
-  assert.match(source, /stroke=\{"#86C5FF"\}/u);
-  assert.match(source, /ref=\{lifecycleNode1\}/u);
-  assert.match(source, /beatEndTime1 - useThread\(\)\.time\(\) - exitDuration1/u);
-  validateMotionCanvasSceneSource(source);
-  validateMotionCanvasBackground(source, request.topicInput.background.color);
-  validateMotionCanvasContainerContract(source);
-  validateMotionCanvasTimingContract(source, beats);
-  validateMotionCanvasBeatLifecycle(source, beats, request.topicInput.videoFrame);
-  validateMotionCanvasResponsiveLayout(source, request.topicInput.videoFrame, beats);
-  const prepared = await createMotionCanvasWorkspace(runtimeDirectory).prepare(
-    request.projectId,
-    randomUUID(),
-    result.scenes,
-    request.topicInput.videoFrame,
-  );
-  assert.equal(prepared.scenes.length, 1);
-});
-
-test('compiler resolves an explicit Visual Plan metaphor instead of rejecting a valid Scene Spec enum choice', () => {
-  const request = createSingleSceneGenerationRequest();
-  const beat = request.voiceVisualPlan.sections[0]!.beats[0]!;
-  beat.visualDescription = 'Hai nhánh đặt cạnh nhau để đối chiếu cùng một mức ưu tiên.';
-  beat.visualPurpose = 'Đối chiếu hai lựa chọn bằng hình ảnh.';
-  beat.animationDescription = 'Hai nhánh cùng tiến về cổng giữa.';
-  const spec: MotionCanvasSceneSpec = {
-    version: 2,
-    visualAnchor: 'Two alternatives meet at one selection gate.',
-    beats: [{
-      beatId: beat.id,
-      visualId: 'two-option-comparison',
-      headline: 'So sánh hai lựa chọn',
-      caption: null,
-      // A model may reasonably choose this generic enum.  The compiler must
-      // make the reviewed, explicit comparison metaphor authoritative.
-      template: 'process',
-      focus: 'center',
-      planAlignment: {planTerms: ['đối chiếu']},
-      elements: [
-        {type: 'node', id: 'left-option', shape: 'pill', label: 'Nhánh trái', value: null, emphasis: 'primary', concepts: ['đối chiếu']},
-        {type: 'node', id: 'right-option', shape: 'pill', label: 'Nhánh phải', value: null, emphasis: 'secondary', concepts: ['đối chiếu']},
-      ],
-      relationships: [{id: 'shared-selection', type: 'edge', from: 'left-option', to: 'right-option', via: [], label: null, emphasis: 'secondary'}],
-      groups: [],
-      motions: [{kind: 'compare', targets: ['left-option', 'right-option'], direction: null}],
-    }],
-  };
-  const source = compileMotionCanvasSceneSpec({
-    spec,
-    beats: [beat],
-    outlineTitle: request.outline.sections[0]!.title,
-    frame: request.videoFrame!,
-    backgroundColor: request.topicInput.background.color,
-    visualBible: request.voiceVisualPlan.visualBible,
-  });
-
-  const compiledSpec = extractMotionCanvasSceneSpec(source);
-  assert.ok(isMotionCanvasSceneSpecV2(compiledSpec));
-  assert.equal(compiledSpec.beats[0]?.template, 'comparison');
-  assert.match(source, /two-option-comparison-comparison-divider/u);
-  validateMotionCanvasSceneSource(source);
-});
-
 test('Motion Canvas generator chỉ sinh section được chọn và giữ scene identity', async context => {
   const runtimeDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-studio-motion-scoped-generator-'),
@@ -1288,9 +1151,9 @@ test('Motion Canvas generator tự sửa source TSX lỗi trước khi trả gen
   );
 });
 
-test('Motion Canvas defaults to four workers and reports per-scene progress', async context => {
-  assert.equal(DEFAULT_MOTION_CANVAS_GENERATION_CONCURRENCY, 4);
-  assert.equal(MAXIMUM_MOTION_CANVAS_GENERATION_CONCURRENCY, 4);
+test('Motion Canvas defaults to eight workers and reports per-scene progress', async context => {
+  assert.equal(DEFAULT_MOTION_CANVAS_GENERATION_CONCURRENCY, 8);
+  assert.equal(MAXIMUM_MOTION_CANVAS_GENERATION_CONCURRENCY, 8);
   const runtimeDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-studio-motion-progress-'),
   );
@@ -1370,8 +1233,8 @@ test('Motion Canvas generator sinh mới sạch khi lượt sửa vẫn vi phạ
   const firstPrompt = JSON.stringify(
     client.calls.find(call => call.method === 'turn/start')?.params,
   );
-  assert.match(firstPrompt, /Lifecycle binding invariant/u);
-  assert.match(firstPrompt, /compiler-owned/u);
+  assert.match(firstPrompt, /inseparable triple/u);
+  assert.match(firstPrompt, /lifecycle binding/iu);
   assert.doesNotMatch(firstPrompt, /ref=\\u007bpriorityOrbit\\u007d|ref=\{priorityOrbit\}/u);
 });
 
@@ -1400,7 +1263,7 @@ test('Motion Canvas generator hoàn tất bằng fallback an toàn khi cả lư�
   assert.match(result.model, /local-safe-fallback/);
   assert.match(
     result.scenes[0]!.source,
-    /fontFamily=\{"Times New Roman, Times, serif"\}/u,
+    /fontFamily=\{"Segoe UI, Helvetica Neue, Arial, sans-serif"\}/u,
   );
   assert.match(result.scenes[0]!.source, /width=\{canvasWidth\} height=\{canvasHeight\}/u);
   assert.doesNotMatch(result.scenes[0]!.source, /1080|1920/u);
@@ -1413,7 +1276,8 @@ test('Motion Canvas generator hoàn tất bằng fallback an toàn khi cả lư�
   );
   validateMotionCanvasBeatLifecycle(result.scenes[0]!.source, request.voiceVisualPlan.sections[0]!.beats, request.videoFrame);
   assert.match(result.scenes[0]!.source, /const beatEndTime1 = useThread\(\)\.time\(\) \+ beatDuration1;/u);
-  assert.match(result.scenes[0]!.source, /yield\* waitFor\(Math\.max\(0, beatEndTime1 - useThread\(\)\.time\(\) - exitDuration1\)\);\n  yield\* all\(\n    beatDetail1\(\)\.opacity\(0, exitDuration1/u);
+  assert.match(result.scenes[0]!.source, /yield\* all\(\s*lifecycleNode1\(\)\.opacity\(0, exitDuration1\),/u);
+  assert.match(result.scenes[0]!.source, /yield\* waitFor\(Math\.max\(0, beatEndTime1 - useThread\(\)\.time\(\)\)\);/u);
   // Invalid-source recovery is bounded at three Codex turns. The old fourth
   // turn was a speculative richness retry of the local fallback and duplicated
   // the rendered/semantic gate that follows this generator.
@@ -1516,8 +1380,7 @@ test('Motion Canvas generator có fallback cục bộ sau khi compiler repair v�
     `${generated.scenes[0]!.filePath}(12,3): error TS9999`,
   );
   assert.match(recovered.model, /local-safe-fallback/);
-  assert.match(recovered.scenes[0]!.source, /pad-scene-spec-v2/u);
-  assert.doesNotMatch(recovered.scenes[0]!.source, /fallback-beat-/u);
+  assert.match(recovered.scenes[0]!.source, /block-fallback-scene-heading/u);
   validateMotionCanvasSceneSource(recovered.scenes[0]!.source);
   validateMotionCanvasTimingContract(
     recovered.scenes[0]!.source,
@@ -1633,6 +1496,38 @@ test('Motion Canvas generator chặn source có quyền ngoài phạm vi', () =>
     (error) =>
       error instanceof MotionCanvasGenerationError &&
       error.code === 'CODEX_MOTION_CANVAS_UNSAFE_SOURCE',
+  );
+});
+
+test('Motion Canvas source policy cho phép import icon atlas cố định', () => {
+  const source = sceneSource.replace(
+    "import {makeScene2D, Rect} from '@motion-canvas/2d';",
+    `import {makeScene2D, Rect} from '@motion-canvas/2d';\nimport {Icon} from '${MOTION_CANVAS_ICON_ATLAS_IMPORT_SPECIFIER}';`,
+  );
+  assert.doesNotThrow(() => validateMotionCanvasSceneSource(source));
+});
+
+test('Motion Canvas icon reference validator chấp nhận icon hợp lệ và từ chối icon không tồn tại kèm gợi ý', () => {
+  assert.doesNotThrow(() =>
+    validateMotionCanvasIconReferences(
+      '<Icon key="leaf-icon" id="ph:leaf" width={40} height={40} />',
+    ),
+  );
+  assert.throws(
+    () =>
+      validateMotionCanvasIconReferences(
+        '<Icon key="leaf-icon" id="ph:this-icon-does-not-exist" width={40} height={40} />',
+      ),
+    (error: unknown) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+  );
+  // A non-Icon element with an "id" attribute must never be mistaken for an
+  // icon reference.
+  assert.doesNotThrow(() =>
+    validateMotionCanvasIconReferences(
+      '<Rect key="card" id="not-an-icon-reference" />',
+    ),
   );
 });
 

@@ -27,6 +27,7 @@ import {useCodexConnection} from './useCodexConnection.ts';
 import {useWorkflowOperationGuard} from './useWorkflowOperationGuard.ts';
 import {
   notifyTaskCompleted,
+  notifyTaskFailed,
   prepareTaskCompletionNotifications,
 } from './taskCompletionNotifications.ts';
 import {
@@ -344,8 +345,16 @@ export function NarrationPage({projectId}: {projectId: string}) {
           : 'AI không phát hiện ký hiệu kỹ thuật nào cần bổ sung.',
       });
     } catch (reason) {
+      const errorMessage = reason instanceof ApiRequestError
+        ? reason.message
+        : 'AI chưa thể rà soát cách đọc lúc này.';
       setState('error');
-      setMessage(reason instanceof ApiRequestError ? reason.message : 'AI chưa thể rà soát cách đọc lúc này.');
+      setMessage(errorMessage);
+      notifyTaskFailed({
+        id: `pronunciation-audit:${generationId}`,
+        title: 'Rà soát cách đọc thất bại',
+        message: errorMessage,
+      });
     }
   }
 
