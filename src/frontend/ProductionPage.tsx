@@ -466,15 +466,15 @@ export function ProductionPage({projectId}: {projectId: string}) {
       }
       if (current.motionCanvasBundle.status !== 'approved') {
         const acceptDegradedSemantic = semanticStatus === 'degraded'
-          ? window.confirm('Scene hiện tại là minh họa giản lược từ fallback. Scene vẫn render và giữ đúng voice/timestamp, nhưng bạn cần kiểm tra kỹ ý nghĩa hình ảnh trong editor. Dùng bản này để tiếp tục?')
+          ? window.confirm('Scene chưa có đủ bằng chứng semantic tự động. Scene vẫn render và giữ đúng voice/timestamp; hãy kiểm tra kỹ ý nghĩa hình ảnh trong editor trước khi tiếp tục.')
           : false;
         if (semanticStatus === 'degraded' && !acceptDegradedSemantic) {
           setProject(current);
-          setMessage('Đã giữ scene giản lược ở trạng thái nháp. Bạn có thể sinh lại hoặc mở bước scene để đánh giá trước.');
+          setMessage('Đã giữ scene ở trạng thái nháp để bạn kiểm tra ý nghĩa hình ảnh trước khi duyệt.');
           notifyTaskCompleted({
             id: `production:${taskId}`,
             title: 'Scene nháp đã sẵn sàng',
-            message: 'Scene giản lược đã được tạo và giữ ở trạng thái nháp để bạn kiểm tra.',
+            message: 'Scene chưa có đủ bằng chứng semantic tự động nên được giữ ở trạng thái nháp để bạn kiểm tra.',
           });
           return;
         }
@@ -500,7 +500,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
       const semanticDegraded = semanticStatus === 'degraded';
       setState('ready');
       setMessage(semanticDegraded
-        ? 'Scene đã sẵn sàng nhưng đang ở mức minh họa giản lược. Hãy kiểm tra cảnh báo về kế hoạch hình ảnh trong editor trước khi xuất.'
+        ? 'Scene đã sẵn sàng nhưng semantic chưa thể tự xác minh. Hãy kiểm tra kế hoạch hình ảnh trong editor trước khi xuất.'
         : 'Scene đã vượt qua cả kiểm tra render và độ bao phủ kế hoạch hình ảnh.');
       setLatestSceneFailure(null);
       setFailureKind(null);
@@ -508,7 +508,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
         id: `production:${taskId}`,
         title: 'Scene và đồng bộ đã sẵn sàng',
         message: semanticDegraded
-          ? 'Scene dùng minh họa giản lược; voice vẫn nguyên vẹn và editor sẽ hiển thị cảnh báo để bạn kiểm tra.'
+          ? 'Scene chưa có đủ bằng chứng semantic tự động; voice vẫn nguyên vẹn và editor sẽ hiển thị cảnh báo để bạn kiểm tra ý nghĩa hình ảnh.'
           : 'PAD Studio đã hoàn tất lượt tạo và bao phủ kế hoạch hình ảnh. Bạn có thể bắt đầu kiểm tra scene.',
       });
       allowNextWorkflowNavigation();
@@ -783,7 +783,9 @@ export function ProductionPage({projectId}: {projectId: string}) {
                 <span>
                   {project.motionCanvasBundle.semanticValidation.status === 'failed'
                     ? 'Thiếu yêu cầu hình ảnh bắt buộc — chưa đạt'
-                    : 'Scene viết tay theo kế hoạch hình ảnh — nên xem lại trước khi duyệt'}
+                    : project.motionCanvasBundle.semanticValidation.status === 'degraded'
+                      ? 'Bằng chứng semantic chưa đầy đủ — nên xem lại trước khi duyệt'
+                      : 'Đã xác minh Visual Intent và node runtime'}
                 </span>
                 {project.motionCanvasBundle.semanticValidation.status === 'failed' && (
                   <small>

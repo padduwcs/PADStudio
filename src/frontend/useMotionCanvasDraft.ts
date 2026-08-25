@@ -873,7 +873,7 @@ export function useMotionCanvasDraft(projectId: string) {
             throw new MotionCanvasOutdatedError();
           }
           const degraded = currentProject.motionCanvasBundle?.semanticValidation?.status === 'degraded';
-          if (degraded && !window.confirm('Scene đang dùng minh họa giản lược. Bạn đã kiểm tra ý nghĩa hình ảnh và muốn tiếp tục với bản này?')) {
+          if (degraded && !window.confirm('Scene chưa có đủ bằng chứng semantic tự động. Bạn đã kiểm tra ý nghĩa hình ảnh và muốn tiếp tục với bản này?')) {
             throw new MotionCanvasOperationCancelledError();
           }
           return approveMotionCanvas(

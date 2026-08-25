@@ -559,6 +559,28 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                   });
                   continue;
                 }
+                const semanticCheck = buildMotionCanvasSemanticValidation(
+                  prepared.sourceScenes,
+                  voiceVisualPlan,
+                  visualValidation,
+                );
+                if (semanticCheck.status === 'failed') {
+                  const issues = semanticCheck.scenes
+                    .filter(scene => scene.status === 'failed')
+                    .flatMap(scene => scene.missingIntentIds.map(intentId => ({
+                      code: 'missing-active-block' as const,
+                      sceneId: scene.sceneId,
+                      beatId: null,
+                      timeSeconds: 0,
+                      semanticKey: intentId,
+                      bounds: null,
+                      reason: `Visual Intent mustShow "${intentId}" lacks an exact visible JSX key at its beat middle frame.`,
+                    })));
+                  throw new MotionCanvasVisualQualityError(
+                    {...visualValidation, status: 'failed', issues},
+                    'Motion Canvas semantic binding validation failed.',
+                  );
+                }
                 if (contentRepairAttempts > 0) {
                   generationDiagnostics.push({stage: 'quality-retry', attempt: contentRepairAttempts, reason: `Re-rendered ${lastRepairedSceneCount} failed scene(s); the merged ${generated.scenes.length}-scene bundle passed rendered-frame validation.`, outcome: 'passed'});
                 }
@@ -798,6 +820,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
         semanticValidation: buildMotionCanvasSemanticValidation(
           preparedWorkspace.sourceScenes,
           voiceVisualPlan,
+          generation.result.visualValidation,
         ),
         generation: {
           generationId,
@@ -1042,7 +1065,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
         throw new RequestBodyError(
           409,
           'MOTION_CANVAS_DEGRADED_CONFIRMATION_REQUIRED',
-          'Scene đang dùng minh họa giản lược. Hãy kiểm tra và xác nhận rõ trước khi tiếp tục.',
+          'Scene chưa có đủ bằng chứng semantic tự động. Hãy kiểm tra và xác nhận rõ trước khi tiếp tục.',
         );
       }
 

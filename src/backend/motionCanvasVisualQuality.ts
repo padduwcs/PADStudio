@@ -2,9 +2,10 @@ import {createHash} from 'node:crypto';
 import {mkdtemp, rm} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
+import ts from 'typescript';
 import {z} from 'zod';
 import {visualQualityIssueCodeValues, visualQualityWarningCodeValues, type BeatCompositionContract, type MotionCanvasBundle, type VisualIntent, type VoiceVisualPlan, type VoiceVisualPlanContent} from '../shared/topic.ts';
-import type {MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
+import {MOTION_CANVAS_SEMANTIC_BINDING_MARKER, MOTION_CANVAS_UNVERIFIED_SEMANTIC_FALLBACK_MARKER, type MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
 import {analyzeRgbaFrame, parseHexColor, wcagContrastRatio} from './visualViability.ts';
 
 export const VISUAL_QUALITY_GATE_VERSION = 4;
@@ -55,7 +56,7 @@ export type VisualQualityWarning = z.infer<typeof VisualQualityWarningSchema>;
 
 export const VisualQualitySummarySchema = z.object({
   version: z.literal(VISUAL_QUALITY_GATE_VERSION), status: z.enum(['passed', 'failed']), validatedAt: z.string().datetime(), sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
-  scenes: z.array(z.object({sceneId: z.string().uuid(), samples: z.array(z.object({beatId: z.string().uuid(), phase: z.enum(['stable-start', 'middle', 'pre-exit']), timeSeconds: z.number().nonnegative(), frame: z.number().int().nonnegative(), metrics: z.object({verdict: z.string(), contentRatio: z.number(), dominantColorRatio: z.number()}).strict(), activeBlocks: z.array(z.string()).max(12), imageDeltaFromPreviousBeat: z.number().nullable()}).strict()).max(30)}).strict()).max(128),
+  scenes: z.array(z.object({sceneId: z.string().uuid(), samples: z.array(z.object({beatId: z.string().uuid(), phase: z.enum(['stable-start', 'middle', 'pre-exit']), timeSeconds: z.number().nonnegative(), frame: z.number().int().nonnegative(), metrics: z.object({verdict: z.string(), contentRatio: z.number(), dominantColorRatio: z.number()}).strict(), activeBlocks: z.array(z.string()).max(12), /** Visible semantic JSX keys captured with the rendered frame. Optional so historical visual evidence remains readable. */ visibleSemanticKeys: z.array(z.string()).max(128).optional(), imageDeltaFromPreviousBeat: z.number().nullable()}).strict()).max(30)}).strict()).max(128),
   issues: z.array(VisualQualityIssueSchema).max(visualQualityThresholds.maximumIssues),
   /** Non-blocking observability; never read by `status` or by anything that
    * could turn a warning into a retry or a failed gate. */
@@ -94,35 +95,129 @@ function keyOf(sample: QualitySample) { return sample.sampleId; }
 /** Canonical hash binding rendered-frame evidence to the exact scene sources. */
 export function motionCanvasSceneSourceHash(scenes: MotionCanvasSourceScene[]) { const hash = createHash('sha256'); for (const scene of [...scenes].sort((a,b) => a.id.localeCompare(b.id))) {hash.update(scene.id); hash.update('\0'); hash.update(scene.source); hash.update('\0');} return hash.digest('hex'); }
 
-/** Semantic evidence is computed from exact Visual Intent ids, never keyword
- * similarity. It remains separate from pixel/technical evidence so "renders"
- * and "teaches the intended idea" cannot collapse into one status. */
+function literalJsxKeys(source: string) {
+  const sourceFile = ts.createSourceFile(
+    'semantic-evidence.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX,
+  );
+  const keys = new Set<string>();
+  function visit(node: ts.Node) {
+    if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+      for (const attribute of node.attributes.properties) {
+        if (!ts.isJsxAttribute(attribute) || !ts.isIdentifier(attribute.name) || attribute.name.text !== 'key') continue;
+        const initializer = attribute.initializer;
+        if (initializer && ts.isStringLiteral(initializer)) keys.add(initializer.text);
+        if (initializer && ts.isJsxExpression(initializer) && initializer.expression && (ts.isStringLiteral(initializer.expression) || ts.isNoSubstitutionTemplateLiteral(initializer.expression))) keys.add(initializer.expression.text);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return keys;
+}
+
+function requiredVisualIntentIds(section: VoiceVisualPlan['sections'][number]) {
+  return section.beats.map(beat => beat.visualIntent
+    ? [...beat.visualIntent.entities, ...beat.visualIntent.relations, ...beat.visualIntent.actions]
+      .filter(item => item.mustShow)
+      .map(item => item.id)
+    : [],
+  );
+}
+
+function boundedIntentIds(ids: string[]) {
+  return [...new Set(ids)].slice(0, 34);
+}
+
+/** Semantic evidence joins two independent facts: an exact static Visual
+ * Intent id -> JSX key binding, and that key being visible at the middle of
+ * its beat. It never uses keyword similarity or raw pixels as meaning. */
 export function buildMotionCanvasSemanticValidation(
   scenes: MotionCanvasSourceScene[],
   plan: VoiceVisualPlan,
+  visualValidation?: Pick<VisualQualitySummary, 'sourceHash' | 'scenes'>,
   now = new Date().toISOString(),
 ): NonNullable<MotionCanvasBundle['semanticValidation']> {
+  const sourceHash = motionCanvasSceneSourceHash(scenes);
+  const evidenceIsCurrent = visualValidation?.sourceHash === sourceHash;
   const results: NonNullable<MotionCanvasBundle['semanticValidation']>['scenes'] = scenes.map(scene => {
     const section = plan.sections.find(item => item.outlineSectionId === scene.outlineSectionId);
     if (!section) return {sceneId: scene.id, status: 'failed' as const, coverage: 0, fallbackLevel: 'placeholder' as const, missingIntentIds: [], reason: 'Scene không ánh xạ được tới phần tương ứng trong kế hoạch hình ảnh.'};
-    // Every scene is now hand-authored Motion Canvas TSX (Codex writes the
-    // full file directly instead of a declarative spec a compiler could
-    // inspect), so coverage can never be verified automatically here. This
-    // is the expected, permanent shape of every generation going forward —
-    // 'passed' can no longer occur — not a fallback exception; see
-    // missingIntentIds below, which still lists the plan's mustShow items
-    // since that part is plan-derived, not scene-derived.
-    return {
-      sceneId: scene.id,
-      status: 'degraded' as const,
-      coverage: 0,
-      fallbackLevel: 'simplified' as const,
-      missingIntentIds: section.beats.flatMap(beat => beat.visualIntent ? [...beat.visualIntent.entities, ...beat.visualIntent.relations, ...beat.visualIntent.actions].filter(item => item.mustShow).map(item => item.id) : []),
-      reason: 'Scene được viết thủ công nên chưa thể kiểm chứng tự động theo kế hoạch hình ảnh.',
-    };
+
+    const requiredByBeat = requiredVisualIntentIds(section);
+    const allRequired = requiredByBeat.flat();
+    const sceneEvidence = visualValidation?.scenes.find(item => item.sceneId === scene.id);
+    const middleSamplesByBeat = new Map(section.beats.map(beat => [
+      beat.id,
+      sceneEvidence?.samples.filter(sample => sample.beatId === beat.id && sample.phase === 'middle') ?? [],
+    ]));
+    const runtimeEvidenceAvailable = evidenceIsCurrent && section.beats.every(beat =>
+      (middleSamplesByBeat.get(beat.id) ?? []).some(sample => sample.visibleSemanticKeys !== undefined),
+    );
+    const fallback = scene.source.includes(MOTION_CANVAS_UNVERIFIED_SEMANTIC_FALLBACK_MARKER);
+    const hasBindingContract = scene.source.includes(MOTION_CANVAS_SEMANTIC_BINDING_MARKER);
+    const hasVisualIntentForEveryBeat = section.beats.every(beat => Boolean(beat.visualIntent));
+
+    if (fallback || !hasBindingContract || !hasVisualIntentForEveryBeat || !runtimeEvidenceAvailable) {
+      const reason = fallback
+        ? 'Scene dùng fallback minh họa nên không thể xác minh đầy đủ theo Visual Intent.'
+        : !hasBindingContract
+          ? 'Scene được tạo trước contract truy vết Visual Intent nên chưa thể xác minh tự động.'
+          : !hasVisualIntentForEveryBeat
+          ? 'Kế hoạch hình ảnh cũ không có đủ Visual Intent để xác minh.'
+          : 'Thiếu chứng cứ geometry runtime hiện hành cho semantic validation.';
+      return {
+        sceneId: scene.id,
+        status: 'degraded' as const,
+        coverage: 0,
+        fallbackLevel: fallback ? 'simplified' as const : 'none' as const,
+        missingIntentIds: [],
+        unverifiedIntentIds: boundedIntentIds(allRequired),
+        reason,
+      };
+    }
+
+    const staticKeys = literalJsxKeys(scene.source);
+    const missing = new Set<string>();
+    let verified = 0;
+    let required = 0;
+    for (const [beatIndex, beat] of section.beats.entries()) {
+      const middleSamples = middleSamplesByBeat.get(beat.id) ?? [];
+      for (const intentId of requiredByBeat[beatIndex]!) {
+        required += 1;
+        const isBound = staticKeys.has(intentId);
+        const isVisibleAtBeat = middleSamples.length > 0 && middleSamples.every(sample =>
+          sample.visibleSemanticKeys?.includes(intentId),
+        );
+        if (isBound && isVisibleAtBeat) verified += 1;
+        else missing.add(intentId);
+      }
+    }
+    const missingIntentIds = boundedIntentIds([...missing]);
+    const coverage = required === 0 ? 1 : verified / required;
+    return missingIntentIds.length > 0
+      ? {
+          sceneId: scene.id,
+          status: 'failed' as const,
+          coverage,
+          fallbackLevel: 'none' as const,
+          missingIntentIds,
+          reason: 'Một hoặc nhiều Visual Intent mustShow không có JSX key tương ứng hoặc không hiển thị tại frame giữa của beat.',
+        }
+      : {
+          sceneId: scene.id,
+          status: 'passed' as const,
+          coverage,
+          fallbackLevel: 'none' as const,
+          missingIntentIds: [],
+          reason: null,
+        };
   });
-  const status = results.some(scene => scene.status === 'failed') ? 'failed' as const : 'degraded' as const;
-  return {version: 1, status, validatedAt: now, sourceHash: motionCanvasSceneSourceHash(scenes), scenes: results};
+  const status = results.some(scene => scene.status === 'failed')
+    ? 'failed' as const
+    : results.some(scene => scene.status === 'degraded')
+      ? 'degraded' as const
+      : 'passed' as const;
+  return {version: 1, status, validatedAt: now, sourceHash, scenes: results};
 }
 
 /** Renderer/bridge failures are infrastructure faults. Sending them back to
@@ -367,7 +462,7 @@ export async function validateRenderedMotionCanvas(options: {scenes: MotionCanva
     // Occlusion: anything drawn later and unrelated that buries important content.
     const important = [...(primaryNode ? [primaryNode] : []), ...textNodes];
     for (const target of important) { const targetIndex = render.nodes.indexOf(target); for (let index = targetIndex + 1; index < render.nodes.length; index += 1) { const front = render.nodes[index]!; if (front.key === target.key || !isVisible(front) || structuralKeys.has(front.key) || nested(front, target)) continue; if ((front.effectiveOpacity ?? front.opacity ?? 1) < 0.5) continue; if (intersection(front.bounds, target.bounds) / Math.max(1, area(target.bounds)) > visualQualityThresholds.occlusionCoverageRatio) { push({code:'content-occluded',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:`${front.key}>${target.key}`,bounds:target.bounds,reason:`Node ${front.key} is drawn over and covers most of ${target.key}.`}); break; } } }
-    if(sample.phase==='middle') {const values=middleByScene.get(scene.id)??[];values.push(render);middleByScene.set(scene.id,values);} sampleRows.push({beatId:sample.beatId,phase:sample.phase,timeSeconds:sample.timeSeconds,frame:sample.frame,metrics:{verdict:metrics.verdict,contentRatio:metrics.contentRatio,dominantColorRatio:metrics.dominantColorRatio},activeBlocks:activeBlocks.map(n=>n.key),imageDeltaFromPreviousBeat:null}); }
+    if(sample.phase==='middle') {const values=middleByScene.get(scene.id)??[];values.push(render);middleByScene.set(scene.id,values);} sampleRows.push({beatId:sample.beatId,phase:sample.phase,timeSeconds:sample.timeSeconds,frame:sample.frame,metrics:{verdict:metrics.verdict,contentRatio:metrics.contentRatio,dominantColorRatio:metrics.dominantColorRatio},activeBlocks:activeBlocks.map(n=>n.key),visibleSemanticKeys:render.nodes.filter(isVisible).map(node=>node.key).slice(0,128),imageDeltaFromPreviousBeat:null}); }
     const middles=middleByScene.get(scene.id)??[]; for(let index=1;index<middles.length;index++){const delta=pixelDelta(middles[index-1]!.rgba,middles[index]!.rgba); const row=sampleRows.filter(x=>x.phase==='middle')[index]!;row.imageDeltaFromPreviousBeat=delta;if(delta<visualQualityThresholds.minimumBeatImageDelta)push({code:'static-beats',sceneId:scene.id,beatId:row.beatId,timeSeconds:row.timeSeconds,semanticKey:null,bounds:null,reason:`Middle-frame delta ${delta.toFixed(5)} is below threshold.`});} sceneEntries.push({sceneId:scene.id,samples:sampleRows}); }
   // Cross-beat and cross-scene anchor continuity. A shared anchor key that
   // teleports is a layout jump unless the later beat declares a transition.

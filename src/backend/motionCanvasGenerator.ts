@@ -9,6 +9,7 @@ import type {
   MotionCanvasScene,
   TeachingOutline,
   TopicInput,
+  VoiceVisualBeat,
   VoiceVisualPlan,
 } from '../shared/topic.ts';
 import {defaultVideoFrame, type VideoFrame} from '../shared/videoFormat.ts';
@@ -40,6 +41,14 @@ export const MOTION_CANVAS_DEFAULT_FONT_FAMILY =
 export const MOTION_CANVAS_SAFE_MARGIN_X_RATIO = 0.08;
 export const MOTION_CANVAS_SAFE_MARGIN_Y_RATIO = 0.07;
 export const MAX_CONCURRENT_PRIMARY_BLOCKS = 2;
+/** Marks the deterministic renderer fallback as illustrative rather than a
+ * verified Visual Intent -> JSX binding. */
+export const MOTION_CANVAS_UNVERIFIED_SEMANTIC_FALLBACK_MARKER =
+  'pad-semantic:unverified-fallback';
+/** Versioned source contract that lets semantic validation distinguish newly
+ * traceable direct-TSX from pre-contract handwritten source. */
+export const MOTION_CANVAS_SEMANTIC_BINDING_MARKER =
+  'pad-semantic:bindings-v1';
 // Bounded well under a typical Codex account's concurrent-request rate limit;
 // the rendered-frame quality gate has its own independent, smaller
 // concurrency (QUALITY_RENDER_CONCURRENCY) so raising this only affects how
@@ -463,7 +472,7 @@ function buildPrompt(
     'Import rule: only from @motion-canvas/2d and @motion-canvas/core, plus the icon atlas import described below. Use only named exports (createRef, createSignal, easing functions like easeInOutCubic, ...); never import ref, signal, or easing as bare names.',
     "Semantic key rule: every visual JSX node needs a unique, stable, lowercase kebab-case key string literal describing its role — never an index, UUID, random value, or expression-derived string. Group related nodes under container blocks keyed block-*, with children positioned in that block's local coordinates. Never generate visual JSX via a loop or .map.",
     'Use kebab-case flex values (space-between, not spaceBetween). Every Txt needs a font family; default to MOTION_CANVAS_DEFAULT_FONT_FAMILY unless the design deliberately calls for another. Motion Canvas has no CSS transparent keyword — use #00000000. Never tween Line.points between arrays of different length; set points instantly first if the point count must change.',
-    'Treat scene.beats[].visualIntent as a binding contract. Every mustShow entity, relation, and action needs an explicit, visibly represented JSX node/animation carrying a stable semantic key. Never invent semantic ids that are not given, and never silently drop a mustShow item.',
+    'Start the TSX source with the exact comment `// pad-semantic:bindings-v1`. Treat scene.beats[].visualIntent as a binding contract. Every mustShow entity, relation, and action needs its own explicit, visibly represented JSX node/animation whose literal key is exactly that Visual Intent id (for example, intent id "patient-marker" requires key="patient-marker"). This exact key is the machine-verifiable binding; do not use a descriptive substitute, combine several mustShow obligations under one key, invent ids, or silently drop an item.',
     "When a beat's visualIntent entity is an element of a data structure (an array cell, a heap/tree node, a graph vertex, a stack/queue slot, a matrix cell), draw it as a precise schematic shape (a circle or a small rounded rect) at the position its real structure implies — a tree/heap node sits below and to the side of its parent with the same spacing pattern repeated at every depth, array/list/stack/queue cells sit in one uniform row or column, graph vertices sit at the positions their edges require — and connect structurally-adjacent elements with a real <Line>/arrow JSX so the topology is visible, not merely implied by proximity. Give exactly one element per beat the primary size/role (the one being inserted, compared, or returned); render every other sibling element smaller (secondary/muted) so their labels do not visually compete.",
     `For any concrete recognizable object (a leaf, a person, a car, an organ, a device, a building, a weather condition, and so on), do not hand-draw an SVG path. Import {Icon} from '${MOTION_CANVAS_ICON_ATLAS_IMPORT_SPECIFIER}' (already generated alongside every scene) and render it, e.g. <Icon key="leaf-icon" id="ph:leaf" x={...} y={...} width={...} height={...} rotation={...} fill={...} stroke={...} strokeWidth={...} opacity={...} />, choosing a real glyph id from Phosphor ("ph:name") or Tabler ("tabler:name") — examples: ph:leaf, ph:sun, ph:drop, ph:snowflake, ph:brain, ph:atom, ph:dna, ph:user, ph:car, tabler:home, tabler:building-hospital, tabler:heart, tabler:device-desktop, tabler:flask, tabler:world. Prefer the plainest, most common name for the concept. Every id is checked against the real icon library; an unknown one is rejected with suggestions. Reserve hand-drawn <Path>/<Line> shapes for abstract, non-representational decorative curves and schematic data-structure shapes — never for a recognizable real-world object.`,
     'Within one beat, JSX nodes render opaque and stack in the order written — they do not blend or turn translucent. Never fake a gradient, a mix, or a state change by piling similar same-tier shapes directly on top of each other; the later ones simply hide the earlier ones. Show a state change instead through a colour/role change, a transform animation across beats, or clear side-by-side placement. Reserve real stacking for genuine physical layering (an eye on a face, a window on a wall).',
@@ -491,6 +500,7 @@ function buildRepairPrompt(
     'Ngay sau useDuration, lưu beatEndTime = useThread().time() + beatDuration; sau visual, gọi yield* waitFor(Math.max(0, beatEndTime - useThread().time())) để beat luôn kết thúc đúng mốc dù visual ngắn hơn.',
     'Tên export phải dùng chính xác: createRef, createSignal, easeInOutCubic; không import ref, signal hoặc easing.',
     'Không dùng JSX.Element, scaleX/scaleY, hoặc yield* một node/setter không có duration.',
+    'Bắt đầu source bằng comment chính xác // pad-semantic:bindings-v1. Mỗi Visual Intent entity, relation và action có mustShow=true phải có một JSX node nhìn thấy được với literal key đúng bằng id của item đó; đây là contract truy vết bắt buộc.',
     'Giữ hoặc bổ sung key string literal lowercase kebab-case có ít nhất hai từ cho mọi visual JSX node, kể cả node có ref; key phải duy nhất trong scene và mô tả vai trò ổn định của node.',
     'Giữ hoặc bổ sung scene-content-root và các container block-* cho từng cụm visual. Node con phải dùng tọa độ local của block; không làm phẳng mọi node trực tiếp dưới scene-background.',
     'Không tạo key từ index, thứ tự, nội dung, vị trí, UUID, random, biểu thức hoặc biến. Không sinh visual JSX node bằng map/loop.',
@@ -1091,6 +1101,48 @@ function sceneNodeBindings(sourceFile: ts.SourceFile) {
   }
   visit(sourceFile);
   return bindings;
+}
+
+/** Extracts literal JSX keys for the static half of semantic evidence. */
+export function extractMotionCanvasSemanticKeys(source: string) {
+  const sourceFile = ts.createSourceFile(
+    'generated-scene.tsx',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  return new Set(sceneNodeBindings(sourceFile).keys());
+}
+
+/** A mustShow item is addressable only when a JSX node uses the exact Visual
+ * Intent id as its literal key. Runtime validation separately proves visible
+ * geometry at the beat's middle frame. */
+export function validateMotionCanvasVisualIntentBindings(
+  source: string,
+  beats: Pick<VoiceVisualBeat, 'visualIntent'>[],
+) {
+  const required = beats.flatMap(beat => beat.visualIntent
+    ? [...beat.visualIntent.entities, ...beat.visualIntent.relations, ...beat.visualIntent.actions]
+      .filter(item => item.mustShow)
+      .map(item => item.id)
+    : [],
+  );
+  if (required.length === 0) return;
+  if (!source.includes(MOTION_CANVAS_SEMANTIC_BINDING_MARKER)) {
+    throw new MotionCanvasGenerationError(
+      'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+      `Scene thiếu marker // ${MOTION_CANVAS_SEMANTIC_BINDING_MARKER} cho contract truy vết Visual Intent.`,
+    );
+  }
+  const keys = extractMotionCanvasSemanticKeys(source);
+  const missing = [...new Set(required.filter(id => !keys.has(id)))];
+  if (missing.length > 0) {
+    throw new MotionCanvasGenerationError(
+      'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+      `Scene thiếu JSX key liên kết trực tiếp với Visual Intent mustShow: ${missing.join(', ')}. Mỗi id phải là key string literal của một visual node riêng.`,
+    );
+  }
 }
 
 function generatorStatements(sourceFile: ts.SourceFile) {
@@ -1813,7 +1865,8 @@ ${exitAnimations.join(',\n')},
   );
   yield* waitFor(Math.max(0, beatEndTime${number} - useThread().time()));`;
   });
-  return `import {Layout, makeScene2D, Rect, Txt} from '@motion-canvas/2d';
+  return `// ${MOTION_CANVAS_UNVERIFIED_SEMANTIC_FALLBACK_MARKER}
+import {Layout, makeScene2D, Rect, Txt} from '@motion-canvas/2d';
 import {all, createRef, useDuration, useThread, waitFor, waitUntil} from '@motion-canvas/core';
 
 export default makeScene2D(function* (view) {
@@ -2167,6 +2220,12 @@ export function createCodexMotionCanvasGenerator(
     source: string,
   ) {
     validateMotionCanvasSceneSource(source);
+    if (!source.includes(MOTION_CANVAS_UNVERIFIED_SEMANTIC_FALLBACK_MARKER)) {
+      validateMotionCanvasVisualIntentBindings(
+        source,
+        request.voiceVisualPlan.sections[sectionIndex]!.beats,
+      );
+    }
     validateMotionCanvasIconReferences(source);
     validateMotionCanvasBackground(
       source,

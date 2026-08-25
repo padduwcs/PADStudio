@@ -777,7 +777,11 @@ export const MotionCanvasBundleSchema = z
           beatId: z.string().uuid(), phase: z.enum(['stable-start', 'middle', 'pre-exit']),
           timeSeconds: z.number().nonnegative(), frame: z.number().int().nonnegative(),
           metrics: z.object({verdict: z.string(), contentRatio: z.number(), dominantColorRatio: z.number()}).strict(),
-          activeBlocks: z.array(z.string()).max(12), imageDeltaFromPreviousBeat: z.number().nullable(),
+          activeBlocks: z.array(z.string()).max(12),
+          /** Runtime key evidence used by semantic validation. Optional keeps
+           * historical rendered-frame reports readable. */
+          visibleSemanticKeys: z.array(z.string()).max(128).optional(),
+          imageDeltaFromPreviousBeat: z.number().nullable(),
         }).strict()).max(30),
       }).strict()).max(128),
       issues: z.array(z.object({
@@ -825,6 +829,10 @@ export const MotionCanvasBundleSchema = z
         coverage: z.number().min(0).max(1),
         fallbackLevel: z.enum(['none', 'simplified', 'placeholder']),
         missingIntentIds: z.array(z.string().regex(semanticKeyPattern)).max(34),
+        /** Obligations that cannot be inspected automatically (for example,
+         * direct-authored TSX). Unlike missingIntentIds, these are not a
+         * verdict that the scene omitted the visual intent. */
+        unverifiedIntentIds: z.array(z.string().regex(semanticKeyPattern)).max(34).optional(),
         reason: z.string().trim().min(1).max(600).nullable(),
       }).strict()).max(128),
     }).strict().optional(),

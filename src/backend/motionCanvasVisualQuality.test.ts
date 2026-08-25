@@ -3,14 +3,30 @@ import {access} from 'node:fs/promises';
 import test from 'node:test';
 import {randomUUID} from 'node:crypto';
 import type {MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
-import type {BeatCompositionContract} from '../shared/topic.ts';
-import {MotionCanvasVisualQualityError, MotionCanvasVisualValidationGateError, VISUAL_QUALITY_GATE_VERSION, assertVisualValidationCurrent, motionCanvasSceneSourceHash, partitionWaivedVisualQualityIssues, retryRenderedSceneQualityOnce, validateRenderedMotionCanvas, visualQualityFailureIsRendererOnly, visualQualitySamples, visualValidationIsCurrent, visualValidationIsReusable, withTemporaryVisualQualityWorkspace, type BeatQualityContract, type QualityRenderedFrame, type VisualQualitySummary} from './motionCanvasVisualQuality.ts';
+import type {BeatCompositionContract, VoiceVisualPlan} from '../shared/topic.ts';
+import {buildMotionCanvasSemanticValidation, MotionCanvasVisualQualityError, MotionCanvasVisualValidationGateError, VISUAL_QUALITY_GATE_VERSION, assertVisualValidationCurrent, motionCanvasSceneSourceHash, partitionWaivedVisualQualityIssues, retryRenderedSceneQualityOnce, validateRenderedMotionCanvas, visualQualityFailureIsRendererOnly, visualQualitySamples, visualValidationIsCurrent, visualValidationIsReusable, withTemporaryVisualQualityWorkspace, type BeatQualityContract, type QualityRenderedFrame, type VisualQualitySummary} from './motionCanvasVisualQuality.ts';
 
 const sceneId = '10000000-0000-4000-8000-000000000001';
 const beatOne = '10000000-0000-4000-8000-000000000011';
 const beatTwo = '10000000-0000-4000-8000-000000000012';
-const scene: MotionCanvasSourceScene = {id: sceneId, outlineSectionId: '10000000-0000-4000-8000-000000000002', name: 'Quality scene', filePath: 'src/scenes/quality-scene.tsx', durationSeconds: 8, source: 'source-a', timingEvents: [{beatId: beatOne,startEvent:`beat:${beatOne}:start`,endEvent:`beat:${beatOne}:end`,plannedDurationSeconds:4},{beatId: beatTwo,startEvent:`beat:${beatTwo}:start`,endEvent:`beat:${beatTwo}:end`,plannedDurationSeconds:4}]};
+const scene: MotionCanvasSourceScene = {id: sceneId, outlineSectionId: '10000000-0000-4000-8000-000000000002', name: 'Quality scene', filePath: 'src/scenes/quality-scene.tsx', durationSeconds: 8, source: '// pad-semantic:bindings-v1\n<Rect key="main-concept" /><Line key="concept-link" /><Rect key="concept-change" />', timingEvents: [{beatId: beatOne,startEvent:`beat:${beatOne}:start`,endEvent:`beat:${beatOne}:end`,plannedDurationSeconds:4},{beatId: beatTwo,startEvent:`beat:${beatTwo}:start`,endEvent:`beat:${beatTwo}:end`,plannedDurationSeconds:4}]};
 const lifecycle = new Map([[beatOne,{stay:['block-one']}],[beatTwo,{stay:['block-two']}]]);
+const semanticPlan = {
+  sections: [{
+    outlineSectionId: scene.outlineSectionId,
+    beats: [{
+      id: beatOne,
+      visualIntent: {
+        entities: [
+          {id: 'main-concept', mustShow: true},
+          {id: 'optional-detail', mustShow: false},
+        ],
+        relations: [{id: 'concept-link', mustShow: true}],
+        actions: [{id: 'concept-change', mustShow: true}],
+      },
+    }],
+  }],
+} as unknown as VoiceVisualPlan;
 function pixels(color: [number,number,number,number], accent = false) { const output = new Uint8Array(100*100*4); for(let i=0;i<output.length;i+=4){output[i]=color[0];output[i+1]=color[1];output[i+2]=color[2];output[i+3]=color[3];} if(accent) for(let i=0;i<600;i+=4){output[i]=255;output[i+1]=255;output[i+2]=255;} return output; }
 function frame(nodes: QualityRenderedFrame['nodes'], accent=true, color:[number,number,number,number]=[16,35,29,255]): QualityRenderedFrame {return {width:100,height:100,rgba:pixels(color,accent),nodes};}
 async function inspect(factory: (sample: ReturnType<typeof visualQualitySamples>[number]) => QualityRenderedFrame) { return validateRenderedMotionCanvas({scenes:[scene],lifecycle,frame:{width:100,height:100,fps:10},backgroundColor:'#10231D',renderer:{async render(input){return new Map(input.samples.map(sample=>[`${sample.sceneId}:${sample.beatId}:${sample.phase}`,factory(sample)]));}},now:'2026-01-01T00:00:00.000Z'}); }
@@ -23,6 +39,67 @@ test('renderer-only quality failures are infrastructure faults, not scene repair
   assert.equal(visualQualityFailureIsRendererOnly({issues:[rendererIssue]}), true);
   assert.equal(visualQualityFailureIsRendererOnly({issues:[rendererIssue,contentIssue]}), false);
   assert.equal(visualQualityFailureIsRendererOnly({issues:[]}), false);
+});
+
+function semanticVisualEvidence(visibleSemanticKeys: string[]) {
+  return {
+    sourceHash: motionCanvasSceneSourceHash([scene]),
+    scenes: [{sceneId, samples: [{
+      beatId: beatOne,
+      phase: 'middle' as const,
+      timeSeconds: 2,
+      frame: 20,
+      metrics: {verdict: 'viable', contentRatio: 0.2, dominantColorRatio: 0.5},
+      activeBlocks: [],
+      visibleSemanticKeys,
+      imageDeltaFromPreviousBeat: null,
+    }]}],
+  } as unknown as Pick<VisualQualitySummary, 'sourceHash' | 'scenes'>;
+}
+
+test('semantic validation passes only when Visual Intent keys are bound and visible', () => {
+  const summary = buildMotionCanvasSemanticValidation(
+    [scene],
+    semanticPlan,
+    semanticVisualEvidence(['main-concept', 'concept-link', 'concept-change']),
+    '2026-01-01T00:00:00.000Z',
+  );
+
+  assert.equal(summary.status, 'passed');
+  assert.equal(summary.scenes[0]?.status, 'passed');
+  assert.equal(summary.scenes[0]?.coverage, 1);
+  assert.equal(summary.scenes[0]?.fallbackLevel, 'none');
+  assert.deepEqual(summary.scenes[0]?.missingIntentIds, []);
+});
+
+test('semantic validation fails when a required Visual Intent key is not visible at its beat', () => {
+  const summary = buildMotionCanvasSemanticValidation(
+    [scene],
+    semanticPlan,
+    semanticVisualEvidence(['main-concept', 'concept-link']),
+    '2026-01-01T00:00:00.000Z',
+  );
+
+  assert.equal(summary.status, 'failed');
+  assert.equal(summary.scenes[0]?.coverage, 2 / 3);
+  assert.deepEqual(summary.scenes[0]?.missingIntentIds, ['concept-change']);
+});
+
+test('semantic validation keeps historical frame evidence degraded rather than claiming a false verdict', () => {
+  const summary = buildMotionCanvasSemanticValidation(
+    [scene],
+    semanticPlan,
+    undefined,
+    '2026-01-01T00:00:00.000Z',
+  );
+
+  assert.equal(summary.status, 'degraded');
+  assert.equal(summary.scenes[0]?.coverage, 0);
+  assert.deepEqual(summary.scenes[0]?.unverifiedIntentIds, [
+    'main-concept',
+    'concept-link',
+    'concept-change',
+  ]);
 });
 
 test('partitionWaivedVisualQualityIssues moves a stalled scene\'s issues out and can turn a failing summary into a passing one', () => {
@@ -75,6 +152,7 @@ test('smoke quality mode renders only the middle frame of each beat', async () =
   assert.ok(summary.scenes.every(entry =>
     entry.samples.every(sample => sample.phase === 'middle'),
   ));
+  assert.ok(summary.scenes[0]?.samples[0]?.visibleSemanticKeys?.includes('block-one'));
 });
 
 test('rendered frame gate rejects empty/uniform, unsafe, clipped, overlap, stale block and certain text faults', async () => {

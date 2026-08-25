@@ -363,13 +363,18 @@ export function SceneReviewPage({projectId}: {projectId: string}) {
       {semanticValidation && semanticValidation.status !== 'passed' && (
         <section className={`production-operation-status${semanticFailed ? ' is-error' : ''}`} role={semanticFailed ? 'alert' : 'status'}>
           <div>
-            <strong>{semanticFailed ? 'Scene chưa thể hiện đầy đủ kế hoạch hình ảnh' : 'Scene viết tay theo kế hoạch hình ảnh'}</strong>
+            <strong>{semanticFailed ? 'Scene chưa thể hiện đầy đủ kế hoạch hình ảnh' : 'Bằng chứng semantic chưa đầy đủ'}</strong>
             <p>{semanticFailed
               ? 'Có đối tượng, quan hệ hoặc hành động bắt buộc chưa được liên kết vào hình. Việc xuất video bị chặn cho tới khi sinh/sửa lại scene.'
-              : 'Scene được viết tay nên hệ thống chưa thể tự động xác minh đầy đủ theo kế hoạch hình ảnh. Hãy xem hình có truyền đạt đúng bài học trước khi xuất.'}</p>
-            {semanticFailed && semanticValidation.scenes.filter(scene => scene.status === 'failed').map((scene, index) => (
-              <small key={scene.sceneId}>Scene {index + 1}{scene.missingIntentIds.length ? ` · thiếu ${scene.missingIntentIds.join(', ')}` : ''}</small>
-            ))}
+              : 'Scene chưa có đủ bằng chứng semantic tự động. Hãy xem hình có truyền đạt đúng bài học trước khi xuất.'}</p>
+            {semanticValidation.scenes
+              .filter(scene => scene.status === semanticValidation.status)
+              .map((scene, index) => (
+                <small key={scene.sceneId}>Scene {index + 1}{semanticFailed
+                  ? (scene.missingIntentIds.length ? ` · thiếu ${scene.missingIntentIds.join(', ')}` : '')
+                  : (scene.unverifiedIntentIds?.length ? ` · chưa xác minh ${scene.unverifiedIntentIds.join(', ')}` : '')}
+                </small>
+              ))}
           </div>
         </section>
       )}

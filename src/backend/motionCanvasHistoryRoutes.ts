@@ -623,6 +623,7 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
         semanticValidation: buildMotionCanvasSemanticValidation(
           generation.result.prepared.sourceScenes,
           voiceVisualPlan,
+          generation.result.visualValidation,
         ),
         generation: {
           generationId,
@@ -806,6 +807,7 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
         semanticValidation: buildMotionCanvasSemanticValidation(
           candidateSources,
           voiceVisualPlan,
+          candidateVisualValidation,
         ),
       };
       const updatedProject = await repository.updateProject(
@@ -942,6 +944,7 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
           semanticValidation: buildMotionCanvasSemanticValidation(
             prepared.sourceScenes,
             voiceVisualPlan,
+            visualValidation,
           ),
           generation: {
             ...sourceVersion.artifact.generation,

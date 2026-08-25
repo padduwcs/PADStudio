@@ -24,6 +24,7 @@ import {
   validateMotionCanvasResponsiveLayout,
   validateMotionCanvasSceneSource,
   validateMotionCanvasTimingContract,
+  validateMotionCanvasVisualIntentBindings,
 } from './motionCanvasGenerator.ts';
 import {MOTION_CANVAS_ICON_ATLAS_IMPORT_SPECIFIER} from './motionCanvasIconLibrary.ts';
 import {
@@ -1597,6 +1598,25 @@ test('Motion Canvas source policy yêu cầu semantic key tường minh cho mọ
       error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
   );
   assert.doesNotThrow(() => validateMotionCanvasSceneSource(sceneSource));
+});
+
+test('Motion Canvas source policy binds every mustShow Visual Intent id to an exact JSX key', () => {
+  const beats = [{visualIntent: {
+    entities: [{id: 'main-visual-card', mustShow: true}],
+    relations: [{id: 'concept-relation', mustShow: true}],
+    actions: [{id: 'concept-action', mustShow: true}],
+  }}] as Parameters<typeof validateMotionCanvasVisualIntentBindings>[1];
+  const bound = `// pad-semantic:bindings-v1\n${sceneSource}`.replace(
+    '    </Rect>,',
+    '      <Rect key="concept-relation" />\n      <Rect key="concept-action" />\n    </Rect>,',
+  );
+  assert.doesNotThrow(() => validateMotionCanvasVisualIntentBindings(bound, beats));
+  assert.throws(
+    () => validateMotionCanvasVisualIntentBindings(`// pad-semantic:bindings-v1\n${sceneSource}`, beats),
+    (error: unknown) => error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE' &&
+      /concept-relation/u.test(error.message),
+  );
 });
 
 test('Motion Canvas source policy yêu cầu layout key duy nhất trong scene', () => {
