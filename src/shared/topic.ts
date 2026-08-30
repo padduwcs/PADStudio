@@ -1337,5 +1337,10 @@ export interface ApiErrorPayload {
     message: string;
     fields?: Record<string, string[]>;
     currentProject?: TopicProject;
+    /** Safe stage/status context for failures that are persisted as artifacts. */
+    stage?: string;
+    status?: string;
+    artifactPath?: string | null;
+    diagnostic?: Record<string, unknown>;
   };
 }

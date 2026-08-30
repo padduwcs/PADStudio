@@ -2,6 +2,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {
   lstat,
   mkdir,
+  readdir,
   readFile,
   realpath,
   rename,
@@ -133,6 +134,76 @@ export interface LayoutWorkspaceFile {
   source: string;
 }
 
+export type LayoutFailureStage = 'layout-preview' | 'layout-design';
+export type LayoutFailureStatus = 'blocked' | 'failed';
+export type LayoutFailureArtifactStatus =
+  | 'not-created'
+  | 'workspace-created';
+
+/** Safe, structured context shared by layout errors and retained artifacts. */
+export interface LayoutFailureDiagnostic {
+  stage: LayoutFailureStage;
+  status: LayoutFailureStatus;
+  artifactPath: string | null;
+  artifactStatus: LayoutFailureArtifactStatus;
+  sourceSyncGenerationId: string | null;
+  details: Record<string, unknown>;
+}
+
+export interface LayoutFailureRecord {
+  stage: LayoutFailureStage;
+  status: LayoutFailureStatus;
+  code: string;
+  message: string;
+  diagnostic: LayoutFailureDiagnostic;
+  artifact: {
+    status: LayoutFailureArtifactStatus;
+    workspacePath: string | null;
+  };
+}
+
+export interface LayoutFailureSummary {
+  generationId: string;
+  failedAt: string;
+  stage: LayoutFailureStage;
+  status: LayoutFailureStatus;
+  code: string;
+  message: string;
+  artifactPath: string;
+  artifact: {
+    status: LayoutFailureArtifactStatus;
+    workspacePath: string | null;
+  };
+  diagnostic: LayoutFailureDiagnostic;
+}
+
+const StoredLayoutFailureSchema = z
+  .object({
+    version: z.literal(1),
+    generationId: z.string().uuid(),
+    failedAt: z.string().datetime(),
+    stage: z.enum(['layout-preview', 'layout-design']),
+    status: z.enum(['blocked', 'failed']),
+    code: z.string().trim().min(1).max(160),
+    message: z.string().trim().min(1).max(2_000),
+    diagnostic: z.object({
+      stage: z.enum(['layout-preview', 'layout-design']),
+      status: z.enum(['blocked', 'failed']),
+      artifactPath: z.string().max(2_000).nullable(),
+      artifactStatus: z.enum(['not-created', 'workspace-created']),
+      sourceSyncGenerationId: z.string().uuid().nullable(),
+      details: z.record(z.string(), z.unknown()),
+    }).strict(),
+    artifact: z.object({
+      status: z.enum(['not-created', 'workspace-created']),
+      workspacePath: z.string().max(300).nullable(),
+      failurePath: z.string().max(2_000),
+    }).strict(),
+  })
+  .strict();
+
+type StoredLayoutFailure = z.infer<typeof StoredLayoutFailureSchema>;
+
 export interface VerifiedLayoutWorkspace {
   projectDirectory: string;
   sourceWorkspaceDirectory: string;
@@ -170,14 +241,30 @@ export interface LayoutWorkspace {
     animationSyncBundle: AnimationSyncBundle,
     bundle: LayoutBundle | null,
   ): Promise<VerifiedLayoutWorkspace>;
+  /** Retains downstream layout failures without touching existing generations. */
+  recordFailure?(
+    projectId: string,
+    generationId: string,
+    failure: LayoutFailureRecord,
+  ): Promise<string>;
+  /** Reads the newest retained downstream layout failure. */
+  readLatestFailure?(
+    projectId: string,
+  ): Promise<LayoutFailureSummary | null>;
 }
 
 export class LayoutWorkspaceError extends Error {
   readonly code: string;
+  diagnostic: LayoutFailureDiagnostic | null;
 
-  constructor(code: string, message: string, options?: ErrorOptions) {
+  constructor(
+    code: string,
+    message: string,
+    options?: ErrorOptions & {diagnostic?: LayoutFailureDiagnostic},
+  ) {
     super(message, options);
     this.code = code;
+    this.diagnostic = options?.diagnostic ?? null;
   }
 }
 
@@ -1452,6 +1539,148 @@ export function createLayoutWorkspace(
           force: true,
         }).catch(() => undefined);
       }
+    },
+
+    async recordFailure(projectId, generationId, failure) {
+      assertProjectId(projectId);
+      if (!uuidPattern.test(generationId)) {
+        throw new LayoutWorkspaceError(
+          'LAYOUT_WORKSPACE_INVALID',
+          'Generation ID của Layout failure không hợp lệ.',
+        );
+      }
+      const root = await verifiedProjectDirectory(projectId);
+      const layoutDirectory = await ensureChildDirectory(root, 'layout');
+      const failuresDirectory = await ensureChildDirectory(
+        layoutDirectory,
+        'failures',
+      );
+      const target = path.join(failuresDirectory, generationId);
+      if (!isInside(root, target)) {
+        throw new LayoutWorkspaceError(
+          'LAYOUT_WORKSPACE_INVALID',
+          'Thư mục bằng chứng lỗi Layout nằm ngoài project.',
+        );
+      }
+      try {
+        await mkdir(target, {recursive: false});
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+          throw new LayoutWorkspaceError(
+            'LAYOUT_WORKSPACE_CONFLICT',
+            'Generation ID này đã có Layout failure artifact; không ghi đè artifact cũ.',
+            {cause: error},
+          );
+        }
+        throw new LayoutWorkspaceError(
+          'LAYOUT_WORKSPACE_WRITE_FAILED',
+          'Không thể tạo thư mục Layout failure artifact.',
+          {cause: error},
+        );
+      }
+
+      const failurePath = path.join(target, 'failure.json');
+      const storedFailure: StoredLayoutFailure = {
+        version: 1,
+        generationId,
+        failedAt: new Date().toISOString(),
+        stage: failure.stage,
+        status: failure.status,
+        code: failure.code.trim().slice(0, 160),
+        message: failure.message.trim().slice(0, 2_000),
+        diagnostic: {
+          ...failure.diagnostic,
+          artifactPath: null,
+          details: {...failure.diagnostic.details},
+        },
+        artifact: {
+          ...failure.artifact,
+          failurePath,
+        },
+      };
+      const parsed = StoredLayoutFailureSchema.safeParse(storedFailure);
+      if (!parsed.success) {
+        throw new LayoutWorkspaceError(
+          'LAYOUT_WORKSPACE_INVALID',
+          'Layout failure artifact không hợp lệ.',
+          {cause: parsed.error},
+        );
+      }
+      try {
+        await writeFile(
+          failurePath,
+          `${JSON.stringify(parsed.data, null, 2)}\n`,
+          {encoding: 'utf8', flag: 'wx'},
+        );
+      } catch (error) {
+        await rm(target, {recursive: true, force: true}).catch(() => undefined);
+        throw new LayoutWorkspaceError(
+          'LAYOUT_WORKSPACE_WRITE_FAILED',
+          'Không thể ghi Layout failure artifact.',
+          {cause: error},
+        );
+      }
+      return target;
+    },
+
+    async readLatestFailure(projectId) {
+      assertProjectId(projectId);
+      const root = await verifiedProjectDirectory(projectId);
+      const failuresDirectory = path.join(root, 'layout', 'failures');
+      let entries;
+      try {
+        entries = await readdir(failuresDirectory, {withFileTypes: true});
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+        throw new LayoutWorkspaceError(
+          'LAYOUT_WORKSPACE_READ_FAILED',
+          'Không thể đọc thư mục Layout failure artifacts.',
+          {cause: error},
+        );
+      }
+      const candidates = await Promise.all(
+        entries
+          .filter(
+            (entry) => entry.isDirectory() && uuidPattern.test(entry.name),
+          )
+          .map(async (entry) => ({
+            generationId: entry.name,
+            modified: (
+              await stat(path.join(failuresDirectory, entry.name))
+            ).mtimeMs,
+          })),
+      );
+      for (const candidate of candidates.sort(
+        (left, right) => right.modified - left.modified,
+      )) {
+        const artifactDirectory = path.join(
+          failuresDirectory,
+          candidate.generationId,
+        );
+        const failurePath = path.join(artifactDirectory, 'failure.json');
+        let parsed: ReturnType<typeof StoredLayoutFailureSchema.safeParse>;
+        try {
+          parsed = StoredLayoutFailureSchema.safeParse(
+            JSON.parse(await readFile(failurePath, 'utf8')),
+          );
+        } catch {
+          continue;
+        }
+        if (!parsed.success) continue;
+        const failure = parsed.data;
+        return {
+          generationId: failure.generationId,
+          failedAt: failure.failedAt,
+          stage: failure.stage,
+          status: failure.status,
+          code: failure.code,
+          message: failure.message,
+          artifactPath: artifactDirectory,
+          artifact: failure.artifact,
+          diagnostic: failure.diagnostic,
+        };
+      }
+      return null;
     },
 
     async readFiles(projectId, bundle) {

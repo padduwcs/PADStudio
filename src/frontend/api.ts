@@ -74,6 +74,12 @@ export interface MotionCanvasFailureSummary {
   recoveryGuidance: string | null;
 }
 
+export interface MotionCanvasGenerationPollingOptions {
+  pollIntervalMs?: number;
+  onProgress?: (progress: MotionCanvasGenerationProgress) => void;
+  sleep?: (milliseconds: number) => Promise<void>;
+}
+
 function previewRequestOptions(): RequestInit | undefined {
   const parentOrigin =
     typeof window === 'undefined' ? '' : window.location.origin;
@@ -353,6 +359,7 @@ export async function generateMotionCanvas(
   projectId: string,
   request: GenerateMotionCanvas,
   expectedRevision: number,
+  options: MotionCanvasGenerationPollingOptions = {},
 ) {
   const response = await fetch(
     `/api/projects/${encodeURIComponent(projectId)}/motion-canvas/generate`,
@@ -365,10 +372,83 @@ export async function generateMotionCanvas(
       body: JSON.stringify(request),
     },
   );
-  const payload = await readPayload<{project: TopicProject}>(response);
+  const payload = await readPayload<{
+    project: TopicProject;
+    progress?: MotionCanvasGenerationProgress;
+  }>(response);
 
   assertSuccessful(response, payload);
+  if (response.status === 202) {
+    if (!payload || !('progress' in payload) || !payload.progress) {
+      throw new ApiRequestError(
+        'Phản hồi bắt đầu sinh scene không hợp lệ.',
+        'INVALID_RESPONSE',
+      );
+    }
+    return waitForMotionCanvasGeneration(projectId, payload.progress, options);
+  }
   return getProjectPayload(payload);
+}
+
+async function waitForMotionCanvasGeneration(
+  projectId: string,
+  initialProgress: MotionCanvasGenerationProgress,
+  options: MotionCanvasGenerationPollingOptions,
+) {
+  const pollIntervalMs = Math.max(0, options.pollIntervalMs ?? 1_000);
+  const sleep = options.sleep ?? ((milliseconds: number) => new Promise<void>(resolve => {
+    setTimeout(resolve, milliseconds);
+  }));
+  let progress = initialProgress;
+  const trackedGenerationId = initialProgress.generationId;
+  while (true) {
+    if (progress.generationId !== trackedGenerationId) {
+      throw new ApiRequestError(
+        'Lượt sinh scene đã được thay thế bởi generation khác.',
+        'MOTION_CANVAS_GENERATION_REPLACED',
+        409,
+      );
+    }
+    options.onProgress?.(progress);
+    if (progress.state === 'completed') {
+      return getProject(projectId);
+    }
+    if (progress.state === 'failed' || progress.state === 'interrupted') {
+      throw new ApiRequestError(
+        progress.error || progress.message,
+        progress.state === 'failed'
+          ? 'MOTION_CANVAS_GENERATION_FAILED'
+          : 'MOTION_CANVAS_GENERATION_INTERRUPTED',
+        422,
+      );
+    }
+    await sleep(pollIntervalMs);
+    try {
+      const nextProgress = await getMotionCanvasGenerationProgress(projectId);
+      if (!nextProgress) {
+        throw new ApiRequestError(
+          'Phản hồi tiến độ sinh scene không có dữ liệu.',
+          'INVALID_RESPONSE',
+          500,
+        );
+      }
+      if (nextProgress.generationId !== trackedGenerationId) {
+        throw new ApiRequestError(
+          'Lượt sinh scene đã được thay thế bởi generation khác.',
+          'MOTION_CANVAS_GENERATION_REPLACED',
+          409,
+        );
+      }
+      progress = nextProgress;
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status !== 0) {
+        throw error;
+      }
+      // A temporary transport failure must not start a second generation.
+      // Keep polling the original generation until the server reports a
+      // terminal state.
+    }
+  }
 }
 
 export async function getLatestMotionCanvasFailure(projectId: string) {

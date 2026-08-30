@@ -207,6 +207,12 @@ test('planNarrationArtifacts fallback về deterministic planner khi AI lỗi', 
   assert.equal(voiceVisualPlan.plannerDiagnostics?.[0]?.outcome, 'used_fallback');
   assert.equal(voiceVisualPlan.plannerDiagnostics?.[0]?.model, 'requested-model');
   assert.match(voiceVisualPlan.plannerDiagnostics?.[0]?.reason ?? '', /Codex service unavailable/);
+  assert.deepEqual(
+    voiceVisualPlan.sections.flatMap((section) => section.beats).map(
+      (beat) => beat.visualLifecycle?.stay,
+    ),
+    [['block-concept-card', 'concept-label'], ['block-concept-card', 'concept-label']],
+  );
   assert.equal(narrationPlanMatchesReviewedNarration(narration, voiceVisualPlan), true);
 });
 

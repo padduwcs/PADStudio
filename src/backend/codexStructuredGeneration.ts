@@ -4,6 +4,15 @@ import type {CodexTokenUsage} from '../shared/topic.ts';
 import type {
   CodexAppServerClient,
   CodexAppServerNotification,
+  CodexTurnStartParams,
+  CodexUserInput,
+} from './codexConnection.ts';
+import type {CodexAppServerProcessDiagnostics} from './codexConnection.ts';
+import {
+  CodexAppServerError,
+  isCodexImageInput,
+  isCodexImageInputUnsupported,
+  redactCodexDiagnosticText,
 } from './codexConnection.ts';
 
 function configuredGenerationTimeoutMs() {
@@ -69,7 +78,10 @@ const turnCompletedSchema = z
         id: z.string(),
         status: z.enum(['completed', 'interrupted', 'failed', 'inProgress']),
         error: z
-          .object({message: z.string()})
+          .object({
+            message: z.string(),
+            code: z.union([z.string(), z.number()]).optional(),
+          })
           .passthrough()
           .nullable()
           .optional(),
@@ -114,22 +126,161 @@ const agentMessageSchema = z
   })
   .passthrough();
 
-type GenerationFailureReason =
+export type CodexStructuredGenerationFailureReason =
+  | 'turn_start_rejected'
+  | 'app_server_disconnect'
+  | 'transport_error'
+  | 'model_capacity'
+  | 'rate_limit'
   | 'timeout'
+  | 'transport_timeout'
   | 'turn_failed'
   | 'tool_used'
   | 'empty_response';
 
 export class CodexStructuredGenerationError extends Error {
-  readonly reason: GenerationFailureReason;
+  readonly reason: CodexStructuredGenerationFailureReason;
+  readonly code: string;
+  readonly operation: string | null;
+  readonly providerMessage: string | null;
+  readonly providerCode: string | null;
+  readonly model: string | null;
+  readonly appServerDiagnostics: CodexAppServerProcessDiagnostics | null;
 
   constructor(
-    reason: GenerationFailureReason,
+    reason: CodexStructuredGenerationFailureReason,
     message: string,
+    options: ErrorOptions & {
+      code?: string;
+      operation?: string;
+      providerMessage?: string | null;
+      providerCode?: string | number | null;
+      model?: string | null;
+      appServerDiagnostics?: CodexAppServerProcessDiagnostics | null;
+    } = {},
   ) {
-    super(message);
+    super(sanitizeStructuredFailureText(message), options);
     this.reason = reason;
+    this.code = options.code ?? `CODEX_STRUCTURED_${reason.toUpperCase()}`;
+    this.operation = options.operation ?? null;
+    this.providerMessage = options.providerMessage
+      ? sanitizeStructuredFailureText(options.providerMessage).slice(0, 2_000)
+      : null;
+    this.providerCode = options.providerCode === null || options.providerCode === undefined
+      ? null
+      : String(options.providerCode).slice(0, 120);
+    this.model = options.model ?? null;
+    this.appServerDiagnostics = options.appServerDiagnostics ?? null;
   }
+}
+
+function sanitizeStructuredFailureText(value: string) {
+  return redactCodexDiagnosticText(value)
+    .replace(
+      /\b(?:sk-(?:proj-)?|gh[pousr]_|github_pat_)[A-Za-z0-9_-]{12,}\b/gu,
+      '[REDACTED_CREDENTIAL]',
+    )
+    .replace(
+      /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/giu,
+      'Bearer [REDACTED_TOKEN]',
+    )
+    .replace(
+      /((?:(?:api|access|auth|refresh|client|private)[_-]?(?:key|token|secret)|token|secret|password|credential|authorization)\s*[:=]\s*["'`]?)(?!\[REDACTED_[A-Z_]+\])[^"'`\s,;)}\]]+/giu,
+      '$1[REDACTED_SECRET]',
+    );
+}
+
+function errorText(error: unknown) {
+  return sanitizeStructuredFailureText(
+    error instanceof Error ? error.message : String(error),
+  ).slice(0, 2_000);
+}
+
+function providerFailureReason(message: string, remoteCode?: string | null) {
+  const text = `${remoteCode ?? ''} ${message}`;
+  if (/(?:model|selected model).*(?:capacity|overloaded|busy)|(?:capacity|overloaded|busy).*(?:model|selected model)|at capacity/iu.test(text)) {
+    return 'model_capacity' as const;
+  }
+  if (/(?:rate[ _-]?limit|too many requests|quota|credits|\b429\b)/iu.test(text)) {
+    return 'rate_limit' as const;
+  }
+  return null;
+}
+
+function wrapTransportError(
+  error: unknown,
+  operation: string,
+  model?: string,
+) {
+  if (error instanceof CodexStructuredGenerationError) return error;
+  const message = errorText(error) || 'Codex app-server request failed.';
+  const appServerError = error instanceof CodexAppServerError ? error : null;
+  const providerReason = providerFailureReason(
+    message,
+    appServerError?.remoteCode,
+  );
+  const explicitTurnStartRejection =
+    appServerError?.code === 'CODEX_APP_SERVER_REQUEST_REJECTED' ||
+    (operation === 'turn/start' &&
+      /(?:turn\/start.*(?:reject|refus|den(?:y|ied)|not allowed)|(?:reject|refus|den(?:y|ied)).*turn\/start)/iu.test(message));
+  const reason = (
+    appServerError?.code === 'CODEX_APP_SERVER_DISCONNECTED' ||
+    appServerError?.code === 'CODEX_APP_SERVER_CLOSED'
+  )
+    ? 'app_server_disconnect'
+    : appServerError?.code === 'CODEX_APP_SERVER_REQUEST_TIMEOUT'
+      ? 'transport_timeout'
+      : providerReason
+        ? providerReason
+        : explicitTurnStartRejection
+          ? 'turn_start_rejected'
+          : 'transport_error';
+  const code = reason === 'app_server_disconnect'
+    ? 'CODEX_APP_SERVER_DISCONNECTED'
+    : reason === 'transport_timeout'
+      ? 'CODEX_APP_SERVER_REQUEST_TIMEOUT'
+      : reason === 'model_capacity'
+        ? 'CODEX_MODEL_CAPACITY'
+        : reason === 'rate_limit'
+          ? 'CODEX_RATE_LIMIT'
+          : reason === 'turn_start_rejected'
+            ? 'CODEX_TURN_START_REJECTED'
+            : appServerError?.code ?? 'CODEX_TRANSPORT_ERROR';
+  return new CodexStructuredGenerationError(
+    reason,
+    message,
+    {
+      code,
+      operation,
+      providerMessage: message,
+      providerCode: appServerError?.remoteCode,
+      model,
+      appServerDiagnostics: appServerError?.processDiagnostics,
+      cause: error,
+    },
+  );
+}
+
+function wrapProtocolResponseError(
+  error: unknown,
+  operation: string,
+  model?: string,
+) {
+  return new CodexStructuredGenerationError(
+    'transport_error',
+    'Codex app-server trả về response không hợp lệ.',
+    {
+      code: 'CODEX_APP_SERVER_INVALID_RESPONSE',
+      operation,
+      providerMessage: errorText(error) || null,
+      model,
+      appServerDiagnostics:
+        error instanceof CodexAppServerError
+          ? error.processDiagnostics
+          : null,
+      cause: error,
+    },
+  );
 }
 
 /**
@@ -232,6 +383,7 @@ export async function runCodexStructuredGeneration({
   developerInstructions,
   model,
   reasoningEffort,
+  input,
 }: {
   client: CodexAppServerClient;
   runtimeDirectory: string;
@@ -242,6 +394,8 @@ export async function runCodexStructuredGeneration({
   developerInstructions: string;
   model?: string;
   reasoningEffort?: string;
+  /** Exact `turn/start.params.input` items. Defaults to one text item. */
+  input?: CodexUserInput[];
 }): Promise<{
   responseText: string;
   model: string;
@@ -253,9 +407,17 @@ export async function runCodexStructuredGeneration({
   let threadId = '';
   let turnId = '';
   let usage: CodexTokenUsage | null = null;
+  const turnInput: CodexUserInput[] = input?.slice() ?? [
+    {type: 'text', text: prompt},
+  ];
+  const textOnlyInput: CodexUserInput[] = turnInput.filter(
+    item => item.type === 'text',
+  );
+  const hasImageInput = turnInput.some(isCodexImageInput);
   let resolveCompletion!: (
     completion: z.infer<typeof turnCompletedSchema>,
   ) => void;
+  let rejectCompletion!: (error: CodexStructuredGenerationError) => void;
   const earlyCompletions = new Map<
     string,
     z.infer<typeof turnCompletedSchema>
@@ -266,8 +428,9 @@ export async function runCodexStructuredGeneration({
   >();
   const completionPromise = new Promise<
     z.infer<typeof turnCompletedSchema>
-  >((resolve) => {
+  >((resolve, reject) => {
     resolveCompletion = resolve;
+    rejectCompletion = reject;
   });
 
   const handleNotification = (
@@ -301,10 +464,25 @@ export async function runCodexStructuredGeneration({
     const parsedCompletion = turnCompletedSchema.safeParse(
       notification.params,
     );
-    if (
-      !parsedCompletion.success ||
-      parsedCompletion.data.threadId !== threadId
-    ) {
+    if (!parsedCompletion.success) {
+      const params = notification.params;
+      if (
+        params &&
+        typeof params === 'object' &&
+        'threadId' in params &&
+        params.threadId === threadId
+      ) {
+        rejectCompletion(
+          wrapProtocolResponseError(
+            parsedCompletion.error,
+            'turn/completed',
+            model,
+          ),
+        );
+      }
+      return;
+    }
+    if (parsedCompletion.data.threadId !== threadId) {
       return;
     }
 
@@ -319,35 +497,81 @@ export async function runCodexStructuredGeneration({
   };
 
   try {
-    const threadResponse = threadStartResponseSchema.parse(
-      await client.request('thread/start', {
-        ephemeral: true,
-        cwd: runtimeDirectory,
-        approvalPolicy: 'never',
-        sandbox: 'read-only',
-        personality: 'none',
-        baseInstructions,
-        developerInstructions,
-        ...(model ? {model} : {}),
-      }),
-    );
-    threadId = threadResponse.thread.id;
-
-    const unsubscribe = client.subscribe(handleNotification);
+    let threadResponse: z.infer<typeof threadStartResponseSchema>;
     try {
-      const turnResponse = turnStartResponseSchema.parse(
-        await client.request('turn/start', {
-          threadId,
-          input: [{type: 'text', text: prompt}],
+      threadResponse = threadStartResponseSchema.parse(
+        await client.request('thread/start', {
+          ephemeral: true,
+          cwd: runtimeDirectory,
           approvalPolicy: 'never',
-          sandboxPolicy: {type: 'readOnly'},
+          sandbox: 'read-only',
           personality: 'none',
-          summary: 'none',
-          outputSchema: strictOutputSchema,
-          ...(reasoningEffort ? {effort: reasoningEffort} : {}),
+          baseInstructions,
+          developerInstructions,
+          ...(model ? {model} : {}),
         }),
       );
+    } catch (error) {
+      if (error instanceof CodexStructuredGenerationError) throw error;
+      if (error instanceof z.ZodError || (error instanceof CodexAppServerError && error.code === 'CODEX_APP_SERVER_INVALID_RESPONSE')) {
+        throw wrapProtocolResponseError(error, 'thread/start', model);
+      }
+      throw wrapTransportError(error, 'thread/start', model);
+    }
+    threadId = threadResponse.thread.id;
+
+      const unsubscribe = client.subscribe(handleNotification);
+    let unsubscribeError: (() => void) | undefined;
+    try {
+      const turnParams = (turnInputForRequest: CodexUserInput[]): CodexTurnStartParams => ({
+        threadId,
+        input: turnInputForRequest,
+        approvalPolicy: 'never',
+        sandboxPolicy: {type: 'readOnly'},
+        personality: 'none',
+        summary: 'none',
+        outputSchema: strictOutputSchema,
+        ...(reasoningEffort ? {effort: reasoningEffort} : {}),
+      });
+      let turnResponse: z.infer<typeof turnStartResponseSchema>;
+      try {
+        turnResponse = turnStartResponseSchema.parse(
+          await client.request('turn/start', turnParams(turnInput)),
+        );
+      } catch (error) {
+        if (
+          !hasImageInput ||
+          !isCodexImageInputUnsupported(error) ||
+          textOnlyInput.length === 0
+        ) {
+          if (error instanceof CodexStructuredGenerationError) throw error;
+          if (error instanceof z.ZodError || (error instanceof CodexAppServerError && error.code === 'CODEX_APP_SERVER_INVALID_RESPONSE')) {
+            throw wrapProtocolResponseError(error, 'turn/start', model);
+          }
+          throw wrapTransportError(error, 'turn/start', model);
+        }
+        // The current protocol accepts `type: "image"`; this branch is only
+        // for an older/alternate app-server that rejects that input variant.
+        try {
+          turnResponse = turnStartResponseSchema.parse(
+            await client.request('turn/start', turnParams(textOnlyInput)),
+          );
+        } catch (fallbackError) {
+          if (fallbackError instanceof z.ZodError || (fallbackError instanceof CodexAppServerError && fallbackError.code === 'CODEX_APP_SERVER_INVALID_RESPONSE')) {
+            throw wrapProtocolResponseError(fallbackError, 'turn/start', model);
+          }
+          throw wrapTransportError(fallbackError, 'turn/start', model);
+        }
+      }
+      if (!turnResponse) {
+        throw wrapTransportError(new Error('Codex turn/start did not return a response.'), 'turn/start', model);
+      }
       turnId = turnResponse.turn.id;
+      unsubscribeError = client.subscribeErrors?.(error => {
+        rejectCompletion(
+          wrapTransportError(error, 'turn/completed', threadResponse.model),
+        );
+      });
 
       const earlyCompletion = earlyCompletions.get(turnId);
       if (earlyCompletion) resolveCompletion(earlyCompletion);
@@ -362,6 +586,11 @@ export async function runCodexStructuredGeneration({
                 new CodexStructuredGenerationError(
                   'timeout',
                   'Codex mất quá nhiều thời gian để tạo nội dung.',
+                  {
+                    code: 'CODEX_TURN_TIMEOUT',
+                    operation: 'turn/completed',
+                    model: threadResponse.model,
+                  },
                 ),
               ),
             timeoutMs,
@@ -372,10 +601,29 @@ export async function runCodexStructuredGeneration({
       });
 
       if (completion.turn.status !== 'completed') {
+        const providerMessage = completion.turn.error?.message ?? null;
+        const providerCode = completion.turn.error?.code === undefined
+          ? null
+          : String(completion.turn.error.code);
+        const classifiedReason = providerFailureReason(
+          providerMessage ?? '',
+          providerCode,
+        );
+        const reason = classifiedReason ?? 'turn_failed';
         throw new CodexStructuredGenerationError(
-          'turn_failed',
-          completion.turn.error?.message ||
-            'Codex không hoàn tất được lượt tạo nội dung.',
+          reason,
+          providerMessage || 'Codex không hoàn tất được lượt tạo nội dung.',
+          {
+            code: reason === 'model_capacity'
+              ? 'CODEX_MODEL_CAPACITY'
+              : reason === 'rate_limit'
+                ? 'CODEX_RATE_LIMIT'
+                : 'CODEX_TURN_FAILED',
+            operation: 'turn/completed',
+            providerMessage,
+            providerCode,
+            model: threadResponse.model,
+          },
         );
       }
 
@@ -389,6 +637,11 @@ export async function runCodexStructuredGeneration({
         throw new CodexStructuredGenerationError(
           'empty_response',
           'Codex không trả về nội dung.',
+          {
+            code: 'CODEX_EMPTY_RESPONSE',
+            operation: 'turn/completed',
+            model: threadResponse.model,
+          },
         );
       }
 
@@ -398,6 +651,7 @@ export async function runCodexStructuredGeneration({
         usage,
       };
     } finally {
+      unsubscribeError?.();
       unsubscribe();
     }
   } catch (error) {

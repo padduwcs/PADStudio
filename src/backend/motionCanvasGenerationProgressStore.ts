@@ -17,6 +17,7 @@ type ProgressPatch = Partial<Pick<
   | 'stage'
   | 'message'
   | 'completedScenes'
+  | 'failedScenes'
   | 'totalScenes'
   | 'completedSamples'
   | 'totalSamples'
@@ -142,6 +143,7 @@ export function createFileMotionCanvasGenerationProgressStore(
         stage: 'queued',
         message: 'Đã xếp hàng sinh scene.',
         completedScenes: 0,
+        failedScenes: 0,
         totalScenes,
         completedSamples: 0,
         totalSamples: 0,
@@ -213,4 +215,3 @@ export function createFileMotionCanvasGenerationProgressStore(
     },
   };
 }
-

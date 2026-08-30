@@ -99,7 +99,11 @@ test('generateMotionCanvasIconAtlasSource nhúng path data thật cho icon đã 
   assert.ok(source.includes(JSON.stringify(icon!.d)));
   assert.match(source, /"ph:leaf":/);
   assert.doesNotMatch(source, /does-not-exist/);
+  assert.match(source, /import type \{ReferenceReceiver\} from '@motion-canvas\/core';/);
+  assert.match(source, /export type Icon = Path;/);
+  assert.match(source, /ref\?: ReferenceReceiver<Path>;/);
   assert.match(source, /export function Icon\(props: IconProps\)/);
+  assert.match(source, /<Path\s+ref=\{props\.ref\}/);
   assert.match(source, /scale=\{\[props\.width \/ icon\.viewBoxWidth, props\.height \/ icon\.viewBoxHeight\]\}/);
 });
 

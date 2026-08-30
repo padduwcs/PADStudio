@@ -14,10 +14,17 @@ import {
 } from '../shared/topic.ts';
 import {
   MAXIMUM_MOTION_CANVAS_GENERATION_CONCURRENCY,
+  MOTION_CANVAS_UNVERIFIED_SEMANTIC_FALLBACK_MARKER,
   MOTION_CANVAS_PROMPT_VERSION,
+  MotionCanvasGenerationError,
+  mergeMotionCanvasAttemptEvidence,
+  motionCanvasAttemptEvidenceFromError,
+  motionCanvasRootCauseFromError,
+  type MotionCanvasGenerationResult,
+  type MotionCanvasSourceScene,
   mergeMotionCanvasGenerationUsage,
 } from './motionCanvasGenerator.ts';
-import {MotionCanvasVisualQualityError, assertVisualValidationCurrent, buildMotionCanvasSemanticValidation, formatVisualQualityRetryGuidance, partitionWaivedVisualQualityIssues, semanticValidationIsCurrent, visualQualityFailureIsRendererOnly} from './motionCanvasVisualQuality.ts';
+import {MotionCanvasVisualQualityError, assertVisualValidationCurrent, buildMotionCanvasSemanticValidation, formatVisualQualityRetryGuidance, semanticValidationIsCurrent, visualQualityFailureIsRendererOnly, type MotionCanvasVisualEvidence} from './motionCanvasVisualQuality.ts';
 import {
   hashMotionCanvasBundle
 } from './motionCanvasHistoryStore.ts';
@@ -41,6 +48,7 @@ import {RequestBodyError, sendApiError} from './appErrors.ts';
 import {assertSameCodexGenerationSelection, outlineContent, projectVideoFrame, voiceVisualContent} from './appRouteSupport.ts';
 import {readExpectedRevision, readJsonBody, requestParentOrigin, sendJson, sendProject, validationFields} from './httpTransport.ts';
 import type {ApiRouteHandler} from './routeTypes.ts';
+import type {MotionCanvasGenerationProgress} from '../shared/motionCanvasGenerationProgress.ts';
 import {z} from 'zod';
 
 const ApproveMotionCanvasSchema = z.object({acceptDegradedSemantic: z.literal(true).optional()}).strict();
@@ -69,6 +77,72 @@ export function motionCanvasGuidanceOnStaleBundleIsUnsafe(options: {
 }
 
 type MotionCanvasRouteContext = Pick<AppContext, 'repository' | 'motionCanvasGenerator' | 'motionCanvasGenerationProgressStore' | 'motionCanvasWorkspace' | 'motionCanvasVisualQualityGate' | 'motionCanvasHistoryStore' | 'motionCanvasGenerations' | 'layoutPreviewService' | 'generateOnce' | 'logger'>;
+
+type MotionCanvasBackgroundJob = {
+  generationId: string;
+  expectedRevision: number;
+  requestFingerprint: string;
+  progress: MotionCanvasGenerationProgress;
+};
+
+type MotionCanvasPendingJob = {
+  generationId: string;
+  expectedRevision: number;
+  requestFingerprint: string;
+  ready: Promise<MotionCanvasGenerationProgress | null>;
+  resolve: (progress: MotionCanvasGenerationProgress | null) => void;
+};
+
+// Deterministic scenes remain useful as diagnostics and unit-test fixtures,
+// but are never a quality-repair outcome for a user project. They can look
+// structurally valid while replacing topic-specific art with generic cards.
+const ALLOW_DETERMINISTIC_QUALITY_FALLBACK = false;
+
+const DIRECT_TSX_SOURCE_GUIDANCE =
+  'Return a complete TSX source object {name, source}; source must be the full literal TSX file contents for the scene.';
+
+export function motionCanvasCheckpointRecoveryGuidance(
+  guidance?: string,
+) {
+  return [
+    guidance,
+    `Repair only the fallback-marked scenes in this checkpoint. Preserve every other scene exactly. ${DIRECT_TSX_SOURCE_GUIDANCE}`,
+  ].filter(Boolean).join('\n\n');
+}
+
+/** A deterministic fallback is diagnostic-only output and cannot cross any
+ * route boundary that prepares, validates, stores, or publishes a scene. */
+export function isMotionCanvasDeterministicFallbackScene(
+  scene: Pick<MotionCanvasSourceScene, 'name' | 'source'>,
+) {
+  return scene.source.includes(MOTION_CANVAS_UNVERIFIED_SEMANTIC_FALLBACK_MARKER) ||
+    scene.name.toLowerCase().includes('safe fallback');
+}
+
+export function findMotionCanvasDeterministicFallbackScenes<
+  T extends Pick<MotionCanvasSourceScene, 'name' | 'source'>,
+>(scenes: readonly T[]) {
+  return scenes.filter(isMotionCanvasDeterministicFallbackScene);
+}
+
+/** Throws before a scene set can be handed to a workspace, quality gate, or
+ * persisted artifact. Keeping this as one route-level predicate prevents a
+ * recovery/checkpoint result from bypassing the initial-generation check. */
+export function assertMotionCanvasScenesArePublishable(
+  scenes: readonly Pick<MotionCanvasSourceScene, 'name' | 'source'>[],
+  boundary: string,
+) {
+  const fallbackScenes = findMotionCanvasDeterministicFallbackScenes(scenes);
+  if (fallbackScenes.length === 0) return;
+  const sceneNames = fallbackScenes
+    .map(scene => scene.name)
+    .slice(0, 6)
+    .join(', ');
+  throw new MotionCanvasGenerationError(
+    'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+    `${fallbackScenes.length} scene(s) still contain deterministic fallback output and were rejected before ${boundary}: ${sceneNames}`,
+  );
+}
 
 /**
  * Circuit-breaker decision for the quality-retry loop: a scene whose
@@ -103,6 +177,13 @@ export function computeNewlyStalledMotionCanvasScenes(
   return newlyStalledSceneIds;
 }
 
+export function selectMotionCanvasVisualEvidenceForRetry(
+  evidence: readonly MotionCanvasVisualEvidence[],
+  failedSceneIds: ReadonlySet<string>,
+) {
+  return evidence.filter(item => failedSceneIds.has(item.sceneId));
+}
+
 /** Compiler/generation failures deserve the same recovery path as rendered
  * quality failures.  Persist concise, model-ready context rather than leaving
  * the user with a message that cannot be acted on from the UI. */
@@ -111,7 +192,7 @@ function generationRecoveryGuidance(error: unknown) {
     ? error.message.slice(0, 1_800)
     : 'The previous scene generation did not complete.';
   return [
-    'Write a completely fresh Motion Canvas TSX scene from the approved Visual Intent and voice. Do not reuse prior scene source.',
+    `Create a completely fresh direct-TSX scene from the approved Visual Intent and voice. ${DIRECT_TSX_SOURCE_GUIDANCE} Do not reuse prior scene source.`,
     `Previous generation failure: ${reason}`,
     'Keep every beat UUID and exact mustShow intent binding. Use concise labels, recognizable shapes (icons for concrete objects), explicit relationships, and meaningful animations.',
   ].join('\n').slice(0, 4_000);
@@ -119,6 +200,8 @@ function generationRecoveryGuidance(error: unknown) {
 
 export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext): ApiRouteHandler {
   const {repository, motionCanvasGenerator, motionCanvasGenerationProgressStore, motionCanvasWorkspace, motionCanvasVisualQualityGate, motionCanvasHistoryStore, motionCanvasGenerations, layoutPreviewService, generateOnce, logger} = context;
+  const backgroundJobs = new Map<string, MotionCanvasBackgroundJob>();
+  const pendingJobs = new Map<string, MotionCanvasPendingJob>();
   return async (request: IncomingMessage, response: ServerResponse, requestUrl: URL) => {
     const motionCanvasRoute = getProjectMotionCanvasRoute(
       requestUrl.pathname,
@@ -212,6 +295,82 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
         throw new ProjectConflictError(currentProject);
       }
 
+      const requestFingerprint = JSON.stringify({
+        expectedRevision,
+        model: parsedRequest.data.model,
+        reasoningEffort: parsedRequest.data.reasoningEffort,
+        regenerateFromScratch: parsedRequest.data.regenerateFromScratch === true,
+        guidance: parsedRequest.data.guidance,
+      });
+      const existingJob = backgroundJobs.get(currentProject.id);
+      const existingProgress = await motionCanvasGenerationProgressStore.get(
+        currentProject.id,
+      );
+      if (existingJob) {
+        if (existingJob.generationId !== generationId) {
+          throw new RequestBodyError(
+            409,
+            'MOTION_CANVAS_GENERATION_IN_PROGRESS',
+            'Project already has another Motion Canvas generation running.',
+          );
+        }
+        if (
+          existingJob.expectedRevision !== expectedRevision ||
+          existingJob.requestFingerprint !== requestFingerprint
+        ) {
+          throw new RequestBodyError(
+            409,
+            'GENERATION_ID_REUSED',
+            'Generation ID has already been used with different input or revision.',
+          );
+        }
+        sendJson(response, 202, {
+          progress: existingProgress ?? existingJob.progress,
+        });
+        return true;
+      }
+      const pendingJob = pendingJobs.get(currentProject.id);
+      if (pendingJob) {
+        if (pendingJob.generationId !== generationId) {
+          throw new RequestBodyError(
+            409,
+            'MOTION_CANVAS_GENERATION_IN_PROGRESS',
+            'Project đang có một lượt sinh scene khác đang khởi tạo.',
+          );
+        }
+        if (
+          pendingJob.expectedRevision !== expectedRevision ||
+          pendingJob.requestFingerprint !== requestFingerprint
+        ) {
+          throw new RequestBodyError(
+            409,
+            'GENERATION_ID_REUSED',
+            'Generation ID đã được dùng với nội dung hoặc revision khác.',
+          );
+        }
+        const progress = await pendingJob.ready;
+        if (!progress) {
+          throw new RequestBodyError(
+            409,
+            'MOTION_CANVAS_GENERATION_NOT_STARTED',
+            'Lượt sinh scene không thể khởi tạo.',
+          );
+        }
+        sendJson(response, 202, {progress});
+        return true;
+      }
+      if (existingProgress?.state === 'running') {
+        throw new RequestBodyError(
+          409,
+          'MOTION_CANVAS_GENERATION_IN_PROGRESS',
+          'Project already has a Motion Canvas generation running.',
+        );
+      }
+      if (existingProgress?.generationId === generationId) {
+        sendJson(response, 202, {progress: existingProgress});
+        return true;
+      }
+
       const outline = currentProject.outline;
       const voiceVisualPlan = currentProject.voiceVisualPlan;
       const narrationArtifacts = narrationArtifactsAreCurrent(outline, voiceVisualPlan);
@@ -275,46 +434,118 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
         );
       }
 
-      const currentScenes =
-        parsedRequest.data.guidance &&
-          !regenerateFromScratch &&
-          currentBundleUsable &&
-          currentProject.motionCanvasBundle
-          ? await motionCanvasWorkspace.readSceneSources(
-            currentProject.id,
-            currentProject.motionCanvasBundle,
-          )
-          : undefined;
-      const generationKey = `${currentProject.id}:${generationId}`;
-      const fingerprint = JSON.stringify({
-        topicInput: currentProject.topicInput,
-        outline: outlineContent(outline),
-        outlineContentRevision: outline.contentRevision,
-        voiceVisual: voiceVisualContent(voiceVisualPlan),
-        voiceVisualContentRevision: voiceVisualPlan.contentRevision,
-        model: parsedRequest.data.model,
-        reasoningEffort: parsedRequest.data.reasoningEffort,
-        regenerateFromScratch,
-        guidance: parsedRequest.data.guidance,
-        currentScenes,
+      let resolvePending!: (progress: MotionCanvasGenerationProgress | null) => void;
+      const pendingReady = new Promise<MotionCanvasGenerationProgress | null>(resolve => {
+        resolvePending = resolve;
       });
-      await motionCanvasGenerationProgressStore.start({
-        projectId: currentProject.id,
+      const pendingReservation: MotionCanvasPendingJob = {
         generationId,
-        totalScenes: voiceVisualPlan.sections.length,
-      });
-      const reportProgress = (
-        patch: Parameters<typeof motionCanvasGenerationProgressStore.update>[2],
-      ) => {
-        void motionCanvasGenerationProgressStore
-          .update(currentProject.id, generationId, patch)
-          .catch(error => logger.error(error));
+        expectedRevision,
+        requestFingerprint,
+        ready: pendingReady,
+        resolve: resolvePending,
       };
-      const generation = await generateOnce(
-        motionCanvasGenerations,
-        generationKey,
-        fingerprint,
-        async () => {
+      pendingJobs.set(currentProject.id, pendingReservation);
+      const setup = await (async () => {
+        const currentScenes =
+          parsedRequest.data.guidance &&
+            !regenerateFromScratch &&
+            currentBundleUsable &&
+            currentProject.motionCanvasBundle
+            ? await motionCanvasWorkspace.readSceneSources(
+              currentProject.id,
+              currentProject.motionCanvasBundle,
+            )
+            : undefined;
+        const generationKey = `${currentProject.id}:${generationId}`;
+        const fingerprint = JSON.stringify({
+          topicInput: currentProject.topicInput,
+          outline: outlineContent(outline),
+          outlineContentRevision: outline.contentRevision,
+          voiceVisual: voiceVisualContent(voiceVisualPlan),
+          voiceVisualContentRevision: voiceVisualPlan.contentRevision,
+          model: parsedRequest.data.model,
+          reasoningEffort: parsedRequest.data.reasoningEffort,
+          regenerateFromScratch,
+          guidance: parsedRequest.data.guidance,
+          currentScenes,
+        });
+        const initialProgress = await motionCanvasGenerationProgressStore.start({
+          projectId: currentProject.id,
+          generationId,
+          totalScenes: voiceVisualPlan.sections.length,
+        });
+        return {currentScenes, generationKey, fingerprint, initialProgress};
+      })().catch(error => {
+        if (pendingJobs.get(currentProject.id) === pendingReservation) {
+          pendingJobs.delete(currentProject.id);
+          pendingReservation.resolve(null);
+        }
+        throw error;
+      });
+      const {currentScenes, generationKey, fingerprint, initialProgress} = setup;
+      const backgroundJob: MotionCanvasBackgroundJob = {
+        generationId,
+        expectedRevision,
+        requestFingerprint,
+        progress: initialProgress,
+      };
+      backgroundJobs.set(currentProject.id, backgroundJob);
+      pendingJobs.delete(currentProject.id);
+      pendingReservation.resolve(initialProgress);
+      const runBackgroundGeneration = async () => {
+        let generationDiscarded = false;
+        let failureArtifactRecorded = false;
+        let failureStage: 'generation' | 'compile' | 'render-quality' = 'generation';
+        const recordFailure = async (failure: Parameters<NonNullable<typeof motionCanvasWorkspace.recordFailure>>[2]) => {
+          if (!motionCanvasWorkspace.recordFailure || failureArtifactRecorded) return;
+          try {
+            await motionCanvasWorkspace.recordFailure(
+              currentProject.id,
+              generationId,
+              failure,
+            );
+            failureArtifactRecorded = true;
+          } catch (error) {
+            logger.error(error);
+          }
+        };
+        const discardGeneration = async () => {
+          if (generationDiscarded) return;
+          generationDiscarded = true;
+          try {
+            await motionCanvasGenerator.discardGeneration?.(
+              currentProject.id,
+              generationId,
+            );
+          } catch (error) {
+            logger.error(error);
+          }
+        };
+        const pendingProgressWrites = new Set<Promise<unknown>>();
+        const drainProgressWrites = async () => {
+          while (pendingProgressWrites.size > 0) {
+            await Promise.all([...pendingProgressWrites]);
+          }
+        };
+        const reportProgress = (
+          patch: Parameters<typeof motionCanvasGenerationProgressStore.update>[2],
+        ) => {
+          const write = motionCanvasGenerationProgressStore
+            .update(currentProject.id, generationId, patch)
+            .catch(error => {
+              logger.error(error);
+              return null;
+            });
+          pendingProgressWrites.add(write);
+          void write.finally(() => pendingProgressWrites.delete(write));
+        };
+        try {
+          const generation = await generateOnce(
+            motionCanvasGenerations,
+            generationKey,
+            fingerprint,
+            async () => {
           const generationRequest = {
             projectId: currentProject.id,
             generationId,
@@ -329,45 +560,118 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
             currentScenes,
             onProgress: (progress: {
               completedScenes: number;
+              failedScenes: number;
               totalScenes: number;
               outcome: 'started' | 'completed' | 'failed';
             }) => reportProgress({
               stage: 'generating-scenes',
               message: progress.outcome === 'started'
                 ? `Codex đang sinh ${progress.totalScenes} scene bằng tối đa ${MAXIMUM_MOTION_CANVAS_GENERATION_CONCURRENCY} worker.`
-                : `Codex đã xử lý ${progress.completedScenes}/${progress.totalScenes} scene.`,
+                : progress.outcome === 'failed'
+                  ? `Codex đã hoàn tất ${progress.completedScenes}/${progress.totalScenes} scene; ${progress.failedScenes} scene thất bại.`
+                  : `Codex đã hoàn tất ${progress.completedScenes}/${progress.totalScenes} scene.`,
               completedScenes: progress.completedScenes,
+              failedScenes: progress.failedScenes,
               totalScenes: progress.totalScenes,
               completedSamples: 0,
               totalSamples: 0,
               cachedSamples: 0,
             }),
           };
-          let generated = await motionCanvasGenerator
-            .generate(generationRequest)
-            .catch(async error => {
-              await motionCanvasWorkspace.recordFailure?.(
-                currentProject.id,
-                generationId,
-                {
-                  stage: 'generation',
-                  code: 'MOTION_CANVAS_GENERATION_FAILED',
-                  message:
-                    error instanceof Error ? error.message : String(error),
-                  details: null,
-                  issues: [],
-                  recoveryGuidance: generationRecoveryGuidance(error),
-                  scenes: [],
-                },
-              ).catch(recordError => logger.error(recordError));
+          const checkpointScenes = await motionCanvasWorkspace
+            .readFailureScenes?.(currentProject.id, generationId) ?? null;
+          const checkpointMatchesCurrentPlan = checkpointScenes?.length === voiceVisualPlan.sections.length &&
+            checkpointScenes.every((scene, index) => {
+              const section = voiceVisualPlan.sections[index];
+              return section?.outlineSectionId === scene.outlineSectionId &&
+                section.beats.length === (scene.timingEvents?.length ?? 0) &&
+                section.beats.every((beat, beatIndex) =>
+                  scene.timingEvents?.[beatIndex]?.beatId === beat.id,
+                );
+            });
+          let generated: MotionCanvasGenerationResult;
+          if (checkpointMatchesCurrentPlan) {
+            const fallbackIndexes = checkpointScenes!
+              .map((scene, index) =>
+                isMotionCanvasDeterministicFallbackScene(scene)
+                  ? index
+                  : -1,
+              )
+              .filter(index => index >= 0);
+            if (fallbackIndexes.length > 0) {
+              const repaired = await motionCanvasGenerator.generate({
+                ...generationRequest,
+                sectionIndexes: fallbackIndexes,
+                currentScenes: checkpointScenes!,
+                guidance: motionCanvasCheckpointRecoveryGuidance(
+                  generationRequest.guidance,
+                ),
+              });
+              const scenes = checkpointScenes!.map((scene, index) =>
+                repaired.scenes.find(candidate => candidate.outlineSectionId === scene.outlineSectionId) ?? scene,
+              );
+              generated = {...repaired, scenes};
+            } else {
+              generated = {
+                scenes: checkpointScenes!,
+                model: 'resumed-render-checkpoint',
+                usage: null,
+                qualityRetryDiagnostics: [{
+                  stage: 'quality-retry' as const,
+                  attempt: 0,
+                  reason: 'Resumed the exact failed compile/render scene checkpoint; no Codex call was made.',
+                  outcome: 'skipped' as const,
+                }],
+              };
+            }
+          } else {
+            generated = await motionCanvasGenerator.generate(generationRequest).catch(async error => {
+              await recordFailure({
+                stage: 'generation',
+                code: 'MOTION_CANVAS_GENERATION_FAILED',
+                message:
+                  error instanceof Error ? error.message : String(error),
+                details: null,
+                issues: [],
+                recoveryGuidance: generationRecoveryGuidance(error),
+                rootCause: motionCanvasRootCauseFromError(error),
+                attempts: motionCanvasAttemptEvidenceFromError(error),
+                scenes: [],
+              });
               throw error;
             });
+          }
+          const unresolvedFallbacks = findMotionCanvasDeterministicFallbackScenes(generated.scenes);
+          if (unresolvedFallbacks.length > 0) {
+            await recordFailure({
+              stage: 'generation',
+              code: 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+              message: 'Deterministic fallback output was rejected before compilation as source-validation/response-invalid; no publishable direct-TSX scene remained.',
+              details: null,
+              issues: unresolvedFallbacks.map(scene => ({
+                reason: `Deterministic fallback is not publishable: ${scene.filePath}`,
+                sceneId: scene.id,
+                filePath: scene.filePath,
+                phase: 'fallback',
+                classification: 'source-validation/response-invalid',
+              })),
+              recoveryGuidance: `Regenerate only fallback-marked scenes as fresh direct-TSX output. ${DIRECT_TSX_SOURCE_GUIDANCE}`,
+              rootCause: null,
+              attempts: generated.attemptEvidence,
+              scenes: generated.scenes,
+            });
+            throw new MotionCanvasGenerationError(
+              'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+              `${unresolvedFallbacks.length} scene(s) still required a deterministic fallback after bounded model repair; the degraded batch was rejected: ${unresolvedFallbacks.slice(0, 6).map(scene => scene.filePath).join(', ')}`,
+            );
+          }
           reportProgress({
             stage: 'compiling',
             message: `Đã sinh ${generated.scenes.length} scene; đang biên dịch workspace an toàn.`,
             completedScenes: generated.scenes.length,
             totalScenes: generated.scenes.length,
           });
+          failureStage = 'compile';
           const qualityRetryDiagnostics = [...(generated.qualityRetryDiagnostics ?? [])];
           let prepared: PreparedMotionCanvasWorkspace | null = null;
           let acceptedWorkspace = false;
@@ -376,6 +680,12 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
           const generationDiagnostics: NonNullable<MotionCanvasBundle['generationDiagnostics']> = [];
           try {
             while (!prepared) {
+            // Every new result, including one returned by repair/recover, must
+            // clear this gate before it reaches workspace preparation.
+            assertMotionCanvasScenesArePublishable(
+              generated.scenes,
+              'workspace preparation',
+            );
             try {
               prepared = await motionCanvasWorkspace.prepare(
                 currentProject.id,
@@ -413,7 +723,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                   }
                   fallbackAttempted = true;
                   generationDiagnostics.push({stage: 'fallback', attempt: 1, reason: repairError instanceof Error ? repairError.message.slice(0, 4_000) : 'Repair failed after actionable workspace diagnostics.', outcome: 'used_fallback'});
-                  generated = motionCanvasGenerator.recover(
+                  const recovered = motionCanvasGenerator.recover(
                     generationRequest,
                     generated,
                     `${error.details}\n\nRepair failed: ${repairError instanceof Error
@@ -421,7 +731,23 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                       : String(repairError)
                     }`,
                   );
+                  generated = {
+                    ...recovered,
+                    attemptEvidence: mergeMotionCanvasAttemptEvidence(
+                      generated.attemptEvidence,
+                      recovered.attemptEvidence,
+                      motionCanvasAttemptEvidenceFromError(repairError),
+                    ),
+                  };
+                  assertMotionCanvasScenesArePublishable(
+                    generated.scenes,
+                    'workspace preparation',
+                  );
                 }
+                assertMotionCanvasScenesArePublishable(
+                  generated.scenes,
+                  'workspace preparation',
+                );
                 continue;
               }
               if (
@@ -437,6 +763,10 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                   generationRequest,
                   generated,
                   error.details,
+                );
+                assertMotionCanvasScenesArePublishable(
+                  generated.scenes,
+                  'workspace preparation',
                 );
                 continue;
               }
@@ -461,6 +791,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
             }),
           );
             let visualValidation;
+            let visualEvidence: MotionCanvasVisualEvidence[] = [];
             // Each retry re-sends the exact rendered-frame issues (overlap,
             // clipping, spacing, ...) back to Codex as guidance, so extra
             // attempts cost more Codex calls and time but materially raise
@@ -487,11 +818,11 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
             // every round.
             const issueCodesByScene = new Map<string, Set<string>>();
             const stalledSceneIds = new Set<string>();
-            const qualityWaivedScenes: NonNullable<MotionCanvasBundle['qualityWaivedScenes']> = [];
             let smokePassed =
               motionCanvasVisualQualityGate.supportsSmokeMode !== true;
             for (;;) {
               try {
+                failureStage = 'render-quality';
                 const qualityMode = smokePassed ? 'full' as const : 'smoke' as const;
                 const totalSamples = generated.scenes.reduce(
                   (total, scene) => total +
@@ -513,6 +844,11 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                 });
                 let lastReportedQualityAt = 0;
                 let lastReportedQualityCompleted = -1;
+                assertMotionCanvasScenesArePublishable(
+                  prepared.sourceScenes,
+                  'visual-quality approval',
+                );
+                visualEvidence = [];
                 visualValidation = await motionCanvasVisualQualityGate.validate({
                   scenes: prepared.sourceScenes,
                   lifecycle: lifecycleFor(generated.scenes),
@@ -541,6 +877,9 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                       cachedSamples: progress.cachedSamples,
                       attempt: contentRepairAttempts,
                     });
+                  },
+                  onFailure: evidence => {
+                    visualEvidence = evidence;
                   },
                 });
                 if (qualityMode === 'smoke') {
@@ -579,6 +918,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                   throw new MotionCanvasVisualQualityError(
                     {...visualValidation, status: 'failed', issues},
                     'Motion Canvas semantic binding validation failed.',
+                    visualEvidence,
                   );
                 }
                 if (contentRepairAttempts > 0) {
@@ -594,16 +934,13 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                 // fallback would only repeat this forever — waive it instead
                 // of retrying, and let the batch finish.
                 if (stalledSceneIds.size > 0 && error.summary.issues.every(issue => stalledSceneIds.has(issue.sceneId))) {
-                  const {summary: waivedSummary, waived} = partitionWaivedVisualQualityIssues(error.summary, stalledSceneIds);
-                  qualityWaivedScenes.push(...waived);
                   generationDiagnostics.push({
                     stage: 'quality-retry',
                     attempt: contentRepairAttempts,
-                    reason: `Local safe fallback for previously-stalled scene(s) still did not clear the render gate; waived rather than retried further: ${waived.map(item => item.sceneId).join(', ')}`.slice(0, 4_000),
-                    outcome: 'skipped',
+                    reason: 'Local safe fallback did not clear the render gate; generation was rejected instead of publishing degraded visual output.',
+                    outcome: 'failed',
                   });
-                  visualValidation = waivedSummary;
-                  break;
+                  throw error;
                 }
                 if (visualQualityFailureIsRendererOnly(error.summary)) {
                   if (rendererRetryAttempts >= maximumRendererRetries) throw error;
@@ -629,9 +966,14 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                 // mechanism is skipped when the generator has no recover()
                 // to fall back to, preserving the old throw-on-exhaustion
                 // behavior for such generators.
-                const newlyStalledSceneIds = motionCanvasGenerator.recover
-                  ? computeNewlyStalledMotionCanvasScenes(error.summary.issues, issueCodesByScene, stalledSceneIds)
-                  : new Set<string>();
+                // Render-quality retries must preserve topic-specific model
+                // scenes. A deterministic fallback can satisfy structural
+                // checks while degrading the video into repetitive diagrams,
+                // so it is never selected by the rendered-frame loop.
+                const newlyStalledSceneIds =
+                  ALLOW_DETERMINISTIC_QUALITY_FALLBACK && motionCanvasGenerator.recover
+                    ? computeNewlyStalledMotionCanvasScenes(error.summary.issues, issueCodesByScene, stalledSceneIds)
+                    : new Set<string>();
 
                 contentRepairAttempts += 1;
                 // Once the retry budget itself is exhausted, every scene
@@ -641,7 +983,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                 // batch still completes instead of throwing away every scene
                 // (including ones that already passed) once the last round
                 // runs out.
-                if (motionCanvasGenerator.recover && contentRepairAttempts > maximumQualityRetries) {
+                if (ALLOW_DETERMINISTIC_QUALITY_FALLBACK && motionCanvasGenerator.recover && contentRepairAttempts > maximumQualityRetries) {
                   for (const sceneId of failedSceneIds) if (!stalledSceneIds.has(sceneId)) newlyStalledSceneIds.add(sceneId);
                 }
 
@@ -651,6 +993,10 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                     generationRequest,
                     generated,
                     `Force local fallback for stalled scene(s), no longer sending to Codex: ${scenesToFallback.map(scene => scene.filePath).join(', ')}`,
+                  );
+                  assertMotionCanvasScenesArePublishable(
+                    generated.scenes,
+                    'workspace preparation',
                   );
                   for (const sceneId of newlyStalledSceneIds) stalledSceneIds.add(sceneId);
                   generationDiagnostics.push({
@@ -700,8 +1046,12 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                 );
                 const retryGuidance = [
                   generationRequest.guidance,
-                  formatVisualQualityRetryGuidance(error.summary.issues),
+                  formatVisualQualityRetryGuidance(error.summary.issues, error.evidence),
                 ].filter(Boolean).join('\n\n');
+                const failedVisualEvidence = selectMotionCanvasVisualEvidenceForRetry(
+                  error.evidence,
+                  new Set(failedSceneIds),
+                );
                 motionCanvasGenerator.discardGeneration?.(
                   currentProject.id,
                   generationId,
@@ -709,17 +1059,55 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                 reportProgress({
                   stage: 'quality-retry',
                   message: `Codex chỉ đang sửa ${failedIndexes.length} scene không qua kiểm định; các scene còn lại được giữ nguyên.`,
-                  completedScenes: 0,
-                  totalScenes: failedIndexes.length,
+                  completedScenes: Math.max(0, generated.scenes.length - failedIndexes.length),
+                  failedScenes: failedIndexes.length,
+                  totalScenes: generated.scenes.length,
                   attempt: contentRepairAttempts,
                 });
-                const repaired = await motionCanvasGenerator.generate({
-                  ...generationRequest,
-                  sectionIndexes,
-                  currentScenes: generated.scenes,
-                  ...(retryGuidance ? {guidance: retryGuidance} : {}),
-                });
+                let repaired;
+                try {
+                  repaired = await motionCanvasGenerator.generate({
+                    ...generationRequest,
+                    sectionIndexes,
+                    currentScenes: generated.scenes,
+                    ...(retryGuidance ? {guidance: retryGuidance} : {}),
+                    ...(failedVisualEvidence.length
+                      ? {visualEvidence: failedVisualEvidence}
+                      : {}),
+                    onProgress: progress => reportProgress({
+                      stage: 'quality-retry',
+                      message: progress.outcome === 'started'
+                        ? `Codex is repairing ${progress.totalScenes} failed scene(s).`
+                        : `Codex repaired ${progress.completedScenes}/${progress.totalScenes} failed scene(s).`,
+                      completedScenes: Math.min(
+                        generated.scenes.length,
+                        Math.max(0, generated.scenes.length - failedIndexes.length) + progress.completedScenes,
+                      ),
+                      failedScenes: Math.max(
+                        0,
+                        failedIndexes.length - progress.completedScenes,
+                      ),
+                      totalScenes: generated.scenes.length,
+                      completedSamples: 0,
+                      totalSamples: 0,
+                      cachedSamples: 0,
+                      attempt: contentRepairAttempts,
+                    }),
+                  });
+                } catch (repairError) {
+                  generationDiagnostics.push({
+                    stage: 'quality-retry',
+                    attempt: contentRepairAttempts,
+                    reason: `Codex quality retry failed; preserved the last topic-specific checkpoint instead of replacing it with fallback: ${repairError instanceof Error ? repairError.message : String(repairError)}`.slice(0, 4_000),
+                    outcome: 'failed',
+                  });
+                  throw repairError;
+                }
                 lastRepairedSceneCount = repaired.scenes.length;
+                assertMotionCanvasScenesArePublishable(
+                  repaired.scenes,
+                  'workspace preparation',
+                );
                 for (const scene of repaired.scenes) {
                   const index = generated.scenes.findIndex(item =>
                     item.outlineSectionId === scene.outlineSectionId,
@@ -742,6 +1130,10 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
               }
             }
             assertVisualValidationCurrent({visualValidation}, prepared.sourceScenes);
+            assertMotionCanvasScenesArePublishable(
+              prepared.sourceScenes,
+              'bundle creation',
+            );
             generationDiagnostics.push({stage: 'generate', attempt: 0, reason: 'Source attachment/container/timing policy, compiler preparation, and rendered-frame quality gate passed.', outcome: 'passed'});
             generationDiagnostics.push(...qualityRetryDiagnostics);
             acceptedWorkspace = true;
@@ -750,51 +1142,52 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
               prepared,
               generationDiagnostics,
               visualValidation,
-              qualityWaivedScenes: qualityWaivedScenes.length ? qualityWaivedScenes : undefined,
             };
           } catch (error) {
             const visualFailure =
               error instanceof MotionCanvasVisualQualityError ? error : null;
-            await motionCanvasWorkspace.recordFailure?.(
-              currentProject.id,
-              generationId,
-              {
-                stage: visualFailure ? 'render-quality' : 'compile',
-                code:
-                  visualFailure
-                    ? 'MOTION_CANVAS_VISUAL_QUALITY_FAILED'
-                    : error instanceof MotionCanvasWorkspaceError
-                      ? error.code
-                      : 'MOTION_CANVAS_GENERATION_FAILED',
-                message:
-                  error instanceof Error ? error.message : String(error),
-                details:
-                  error instanceof MotionCanvasWorkspaceError
-                    ? error.details
-                    : null,
-                issues: visualFailure?.summary.issues ?? [],
-                recoveryGuidance: visualFailure
-                  ? formatVisualQualityRetryGuidance(
-                    visualFailure.summary.issues,
-                  )
-                  : generationRecoveryGuidance(error),
-                scenes: generated.scenes,
-              },
-            ).catch(recordError => logger.error(recordError));
+            await recordFailure({
+              stage: visualFailure ? 'render-quality' : 'compile',
+              code:
+                visualFailure
+                  ? 'MOTION_CANVAS_VISUAL_QUALITY_FAILED'
+                  : error instanceof MotionCanvasWorkspaceError
+                    ? error.code
+                    : 'MOTION_CANVAS_GENERATION_FAILED',
+              message:
+                error instanceof Error ? error.message : String(error),
+              details:
+                error instanceof MotionCanvasWorkspaceError
+                  ? error.details
+                  : null,
+              issues: visualFailure?.summary.issues ?? [],
+              recoveryGuidance: visualFailure
+                ? formatVisualQualityRetryGuidance(
+                  visualFailure.summary.issues,
+                  visualFailure.evidence,
+                )
+                : generationRecoveryGuidance(error),
+              rootCause: motionCanvasRootCauseFromError(error),
+              visualEvidence: visualFailure?.evidence,
+              attempts: mergeMotionCanvasAttemptEvidence(
+                generated.attemptEvidence,
+                motionCanvasAttemptEvidenceFromError(error),
+              ),
+              scenes: generated.scenes,
+            });
             throw error;
           } finally {
             if (!acceptedWorkspace) {
               await motionCanvasWorkspace.discard(currentProject.id, generationId).catch(error => logger.error(error));
             }
           }
-        },
-      ).catch(async error => {
-        await motionCanvasGenerationProgressStore
-          .fail(currentProject.id, generationId, error)
-          .catch(progressError => logger.error(progressError));
-        throw error;
-      });
+            },
+          );
       const preparedWorkspace = generation.result.prepared;
+      assertMotionCanvasScenesArePublishable(
+        preparedWorkspace.sourceScenes,
+        'bundle creation',
+      );
       const motionCanvasBundle: MotionCanvasBundle = {
         status: 'draft',
         technicalReadyAt: new Date().toISOString(),
@@ -869,19 +1262,16 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
         );
       } catch (error) {
         await motionCanvasWorkspace.discard(currentProject.id, generationId).catch(cleanupError => logger.error(cleanupError));
-        await motionCanvasGenerationProgressStore
-          .fail(currentProject.id, generationId, error)
-          .catch(progressError => logger.error(progressError));
         throw error;
       }
 
       if (!updatedProject) {
         await motionCanvasWorkspace.discard(currentProject.id, generationId).catch(error => logger.error(error));
-        sendApiError(response, 404, {
-          code: 'PROJECT_NOT_FOUND',
-          message: 'Không tìm thấy project.',
-        });
-        return true;
+        throw new RequestBodyError(
+          404,
+          'PROJECT_NOT_FOUND',
+          'Không tìm thấy project.',
+        );
       }
 
       await motionCanvasHistoryStore
@@ -898,15 +1288,52 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
         })
         .catch(error => logger.error(error));
 
-      motionCanvasGenerator.discardGeneration?.(
-        currentProject.id,
-        generationId,
-      );
+      await discardGeneration();
+      await drainProgressWrites();
       await motionCanvasGenerationProgressStore.complete(
         currentProject.id,
         generationId,
       );
-      sendProject(response, 200, updatedProject);
+        } catch (error) {
+          await recordFailure({
+            stage: failureStage,
+            code:
+              error instanceof MotionCanvasVisualQualityError
+                ? 'MOTION_CANVAS_VISUAL_QUALITY_FAILED'
+                : error instanceof MotionCanvasWorkspaceError
+                  ? error.code
+                  : 'MOTION_CANVAS_GENERATION_FAILED',
+            message: error instanceof Error ? error.message : String(error),
+            details:
+              error instanceof MotionCanvasWorkspaceError
+                ? error.details
+                : null,
+            issues: error instanceof MotionCanvasVisualQualityError
+              ? error.summary.issues
+              : [],
+            recoveryGuidance: error instanceof MotionCanvasVisualQualityError
+              ? formatVisualQualityRetryGuidance(error.summary.issues, error.evidence)
+              : generationRecoveryGuidance(error),
+            rootCause: motionCanvasRootCauseFromError(error),
+            attempts: motionCanvasAttemptEvidenceFromError(error),
+            scenes: [],
+          });
+          await drainProgressWrites();
+          await motionCanvasGenerationProgressStore
+            .fail(currentProject.id, generationId, error)
+            .catch(progressError => logger.error(progressError));
+        } finally {
+          await drainProgressWrites();
+          await discardGeneration();
+          if (backgroundJobs.get(currentProject.id) === backgroundJob) {
+            backgroundJobs.delete(currentProject.id);
+          }
+        }
+      };
+      void Promise.resolve()
+        .then(() => runBackgroundGeneration())
+        .catch(error => logger.error(error));
+      sendJson(response, 202, {progress: initialProgress});
       return true;
     }
 
@@ -1045,6 +1472,10 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
       const approvalSources = await motionCanvasWorkspace.readSceneSources(
         currentProject.id,
         motionCanvasBundle,
+      );
+      assertMotionCanvasScenesArePublishable(
+        approvalSources,
+        'approval/publish',
       );
       assertVisualValidationCurrent(motionCanvasBundle, approvalSources);
       if (

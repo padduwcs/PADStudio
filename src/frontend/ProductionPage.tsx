@@ -77,6 +77,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
   const [sceneProgress, setSceneProgress] =
     useState<MotionCanvasGenerationProgress | null>(null);
   const resumedSceneGenerationRef = useRef<string | null>(null);
+  const foregroundSceneGenerationRef = useRef<string | null>(null);
   const eleven = useElevenLabsConnection();
   const codex = useCodexConnection();
 
@@ -124,6 +125,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
 
   useEffect(() => {
     if (!activeSceneGenerationId) return;
+    if (foregroundSceneGenerationRef.current === activeSceneGenerationId) return;
     let active = true;
     let polling = false;
     const poll = async () => {
@@ -421,6 +423,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
     setFailureKind(null);
     setMessage('');
     let operationStage: 'visual-plan' | 'audio' | 'scene' | 'sync' = 'visual-plan';
+    let foregroundSceneGenerationId: string | null = null;
     try {
       let current = project;
       setMessage('Đang chuẩn bị cấu trúc scene từ lời thoại đã duyệt…');
@@ -444,6 +447,8 @@ export function ProductionPage({projectId}: {projectId: string}) {
             : 'Codex đang phân tích lời thoại và sinh scene trực tiếp…',
         );
         const sceneGenerationId = newGenerationId();
+        foregroundSceneGenerationId = sceneGenerationId;
+        foregroundSceneGenerationRef.current = sceneGenerationId;
         setActiveSceneGenerationId(sceneGenerationId);
         setSceneProgress(null);
         current = await generateMotionCanvas(current.id, {
@@ -451,7 +456,9 @@ export function ProductionPage({projectId}: {projectId: string}) {
           ...selection,
           ...(regenerateFromScratch ? {regenerateFromScratch: true as const} : {}),
           ...(recoveryGuidance ? {guidance: recoveryGuidance} : {}),
-        }, current.revision);
+        }, current.revision, {
+          onProgress: progress => setSceneProgress(progress),
+        });
         setActiveSceneGenerationId(null);
         setProject(current);
         setLatestSceneFailure(null);
@@ -539,6 +546,12 @@ export function ProductionPage({projectId}: {projectId: string}) {
         message: errorMessage,
       });
     } finally {
+      if (
+        foregroundSceneGenerationId &&
+        foregroundSceneGenerationRef.current === foregroundSceneGenerationId
+      ) {
+        foregroundSceneGenerationRef.current = null;
+      }
       setBusyAction(null);
     }
   }

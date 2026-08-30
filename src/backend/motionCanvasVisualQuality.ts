@@ -64,9 +64,20 @@ export const VisualQualitySummarySchema = z.object({
 }).strict();
 export type VisualQualitySummary = z.infer<typeof VisualQualitySummarySchema>;
 
-export interface QualityNodeSnapshot { key: string; parentKey?: string | null; blockAncestor?: string | null; ancestorKeys?: string[]; managed?: boolean; bounds: {x: number; y: number; width: number; height: number}; visibleBounds?: {x: number; y: number; width: number; height: number}; opacity?: number; effectiveOpacity?: number; kind?: 'block' | 'text' | 'other'; fontSize?: number; fill?: string | null; localBackground?: string | null; text?: string | null; }
-export interface QualityRenderedFrame { width: number; height: number; rgba: Uint8Array; nodes: QualityNodeSnapshot[]; }
+export interface QualityNodeSnapshot { key: string; parentKey?: string | null; blockAncestor?: string | null; ancestorKeys?: string[]; managed?: boolean; isContainer?: boolean; bounds: {x: number; y: number; width: number; height: number}; visibleBounds?: {x: number; y: number; width: number; height: number}; opacity?: number; effectiveOpacity?: number; kind?: 'block' | 'text' | 'other'; fontSize?: number; fill?: string | null; localBackground?: string | null; text?: string | null; }
+export interface QualityRenderedFrame { width: number; height: number; rgba: Uint8Array; nodes: QualityNodeSnapshot[]; png: Buffer; }
 export interface QualitySample {sampleId: string; sceneId: string; beatId: string; phase: 'stable-start' | 'middle' | 'pre-exit'; timeSeconds: number; frame: number;}
+export const MAX_MOTION_CANVAS_VISUAL_EVIDENCE_FRAMES = 16;
+export interface MotionCanvasVisualEvidence {
+  sceneId: string;
+  beatId: string;
+  phase: QualitySample['phase'];
+  frame: number;
+  timeSeconds: number;
+  png: Buffer;
+  issues: VisualQualityIssue[];
+  nodes: QualityNodeSnapshot[];
+}
 /** What one beat promised the frame would contain and look like. */
 export interface BeatQualityContract {
   stay: string[];
@@ -76,11 +87,12 @@ export interface BeatQualityContract {
 }
 export type QualityVisualBible = NonNullable<VoiceVisualPlanContent['visualBible']>;
 export interface MotionCanvasFrameRenderer { render(options: {scenes: MotionCanvasSourceScene[]; samples: QualitySample[]; frame: {width: number; height: number; fps: number}; workspaceDirectory?: string; projectFile?: string; managedKeysByBeat?: Map<string, string[]>; onProgress?: (progress: {completedSamples: number; totalSamples: number; cachedSamples: number}) => void}): Promise<Map<string, QualityRenderedFrame>>; }
-export interface MotionCanvasVisualQualityGate { readonly supportsSmokeMode?: true; validate(options: {scenes: MotionCanvasSourceScene[]; lifecycle: Map<string, BeatQualityContract>; frame: {width: number; height: number; fps: number}; backgroundColor?: string | null; visualBible?: QualityVisualBible | null; sceneHandoff?: Map<string, {incoming: string | null; outgoing: string | null}>; workspaceDirectory?: string; projectFile?: string; mode?: 'smoke' | 'full'; onProgress?: (progress: {completedSamples: number; totalSamples: number; cachedSamples: number}) => void;}): Promise<VisualQualitySummary>; }
+export interface MotionCanvasVisualQualityGate { readonly supportsSmokeMode?: true; validate(options: {scenes: MotionCanvasSourceScene[]; lifecycle: Map<string, BeatQualityContract>; frame: {width: number; height: number; fps: number}; backgroundColor?: string | null; visualBible?: QualityVisualBible | null; sceneHandoff?: Map<string, {incoming: string | null; outgoing: string | null}>; workspaceDirectory?: string; projectFile?: string; mode?: 'smoke' | 'full'; onProgress?: (progress: {completedSamples: number; totalSamples: number; cachedSamples: number}) => void; onFailure?: (evidence: MotionCanvasVisualEvidence[]) => void;}): Promise<VisualQualitySummary>; }
 
 export class MotionCanvasVisualQualityError extends Error {
   readonly summary: VisualQualitySummary;
-  constructor(summary: VisualQualitySummary, message = 'Rendered Motion Canvas visual quality gate failed.') { super(message); this.summary = summary; }
+  readonly evidence: MotionCanvasVisualEvidence[];
+  constructor(summary: VisualQualitySummary, message = 'Rendered Motion Canvas visual quality gate failed.', evidence: MotionCanvasVisualEvidence[] = []) { super(message); this.summary = summary; this.evidence = evidence; }
 }
 
 /** Thrown when a bundle is approved, applied or restored without rendered-frame
@@ -289,12 +301,62 @@ export function assertVisualValidationCurrent(bundle: {visualValidation?: Stored
   if (!visualValidationIsCurrent(summary, scenes)) throw new MotionCanvasVisualValidationGateError('stale-source', 'Bằng chứng kiểm tra khung hình không khớp với source scene hiện tại.');
 }
 
+/** Formats compact rendered-node context for a quality retry prompt. */
+function formatGuidanceBounds(bounds: QualityNodeSnapshot['bounds'] | null | undefined) {
+  return bounds
+    ? `(${bounds.x.toFixed(1)},${bounds.y.toFixed(1)},${bounds.width.toFixed(1)}x${bounds.height.toFixed(1)})`
+    : null;
+}
+
+function formatGuidanceNode(node: QualityNodeSnapshot) {
+  const opacity = node.effectiveOpacity ?? node.opacity;
+  const opacityText = typeof opacity === 'number' ? opacity.toFixed(2) : 'unknown';
+  const containerText = node.isContainer === undefined ? 'unknown' : String(node.isContainer);
+  return `${node.key}[kind=${node.kind ?? 'unknown'};container=${containerText};opacity=${opacityText};fill=${node.fill ?? 'null'};bounds=${formatGuidanceBounds(node.bounds) ?? 'unknown'}]`;
+}
+
+function evidenceForVisualQualityIssue(issue: VisualQualityIssue, evidence: readonly MotionCanvasVisualEvidence[]) {
+  return evidence.find(item =>
+    item.sceneId === issue.sceneId &&
+    item.beatId === issue.beatId &&
+    Math.abs(item.timeSeconds - issue.timeSeconds) < 0.001,
+  );
+}
+
+function guidanceNodeContext(issue: VisualQualityIssue, evidence: MotionCanvasVisualEvidence | undefined) {
+  if (!evidence) return '';
+  const issueKeys = new Set((issue.semanticKey ?? '').split('>').filter(Boolean));
+  const related = evidence.nodes.filter(node => issueKeys.has(node.key));
+  const selected = related.length > 0
+    ? related
+    : evidence.nodes.filter(node => node.isContainer !== true).slice(0, 12);
+  if (selected.length === 0) return '';
+  const suffix = selected.length < evidence.nodes.length ? ` (+${evidence.nodes.length - selected.length} more)` : '';
+  return `\n  nodeContext=${selected.map(formatGuidanceNode).join(' | ')}${suffix}`;
+}
+
 /** Turns a failed gate's issues into guidance text an automatic regeneration
  * retry can act on, instead of re-rolling the section blind. Callers should
  * append this to any pre-existing human-supplied guidance, not replace it. */
-export function formatVisualQualityRetryGuidance(issues: VisualQualityIssue[]): string {
+export function formatVisualQualityRetryGuidance(
+  issues: VisualQualityIssue[],
+  evidence: readonly MotionCanvasVisualEvidence[] = [],
+): string {
   if (issues.length === 0) return '';
-  const lines = issues.map(issue => `- ${issue.sceneId}/${issue.beatId ?? 'scene'}${issue.semanticKey ? ` (${issue.semanticKey})` : ''}: ${issue.reason}`);
+  const lines = issues.map(issue => {
+    const frameEvidence = evidenceForVisualQualityIssue(issue, evidence);
+    const context = [
+      `scene=${issue.sceneId}`,
+      `beat=${issue.beatId ?? 'scene'}`,
+      `issue=${issue.code}`,
+      frameEvidence ? `phase=${frameEvidence.phase}` : '',
+      frameEvidence ? `frame=${frameEvidence.frame}` : '',
+      frameEvidence ? `timeSeconds=${frameEvidence.timeSeconds}` : '',
+      issue.semanticKey ? `semanticKey=${issue.semanticKey}` : '',
+      issue.bounds ? `targetBounds=${formatGuidanceBounds(issue.bounds)}` : '',
+    ].filter(Boolean).join(' ');
+    return `- ${context}: ${issue.reason}${guidanceNodeContext(issue, frameEvidence)}`;
+  });
   const visibilityGuidance = issues.some(issue =>
     ['empty-frame', 'missing-active-block', 'frame-too-sparse'].includes(
       issue.code,
@@ -338,6 +400,11 @@ function matchesPalette(fill: string, palette: QualityVisualBible['palette']) {
   });
 }
 
+function fillAlpha(fill: string | null | undefined) {
+  const match = /^#[\da-f]{6}([\da-f]{2})$/iu.exec(String(fill ?? '').trim());
+  return match ? Number.parseInt(match[1]!, 16) / 255 : 1;
+}
+
 /** Where a declared composition archetype expects its dominant mass to sit. */
 function focusZoneViolated(layout: BeatCompositionContract['layout'], point: {x: number; y: number}, width: number, height: number) {
   const dx = Math.abs(point.x - width / 2) / width;
@@ -362,7 +429,63 @@ export function visualQualitySamples(scenes: MotionCanvasSourceScene[], fps: num
   return samples;
 }
 
-export async function validateRenderedMotionCanvas(options: {scenes: MotionCanvasSourceScene[]; lifecycle: Map<string, BeatQualityContract>; frame: {width: number; height: number; fps: number}; backgroundColor?: string | null; visualBible?: QualityVisualBible | null; sceneHandoff?: Map<string, {incoming: string | null; outgoing: string | null}>; renderer: MotionCanvasFrameRenderer; workspaceDirectory?: string; projectFile?: string; mode?: 'smoke' | 'full'; onProgress?: (progress: {completedSamples: number; totalSamples: number; cachedSamples: number}) => void; now?: string;}): Promise<VisualQualitySummary> {
+function relatedVisualEvidenceNodes(
+  render: QualityRenderedFrame,
+  issues: VisualQualityIssue[],
+) {
+  const keys = new Set<string>();
+  const issueBounds: Bounds[] = [];
+  for (const issue of issues) {
+    for (const key of issue.semanticKey?.split(/[>,]/u) ?? []) {
+      const normalized = key.trim();
+      if (normalized) keys.add(normalized);
+    }
+    if (issue.bounds) issueBounds.push(issue.bounds);
+  }
+  const related = render.nodes.filter(node =>
+    keys.has(node.key) || issueBounds.some(bounds => intersection(node.bounds, bounds) > 0),
+  );
+  return (related.length > 0 ? related : render.nodes.filter(isVisible)).slice(0, 32);
+}
+
+function visualEvidenceForIssues(
+  samples: QualitySample[],
+  rendered: Map<string, QualityRenderedFrame>,
+  issues: VisualQualityIssue[],
+) {
+  const issuesBySample = new Map<string, VisualQualityIssue[]>();
+  for (const issue of issues) {
+    const sample = samples.find(candidate =>
+      candidate.sceneId === issue.sceneId &&
+      candidate.beatId === issue.beatId &&
+      candidate.timeSeconds === issue.timeSeconds,
+    );
+    if (!sample) continue;
+    const sampleIssues = issuesBySample.get(sample.sampleId) ?? [];
+    sampleIssues.push(issue);
+    issuesBySample.set(sample.sampleId, sampleIssues);
+  }
+  const evidence: MotionCanvasVisualEvidence[] = [];
+  for (const sample of samples) {
+    const sampleIssues = issuesBySample.get(sample.sampleId);
+    const render = rendered.get(sample.sampleId);
+    if (!sampleIssues?.length || !render?.png) continue;
+    evidence.push({
+      sceneId: sample.sceneId,
+      beatId: sample.beatId,
+      phase: sample.phase,
+      frame: sample.frame,
+      timeSeconds: sample.timeSeconds,
+      png: render.png,
+      issues: sampleIssues,
+      nodes: relatedVisualEvidenceNodes(render, sampleIssues),
+    });
+    if (evidence.length >= MAX_MOTION_CANVAS_VISUAL_EVIDENCE_FRAMES) break;
+  }
+  return evidence;
+}
+
+export async function validateRenderedMotionCanvas(options: {scenes: MotionCanvasSourceScene[]; lifecycle: Map<string, BeatQualityContract>; frame: {width: number; height: number; fps: number}; backgroundColor?: string | null; visualBible?: QualityVisualBible | null; sceneHandoff?: Map<string, {incoming: string | null; outgoing: string | null}>; renderer: MotionCanvasFrameRenderer; workspaceDirectory?: string; projectFile?: string; mode?: 'smoke' | 'full'; onProgress?: (progress: {completedSamples: number; totalSamples: number; cachedSamples: number}) => void; onFailure?: (evidence: MotionCanvasVisualEvidence[]) => void; now?: string;}): Promise<VisualQualitySummary> {
   const samples = visualQualitySamples(options.scenes, options.frame.fps)
     .filter(sample => options.mode !== 'smoke' || sample.phase === 'middle');
   const issues: VisualQualityIssue[] = [];
@@ -415,10 +538,10 @@ export async function validateRenderedMotionCanvas(options: {scenes: MotionCanva
     const contentNodes = render.nodes.filter(node => isVisible(node) && !structuralKeys.has(node.key));
     const contentKeys = new Set(contentNodes.map(node => node.key));
     const outermost = contentNodes.filter(node => !(node.ancestorKeys ?? []).some(key => contentKeys.has(key)));
-    // Every scene is now hand-authored TSX: each visible content node was
-    // deliberately written by Codex, so the raw count is the right density
-    // signal (no compiler-generated sub-primitives to look past).
-    const visibleSemanticNodes = contentNodes.length;
+    // A keyed Layout is semantic structure, not a painted visual component.
+    // Count only nodes that can contribute visible pixels; keep the threshold
+    // unchanged for actual painted primitives.
+    const visibleSemanticNodes = contentNodes.filter(node => node.isContainer !== true).length;
     const occupiedArea = outermost.reduce((total, node) => total + area(clipTo(node.visibleBounds ?? node.bounds, render.width, render.height)), 0);
     const occupancy = occupiedArea / Math.max(1, render.width * render.height);
     // What fraction of the occupied screen real estate is drawn glyphs versus
@@ -441,27 +564,28 @@ export async function validateRenderedMotionCanvas(options: {scenes: MotionCanva
     if (bible) {
       if (!(bible.typographyScale.title > bible.typographyScale.label && bible.typographyScale.label > bible.typographyScale.body)) push({code:'text-hierarchy-violation',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:null,bounds:null,reason:'visualBible typographyScale does not order title > label > body.'});
       const sized = textNodes.filter(node => typeof node.fontSize === 'number' && node.fontSize > 0);
-      const largest = Math.max(0, ...sized.map(node => node.fontSize!));
-      if (largest > 0) {
-        const largestBibleStep = bible.typographyScale.title;
-        const allowed = [
-          1,
-          bible.typographyScale.label / largestBibleStep,
-          bible.typographyScale.body / largestBibleStep,
-        ];
-        let titleSized = 0;
-        for (const node of sized) {
-          const ratio = node.fontSize! / largest;
-          if (Math.abs(ratio - 1) <= visualQualityThresholds.typographyRatioTolerance) titleSized += 1;
-          if (allowed.every(value => Math.abs(ratio - value) > visualQualityThresholds.typographyRatioTolerance)) push({code:'typography-drift',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:node.key,bounds:node.bounds,reason:`Font size ${node.fontSize!.toFixed(1)} does not match any visualBible typography step.`});
-        }
-        if (titleSized > 1) push({code:'text-hierarchy-violation',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:null,bounds:null,reason:`${titleSized} text nodes compete at the largest typography step; only one may dominate a frame.`});
+      const typographySteps = [
+        bible.typographyScale.title,
+        bible.typographyScale.label,
+        bible.typographyScale.body,
+      ];
+      let titleSized = 0;
+      for (const node of sized) {
+        const matchesStep = typographySteps.some(step =>
+          Math.abs(node.fontSize! - step) / step <= visualQualityThresholds.typographyRatioTolerance,
+        );
+        if (
+          Math.abs(node.fontSize! - bible.typographyScale.title) /
+            bible.typographyScale.title <= visualQualityThresholds.typographyRatioTolerance
+        ) titleSized += 1;
+        if (!matchesStep) push({code:'typography-drift',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:node.key,bounds:node.bounds,reason:`Font size ${node.fontSize!.toFixed(1)} does not match any visualBible typography step.`});
       }
+      if (titleSized > 1) push({code:'text-hierarchy-violation',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:null,bounds:null,reason:`${titleSized} text nodes compete at the title typography step; only one may dominate a frame.`});
       for (const node of contentNodes) { if ((node.kind !== 'block' && node.kind !== 'text') || !node.fill) continue; if (!matchesPalette(node.fill, bible.palette)) push({code:'palette-drift',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:node.key,bounds:node.bounds,reason:`Fill ${node.fill} is not a visualBible palette colour.`}); }
     }
     // Occlusion: anything drawn later and unrelated that buries important content.
     const important = [...(primaryNode ? [primaryNode] : []), ...textNodes];
-    for (const target of important) { const targetIndex = render.nodes.indexOf(target); for (let index = targetIndex + 1; index < render.nodes.length; index += 1) { const front = render.nodes[index]!; if (front.key === target.key || !isVisible(front) || structuralKeys.has(front.key) || nested(front, target)) continue; if ((front.effectiveOpacity ?? front.opacity ?? 1) < 0.5) continue; if (intersection(front.bounds, target.bounds) / Math.max(1, area(target.bounds)) > visualQualityThresholds.occlusionCoverageRatio) { push({code:'content-occluded',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:`${front.key}>${target.key}`,bounds:target.bounds,reason:`Node ${front.key} is drawn over and covers most of ${target.key}.`}); break; } } }
+    for (const target of important) { const targetIndex = render.nodes.indexOf(target); for (let index = targetIndex + 1; index < render.nodes.length; index += 1) { const front = render.nodes[index]!; if (front.key === target.key || !isVisible(front) || structuralKeys.has(front.key) || front.isContainer === true || nested(front, target)) continue; if ((front.effectiveOpacity ?? front.opacity ?? 1) < 0.5 || fillAlpha(front.fill) < 0.5) continue; if (intersection(front.bounds, target.bounds) / Math.max(1, area(target.bounds)) > visualQualityThresholds.occlusionCoverageRatio) { push({code:'content-occluded',sceneId:scene.id,beatId:sample.beatId,timeSeconds:sample.timeSeconds,semanticKey:`${front.key}>${target.key}`,bounds:target.bounds,reason:`Node ${front.key} is drawn over and covers most of ${target.key}.`}); break; } } }
     if(sample.phase==='middle') {const values=middleByScene.get(scene.id)??[];values.push(render);middleByScene.set(scene.id,values);} sampleRows.push({beatId:sample.beatId,phase:sample.phase,timeSeconds:sample.timeSeconds,frame:sample.frame,metrics:{verdict:metrics.verdict,contentRatio:metrics.contentRatio,dominantColorRatio:metrics.dominantColorRatio},activeBlocks:activeBlocks.map(n=>n.key),visibleSemanticKeys:render.nodes.filter(isVisible).map(node=>node.key).slice(0,128),imageDeltaFromPreviousBeat:null}); }
     const middles=middleByScene.get(scene.id)??[]; for(let index=1;index<middles.length;index++){const delta=pixelDelta(middles[index-1]!.rgba,middles[index]!.rgba); const row=sampleRows.filter(x=>x.phase==='middle')[index]!;row.imageDeltaFromPreviousBeat=delta;if(delta<visualQualityThresholds.minimumBeatImageDelta)push({code:'static-beats',sceneId:scene.id,beatId:row.beatId,timeSeconds:row.timeSeconds,semanticKey:null,bounds:null,reason:`Middle-frame delta ${delta.toFixed(5)} is below threshold.`});} sceneEntries.push({sceneId:scene.id,samples:sampleRows}); }
   // Cross-beat and cross-scene anchor continuity. A shared anchor key that
@@ -481,7 +605,7 @@ export async function validateRenderedMotionCanvas(options: {scenes: MotionCanva
     if (previous && next) reportJump(nextScene.id, previous, next, 'the scene handoff boundary');
   }
   if (sceneEntries.some(scene => scene.samples.length !== samples.filter(sample=>sample.sceneId===scene.sceneId).length)) push({code:'renderer-error',sceneId:options.scenes[0]!.id,beatId:null,timeSeconds:0,semanticKey:null,bounds:null,reason:'One or more required beat samples are missing.'});
-  const summary=VisualQualitySummarySchema.parse({version:VISUAL_QUALITY_GATE_VERSION,status:issues.length?'failed':'passed',validatedAt:options.now??new Date().toISOString(),sourceHash:motionCanvasSceneSourceHash(options.scenes),scenes:sceneEntries,issues,warnings:warnings.length?warnings:undefined}); if(summary.status==='failed') throw new MotionCanvasVisualQualityError(summary); return summary;
+  const summary=VisualQualitySummarySchema.parse({version:VISUAL_QUALITY_GATE_VERSION,status:issues.length?'failed':'passed',validatedAt:options.now??new Date().toISOString(),sourceHash:motionCanvasSceneSourceHash(options.scenes),scenes:sceneEntries,issues,warnings:warnings.length?warnings:undefined}); const evidence = summary.status === 'failed' ? visualEvidenceForIssues(samples, rendered, summary.issues) : []; options.onFailure?.(evidence); if(summary.status==='failed') throw new MotionCanvasVisualQualityError(summary, 'Rendered Motion Canvas visual quality gate failed.', evidence); return summary;
 }
 
 export function createMotionCanvasVisualQualityGate(renderer: MotionCanvasFrameRenderer): MotionCanvasVisualQualityGate {

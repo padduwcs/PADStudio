@@ -234,12 +234,14 @@ export function generateMotionCanvasIconAtlasSource(iconIds: readonly string[]):
     .join('\n');
 
   return `import {Path} from '@motion-canvas/2d';
+import type {ReferenceReceiver} from '@motion-canvas/core';
 
 const rawIcons: Record<string, {d: string; viewBoxWidth: number; viewBoxHeight: number}> = {
 ${rawIconEntries}
 };
 
 export interface IconProps {
+  ref?: ReferenceReceiver<Path>;
   id: string;
   key?: string;
   x?: number;
@@ -253,6 +255,13 @@ export interface IconProps {
   opacity?: number;
 }
 
+// Icon is a lightweight function component, but Motion Canvas scenes often
+// retain its rendered Path through createRef<Icon>(). TypeScript keeps value
+// and type namespaces separate, so exporting this alias lets generated scene
+// code use the natural component name while the ref is correctly typed as the
+// Path instance rendered by this component.
+export type Icon = Path;
+
 export function Icon(props: IconProps) {
   const icon = rawIcons[props.id];
   if (!icon) {
@@ -261,6 +270,7 @@ export function Icon(props: IconProps) {
   const lineWidth = (props.strokeWidth ?? 0) * icon.viewBoxWidth / Math.max(props.width, props.height);
   return (
     <Path
+      ref={props.ref}
       key={props.key}
       data={icon.d}
       x={props.x}

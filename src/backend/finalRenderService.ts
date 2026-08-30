@@ -54,6 +54,7 @@ import {
 import {
   createVisualViabilitySampler,
   parseHexColor,
+  visualViabilityIsContinuous,
 } from './visualViability.ts';
 
 const execFileAsync = promisify(execFile);
@@ -1892,6 +1893,12 @@ export function createFinalRenderService(
       await ffmpegExit;
       ffmpeg = null;
       const probe = await probeVideo(ffprobePath, outputVideo, frame);
+      if (!visualViabilityIsContinuous(visualValidation)) {
+        throw new FinalRenderError(
+          'FINAL_RENDER_VISUAL_GAP',
+          'Video có khung hình trống hoặc chưa có đủ bằng chứng hiển thị. Hãy quay lại Chỉnh scene để sửa chuyển cảnh rồi render lại.',
+        );
+      }
       const outputTimingToleranceSeconds =
         finalRenderTimingToleranceSeconds(frame.fps, targetDurationSeconds);
       if (

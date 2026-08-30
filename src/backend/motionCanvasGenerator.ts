@@ -1,4 +1,4 @@
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import ts from 'typescript';
@@ -15,11 +15,16 @@ import type {
 import {defaultVideoFrame, type VideoFrame} from '../shared/videoFormat.ts';
 import {videoBackgroundTone} from '../shared/topic.ts';
 import {pipelineSafetyLimits} from '../shared/pipelineLimits.ts';
-import type {CodexAppServerClient} from './codexConnection.ts';
+import type {
+  CodexAppServerClient,
+  CodexAppServerProcessDiagnostics,
+  CodexUserInput,
+} from './codexConnection.ts';
 import {
   CodexStructuredGenerationError,
   codexGenerationTimeoutMs,
   runCodexStructuredGeneration,
+  type CodexStructuredGenerationFailureReason,
 } from './codexStructuredGeneration.ts';
 import {
   findUnsupportedMotionCanvasColorLiterals,
@@ -27,11 +32,22 @@ import {
 } from './motionCanvasSourceCompatibility.ts';
 import {wcagContrastRatio} from './visualViability.ts';
 import {
+  compileMotionCanvasSceneSpec,
+  templateRequiredByVisualPlan,
+  type MotionCanvasSceneSpec,
+} from './motionCanvasSceneSpec.ts';
+import {
+  compileMotionCanvasSceneSpecV3,
+  sceneSpecV3ActionKindValues,
+  type MotionCanvasSceneSpecV3,
+} from './motionCanvasSceneSpecV3.ts';
+import {
   MOTION_CANVAS_ICON_ATLAS_IMPORT_SPECIFIER,
   extractReferencedMotionCanvasIconIds,
   isKnownMotionCanvasIconId,
   suggestMotionCanvasIconIds,
 } from './motionCanvasIconLibrary.ts';
+import type {MotionCanvasVisualEvidence} from './motionCanvasVisualQuality.ts';
 
 export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v20-direct-source';
 export const MOTION_CANVAS_VERSION = '3.17.2';
@@ -49,6 +65,12 @@ export const MOTION_CANVAS_UNVERIFIED_SEMANTIC_FALLBACK_MARKER =
  * traceable direct-TSX from pre-contract handwritten source. */
 export const MOTION_CANVAS_SEMANTIC_BINDING_MARKER =
   'pad-semantic:bindings-v1';
+/** Maximum source excerpt retained in a project failure artifact per attempt. */
+export const MOTION_CANVAS_FAILURE_ATTEMPT_SOURCE_MAX_CHARS = 16_000;
+/** Maximum rendered diagnostics retained in a project failure artifact. */
+export const MOTION_CANVAS_FAILURE_ATTEMPT_DIAGNOSTICS_MAX_CHARS = 4_000;
+/** Maximum number of failed direct-TSX attempts retained in one artifact. */
+export const MOTION_CANVAS_FAILURE_ATTEMPT_MAX_COUNT = 96;
 // Bounded well under a typical Codex account's concurrent-request rate limit;
 // the rendered-frame quality gate has its own independent, smaller
 // concurrency (QUALITY_RENDER_CONCURRENCY) so raising this only affects how
@@ -65,7 +87,7 @@ const sceneGenerationRunInstructions = {
   baseInstructions:
     'Write one complete Motion Canvas TSX scene for PAD Studio. Do not use tools or read files. Return only JSON matching the schema.',
   developerInstructions:
-    'Return name and source: source is the full, literal TSX file contents (a complete file with imports and a default-exported makeScene2D generator). Do not return a declarative spec, Markdown, JSON-in-JSON, or partial code.',
+    'Return name and source: source is the full, literal TSX file contents (a complete file with imports and a default-exported makeScene2D generator). Do not return a Scene Spec, source:null, Markdown, JSON-in-JSON, or partial code. Direct TSX only: put one complete JSX tree inline as the sole argument of exactly one direct view.add(...) expression statement; do not use named JSX components or wrappers, helper/callback/factory results, .map(), or loops to create JSX.',
 } as const;
 
 const generatedMotionCanvasSceneSchema = z
@@ -127,10 +149,13 @@ export interface MotionCanvasGenerationRequest {
   regenerateFromScratch?: boolean;
   guidance?: string;
   currentScenes?: MotionCanvasSourceScene[];
+  /** Rendered evidence belonging only to the scene(s) selected for repair. */
+  visualEvidence?: MotionCanvasVisualEvidence[];
   /** Reports bounded per-scene progress without coupling the generator to an
    * HTTP request. Callers must keep this callback non-blocking. */
   onProgress?: (progress: {
     completedScenes: number;
+    failedScenes: number;
     totalScenes: number;
     sectionIndex: number | null;
     outcome: 'started' | 'completed' | 'failed';
@@ -141,8 +166,50 @@ export interface MotionCanvasGenerationResult {
   scenes: MotionCanvasSourceScene[];
   model: string;
   usage: CodexTokenUsage | null;
+  /** Bounded evidence for direct-TSX outputs rejected before publication. */
+  attemptEvidence?: MotionCanvasGenerationAttemptEvidence[];
   /** Bounded audit trail for the richness-triggered quality retry, if any ran. */
   qualityRetryDiagnostics?: NonNullable<MotionCanvasBundle['generationDiagnostics']>;
+}
+
+export type MotionCanvasGenerationAttemptPhase =
+  | 'initial'
+  | 'repair'
+  | 'regeneration';
+
+export type MotionCanvasGenerationFailureReason =
+  | CodexStructuredGenerationFailureReason
+  | 'response_invalid'
+  | 'source_validation_failed'
+  | 'unknown';
+
+export interface MotionCanvasFailureRootCause {
+  reason: MotionCanvasGenerationFailureReason;
+  code: string;
+  operation: string | null;
+  message: string;
+  providerMessage: string | null;
+  providerCode: string | null;
+  appServer?: CodexAppServerProcessDiagnostics | null;
+}
+
+export interface MotionCanvasGenerationAttemptEvidence {
+  phase: MotionCanvasGenerationAttemptPhase;
+  model: string;
+  reasoningEffort: string | null;
+  error: {
+    code: string;
+    reason: MotionCanvasGenerationFailureReason;
+    operation: string | null;
+    message: string;
+    providerMessage: string | null;
+    providerCode: string | null;
+    diagnostics: string;
+    appServer?: CodexAppServerProcessDiagnostics | null;
+  };
+  sourceHash: string;
+  sourceLength: number;
+  sourceExcerpt: string;
 }
 
 export interface MotionCanvasGenerator {
@@ -164,11 +231,95 @@ export interface MotionCanvasGenerator {
 
 export class MotionCanvasGenerationError extends Error {
   readonly code: string;
+  readonly attemptEvidence: MotionCanvasGenerationAttemptEvidence[];
+  readonly rootCause: MotionCanvasFailureRootCause | null;
 
-  constructor(code: string, message: string, options?: ErrorOptions) {
+  constructor(
+    code: string,
+    message: string,
+    options?: ErrorOptions & {
+      attemptEvidence?: MotionCanvasGenerationAttemptEvidence[];
+      rootCause?: MotionCanvasFailureRootCause | null;
+    },
+  ) {
     super(message, options);
     this.code = code;
+    this.attemptEvidence = options?.attemptEvidence?.slice(
+      0,
+      MOTION_CANVAS_FAILURE_ATTEMPT_MAX_COUNT,
+    ) ?? [];
+    this.rootCause = options?.rootCause ?? null;
   }
+}
+
+/** Redacts common credential-shaped values before any failure evidence is
+ * written. Model output is untrusted even though normal scenes should never
+ * contain secrets. */
+export function redactMotionCanvasFailureText(value: string) {
+  return value
+    .replace(
+      /data:[a-z0-9.+-]+\/[a-z0-9.+-]+;base64,[a-z0-9+/=_-]+/giu,
+      '[REDACTED_DATA_URL]',
+    )
+    .replace(
+      /(?<![a-z0-9+/=_-])[a-z0-9+/=_-]{96,}(?![a-z0-9+/=_-])/giu,
+      '[REDACTED_BASE64]',
+    )
+    .replace(
+      /\b(?:sk-(?:proj-)?|gh[pousr]_|github_pat_)[A-Za-z0-9_-]{12,}\b/gu,
+      '[REDACTED_CREDENTIAL]',
+    )
+    .replace(
+      /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/giu,
+      'Bearer [REDACTED_TOKEN]',
+    )
+    .replace(
+      /((?:(?:api|access|auth|refresh|client|private)[_-]?(?:key|token|secret)|token|secret|password|credential|authorization)\s*[:=]\s*["'`]?)(?!\[REDACTED_[A-Z_]+\])[^"'`\s,;)}\]]+/giu,
+      '$1[REDACTED_SECRET]',
+    );
+}
+
+export function boundMotionCanvasFailureSourceExcerpt(source: string) {
+  const redacted = redactMotionCanvasFailureText(source);
+  if (redacted.length <= MOTION_CANVAS_FAILURE_ATTEMPT_SOURCE_MAX_CHARS) {
+    return redacted;
+  }
+  const marker = '\n/* ... source excerpt truncated ... */\n';
+  const headLength = Math.floor(
+    (MOTION_CANVAS_FAILURE_ATTEMPT_SOURCE_MAX_CHARS - marker.length) * 0.75,
+  );
+  const tailLength =
+    MOTION_CANVAS_FAILURE_ATTEMPT_SOURCE_MAX_CHARS -
+    marker.length -
+    headLength;
+  return `${redacted.slice(0, headLength)}${marker}${redacted.slice(-tailLength)}`;
+}
+
+export function mergeMotionCanvasAttemptEvidence(
+  ...groups: ReadonlyArray<
+    ReadonlyArray<MotionCanvasGenerationAttemptEvidence> | undefined
+  >
+) {
+  const merged: MotionCanvasGenerationAttemptEvidence[] = [];
+  const seen = new Set<string>();
+  for (const group of groups) {
+    for (const evidence of group ?? []) {
+      const key = `${evidence.phase}:${evidence.sourceHash}:${evidence.model}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(evidence);
+      if (merged.length >= MOTION_CANVAS_FAILURE_ATTEMPT_MAX_COUNT) break;
+    }
+    if (merged.length >= MOTION_CANVAS_FAILURE_ATTEMPT_MAX_COUNT) break;
+  }
+  const phaseOrder: Record<MotionCanvasGenerationAttemptPhase, number> = {
+    initial: 0,
+    repair: 1,
+    regeneration: 2,
+  };
+  return merged.sort(
+    (left, right) => phaseOrder[left.phase] - phaseOrder[right.phase],
+  );
 }
 
 function toSlug(value: string) {
@@ -459,16 +610,248 @@ function generationPayload(
   };
 }
 
+function visualEvidenceForSection(
+  request: MotionCanvasGenerationRequest,
+  sectionIndex: number,
+) {
+  const sceneId = request.currentScenes?.[sectionIndex]?.id;
+  return (request.visualEvidence ?? []).filter(evidence =>
+    sceneId ? evidence.sceneId === sceneId : false,
+  );
+}
+
+function visualEvidenceRepairPrompt(
+  request: MotionCanvasGenerationRequest,
+  sectionIndex: number,
+) {
+  const evidence = visualEvidenceForSection(request, sectionIndex);
+  if (evidence.length === 0) return '';
+  const metadata = evidence.map((item, index) => ({
+    attachment: index + 1,
+    sceneId: item.sceneId,
+    beatId: item.beatId,
+    phase: item.phase,
+    frame: item.frame,
+    timeSeconds: item.timeSeconds,
+    issueCodes: [...new Set(item.issues.map(issue => issue.code))],
+    issues: item.issues,
+    relatedNodes: item.nodes,
+  }));
+  return [
+    'Rendered visual repair evidence is attached after this text in the exact order listed below.',
+    'Before editing, inspect every attached frame. In your reasoning, briefly describe the difference between the rendered frame and the intended visual, identify the node(s) causing the reported issue, then make the smallest necessary change to the current direct TSX source.',
+    'The current direct TSX source, diagnostics, and teaching context remain authoritative; the images are supplemental evidence only. Return the full {"name":"...","source":"..."} object with the complete direct TSX file and no explanation outside that JSON object.',
+    `Visual evidence metadata:\n${JSON.stringify(metadata)}`,
+  ].join('\n');
+}
+
+function codexInputForSection(
+  prompt: string,
+  request: MotionCanvasGenerationRequest,
+  sectionIndex: number,
+): CodexUserInput[] {
+  return [
+    {type: 'text', text: prompt},
+    ...visualEvidenceForSection(request, sectionIndex).map(item => ({
+      type: 'image' as const,
+      url: `data:image/png;base64,${Buffer.from(item.png).toString('base64')}`,
+      detail: 'high' as const,
+    })),
+  ];
+}
+
+function lifecycleMarkerLinesForPrompt(
+  request: MotionCanvasGenerationRequest,
+  sectionIndex: number,
+) {
+  const beats = request.voiceVisualPlan.sections[sectionIndex]?.beats ?? [];
+  return beats
+    .map((beat) => {
+      const lifecycle = beat.visualLifecycle;
+      return `// lifecycle:beat:${beat.id}:enter=${lifecycle?.enter.join(',') ?? ''}|stay=${lifecycle?.stay.join(',') ?? ''}|exit=${lifecycle?.exit.join(',') ?? ''}|primary=${beat.primaryBlock ?? ''}`;
+    })
+    .join('\n');
+}
+
+function lifecycleRefIdentifier(key: string) {
+  return key.replace(/-([a-z0-9])/gu, (_match, character: string) =>
+    character.toUpperCase(),
+  );
+}
+
+function lifecycleScaffoldForPrompt(
+  request: MotionCanvasGenerationRequest,
+  sectionIndex: number,
+) {
+  const beats = request.voiceVisualPlan.sections[sectionIndex]?.beats ?? [];
+  const beatKeys = (beat: VoiceVisualBeat) => [
+    ...(beat.visualLifecycle?.enter ?? []),
+    ...(beat.visualLifecycle?.stay ?? []),
+    ...(beat.visualLifecycle?.exit ?? []),
+  ];
+  const lifecycleKeys = [
+    ...new Set(beats.flatMap(beat => beatKeys(beat))),
+  ];
+  const refNames = new Map(
+    lifecycleKeys.map(key => [key, lifecycleRefIdentifier(key)]),
+  );
+  const blockKeys = lifecycleKeys.filter(key => key.startsWith('block-'));
+  const nonBlockKeys = lifecycleKeys.filter(key => !key.startsWith('block-'));
+  const ownerByKey = new Map<string, string>();
+  for (const key of nonBlockKeys) {
+    const beat = beats.find(candidate => beatKeys(candidate).includes(key));
+    const beatBlocks = beat
+      ? beatKeys(beat).filter(candidate => candidate.startsWith('block-'))
+      : [];
+    const owner =
+      (beat?.primaryBlock && beatBlocks.includes(beat.primaryBlock)
+        ? beat.primaryBlock
+        : beatBlocks[0]) ?? blockKeys[0];
+    if (owner) ownerByKey.set(key, owner);
+  }
+
+  const jsxForBlock = (blockKey: string) => {
+    const blockRef = refNames.get(blockKey)!;
+    const children = nonBlockKeys.filter(
+      key => ownerByKey.get(key) === blockKey,
+    );
+    if (children.length === 0) {
+      return [`        <Layout key="${blockKey}" ref={${blockRef}} />`];
+    }
+    return [
+      `        <Layout key="${blockKey}" ref={${blockRef}}>`,
+      ...children.map(
+        key => `          <Layout key="${key}" ref={${refNames.get(key)!}} />`,
+      ),
+      '        </Layout>',
+    ];
+  };
+
+  const beatStatements = beats.map((beat, index) => {
+    const number = index + 1;
+    const duration = `beatDuration${number}`;
+    const endTime = `beatEndTime${number}`;
+    const lifecycle = beat.visualLifecycle;
+    const enter = (lifecycle?.enter ?? []).map(key =>
+      `  yield* ${refNames.get(key)!}().opacity(1, ${duration} * 0.1, easeInOutCubic);`,
+    );
+    const exit = (lifecycle?.exit ?? []).map(key =>
+      `  yield* ${refNames.get(key)!}().opacity(0, ${duration} * 0.1, easeInOutCubic);`,
+    );
+    return [
+      `  // beat ${number}: keep this lifecycle sequence directly at generator top level.`,
+      `  yield* waitUntil('beat:${beat.id}:start');`,
+      `  const ${duration} = useDuration('beat:${beat.id}:end');`,
+      `  const ${endTime} = useThread().time() + ${duration};`,
+      ...enter,
+      '  // Expand visual work here without moving this beat into braces, a function, callback, helper, IIFE, or control flow.',
+      ...exit,
+      `  yield* waitFor(Math.max(0, ${endTime} - useThread().time()));`,
+    ].join('\n');
+  }).join('\n');
+
+  return [
+    'BEGIN LITERAL DIRECT-TSX LIFECYCLE SCAFFOLD',
+    '// authoritative lifecycle markers (copy these lines verbatim):',
+    lifecycleMarkerLinesForPrompt(request, sectionIndex),
+    '  const canvasWidth = view.width();',
+    '  const canvasHeight = view.height();',
+    '  const safeMarginX = canvasWidth * 0.08;',
+    '  const safeMarginY = canvasHeight * 0.07;',
+    '  const safeWidth = canvasWidth - safeMarginX * 2;',
+    '  const safeHeight = canvasHeight - safeMarginY * 2;',
+    '// declare every lifecycle ref exactly once before the one inline view.add:',
+    ...lifecycleKeys.map(
+      key => `  const ${refNames.get(key)!} = createRef<Layout>();`,
+    ),
+    '// copy this inline tree into the one view.add call; keep each non-block lifecycle node inside its owning block-*:',
+    '  view.add(',
+    `    <Rect key="scene-background" width={canvasWidth} height={canvasHeight} fill={${JSON.stringify(request.topicInput.background.color)}}>`,
+    '      <Layout key="scene-content-root">',
+    ...blockKeys.flatMap(blockKey => jsxForBlock(blockKey)),
+    '      </Layout>',
+    '    </Rect>,',
+    '  );',
+    '// top-level lifecycle statements; preserve this order and expand only the visual-work comment:',
+    beatStatements,
+    'END LITERAL DIRECT-TSX LIFECYCLE SCAFFOLD',
+  ].join('\n');
+}
+
+const DIRECT_TSX_TIMING_AUTHORITY_INSTRUCTION =
+  'Required top-level beat order and timing authority: copy each literal lifecycle scaffold beat exactly as consecutive top-level statements—yield* waitUntil(startEvent); const beatDurationN = useDuration(endEvent); const beatEndTimeN = useThread().time() + beatDurationN; enter animations; visual animations/visual work; exit animations; then yield* waitFor(Math.max(0, beatEndTimeN - useThread().time())). Keep each scaffolded N unique and exact, never use unsuffixed beatDuration or beatEndTime, and never wrap a beat in { ... } to redeclare names.';
+
+const DIRECT_TSX_LIFECYCLE_VISIBILITY_INSTRUCTION =
+  'Lifecycle visibility is part of the rendered-quality contract: keep every primary block and its information-bearing children visible at stable-start, middle, and pre-exit samples. Reserve exit animations for the final 10% of the beat only; after visual work, if needed, first wait with yield* waitFor(Math.max(0, beatEndTimeN - useThread().time() - beatDurationN * 0.1)), then run the exit animations, then keep the required final waitFor(Math.max(0, beatEndTimeN - useThread().time())). Never fade a lifecycle block out early and wait on an empty frame. For the first beat, do not make the entire meaningful visual start at opacity={0}; keep the primary block or a meaningful child visible from the initial tree.';
+
+const DIRECT_TSX_SEMANTIC_KEY_INSTRUCTION =
+  'Semantic key grammar is strict: every hyphen-separated key segment must start with a-z and keys must be lowercase kebab-case literals. Numeric-only segments are invalid, so key="array-cell-3" and key="middle-support-cell-14" are forbidden; use a stable role such as key="array-cell-value-three" or key="middle-support-cell-middle" instead. Never use an index, UUID, random value, expression, or variable, except that an exact Visual Intent id must be preserved when it is required by the binding contract.';
+
+const DIRECT_TSX_SAFE_AREA_INSTRUCTION =
+  'Safe-area geometry is quantified in the centered Motion Canvas coordinate system: keep scene-content-root at x={0} y={0} and use safeWidth/safeHeight only for its dimensions; never place that root at safeMarginX/safeMarginY. Keep every non-background static box inside the safe rectangle, preferably with positions expressed as fractions of safeWidth/safeHeight. For each box, verify abs(x) + width/2 <= safeWidth/2 and abs(y) + height/2 <= safeHeight/2; for example x=safeWidth*0.47 with width=safeWidth*0.13 is invalid, while x=safeWidth*0.40 is valid. Do not use raw coordinates beyond ±safeWidth/2 or ±safeHeight/2 for boxes that have no lifecycle ref.';
+
+const DIRECT_TSX_VISUAL_BIBLE_INSTRUCTION =
+  'VisualBible is a hard rendered-quality contract: every Txt fontSize must match exactly one of visualBible.typographyScale.title, label, or body within the stated step (if body is below 18, use the label step instead); never use a custom size. Every rendered fill must be one of the exact visualBible.palette colours (background, surface, primary, accent, or text); create muted emphasis with opacity, never invent a near-matching hex colour. Keep only one visible title-step text as the dominant title in a frame; use label/body steps for all other captions and values.';
+
+const DIRECT_TSX_OCCLUSION_INSTRUCTION =
+  'Never let a decorative, selection, range, or highlight node cover information-bearing content. Do not place an opaque or wide foreground Rect/Line over array cells, labels, values, icons, or other semantic nodes; put the outline behind the content, use a transparent fill, or place it beside the target. Before returning, inspect the draw order and verify that every mustShow visual remains visibly readable at the middle frame.';
+
+function requiredMustShowKeyInstruction(
+  request: MotionCanvasGenerationRequest,
+  sectionIndex: number,
+) {
+  const required = new Set<string>();
+  for (const beat of request.voiceVisualPlan.sections[sectionIndex]?.beats ?? []) {
+    for (const entity of beat.visualIntent?.entities ?? []) {
+      if (entity.mustShow) required.add(entity.id);
+    }
+    for (const relation of beat.visualIntent?.relations ?? []) {
+      if (relation.mustShow) required.add(relation.id);
+    }
+    for (const action of beat.visualIntent?.actions ?? []) {
+      if (action.mustShow) required.add(action.id);
+    }
+  }
+  const ids = [...required];
+  return `Exact mustShow key checklist for this scene: ${ids.length > 0 ? ids.join(', ') : '(none beyond lifecycle bindings)'}. Before returning, verify that every listed id appears verbatim as its own JSX key string literal; relations and actions require their own visible JSX node even when they are not lifecycle refs.`;
+}
+
+function directTsxPromptContract(
+  request: MotionCanvasGenerationRequest,
+  sectionIndex: number,
+) {
+  return [
+    'Direct TSX source-policy contract:',
+    'Write all visual JSX as literal JSX elements directly inside exactly one direct view.add(...) expression statement in the default makeScene2D generator. The sole view.add argument must be the complete JSX tree written inline; never pass a component, helper result, callback result, variable, or factory result.',
+    'Do not define or use a named JSX component or wrapper, helper, callback, factory, .map(), for loop, while loop, or any other loop to create JSX. Do not assign the JSX tree to a variable. Do not yield or yield* JSX, call node.add, or leave JSX unattached.',
+    'Container hierarchy contract: the inline tree must contain exactly one key="scene-background" with exactly one key="scene-content-root" nested directly inside it. Only block-* containers may be direct children of scene-content-root; every direct child key must start with block-.',
+    'If there is a title, place it inside a block-title container; put ambient or background decoration inside a block-atmosphere container.',
+    'Every other node—including title, ambient/background decoration, icon, line, text, visual detail, and semantic node—must be nested inside a block-* container; never put a visual node directly under scene-content-root. Children of each block-* use local coordinates of that block.',
+    'Authoritative lifecycle marker block for this request is included at the top of the literal scaffold below (copy every marker line verbatim into source; do not invent or alter UUIDs, key names, lifecycle lists, or primary values).',
+    'Copy the following dynamic literal scaffold into the source. Keep the ref declarations before view.add, preserve the exact key/ref attachments and top-level beat statement order, and expand only the visual-work comment:',
+    lifecycleScaffoldForPrompt(request, sectionIndex),
+    'Every lifecycle binding is an inseparable triple: for every key listed in each marker, use exactly one matching JSX key string literal and attach ref={bareIdentifier} directly on that same JSX node. The lifecycle key-to-JSX-key/ref mapping is one-to-one. Every enter and exit animation must call that exact ref; do not substitute another key or ref.',
+    'Lifecycle execution scope: each beat must be a sequence of statements directly at top level of the default makeScene2D generator body. Never wrap a beat in { ... }, a function, callback, helper, IIFE, if/else, loop, or any other control-flow wrapper.',
+    DIRECT_TSX_TIMING_AUTHORITY_INSTRUCTION,
+    DIRECT_TSX_LIFECYCLE_VISIBILITY_INSTRUCTION,
+    DIRECT_TSX_SEMANTIC_KEY_INSTRUCTION,
+    DIRECT_TSX_SAFE_AREA_INSTRUCTION,
+    DIRECT_TSX_VISUAL_BIBLE_INSTRUCTION,
+    DIRECT_TSX_OCCLUSION_INSTRUCTION,
+    requiredMustShowKeyInstruction(request, sectionIndex),
+    'For every key in marker enter, replace ref with the exact bare ref identifier attached to that key node and call ref().opacity(1, duration, easing), or a valid ref().x(...), ref().y(...), or ref().position(...) animation. For every key in marker exit, call that exact ref with ref().opacity(0, duration, easing) before the final waitFor. Do not use scale, scale.x, scale.y, an opacity signal from another node, or hiding only a parent as an exit for a lifecycle key.',
+  ].join('\n');
+}
+
 function buildPrompt(
   request: MotionCanvasGenerationRequest,
   sectionIndex: number,
 ) {
   return [
-    'Write one complete Motion Canvas TSX scene (a full file: imports plus `export default makeScene2D(function* (view) { ... })`) for the requested teaching section. Return JSON exactly as {"name":"...","source":"..."}; source is the entire literal TSX file contents. Do not return Markdown fences, a declarative spec, JSON-in-JSON, or placeholder code.',
+    'Write one complete Motion Canvas TSX scene (a full file: imports plus `export default makeScene2D(function* (view) { ... })`) for the requested teaching section. Return JSON exactly as {"name":"...","source":"..."}; source is the entire literal TSX file contents. Do not return a Scene Spec, source:null, Markdown fences, JSON-in-JSON, partial source, or placeholder code.',
+    directTsxPromptContract(request, sectionIndex),
+    visualEvidenceRepairPrompt(request, sectionIndex),
     `Derive canvasWidth/canvasHeight from view.width()/view.height() and apply safe margins MOTION_CANVAS_SAFE_MARGIN_X_RATIO (${MOTION_CANVAS_SAFE_MARGIN_X_RATIO}) and MOTION_CANVAS_SAFE_MARGIN_Y_RATIO (${MOTION_CANVAS_SAFE_MARGIN_Y_RATIO}); never hardcode 1080x1920-style canvas literals.`,
-    'Every lifecycle binding is an inseparable triple: one literal lifecycle key comment `// lifecycle:beat:<id>:enter=...|stay=...|exit=...|primary=...` per beat, one explicit JSX node carrying that key, and one createRef assigned to a bare identifier with ref={thatIdentifier} on that same node. Every enter and exit animation for that beat must call that exact ref.',
-    'Structural attachment invariant: exactly one direct view.add(<SceneTree />) statement inside the default makeScene2D generator. The attached JSX tree must contain exactly one key="scene-background" with key="scene-content-root" nested inside it. Never yield or yield* JSX, view.add, or node.add, and never leave JSX unattached.',
-    "Beat timing contract: for each scene.beats[] entry, yield* waitUntil(timing.startEvent), then const beatDuration = useDuration(timing.endEvent), then immediately const beatEndTime = useThread().time() + beatDuration. After the beat's visual work, yield* waitFor(Math.max(0, beatEndTime - useThread().time())) so the beat always ends exactly on time regardless of how long the visual animation actually took.",
     'Import rule: only from @motion-canvas/2d and @motion-canvas/core, plus the icon atlas import described below. Use only named exports (createRef, createSignal, easing functions like easeInOutCubic, ...); never import ref, signal, or easing as bare names.',
     "Semantic key rule: every visual JSX node needs a unique, stable, lowercase kebab-case key string literal describing its role — never an index, UUID, random value, or expression-derived string. Group related nodes under container blocks keyed block-*, with children positioned in that block's local coordinates. Never generate visual JSX via a loop or .map.",
     'Use kebab-case flex values (space-between, not spaceBetween). Every Txt needs a font family; default to MOTION_CANVAS_DEFAULT_FONT_FAMILY unless the design deliberately calls for another. Motion Canvas has no CSS transparent keyword — use #00000000. Never tween Line.points between arrays of different length; set points instantly first if the point count must change.',
@@ -489,15 +872,15 @@ function buildRepairPrompt(
   compilerDiagnostics: string,
 ) {
   return [
+    directTsxPromptContract(request, sectionIndex),
+    visualEvidenceRepairPrompt(request, sectionIndex),
     `Preserve the exact lifecycle marker and implementation for every beat, including full exit (opacity 0 or outside the runtime canvas). Preserve runtime canvas variables canvasWidth/canvasHeight and safe margins ${MOTION_CANVAS_SAFE_MARGIN_X_RATIO}/${MOTION_CANVAS_SAFE_MARGIN_Y_RATIO}; do not replace them with 1080x1920 literals.`,
-    'Repair every lifecycle binding as an inseparable triple: one literal lifecycle key on one explicit JSX node, one createRef assigned to a bare identifier, and ref={thatIdentifier} on that same node. Every enter and exit animation must call that exact ref. Check all distinct enter/stay/exit keys, not only the first diagnostic.',
-    'Structural attachment invariant: preserve or restore exactly one direct view.add(<SceneTree />) statement inside the default makeScene2D generator. The attached JSX tree must contain exactly one key="scene-background" with key="scene-content-root" nested inside it. Never yield or yield* JSX, view.add, or node.add, and do not leave JSX unattached.',
+    'Repair every lifecycle binding without changing the authoritative marker block above. Check all distinct enter/stay/exit keys, not only the first diagnostic.',
     'Sửa scene Motion Canvas sau để TypeScript biên dịch thành công.',
     'Giữ nguyên ý nghĩa visual, thứ tự beat và tổng timing. Chỉ thay đổi những phần cần để sửa lỗi và làm API đúng.',
-    'Trả object gồm name và source; source là mã thuần, không dùng Markdown fence.',
+    'Trả object đúng dạng {"name":"...","source":"..."}; source là full literal TSX file thuần. Không trả Scene Spec, source:null, JSON lồng trong JSON, partial source hoặc Markdown fence.',
     `Quy tắc import: visual node và makeScene2D từ @motion-canvas/2d; flow, ref, signal, tween, waitFor, waitUntil, useDuration và easing từ @motion-canvas/core; nếu scene dùng icon thì giữ nguyên import {Icon} from '${MOTION_CANVAS_ICON_ATLAS_IMPORT_SPECIFIER}', không tự ý xoá hoặc đổi đường dẫn.`,
-    'Giữ nguyên đúng waitUntil(startEvent) và useDuration(endEvent) của từng beat trong context; không thêm waitUntil(endEvent), vì đây sẽ là đăng ký event trùng.',
-    'Ngay sau useDuration, lưu beatEndTime = useThread().time() + beatDuration; sau visual, gọi yield* waitFor(Math.max(0, beatEndTime - useThread().time())) để beat luôn kết thúc đúng mốc dù visual ngắn hơn.',
+    'Không đăng ký end event bằng waitUntil; giữ nguyên các cặp event và timing statement đã có trong literal scaffold.',
     'Tên export phải dùng chính xác: createRef, createSignal, easeInOutCubic; không import ref, signal hoặc easing.',
     'Không dùng JSX.Element, scaleX/scaleY, hoặc yield* một node/setter không có duration.',
     'Bắt đầu source bằng comment chính xác // pad-semantic:bindings-v1. Mỗi Visual Intent entity, relation và action có mustShow=true phải có một JSX node nhìn thấy được với literal key đúng bằng id của item đó; đây là contract truy vết bắt buộc.',
@@ -1067,7 +1450,15 @@ type LifecycleBeat = {
 };
 
 type SceneNodeBinding = {key: string; ref: string | null; node: ts.JsxOpeningElement | ts.JsxSelfClosingElement};
-type RefAnimation = {ref: string; property: string; target: ts.Expression; node: ts.CallExpression};
+type RefAnimation = {
+  ref: string;
+  property: string;
+  target: ts.Expression;
+  duration: ts.Expression;
+  easing: ts.Expression | undefined;
+  group: ts.CallExpression | null;
+  node: ts.CallExpression;
+};
 
 function staticJsxAttributeString(attribute: ts.JsxAttribute) {
   const initializer = attribute.initializer;
@@ -1149,7 +1540,16 @@ function generatorStatements(sourceFile: ts.SourceFile) {
   const exported = sourceFile.statements.find(statement => ts.isExportAssignment(statement));
   const factory = exported && ts.isExportAssignment(exported) && ts.isCallExpression(exported.expression)
     ? exported.expression.arguments[0] : undefined;
-  return factory && ts.isFunctionExpression(factory) ? [...factory.body.statements] : [];
+  if (!factory || !ts.isFunctionExpression(factory)) return [];
+
+  // A bare block is valid generator syntax and is commonly used to give each
+  // beat its own lexical scope. Flatten only those direct child blocks so the
+  // lifecycle checker sees their statements in temporal order. Deliberately
+  // do not descend into functions or control-flow statements: those remain
+  // outside the statically verifiable lifecycle execution path.
+  return factory.body.statements.flatMap(statement =>
+    ts.isBlock(statement) ? [...statement.statements] : [statement],
+  );
 }
 
 function statementHasStartEvent(statement: ts.Statement, event: string) {
@@ -1162,11 +1562,39 @@ function statementHasStartEvent(statement: ts.Statement, event: string) {
   return found;
 }
 
+function animationGroup(node: ts.CallExpression) {
+  let current: ts.Node = node;
+  while (current.parent) {
+    const parent = current.parent;
+    if (
+      ts.isCallExpression(parent) &&
+      ts.isIdentifier(parent.expression) &&
+      parent.expression.text === 'all' &&
+      parent.arguments.some(argument => argument === current)
+    ) {
+      return parent;
+    }
+    if (ts.isYieldExpression(parent) || ts.isExpressionStatement(parent)) {
+      return null;
+    }
+    current = parent;
+  }
+  return null;
+}
+
 function refAnimations(nodes: readonly ts.Node[]) {
   const animations: RefAnimation[] = [];
   function visit(node: ts.Node) {
     if (ts.isCallExpression(node) && node.arguments.length >= 2 && ts.isPropertyAccessExpression(node.expression) && ts.isCallExpression(node.expression.expression) && ts.isIdentifier(node.expression.expression.expression)) {
-      animations.push({ref: node.expression.expression.expression.text, property: node.expression.name.text, target: node.arguments[0]!, node});
+      animations.push({
+        ref: node.expression.expression.expression.text,
+        property: node.expression.name.text,
+        target: node.arguments[0]!,
+        duration: node.arguments[1]!,
+        easing: node.arguments[2],
+        group: animationGroup(node),
+        node,
+      });
     }
     ts.forEachChild(node, visit);
   }
@@ -1303,14 +1731,56 @@ export function validateMotionCanvasResponsiveLayout(source: string, frame: Vide
     const size = coordinate(jsxExpression(attributes.get('size')));
     return [coordinate(jsxExpression(attributes.get('width'))) ?? size, coordinate(jsxExpression(attributes.get('height'))) ?? size] as const;
   }
-  function assertBox(x: number | null, y: number | null, width: number | null, height: number | null, label: string, allowOutside: boolean) {
+  function expressionText(expression: ts.Expression | undefined) {
+    return expression?.getText(sourceFile) ?? null;
+  }
+  function animationsAreCoupled(left: RefAnimation, right: RefAnimation) {
+    return left.group !== null &&
+      left.group === right.group &&
+      expressionText(left.duration) === expressionText(right.duration) &&
+      expressionText(left.easing) === expressionText(right.easing);
+  }
+  function lifecycleBeatId(key: string) {
+    return beats.find(beat => {
+      const lifecycle = beat.visualLifecycle;
+      return lifecycle
+        ? [...lifecycle.enter, ...lifecycle.stay, ...lifecycle.exit].includes(key)
+        : false;
+    })?.id ?? null;
+  }
+  function formatLayoutNumber(value: number | null) {
+    return value === null ? 'unknown' : value.toFixed(2);
+  }
+  function assertBox(
+    x: number | null,
+    y: number | null,
+    width: number | null,
+    height: number | null,
+    label: string,
+    allowOutside: boolean,
+    context: {
+      phase: 'initial' | 'animation-target';
+      semanticKey: string;
+      ref: string | null;
+      beatId: string | null;
+    },
+  ) {
     if (allowOutside) return;
     const minX = -frame.width / 2 + frame.width * MOTION_CANVAS_SAFE_MARGIN_X_RATIO;
     const maxX = frame.width / 2 - frame.width * MOTION_CANVAS_SAFE_MARGIN_X_RATIO;
     const minY = -frame.height / 2 + frame.height * MOTION_CANVAS_SAFE_MARGIN_Y_RATIO;
     const maxY = frame.height / 2 - frame.height * MOTION_CANVAS_SAFE_MARGIN_Y_RATIO;
     if ((x !== null && ((width !== null && (x - width / 2 < minX || x + width / 2 > maxX)) || (width === null && (x < minX || x > maxX)))) || (y !== null && ((height !== null && (y - height / 2 < minY || y + height / 2 > maxY)) || (height === null && (y < minY || y > maxY))))) {
-      throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_LAYOUT', `${label} is outside the quantified safe area.`);
+      throw new MotionCanvasGenerationError(
+        'CODEX_MOTION_CANVAS_INVALID_LAYOUT',
+        `${label} is outside the quantified safe area. ` +
+          `[phase=${context.phase}; semanticKey=${context.semanticKey}; ` +
+          `ref=${context.ref ?? 'none'}; beat=${context.beatId ?? 'unknown'}; ` +
+          `box=(x=${formatLayoutNumber(x)}, y=${formatLayoutNumber(y)}, ` +
+          `width=${formatLayoutNumber(width)}, height=${formatLayoutNumber(height)}); ` +
+          `safeArea=(x=${minX.toFixed(2)}..${maxX.toFixed(2)}, ` +
+          `y=${minY.toFixed(2)}..${maxY.toFixed(2)})]`,
+      );
     }
   }
   let responsiveBackground = false;
@@ -1330,23 +1800,85 @@ export function validateMotionCanvasResponsiveLayout(source: string, frame: Vide
       const [x, y] = coordinates(attributes); const [width, height] = dimensions(attributes);
       const ref = bindings.get(keyText ?? '')?.ref;
       const lifecycleStaging = Boolean(ref && beats.some(beat => [...(beat.visualLifecycle?.enter ?? []), ...(beat.visualLifecycle?.exit ?? [])].some(key => bindings.get(key)?.ref === ref)));
-      if (keyText !== 'scene-background') assertBox(x, y, width, height, `Initial visual ${keyText ?? 'without-key'}`, lifecycleStaging);
+      if (keyText !== 'scene-background') assertBox(
+        x,
+        y,
+        width,
+        height,
+        `Initial visual ${keyText ?? 'without-key'}`,
+        lifecycleStaging,
+        {
+          phase: 'initial',
+          semanticKey: keyText ?? 'without-key',
+          ref: ref ?? null,
+          beatId: keyText ? lifecycleBeatId(keyText) : null,
+        },
+      );
     }
     ts.forEachChild(node, visit);
   }
   visit(sourceFile);
-  for (const animation of refAnimations(generatorStatements(sourceFile))) {
+  const animations = refAnimations(generatorStatements(sourceFile));
+  const animationsByRef = new Map<string, RefAnimation[]>();
+  for (const animation of animations) {
+    const grouped = animationsByRef.get(animation.ref) ?? [];
+    grouped.push(animation);
+    animationsByRef.set(animation.ref, grouped);
+  }
+  for (const animation of animations) {
     if (!['x', 'y', 'position'].includes(animation.property)) continue;
     const binding = [...bindings.values()].find(candidate => candidate.ref === animation.ref);
     if (!binding) continue;
     const attributes = new Map<string, ts.JsxAttribute>();
     for (const attribute of binding.node.attributes.properties) if (ts.isJsxAttribute(attribute) && ts.isIdentifier(attribute.name)) attributes.set(attribute.name.text, attribute);
-    const [, , width, height] = [...coordinates(attributes), ...dimensions(attributes)];
-    let x: number | null = null; let y: number | null = null;
-    if (animation.property === 'x') x = coordinate(animation.target);
-    if (animation.property === 'y') y = coordinate(animation.target);
-    if (animation.property === 'position' && ts.isArrayLiteralExpression(animation.target) && animation.target.elements.length === 2) { x = coordinate(animation.target.elements[0] as ts.Expression); y = coordinate(animation.target.elements[1] as ts.Expression); }
-    assertBox(x, y, width, height, `Animation target for ${binding.key}`, exitRefs.has(animation.ref));
+    const [initialX, initialY] = coordinates(attributes);
+    const [initialWidth, initialHeight] = dimensions(attributes);
+    let x: number | null = initialX;
+    let y: number | null = initialY;
+    let width: number | null = initialWidth;
+    let height: number | null = initialHeight;
+    const applyTarget = (candidate: RefAnimation) => {
+      if (candidate.property === 'x') x = coordinate(candidate.target);
+      if (candidate.property === 'y') y = coordinate(candidate.target);
+      if (candidate.property === 'position') {
+        if (ts.isArrayLiteralExpression(candidate.target) && candidate.target.elements.length === 2) {
+          x = coordinate(candidate.target.elements[0] as ts.Expression);
+          y = coordinate(candidate.target.elements[1] as ts.Expression);
+        } else {
+          x = null;
+          y = null;
+        }
+      }
+      if (candidate.property === 'width') width = coordinate(candidate.target);
+      if (candidate.property === 'height') height = coordinate(candidate.target);
+      if (candidate.property === 'size') {
+        const size = coordinate(candidate.target);
+        width = size;
+        height = size;
+      }
+    };
+    // A position and a size setter in the same `all()` with the same timing
+    // share one Motion Canvas endpoint. Checking the position against the
+    // initial size (the old behavior) rejects a box that stays inside the
+    // safe area while it shrinks and moves together.
+    applyTarget(animation);
+    for (const paired of animationsByRef.get(animation.ref) ?? []) {
+      if (paired !== animation && animationsAreCoupled(animation, paired)) applyTarget(paired);
+    }
+    assertBox(
+      x,
+      y,
+      width,
+      height,
+      `Animation target for ${binding.key}`,
+      exitRefs.has(animation.ref),
+      {
+        phase: 'animation-target',
+        semanticKey: binding.key,
+        ref: animation.ref,
+        beatId: lifecycleBeatId(binding.key),
+      },
+    );
   }
   if (!responsiveBackground || /(?:width|height)=\{\s*(?:1080|1920)\s*\}/.test(source)) {
     throw new MotionCanvasGenerationError('CODEX_MOTION_CANVAS_INVALID_LAYOUT', 'Scene hard-codes canvas dimensions instead of using the runtime canvas.');
@@ -1637,41 +2169,372 @@ export function validateMotionCanvasContainerContract(source: string) {
   }
 }
 
-function mapStructuredError(error: CodexStructuredGenerationError) {
-  if (error.reason === 'timeout') {
-    return new MotionCanvasGenerationError(
-      'CODEX_MOTION_CANVAS_TIMEOUT',
-      'Codex mất quá nhiều thời gian để sinh scene Motion Canvas.',
-      {cause: error},
-    );
+function structuredFailureMapping(error: CodexStructuredGenerationError) {
+  switch (error.reason) {
+    case 'timeout':
+      return {
+        code: 'CODEX_MOTION_CANVAS_TIMEOUT',
+        message: 'Codex mất quá nhiều thời gian để sinh scene Motion Canvas.',
+      };
+    case 'transport_timeout':
+      return {
+        code: 'CODEX_MOTION_CANVAS_TRANSPORT_TIMEOUT',
+        message: 'Codex app-server không phản hồi đúng hạn.',
+      };
+    case 'turn_start_rejected':
+      return {
+        code: 'CODEX_MOTION_CANVAS_TURN_START_REJECTED',
+        message: 'Codex app-server đã từ chối turn/start.',
+      };
+    case 'app_server_disconnect':
+      return {
+        code: 'CODEX_MOTION_CANVAS_APP_SERVER_DISCONNECTED',
+        message: 'Codex app-server đã ngắt kết nối.',
+      };
+    case 'model_capacity':
+      return {
+        code: 'CODEX_MOTION_CANVAS_MODEL_CAPACITY',
+        message: 'Model Codex đang quá tải.',
+      };
+    case 'rate_limit':
+      return {
+        code: 'CODEX_MOTION_CANVAS_RATE_LIMIT',
+        message: 'Codex đã từ chối lượt gọi do rate limit hoặc quota.',
+      };
+    case 'turn_failed':
+      return {
+        code: 'CODEX_MOTION_CANVAS_TURN_FAILED',
+        message: 'Codex đã kết thúc lượt sinh với trạng thái failed.',
+      };
+    case 'tool_used':
+      return {
+        code: 'CODEX_MOTION_CANVAS_TOOL_USED',
+        message: 'Codex đã cố dùng công cụ trong khi sinh scene Motion Canvas.',
+      };
+    case 'empty_response':
+      return {
+        code: 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
+        message: 'Codex không trả về mã scene Motion Canvas.',
+      };
+    case 'transport_error':
+      return {
+        code: 'CODEX_MOTION_CANVAS_TRANSPORT_ERROR',
+        message: 'Không thể giao tiếp với Codex app-server.',
+      };
   }
-  if (error.reason === 'tool_used') {
-    return new MotionCanvasGenerationError(
-      'CODEX_MOTION_CANVAS_TOOL_USED',
-      'Codex đã cố dùng công cụ trong khi sinh scene Motion Canvas.',
-      {cause: error},
-    );
-  }
-  if (error.reason === 'empty_response') {
-    return new MotionCanvasGenerationError(
-      'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
-      'Codex không trả về mã scene Motion Canvas.',
-      {cause: error},
-    );
-  }
+}
 
-  return new MotionCanvasGenerationError(
-    'CODEX_MOTION_CANVAS_GENERATION_FAILED',
-    error.message || 'Codex không hoàn tất việc sinh scene Motion Canvas.',
-    {cause: error},
-  );
+function structuredRootCause(
+  error: CodexStructuredGenerationError,
+  code: string,
+  message: string,
+): MotionCanvasFailureRootCause {
+  return {
+    reason: error.reason,
+    code: error.code.startsWith('CODEX_APP_SERVER_') ? error.code : code,
+    operation: error.operation,
+    message: redactMotionCanvasFailureText(message).slice(0, 2_000),
+    providerMessage: error.providerMessage
+      ? redactMotionCanvasFailureText(error.providerMessage).slice(0, 2_000)
+      : null,
+    providerCode: error.providerCode
+      ? redactMotionCanvasFailureText(error.providerCode).slice(0, 120)
+      : null,
+    appServer: error.appServerDiagnostics,
+  };
+}
+
+function mapStructuredError(error: CodexStructuredGenerationError) {
+  const mapped = structuredFailureMapping(error);
+  return new MotionCanvasGenerationError(mapped.code, mapped.message, {
+    cause: error,
+    rootCause: structuredRootCause(error, mapped.code, mapped.message),
+  });
 }
 
 interface GeneratedSceneResult {
   scene: MotionCanvasSourceScene;
   model: string;
   usage: CodexTokenUsage | null;
+  attemptEvidence?: MotionCanvasGenerationAttemptEvidence[];
   fallbackReason?: string | null;
+}
+
+// Legacy Scene Spec fallback helpers are retained for old artifacts only.
+// The active Codex generation and recovery paths below use direct TSX and do
+// not call this compiler-backed branch.
+function fallbackPlanTerm(description: string) {
+  const keyword = [
+    'hàng đợi', 'ưu tiên', 'phần tử', 'cổng', 'đường ray', 'làn', 'vòng',
+    'heap', 'cha', 'con', 'đỉnh', 'cây', 'đường', 'khối',
+  ].find(term => description.normalize('NFD').replace(/[\u0300-\u036f]/gu, '').toLowerCase().includes(
+    term.normalize('NFD').replace(/[\u0300-\u036f]/gu, '').toLowerCase(),
+  ));
+  if (keyword) return keyword;
+  return description.match(/[\p{L}\p{N}]{3,}/u)?.[0] ?? 'minh họa';
+}
+
+function fallbackTemplate(description: string): MotionCanvasSceneSpec['beats'][number]['template'] {
+  return templateRequiredByVisualPlan({
+    visualDescription: description,
+    visualPurpose: '',
+    animationDescription: '',
+  }) ?? 'process';
+}
+
+type ScenePartV3 = MotionCanvasSceneSpecV3['beats'][number]['entities'][number]['parts'][number];
+
+function fallbackCompositeParts(kind: string): ScenePartV3[] {
+  const normalized = kind.normalize('NFD').replace(/[\u0300-\u036f]/gu, '').replace(/đ/giu, 'd').toLowerCase();
+  const part = (value: Partial<ScenePartV3> & Pick<ScenePartV3, 'id' | 'primitive'>): ScenePartV3 => ({
+    x: 0,
+    y: 0,
+    width: 0.7,
+    height: 0.7,
+    rotation: 0,
+    fillRole: 'primary',
+    strokeRole: 'text',
+    strokeWidth: 0.008,
+    cornerRadius: 0.12,
+    points: [],
+    text: null,
+    ...value,
+  });
+  if (/person|patient|doctor|student|teacher|nguoi|benh nhan|bac si/u.test(normalized)) {
+    return [
+      part({id: 'person-head', primitive: 'circle', y: -0.3, width: 0.34, height: 0.34, fillRole: 'accent'}),
+      part({id: 'person-body', primitive: 'rect', y: 0.18, width: 0.58, height: 0.58, cornerRadius: 0.3}),
+      part({id: 'person-badge', primitive: 'rect', x: 0.17, y: 0.08, width: 0.14, height: 0.12, fillRole: 'surface', cornerRadius: 0.2}),
+    ];
+  }
+  if (/vehicle|car|truck|bus|xe/u.test(normalized)) {
+    return [
+      part({id: 'vehicle-body', primitive: 'rect', y: -0.03, width: 0.88, height: 0.42, cornerRadius: 0.18}),
+      part({id: 'vehicle-cabin', primitive: 'polygon', x: 0.12, y: -0.24, width: 0.55, height: 0.3, fillRole: 'accent', points: [{x: -0.35, y: 0.3}, {x: -0.12, y: -0.3}, {x: 0.3, y: -0.3}, {x: 0.42, y: 0.3}]}),
+      part({id: 'vehicle-wheel-left', primitive: 'circle', x: -0.27, y: 0.28, width: 0.22, height: 0.22, fillRole: 'surface'}),
+      part({id: 'vehicle-wheel-right', primitive: 'circle', x: 0.27, y: 0.28, width: 0.22, height: 0.22, fillRole: 'surface'}),
+    ];
+  }
+  if (/building|hospital|school|house|room|nha|phong/u.test(normalized)) {
+    return [
+      part({id: 'building-shell', primitive: 'rect', y: 0.08, width: 0.78, height: 0.72, cornerRadius: 0.05}),
+      part({id: 'building-roof', primitive: 'polygon', y: -0.36, width: 0.9, height: 0.3, fillRole: 'accent', points: [{x: -0.48, y: 0.35}, {x: 0, y: -0.4}, {x: 0.48, y: 0.35}]}),
+      part({id: 'building-door', primitive: 'rect', y: 0.25, width: 0.22, height: 0.38, fillRole: 'surface', cornerRadius: 0.04}),
+    ];
+  }
+  if (/database|container|queue|stack|heap|data|box|record|hang doi|du lieu/u.test(normalized)) {
+    return [
+      part({id: 'container-shell', primitive: 'rect', width: 0.9, height: 0.72, fillRole: 'surface', strokeRole: 'primary', cornerRadius: 0.16}),
+      part({id: 'container-core', primitive: 'ellipse', width: 0.56, height: 0.34, fillRole: 'accent'}),
+      part({id: 'container-state', primitive: 'line', width: 0.8, height: 0.8, fillRole: 'transparent', strokeRole: 'text', points: [{x: -0.3, y: 0.28}, {x: 0.3, y: 0.28}]}),
+    ];
+  }
+  return [
+    part({id: 'symbol-outer', primitive: 'ellipse', width: 0.82, height: 0.72, fillRole: 'surface', strokeRole: 'primary'}),
+    part({id: 'symbol-inner', primitive: 'polygon', width: 0.55, height: 0.55, fillRole: 'accent', points: [{x: 0, y: -0.48}, {x: 0.46, y: 0.36}, {x: -0.46, y: 0.36}]}),
+  ];
+}
+
+function fallbackEntityBox(index: number, count: number) {
+  const positions = count === 1
+    ? [{x: 0, y: 0.02}]
+    : [
+        {x: 0, y: -0.18},
+        {x: -0.3, y: 0.08},
+        {x: 0.3, y: 0.08},
+        {x: -0.3, y: 0.3},
+        {x: 0, y: 0.3},
+        {x: 0.3, y: 0.3},
+        {x: -0.4, y: -0.2},
+        {x: 0.4, y: -0.2},
+        {x: -0.15, y: 0.12},
+        {x: 0.15, y: 0.12},
+      ];
+  const position = positions[index] ?? {x: 0, y: 0};
+  const compact = count > 6;
+  return {...position, width: compact ? 0.15 : 0.2, height: compact ? 0.13 : 0.17};
+}
+
+function fallbackActionKind(verb: string): typeof sceneSpecV3ActionKindValues[number] {
+  const value = verb.toLowerCase();
+  if (/move|travel|enter|leave|arrive|dispatch|flow|chuyen|di/u.test(value)) return 'flow';
+  if (/change|convert|transform|bien/u.test(value)) return 'transform';
+  if (/compare|contrast|compare|so sanh/u.test(value)) return 'compare';
+  if (/swap|exchange|doi/u.test(value)) return 'swap';
+  return 'focus';
+}
+
+function simplifiedV3FallbackSpec(request: MotionCanvasGenerationRequest, sectionIndex: number): MotionCanvasSceneSpecV3 {
+  const outlineSection = request.outline.sections[sectionIndex]!;
+  const planSection = request.voiceVisualPlan.sections[sectionIndex]!;
+  return {
+    version: 3,
+    visualAnchor: (
+      request.voiceVisualPlan.visualBible?.visualAnchor ??
+      `Semantic illustration for ${outlineSection.title}.`
+    ).slice(0, 120),
+    beats: planSection.beats.map((beat, beatIndex) => {
+      const intent = beat.visualIntent!;
+      const entities = intent.entities.map((entity, entityIndex) => ({
+        id: entity.id,
+        intentId: entity.id,
+        description: entity.appearance,
+        role: entity.role === 'primary' ? 'primary' as const : entity.role === 'support' ? 'secondary' as const : 'muted' as const,
+        box: fallbackEntityBox(entityIndex, intent.entities.length),
+        label: entity.label?.slice(0, 12) ?? null,
+        parts: fallbackCompositeParts(entity.kind),
+      }));
+      const relationships = intent.relations.map(relation => ({
+        id: relation.id,
+        intentId: relation.id,
+        from: relation.from,
+        to: relation.to,
+        style: 'arrow' as const,
+        label: null,
+        emphasis: relation.mustShow ? 'primary' as const : 'secondary' as const,
+        via: [],
+      }));
+      const occupiedIds = new Set([
+        ...entities.map(entity => entity.id),
+        ...relationships.map(relation => relation.id),
+        ...intent.actions.map(action => action.id),
+      ]);
+      let fallbackActionId = 'fallback-focus-action';
+      while (occupiedIds.has(fallbackActionId)) fallbackActionId = `${fallbackActionId}-safe`;
+      const actions = intent.actions.length
+        ? intent.actions.map(action => ({
+            id: action.id,
+            intentId: action.id,
+            kind: fallbackActionKind(action.verb),
+            targets: [action.actor, ...(action.target ? [action.target] : [])].slice(0, 4),
+            direction: 'right' as const,
+            amount: 0.06,
+          }))
+        : [{id: fallbackActionId, intentId: null, kind: 'focus' as const, targets: [entities[0]!.id], direction: null, amount: 0.05}];
+      return {
+        beatId: beat.id,
+        visualId: `semantic-beat-${['one', 'two', 'three', 'four', 'five'][beatIndex] ?? 'later'}-${toSlug(beat.primaryBlock ?? 'visual')}`,
+        headline: null,
+        motifHints: [intent.abstraction, ...intent.entities.slice(0, 3).map(entity => entity.kind)].map(value => value.slice(0, 80)),
+        fidelity: 'simplified',
+        entities,
+        relationships,
+        actions,
+        decorations: [],
+      };
+    }),
+  };
+}
+
+/**
+ * Last-resort generation remains an illustration, never a paragraph placed on
+ * a coloured card.  It deterministically preserves each plan beat and uses
+ * the same Scene Spec compiler as Codex output, so its source is safe while
+ * still exposing nodes, a directional relationship, and an active gate.
+ */
+function illustratedFallbackSceneSource(
+  request: MotionCanvasGenerationRequest,
+  sectionIndex: number,
+) {
+  const outlineSection = request.outline.sections[sectionIndex]!;
+  const planSection = request.voiceVisualPlan.sections[sectionIndex]!;
+  if (planSection.beats.every(beat => beat.visualIntent)) {
+    return compileMotionCanvasSceneSpecV3({
+      spec: simplifiedV3FallbackSpec(request, sectionIndex),
+      beats: planSection.beats,
+      outlineTitle: outlineSection.title,
+      frame: request.videoFrame ?? request.topicInput.videoFrame ?? defaultVideoFrame,
+      backgroundColor: request.topicInput.background.color,
+      visualBible: request.voiceVisualPlan.visualBible,
+    });
+  }
+  const spec: MotionCanvasSceneSpec = {
+    version: 2,
+    visualAnchor: (
+      request.voiceVisualPlan.visualBible?.visualAnchor ??
+      `A visible anchor for ${outlineSection.title}.`
+    ).slice(0, 100),
+    beats: planSection.beats.map((beat, beatIndex) => {
+      const term = fallbackPlanTerm(beat.visualDescription);
+      const template = fallbackTemplate(beat.visualDescription);
+      const visualId = `fallback-${toSlug(beat.primaryBlock ?? `visual-${beatIndex + 1}`)}`;
+      const concepts = [term];
+      return {
+        beatId: beat.id,
+        visualId,
+        headline: outlineSection.title.slice(0, 34),
+        caption: null,
+        template,
+        focus: 'center',
+        planAlignment: {planTerms: [term]},
+        elements: [
+          {
+            type: 'node',
+            id: 'incoming-item',
+            shape: template === 'tree' ? 'circle' : 'pill',
+            label: 'Đến',
+            value: null,
+            emphasis: 'secondary',
+            concepts,
+          },
+          {
+            type: 'node',
+            id: 'priority-anchor',
+            shape: 'diamond',
+            label: 'Ưu tiên',
+            value: null,
+            emphasis: 'primary',
+            concepts,
+          },
+          {
+            type: 'gate',
+            id: 'processing-gate',
+            state: 'open',
+            label: 'Xử lý',
+            value: null,
+            emphasis: 'secondary',
+            concepts,
+          },
+        ],
+        relationships: [
+          {
+            id: 'priority-flow',
+            type: template === 'tree' ? 'edge' : 'arrow',
+            from: 'incoming-item',
+            to: 'priority-anchor',
+            via: [],
+            label: null,
+            emphasis: 'primary',
+          },
+          {
+            id: 'dispatch-flow',
+            type: 'arrow',
+            from: 'priority-anchor',
+            to: 'processing-gate',
+            via: [],
+            label: null,
+            emphasis: 'secondary',
+          },
+        ],
+        groups: [],
+        motions: [
+          {
+            kind: template === 'orbit' ? 'orbit' : 'flow',
+            targets: ['incoming-item', 'priority-anchor'],
+            direction: template === 'orbit' ? 'clockwise' : 'right',
+          },
+        ],
+      };
+    }),
+  };
+  return compileMotionCanvasSceneSpec({
+    spec,
+    beats: planSection.beats,
+    outlineTitle: outlineSection.title,
+    frame: request.videoFrame ?? request.topicInput.videoFrame ?? defaultVideoFrame,
+    backgroundColor: request.topicInput.background.color,
+    visualBible: request.voiceVisualPlan.visualBible,
+  });
 }
 
 /** Deterministic geometry for one declared composition archetype. Ratios are
@@ -1983,13 +2846,92 @@ function sceneGenerationError(
   return new MotionCanvasGenerationError(
     mappedError.code,
     `Scene ${sectionIndex + 1} “${sectionTitle}”: ${mappedError.message}`,
-    {cause: mappedError},
+    {
+      cause: mappedError,
+      attemptEvidence: mappedError.attemptEvidence,
+      rootCause: mappedError.rootCause,
+    },
   );
+}
+
+function isModelCapacityError(error: unknown) {
+  if (
+    error instanceof CodexStructuredGenerationError &&
+    error.reason === 'model_capacity'
+  ) {
+    return true;
+  }
+  const text = error instanceof Error ? error.message : String(error);
+  return /(?:model|selected model).*(?:capacity|at capacity)|at capacity.*(?:model|selected model)/iu.test(text);
+}
+
+async function runCodexStructuredGenerationWithCapacityFallback(
+  options: Parameters<typeof runCodexStructuredGeneration>[0],
+) {
+  try {
+    return await runCodexStructuredGeneration(options);
+  } catch (error) {
+    if (!isModelCapacityError(error)) throw error;
+    const alternateModel = options.model === 'gpt-5.5'
+      ? 'gpt-5.6-sol'
+      : options.model === 'gpt-5.6-sol'
+        ? 'gpt-5.5'
+        : null;
+    if (!alternateModel) throw error;
+    return runCodexStructuredGeneration({...options, model: alternateModel});
+  }
 }
 
 function repairDiagnostics(error: unknown) {
   if (!(error instanceof Error)) return 'Scene không vượt qua validation.';
   const lines = [error.message];
+  if (error instanceof CodexStructuredGenerationError) {
+    lines.push(`Codex failure reason: ${error.reason}`);
+    if (error.operation) lines.push(`Codex operation: ${error.operation}`);
+    if (error.providerCode) lines.push(`Codex provider code: ${error.providerCode}`);
+    if (error.providerMessage && error.providerMessage !== error.message) {
+      lines.push(`Codex provider message: ${error.providerMessage}`);
+    }
+    const appServer = error.appServerDiagnostics;
+    if (appServer) {
+      if (appServer.exitCode !== null) {
+        lines.push(`Codex app-server exit code: ${appServer.exitCode}`);
+      }
+      if (appServer.signal) {
+        lines.push(`Codex app-server signal: ${appServer.signal}`);
+      }
+      if (appServer.commandBasename) {
+        lines.push(`Codex app-server command: ${appServer.commandBasename}`);
+      }
+      if (appServer.entrypointBasename) {
+        lines.push(`Codex app-server entrypoint: ${appServer.entrypointBasename}`);
+      }
+      if (appServer.cliVersion) {
+        lines.push(`Codex CLI version: ${appServer.cliVersion}`);
+      }
+      if (appServer.method) {
+        lines.push(`Codex app-server pending method: ${appServer.method}`);
+      }
+      if (appServer.pendingMethods.length > 0) {
+        lines.push(`Codex app-server pending methods: ${appServer.pendingMethods.join(', ')}`);
+      }
+      if (appServer.stderr) {
+        lines.push(`Codex app-server stderr: ${appServer.stderr}`);
+      }
+    }
+  }
+  if (
+    error instanceof MotionCanvasGenerationError &&
+    error.cause instanceof MotionCanvasGenerationError
+  ) {
+    lines.push(...repairDiagnostics(error.cause).split(/\r?\n/));
+  }
+  if (
+    error instanceof MotionCanvasGenerationError &&
+    error.cause instanceof CodexStructuredGenerationError
+  ) {
+    lines.push(...repairDiagnostics(error.cause).split(/\r?\n/));
+  }
   if (error instanceof MotionCanvasGenerationError && Array.isArray(error.cause)) {
     for (const value of error.cause.slice(0, 20)) {
       const diagnostic = value as ts.Diagnostic;
@@ -2015,6 +2957,183 @@ function repairDiagnostics(error: unknown) {
     }
   }
   return [...new Set(lines)].join('\n').slice(0, 12_000);
+}
+
+function sourceFromResponseText(responseText: string) {
+  try {
+    const parsed = JSON.parse(responseText) as {source?: unknown};
+    return typeof parsed.source === 'string' ? parsed.source : '';
+  } catch {
+    return '';
+  }
+}
+
+function motionCanvasAttemptFailureReason(
+  error: unknown,
+): MotionCanvasGenerationFailureReason {
+  if (error instanceof CodexStructuredGenerationError) return error.reason;
+  if (error instanceof MotionCanvasGenerationError) {
+    if (error.rootCause) return error.rootCause.reason;
+    if (error.code === 'CODEX_MOTION_CANVAS_TIMEOUT') return 'timeout';
+    if (error.code === 'CODEX_MOTION_CANVAS_TRANSPORT_TIMEOUT') return 'transport_timeout';
+    if (error.code === 'CODEX_MOTION_CANVAS_TURN_START_REJECTED') return 'turn_start_rejected';
+    if (error.code === 'CODEX_MOTION_CANVAS_APP_SERVER_DISCONNECTED') return 'app_server_disconnect';
+    if (error.code === 'CODEX_MOTION_CANVAS_MODEL_CAPACITY') return 'model_capacity';
+    if (error.code === 'CODEX_MOTION_CANVAS_RATE_LIMIT') return 'rate_limit';
+    if (error.code === 'CODEX_MOTION_CANVAS_TURN_FAILED') return 'turn_failed';
+    if (error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE') return 'response_invalid';
+    if (
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_TIMING_CONTRACT' ||
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_LIFECYCLE' ||
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_LAYOUT' ||
+      error.code === 'CODEX_MOTION_CANVAS_UNSAFE_SOURCE'
+    ) return 'source_validation_failed';
+  }
+  return 'unknown';
+}
+
+function motionCanvasAttemptCode(error: unknown) {
+  if (error instanceof CodexStructuredGenerationError) {
+    return error.code.startsWith('CODEX_APP_SERVER_')
+      ? error.code
+      : structuredFailureMapping(error).code;
+  }
+  if (error instanceof MotionCanvasGenerationError) return error.code;
+  return 'CODEX_MOTION_CANVAS_GENERATION_FAILED';
+}
+
+function motionCanvasAttemptOperation(error: unknown) {
+  if (error instanceof CodexStructuredGenerationError) return error.operation;
+  if (error instanceof MotionCanvasGenerationError) return error.rootCause?.operation ?? null;
+  return null;
+}
+
+function motionCanvasAttemptProviderMessage(error: unknown) {
+  if (error instanceof CodexStructuredGenerationError) return error.providerMessage;
+  if (error instanceof MotionCanvasGenerationError) return error.rootCause?.providerMessage ?? null;
+  return null;
+}
+
+function motionCanvasAttemptProviderCode(error: unknown) {
+  if (error instanceof CodexStructuredGenerationError) return error.providerCode;
+  if (error instanceof MotionCanvasGenerationError) return error.rootCause?.providerCode ?? null;
+  return null;
+}
+
+function rootCauseFromAttempt(
+  attempt: MotionCanvasGenerationAttemptEvidence,
+): MotionCanvasFailureRootCause {
+  return {
+    reason: attempt.error.reason,
+    code: attempt.error.code,
+    operation: attempt.error.operation,
+    message: attempt.error.message,
+    providerMessage: attempt.error.providerMessage,
+    providerCode: attempt.error.providerCode,
+    appServer: attempt.error.appServer ?? null,
+  };
+}
+
+export function motionCanvasRootCauseFromError(
+  error: unknown,
+): MotionCanvasFailureRootCause | null {
+  if (error instanceof MotionCanvasGenerationError && error.rootCause) {
+    return error.rootCause;
+  }
+  if (error instanceof MotionCanvasGenerationError && error.attemptEvidence[0]) {
+    return rootCauseFromAttempt(error.attemptEvidence[0]);
+  }
+  if (error instanceof CodexStructuredGenerationError) {
+    const mapped = structuredFailureMapping(error);
+    return structuredRootCause(error, mapped.code, mapped.message);
+  }
+  return null;
+}
+
+export function buildMotionCanvasGenerationAttemptEvidence(
+  phase: MotionCanvasGenerationAttemptPhase,
+  model: string | undefined,
+  reasoningEffort: string | undefined,
+  source: string,
+  error: unknown,
+): MotionCanvasGenerationAttemptEvidence {
+  const message = error instanceof Error ? error.message : String(error);
+  const code = motionCanvasAttemptCode(error);
+  const reason = motionCanvasAttemptFailureReason(error);
+  const providerMessage = motionCanvasAttemptProviderMessage(error);
+  const providerCode = motionCanvasAttemptProviderCode(error);
+  const appServer = error instanceof CodexStructuredGenerationError
+    ? error.appServerDiagnostics
+    : error instanceof MotionCanvasGenerationError
+      ? error.rootCause?.appServer ?? null
+      : null;
+  const diagnostics = redactMotionCanvasFailureText(repairDiagnostics(error)).slice(
+    0,
+    MOTION_CANVAS_FAILURE_ATTEMPT_DIAGNOSTICS_MAX_CHARS,
+  );
+  const normalizedModel = redactMotionCanvasFailureText(
+    error instanceof CodexStructuredGenerationError
+      ? error.model ?? model ?? ''
+      : model ?? '',
+  ).slice(
+    0,
+    160,
+  );
+  const normalizedReasoningEffort = reasoningEffort
+    ? redactMotionCanvasFailureText(reasoningEffort).slice(0, 80) || null
+    : null;
+  return {
+    phase,
+    model: normalizedModel || 'unknown',
+    reasoningEffort: normalizedReasoningEffort,
+    error: {
+      code: code.slice(0, 160),
+      reason,
+      operation: motionCanvasAttemptOperation(error),
+      message: redactMotionCanvasFailureText(message).slice(0, 2_000) || 'Unknown generation failure.',
+      providerMessage: providerMessage
+        ? redactMotionCanvasFailureText(providerMessage).slice(0, 2_000)
+        : null,
+      providerCode: providerCode
+        ? redactMotionCanvasFailureText(providerCode).slice(0, 120)
+        : null,
+      diagnostics,
+      appServer,
+    },
+    sourceHash: createHash('sha256').update(source).digest('hex'),
+    sourceLength: source.length,
+    sourceExcerpt: boundMotionCanvasFailureSourceExcerpt(source),
+  };
+}
+
+export function motionCanvasAttemptEvidenceFromError(error: unknown) {
+  return error instanceof MotionCanvasGenerationError
+    ? error.attemptEvidence
+    : [];
+}
+
+function withMotionCanvasAttemptEvidence(
+  error: unknown,
+  additionalEvidence: MotionCanvasGenerationAttemptEvidence[],
+) {
+  const mapped =
+    error instanceof MotionCanvasGenerationError
+      ? error
+      : new MotionCanvasGenerationError(
+          'CODEX_MOTION_CANVAS_GENERATION_FAILED',
+          error instanceof Error ? error.message : String(error),
+          {cause: error},
+        );
+  const attemptEvidence = mergeMotionCanvasAttemptEvidence(
+    mapped.attemptEvidence,
+    additionalEvidence,
+  );
+  if (attemptEvidence.length === 0) return mapped;
+  return new MotionCanvasGenerationError(mapped.code, mapped.message, {
+    cause: mapped,
+    attemptEvidence,
+    rootCause: mapped.rootCause,
+  });
 }
 
 export function createCodexMotionCanvasGenerator(
@@ -2292,6 +3411,7 @@ export function createCodexMotionCanvasGenerator(
     previousScene: MotionCanvasSourceScene | undefined,
     model: string,
     usage: CodexTokenUsage | null,
+    attemptEvidence: MotionCanvasGenerationAttemptEvidence[] = [],
   ) {
     const outlineSection = request.outline.sections[sectionIndex]!;
     const fallbackName = `${previousScene?.name ?? outlineSection.title} · safe fallback`
@@ -2322,6 +3442,7 @@ export function createCodexMotionCanvasGenerator(
         .join(', ')
         .slice(0, 160),
       usage,
+      ...(attemptEvidence.length ? {attemptEvidence} : {}),
       fallbackReason: 'Codex did not return a valid scene after the bounded repair and clean-regeneration attempts.',
     };
     return validateSceneResult(request, sectionIndex, result);
@@ -2337,34 +3458,76 @@ export function createCodexMotionCanvasGenerator(
       request.model,
       request.reasoningEffort,
     );
-    const regenerated = await runCodexStructuredGeneration({
-      client,
-      runtimeDirectory,
-      timeoutMs:
-        configuredTimeoutMs ??
-        codexGenerationTimeoutMs(
-          scenePolicy.reasoningEffort,
-          DEFAULT_SCENE_TIMEOUT_MS,
+    let regenerated: Awaited<ReturnType<typeof runCodexStructuredGenerationWithCapacityFallback>>;
+    try {
+      regenerated = await runCodexStructuredGenerationWithCapacityFallback({
+        client,
+        runtimeDirectory,
+        timeoutMs:
+          configuredTimeoutMs ??
+          codexGenerationTimeoutMs(
+            scenePolicy.reasoningEffort,
+            DEFAULT_SCENE_TIMEOUT_MS,
+          ),
+        outputSchema: outputJsonSchema,
+        prompt: buildRegenerationPrompt(request, sectionIndex, diagnostics),
+        input: codexInputForSection(
+          buildRegenerationPrompt(request, sectionIndex, diagnostics),
+          request,
+          sectionIndex,
         ),
-      outputSchema: outputJsonSchema,
-      prompt: buildRegenerationPrompt(request, sectionIndex, diagnostics),
-      baseInstructions: sceneGenerationRunInstructions.baseInstructions,
-      developerInstructions: sceneGenerationRunInstructions.developerInstructions,
-      model: scenePolicy.model,
-      reasoningEffort: scenePolicy.reasoningEffort,
-    });
-    return validateSceneResult(
-      request,
-      sectionIndex,
-      sceneResultFromResponse(
+        baseInstructions: sceneGenerationRunInstructions.baseInstructions,
+        developerInstructions: sceneGenerationRunInstructions.developerInstructions,
+        model: scenePolicy.model,
+        reasoningEffort: scenePolicy.reasoningEffort,
+      });
+    } catch (error) {
+      const mapped = sceneGenerationError(
+        error,
+        sectionIndex,
+        request.outline.sections[sectionIndex]!.title,
+      );
+      throw withMotionCanvasAttemptEvidence(mapped, [
+        buildMotionCanvasGenerationAttemptEvidence(
+          'regeneration',
+          error instanceof CodexStructuredGenerationError
+            ? error.model ?? scenePolicy.model
+            : scenePolicy.model,
+          scenePolicy.reasoningEffort,
+          '',
+          error,
+        ),
+      ]);
+    }
+    let candidateSource = sourceFromResponseText(regenerated.responseText);
+    try {
+      const candidate = sceneResultFromResponse(
         request,
         sectionIndex,
         regenerated.responseText,
         regenerated.model,
         regenerated.usage,
         previousScene,
-      ),
-    );
+      );
+      candidateSource = candidate.scene.source;
+      return validateSceneResult(request, sectionIndex, candidate);
+    } catch (error) {
+      const mapped = sceneGenerationError(
+        error,
+        sectionIndex,
+        request.outline.sections[sectionIndex]!.title,
+      );
+      if (!isRecoverableSceneOutputError(mapped)) throw mapped;
+      throw withMotionCanvasAttemptEvidence(mapped, [
+        buildMotionCanvasGenerationAttemptEvidence(
+          'regeneration',
+          regenerated.model || scenePolicy.model,
+          scenePolicy.reasoningEffort,
+          candidateSource,
+          error,
+        ),
+      ]);
+    }
   }
 
   function generateSceneOnce(
@@ -2394,13 +3557,18 @@ export function createCodexMotionCanvasGenerator(
       let initialModel = '';
       let initialUsage: CodexTokenUsage | null = null;
       let initialScene: MotionCanvasSourceScene | undefined;
+      let initialPolicyModel = request.model;
+      let initialPolicyReasoningEffort = request.reasoningEffort;
+      let attemptEvidence: MotionCanvasGenerationAttemptEvidence[] = [];
       const previousScene = request.currentScenes?.[sectionIndex];
       try {
         const scenePolicy = await resolveScenePolicy(
           request.model,
           request.reasoningEffort,
         );
-        const generated = await runCodexStructuredGeneration({
+        initialPolicyModel = scenePolicy.model;
+        initialPolicyReasoningEffort = scenePolicy.reasoningEffort;
+        const generated = await runCodexStructuredGenerationWithCapacityFallback({
           client,
           runtimeDirectory,
           timeoutMs:
@@ -2411,6 +3579,11 @@ export function createCodexMotionCanvasGenerator(
             ),
           outputSchema: outputJsonSchema,
           prompt: buildPrompt(request, sectionIndex),
+          input: codexInputForSection(
+            buildPrompt(request, sectionIndex),
+            request,
+            sectionIndex,
+          ),
           baseInstructions: sceneGenerationRunInstructions.baseInstructions,
           developerInstructions: sceneGenerationRunInstructions.developerInstructions,
           model: scenePolicy.model,
@@ -2418,14 +3591,37 @@ export function createCodexMotionCanvasGenerator(
         });
         initialModel = generated.model;
         initialUsage = generated.usage;
-        const initialResult = sceneResultFromResponse(
-          request,
-          sectionIndex,
-          generated.responseText,
-          generated.model,
-          generated.usage,
-          previousScene,
-        );
+        let initialResult: GeneratedSceneResult;
+        try {
+          initialResult = sceneResultFromResponse(
+            request,
+            sectionIndex,
+            generated.responseText,
+            generated.model,
+            generated.usage,
+            previousScene,
+          );
+        } catch (error) {
+          const mapped = sceneGenerationError(
+            error,
+            sectionIndex,
+            outlineSection.title,
+          );
+          if (!isRecoverableSceneOutputError(mapped)) throw mapped;
+          attemptEvidence = mergeMotionCanvasAttemptEvidence(
+            attemptEvidence,
+            [
+              buildMotionCanvasGenerationAttemptEvidence(
+                'initial',
+                generated.model || scenePolicy.model,
+                scenePolicy.reasoningEffort,
+                sourceFromResponseText(generated.responseText),
+                error,
+              ),
+            ],
+          );
+          throw withMotionCanvasAttemptEvidence(mapped, attemptEvidence);
+        }
         initialScene = initialResult.scene;
         try {
           return validateSceneResult(request, sectionIndex, initialResult);
@@ -2433,19 +3629,47 @@ export function createCodexMotionCanvasGenerator(
           if (!(validationError instanceof MotionCanvasGenerationError)) {
             throw validationError;
           }
-          const repaired = await repairScene(
-            request,
-            initialResult.scene,
+          const mappedValidationError = sceneGenerationError(
+            validationError,
             sectionIndex,
-            repairDiagnostics(validationError),
+            outlineSection.title,
           );
-          return {
-            ...repaired,
-            model: [...new Set([initialResult.model, repaired.model])]
-              .join(', ')
-              .slice(0, 160),
-            usage: addUsage(initialResult.usage, [repaired]),
-          };
+          attemptEvidence = mergeMotionCanvasAttemptEvidence(
+            attemptEvidence,
+            [
+              buildMotionCanvasGenerationAttemptEvidence(
+                'initial',
+                generated.model || scenePolicy.model,
+                scenePolicy.reasoningEffort,
+                initialResult.scene.source,
+                validationError,
+              ),
+            ],
+          );
+          try {
+            const repaired = await repairScene(
+              request,
+              initialResult.scene,
+              sectionIndex,
+              repairDiagnostics(validationError),
+            );
+            return {
+              ...repaired,
+              model: [...new Set([initialResult.model, repaired.model])]
+                .join(', ')
+                .slice(0, 160),
+              usage: addUsage(initialResult.usage, [repaired]),
+              attemptEvidence: mergeMotionCanvasAttemptEvidence(
+                attemptEvidence,
+                repaired.attemptEvidence,
+              ),
+            };
+          } catch (repairError) {
+            throw withMotionCanvasAttemptEvidence(
+              repairError,
+              attemptEvidence,
+            );
+          }
         }
       } catch (error) {
         const generationError = sceneGenerationError(
@@ -2453,15 +3677,32 @@ export function createCodexMotionCanvasGenerator(
           sectionIndex,
           outlineSection.title,
         );
+        if (!initialScene && attemptEvidence.length === 0) {
+          attemptEvidence = [
+            buildMotionCanvasGenerationAttemptEvidence(
+              'initial',
+              error instanceof CodexStructuredGenerationError
+                ? error.model ?? initialPolicyModel
+                : initialPolicyModel,
+              initialPolicyReasoningEffort,
+              '',
+              error,
+            ),
+          ];
+        }
+        const generationErrorWithEvidence = withMotionCanvasAttemptEvidence(
+          generationError,
+          attemptEvidence,
+        );
         if (!isRecoverableSceneOutputError(generationError)) {
-          throw generationError;
+          throw generationErrorWithEvidence;
         }
 
         try {
           const regenerated = await regenerateSceneFromScratch(
             request,
             sectionIndex,
-            repairDiagnostics(generationError),
+            repairDiagnostics(generationErrorWithEvidence),
             initialScene,
           );
           return {
@@ -2472,6 +3713,11 @@ export function createCodexMotionCanvasGenerator(
             usage: initialModel
               ? addUsage(initialUsage, [regenerated])
               : regenerated.usage,
+            attemptEvidence: mergeMotionCanvasAttemptEvidence(
+              generationErrorWithEvidence.attemptEvidence,
+              attemptEvidence,
+              regenerated.attemptEvidence,
+            ),
           };
         } catch (regenerationError) {
           const mappedRegenerationError = sceneGenerationError(
@@ -2488,6 +3734,11 @@ export function createCodexMotionCanvasGenerator(
             initialScene,
             initialModel,
             initialUsage,
+            mergeMotionCanvasAttemptEvidence(
+              generationErrorWithEvidence.attemptEvidence,
+              attemptEvidence,
+              mappedRegenerationError.attemptEvidence,
+            ),
           );
         }
       }
@@ -2516,65 +3767,150 @@ export function createCodexMotionCanvasGenerator(
     compilerDiagnostics: string,
   ): Promise<GeneratedSceneResult> {
     const outlineSection = request.outline.sections[sectionIndex]!;
+    let attemptEvidence: MotionCanvasGenerationAttemptEvidence[] = [];
+    let repairModel = request.model;
+    let repairReasoningEffort = request.reasoningEffort;
+    let currentScene = generatedScene;
     try {
       const scenePolicy = await resolveScenePolicy(
         request.model,
         request.reasoningEffort,
       );
-      let currentScene = generatedScene;
+      repairModel = scenePolicy.model;
+      repairReasoningEffort = scenePolicy.reasoningEffort;
       let diagnostics = compilerDiagnostics;
       const repairs: GeneratedSceneResult[] = [];
       for (let attempt = 0; attempt < MAX_SOURCE_REPAIR_ATTEMPTS; attempt += 1) {
-        const repaired = await runCodexStructuredGeneration({
-          client,
-          runtimeDirectory,
-          timeoutMs:
-            configuredTimeoutMs ??
-            codexGenerationTimeoutMs(
-              scenePolicy.reasoningEffort,
-              DEFAULT_SCENE_TIMEOUT_MS,
+        let repaired: Awaited<ReturnType<typeof runCodexStructuredGenerationWithCapacityFallback>>;
+        try {
+          repaired = await runCodexStructuredGenerationWithCapacityFallback({
+            client,
+            runtimeDirectory,
+            timeoutMs:
+              configuredTimeoutMs ??
+              codexGenerationTimeoutMs(
+                scenePolicy.reasoningEffort,
+                DEFAULT_SCENE_TIMEOUT_MS,
+              ),
+            outputSchema: outputJsonSchema,
+            prompt: buildRepairPrompt(
+              request,
+              sectionIndex,
+              currentScene,
+              diagnostics,
             ),
-          outputSchema: outputJsonSchema,
-          prompt: buildRepairPrompt(
-            request,
+            input: codexInputForSection(
+              buildRepairPrompt(
+                request,
+                sectionIndex,
+                currentScene,
+                diagnostics,
+              ),
+              request,
+              sectionIndex,
+            ),
+            baseInstructions: sceneGenerationRunInstructions.baseInstructions,
+            developerInstructions: sceneGenerationRunInstructions.developerInstructions,
+            model: scenePolicy.model,
+            reasoningEffort: scenePolicy.reasoningEffort,
+          });
+        } catch (error) {
+          const mapped = sceneGenerationError(
+            error,
             sectionIndex,
-            currentScene,
-            diagnostics,
-          ),
-          baseInstructions: sceneGenerationRunInstructions.baseInstructions,
-          developerInstructions: sceneGenerationRunInstructions.developerInstructions,
-          model: scenePolicy.model,
-          reasoningEffort: scenePolicy.reasoningEffort,
-        });
+            outlineSection.title,
+          );
+          attemptEvidence = mergeMotionCanvasAttemptEvidence(
+            attemptEvidence,
+            [
+              buildMotionCanvasGenerationAttemptEvidence(
+                'repair',
+                error instanceof CodexStructuredGenerationError
+                  ? error.model ?? repairModel
+                  : repairModel,
+                repairReasoningEffort,
+                currentScene.source,
+                error,
+              ),
+            ],
+          );
+          throw withMotionCanvasAttemptEvidence(mapped, attemptEvidence);
+        }
 
+        let candidateSource = sourceFromResponseText(repaired.responseText);
         let responseJson: unknown;
         try {
           responseJson = JSON.parse(repaired.responseText);
         } catch (error) {
-          throw new MotionCanvasGenerationError(
+          const mapped = sceneGenerationError(new MotionCanvasGenerationError(
             'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
             'Codex trả về scene sửa lỗi không đúng định dạng.',
             {cause: error},
-          );
+          ), sectionIndex, outlineSection.title);
+          if (!isRecoverableSceneOutputError(mapped)) throw mapped;
+          throw withMotionCanvasAttemptEvidence(mapped, [
+            buildMotionCanvasGenerationAttemptEvidence(
+              'repair',
+              repaired.model || scenePolicy.model,
+              scenePolicy.reasoningEffort,
+              candidateSource,
+              error,
+            ),
+          ]);
         }
         const parsed =
           generatedMotionCanvasSceneSchema.safeParse(responseJson);
         if (!parsed.success) {
-          throw new MotionCanvasGenerationError(
+          const sourceError = new MotionCanvasGenerationError(
             'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
             'Codex trả về scene sửa lỗi chưa đúng cấu trúc.',
             {cause: parsed.error},
           );
+          const mapped = sceneGenerationError(
+            sourceError,
+            sectionIndex,
+            outlineSection.title,
+          );
+          if (!isRecoverableSceneOutputError(mapped)) throw mapped;
+          throw withMotionCanvasAttemptEvidence(mapped, [
+            buildMotionCanvasGenerationAttemptEvidence(
+              'repair',
+              repaired.model || scenePolicy.model,
+              scenePolicy.reasoningEffort,
+              candidateSource,
+              sourceError,
+            ),
+          ]);
         }
 
-        const candidate = sceneResultFromResponse(
-          request,
-          sectionIndex,
-          repaired.responseText,
-          repaired.model,
-          repaired.usage,
-          currentScene,
-        );
+        let candidate: GeneratedSceneResult;
+        try {
+          candidate = sceneResultFromResponse(
+            request,
+            sectionIndex,
+            repaired.responseText,
+            repaired.model,
+            repaired.usage,
+            currentScene,
+          );
+          candidateSource = candidate.scene.source;
+        } catch (error) {
+          const mapped = sceneGenerationError(
+            error,
+            sectionIndex,
+            outlineSection.title,
+          );
+          if (!isRecoverableSceneOutputError(mapped)) throw mapped;
+          throw withMotionCanvasAttemptEvidence(mapped, [
+            buildMotionCanvasGenerationAttemptEvidence(
+              'repair',
+              repaired.model || scenePolicy.model,
+              scenePolicy.reasoningEffort,
+              candidateSource,
+              error,
+            ),
+          ]);
+        }
         repairs.push(candidate);
         try {
           validateSceneSourceContracts(
@@ -2588,6 +3924,7 @@ export function createCodexMotionCanvasGenerator(
               .join(', ')
               .slice(0, 160),
             usage: aggregateUsage(repairs),
+            ...(attemptEvidence.length ? {attemptEvidence} : {}),
           };
           const cacheKey =
             `${request.projectId}:${request.generationId}:${outlineSection.id}`;
@@ -2601,14 +3938,33 @@ export function createCodexMotionCanvasGenerator(
           });
           return result;
         } catch (validationError) {
+          const mapped = sceneGenerationError(
+            validationError,
+            sectionIndex,
+            outlineSection.title,
+          );
+          if (isRecoverableSceneOutputError(mapped)) {
+            attemptEvidence = mergeMotionCanvasAttemptEvidence(
+              attemptEvidence,
+              [
+                buildMotionCanvasGenerationAttemptEvidence(
+                  'repair',
+                  repaired.model || scenePolicy.model,
+                  scenePolicy.reasoningEffort,
+                  candidateSource,
+                  validationError,
+                ),
+              ],
+            );
+          }
           if (
             !(validationError instanceof MotionCanvasGenerationError) ||
             attempt + 1 >= MAX_SOURCE_REPAIR_ATTEMPTS
           ) {
-            throw validationError;
+            throw withMotionCanvasAttemptEvidence(mapped, attemptEvidence);
           }
           currentScene = candidate.scene;
-          diagnostics = repairDiagnostics(validationError);
+          diagnostics = repairDiagnostics(mapped);
         }
       }
 
@@ -2617,11 +3973,12 @@ export function createCodexMotionCanvasGenerator(
         'Codex chưa sửa được scene sau các lượt tự khắc phục.',
       );
     } catch (error) {
-      throw sceneGenerationError(
+      const mapped = sceneGenerationError(
         error,
         sectionIndex,
         outlineSection.title,
       );
+      throw withMotionCanvasAttemptEvidence(mapped, attemptEvidence);
     }
   }
 
@@ -2653,8 +4010,10 @@ export function createCodexMotionCanvasGenerator(
       const failures: Array<{index: number; error: unknown}> = [];
       let nextIndex = 0;
       let completedScenes = 0;
+      let failedScenes = 0;
       request.onProgress?.({
         completedScenes,
+        failedScenes,
         totalScenes: sectionIndexes.length,
         sectionIndex: null,
         outcome: 'started',
@@ -2678,15 +4037,17 @@ export function createCodexMotionCanvasGenerator(
             completedScenes += 1;
             request.onProgress?.({
               completedScenes,
+              failedScenes,
               totalScenes: sectionIndexes.length,
               sectionIndex,
               outcome: 'completed',
             });
           } catch (error) {
             failures.push({index: resultIndex, error});
-            completedScenes += 1;
+            failedScenes += 1;
             request.onProgress?.({
               completedScenes,
+              failedScenes,
               totalScenes: sectionIndexes.length,
               sectionIndex,
               outcome: 'failed',
@@ -2703,7 +4064,7 @@ export function createCodexMotionCanvasGenerator(
 
       // Structural richness is retained as telemetry for diagnostics only.
       // It is deliberately not a pass/fail signal: rendered-frame validation
-      // owns acceptance and retries after compilation.
+      // owns acceptance and retries after validation.
       const assessments = results.map((result, index) =>
         assessMotionCanvasSceneQuality(
           result.scene.source,
@@ -2744,7 +4105,7 @@ export function createCodexMotionCanvasGenerator(
           qualityRetryDiagnostics.push({
             stage: 'fallback',
             attempt: 1,
-            reason: `Scene "${result.scene.name.slice(0, 80)}" used the illustrated compiler fallback. ${result.fallbackReason}`.slice(0, 4_000),
+            reason: `Scene "${result.scene.name.slice(0, 80)}" used the illustrated safe fallback. ${result.fallbackReason}`.slice(0, 4_000),
             outcome: 'used_fallback',
           });
         }
@@ -2788,6 +4149,10 @@ export function createCodexMotionCanvasGenerator(
               .join(', ')
               .slice(0, 160),
             usage: addUsage(initialResult.usage, [regenerated]),
+            attemptEvidence: mergeMotionCanvasAttemptEvidence(
+              initialResult.attemptEvidence,
+              regenerated.attemptEvidence,
+            ),
           };
           assessments[resultIndex] = improved
             ? regeneratedAssessment
@@ -2812,6 +4177,13 @@ export function createCodexMotionCanvasGenerator(
           // The original scene already passed the strict source/timing gates.
           // A best-effort visual retry must never turn a valid batch into a
           // failed generation.
+          results[resultIndex] = {
+            ...initialResult,
+            attemptEvidence: mergeMotionCanvasAttemptEvidence(
+              initialResult.attemptEvidence,
+              motionCanvasAttemptEvidenceFromError(error),
+            ),
+          };
           qualityRetryDiagnostics.push({
             stage: 'quality-retry',
             attempt: 1,
@@ -2828,6 +4200,15 @@ export function createCodexMotionCanvasGenerator(
         scenes: results.map((result) => result.scene),
         model: models.join(', ').slice(0, 160),
         usage: aggregateUsage(results),
+        ...(mergeMotionCanvasAttemptEvidence(
+          ...results.map(result => result.attemptEvidence),
+        ).length
+          ? {
+              attemptEvidence: mergeMotionCanvasAttemptEvidence(
+                ...results.map(result => result.attemptEvidence),
+              ),
+            }
+          : {}),
         ...(qualityRetryDiagnostics.length ? {qualityRetryDiagnostics} : {}),
       };
     },
@@ -2914,6 +4295,17 @@ export function createCodexMotionCanvasGenerator(
         scenes: repairedScenes,
         model: models.join(', ').slice(0, 160),
         usage: addUsage(generated.usage, repairs),
+        ...(mergeMotionCanvasAttemptEvidence(
+          generated.attemptEvidence,
+          ...repairs.map(repair => repair.attemptEvidence),
+        ).length
+          ? {
+              attemptEvidence: mergeMotionCanvasAttemptEvidence(
+                generated.attemptEvidence,
+                ...repairs.map(repair => repair.attemptEvidence),
+              ),
+            }
+          : {}),
       };
     },
     recover(request, generated, compilerDiagnostics) {
@@ -2946,6 +4338,9 @@ export function createCodexMotionCanvasGenerator(
         scenes: fallbackScenes,
         model: `${generated.model}, local-safe-fallback`.slice(0, 160),
         usage: generated.usage,
+        ...(generated.attemptEvidence?.length
+          ? {attemptEvidence: generated.attemptEvidence}
+          : {}),
       };
     },
     discardGeneration,

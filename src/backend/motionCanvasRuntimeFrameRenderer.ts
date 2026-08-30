@@ -216,7 +216,7 @@ export function createMotionCanvasRuntimeFrameRenderer(runtimeOptions: {browserN
       );
       if (missingSamples.length === 0) {
         const cachedResult=new Map<string,QualityRenderedFrame>();
-        for(const sample of options.samples){const rendered=outputs.get(sample.sampleId)!;const decoded=decodePngRgba(rendered.png!);cachedResult.set(sample.sampleId,{...decoded,nodes:rendered.nodes!});}
+        for(const sample of options.samples){const rendered=outputs.get(sample.sampleId)!;const decoded=decodePngRgba(rendered.png!);cachedResult.set(sample.sampleId,{...decoded,nodes:rendered.nodes!,png:rendered.png!});}
         return cachedResult;
       }
       let finish:(error?:Error)=>void=()=>{};
@@ -293,7 +293,7 @@ export function createMotionCanvasRuntimeFrameRenderer(runtimeOptions: {browserN
           const rendered=outputs.get(sample.sampleId);
           if(!rendered?.png||!rendered.nodes)throw new Error(`Quality renderer did not return complete output for sample ${sample.sampleId}.`);
           const decoded=decodePngRgba(rendered.png);
-          result.set(sample.sampleId,{...decoded,nodes:rendered.nodes});
+          result.set(sample.sampleId,{...decoded,nodes:rendered.nodes,png:rendered.png});
         }
         return result;
       } catch (error) {

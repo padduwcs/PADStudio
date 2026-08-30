@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {mkdtemp, rm} from 'node:fs/promises';
+import {mkdtemp, readFile, rm} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -14,8 +14,10 @@ import {
   createCodexMotionCanvasGenerator,
   DEFAULT_MOTION_CANVAS_GENERATION_CONCURRENCY,
   MAXIMUM_MOTION_CANVAS_GENERATION_CONCURRENCY,
+  MOTION_CANVAS_FAILURE_ATTEMPT_SOURCE_MAX_CHARS,
   MOTION_CANVAS_DEFAULT_FONT_FAMILY,
   MotionCanvasGenerationError,
+  redactMotionCanvasFailureText,
   type MotionCanvasGenerationRequest,
   validateMotionCanvasBackground,
   validateMotionCanvasBeatLifecycle,
@@ -26,12 +28,28 @@ import {
   validateMotionCanvasTimingContract,
   validateMotionCanvasVisualIntentBindings,
 } from './motionCanvasGenerator.ts';
+import type {MotionCanvasVisualEvidence} from './motionCanvasVisualQuality.ts';
 import {MOTION_CANVAS_ICON_ATLAS_IMPORT_SPECIFIER} from './motionCanvasIconLibrary.ts';
+import {assertMotionCanvasScenesArePublishable} from './motionCanvasRoutes.ts';
 import {
   findUnsupportedMotionCanvasColorLiterals,
   normalizeMotionCanvasColorFormats,
 } from './motionCanvasSourceCompatibility.ts';
 import {createMotionCanvasWorkspace} from './motionCanvasWorkspace.ts';
+
+test('failure text redacts data URLs and long base64 payloads', () => {
+  const dataUrl = `data:image/png;base64,${'A'.repeat(128)}`;
+  const rawBase64 = 'B'.repeat(128);
+  const redacted = redactMotionCanvasFailureText(
+    `provider=${dataUrl} raw=${rawBase64}`,
+  );
+
+  assert.doesNotMatch(redacted, /data:image\/png;base64/i);
+  assert.doesNotMatch(redacted, /A{128}/);
+  assert.doesNotMatch(redacted, /B{128}/);
+  assert.match(redacted, /REDACTED_DATA_URL/);
+  assert.match(redacted, /REDACTED_BASE64/);
+});
 
 const sceneSource = `import {makeScene2D, Rect} from '@motion-canvas/2d';
 import {waitFor} from '@motion-canvas/core';
@@ -49,6 +67,15 @@ export default makeScene2D(function* (view) {
   yield* waitFor(12);
 });
 `;
+
+const directTsxSafeMarginScaffold = [
+  '  const canvasWidth = view.width();',
+  '  const canvasHeight = view.height();',
+  '  const safeMarginX = canvasWidth * 0.08;',
+  '  const safeMarginY = canvasHeight * 0.07;',
+  '  const safeWidth = canvasWidth - safeMarginX * 2;',
+  '  const safeHeight = canvasHeight - safeMarginY * 2;',
+].join('\n');
 
 test('Motion Canvas chuẩn hóa transparent theo ngữ cảnh màu mà không đổi text', () => {
   const sourceWithTransparentColors = `const clear = 'transparent';
@@ -160,6 +187,59 @@ ${beatIds
   .join('\n')}
 });
 `;
+}
+
+function coupledRangeSceneSource(
+  initialWidth: string,
+  targetWidth: string,
+  targetX: string,
+) {
+  return `import {Rect, makeScene2D} from '@motion-canvas/2d';
+import {all, createRef, easeInOutCubic} from '@motion-canvas/core';
+
+export default makeScene2D(function* (view) {
+  const canvasWidth = view.width();
+  const canvasHeight = view.height();
+  const safeMarginX = canvasWidth * 0.08;
+  const safeMarginY = canvasHeight * 0.07;
+  const safeWidth = canvasWidth - safeMarginX * 2;
+  const safeHeight = canvasHeight - safeMarginY * 2;
+  const reducedRange = createRef<Rect>();
+  view.add(
+    <Rect key="scene-background" width={canvasWidth} height={canvasHeight} fill={'#10231D'}>
+      <Rect key="reduced-search-range" ref={reducedRange} x={0} y={-70} width={${initialWidth}} height={82} />
+    </Rect>,
+  );
+  yield* all(
+    reducedRange().width(${targetWidth}, 0.32, easeInOutCubic),
+    reducedRange().x(${targetX}, 0.32, easeInOutCubic),
+  );
+});
+`;
+}
+
+function artifactLayoutFailureSource(beatIds: string[], targetX: string) {
+  return timedSceneSource(beatIds)
+    .replace(
+      'import {createRef, useDuration, useThread, waitFor, waitUntil} from \'@motion-canvas/core\';',
+      'import {all, createRef, easeInOutCubic, useDuration, useThread, waitFor, waitUntil} from \'@motion-canvas/core\';',
+    )
+    .replace(
+      '  const conceptBlock = createRef<Layout>();',
+      '  const conceptBlock = createRef<Layout>();\n  const reducedRange = createRef<Rect>();',
+    )
+    .replace(
+      '          <Rect key="main-visual-card" width={640} height={120} radius={24} fill={\'#dbe9e2\'} />',
+      '          <Rect key="main-visual-card" width={240} height={120} radius={24} fill={\'#dbe9e2\'} />\n          <Rect key="reduced-search-range" ref={reducedRange} x={0} y={-70} width={406} height={82} />',
+    )
+    .replace(
+      '  yield* conceptBlock().opacity(1, beatDuration0 * 0.1);',
+      `  yield* all(
+    reducedRange().width(174, beatDuration0 * 0.32, easeInOutCubic),
+    reducedRange().x(${targetX}, beatDuration0 * 0.32, easeInOutCubic),
+  );
+  yield* conceptBlock().opacity(1, beatDuration0 * 0.1);`,
+    );
 }
 
 function richTimedSceneSource(beatIds: string[]) {
@@ -280,6 +360,16 @@ test('Motion Canvas static lifecycle and responsive validators reject stale visu
     visualLifecycle: {enter: ['block-concept-card'], stay: ['block-concept-card'], exit: ['block-concept-card']},
   }];
   assert.doesNotThrow(() => validateMotionCanvasBeatLifecycle(source, beats));
+  const scopedBeatSource = source
+    .replace(
+      `  // lifecycle:beat:${beatId}:enter=block-concept-card|stay=block-concept-card|exit=block-concept-card|primary=block-concept-card`,
+      `  {\n  // lifecycle:beat:${beatId}:enter=block-concept-card|stay=block-concept-card|exit=block-concept-card|primary=block-concept-card`,
+    )
+    .replace(
+      '  yield* waitFor(Math.max(0, beatEndTime0 - useThread().time()));\n});',
+      '  yield* waitFor(Math.max(0, beatEndTime0 - useThread().time()));\n  }\n});',
+    );
+  assert.doesNotThrow(() => validateMotionCanvasBeatLifecycle(scopedBeatSource, beats));
   assert.throws(() => validateMotionCanvasBeatLifecycle(source.replace('lifecycle:beat:', 'removed:beat:'), beats), MotionCanvasGenerationError);
   const frame = {aspectRatio: 'portrait' as const, width: 1080, height: 1920, fps: 30 as const};
   assert.doesNotThrow(() => validateMotionCanvasResponsiveLayout(source, frame));
@@ -328,6 +418,40 @@ test('Motion Canvas responsive validator checks position bounding boxes and only
   const source = timedSceneSource([beatId]);
   const frame = {aspectRatio: 'portrait' as const, width: 1080, height: 1920, fps: 30 as const};
   assert.throws(() => validateMotionCanvasResponsiveLayout(source.replace('ref={conceptBlock}>', 'ref={conceptBlock} position={[canvasWidth * 0.5, 0]} width={canvasWidth * 0.8}>'), frame), MotionCanvasGenerationError);
+});
+
+test('Motion Canvas responsive validator evaluates coupled position and size targets at the same animation endpoint', () => {
+  const frame = {aspectRatio: 'portrait' as const, width: 540, height: 960, fps: 30 as const};
+  const beatId = randomUUID();
+  const beats = [{
+    id: beatId,
+    visualLifecycle: {
+      enter: ['reduced-search-range'],
+      stay: ['reduced-search-range'],
+      exit: [],
+    },
+  }];
+
+  for (const source of [
+    coupledRangeSceneSource('406', '174', '-116'),
+    coupledRangeSceneSource('safeWidth * 0.88', 'safeWidth * 0.38', '-safeWidth * 0.255'),
+  ]) {
+    assert.doesNotThrow(() => validateMotionCanvasResponsiveLayout(source, frame, beats));
+  }
+
+  assert.throws(
+    () => validateMotionCanvasResponsiveLayout(
+      coupledRangeSceneSource('406', '174', '-400'),
+      frame,
+      beats,
+    ),
+    (error: unknown) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_LAYOUT' &&
+      /semanticKey=reduced-search-range/u.test(error.message) &&
+      new RegExp(`beat=${beatId}`, 'u').test(error.message) &&
+      /safeArea=\(x=-226\.80\.\.226\.80/u.test(error.message),
+  );
 });
 
 test('Motion Canvas lifecycle permits four sequential primary blocks but rejects three active blocks in one beat', () => {
@@ -572,6 +696,11 @@ class FakeCodexClient implements CodexAppServerClient {
     turnNumber: number,
     beatIds: string[],
   ) => string;
+  private readonly responseFactory?: (
+    turnNumber: number,
+    beatIds: string[],
+  ) => unknown;
+  private readonly turnStartError?: Error;
 
   constructor(
     failFirstTurn = false,
@@ -603,6 +732,11 @@ class FakeCodexClient implements CodexAppServerClient {
       turnNumber: number,
       beatIds: string[],
     ) => string,
+    responseFactory?: (
+      turnNumber: number,
+      beatIds: string[],
+    ) => unknown,
+    turnStartError?: Error,
   ) {
     this.failFirstTurn = failFirstTurn;
     this.models = models;
@@ -613,6 +747,8 @@ class FakeCodexClient implements CodexAppServerClient {
           ? 1
           : 0;
     this.sourceFactory = sourceFactory;
+    this.responseFactory = responseFactory;
+    this.turnStartError = turnStartError;
   }
 
   async request(method: string, params?: unknown) {
@@ -638,6 +774,7 @@ class FakeCodexClient implements CodexAppServerClient {
       const turnNumber = this.turnCount;
       const turnId = `turn-motion-${turnNumber}`;
       const threadId = (params as {threadId: string}).threadId;
+      if (this.turnStartError) throw this.turnStartError;
       const beatIds = [
         ...new Set(
           [
@@ -649,17 +786,21 @@ class FakeCodexClient implements CodexAppServerClient {
       ];
       if (!(this.failFirstTurn && turnNumber === 1)) {
         queueMicrotask(() => {
-          const generatedOutput = this.sourceFactory?.(turnNumber, beatIds);
-          const response = {
-            name: `Scene ${turnNumber}`,
-            source:
-              turnNumber <= this.invalidTurnCount
-                ? timedSceneSource(beatIds).replace(
-                    'width={canvasWidth}',
-                    'width={',
-                  )
-                : generatedOutput ?? timedSceneSource(beatIds),
-          };
+          const response = this.responseFactory
+            ? this.responseFactory(turnNumber, beatIds)
+            : (() => {
+                const generatedOutput = this.sourceFactory?.(turnNumber, beatIds);
+                return {
+                  name: `Scene ${turnNumber}`,
+                  source:
+                    turnNumber <= this.invalidTurnCount
+                      ? timedSceneSource(beatIds).replace(
+                          'width={canvasWidth}',
+                          'width={',
+                        )
+                      : generatedOutput ?? timedSceneSource(beatIds),
+                };
+              })();
           this.emit({
             method: 'item/completed',
             params: {
@@ -790,6 +931,365 @@ function createGenerationRequest(): MotionCanvasGenerationRequest {
     voiceVisualPlan,
   };
 }
+
+test('Motion Canvas direct generation prompt yêu cầu full literal TSX source', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-direct-prompt-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const client = new FakeCodexClient(
+    false,
+    undefined,
+    false,
+    undefined,
+    (_turnNumber, beatIds) => ({
+      name: 'Direct prompt scene',
+      source: timedSceneSource(beatIds),
+    }),
+  );
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+    qualityRetryLimit: 0,
+  });
+
+  const request = createSingleSceneGenerationRequest();
+  await generator.generate(request);
+
+  const generationCalls = JSON.stringify(
+    client.calls.filter(call =>
+      call.method === 'thread/start' || call.method === 'turn/start',
+    ),
+  );
+  const generationPromptText = client.calls
+    .filter(call =>
+      call.method === 'thread/start' || call.method === 'turn/start',
+    )
+    .map(call =>
+      ((call.params as {input?: Array<{text?: string}>}).input ?? [])
+        .map(item => item.text ?? '')
+        .join('\n'),
+    )
+    .join('\n');
+  const safeMarginScaffoldIndex = generationPromptText.indexOf(
+    directTsxSafeMarginScaffold,
+  );
+  assert.ok(safeMarginScaffoldIndex >= 0);
+  assert.ok(
+    safeMarginScaffoldIndex < generationPromptText.indexOf(
+      '// declare every lifecycle ref exactly once before the one inline view.add:',
+      safeMarginScaffoldIndex,
+    ),
+  );
+  assert.ok(
+    safeMarginScaffoldIndex < generationPromptText.indexOf(
+      '  view.add(',
+      safeMarginScaffoldIndex,
+    ),
+  );
+  const beat = request.voiceVisualPlan.sections[0]!.beats[0]!;
+  const lifecycle = beat.visualLifecycle!;
+  const expectedMarker = `// lifecycle:beat:${beat.id}:enter=${lifecycle.enter.join(',')}|stay=${lifecycle.stay.join(',')}|exit=${lifecycle.exit.join(',')}|primary=${beat.primaryBlock}`;
+  const outputSchema = (
+    client.calls.find(call => call.method === 'turn/start')?.params as {
+      outputSchema?: {
+        properties?: Record<string, unknown>;
+        required?: string[];
+        additionalProperties?: boolean;
+      };
+    }
+  ).outputSchema;
+  assert.deepEqual(
+    Object.keys(outputSchema?.properties ?? {}).sort(),
+    ['name', 'source'],
+  );
+  assert.deepEqual(outputSchema?.required?.sort(), ['name', 'source']);
+  assert.equal(outputSchema?.additionalProperties, false);
+  assert.match(generationCalls, /full file/u);
+  assert.match(generationCalls, /imports plus/u);
+  assert.match(generationCalls, /export default makeScene2D\(function\* \(view\)/u);
+  assert.match(generationCalls, /entire literal TSX file contents/u);
+  assert.match(generationCalls, /Do not return a Scene Spec/u);
+  assert.match(generationCalls, /source:null/u);
+  assert.match(generationCalls, /JSON-in-JSON/u);
+  assert.match(generationCalls, /partial source/u);
+  assert.ok(generationCalls.includes(expectedMarker));
+  assert.match(generationCalls, /Direct TSX source-policy contract/u);
+  assert.match(generationCalls, /exactly one direct view\.add\(\.\.\.\)/u);
+  assert.match(generationCalls, /complete JSX tree written inline/u);
+  assert.match(generationCalls, /Only block-\* containers may be direct children of scene-content-root/u);
+  assert.match(generationCalls, /title, ambient\/background decoration, icon, line, text, visual detail, and semantic node/u);
+  assert.match(generationCalls, /block-title/u);
+  assert.match(generationCalls, /block-atmosphere/u);
+  assert.match(generationCalls, /local coordinates of that block/u);
+  assert.match(generationCalls, /Lifecycle execution scope/u);
+  assert.match(generationCalls, /directly at top level of the default makeScene2D generator body/u);
+  assert.match(generationCalls, /Never wrap a beat in \{ \.\.\. \}/u);
+  assert.match(generationCalls, /BEGIN LITERAL DIRECT-TSX LIFECYCLE SCAFFOLD/u);
+  assert.match(generationCalls, /Required top-level beat order and timing authority/u);
+  assert.doesNotMatch(generationCalls, /const beatDuration = useDuration/u);
+  assert.doesNotMatch(generationCalls, /beatEndTime = useThread\(\)\.time\(\) \+ beatDuration/u);
+  assert.match(generationCalls, /Required top-level beat order.*waitUntil\(startEvent\).*useDuration\(endEvent\).*beatEndTime.*enter animations.*visual animations.*exit animations.*waitFor/u);
+  assert.match(generationCalls, /Lifecycle visibility.*final 10%.*beatEndTimeN.*beatDurationN \* 0\.1/u);
+  assert.match(generationCalls, /Never let a decorative, selection, range, or highlight node cover information-bearing content/u);
+  assert.match(generationCalls, /Numeric-only segments are invalid.*array-cell-3.*middle-support-cell-14/u);
+  assert.match(generationCalls, /scene-content-root at x=\{0\} y=\{0\}/u);
+  assert.match(generationCalls, /abs\(x\) \+ width\/2 <= safeWidth\/2/u);
+  assert.match(generationCalls, /Exact mustShow key checklist for this scene/u);
+  assert.match(generationCalls, /ref\(\)\.opacity\(1, duration, easing\)/u);
+  assert.match(generationCalls, /ref\(\)\.opacity\(0, duration, easing\) before the final waitFor/u);
+  assert.match(generationCalls, /scale, scale\.x, scale\.y/u);
+  assert.match(generationCalls, /opacity signal from another node/u);
+  assert.match(generationCalls, /hiding only a parent as an exit/u);
+  assert.match(generationCalls, /named JSX component/u);
+  assert.match(generationCalls, /helper result/u);
+  assert.match(generationCalls, /callback result/u);
+  assert.match(generationCalls, /\.map\(\)/u);
+  assert.match(generationCalls, /for loop/u);
+  assert.match(generationCalls, /while loop/u);
+  assert.match(generationCalls, /copy every marker line verbatim/u);
+  assert.match(generationCalls, /matching JSX key string literal and attach ref=\{bareIdentifier\}/u);
+  assert.doesNotMatch(generationCalls, /SceneTree/u);
+  assert.doesNotMatch(generationCalls, /view\.add\(<SceneTree/u);
+  assert.doesNotMatch(generationCalls, /Scene Graph v[23]/u);
+});
+
+test('Motion Canvas direct repair và regeneration dùng cùng inline lifecycle contract', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-direct-repair-prompt-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const request = createTwoBeatPromptGenerationRequest();
+  const client = new FakeCodexClient(
+    false,
+    undefined,
+    false,
+    undefined,
+    (turnNumber, beatIds) => ({
+      name: `Invalid direct source ${turnNumber}`,
+      source: timedSceneSource(beatIds).replace('ref={conceptBlock}', ''),
+    }),
+  );
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+    concurrency: 1,
+    qualityRetryLimit: 0,
+  });
+
+  const result = await generator.generate(request);
+
+  assert.match(result.model, /local-safe-fallback/u);
+  const turnCalls = client.calls.filter(call => call.method === 'turn/start');
+  assert.equal(turnCalls.length, 3);
+  const beat = request.voiceVisualPlan.sections[0]!.beats[0]!;
+  const lifecycle = beat.visualLifecycle!;
+  const expectedMarker = `// lifecycle:beat:${beat.id}:enter=${lifecycle.enter.join(',')}|stay=${lifecycle.stay.join(',')}|exit=${lifecycle.exit.join(',')}|primary=${beat.primaryBlock}`;
+  for (const [index, call] of turnCalls.entries()) {
+    const prompt = JSON.stringify(call.params);
+    const promptText = (
+      ((call.params as {input?: Array<{text?: string}>}).input ?? [])
+        .map(item => item.text ?? '')
+        .join('\n')
+    );
+    const scaffoldStart = promptText.indexOf(
+      'BEGIN LITERAL DIRECT-TSX LIFECYCLE SCAFFOLD',
+    );
+    const scaffoldEndMarker = 'END LITERAL DIRECT-TSX LIFECYCLE SCAFFOLD';
+    const scaffoldEnd = promptText.indexOf(scaffoldEndMarker, scaffoldStart);
+    assert.ok(scaffoldStart >= 0, `missing scaffold in turn ${index + 1}`);
+    assert.ok(scaffoldEnd > scaffoldStart, `truncated scaffold in turn ${index + 1}`);
+    const scaffold = promptText.slice(
+      scaffoldStart,
+      scaffoldEnd + scaffoldEndMarker.length,
+    );
+    const safeMarginScaffoldIndex = scaffold.indexOf(
+      directTsxSafeMarginScaffold,
+    );
+    assert.ok(
+      safeMarginScaffoldIndex >= 0,
+      `missing safe-margin scaffold in turn ${index + 1}`,
+    );
+    assert.ok(
+      safeMarginScaffoldIndex < scaffold.indexOf(
+        '// declare every lifecycle ref exactly once before the one inline view.add:',
+        safeMarginScaffoldIndex,
+      ),
+    );
+    assert.ok(
+      safeMarginScaffoldIndex < scaffold.indexOf(
+        '  view.add(',
+        safeMarginScaffoldIndex,
+      ),
+    );
+    assert.ok(prompt.includes(expectedMarker), `missing marker in turn ${index + 1}`);
+    for (const [beatIndex, scaffoldBeat] of request.voiceVisualPlan.sections[0]!.beats.entries()) {
+      const number = beatIndex + 1;
+      assert.match(
+        scaffold,
+        new RegExp(`yield\\* waitUntil\\('beat:${scaffoldBeat.id}:start'\\);`, 'u'),
+      );
+      assert.match(
+        scaffold,
+        new RegExp(`const beatDuration${number} = useDuration\\('beat:${scaffoldBeat.id}:end'\\);`, 'u'),
+      );
+      assert.match(
+        scaffold,
+        new RegExp(`const beatEndTime${number} = useThread\\(\\)\\.time\\(\\) \\+ beatDuration${number};`, 'u'),
+      );
+    }
+    assert.equal((scaffold.match(/const beatDuration1 =/gu) ?? []).length, 1);
+    assert.equal((scaffold.match(/const beatEndTime1 =/gu) ?? []).length, 1);
+    assert.equal((scaffold.match(/const beatDuration2 =/gu) ?? []).length, 1);
+    assert.equal((scaffold.match(/const beatEndTime2 =/gu) ?? []).length, 1);
+    for (const [key, refName] of [
+      ['block-autumn-leaf', 'blockAutumnLeaf'],
+      ['visual-detail-autumn-leaf', 'visualDetailAutumnLeaf'],
+      ['block-color-shift', 'blockColorShift'],
+      ['visual-detail-color-shift', 'visualDetailColorShift'],
+    ]) {
+      assert.match(scaffold, new RegExp(`const ${refName} = createRef<Layout>\\(\\);`, 'u'));
+      assert.match(scaffold, new RegExp(`key="${key}" ref=\\{${refName}\\}`, 'u'));
+      assert.match(scaffold, new RegExp(`${refName}\\(\\)\\.opacity\\(1, beatDuration[12] \\* 0\\.1, easeInOutCubic\\);`, 'u'));
+      assert.match(scaffold, new RegExp(`${refName}\\(\\)\\.opacity\\(0, beatDuration[12] \\* 0\\.1, easeInOutCubic\\);`, 'u'));
+    }
+    assert.doesNotMatch(scaffold, /\{\s*(?:\/\/[^\r\n]*\r?\n\s*)*yield\* waitUntil/u);
+    assert.doesNotMatch(scaffold, /\{\s*(?:\/\/[^\r\n]*\r?\n\s*)*const beatDuration/u);
+    assert.match(prompt, /Direct TSX source-policy contract/u);
+    assert.match(prompt, /complete JSX tree written inline/u);
+    assert.match(prompt, /exactly one direct view\.add\(\.\.\.\)/u);
+    assert.match(prompt, /Only block-\* containers may be direct children of scene-content-root/u);
+    assert.match(prompt, /title, ambient\/background decoration, icon, line, text, visual detail, and semantic node/u);
+    assert.match(prompt, /block-title/u);
+    assert.match(prompt, /block-atmosphere/u);
+    assert.match(prompt, /local coordinates of that block/u);
+    assert.match(prompt, /Lifecycle execution scope/u);
+    assert.match(prompt, /directly at top level of the default makeScene2D generator body/u);
+    assert.match(prompt, /Never wrap a beat in \{ \.\.\. \}/u);
+    assert.match(prompt, /BEGIN LITERAL DIRECT-TSX LIFECYCLE SCAFFOLD/u);
+    assert.match(prompt, /Required top-level beat order and timing authority/u);
+    assert.doesNotMatch(prompt, /const beatDuration = useDuration/u);
+    assert.doesNotMatch(prompt, /beatEndTime = useThread\(\)\.time\(\) \+ beatDuration/u);
+    assert.match(prompt, /Required top-level beat order.*waitUntil\(startEvent\).*useDuration\(endEvent\).*beatEndTime.*enter animations.*visual animations.*exit animations.*waitFor/u);
+    assert.match(prompt, /ref\(\)\.opacity\(1, duration, easing\)/u);
+    assert.match(prompt, /ref\(\)\.opacity\(0, duration, easing\) before the final waitFor/u);
+    assert.match(prompt, /scale, scale\.x, scale\.y/u);
+    assert.match(prompt, /opacity signal from another node/u);
+    assert.match(prompt, /hiding only a parent as an exit/u);
+    assert.match(prompt, /named JSX component/u);
+    assert.match(prompt, /helper result/u);
+    assert.match(prompt, /callback result/u);
+    assert.match(prompt, /\.map\(\)/u);
+    assert.match(prompt, /for loop/u);
+    assert.match(prompt, /while loop/u);
+    assert.match(prompt, /copy every marker line verbatim/u);
+    assert.match(prompt, /matching JSX key string literal and attach ref=\{bareIdentifier\}/u);
+    assert.doesNotMatch(prompt, /SceneTree/u);
+  }
+  assert.match(JSON.stringify(turnCalls[1]?.params), /Repair every lifecycle/u);
+  assert.match(JSON.stringify(turnCalls[2]?.params), /complete replacement Motion Canvas TSX scene/u);
+});
+
+test('Motion Canvas direct output được chấp nhận, normalize và giữ nguyên thay vì qua Scene Spec compiler', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-direct-output-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  let rawSource = '';
+  const client = new FakeCodexClient(
+    false,
+    undefined,
+    false,
+    undefined,
+    (_turnNumber, beatIds) => {
+      rawSource = timedSceneSource(beatIds)
+        .replace(
+          "import {Layout, makeScene2D, Rect} from '@motion-canvas/2d';",
+          "import {Layout, makeScene2D, Rect, Txt} from '@motion-canvas/2d';",
+        )
+        .replace(
+          `<Rect key="main-visual-card" width={640} height={120} radius={24} fill={'#dbe9e2'} />`,
+          `<Rect key="main-visual-card" width={640} height={120} radius={24} fill={'#dbe9e2'}>
+      <Txt key="card-title-label" ref={() => undefined} text={'transparent'} fill={'transparent'} />
+    </Rect>`,
+        )
+        .replace(
+          'import {Layout',
+          '// direct-tsx-sentinel\nimport {Layout',
+        );
+      return {name: 'Direct source scene', source: rawSource};
+    },
+  );
+  const request = createSingleSceneGenerationRequest();
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+    qualityRetryLimit: 0,
+  });
+
+  const result = await generator.generate(request);
+  const scene = result.scenes[0]!;
+  const expectedSource = applyMotionCanvasDefaultFont(
+    normalizeMotionCanvasColorFormats(rawSource.trim()),
+  );
+
+  assert.equal(scene.name, 'Direct source scene');
+  assert.equal(scene.outlineSectionId, request.outline.sections[0]!.id);
+  assert.equal(scene.filePath, 'src/scenes/01-direct-source-scene.tsx');
+  assert.deepEqual(scene.timingEvents, [{
+    beatId: request.voiceVisualPlan.sections[0]!.beats[0]!.id,
+    startEvent: `beat:${request.voiceVisualPlan.sections[0]!.beats[0]!.id}:start`,
+    endEvent: `beat:${request.voiceVisualPlan.sections[0]!.beats[0]!.id}:end`,
+    plannedDurationSeconds: 12,
+  }]);
+  assert.equal(scene.source, `${expectedSource.trim()}\n`);
+  assert.match(scene.source, /direct-tsx-sentinel/u);
+  assert.match(scene.source, /fill=\{"#00000000"\}/u);
+  assert.match(scene.source, /text=\{'transparent'\}/u);
+  assert.match(
+    scene.source,
+    /fontFamily=\{"Segoe UI, Helvetica Neue, Arial, sans-serif"\}/u,
+  );
+  assert.equal(result.model, 'scene-model');
+  assert.doesNotMatch(scene.source, /pad-scene-spec-v2|scene-(?:graph|spec)-compiler/u);
+});
+
+test('Motion Canvas direct generation từ chối output chỉ có spec hoặc source:null', async (context) => {
+  for (const [label, invalidOutput] of [
+    ['spec', {name: 'Spec only scene', spec: {version: 3}}],
+    ['null-source', {name: 'Null source scene', source: null}],
+  ] as const) {
+    const runtimeDirectory = await mkdtemp(
+      path.join(os.tmpdir(), `pad-studio-motion-direct-reject-${label}-`),
+    );
+    context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+    const client = new FakeCodexClient(
+      false,
+      undefined,
+      false,
+      undefined,
+      (turnNumber, beatIds) =>
+        turnNumber === 1
+          ? invalidOutput
+          : {name: 'Recovered direct scene', source: timedSceneSource(beatIds)},
+    );
+    const generator = createCodexMotionCanvasGenerator(client, {
+      runtimeDirectory,
+      timeoutMs: 1_000,
+      qualityRetryLimit: 0,
+    });
+
+    const result = await generator.generate(createSingleSceneGenerationRequest());
+
+    assert.equal(result.scenes[0]!.name, 'Recovered direct scene');
+    assert.equal(
+      client.calls.filter(call => call.method === 'turn/start').length,
+      2,
+      `${label} response should be rejected before clean regeneration`,
+    );
+    assert.equal(result.model, 'scene-model');
+  }
+});
 
 test('Motion Canvas cache cô lập scene cùng generation ID giữa các project', async (context) => {
   const runtimeDirectory = await mkdtemp(
@@ -949,6 +1449,37 @@ function createSingleSceneGenerationRequest() {
   } satisfies MotionCanvasGenerationRequest;
 }
 
+function createTwoBeatPromptGenerationRequest() {
+  const request = createSingleSceneGenerationRequest();
+  const section = request.voiceVisualPlan.sections[0]!;
+  const firstBeat = {
+    ...section.beats[0]!,
+    id: randomUUID(),
+    primaryBlock: 'block-autumn-leaf',
+    visualLifecycle: {
+      enter: ['block-autumn-leaf', 'visual-detail-autumn-leaf'],
+      stay: ['block-autumn-leaf', 'visual-detail-autumn-leaf'],
+      exit: ['block-autumn-leaf', 'visual-detail-autumn-leaf'],
+    },
+    durationSeconds: 10,
+  };
+  const secondBeat = {
+    ...firstBeat,
+    id: randomUUID(),
+    voiceover: 'Sau đó ta quan sát màu sắc thay đổi theo mùa.',
+    visualDescription: 'Chi tiết chiếc lá đổi màu và rời khỏi vùng minh họa.',
+    animationDescription: 'Chiếc lá đổi màu rồi biến mất khỏi khung hình.',
+    primaryBlock: 'block-color-shift',
+    visualLifecycle: {
+      enter: ['block-color-shift', 'visual-detail-color-shift'],
+      stay: ['block-color-shift', 'visual-detail-color-shift'],
+      exit: ['block-color-shift', 'visual-detail-color-shift'],
+    },
+  };
+  section.beats = [firstBeat, secondBeat];
+  return request;
+}
+
 test('Motion Canvas generator chỉ sinh section được chọn và giữ scene identity', async context => {
   const runtimeDirectory = await mkdtemp(
     path.join(os.tmpdir(), 'pad-studio-motion-scoped-generator-'),
@@ -974,6 +1505,26 @@ test('Motion Canvas generator chỉ sinh section được chọn và giữ scene
       source: timedSceneSource([beat.id]),
     };
   });
+  const visualEvidence: MotionCanvasVisualEvidence[] = currentScenes.map(
+    (scene, index) => ({
+      sceneId: scene.id,
+      beatId: request.voiceVisualPlan.sections[index]!.beats[0]!.id,
+      phase: 'middle',
+      frame: 12,
+      timeSeconds: 6,
+      png: Buffer.from(`scene-${index + 1}`),
+      issues: [{
+        code: 'content-occluded',
+        sceneId: scene.id,
+        beatId: request.voiceVisualPlan.sections[index]!.beats[0]!.id,
+        timeSeconds: 6,
+        semanticKey: 'overlay>content',
+        bounds: {x: 0, y: 0, width: 10, height: 10},
+        reason: 'Overlay covers content.',
+      }],
+      nodes: [{key: 'overlay', bounds: {x: 0, y: 0, width: 10, height: 10}}],
+    }),
+  );
   const client = new FakeCodexClient();
   const generator = createCodexMotionCanvasGenerator(client, {
     runtimeDirectory,
@@ -983,6 +1534,7 @@ test('Motion Canvas generator chỉ sinh section được chọn và giữ scene
     guidance: 'Chỉ làm scene thứ hai trực quan hơn.',
     sectionIndexes: [1],
     currentScenes,
+    visualEvidence,
   });
   assert.equal(result.scenes.length, 1);
   assert.equal(result.scenes[0]?.outlineSectionId, request.outline.sections[1]?.id);
@@ -992,6 +1544,16 @@ test('Motion Canvas generator chỉ sinh section được chọn và giữ scene
     client.calls.filter(call => call.method === 'turn/start').length,
     1,
   );
+  const turnInput = (client.calls.find(call => call.method === 'turn/start')
+    ?.params as {input: Array<{type: string; text?: string; url?: string}>}).input;
+  assert.equal(turnInput.filter(item => item.type === 'image').length, 1);
+  const promptText = turnInput
+    .filter(item => item.type === 'text')
+    .map(item => item.text ?? '')
+    .join('\n');
+  assert.match(promptText, new RegExp(currentScenes[1]!.id, 'u'));
+  assert.doesNotMatch(promptText, new RegExp(currentScenes[0]!.id, 'u'));
+  assert.match(promptText, /Before editing, inspect every attached frame/u);
 });
 
 test('Motion Canvas generator ánh xạ scene theo đúng voice–visual', async (context) => {
@@ -1152,6 +1714,72 @@ test('Motion Canvas generator tự sửa source TSX lỗi trước khi trả gen
   );
 });
 
+test('local harness reproduces layout repair, invalid regeneration, and diagnostic-only fallback without Codex', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-failure-harness-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const client = new FakeCodexClient(
+    false,
+    undefined,
+    false,
+    undefined,
+    (turnNumber, beatIds) => turnNumber <= 2
+      ? {
+          name: `Unsafe layout scene ${turnNumber}`,
+          source: artifactLayoutFailureSource(beatIds, '-400'),
+        }
+      : {
+          name: 'Malformed clean regeneration',
+          source: timedSceneSource(beatIds).replace('width={640}', 'width={'),
+        },
+  );
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+    concurrency: 1,
+    qualityRetryLimit: 0,
+  });
+  const request = {
+    ...createSingleSceneGenerationRequest(),
+    videoFrame: {
+      aspectRatio: 'portrait' as const,
+      width: 540,
+      height: 960,
+      fps: 30 as const,
+    },
+  };
+
+  const result = await generator.generate(request);
+
+  assert.deepEqual(
+    result.attemptEvidence?.map(attempt => [attempt.phase, attempt.error.reason]),
+    [
+      ['initial', 'source_validation_failed'],
+      ['repair', 'source_validation_failed'],
+      ['regeneration', 'response_invalid'],
+    ],
+  );
+  assert.equal(
+    client.calls.filter(call => call.method === 'turn/start').length,
+    3,
+  );
+  const repairPrompt = JSON.stringify(
+    client.calls.filter(call => call.method === 'turn/start')[1]?.params,
+  );
+  assert.match(repairPrompt, /semanticKey=reduced-search-range/u);
+  assert.match(repairPrompt, /safeArea=/u);
+  assert.match(result.attemptEvidence?.[0]?.error.diagnostics ?? '', /semanticKey=reduced-search-range/u);
+  assert.match(result.attemptEvidence?.[0]?.error.diagnostics ?? '', /safeArea=/u);
+  assert.match(result.attemptEvidence?.[2]?.error.diagnostics ?? '', /generated-scene\.tsx\(/u);
+  assert.match(result.attemptEvidence?.[2]?.sourceExcerpt ?? '', /width=\{/u);
+  assert.match(result.scenes[0]!.source, /pad-semantic:unverified-fallback/u);
+  assert.throws(
+    () => assertMotionCanvasScenesArePublishable(result.scenes, 'workspace preparation'),
+    /deterministic fallback output.*workspace preparation/u,
+  );
+});
+
 test('Motion Canvas defaults to eight workers and reports per-scene progress', async context => {
   assert.equal(DEFAULT_MOTION_CANVAS_GENERATION_CONCURRENCY, 8);
   assert.equal(MAXIMUM_MOTION_CANVAS_GENERATION_CONCURRENCY, 8);
@@ -1285,6 +1913,101 @@ test('Motion Canvas generator hoàn tất bằng fallback an toàn khi cả lư�
   assert.equal(
     client.calls.filter((call) => call.method === 'turn/start').length,
     3,
+  );
+});
+
+test('direct-TSX failure artifact giữ ba attempt và reject fallback trước mutation', async (context) => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-failure-attempts-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const failedSources = (beatIds: string[]) => [
+    `${timedSceneSource(beatIds).replace('width={canvasWidth}', 'width={')}\n// attempt-source-initial`,
+    `${timedSceneSource(beatIds).replace('ref={conceptBlock}', '')}\n// attempt-source-repair`,
+    `${timedSceneSource(beatIds).replace('const canvasWidth = view.width();', 'const canvasWidth = 1080;')}\n// attempt-source-regeneration\n// sk-proj-DO_NOT_PERSIST_THIS_CREDENTIAL_123456789`,
+  ];
+  const client = new FakeCodexClient(
+    false,
+    undefined,
+    false,
+    undefined,
+    (turnNumber, beatIds) => ({
+      name: `Invalid direct source ${turnNumber}`,
+      source: failedSources(beatIds)[Math.min(turnNumber - 1, 2)]!,
+    }),
+  );
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+    concurrency: 1,
+    qualityRetryLimit: 0,
+  });
+  const request = createSingleSceneGenerationRequest();
+  const result = await generator.generate(request);
+
+  assert.match(result.model, /local-safe-fallback/u);
+  assert.deepEqual(
+    result.attemptEvidence?.map(attempt => attempt.phase),
+    ['initial', 'repair', 'regeneration'],
+  );
+  assert.equal(result.attemptEvidence?.length, 3);
+  for (const [index, attempt] of (result.attemptEvidence ?? []).entries()) {
+    assert.equal(attempt.model, 'scene-model');
+    assert.equal(attempt.reasoningEffort, 'medium');
+    assert.match(attempt.error.code, /^CODEX_MOTION_CANVAS_/u);
+    assert.ok(attempt.error.message.length > 0);
+    assert.ok(attempt.error.diagnostics.length > 0);
+    assert.match(attempt.sourceHash, /^[a-f0-9]{64}$/u);
+    assert.ok(attempt.sourceLength > 0);
+    assert.ok(attempt.sourceExcerpt.length <= MOTION_CANVAS_FAILURE_ATTEMPT_SOURCE_MAX_CHARS);
+    assert.match(attempt.sourceExcerpt, new RegExp(`attempt-source-${['initial', 'repair', 'regeneration'][index]}`, 'u'));
+  }
+  assert.doesNotMatch(
+    JSON.stringify(result.attemptEvidence),
+    /DO_NOT_PERSIST_THIS_CREDENTIAL|sk-proj-/u,
+  );
+
+  const workspace = createMotionCanvasWorkspace(runtimeDirectory);
+  const generationId = randomUUID();
+  const evidenceDirectory = await workspace.recordFailure!(
+    request.projectId,
+    generationId,
+    {
+      stage: 'render-quality',
+      code: 'MOTION_CANVAS_VISUAL_QUALITY_FAILED',
+      message: 'Fallback scene output was rejected.',
+      issues: [{reason: 'Fallback scene output was rejected before workspace preparation.'}],
+      attempts: result.attemptEvidence,
+      scenes: result.scenes,
+    },
+  );
+  let workspacePrepareCalls = 0;
+  let projectMutations = 0;
+  const publish = () => {
+    assertMotionCanvasScenesArePublishable(result.scenes, 'workspace preparation');
+    workspacePrepareCalls += 1;
+    projectMutations += 1;
+  };
+  assert.throws(publish, /deterministic fallback output.*workspace preparation/u);
+  assert.equal(workspacePrepareCalls, 0);
+  assert.equal(projectMutations, 0);
+
+  const artifact = JSON.parse(
+    await readFile(path.join(evidenceDirectory, 'failure.json'), 'utf8'),
+  ) as {
+    message: string;
+    attempts: Array<{phase: string; sourceExcerpt: string; error: {code: string; diagnostics: string}}>;
+  };
+  assert.equal(artifact.message, 'Fallback scene output was rejected.');
+  assert.equal(artifact.attempts.length, 3);
+  assert.deepEqual(
+    artifact.attempts.map(attempt => attempt.phase),
+    ['initial', 'repair', 'regeneration'],
+  );
+  assert.ok(artifact.attempts.every(attempt => attempt.error.code && attempt.error.diagnostics));
+  assert.doesNotMatch(
+    await readFile(path.join(evidenceDirectory, 'failure.json'), 'utf8'),
+    /DO_NOT_PERSIST_THIS_CREDENTIAL|sk-proj-/u,
   );
 });
 
@@ -1726,6 +2449,63 @@ test('Motion Canvas timing contract chỉ đăng ký start/end một lần', () 
       error instanceof MotionCanvasGenerationError &&
       error.code === 'CODEX_MOTION_CANVAS_INVALID_TIMING_CONTRACT',
   );
+});
+
+test('Motion Canvas ghi attempt initial khi turn/start bị reject trước khi có source', async context => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-initial-failure-evidence-'),
+  );
+  context.after(() =>
+    rm(runtimeDirectory, {recursive: true, force: true}),
+  );
+  const progressEvents: Array<{
+    completedScenes: number;
+    failedScenes: number;
+    outcome: string;
+  }> = [];
+  const request = createSingleSceneGenerationRequest();
+  request.onProgress = progress => progressEvents.push(progress);
+  const client = new FakeCodexClient(
+    false,
+    undefined,
+    false,
+    undefined,
+    undefined,
+    new Error('turn/start rejected by app-server: request was refused'),
+  );
+  const generator = createCodexMotionCanvasGenerator(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+    concurrency: 1,
+  });
+
+  let failure: unknown;
+  try {
+    await generator.generate(request);
+  } catch (error) {
+    failure = error;
+  }
+
+  assert.ok(failure instanceof MotionCanvasGenerationError);
+  const generationError = failure as MotionCanvasGenerationError;
+  assert.equal(generationError.code, 'CODEX_MOTION_CANVAS_TURN_START_REJECTED');
+  assert.equal(generationError.rootCause?.reason, 'turn_start_rejected');
+  assert.equal(generationError.rootCause?.operation, 'turn/start');
+  assert.match(generationError.rootCause?.providerMessage ?? '', /turn\/start rejected/u);
+  assert.equal(generationError.attemptEvidence.length, 1);
+  const attempt = generationError.attemptEvidence[0]!;
+  assert.equal(attempt.phase, 'initial');
+  assert.equal(attempt.model, 'scene-model');
+  assert.equal(attempt.reasoningEffort, 'medium');
+  assert.equal(attempt.error.reason, 'turn_start_rejected');
+  assert.equal(attempt.error.code, 'CODEX_MOTION_CANVAS_TURN_START_REJECTED');
+  assert.equal(attempt.error.operation, 'turn/start');
+  assert.equal(attempt.sourceLength, 0);
+  assert.match(attempt.sourceHash, /^[a-f0-9]{64}$/u);
+  assert.equal(attempt.sourceExcerpt, '');
+  assert.equal(progressEvents.at(-1)?.completedScenes, 0);
+  assert.equal(progressEvents.at(-1)?.failedScenes, 1);
+  assert.equal(progressEvents.at(-1)?.outcome, 'failed');
 });
 
 test('Motion Canvas generator chỉ sinh lại scene đã timeout', async (context) => {

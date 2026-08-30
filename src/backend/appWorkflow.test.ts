@@ -6,6 +6,11 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
+  MotionCanvasCandidateRecordSchema,
+  MotionCanvasVersionRecordSchema,
+  type MotionCanvasCandidateRecord,
+} from '../shared/motionCanvasHistory.ts';
+import {
   AnimationSyncBundleSchema,
   LayoutBundleSchema,
   MotionCanvasBundleSchema,
@@ -15,10 +20,17 @@ import {
 } from '../shared/topic.ts';
 import {FinalRenderBundleSchema} from '../shared/render.ts';
 import {defaultLayoutRenderSettings, LayoutEditorManifestSchema} from '../shared/layout.ts';
-import {hashJson} from './motionCanvasHistoryStore.ts';
+import {
+  createFileMotionCanvasHistoryStore,
+  hashJson,
+  hashMotionCanvasBundle,
+} from './motionCanvasHistoryStore.ts';
+import {createFileProjectRepository} from './projectRepository.ts';
 import type {GeneratedVoiceNarration} from './voiceWorkspace.ts';
 import {closePadStudioServerServices, createPadStudioServer} from './app.ts';
 import {MotionCanvasVisualQualityError, VISUAL_QUALITY_GATE_VERSION, motionCanvasSceneSourceHash} from './motionCanvasVisualQuality.ts';
+import {MotionCanvasGenerationError} from './motionCanvasGenerator.ts';
+import {LayoutPreviewError} from './layoutPreviewService.ts';
 import type {MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
 import type {
   MotionCanvasFailureRecord,
@@ -43,12 +55,56 @@ function fakeDependencies(root: string) {
   let ttsCalls = 0;
   let motionCalls = 0;
   let motionDiscards = 0;
+  let workspacePrepareCalls = 0;
+  let workspaceReadSceneSourcesCalls = 0;
+  let workspaceVerifyCalls = 0;
+  let workspaceDiscardCalls = 0;
+  let visualQualityValidationCalls = 0;
+  let layoutWaitForManifestCalls = 0;
+  let layoutWorkspacePrepareCalls = 0;
+  let layoutFailureRecordCalls = 0;
+  let projectUpdateCalls = 0;
+  let historyEnsureVersionCalls = 0;
+  let historySaveCandidateCalls = 0;
+  let historyDecisionCalls = 0;
+  let fallbackCandidateGeneration = false;
+  let motionGenerationGate: Promise<void> | null = null;
+  let motionGenerationError: Error | null = null;
   let currentRender: ReturnType<typeof FinalRenderBundleSchema.parse> | null = null;
   let renderGeneration: string | null = null;
   const videoPath = path.join(root, 'fake-render.mp4');
   const nodeFingerprint = digest('fake-layout-node');
   const manifests = new Map<string, ReturnType<typeof LayoutEditorManifestSchema.parse>>();
+  const pendingLayoutManifests = new Map<string, ReturnType<typeof LayoutEditorManifestSchema.parse>>();
+  const layoutManifestWaiters = new Map<string, Set<() => void>>();
+  let autoPublishLayoutManifest = true;
+  let layoutManifestError: Error | null = null;
   let latestMotionFailure: MotionCanvasFailureSummary | null = null;
+  const sceneSourceOverrides = new Map<string, string>();
+  const baseRepository = createFileProjectRepository(root);
+  const repository = {
+    ...baseRepository,
+    async updateProject(...args: Parameters<typeof baseRepository.updateProject>) {
+      projectUpdateCalls += 1;
+      return baseRepository.updateProject(...args);
+    },
+  };
+  const baseHistoryStore = createFileMotionCanvasHistoryStore(root);
+  const motionCanvasHistoryStore = {
+    ...baseHistoryStore,
+    async ensureVersion(...args: Parameters<typeof baseHistoryStore.ensureVersion>) {
+      historyEnsureVersionCalls += 1;
+      return baseHistoryStore.ensureVersion(...args);
+    },
+    async saveCandidate(...args: Parameters<typeof baseHistoryStore.saveCandidate>) {
+      historySaveCandidateCalls += 1;
+      return baseHistoryStore.saveCandidate(...args);
+    },
+    async setCandidateDecision(...args: Parameters<typeof baseHistoryStore.setCandidateDecision>) {
+      historyDecisionCalls += 1;
+      return baseHistoryStore.setCandidateDecision(...args);
+    },
+  };
   const motionCanvasRequests: Array<{model?: string; reasoningEffort?: string; guidance?: string; regenerateFromScratch?: boolean; hasCurrentScenes: boolean}> = [];
   const plannerRequests: Array<{
     model?: string;
@@ -67,26 +123,51 @@ function fakeDependencies(root: string) {
       guidance?: string;
       regenerateFromScratch?: boolean;
       currentScenes?: Array<{id: string}>;
+      onProgress?: (progress: {
+        completedScenes: number;
+        failedScenes: number;
+        totalScenes: number;
+        sectionIndex: number | null;
+        outcome: 'started' | 'completed' | 'failed';
+      }) => void;
     }) {
       motionCalls += 1;
       motionCanvasRequests.push({model: request.model, reasoningEffort: request.reasoningEffort, guidance: request.guidance, regenerateFromScratch: request.regenerateFromScratch, hasCurrentScenes: Boolean(request.currentScenes?.length)});
+      if (motionGenerationGate) await motionGenerationGate;
       const plan = request.voiceVisualPlan!;
       const indexes = request.sectionIndexes ?? plan.sections.map((_section, index) => index);
+      if (motionGenerationError) {
+        request.onProgress?.({
+          completedScenes: 0,
+          failedScenes: indexes.length,
+          totalScenes: indexes.length,
+          sectionIndex: indexes[0] ?? null,
+          outcome: 'failed',
+        });
+        throw motionGenerationError;
+      }
+      const scenes = indexes.map(index => {
+        const section = plan.sections[index]!;
+        return {
+          id: randomUUID(), outlineSectionId: section.outlineSectionId,
+          name: `Scene ${index + 1}`,
+          filePath: `src/scenes/scene-${index + 1}.tsx`,
+          durationSeconds: section.beats.length * 4,
+          timingEvents: section.beats.map(beat => ({
+            beatId: beat.id, startEvent: `beat:${beat.id}:start`, endEvent: `beat:${beat.id}:end`, plannedDurationSeconds: 4,
+          })),
+          source: "import {makeScene2D} from '@motion-canvas/2d';\n".repeat(5) + `export default makeScene2D(function*(){ yield* 0; }); // ${request.generationId}`,
+        };
+      });
       return {
         model: 'fake-codex', usage: null,
-        scenes: indexes.map(index => {
-          const section = plan.sections[index]!;
-          return {
-            id: randomUUID(), outlineSectionId: section.outlineSectionId,
-            name: `Scene ${index + 1}`,
-            filePath: `src/scenes/scene-${index + 1}.tsx`,
-            durationSeconds: section.beats.length * 4,
-            timingEvents: section.beats.map(beat => ({
-              beatId: beat.id, startEvent: `beat:${beat.id}:start`, endEvent: `beat:${beat.id}:end`, plannedDurationSeconds: 4,
-            })),
-            source: "import {makeScene2D} from '@motion-canvas/2d';\n".repeat(5) + `export default makeScene2D(function*(){ yield* 0; }); // ${request.generationId}`,
-          };
-        }),
+        scenes: fallbackCandidateGeneration
+          ? scenes.map(scene => ({
+            ...scene,
+            name: `${scene.name} safe fallback`,
+            source: `// pad-semantic:unverified-fallback\n${scene.source}`,
+          }))
+          : scenes,
       };
     },
     discardGeneration() { motionDiscards += 1; },
@@ -140,6 +221,7 @@ function fakeDependencies(root: string) {
   const preparedSceneSources = new Map<string, string>();
   const motionCanvasWorkspace = {
     async prepare(_projectId: string, generationId: string, scenes: Awaited<ReturnType<typeof motionCanvasGenerator.generate>>['scenes']) {
+      workspacePrepareCalls += 1;
       const result = {
         workspacePath: `motion-canvas/generations/${generationId}`,
         projectFile: 'src/project.ts' as const,
@@ -156,12 +238,14 @@ function fakeDependencies(root: string) {
       return bundle.scenes.map(scene => ({path: scene.filePath, source: `// ${scene.id}`}));
     },
     async readSceneSources(_projectId: string, bundle: ReturnType<typeof MotionCanvasBundleSchema.parse>) {
-      return bundle.scenes.map(scene => ({...scene, source: preparedSceneSources.get(scene.id) ?? `// source for ${scene.id}\n`.repeat(20)}));
+      workspaceReadSceneSourcesCalls += 1;
+      return bundle.scenes.map(scene => ({...scene, source: sceneSourceOverrides.get(scene.id) ?? preparedSceneSources.get(scene.id) ?? `// source for ${scene.id}\n`.repeat(20)}));
     },
     async verify(_projectId: string, bundle: ReturnType<typeof MotionCanvasBundleSchema.parse>) {
+      workspaceVerifyCalls += 1;
       return {projectDirectory: root, workspaceDirectory: root, projectFile: path.join(root, bundle.projectFile), sourceHash: bundle.validation.sourceHash};
     },
-    async discard() {},
+    async discard() { workspaceDiscardCalls += 1; },
     async recordFailure(
       _projectId: string,
       generationId: string,
@@ -181,6 +265,7 @@ function fakeDependencies(root: string) {
         code: failure.code,
         message: failure.message,
         firstIssueReason: firstIssue?.reason ?? null,
+        rootCause: failure.rootCause ?? null,
         recoveryGuidance: failure.recoveryGuidance ?? null,
       };
       return path.join(root, 'motion-canvas', 'failures', generationId);
@@ -254,12 +339,17 @@ function fakeDependencies(root: string) {
 
   const layoutWorkspace = {
     async prepare(_projectId: string, generationId: string, sync: ReturnType<typeof AnimationSyncBundleSchema.parse>, overrides: Array<{sceneId: string}>, manifest: ReturnType<typeof LayoutEditorManifestSchema.parse>) {
+      layoutWorkspacePrepareCalls += 1;
       manifests.set(`${generationId}:layout`, manifest);
       return {workspacePath: `layout/generations/${generationId}` as const, sourceWorkspacePath: sync.workspacePath as `sync/generations/${string}`, projectFile: 'src/project.ts' as const, audioFile: 'audio/narration.wav' as const, overridesFile: 'overrides.json' as const, manifestFile: 'editor-manifest.json' as const, overrideContractVersion: 1 as const, totalDurationSeconds: sync.totalDurationSeconds, scenes: sync.sections.map(section => ({sceneId: section.sceneId, filePath: section.filePath, editableNodeCount: 1, overrideCount: overrides.filter(override => override.sceneId === section.sceneId).length})), validation: {validatedAt: now, sourceHash: digest(sync.validation.sourceHash), overridesHash: digest(overrides), manifestHash: digest(manifest), motionCanvasVersion: 'fake-motion', audioDurationSeconds: sync.totalDurationSeconds}};
     },
     async readFiles() { return [{path: 'src/project.ts', source: '// fake layout'}]; },
     async readOverrides(_projectId: string, bundle: ReturnType<typeof LayoutBundleSchema.parse>) { return {version: 1 as const, sourceAnimationSyncGenerationId: bundle.sourceAnimationSyncGenerationId, sourceAnimationSyncContentRevision: bundle.sourceAnimationSyncContentRevision, sourceAnimationSyncSourceHash: bundle.sourceAnimationSyncSourceHash, overrides: []}; },
     async readEditorManifest() { throw new Error('not used by this HTTP flow'); },
+    async recordFailure(_projectId: string, generationId: string) {
+      layoutFailureRecordCalls += 1;
+      return path.join(root, 'layout', 'failures', generationId);
+    },
     async verify(_projectId: string, sync: ReturnType<typeof AnimationSyncBundleSchema.parse>) { return {projectDirectory: root, sourceWorkspaceDirectory: root, projectFile: path.join(root, 'src/project.ts'), sourceWorkspaceHash: digest(sync.workspacePath), layoutWorkspaceDirectory: root, overrides: {version: 1 as const, sourceAnimationSyncGenerationId: sync.generation.generationId, sourceAnimationSyncContentRevision: sync.contentRevision, sourceAnimationSyncSourceHash: sync.validation.sourceHash, overrides: []}, editorManifest: null}; },
   };
 
@@ -273,14 +363,33 @@ function fakeDependencies(root: string) {
       const generationId =
         layout?.generation.generationId ?? sync.generation.generationId;
       const manifest = LayoutEditorManifestSchema.parse({version: 1, sourceAnimationSyncGenerationId: sync.generation.generationId, sourceAnimationSyncContentRevision: sync.contentRevision, sourceAnimationSyncSourceHash: sync.validation.sourceHash, scenes: sync.sections.map(section => ({sceneId: section.sceneId, filePath: section.filePath, nodes: [{key: 'root', fingerprint: nodeFingerprint, label: 'Root', nodeType: 'Layout', parentKey: null, identity: 'semantic', editableProperties: ['x'], lockedProperties: [], lockReason: null}]}))});
-      manifests.set(`${sessionNonce}:${sync.generation.generationId}`, manifest);
-      return {generationId, sourceSyncGenerationId: sync.generation.generationId, sessionNonce, url: 'http://fake.preview/'};
+       const manifestKey = `${sessionNonce}:${sync.generation.generationId}`;
+       pendingLayoutManifests.set(manifestKey, manifest);
+       if (autoPublishLayoutManifest) manifests.set(manifestKey, manifest);
+       return {generationId, sourceSyncGenerationId: sync.generation.generationId, sessionNonce, url: 'http://fake.preview/'};
     },
     async startMotion(_projectId: string, motion: ReturnType<typeof MotionCanvasBundleSchema.parse>) {
       const sessionNonce = 'x'.repeat(32);
       const manifest = LayoutEditorManifestSchema.parse({version: 1, sourceAnimationSyncGenerationId: motion.generation.generationId, sourceAnimationSyncContentRevision: motion.contentRevision, sourceAnimationSyncSourceHash: motion.validation.sourceHash, scenes: motion.scenes.map(scene => ({sceneId: scene.id, filePath: scene.filePath, nodes: [{key: 'root', fingerprint: nodeFingerprint, label: 'Root', nodeType: 'Layout', parentKey: null, identity: 'semantic', editableProperties: ['x'], lockedProperties: [], lockReason: null}]}))});
-      manifests.set(`${sessionNonce}:${motion.generation.generationId}`, manifest);
-      return {generationId: motion.generation.generationId, sourceSyncGenerationId: motion.generation.generationId, sessionNonce, url: 'http://fake.preview/'};
+       const manifestKey = `${sessionNonce}:${motion.generation.generationId}`;
+       pendingLayoutManifests.set(manifestKey, manifest);
+       if (autoPublishLayoutManifest) manifests.set(manifestKey, manifest);
+       return {generationId: motion.generation.generationId, sourceSyncGenerationId: motion.generation.generationId, sessionNonce, url: 'http://fake.preview/'};
+      },
+    async waitForManifest(_projectId: string, sessionNonce: string, generationId: string) {
+      layoutWaitForManifestCalls += 1;
+      if (layoutManifestError) throw layoutManifestError;
+      const key = `${sessionNonce}:${generationId}`;
+      const existing = manifests.get(key);
+      if (existing) return existing;
+      await new Promise<void>(resolve => {
+        const waiters = layoutManifestWaiters.get(key) ?? new Set<() => void>();
+        waiters.add(resolve);
+        layoutManifestWaiters.set(key, waiters);
+      });
+      const manifest = manifests.get(key);
+      assert.ok(manifest, 'fake runtime must publish a manifest before design continues');
+      return manifest;
     },
     getManifest(_projectId: string, sessionNonce: string, generationId: string) { const manifest = manifests.get(`${sessionNonce}:${generationId}`); assert.ok(manifest); return manifest; },
     getSourceWorkspaceHash() { return digest('fake-preview'); },
@@ -288,7 +397,7 @@ function fakeDependencies(root: string) {
   };
 
   const motionCanvasRevisionReviewService = {async review() { return {coherence: {verdict: 'coherent' as const, summary: 'Fake review confirms the scoped scene stays coherent.', issues: []}, model: 'fake-codex', usage: null}; }};
-  const motionCanvasVisualQualityGate = {async validate(input: {scenes: Array<{id: string; source: string}>}) { return {version: VISUAL_QUALITY_GATE_VERSION as typeof VISUAL_QUALITY_GATE_VERSION, status: 'passed' as const, validatedAt: now, sourceHash: motionCanvasSceneSourceHash(input.scenes as MotionCanvasSourceScene[]), scenes: [], issues: []}; }};
+  const motionCanvasVisualQualityGate = {async validate(input: {scenes: Array<{id: string; source: string}>}) { visualQualityValidationCalls += 1; return {version: VISUAL_QUALITY_GATE_VERSION as typeof VISUAL_QUALITY_GATE_VERSION, status: 'passed' as const, validatedAt: now, sourceHash: motionCanvasSceneSourceHash(input.scenes as MotionCanvasSourceScene[]), scenes: [], issues: []}; }};
   const finalRenderService = {
     async render(_projectId: string, generationId: string, contentRevision: number, _sync: ReturnType<typeof AnimationSyncBundleSchema.parse>, layout: ReturnType<typeof LayoutBundleSchema.parse>, profile?: {frame: {width: number; height: number; fps: number}}) {
       renderGeneration = generationId;
@@ -301,7 +410,75 @@ function fakeDependencies(root: string) {
     async resolveVideo() { return {filePath: videoPath, size: 8}; },
     async close() {},
   };
-  return {deps: {motionCanvasGenerator, motionCanvasWorkspace, motionCanvasVisualQualityGate, narrationVisualPlanner, elevenLabsVoiceService, voiceWorkspace, animationSyncWorkspace, layoutWorkspace, layoutPreviewService, motionCanvasRevisionReviewService, finalRenderService, logger: {info() {}, error() {}}}, metrics: {ttsCalls: () => ttsCalls, motionCalls: () => motionCalls, motionDiscards: () => motionDiscards, nodeFingerprint, motionCanvasRequests, plannerRequests}};
+  return {
+    deps: {
+      repository,
+      motionCanvasHistoryStore,
+      motionCanvasGenerator,
+      motionCanvasWorkspace,
+      motionCanvasVisualQualityGate,
+      narrationVisualPlanner,
+      elevenLabsVoiceService,
+      voiceWorkspace,
+      animationSyncWorkspace,
+      layoutWorkspace,
+      layoutPreviewService,
+      motionCanvasRevisionReviewService,
+      finalRenderService,
+      logger: {info() {}, error() {}},
+    },
+    controls: {
+      setFallbackCandidateGeneration(enabled: boolean) {
+        fallbackCandidateGeneration = enabled;
+      },
+      setSceneSourceOverride(sceneId: string, source: string) {
+        sceneSourceOverrides.set(sceneId, source);
+      },
+      clearSceneSourceOverride(sceneId: string) {
+        sceneSourceOverrides.delete(sceneId);
+      },
+      setMotionGenerationGate(gate: Promise<void> | null) {
+        motionGenerationGate = gate;
+      },
+      setMotionGenerationError(error: Error | null) {
+        motionGenerationError = error;
+      },
+      setAutoPublishLayoutManifest(enabled: boolean) {
+        autoPublishLayoutManifest = enabled;
+      },
+      setLayoutManifestError(error: Error | null) {
+        layoutManifestError = error;
+      },
+      publishPendingLayoutManifests() {
+        for (const [key, manifest] of pendingLayoutManifests) {
+          manifests.set(key, manifest);
+          for (const resolve of layoutManifestWaiters.get(key) ?? []) resolve();
+          layoutManifestWaiters.delete(key);
+        }
+      },
+    },
+    historyStore: motionCanvasHistoryStore,
+    metrics: {
+      ttsCalls: () => ttsCalls,
+      motionCalls: () => motionCalls,
+      motionDiscards: () => motionDiscards,
+      workspacePrepareCalls: () => workspacePrepareCalls,
+      workspaceReadSceneSourcesCalls: () => workspaceReadSceneSourcesCalls,
+      workspaceVerifyCalls: () => workspaceVerifyCalls,
+      workspaceDiscardCalls: () => workspaceDiscardCalls,
+      visualQualityValidationCalls: () => visualQualityValidationCalls,
+      layoutWaitForManifestCalls: () => layoutWaitForManifestCalls,
+      layoutWorkspacePrepareCalls: () => layoutWorkspacePrepareCalls,
+      layoutFailureRecordCalls: () => layoutFailureRecordCalls,
+      projectUpdateCalls: () => projectUpdateCalls,
+      historyEnsureVersionCalls: () => historyEnsureVersionCalls,
+      historySaveCandidateCalls: () => historySaveCandidateCalls,
+      historyDecisionCalls: () => historyDecisionCalls,
+      nodeFingerprint,
+      motionCanvasRequests,
+      plannerRequests,
+    },
+  };
 }
 
 async function start(t: test.TestContext, overrides: Record<string, unknown> = {}) {
@@ -317,7 +494,43 @@ async function request(baseUrl: string, project: TopicProject | null, method: st
   const response = await fetch(`${baseUrl}${suffix}`, {method, headers: {'Content-Type': 'application/json', ...(project ? {'If-Match': `"${project.revision}"`} : {})}, ...(body === undefined ? {} : {body: JSON.stringify(body)})});
   return response;
 }
-async function projectFrom(response: Response) { if (!response.ok) assert.fail(`${response.status}: ${await response.text()}`); return (await response.json() as ProjectReply).project; }
+async function projectFrom(response: Response) {
+  if (!response.ok) assert.fail(`${response.status}: ${await response.text()}`);
+  if (response.status !== 202) return (await response.json() as ProjectReply).project;
+  const accepted = await response.json() as {progress?: {state: string; error?: string | null; message?: string}};
+  const generateUrl = new URL(response.url);
+  const match = generateUrl.pathname.match(/^(.*)\/motion-canvas\/generate$/);
+  assert.ok(match, `unexpected generation URL: ${generateUrl.pathname}`);
+  const projectPath = match![1];
+  for (let attempt = 0; attempt < 2_000; attempt += 1) {
+    const statusResponse = await fetch(`${generateUrl.origin}${projectPath}/motion-canvas/status`, {cache: 'no-store'});
+    const statusPayload = await statusResponse.json() as {progress?: {state: string; error?: string | null; message?: string}};
+    assert.equal(statusResponse.status, 200);
+    const progress = statusPayload.progress;
+    assert.ok(progress);
+    if (progress!.state === 'completed') {
+      const projectResponse = await fetch(`${generateUrl.origin}${projectPath}`);
+      assert.equal(projectResponse.status, 200);
+      return (await projectResponse.json() as ProjectReply).project;
+    }
+    if (progress!.state === 'failed' || progress!.state === 'interrupted') {
+      assert.fail(progress!.error || progress!.message || `generation ${progress!.state}`);
+    }
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+  }
+  assert.fail('generation did not reach a terminal state');
+}
+async function waitForMotionProgress(baseUrl: string, projectId: string) {
+  for (let attempt = 0; attempt < 2_000; attempt += 1) {
+    const response = await fetch(`${baseUrl}/api/projects/${encodeURIComponent(projectId)}/motion-canvas/status`, {cache: 'no-store'});
+    assert.equal(response.status, 200);
+    const payload = await response.json() as {progress: {state: string; generationId: string; error?: string | null; message?: string} | null};
+    assert.ok(payload.progress);
+    if (payload.progress!.state !== 'running') return payload.progress!;
+    await new Promise<void>(resolve => setTimeout(resolve, 0));
+  }
+  assert.fail('generation progress did not reach a terminal state');
+}
 async function create(baseUrl: string) { return projectFrom(await request(baseUrl, null, 'POST', '/api/projects', {creationId: randomUUID(), topicInput, narrationSourceText})); }
 const voiceRequest = (generationId: string) => ({generationId, voiceId: 'fake-voice', modelId: 'fake-model', outputFormat: 'mp3_44100_128', settings: {stability: 0.5, similarityBoost: 0.5, style: 0, useSpeakerBoost: true, speed: 1}, seed: 1});
 
@@ -375,6 +588,119 @@ test('fresh scene regeneration sends optional recovery guidance without supplyin
     requestToGenerator?.guidance,
     'Repair the previous contrast and overlap failures.',
   );
+});
+
+test('layout design waits for the runtime manifest before preparing a workspace', async t => {
+  const {baseUrl, metrics, controls} = await start(t);
+  let project = await toScenes(baseUrl);
+  controls.setAutoPublishLayoutManifest(false);
+  const beforePrepare = metrics.layoutWorkspacePrepareCalls();
+  const previewResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/layout/preview`,
+    {headers: {'X-Pad-Parent-Origin': 'http://127.0.0.1'}},
+  );
+  assert.equal(previewResponse.status, 200);
+  const previewBody = await previewResponse.json() as {
+    preview: {sessionNonce: string; sourceSyncGenerationId: string};
+  };
+  const designRequest = request(
+    baseUrl,
+    project,
+    'PUT',
+    `/api/projects/${project.id}/layout/design`,
+    {
+      generationId: randomUUID(),
+      baseGenerationId: null,
+      sourceAnimationSyncGenerationId:
+        previewBody.preview.sourceSyncGenerationId,
+      sessionNonce: previewBody.preview.sessionNonce,
+      overrides: [],
+      renderSettings: defaultLayoutRenderSettings,
+    },
+  );
+  await new Promise<void>(resolve => setTimeout(resolve, 20));
+  assert.equal(
+    metrics.layoutWaitForManifestCalls(),
+    1,
+    'the design route must wait on the runtime readiness contract',
+  );
+  assert.equal(
+    metrics.layoutWorkspacePrepareCalls(),
+    beforePrepare,
+    'layout workspace preparation must not run before manifest capture',
+  );
+  controls.publishPendingLayoutManifests();
+  project = await projectFrom(await designRequest);
+  assert.equal(project.layoutBundle?.status, 'draft');
+  assert.equal(
+    metrics.layoutWorkspacePrepareCalls(),
+    beforePrepare + 1,
+  );
+});
+
+test('missing runtime manifest returns structured downstream failure context', async t => {
+  const {baseUrl, metrics, controls} = await start(t);
+  let project = await toScenes(baseUrl);
+  const sourceSyncGenerationId = project.animationSyncBundle!.generation.generationId;
+  const beforeRevision = project.revision;
+  const previewResponse = await fetch(
+    `${baseUrl}/api/projects/${project.id}/layout/preview`,
+    {headers: {'X-Pad-Parent-Origin': 'http://127.0.0.1'}},
+  );
+  assert.equal(previewResponse.status, 200);
+  const previewBody = await previewResponse.json() as {
+    preview: {sessionNonce: string; sourceSyncGenerationId: string};
+  };
+  controls.setLayoutManifestError(
+    new LayoutPreviewError(
+      'LAYOUT_PREVIEW_MANIFEST_UNAVAILABLE',
+      'Runtime chưa gửi node manifest.',
+      {
+        diagnostic: {
+          stage: 'layout-design',
+          status: 'blocked',
+          artifactPath: null,
+          artifactStatus: 'not-created',
+          sourceSyncGenerationId,
+          details: {manifestStatus: 'missing', runtimeWorkspacePrepared: true},
+        },
+      },
+    ),
+  );
+  const failureResponse = await request(
+    baseUrl,
+    project,
+    'PUT',
+    `/api/projects/${project.id}/layout/design`,
+    {
+      generationId: randomUUID(),
+      baseGenerationId: null,
+      sourceAnimationSyncGenerationId: previewBody.preview.sourceSyncGenerationId,
+      sessionNonce: previewBody.preview.sessionNonce,
+      overrides: [],
+      renderSettings: defaultLayoutRenderSettings,
+    },
+  );
+  assert.equal(failureResponse.status, 409);
+  const payload = await failureResponse.json() as {
+    error: {
+      code: string;
+      stage: string;
+      status: string;
+      artifactPath: string | null;
+      diagnostic: {details: {manifestStatus: string}};
+    };
+  };
+  assert.equal(payload.error.code, 'LAYOUT_PREVIEW_MANIFEST_UNAVAILABLE');
+  assert.equal(payload.error.stage, 'layout-design');
+  assert.equal(payload.error.status, 'blocked');
+  assert.match(payload.error.artifactPath ?? '', /layout[\\/]failures[\\/]/);
+  assert.equal(payload.error.diagnostic.details.manifestStatus, 'missing');
+  assert.equal(metrics.layoutFailureRecordCalls(), 1);
+  project = await projectFrom(await fetch(`${baseUrl}/api/projects/${project.id}`));
+  assert.equal(project.revision, beforeRevision);
+  assert.equal(project.currentStep, 'scenes');
+  assert.equal(project.layoutBundle, null);
 });
 
 test('golden HTTP workflow runs all five steps with schema-valid fake providers', async t => {
@@ -595,6 +921,202 @@ test('sync generation rejects missing production prerequisites', async t => {
   assert.equal(withoutMotion.status, 409, await withoutMotion.text());
 });
 
+test('candidate generation rejects deterministic fallback before workspace preparation or persistence', async t => {
+  const app = await start(t);
+  let project = await toScenes(app.baseUrl);
+  const beforeProject = structuredClone(project);
+  const beforePrepareCalls = app.metrics.workspacePrepareCalls();
+  const beforeQualityCalls = app.metrics.visualQualityValidationCalls();
+  const beforeProjectUpdates = app.metrics.projectUpdateCalls();
+  const beforeCandidateSaves = app.metrics.historySaveCandidateCalls();
+  app.controls.setFallbackCandidateGeneration(true);
+
+  const failed = await request(
+    app.baseUrl,
+    project,
+    'POST',
+    `/api/projects/${project.id}/motion-canvas/candidates`,
+    {
+      generationId: randomUUID(),
+      guidance: 'Tạo lại cảnh đã chọn bằng TSX trực tiếp.',
+      scope: {sceneIds: [project.motionCanvasBundle!.scenes[0]!.id]},
+    },
+  );
+  const body = await failed.json() as {error?: {code?: string}};
+  assert.equal(failed.status, 503, JSON.stringify(body));
+  assert.equal(body.error?.code, 'CODEX_MOTION_CANVAS_INVALID_RESPONSE');
+  assert.equal(app.metrics.workspacePrepareCalls(), beforePrepareCalls);
+  assert.equal(app.metrics.visualQualityValidationCalls(), beforeQualityCalls);
+  assert.equal(app.metrics.projectUpdateCalls(), beforeProjectUpdates);
+  assert.equal(app.metrics.historySaveCandidateCalls(), beforeCandidateSaves);
+  assert.deepEqual(
+    await projectFrom(await request(app.baseUrl, null, 'GET', `/api/projects/${project.id}`)),
+    beforeProject,
+  );
+});
+
+test('applying a legacy fallback candidate rejects before project or history mutation', async t => {
+  const app = await start(t);
+  let project = await toScenes(app.baseUrl);
+  const original = project.motionCanvasBundle!;
+  const candidateResponse = await request(
+    app.baseUrl,
+    project,
+    'POST',
+    `/api/projects/${project.id}/motion-canvas/candidates`,
+    {
+      generationId: randomUUID(),
+      guidance: 'Làm cảnh rõ ràng hơn.',
+      scope: {sceneIds: [original.scenes[0]!.id]},
+    },
+  );
+  const candidateBody = await candidateResponse.json() as {candidate?: MotionCanvasCandidateRecord; error?: unknown};
+  assert.equal(candidateResponse.status, 201, JSON.stringify(candidateBody));
+  const candidate = candidateBody.candidate!;
+  const legacyBundle = {
+    ...candidate.bundle,
+    scenes: candidate.bundle.scenes.map((scene, index) =>
+      index === 0 ? {...scene, name: `${scene.name} safe fallback`} : scene,
+    ),
+  };
+  const legacyCandidate = MotionCanvasCandidateRecordSchema.parse({
+    ...candidate,
+    candidateId: randomUUID(),
+    candidateContentHash: hashMotionCanvasBundle(legacyBundle),
+    requestFingerprint: hashJson({legacy: randomUUID()}),
+    bundle: legacyBundle,
+  });
+  await app.historyStore.saveCandidate(legacyCandidate);
+
+  const beforeProject = structuredClone(project);
+  const beforeReadCalls = app.metrics.workspaceReadSceneSourcesCalls();
+  const beforePrepareCalls = app.metrics.workspacePrepareCalls();
+  const beforeQualityCalls = app.metrics.visualQualityValidationCalls();
+  const beforeProjectUpdates = app.metrics.projectUpdateCalls();
+  const beforeEnsureCalls = app.metrics.historyEnsureVersionCalls();
+  const beforeDecisionCalls = app.metrics.historyDecisionCalls();
+  const failed = await request(
+    app.baseUrl,
+    project,
+    'POST',
+    `/api/projects/${project.id}/motion-canvas/candidates/${legacyCandidate.candidateId}/apply`,
+    {},
+  );
+  const body = await failed.json() as {error?: {code?: string}};
+  assert.equal(failed.status, 503, JSON.stringify(body));
+  assert.equal(body.error?.code, 'CODEX_MOTION_CANVAS_INVALID_RESPONSE');
+  assert.equal(app.metrics.workspaceReadSceneSourcesCalls(), beforeReadCalls);
+  assert.equal(app.metrics.workspacePrepareCalls(), beforePrepareCalls);
+  assert.equal(app.metrics.visualQualityValidationCalls(), beforeQualityCalls);
+  assert.equal(app.metrics.projectUpdateCalls(), beforeProjectUpdates);
+  assert.equal(app.metrics.historyEnsureVersionCalls(), beforeEnsureCalls);
+  assert.equal(app.metrics.historyDecisionCalls(), beforeDecisionCalls);
+  assert.deepEqual(
+    await projectFrom(await request(app.baseUrl, null, 'GET', `/api/projects/${project.id}`)),
+    beforeProject,
+  );
+});
+
+test('applying a pending candidate rejects workspace fallback before visual or history mutation', async t => {
+  const app = await start(t);
+  const project = await toScenes(app.baseUrl);
+  const original = project.motionCanvasBundle!;
+  const candidateResponse = await request(
+    app.baseUrl,
+    project,
+    'POST',
+    `/api/projects/${project.id}/motion-canvas/candidates`,
+    {
+      generationId: randomUUID(),
+      guidance: 'Làm cảnh rõ ràng hơn.',
+      scope: {sceneIds: [original.scenes[0]!.id]},
+    },
+  );
+  const candidateBody = await candidateResponse.json() as {candidate?: MotionCanvasCandidateRecord; error?: unknown};
+  assert.equal(candidateResponse.status, 201, JSON.stringify(candidateBody));
+  const candidate = candidateBody.candidate!;
+  app.controls.setSceneSourceOverride(
+    candidate.bundle.scenes[0]!.id,
+    '// pad-semantic:unverified-fallback\n' + 'direct TSX source '.repeat(20),
+  );
+
+  const beforeProject = structuredClone(project);
+  const beforeReadCalls = app.metrics.workspaceReadSceneSourcesCalls();
+  const beforeQualityCalls = app.metrics.visualQualityValidationCalls();
+  const beforeProjectUpdates = app.metrics.projectUpdateCalls();
+  const beforeEnsureCalls = app.metrics.historyEnsureVersionCalls();
+  const beforeDecisionCalls = app.metrics.historyDecisionCalls();
+  const failed = await request(
+    app.baseUrl,
+    project,
+    'POST',
+    `/api/projects/${project.id}/motion-canvas/candidates/${candidate.candidateId}/apply`,
+    {},
+  );
+  const body = await failed.json() as {error?: {code?: string}};
+  assert.equal(failed.status, 503, JSON.stringify(body));
+  assert.equal(body.error?.code, 'CODEX_MOTION_CANVAS_INVALID_RESPONSE');
+  assert.equal(app.metrics.workspaceReadSceneSourcesCalls(), beforeReadCalls + 1);
+  assert.equal(app.metrics.visualQualityValidationCalls(), beforeQualityCalls);
+  assert.equal(app.metrics.historyDecisionCalls(), beforeDecisionCalls);
+  assert.equal(app.metrics.historyEnsureVersionCalls(), beforeEnsureCalls);
+  assert.equal(app.metrics.projectUpdateCalls(), beforeProjectUpdates);
+  assert.deepEqual(
+    await projectFrom(await request(app.baseUrl, null, 'GET', `/api/projects/${project.id}`)),
+    beforeProject,
+  );
+});
+
+test('restoring a fallback version rejects after source read but before preparation or transition', async t => {
+  const app = await start(t);
+  const project = await toScenes(app.baseUrl);
+  const artifact = structuredClone(project.motionCanvasBundle!);
+  const sourceVersion = MotionCanvasVersionRecordSchema.parse({
+    versionId: randomUUID(),
+    projectId: project.id,
+    createdAt: now,
+    origin: 'manual_checkpoint',
+    label: 'Legacy direct-TSX checkpoint',
+    parentVersionId: null,
+    restoredFromVersionId: null,
+    candidateId: null,
+    projectRevision: project.revision,
+    contentHash: hashMotionCanvasBundle(artifact),
+    artifact,
+  });
+  await app.historyStore.ensureVersion(sourceVersion, {force: true});
+  app.controls.setSceneSourceOverride(
+    artifact.scenes[0]!.id,
+    '// pad-semantic:unverified-fallback\n' + 'direct TSX source '.repeat(20),
+  );
+
+  const beforeProject = structuredClone(project);
+  const beforeReadCalls = app.metrics.workspaceReadSceneSourcesCalls();
+  const beforePrepareCalls = app.metrics.workspacePrepareCalls();
+  const beforeQualityCalls = app.metrics.visualQualityValidationCalls();
+  const beforeProjectUpdates = app.metrics.projectUpdateCalls();
+  const beforeEnsureCalls = app.metrics.historyEnsureVersionCalls();
+  const failed = await request(
+    app.baseUrl,
+    project,
+    'POST',
+    `/api/projects/${project.id}/motion-canvas/versions/${sourceVersion.versionId}/restore`,
+    {},
+  );
+  const body = await failed.json() as {error?: {code?: string}};
+  assert.equal(failed.status, 503, JSON.stringify(body));
+  assert.equal(body.error?.code, 'CODEX_MOTION_CANVAS_INVALID_RESPONSE');
+  assert.equal(app.metrics.workspaceReadSceneSourcesCalls(), beforeReadCalls + 1);
+  assert.equal(app.metrics.workspacePrepareCalls(), beforePrepareCalls);
+  assert.equal(app.metrics.visualQualityValidationCalls(), beforeQualityCalls);
+  assert.equal(app.metrics.projectUpdateCalls(), beforeProjectUpdates);
+  assert.equal(app.metrics.historyEnsureVersionCalls(), beforeEnsureCalls);
+  assert.deepEqual(
+    await projectFrom(await request(app.baseUrl, null, 'GET', `/api/projects/${project.id}`)),
+    beforeProject,
+  );
+});
+
 test('candidate apply and visual design HTTP transitions stay in scenes and invalidate downstream', async t => {
   const {baseUrl, metrics} = await start(t);
   let project = await toScenes(baseUrl);
@@ -604,6 +1126,20 @@ test('candidate apply and visual design HTTP transitions stay in scenes and inva
   assert.equal(candidateResponse.status, 201); const candidate = (await candidateResponse.json() as {candidate: {candidateId: string; decision: string; bundle: TopicProject['motionCanvasBundle']}}).candidate;
   project = await projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/candidates/${candidate.candidateId}/apply`, {}));
   assert.equal(project.currentStep, 'scenes'); assert.equal(project.animationSyncBundle!.status, 'draft'); assert.equal(project.motionCanvasBundle!.scenes[0]!.id, original.scenes[0]!.id); assert.equal(project.motionCanvasBundle!.contentRevision, original.contentRevision + 1); assert.notEqual(project.motionCanvasBundle!.validation.sourceHash, original.validation.sourceHash);
+  const beforeIdempotentVerifyCalls = metrics.workspaceVerifyCalls();
+  const beforeIdempotentReadCalls = metrics.workspaceReadSceneSourcesCalls();
+  const beforeIdempotentProjectUpdates = metrics.projectUpdateCalls();
+  const beforeIdempotentEnsureCalls = metrics.historyEnsureVersionCalls();
+  const beforeIdempotentDecisionCalls = metrics.historyDecisionCalls();
+  const idempotentResponse = await request(baseUrl, project, 'POST', `/api/projects/${project.id}/motion-canvas/candidates/${candidate.candidateId}/apply`, {});
+  const idempotentBody = await idempotentResponse.json() as ProjectReply;
+  assert.equal(idempotentResponse.status, 200, JSON.stringify(idempotentBody));
+  assert.deepEqual(idempotentBody.project, project);
+  assert.equal(metrics.workspaceVerifyCalls(), beforeIdempotentVerifyCalls);
+  assert.equal(metrics.workspaceReadSceneSourcesCalls(), beforeIdempotentReadCalls);
+  assert.equal(metrics.projectUpdateCalls(), beforeIdempotentProjectUpdates);
+  assert.equal(metrics.historyEnsureVersionCalls(), beforeIdempotentEnsureCalls);
+  assert.equal(metrics.historyDecisionCalls(), beforeIdempotentDecisionCalls);
   const staleLayoutPreview = await fetch(`${baseUrl}/api/projects/${project.id}/layout/preview`, {headers: {'X-Pad-Parent-Origin': 'http://127.0.0.1'}});
   assert.equal(staleLayoutPreview.status, 409, await staleLayoutPreview.text());
   const history = await fetch(`${baseUrl}/api/projects/${project.id}/motion-canvas/history`);
@@ -728,6 +1264,166 @@ async function prepareTwoScenes(baseUrl: string) {
   return projectFrom(await request(baseUrl, project, 'POST', `/api/projects/${project.id}/voice/generate`, voiceRequest(randomUUID())));
 }
 
+test('motion scene generation returns 202, continues after disconnect, and joins duplicate requests', async t => {
+  const app = await start(t);
+  let project = await prepareTwoScenes(app.baseUrl);
+  let release!: () => void;
+  const generationGate = new Promise<void>(resolve => { release = resolve; });
+  app.controls.setMotionGenerationGate(generationGate);
+  const generationId = randomUUID();
+  const body = {generationId};
+
+  const [accepted, duplicate] = await Promise.all([
+    request(
+      app.baseUrl,
+      project,
+      'POST',
+      `/api/projects/${project.id}/motion-canvas/generate`,
+      body,
+    ),
+    request(
+      app.baseUrl,
+      project,
+      'POST',
+      `/api/projects/${project.id}/motion-canvas/generate`,
+      body,
+    ),
+  ]);
+  assert.equal(accepted.status, 202);
+  const acceptedPayload = await accepted.json() as {progress: {state: string; generationId: string}};
+  assert.equal(acceptedPayload.progress.state, 'running');
+  assert.equal(acceptedPayload.progress.generationId, generationId);
+  assert.equal(duplicate.status, 202);
+  await duplicate.body?.cancel();
+
+  await new Promise<void>(resolve => setTimeout(resolve, 0));
+  assert.equal(app.metrics.motionCalls(), 1);
+  assert.equal(app.metrics.motionCalls(), 1);
+
+  const otherGeneration = await request(
+    app.baseUrl,
+    project,
+    'POST',
+    `/api/projects/${project.id}/motion-canvas/generate`,
+    {generationId: randomUUID()},
+  );
+  assert.equal(otherGeneration.status, 409);
+  const otherGenerationPayload = await otherGeneration.json() as {error: {code: string}};
+  assert.equal(otherGenerationPayload.error.code, 'MOTION_CANVAS_GENERATION_IN_PROGRESS');
+
+  const staleRevision = await request(
+    app.baseUrl,
+    {...project, revision: project.revision + 1},
+    'POST',
+    `/api/projects/${project.id}/motion-canvas/generate`,
+    body,
+  );
+  assert.equal(staleRevision.status, 409);
+
+  release();
+  const completed = await waitForMotionProgress(app.baseUrl, project.id);
+  assert.equal(completed.state, 'completed');
+  assert.equal(app.metrics.motionCalls(), 1);
+  project = await projectFrom(await request(app.baseUrl, project, 'GET', `/api/projects/${project.id}`));
+  assert.equal(project.motionCanvasBundle?.generation.generationId, generationId);
+  const completedRepeat = await request(
+    app.baseUrl,
+    project,
+    'POST',
+    `/api/projects/${project.id}/motion-canvas/generate`,
+    body,
+  );
+  assert.equal(completedRepeat.status, 200);
+  await completedRepeat.body?.cancel();
+  assert.equal(app.metrics.motionCalls(), 1);
+});
+
+test('background generation records the structured root cause and reaches failed terminal state', async t => {
+  const app = await start(t);
+  const project = await prepareTwoScenes(app.baseUrl);
+  const failure = new MotionCanvasGenerationError(
+    'CODEX_MOTION_CANVAS_TURN_FAILED',
+    'Scene 1: Codex failed to generate the scene.',
+    {
+      rootCause: {
+        reason: 'turn_failed',
+        code: 'CODEX_TURN_FAILED',
+        operation: 'turn/completed',
+        message: 'Codex turn failed.',
+        providerMessage: 'The provider refused this turn.',
+        providerCode: 'provider_failed',
+      },
+    },
+  );
+  app.controls.setMotionGenerationError(failure);
+  const generationId = randomUUID();
+  const response = await request(
+    app.baseUrl,
+    project,
+    'POST',
+    `/api/projects/${project.id}/motion-canvas/generate`,
+    {generationId},
+  );
+
+  assert.equal(response.status, 202);
+  await response.body?.cancel();
+  const progress = await waitForMotionProgress(app.baseUrl, project.id);
+  assert.equal(progress.state, 'failed');
+  assert.equal(progress.generationId, generationId);
+  assert.equal((progress as {completedScenes?: number}).completedScenes, 0);
+  assert.equal((progress as {failedScenes?: number}).failedScenes, 1);
+  assert.equal(app.metrics.motionCalls(), 1);
+
+  const failureResponse = await fetch(
+    `${app.baseUrl}/api/projects/${project.id}/motion-canvas/failure`,
+  );
+  assert.equal(failureResponse.status, 200);
+  const payload = await failureResponse.json() as {
+    failure: MotionCanvasFailureSummary | null;
+  };
+  assert.equal(payload.failure?.generationId, generationId);
+  assert.equal(payload.failure?.rootCause?.reason, 'turn_failed');
+  assert.equal(payload.failure?.rootCause?.operation, 'turn/completed');
+});
+
+test('unresolved deterministic fallback is recorded as generation response-invalid before compile', async t => {
+  const app = await start(t);
+  const project = await prepareTwoScenes(app.baseUrl);
+  app.controls.setFallbackCandidateGeneration(true);
+  const beforePrepareCalls = app.metrics.workspacePrepareCalls();
+  const beforeQualityCalls = app.metrics.visualQualityValidationCalls();
+  const generationId = randomUUID();
+
+  const response = await request(
+    app.baseUrl,
+    project,
+    'POST',
+    `/api/projects/${project.id}/motion-canvas/generate`,
+    {generationId},
+  );
+  assert.equal(response.status, 202);
+  await response.body?.cancel();
+
+  const progress = await waitForMotionProgress(app.baseUrl, project.id);
+  assert.equal(progress.state, 'failed');
+  assert.equal(progress.generationId, generationId);
+  assert.equal(app.metrics.workspacePrepareCalls(), beforePrepareCalls);
+  assert.equal(app.metrics.visualQualityValidationCalls(), beforeQualityCalls);
+
+  const failureResponse = await fetch(
+    `${app.baseUrl}/api/projects/${project.id}/motion-canvas/failure`,
+  );
+  assert.equal(failureResponse.status, 200);
+  const payload = await failureResponse.json() as {
+    failure: MotionCanvasFailureSummary | null;
+  };
+  assert.equal(payload.failure?.stage, 'generation');
+  assert.equal(payload.failure?.code, 'CODEX_MOTION_CANVAS_INVALID_RESPONSE');
+  assert.match(payload.failure?.message ?? '', /source-validation\/response-invalid/u);
+  assert.equal(payload.failure?.rootCause, null);
+  assert.match(payload.failure?.firstIssueReason ?? '', /Deterministic fallback is not publishable/u);
+});
+
 test('rendered-quality failures use bounded retries, re-validate the whole bundle, and never approve a failed bundle', async t => {
   const validatedSceneCounts: number[] = [];
   const failedAt = '2026-01-01T00:00:00.000Z';
@@ -773,11 +1469,14 @@ test('rendered-quality failures use bounded retries, re-validate the whole bundl
   };
   const blocked = await start(t, {narrationVisualPlanner: twoScenePlanner(), motionCanvasVisualQualityGate: alwaysFail});
   const stuck = await prepareTwoScenes(blocked.baseUrl);
+  const beforeBlockedCalls = blocked.metrics.motionCalls();
   const failedResponse = await request(blocked.baseUrl, stuck, 'POST', `/api/projects/${stuck.id}/motion-canvas/generate`, {generationId: randomUUID()});
-  assert.equal(failedResponse.ok, false);
-  assert.equal(failedResponse.status, 422);
-  const failedBody = await failedResponse.json() as {error: {code: string}};
-  assert.equal(failedBody.error.code, 'MOTION_CANVAS_VISUAL_QUALITY_FAILED');
+  assert.equal(failedResponse.status, 202);
+  const failedProgress = await waitForMotionProgress(blocked.baseUrl, stuck.id);
+  assert.equal(failedProgress.state, 'failed');
+  // One initial bundle turn plus four bounded visual-quality retries; the
+  // fifth failed validation is terminal and must not trigger another turn.
+  assert.equal(blocked.metrics.motionCalls() - beforeBlockedCalls, 5);
   const failureStatus = await fetch(
     `${blocked.baseUrl}/api/projects/${stuck.id}/motion-canvas/failure`,
   );
@@ -789,6 +1488,7 @@ test('rendered-quality failures use bounded retries, re-validate the whole bundl
     failurePayload.failure?.recoveryGuidance ?? '',
     /Visible content covers too much of the frame/,
   );
+  assert.match(failurePayload.failure?.recoveryGuidance ?? '', /issue=frame-too-dense/);
   const reloaded = await projectFrom(await request(blocked.baseUrl, null, 'GET', `/api/projects/${stuck.id}`));
   assert.ok(!reloaded.motionCanvasBundle);
   const approveWithoutBundle = await request(blocked.baseUrl, reloaded, 'POST', `/api/projects/${reloaded.id}/motion-canvas/approve`, {});

@@ -4,11 +4,23 @@ import {rendererRangeFromFrames} from './diagnostics.js';
 const EXPORTER_ID = 'pad-studio/quality-samples';
 function finite(value) { return Number.isFinite(value) ? Number(value) : null; }
 function signal(node, name) { try { return typeof node?.[name] === 'function' ? node[name]() : null; } catch { return null; } }
-/** Motion Canvas resolves fills to Color objects; normalise them to #rrggbb so
- * the deterministic gate can compare them against the visual bible palette. */
+/** Motion Canvas resolves fills to Color objects; normalise opaque colours to
+ * #rrggbb and preserve transparency as #rrggbbaa so the deterministic gate
+ * can compare them against the visual bible palette. */
 function colorHex(value) {
   if (typeof value === 'string') return value;
-  try { return value && typeof value.hex === 'function' ? value.hex() : null; } catch { return null; }
+  try {
+    if (!value || typeof value.hex !== 'function') return null;
+    const hex = value.hex();
+    if (typeof hex !== 'string' || typeof value.alpha !== 'function') return hex;
+    if (/^#[\da-f]{8}$/iu.test(hex)) return hex;
+    const alpha = Number(value.alpha());
+    if (!Number.isFinite(alpha) || alpha >= 0.999) return hex;
+    const alphaByte = Math.round(Math.max(0, Math.min(1, alpha)) * 255)
+      .toString(16)
+      .padStart(2, '0');
+    return `${hex}${alphaByte}`;
+  } catch { return null; }
 }
 const SEMANTIC_KEY = /^[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)+$/;
 function keyOf(node) {
@@ -77,14 +89,15 @@ function snapshot(scene, config, sample) {
       parent = signal(parent, 'parent');
     }
     const name = node.constructor?.name ?? '';
+    const isContainer = /Layout/i.test(name);
     const fill = colorHex(signal(node, 'fill'));
     const isText = /Txt/i.test(name);
     const text = isText && typeof signal(node, 'text') === 'string' ? signal(node, 'text') : null;
-    return [{node, name, key, parentKey, blockAncestor, ancestorKeys, managed: managed.has(key), effectiveOpacity: finite(signal(node, 'absoluteOpacity')) ?? 1, kind: key.startsWith('block-') ? 'block' : isText ? 'text' : 'other', bounds: box, visibleBounds: clipped(box, config.width, config.height), fontSize: finite(signal(node, 'fontSize')), fill: typeof fill === 'string' ? fill : null, localBackground: typeof localFill === 'string' ? localFill : null, text}];
+    return [{node, name, key, parentKey, blockAncestor, ancestorKeys, managed: managed.has(key), isContainer, effectiveOpacity: finite(signal(node, 'absoluteOpacity')) ?? 1, kind: key.startsWith('block-') ? 'block' : isText ? 'text' : 'other', bounds: box, visibleBounds: clipped(box, config.width, config.height), fontSize: finite(signal(node, 'fontSize')), fill: typeof fill === 'string' ? fill : null, localBackground: typeof localFill === 'string' ? localFill : null, text}];
   });
   return entries.map(entry => {
     let box = entry.bounds;
-    if (entry.kind === 'block' && /Layout/i.test(entry.name)) {
+    if (entry.kind === 'block' && entry.isContainer) {
       const visibleDescendants = entries.filter(candidate =>
         candidate.ancestorKeys.includes(entry.key) &&
         candidate.effectiveOpacity > 0.01 &&

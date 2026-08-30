@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import {access} from 'node:fs/promises';
 import test from 'node:test';
 import {randomUUID} from 'node:crypto';
-import type {MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
+import {MOTION_CANVAS_UNVERIFIED_SEMANTIC_FALLBACK_MARKER, type MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
 import type {BeatCompositionContract, VoiceVisualPlan} from '../shared/topic.ts';
-import {buildMotionCanvasSemanticValidation, MotionCanvasVisualQualityError, MotionCanvasVisualValidationGateError, VISUAL_QUALITY_GATE_VERSION, assertVisualValidationCurrent, motionCanvasSceneSourceHash, partitionWaivedVisualQualityIssues, retryRenderedSceneQualityOnce, validateRenderedMotionCanvas, visualQualityFailureIsRendererOnly, visualQualitySamples, visualValidationIsCurrent, visualValidationIsReusable, withTemporaryVisualQualityWorkspace, type BeatQualityContract, type QualityRenderedFrame, type VisualQualitySummary} from './motionCanvasVisualQuality.ts';
+import {buildMotionCanvasSemanticValidation, MotionCanvasVisualQualityError, MotionCanvasVisualValidationGateError, VISUAL_QUALITY_GATE_VERSION, assertVisualValidationCurrent, formatVisualQualityRetryGuidance, motionCanvasSceneSourceHash, partitionWaivedVisualQualityIssues, retryRenderedSceneQualityOnce, validateRenderedMotionCanvas, visualQualityFailureIsRendererOnly, visualQualitySamples, visualValidationIsCurrent, visualValidationIsReusable, withTemporaryVisualQualityWorkspace, type BeatQualityContract, type MotionCanvasVisualEvidence, type QualityRenderedFrame, type VisualQualitySummary} from './motionCanvasVisualQuality.ts';
 
 const sceneId = '10000000-0000-4000-8000-000000000001';
 const beatOne = '10000000-0000-4000-8000-000000000011';
@@ -28,7 +28,7 @@ const semanticPlan = {
   }],
 } as unknown as VoiceVisualPlan;
 function pixels(color: [number,number,number,number], accent = false) { const output = new Uint8Array(100*100*4); for(let i=0;i<output.length;i+=4){output[i]=color[0];output[i+1]=color[1];output[i+2]=color[2];output[i+3]=color[3];} if(accent) for(let i=0;i<600;i+=4){output[i]=255;output[i+1]=255;output[i+2]=255;} return output; }
-function frame(nodes: QualityRenderedFrame['nodes'], accent=true, color:[number,number,number,number]=[16,35,29,255]): QualityRenderedFrame {return {width:100,height:100,rgba:pixels(color,accent),nodes};}
+function frame(nodes: QualityRenderedFrame['nodes'], accent=true, color:[number,number,number,number]=[16,35,29,255]): QualityRenderedFrame {return {width:100,height:100,rgba:pixels(color,accent),nodes,png:Buffer.from('test-png')};}
 async function inspect(factory: (sample: ReturnType<typeof visualQualitySamples>[number]) => QualityRenderedFrame) { return validateRenderedMotionCanvas({scenes:[scene],lifecycle,frame:{width:100,height:100,fps:10},backgroundColor:'#10231D',renderer:{async render(input){return new Map(input.samples.map(sample=>[`${sample.sceneId}:${sample.beatId}:${sample.phase}`,factory(sample)]));}},now:'2026-01-01T00:00:00.000Z'}); }
 const safe = (key:string) => ({key,bounds:{x:12,y:12,width:40,height:30},visibleBounds:{x:12,y:12,width:40,height:30},opacity:1,kind:'block' as const});
 function failed(work: Promise<unknown>, code: string) { return assert.rejects(work, error => error instanceof MotionCanvasVisualQualityError && error.summary.issues.some(issue=>issue.code===code)); }
@@ -41,10 +41,10 @@ test('renderer-only quality failures are infrastructure faults, not scene repair
   assert.equal(visualQualityFailureIsRendererOnly({issues:[]}), false);
 });
 
-function semanticVisualEvidence(visibleSemanticKeys: string[]) {
+function semanticVisualEvidence(visibleSemanticKeys: string[], sourceScene: MotionCanvasSourceScene = scene) {
   return {
-    sourceHash: motionCanvasSceneSourceHash([scene]),
-    scenes: [{sceneId, samples: [{
+    sourceHash: motionCanvasSceneSourceHash([sourceScene]),
+    scenes: [{sceneId: sourceScene.id, samples: [{
       beatId: beatOne,
       phase: 'middle' as const,
       timeSeconds: 2,
@@ -57,7 +57,7 @@ function semanticVisualEvidence(visibleSemanticKeys: string[]) {
   } as unknown as Pick<VisualQualitySummary, 'sourceHash' | 'scenes'>;
 }
 
-test('semantic validation passes only when Visual Intent keys are bound and visible', () => {
+test('semantic validation passes only when direct Visual Intent ids are bound and visible', () => {
   const summary = buildMotionCanvasSemanticValidation(
     [scene],
     semanticPlan,
@@ -70,6 +70,45 @@ test('semantic validation passes only when Visual Intent keys are bound and visi
   assert.equal(summary.scenes[0]?.coverage, 1);
   assert.equal(summary.scenes[0]?.fallbackLevel, 'none');
   assert.deepEqual(summary.scenes[0]?.missingIntentIds, []);
+});
+
+test('legacy translated Scene Spec v3-style keys do not satisfy direct semantic validation', () => {
+  const legacyScene = {
+    ...scene,
+    source: '// pad-semantic:bindings-v1\n<Rect key="main-concept-at-visual-one" /><Line key="concept-link-at-visual-one" /><Rect key="concept-change-at-visual-one" />',
+  };
+  const summary = buildMotionCanvasSemanticValidation(
+    [legacyScene],
+    semanticPlan,
+    semanticVisualEvidence(['main-concept-at-visual-one', 'concept-link-at-visual-one', 'concept-change-at-visual-one'], legacyScene),
+    '2026-01-01T00:00:00.000Z',
+  );
+
+  assert.equal(summary.status, 'failed');
+  assert.equal(summary.scenes[0]?.status, 'failed');
+  assert.equal(summary.scenes[0]?.coverage, 0);
+  assert.deepEqual(summary.scenes[0]?.missingIntentIds, [
+    'main-concept',
+    'concept-link',
+    'concept-change',
+  ]);
+});
+
+test('semantic validation fails when a required direct JSX key is missing from source', () => {
+  const incompleteScene = {
+    ...scene,
+    source: '// pad-semantic:bindings-v1\n<Rect key="main-concept" /><Line key="concept-link" />',
+  };
+  const summary = buildMotionCanvasSemanticValidation(
+    [incompleteScene],
+    semanticPlan,
+    semanticVisualEvidence(['main-concept', 'concept-link', 'concept-change'], incompleteScene),
+    '2026-01-01T00:00:00.000Z',
+  );
+
+  assert.equal(summary.status, 'failed');
+  assert.equal(summary.scenes[0]?.coverage, 2 / 3);
+  assert.deepEqual(summary.scenes[0]?.missingIntentIds, ['concept-change']);
 });
 
 test('semantic validation fails when a required Visual Intent key is not visible at its beat', () => {
@@ -94,6 +133,71 @@ test('semantic validation keeps historical frame evidence degraded rather than c
   );
 
   assert.equal(summary.status, 'degraded');
+  assert.equal(summary.scenes[0]?.coverage, 0);
+  assert.deepEqual(summary.scenes[0]?.unverifiedIntentIds, [
+    'main-concept',
+    'concept-link',
+    'concept-change',
+  ]);
+});
+
+test('semantic validation degrades pre-contract source that is missing the binding marker', () => {
+  const preContractScene = {
+    ...scene,
+    source: scene.source.replace('// pad-semantic:bindings-v1\n', ''),
+  };
+  const summary = buildMotionCanvasSemanticValidation(
+    [preContractScene],
+    semanticPlan,
+    semanticVisualEvidence(['main-concept', 'concept-link', 'concept-change'], preContractScene),
+    '2026-01-01T00:00:00.000Z',
+  );
+
+  assert.equal(summary.status, 'degraded');
+  assert.equal(summary.scenes[0]?.status, 'degraded');
+  assert.equal(summary.scenes[0]?.coverage, 0);
+  assert.equal(summary.scenes[0]?.fallbackLevel, 'none');
+  assert.deepEqual(summary.scenes[0]?.unverifiedIntentIds, [
+    'main-concept',
+    'concept-link',
+    'concept-change',
+  ]);
+});
+
+test('semantic validation keeps deterministic fallback output degraded and unverified', () => {
+  const fallbackScene = {
+    ...scene,
+    source: `// ${MOTION_CANVAS_UNVERIFIED_SEMANTIC_FALLBACK_MARKER}\n${scene.source}`,
+  };
+  const summary = buildMotionCanvasSemanticValidation(
+    [fallbackScene],
+    semanticPlan,
+    semanticVisualEvidence(['main-concept', 'concept-link', 'concept-change'], fallbackScene),
+    '2026-01-01T00:00:00.000Z',
+  );
+
+  assert.equal(summary.status, 'degraded');
+  assert.equal(summary.scenes[0]?.status, 'degraded');
+  assert.equal(summary.scenes[0]?.coverage, 0);
+  assert.equal(summary.scenes[0]?.fallbackLevel, 'simplified');
+  assert.deepEqual(summary.scenes[0]?.unverifiedIntentIds, [
+    'main-concept',
+    'concept-link',
+    'concept-change',
+  ]);
+});
+
+test('stale runtime/source evidence does not pass direct semantic validation', () => {
+  const currentEvidence = semanticVisualEvidence(['main-concept', 'concept-link', 'concept-change']);
+  const summary = buildMotionCanvasSemanticValidation(
+    [scene],
+    semanticPlan,
+    {...currentEvidence, sourceHash: '0'.repeat(64)},
+    '2026-01-01T00:00:00.000Z',
+  );
+
+  assert.equal(summary.status, 'degraded');
+  assert.equal(summary.scenes[0]?.status, 'degraded');
   assert.equal(summary.scenes[0]?.coverage, 0);
   assert.deepEqual(summary.scenes[0]?.unverifiedIntentIds, [
     'main-concept',
@@ -346,6 +450,34 @@ test('frame density detects an almost empty and an overfilled frame', async () =
   assert.ok((await codesOf(run({lifecycle, nodes: () => [safe('block-one'), ...Array.from({length: 44}, (_, index) => ({key: `chip-${index}`, kind: 'other' as const, bounds: {x: 12, y: 12, width: 4, height: 4}, visibleBounds: {x: 12, y: 12, width: 4, height: 4}, opacity: 1}))]}))).includes('frame-too-dense'));
 });
 
+test('keyed Layout containers do not count as conceptual visual components', async () => {
+  const lifecycle = bothBeats({stay: ['block-one']});
+  const nodesWith = (paintedCount: number) => [
+    safe('block-one'),
+    ...Array.from({length: 7}, (_, index) => ({
+      key: `block-group-${index}`,
+      kind: 'block' as const,
+      isContainer: true,
+      ancestorKeys: ['block-one'],
+      bounds: {x: 12, y: 12, width: 40, height: 30},
+      visibleBounds: {x: 12, y: 12, width: 40, height: 30},
+      opacity: 1,
+      effectiveOpacity: 1,
+    })),
+    ...Array.from({length: paintedCount}, (_, index) => ({
+      key: `primitive-${index}`,
+      kind: 'other' as const,
+      ancestorKeys: ['block-one'],
+      bounds: {x: 16, y: 16, width: 2, height: 2},
+      visibleBounds: {x: 16, y: 16, width: 2, height: 2},
+      opacity: 1,
+      effectiveOpacity: 1,
+    })),
+  ];
+  assert.deepEqual(await codesOf(run({lifecycle, nodes: () => nodesWith(39)})), []);
+  assert.ok((await codesOf(run({lifecycle, nodes: () => nodesWith(40)}))).includes('frame-too-dense'));
+});
+
 test('primary block must dominate and sit inside its declared focus zone', async () => {
   const lifecycle = bothBeats({stay: ['block-one', 'block-two'], primaryBlock: 'block-one', compositionContract: contract()});
   const codes = await codesOf(run({lifecycle, nodes: () => [
@@ -430,10 +562,122 @@ test('a front node burying important content is occlusion, not peer block overla
   const lifecycle = bothBeats({stay: ['block-one'], primaryBlock: 'block-one', compositionContract: contract({hierarchy: ['block-one', 'block-one'], layout: 'full-bleed'})});
   const codes = await codesOf(run({lifecycle, nodes: () => [
     {...safe('block-one'), bounds: {x: 30, y: 30, width: 40, height: 30}, visibleBounds: {x: 30, y: 30, width: 40, height: 30}},
-    {key: 'overlay-panel', kind: 'other' as const, bounds: {x: 30, y: 30, width: 40, height: 30}, visibleBounds: {x: 30, y: 30, width: 40, height: 30}, opacity: 1, effectiveOpacity: 1},
+    {key: 'overlay-panel', kind: 'other' as const, fill: '#1D2939', bounds: {x: 30, y: 30, width: 40, height: 30}, visibleBounds: {x: 30, y: 30, width: 40, height: 30}, opacity: 1, effectiveOpacity: 1},
   ]}));
   assert.ok(codes.includes('content-occluded'));
   assert.ok(!codes.includes('block-overlap'));
+});
+
+test('visual quality failure returns only issue-linked frame evidence and related nodes', async () => {
+  const lifecycle = bothBeats({
+    stay: ['block-one'],
+    primaryBlock: 'block-one',
+    compositionContract: contract({hierarchy: ['block-one', 'block-one'], layout: 'full-bleed'}),
+  });
+  const samples = visualQualitySamples([scene], 10);
+  const rendered = new Map(samples.map(sample => {
+    const nodes: QualityRenderedFrame['nodes'] = [
+      {...safe('block-one'), bounds: {x: 20, y: 20, width: 60, height: 40}, visibleBounds: {x: 20, y: 20, width: 60, height: 40}},
+      {key: 'important-label', kind: 'text' as const, ancestorKeys: ['block-one'], bounds: {x: 35, y: 35, width: 20, height: 10}, visibleBounds: {x: 35, y: 35, width: 20, height: 10}, opacity: 1, fontSize: 20, text: 'Nhãn'},
+      ...(sample.beatId === beatTwo && sample.phase === 'middle'
+        ? [{key: 'overlay-panel', kind: 'other' as const, fill: '#1D2939', bounds: {x: 35, y: 35, width: 20, height: 10}, visibleBounds: {x: 35, y: 35, width: 20, height: 10}, opacity: 1, effectiveOpacity: 1}]
+        : []),
+    ];
+    return [sample.sampleId, {...frame(nodes), png: Buffer.from(sample.sampleId)}] as const;
+  }));
+  let callbackEvidence: MotionCanvasVisualEvidence[] = [];
+
+  await assert.rejects(
+    validateRenderedMotionCanvas({
+      scenes: [scene],
+      lifecycle,
+      frame: {width: 100, height: 100, fps: 10},
+      backgroundColor: '#10231D',
+      renderer: {render: async () => rendered},
+      onFailure: evidence => {
+        callbackEvidence = evidence;
+      },
+      now: '2026-01-01T00:00:00.000Z',
+    }),
+    error => {
+      if (!(error instanceof MotionCanvasVisualQualityError)) return false;
+      assert.equal(error.evidence.length, 1);
+      const only = error.evidence[0]!;
+      assert.equal(only.sceneId, scene.id);
+      assert.equal(only.beatId, beatTwo);
+      assert.equal(only.phase, 'middle');
+      assert.equal(only.frame, samples.find(sample => sample.beatId === beatTwo && sample.phase === 'middle')!.frame);
+      assert.equal(only.png.toString(), only.sceneId + ':' + only.beatId + ':middle');
+      assert.ok(only.issues.some(issue => issue.code === 'content-occluded'));
+      assert.ok(only.nodes.some(node => node.key === 'overlay-panel'));
+      assert.ok(only.nodes.some(node => node.key === 'important-label'));
+      return true;
+    },
+  );
+  assert.equal(callbackEvidence.length, 1);
+});
+
+test('a transparent range outline does not falsely occlude content', async () => {
+  const lifecycle = bothBeats({stay: ['block-one'], primaryBlock: 'block-one', compositionContract: contract({hierarchy: ['block-one', 'block-one'], layout: 'full-bleed'})});
+  const codes = await codesOf(run({lifecycle, nodes: () => [
+    {...safe('block-one'), bounds: {x: 20, y: 20, width: 60, height: 40}, visibleBounds: {x: 20, y: 20, width: 60, height: 40}},
+    {key: 'important-label', kind: 'text' as const, blockAncestor: 'block-one', ancestorKeys: ['block-one'], bounds: {x: 35, y: 35, width: 20, height: 10}, visibleBounds: {x: 35, y: 35, width: 20, height: 10}, opacity: 1, fontSize: 20, text: 'Nhãn'},
+    {key: 'range-outline', kind: 'other' as const, fill: '#00000000', bounds: {x: 20, y: 20, width: 60, height: 40}, visibleBounds: {x: 20, y: 20, width: 60, height: 40}, opacity: 1, effectiveOpacity: 1},
+  ]}));
+  assert.ok(!codes.includes('content-occluded'));
+});
+
+test('a Layout range diagram does not falsely occlude its sibling cell labels', async () => {
+  const lifecycle = bothBeats({stay: ['block-one'], primaryBlock: 'block-one', compositionContract: contract({hierarchy: ['block-one', 'block-one'], layout: 'full-bleed'})});
+  const cellNodes = [
+    'cell-value-three',
+    'cell-value-seven',
+    'cell-value-eleven',
+    'cell-value-fifteen',
+    'cell-value-nineteen',
+    'cell-value-twenty-three',
+    'cell-value-twenty-seven',
+  ].map((key, index) => ({
+    key,
+    kind: 'text' as const,
+    ancestorKeys: ['block-array-anchor'],
+    bounds: {x: 30 + index * 7, y: 45, width: 5, height: 10},
+    visibleBounds: {x: 30 + index * 7, y: 45, width: 5, height: 10},
+    opacity: 1,
+    effectiveOpacity: 1,
+    fontSize: 20,
+    text: String(index + 1),
+  }));
+  const nodes = [
+    {...safe('block-one'), bounds: {x: 20, y: 20, width: 60, height: 60}, visibleBounds: {x: 20, y: 20, width: 60, height: 60}},
+    ...cellNodes,
+    {key: 'block-range-diagram', kind: 'block' as const, isContainer: true, fill: null, opacity: 1, effectiveOpacity: 1, bounds: {x: 20, y: 20, width: 60, height: 60}, visibleBounds: {x: 20, y: 20, width: 60, height: 60}},
+  ];
+  const codes = await codesOf(run({lifecycle, nodes: () => nodes}));
+  assert.ok(!codes.includes('content-occluded'));
+});
+
+test('quality retry guidance carries exact issue, frame and semantic node context', () => {
+  const issue = {code: 'content-occluded' as const, sceneId, beatId: beatTwo, timeSeconds: 6, semanticKey: 'block-range-diagram>cell-value-three', bounds: {x: 30, y: 45, width: 5, height: 10}, reason: 'Node block-range-diagram is drawn over and covers most of cell-value-three.'};
+  const evidence: MotionCanvasVisualEvidence[] = [{
+    sceneId,
+    beatId: beatTwo,
+    phase: 'middle',
+    frame: 420,
+    timeSeconds: 6,
+    png: Buffer.from('evidence'),
+    issues: [issue],
+    nodes: [
+      {key: 'block-range-diagram', kind: 'block', isContainer: true, fill: null, effectiveOpacity: 1, bounds: {x: 20, y: 20, width: 60, height: 60}},
+      {key: 'cell-value-three', kind: 'text', isContainer: false, fill: '#FFFFFF', effectiveOpacity: 1, bounds: issue.bounds},
+    ],
+  }];
+  const guidance = formatVisualQualityRetryGuidance([issue], evidence);
+  assert.match(guidance, /issue=content-occluded/);
+  assert.match(guidance, /phase=middle frame=420 timeSeconds=6/);
+  assert.match(guidance, /semanticKey=block-range-diagram>cell-value-three/);
+  assert.match(guidance, /block-range-diagram\[kind=block;container=true/);
+  assert.match(guidance, /targetBounds=\(30\.0,45\.0,5\.0x10\.0\)/);
 });
 
 test('a shared anchor may not teleport between beats unless the beat is a transition', async () => {

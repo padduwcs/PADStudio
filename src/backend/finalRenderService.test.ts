@@ -120,6 +120,22 @@ test('schema final render dùng cùng dung sai cho kết quả ffprobe', () => {
   const parsed = FinalRenderBundleSchema.safeParse(bundle);
   assert.equal(parsed.success, true);
   if (parsed.success) assert.equal(parsed.data.validation.visual?.sampleCount, 1);
+  const continuousSamplesBundle = structuredClone(bundle);
+  const visual = continuousSamplesBundle.validation.visual!;
+  const scene = visual.scenes[0]!;
+  const firstSample = scene.samples[0]!;
+  visual.sampleCount = 6;
+  scene.sampleFrames = [12, 36, 60, 84, 108, 132];
+  scene.viableSampleCount = 6;
+  scene.samples = scene.sampleFrames.map((frame) => ({
+    ...firstSample,
+    frame,
+    timeSeconds: frame / 30,
+  }));
+  assert.equal(
+    FinalRenderBundleSchema.safeParse(continuousSamplesBundle).success,
+    true,
+  );
   const legacyBundle = {
     ...bundle,
     playbackRate: 1.25,

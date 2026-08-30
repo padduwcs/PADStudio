@@ -17,6 +17,8 @@ export const MotionCanvasGenerationProgressSchema = z.object({
   stage: z.enum(motionCanvasGenerationStageValues),
   message: z.string().trim().min(1).max(500),
   completedScenes: z.number().int().nonnegative(),
+  /** Successful scene outputs; failed scene work is tracked separately. */
+  failedScenes: z.number().int().nonnegative().default(0),
   totalScenes: z.number().int().nonnegative(),
   completedSamples: z.number().int().nonnegative(),
   totalSamples: z.number().int().nonnegative(),
@@ -31,4 +33,3 @@ export const MotionCanvasGenerationProgressSchema = z.object({
 export type MotionCanvasGenerationProgress = z.infer<
   typeof MotionCanvasGenerationProgressSchema
 >;
-

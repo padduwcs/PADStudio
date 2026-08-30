@@ -14,7 +14,11 @@ import {
 } from '../shared/projectPipeline.ts';
 import {
   validateLayoutDocuments,
+  LayoutWorkspaceError,
+  type LayoutFailureArtifactStatus,
+  type LayoutFailureRecord,
 } from './layoutWorkspace.ts';
+import {LayoutPreviewError} from './layoutPreviewService.ts';
 import {
   ProjectConflictError,
 } from './projectRepository.ts';
@@ -38,6 +42,63 @@ type LayoutRouteContext = Pick<
   AppContext,
   'repository' | 'layoutWorkspace' | 'layoutPreviewService'
 >;
+
+async function retainLayoutFailure(
+  layoutWorkspace: LayoutRouteContext['layoutWorkspace'],
+  projectId: string,
+  generationId: string,
+  sourceSyncGenerationId: string,
+  error: unknown,
+  artifactStatus: LayoutFailureArtifactStatus,
+) {
+  if (
+    !(error instanceof LayoutPreviewError) &&
+    !(error instanceof LayoutWorkspaceError)
+  ) {
+    return;
+  }
+  const diagnostic = error.diagnostic ?? {
+    stage: 'layout-design' as const,
+    status: 'failed' as const,
+    artifactPath: null,
+    artifactStatus,
+    sourceSyncGenerationId,
+    details: {operation: 'layout-design'},
+  };
+  const failure: LayoutFailureRecord = {
+    stage: diagnostic.stage,
+    status: diagnostic.status,
+    code: error.code,
+    message: error.message,
+    diagnostic: {
+      ...diagnostic,
+      artifactPath: null,
+      artifactStatus,
+      sourceSyncGenerationId,
+    },
+    artifact: {
+      status: artifactStatus,
+      workspacePath:
+        artifactStatus === 'workspace-created'
+          ? `layout/generations/${generationId}`
+          : null,
+    },
+  };
+  if (!layoutWorkspace.recordFailure) return;
+  try {
+    const artifactPath = await layoutWorkspace.recordFailure(
+      projectId,
+      generationId,
+      failure,
+    );
+    error.diagnostic = {
+      ...failure.diagnostic,
+      artifactPath,
+    };
+  } catch {
+    // Preserve the original downstream failure if artifact retention itself fails.
+  }
+}
 
 export function createLayoutRouteHandler(
   context: LayoutRouteContext,
@@ -139,22 +200,24 @@ export function createLayoutRouteHandler(
           'Bản đồng bộ đã thay đổi. Hãy tải lại editor.',
         );
       }
-      const manifest = layoutPreviewService.getManifest(
-        currentProject.id,
-        parsedRequest.data.sessionNonce,
-        sync.generation.generationId,
-      );
-      const documents = validateLayoutDocuments(
-        sync,
-        parsedRequest.data.overrides,
-        manifest,
-      );
-      const currentLayout =
-        currentProject.layoutBundle &&
-          layoutMatchesAnimationSync(currentProject.layoutBundle, sync)
-          ? currentProject.layoutBundle
-          : null;
       const generationId = parsedRequest.data.generationId.toLowerCase();
+      let artifactStatus: LayoutFailureArtifactStatus = 'not-created';
+      try {
+        const manifest = await layoutPreviewService.waitForManifest(
+          currentProject.id,
+          parsedRequest.data.sessionNonce,
+          sync.generation.generationId,
+        );
+        const documents = validateLayoutDocuments(
+          sync,
+          parsedRequest.data.overrides,
+          manifest,
+        );
+        const currentLayout =
+          currentProject.layoutBundle &&
+            layoutMatchesAnimationSync(currentProject.layoutBundle, sync)
+            ? currentProject.layoutBundle
+            : null;
       const prepared = await layoutWorkspace.prepare(
         currentProject.id,
         generationId,
@@ -165,6 +228,7 @@ export function createLayoutRouteHandler(
           currentLayout?.generation.generationId ??
           null,
       );
+      artifactStatus = 'workspace-created';
       const layoutBundle = LayoutBundleSchema.parse({
         status: 'draft',
         contentRevision: (currentLayout?.contentRevision ?? 0) + 1,
@@ -204,6 +268,17 @@ export function createLayoutRouteHandler(
       }
       sendProject(response, 200, updatedProject);
       return true;
+      } catch (error) {
+        await retainLayoutFailure(
+          layoutWorkspace,
+          currentProject.id,
+          generationId,
+          sync.generation.generationId,
+          error,
+          artifactStatus,
+        );
+        throw error;
+      }
     }
 
     if (layoutRoute?.action === 'approve' && request.method === 'POST') {

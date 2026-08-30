@@ -21,6 +21,7 @@ import {
   MotionCanvasGenerationError,
   mergeMotionCanvasGenerationUsage,
 } from './motionCanvasGenerator.ts';
+import {assertMotionCanvasScenesArePublishable} from './motionCanvasRoutes.ts';
 import {
   MotionCanvasVisualQualityError,
   assertVisualValidationCurrent,
@@ -55,6 +56,18 @@ import {readExpectedRevision, readJsonBody, requestParentOrigin, sendJson, sendP
 import type {ApiRouteHandler} from './routeTypes.ts';
 
 type MotionCanvasHistoryRouteContext = Pick<AppContext, 'repository' | 'motionCanvasHistoryStore' | 'motionCanvasWorkspace' | 'motionCanvasVisualQualityGate' | 'layoutPreviewService' | 'motionCanvasCandidateGenerations' | 'motionCanvasGenerator' | 'motionCanvasRevisionReviewService' | 'generateOnce' | 'logger'>;
+
+function assertStoredMotionCanvasBundleIsPublishable(
+  bundle: Pick<MotionCanvasBundle, 'scenes'>,
+  boundary: string,
+) {
+  // History artifacts persist scene metadata and the workspace path; source
+  // text is checked separately after it is read back from the workspace.
+  assertMotionCanvasScenesArePublishable(
+    bundle.scenes.map(scene => ({name: scene.name, source: ''})),
+    boundary,
+  );
+}
 
 export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHistoryRouteContext): ApiRouteHandler {
   const {repository, motionCanvasHistoryStore, motionCanvasWorkspace, motionCanvasVisualQualityGate, layoutPreviewService, motionCanvasCandidateGenerations, motionCanvasGenerator, motionCanvasRevisionReviewService, generateOnce, logger} = context;
@@ -99,7 +112,15 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
         'Workspace Motion Canvas không còn khớp đầu vào đã chốt.',
       );
     }
-    await motionCanvasWorkspace.verify(currentProject.id, bundle);
+    const isCandidateApplyRoute = Boolean(
+      route.resource === 'candidates' &&
+      route.recordId &&
+      route.action === 'apply' &&
+      request.method === 'POST'
+    );
+    if (!isCandidateApplyRoute) {
+      await motionCanvasWorkspace.verify(currentProject.id, bundle);
+    }
     const lifecycleFor = (scenes: Array<{outlineSectionId: string}>) => new Map(
       scenes.flatMap(scene => {
         const section = voiceVisualPlan.sections.find(item => item.outlineSectionId === scene.outlineSectionId);
@@ -336,6 +357,16 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
           'Phạm vi scene không còn khớp workspace nền.',
         );
       }
+      const selectedSceneIds = new Set(parsed.data.scope.sceneIds);
+      const degradedOutsideScope = (baseBundle.qualityWaivedScenes ?? [])
+        .filter(item => !selectedSceneIds.has(item.sceneId));
+      if (degradedOutsideScope.length > 0) {
+        throw new RequestBodyError(
+          409,
+          'MOTION_CANVAS_BASE_VISUAL_QUALITY_DEGRADED',
+          `Bundle nền có ${degradedOutsideScope.length} scene từng bỏ qua lỗi chất lượng nằm ngoài phạm vi chỉnh sửa. Hãy chọn toàn bộ scene bị ảnh hưởng hoặc sinh lại bundle đầy đủ trước khi tạo candidate.`,
+        );
+      }
       const baseContentHash = hashMotionCanvasBundle(baseBundle);
       const baseContextHash = motionCanvasContextHash(
         currentProject,
@@ -372,7 +403,6 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
             currentProject.id,
             baseBundle,
           );
-          const selectedSceneIds = new Set(parsed.data.scope.sceneIds);
           const sectionIndexes = baseBundle.scenes
             .map((scene, index) => selectedSceneIds.has(scene.id) ? index : -1)
             .filter(index => index >= 0);
@@ -391,6 +421,10 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
           };
           let generated = await motionCanvasGenerator.generate(
             generationRequest,
+          );
+          assertMotionCanvasScenesArePublishable(
+            generated.scenes,
+            'workspace preparation',
           );
           const mergeScenes = () => {
             const generatedBySection = new Map(
@@ -416,6 +450,10 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
             });
           };
           let mergedSources = mergeScenes();
+          assertMotionCanvasScenesArePublishable(
+            mergedSources,
+            'workspace preparation',
+          );
           let prepared: PreparedMotionCanvasWorkspace | null = null;
           let acceptedWorkspace = false;
           let repairAttempts = 0;
@@ -423,6 +461,10 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
           const generationDiagnostics: NonNullable<MotionCanvasBundle['generationDiagnostics']> = [];
           try {
             while (!prepared) {
+            assertMotionCanvasScenesArePublishable(
+              mergedSources,
+              'workspace preparation',
+            );
             try {
               prepared = await motionCanvasWorkspace.prepare(
                 currentProject.id,
@@ -459,7 +501,15 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
                     }`,
                   );
                 }
+                assertMotionCanvasScenesArePublishable(
+                  generated.scenes,
+                  'workspace preparation',
+                );
                 mergedSources = mergeScenes();
+                assertMotionCanvasScenesArePublishable(
+                  mergedSources,
+                  'workspace preparation',
+                );
                 continue;
               }
               if (
@@ -475,12 +525,24 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
                   generated,
                   error.details,
                 );
+                assertMotionCanvasScenesArePublishable(
+                  generated.scenes,
+                  'workspace preparation',
+                );
                 mergedSources = mergeScenes();
+                assertMotionCanvasScenesArePublishable(
+                  mergedSources,
+                  'workspace preparation',
+                );
                 continue;
               }
               throw error;
             }
             }
+            assertMotionCanvasScenesArePublishable(
+              prepared.sourceScenes,
+              'visual-quality approval',
+            );
             let visualValidation;
             try {
               visualValidation = await motionCanvasVisualQualityGate.validate({
@@ -504,18 +566,26 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
                 .map(scene => voiceVisualPlan.sections.findIndex(section => section.outlineSectionId === scene.outlineSectionId))
                 .filter(index => index >= 0);
               generationDiagnostics.push({stage: 'quality-retry', attempt: 1, reason: error.summary.issues.map(issue => `${issue.sceneId}/${issue.beatId ?? 'scene'}: ${issue.reason}`).join('; ').slice(0, 4_000), outcome: 'failed'});
-              const retryGuidance = [generationRequest.guidance, formatVisualQualityRetryGuidance(error.summary.issues)].filter(Boolean).join('\n\n');
+              const retryGuidance = [generationRequest.guidance, formatVisualQualityRetryGuidance(error.summary.issues, error.evidence)].filter(Boolean).join('\n\n');
               const repaired = await motionCanvasGenerator.generate({
                 ...generationRequest,
                 sectionIndexes: failedIndexes,
                 currentScenes: mergedSources,
                 ...(retryGuidance ? {guidance: retryGuidance} : {}),
               });
+              assertMotionCanvasScenesArePublishable(
+                repaired.scenes,
+                'workspace preparation',
+              );
               const repairedBySection = new Map(repaired.scenes.map(scene => [scene.outlineSectionId, scene]));
               mergedSources = mergedSources.map(scene => {
                 const replacement = repairedBySection.get(scene.outlineSectionId);
                 return replacement ? {...replacement, id: scene.id, filePath: scene.filePath, outlineSectionId: scene.outlineSectionId} : scene;
               });
+              assertMotionCanvasScenesArePublishable(
+                mergedSources,
+                'workspace preparation',
+              );
               generated = {
                 ...generated,
                 model: repaired.model,
@@ -527,6 +597,10 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
               };
               await motionCanvasWorkspace.discard(currentProject.id, generationId);
               prepared = await motionCanvasWorkspace.prepare(currentProject.id, generationId, mergedSources, projectVideoFrame(currentProject));
+              assertMotionCanvasScenesArePublishable(
+                prepared.sourceScenes,
+                'visual-quality approval',
+              );
               visualValidation = await motionCanvasVisualQualityGate.validate({
                 scenes: prepared.sourceScenes,
                 lifecycle: lifecycleFor(mergedSources),
@@ -636,6 +710,14 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
           usage: generation.result.generated.usage,
         },
       };
+      assertMotionCanvasScenesArePublishable(
+        generation.result.prepared.sourceScenes,
+        'candidate persistence',
+      );
+      assertStoredMotionCanvasBundleIsPublishable(
+        candidateBundle,
+        'candidate persistence',
+      );
       const coherence = generation.result.review.coherence;
       const status =
         coherence.verdict === 'needs_scope_expansion' ||
@@ -737,14 +819,11 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
           'Candidate này đã bị từ chối và chỉ còn trong lịch sử.',
         );
       }
-      if (
-        candidate.decision === 'accepted' &&
-        currentContentHash === candidate.candidateContentHash
-      ) {
-        sendProject(response, 200, currentProject);
-        return true;
-      }
       if (candidate.decision === 'accepted') {
+        if (currentContentHash === candidate.candidateContentHash) {
+          sendProject(response, 200, currentProject);
+          return true;
+        }
         throw new RequestBodyError(
           409,
           'MOTION_CANVAS_CANDIDATE_ALREADY_ACCEPTED',
@@ -772,11 +851,25 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
           'Đầu vào hoặc workspace nền đã thay đổi kể từ lúc tạo candidate.',
         );
       }
-      const verifiedCandidate = await motionCanvasWorkspace.verify(currentProject.id, candidate.bundle);
-      const candidateSources = await motionCanvasWorkspace.readSceneSources(
-        currentProject.id,
+      assertStoredMotionCanvasBundleIsPublishable(
         candidate.bundle,
+        'candidate apply',
       );
+      await motionCanvasWorkspace.verify(currentProject.id, bundle);
+      const readAndAssertCandidateSources = async () => {
+        const verifiedCandidate = await motionCanvasWorkspace.verify(currentProject.id, candidate.bundle);
+        const candidateSources = await motionCanvasWorkspace.readSceneSources(
+          currentProject.id,
+          candidate.bundle,
+        );
+        assertMotionCanvasScenesArePublishable(
+          candidateSources,
+          'candidate apply',
+        );
+        return {verifiedCandidate, candidateSources};
+      };
+      const {verifiedCandidate, candidateSources} =
+        await readAndAssertCandidateSources();
       // Rendered-frame evidence is reused only when it is passing, current in
       // shape and hashed over exactly these sources; otherwise it is produced
       // again and then re-checked by the same shared rule.
@@ -798,17 +891,21 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
             projectFile: verifiedCandidate.projectFile,
           });
       assertVisualValidationCurrent({visualValidation: candidateVisualValidation}, candidateSources);
+      const candidateSemanticValidation =
+        candidate.bundle.semanticValidation?.sourceHash === candidateVisualValidation.sourceHash
+          ? candidate.bundle.semanticValidation
+          : buildMotionCanvasSemanticValidation(
+            candidateSources,
+            voiceVisualPlan,
+            candidateVisualValidation,
+          );
       const nextBundle: MotionCanvasBundle = {
         ...candidate.bundle,
         status: 'draft',
         contentRevision: bundle.contentRevision + 1,
         sourceVoiceVisualContentRevision: voiceVisualPlan.contentRevision,
         visualValidation: candidateVisualValidation,
-        semanticValidation: buildMotionCanvasSemanticValidation(
-          candidateSources,
-          voiceVisualPlan,
-          candidateVisualValidation,
-        ),
+        semanticValidation: candidateSemanticValidation,
       };
       const updatedProject = await repository.updateProject(
         currentProject.id,
@@ -875,6 +972,10 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
           'Không tìm thấy phiên bản scene cần khôi phục.',
         );
       }
+      assertStoredMotionCanvasBundleIsPublishable(
+        sourceVersion.artifact,
+        'version restore',
+      );
       if (
         sourceVersion.artifact.sourceVoiceVisualContentRevision !==
         voiceVisualPlan.contentRevision
@@ -889,6 +990,15 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
         currentProject.id,
         sourceVersion.artifact,
       );
+      const restoreGenerationId = randomUUID();
+      const sources = await motionCanvasWorkspace.readSceneSources(
+        currentProject.id,
+        sourceVersion.artifact,
+      );
+      assertMotionCanvasScenesArePublishable(
+        sources,
+        'version restore',
+      );
       const currentVersion = await motionCanvasHistoryStore.ensureVersion({
         projectId: currentProject.id,
         origin: 'baseline',
@@ -900,11 +1010,6 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
         contentHash: currentContentHash,
         artifact: bundle,
       });
-      const restoreGenerationId = randomUUID();
-      const sources = await motionCanvasWorkspace.readSceneSources(
-        currentProject.id,
-        sourceVersion.artifact,
-      );
       let restoreAccepted = false;
       const restoreFrame = workspaceVideoFrame(
         sourceVersion.artifact.width,
@@ -918,6 +1023,10 @@ export function createMotionCanvasHistoryRouteHandler(context: MotionCanvasHisto
         restoreFrame,
       );
       try {
+        assertMotionCanvasScenesArePublishable(
+          prepared.sourceScenes,
+          'visual-quality approval',
+        );
         const visualValidation = await motionCanvasVisualQualityGate.validate({
           scenes: prepared.sourceScenes,
           lifecycle: lifecycleFor(sources),

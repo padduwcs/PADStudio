@@ -191,12 +191,37 @@ export function sampleFramesForScene(
 ) {
   const startFrame = Math.max(0, Math.floor(startSeconds * fps));
   const endFrame = Math.max(startFrame, Math.ceil((startSeconds + durationSeconds) * fps) - 1);
-  const span = endFrame - startFrame;
-  // Interior points avoid scene boundaries, where a deliberate transition can
-  // legitimately be empty for a frame.
-  return [...new Set([0.25, 0.5, 0.75].map(ratio =>
-    Math.min(endFrame, Math.max(startFrame, startFrame + Math.round(span * ratio))),
-  ))];
+  // Check a frame about every second, rather than only three quartiles. A
+  // scene can look healthy at 25%, 50% and 75% yet leave a long blank gap
+  // while one beat exits and the next enters. Keep the first and last half
+  // second out of the scan so intentional scene-boundary transitions remain
+  // possible.
+  const firstInteriorFrame = Math.min(
+    endFrame,
+    Math.max(startFrame, Math.round((startSeconds + Math.min(0.5, durationSeconds / 2)) * fps)),
+  );
+  const lastInteriorFrame = Math.max(
+    firstInteriorFrame,
+    Math.min(endFrame, Math.round((startSeconds + Math.max(0.5, durationSeconds - 0.5)) * fps)),
+  );
+  const frameStep = Math.max(1, Math.round(fps));
+  const samples: number[] = [];
+  for (let frame = firstInteriorFrame; frame <= lastInteriorFrame; frame += frameStep) {
+    samples.push(frame);
+  }
+  if (samples.at(-1) !== lastInteriorFrame) samples.push(lastInteriorFrame);
+  return [...new Set(samples)];
+}
+
+/** A completed MP4 must have evidence for every scheduled interior frame, and
+ * none of those frames may be visually empty. */
+export function visualViabilityIsContinuous(
+  validation: VisualViabilityValidation,
+) {
+  return validation.scenes.every(scene =>
+    scene.samples.length === scene.sampleFrames.length &&
+    scene.samples.every(sample => sample.verdict === 'viable'),
+  );
 }
 
 export function createVisualViabilitySampler(options: {

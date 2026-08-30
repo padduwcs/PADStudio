@@ -22,10 +22,12 @@ test('trạng thái sinh scene được lưu, cập nhật và hoàn tất', asy
     stage: 'generating-scenes',
     message: 'Đã xử lý 2/3 scene.',
     completedScenes: 2,
+    failedScenes: 1,
   });
   const running = await store.get('short-demo');
   assert.equal(running?.state, 'running');
   assert.equal(running?.completedScenes, 2);
+  assert.equal(running?.failedScenes, 1);
 
   clock = '2026-08-23T10:00:02.000Z';
   await store.complete('short-demo', generationId);
@@ -50,4 +52,3 @@ test('phiên máy chủ mới nhận diện generation cũ bị gián đoạn', 
   assert.equal(progress?.state, 'interrupted');
   assert.match(progress?.error ?? '', /gián đoạn/i);
 });
-

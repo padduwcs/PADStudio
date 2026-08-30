@@ -223,8 +223,14 @@
   margin-bottom: 22px;
 }
 
+.render-result-heading > div {
+  min-width: 0;
+}
+
 .render-result-heading h2 {
+  max-width: 100%;
   margin: 3px 0;
+  overflow-wrap: anywhere;
 }
 
 .render-success-icon {

@@ -6,7 +6,10 @@ import {ElevenLabsVoiceError} from './elevenLabsVoiceService.ts';
 import {FinalRenderError} from './finalRenderService.ts';
 import {sendJson} from './httpTransport.ts';
 import {LayoutPreviewError} from './layoutPreviewService.ts';
-import {LayoutWorkspaceError} from './layoutWorkspace.ts';
+import {
+  LayoutWorkspaceError,
+  type LayoutFailureDiagnostic,
+} from './layoutWorkspace.ts';
 import {MotionCanvasGenerationError} from './motionCanvasGenerator.ts';
 import {MotionCanvasHistoryStoreError} from './motionCanvasHistoryStore.ts';
 import {MotionCanvasRevisionReviewError} from './motionCanvasRevisionReview.ts';
@@ -40,6 +43,32 @@ export function sendApiError(
   error: ApiErrorPayload['error'],
 ) {
   sendJson(response, statusCode, {error} satisfies ApiErrorPayload);
+}
+
+function layoutFailureFields(
+  diagnostic: LayoutFailureDiagnostic | null,
+  fallbackStage: LayoutFailureDiagnostic['stage'],
+): Pick<
+  ApiErrorPayload['error'],
+  'stage' | 'status' | 'artifactPath' | 'diagnostic'
+> {
+  const safeDiagnostic = diagnostic ?? {
+    stage: fallbackStage,
+    status: 'failed' as const,
+    artifactPath: null,
+    artifactStatus: 'not-created' as const,
+    sourceSyncGenerationId: null,
+    details: {operation: fallbackStage},
+  };
+  return {
+    stage: safeDiagnostic.stage,
+    status: safeDiagnostic.status,
+    artifactPath: safeDiagnostic.artifactPath,
+    diagnostic: {
+      ...safeDiagnostic,
+      details: {...safeDiagnostic.details},
+    },
+  };
 }
 
 
@@ -237,6 +266,7 @@ export function handleAppError(error: unknown, response: ServerResponse, logger:
       {
         code: error.code,
         message: error.message,
+        ...layoutFailureFields(error.diagnostic, 'layout-design'),
       },
     );
     return true;
@@ -268,6 +298,7 @@ export function handleAppError(error: unknown, response: ServerResponse, logger:
       {
         code: error.code,
         message: error.message,
+        ...layoutFailureFields(error.diagnostic, 'layout-preview'),
       },
     );
     return true;

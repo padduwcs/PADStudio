@@ -9,7 +9,7 @@ import type {VoiceVisualBeat} from '../shared/topic.ts';
 import type {MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
 import {createMotionCanvasRuntimeFrameRenderer} from './motionCanvasRuntimeFrameRenderer.ts';
 import {createMotionCanvasWorkspace} from './motionCanvasWorkspace.ts';
-import {MotionCanvasVisualQualityError, validateRenderedMotionCanvas} from './motionCanvasVisualQuality.ts';
+import {MotionCanvasVisualQualityError, validateRenderedMotionCanvas, type QualityNodeSnapshot} from './motionCanvasVisualQuality.ts';
 
 const browser = findBrowserExecutable(process.env.PAD_BROWSER_PATH);
 
@@ -23,6 +23,120 @@ export default makeScene2D(function* (view) {
 });
 `;
 }
+
+const directTsxBeatId = '40000000-0000-4000-8000-000000000001';
+const directVisualIntentIds = [
+  'waiting-patient',
+  'urgent-patient',
+  'treatment-door',
+  'urgent-dispatch-path',
+  'urgent-moves-first',
+] as const;
+const directTsxSource = `// pad-semantic:bindings-v1
+import {Circle, Layout, Line, Rect, Txt, makeScene2D} from '@motion-canvas/2d';
+import {createRef, useDuration, useThread, waitFor, waitUntil} from '@motion-canvas/core';
+
+export default makeScene2D(function* (view) {
+  const canvasWidth = view.width();
+  const canvasHeight = view.height();
+  const safeMarginX = canvasWidth * 0.08;
+  const safeMarginY = canvasHeight * 0.07;
+  const priorityBlock = createRef<Layout>();
+
+  view.add(
+    <Rect key="scene-background" width={canvasWidth} height={canvasHeight} fill="#10231D">
+      <Layout key="scene-content-root" width={canvasWidth - safeMarginX * 2} height={canvasHeight - safeMarginY * 2}>
+        <Layout key="block-priority-flow" ref={priorityBlock} width={canvasWidth * 0.8} height={canvasHeight * 0.62} opacity={0}>
+          <Rect key="priority-flow-card" width={canvasWidth * 0.72} height={canvasHeight * 0.58} radius={canvasWidth * 0.04} fill="#173B31" />
+          <Txt key="priority-flow-title" text="Priority flow" y={-canvasHeight * 0.17} width={canvasWidth * 0.62} fontSize={canvasWidth * 0.055} fill="#F7FBF8" fontFamily="Segoe UI, Helvetica Neue, Arial, sans-serif" textAlign="center" />
+          <Line key="urgent-dispatch-path" points={[[30, 10], [58, 10]]} lineWidth={6} stroke="#F5C451" endArrow />
+          <Line key="urgent-moves-first" points={[[-70, 72], [70, 72]]} lineWidth={5} stroke="#F7FBF8" endArrow />
+          <Circle key="waiting-patient" x={-85} y={10} width={42} height={42} fill="#51B68E" />
+          <Circle key="urgent-patient" x={0} y={10} width={56} height={56} fill="#F5C451" />
+          <Rect key="treatment-door" x={85} y={10} width={54} height={78} radius={8} fill="#51B68E" />
+        </Layout>
+      </Layout>
+    </Rect>,
+  );
+
+  // lifecycle:beat:${directTsxBeatId}:enter=block-priority-flow|stay=block-priority-flow|exit=block-priority-flow|primary=block-priority-flow
+  yield* waitUntil('beat:${directTsxBeatId}:start');
+  const beatDuration = useDuration('beat:${directTsxBeatId}:end');
+  const beatEndTime = useThread().time() + beatDuration;
+  yield* priorityBlock().opacity(1, Math.min(0.4, beatDuration * 0.12));
+  yield* waitFor(Math.max(0, beatEndTime - useThread().time()));
+  yield* priorityBlock().opacity(0, Math.min(0.4, beatDuration * 0.1));
+});
+`;
+
+test('real renderer preserves direct TSX Visual Intent keys at the middle frame', {
+  skip: browser ? false : 'Chrome or Edge is unavailable.',
+  timeout: 120_000,
+}, async context => {
+  const projectsDirectory = await mkdtemp(path.join(os.tmpdir(), 'pad-direct-tsx-render-'));
+  context.after(() => rm(projectsDirectory, {recursive: true, force: true}));
+  const scene: MotionCanvasSourceScene = {
+    id: randomUUID(),
+    outlineSectionId: randomUUID(),
+    name: 'Direct semantic TSX',
+    filePath: 'src/scenes/01-direct-semantic.tsx',
+    durationSeconds: 4,
+    timingEvents: [{
+      beatId: directTsxBeatId,
+      startEvent: `beat:${directTsxBeatId}:start`,
+      endEvent: `beat:${directTsxBeatId}:end`,
+      plannedDurationSeconds: 4,
+    }],
+    source: directTsxSource,
+  };
+  const frame = {aspectRatio: 'landscape' as const, width: 640, height: 360, fps: 24 as const};
+  const prepared = await createMotionCanvasWorkspace(projectsDirectory).prepare(
+    'direct-tsx-render',
+    randomUUID(),
+    [scene],
+    frame,
+  );
+  const sample = {
+    sampleId: 'direct-middle',
+    sceneId: scene.id,
+    beatId: directTsxBeatId,
+    phase: 'middle' as const,
+    timeSeconds: 2,
+    frame: 48,
+  };
+  const rendered = await createMotionCanvasRuntimeFrameRenderer({browserNoSandbox: true}).render({
+    scenes: [scene],
+    samples: [sample],
+    frame,
+    workspaceDirectory: prepared.workspaceDirectory,
+    projectFile: prepared.projectFilePath,
+    managedKeysByBeat: new Map([[directTsxBeatId, [
+      'block-priority-flow',
+      ...directVisualIntentIds,
+    ]]]),
+  });
+
+  const renderedFrame = rendered.get(sample.sampleId);
+  assert.ok(renderedFrame);
+  assert.equal(renderedFrame.width, frame.width);
+  assert.equal(renderedFrame.height, frame.height);
+  assert.ok(Buffer.isBuffer(renderedFrame.png));
+  assert.ok(renderedFrame.png.length > 0);
+  assert.equal(renderedFrame.rgba.length, frame.width * frame.height * 4);
+  assert.ok(renderedFrame.rgba.some(value => value !== 0), 'the direct middle frame must be non-empty');
+  for (const intentId of directVisualIntentIds) {
+    const semanticNode: QualityNodeSnapshot | undefined = renderedFrame.nodes.find(candidate => candidate.key === intentId);
+    assert.ok(semanticNode, `expected direct Visual Intent key ${intentId}`);
+    assert.equal(semanticNode.managed, true);
+    assert.ok((semanticNode.effectiveOpacity ?? semanticNode.opacity ?? 0) > 0.01);
+    assert.ok(semanticNode.bounds.width > 0, `${intentId} must report usable width`);
+    assert.ok(semanticNode.bounds.height > 0, `${intentId} must report usable height`);
+    assert.ok((semanticNode.visibleBounds?.width ?? 0) > 0, `${intentId} must be visible in the frame`);
+    assert.ok((semanticNode.visibleBounds?.height ?? 0) > 0, `${intentId} must be visible in the frame`);
+  }
+  assert.equal(renderedFrame.nodes.find(candidate => candidate.key === 'block-priority-flow')?.isContainer, true);
+  assert.equal(renderedFrame.nodes.find(candidate => candidate.key === 'priority-flow-card')?.isContainer, false);
+});
 
 test('runtime renderer returns independent RGBA and semantic geometry for two real Chrome scenes', {
   skip: browser ? false : 'Chrome or Edge is unavailable.',
@@ -77,6 +191,8 @@ test('runtime renderer returns independent RGBA and semantic geometry for two re
     assert.ok(frame);
     assert.equal(frame.width, 320);
     assert.equal(frame.height, 180);
+    assert.ok(Buffer.isBuffer(frame.png));
+    assert.ok(frame.png.length > 0);
     assert.equal(frame.rgba.length, 320 * 180 * 4);
     const node = frame.nodes.find(candidate => candidate.key === blockKeys[index]);
     assert.ok(node);
@@ -106,6 +222,68 @@ test('runtime renderer returns independent RGBA and semantic geometry for two re
     totalSamples: 2,
     cachedSamples: 2,
   });
+  for (const sample of samples) {
+    const cachedFrame = cached.get(sample.sampleId);
+    assert.ok(cachedFrame);
+    assert.ok(Buffer.isBuffer(cachedFrame.png));
+    assert.ok(cachedFrame.png.length > 0);
+    assert.deepEqual(cachedFrame.png, rendered.get(sample.sampleId)!.png);
+  }
+});
+
+test('runtime geometry preserves alpha for transparent outlines', {
+  skip: browser ? false : 'Chrome or Edge is unavailable.',
+  timeout: 60_000,
+}, async context => {
+  const projectsDirectory = await mkdtemp(path.join(os.tmpdir(), 'pad-transparent-outline-'));
+  context.after(() => rm(projectsDirectory, {recursive: true, force: true}));
+  const beatId = randomUUID();
+  const scene: MotionCanvasSourceScene = {
+    id: randomUUID(),
+    outlineSectionId: randomUUID(),
+    name: 'Transparent outline',
+    filePath: 'src/scenes/01-transparent-outline.tsx',
+    durationSeconds: 4,
+    timingEvents: [{
+      beatId,
+      startEvent: `beat:${beatId}:start`,
+      endEvent: `beat:${beatId}:end`,
+      plannedDurationSeconds: 4,
+    }],
+    source: `import {Rect, Txt, makeScene2D} from '@motion-canvas/2d';
+import {waitFor} from '@motion-canvas/core';
+
+export default makeScene2D(function* (view) {
+  view.add(
+    <Rect key="scene-background" width={320} height={180} fill="#10231D">
+      <Rect key="block-main-content" width={180} height={100} fill="#173B31">
+        <Txt key="main-content-label" text="Nhãn" fontFamily="Segoe UI, Helvetica Neue, Arial, sans-serif" fontSize={24} fill="#F7FBF8" />
+        <Rect key="range-outline" width={220} height={140} fill="#00000000" stroke="#51B68E" lineWidth={4} />
+      </Rect>
+    </Rect>,
+  );
+  yield* waitFor(4);
+});
+`,
+  };
+  const frame = {aspectRatio: 'landscape' as const, width: 320, height: 180, fps: 24 as const};
+  const prepared = await createMotionCanvasWorkspace(projectsDirectory).prepare(
+    'transparent-outline',
+    randomUUID(),
+    [scene],
+    frame,
+  );
+  const rendered = await createMotionCanvasRuntimeFrameRenderer({browserNoSandbox: true}).render({
+    scenes: [scene],
+    samples: [{sampleId: 'transparent-middle', sceneId: scene.id, beatId, phase: 'middle', timeSeconds: 2, frame: 48}],
+    frame,
+    workspaceDirectory: prepared.workspaceDirectory,
+    projectFile: prepared.projectFilePath,
+  });
+  assert.equal(
+    rendered.get('transparent-middle')?.nodes.find(node => node.key === 'range-outline')?.fill,
+    '#00000000',
+  );
 });
 
 function occludedSource() {

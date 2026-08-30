@@ -29,6 +29,7 @@ import {
   animationSyncWorkspaceSourceHash,
   createLayoutWorkspace,
   retimeLayoutOverridesForSync,
+  type LayoutFailureRecord,
   validateLayoutDocuments,
 } from './layoutWorkspace.ts';
 
@@ -1030,7 +1031,7 @@ test('Layout preview khóa generation/session và nhận manifest trực tiếp 
   );
   const previewService = createLayoutPreviewService(
     fixture.projectsDirectory,
-    {maximumActivePreviews: 1},
+    {maximumActivePreviews: 1, manifestWaitTimeoutMs: 100},
   );
   context.after(() => previewService.close());
   const sourceWorkspaceDirectory = path.join(
@@ -1132,6 +1133,34 @@ test('Layout preview khóa generation/session và nhận manifest trực tiếp 
       error instanceof LayoutPreviewError &&
       error.code === 'LAYOUT_PREVIEW_MANIFEST_UNAVAILABLE',
   );
+  await assert.rejects(
+    () =>
+      previewService.waitForManifest(
+        fixture.projectId,
+        preview.sessionNonce,
+        preview.sourceSyncGenerationId,
+      ),
+    (error) =>
+      error instanceof LayoutPreviewError &&
+      error.code === 'LAYOUT_PREVIEW_MANIFEST_UNAVAILABLE' &&
+      error.diagnostic?.status === 'blocked' &&
+      error.diagnostic.details.manifestStatus === 'missing',
+  );
+  const waitingManifest = previewService.waitForManifest(
+    fixture.projectId,
+    preview.sessionNonce,
+    preview.sourceSyncGenerationId,
+  );
+  assert.equal(
+    await Promise.race([
+      waitingManifest.then(() => 'ready'),
+      new Promise<'pending'>(resolve =>
+        setTimeout(() => resolve('pending'), 20),
+      ),
+    ]),
+    'pending',
+    'Design readiness must wait for the runtime capture instead of using the seed.',
+  );
 
   const captureResponse = await fetch(
     new URL('/__pad_layout_manifest', preview.url),
@@ -1156,6 +1185,8 @@ test('Layout preview khóa generation/session và nhận manifest trực tiếp 
     preview.sessionNonce,
     preview.sourceSyncGenerationId,
   );
+  const waitedManifest = await waitingManifest;
+  assert.deepEqual(waitedManifest, capturedManifest);
   assert.deepEqual(
     capturedManifest.scenes[0]?.nodes[0]?.editableProperties,
     [...fixture.manifest.scenes[0]!.nodes[0]!.editableProperties].sort(),
@@ -1364,5 +1395,67 @@ test('Motion current và candidate dùng hai preview slot độc lập', () => {
   assert.equal(
     layoutPreviewSlotKey(projectId, currentGenerationId),
     layoutPreviewSlotKey(projectId, currentGenerationId),
+  );
+});
+
+test('Layout failure artifact giữ diagnostic downstream và không ghi đè generation cũ', async (context) => {
+  const fixture = await createFixture();
+  context.after(() =>
+    rm(fixture.projectsDirectory, {recursive: true, force: true}),
+  );
+  const workspace = createLayoutWorkspace(fixture.projectsDirectory);
+  const generationId = randomUUID();
+  const diagnostic = {
+    stage: 'layout-design' as const,
+    status: 'blocked' as const,
+    artifactPath: null,
+    artifactStatus: 'not-created' as const,
+    sourceSyncGenerationId: fixture.syncBundle.generation.generationId,
+    details: {
+      operation: 'layout-design',
+      manifestStatus: 'missing',
+      runtimeWorkspacePrepared: true,
+    },
+  };
+  const failure: LayoutFailureRecord = {
+    stage: 'layout-design',
+    status: 'blocked',
+    code: 'LAYOUT_PREVIEW_MANIFEST_UNAVAILABLE',
+    message: 'Runtime chưa gửi node manifest.',
+    diagnostic,
+    artifact: {status: 'not-created', workspacePath: null},
+  };
+  const artifactPath = await workspace.recordFailure!(
+    fixture.projectId,
+    generationId,
+    failure,
+  );
+  const stored = JSON.parse(
+    await readFile(path.join(artifactPath, 'failure.json'), 'utf8'),
+  ) as {
+    stage: string;
+    status: string;
+    code: string;
+    diagnostic: typeof diagnostic;
+    artifact: {status: string; workspacePath: string | null; failurePath: string};
+  };
+  assert.equal(stored.stage, 'layout-design');
+  assert.equal(stored.status, 'blocked');
+  assert.equal(stored.code, failure.code);
+  assert.equal(stored.diagnostic.details.manifestStatus, 'missing');
+  assert.equal(stored.artifact.status, 'not-created');
+  assert.equal(stored.artifact.workspacePath, null);
+  assert.equal(stored.artifact.failurePath, path.join(artifactPath, 'failure.json'));
+
+  const latest = await workspace.readLatestFailure!(fixture.projectId);
+  assert.equal(latest?.generationId, generationId);
+  assert.equal(latest?.artifactPath, artifactPath);
+  assert.equal(latest?.diagnostic.details.manifestStatus, 'missing');
+
+  await assert.rejects(
+    () => workspace.recordFailure!(fixture.projectId, generationId, failure),
+    (error) =>
+      error instanceof LayoutWorkspaceError &&
+      error.code === 'LAYOUT_WORKSPACE_CONFLICT',
   );
 });

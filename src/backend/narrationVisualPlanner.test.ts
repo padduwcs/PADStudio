@@ -312,6 +312,42 @@ test('AI visual planner thật trả về title/goal/blueprint/bible/handoff h�
   assert.equal(result.output.scenes[0]?.units.length, 2);
   assert.ok(result.output.visualBible.visualAnchor.length > 0);
   assert.equal(result.output.scenes[0]?.stateHandoffIncoming, null);
+  assert.match(JSON.stringify(client.calls), /body >= 18/u);
+});
+
+test('AI visual planner từ chối visualBible có thang chữ ngược thứ bậc', async context => {
+  const runtimeDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-narration-planner-typography-'),
+  );
+  context.after(() => rm(runtimeDirectory, {recursive: true, force: true}));
+  const client = new FakeCodexClient(() => ({
+    scenes: [{
+      title: 'Ý tưởng cốt lõi',
+      goal: 'Giúp người xem hình dung vùng tìm kiếm bị thu hẹp.',
+      stateHandoffIncoming: null,
+      stateHandoffOutgoing: null,
+      units: [validUnitBlueprint('unit-1')],
+    }],
+    visualBible: {
+      ...validVisualBible(),
+      typographyScale: {title: 32, label: 16, body: 18},
+    },
+  }));
+  const planner = createCodexNarrationVisualPlanner(client, {
+    runtimeDirectory,
+    timeoutMs: 1_000,
+  });
+
+  await assert.rejects(
+    planner.plan({
+      topicInput,
+      semanticSourceText: 'Ta thu hẹp vùng tìm kiếm.',
+      units: [unit('unit-1', 'Ta thu hẹp vùng tìm kiếm.')],
+    }),
+    (error: unknown) =>
+      error instanceof NarrationVisualPlannerError &&
+      error.code === 'CODEX_NARRATION_PLANNER_INVALID_RESPONSE',
+  );
 });
 
 test('AI visual planner ném lỗi invariant khi model bỏ sót một unit', async context => {

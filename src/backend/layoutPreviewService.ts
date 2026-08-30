@@ -18,6 +18,7 @@ import type {
 import {
   createLayoutWorkspace,
   LayoutWorkspaceError,
+  type LayoutFailureDiagnostic,
 } from './layoutWorkspace.ts';
 import {copyPreviewWorkspace} from './previewWorkspaceCopy.ts';
 import {createMotionCanvasWorkspace} from './motionCanvasWorkspace.ts';
@@ -82,6 +83,13 @@ interface ActivePreview {
   overrides: LayoutOverridesDocument;
   manifestSeed: LayoutEditorManifest;
   manifest: LayoutEditorManifest | null;
+  manifestWaiters: Set<ManifestWaiter>;
+}
+
+interface ManifestWaiter {
+  timer: ReturnType<typeof setTimeout> | null;
+  resolve: (manifest: LayoutEditorManifest) => void;
+  reject: (error: unknown) => void;
 }
 
 /**
@@ -133,6 +141,11 @@ export interface LayoutPreviewService {
     sessionNonce: string,
     sourceSyncGenerationId: string,
   ): LayoutEditorManifest;
+  waitForManifest(
+    projectId: string,
+    sessionNonce: string,
+    sourceSyncGenerationId: string,
+  ): Promise<LayoutEditorManifest>;
   getSourceWorkspaceHash(
     projectId: string,
     sessionNonce: string,
@@ -143,10 +156,55 @@ export interface LayoutPreviewService {
 
 export class LayoutPreviewError extends Error {
   readonly code: string;
+  diagnostic: LayoutFailureDiagnostic | null;
 
-  constructor(code: string, message: string, options?: ErrorOptions) {
+  constructor(
+    code: string,
+    message: string,
+    options?: ErrorOptions & {diagnostic?: LayoutFailureDiagnostic},
+  ) {
     super(message, options);
     this.code = code;
+    this.diagnostic = options?.diagnostic ?? null;
+  }
+}
+
+function manifestUnavailableError(
+  entry: ActivePreview,
+  readinessWaitMs: number,
+) {
+  return new LayoutPreviewError(
+    'LAYOUT_PREVIEW_MANIFEST_UNAVAILABLE',
+    'Runtime chưa gửi node manifest. Hãy tải lại Layout preview.',
+    {
+      diagnostic: {
+        stage: 'layout-design',
+        status: 'blocked',
+        artifactPath: null,
+        artifactStatus: 'not-created',
+        sourceSyncGenerationId: entry.sourceSyncGenerationId,
+        details: {
+          manifestStatus: 'missing',
+          runtimeWorkspacePrepared: Boolean(entry.server),
+          readinessWaitMs,
+        },
+      },
+    },
+  );
+}
+
+function resolveManifestWaiters(
+  entry: ActivePreview,
+  manifest: LayoutEditorManifest,
+) {
+  for (const waiter of [...entry.manifestWaiters]) {
+    waiter.resolve(manifest);
+  }
+}
+
+function rejectManifestWaiters(entry: ActivePreview, error: unknown) {
+  for (const waiter of [...entry.manifestWaiters]) {
+    waiter.reject(error);
   }
 }
 
@@ -618,6 +676,7 @@ function createSessionPlugin(entry: ActivePreview) {
             manifest,
             entry.manifestSeed,
           );
+          resolveManifestWaiters(entry, entry.manifest);
           sendJson(response, 200, {ok: true});
         };
 
@@ -638,10 +697,23 @@ function createSessionPlugin(entry: ActivePreview) {
                     'LAYOUT_PREVIEW_MANIFEST_CHANGED'
                 ? 409
                 : 400;
+          const diagnostic =
+            layoutError.diagnostic ?? {
+              stage: 'layout-preview' as const,
+              status: 'failed' as const,
+              artifactPath: null,
+              artifactStatus: 'not-created' as const,
+              sourceSyncGenerationId: entry.sourceSyncGenerationId,
+              details: {operation: 'runtime-manifest-capture'},
+            };
           sendJson(response, status, {
             error: {
               code: layoutError.code,
               message: layoutError.message,
+              stage: diagnostic.stage,
+              status: diagnostic.status,
+              artifactPath: diagnostic.artifactPath,
+              diagnostic,
             },
           });
         });
@@ -659,6 +731,7 @@ export function createLayoutPreviewService(
   projectsDirectory: string,
   options: {
     maximumActivePreviews?: number;
+    manifestWaitTimeoutMs?: number;
   } = {},
 ): LayoutPreviewService {
   const artifactWorkspace = createLayoutWorkspace(projectsDirectory);
@@ -701,6 +774,10 @@ export function createLayoutPreviewService(
   const maximumActivePreviews = Math.max(
     1,
     Math.min(4, options.maximumActivePreviews ?? 2),
+  );
+  const manifestWaitTimeoutMs = Math.max(
+    1,
+    Math.min(60_000, options.manifestWaitTimeoutMs ?? 30_000),
   );
   const previews = new Map<string, ActivePreview>();
   const projectStartOperations = new Map<string, Promise<void>>();
@@ -854,6 +931,23 @@ export function createLayoutPreviewService(
   }
 
   async function closePreview(entry: ActivePreview) {
+    rejectManifestWaiters(
+      entry,
+      new LayoutPreviewError(
+        'LAYOUT_PREVIEW_CLOSED',
+        'Layout preview runtime đã dừng.',
+        {
+          diagnostic: {
+            stage: 'layout-preview',
+            status: 'failed',
+            artifactPath: null,
+            artifactStatus: 'not-created',
+            sourceSyncGenerationId: entry.sourceSyncGenerationId,
+            details: {operation: 'preview-close'},
+          },
+        },
+      ),
+    );
     const server = entry.server;
     if (server) {
       await closeRuntimeServer(server).catch(() => undefined);
@@ -1245,11 +1339,13 @@ export function createLayoutPreviewService(
             })),
           },
           manifest: null,
+          manifestWaiters: new Set(),
         };
         entry.promise = createPreview(
           resolvedSource,
           entry,
         ).catch((error) => {
+          rejectManifestWaiters(entry, error);
           if (previews.get(activePreviewKey) === entry) {
             previews.delete(activePreviewKey);
           }
@@ -1374,8 +1470,10 @@ export function createLayoutPreviewService(
             })),
           },
           manifest: null,
+          manifestWaiters: new Set(),
         };
         entry.promise = createPreview(resolvedSource, entry).catch((error) => {
+          rejectManifestWaiters(entry, error);
           if (previews.get(activePreviewKey) === entry) {
             previews.delete(activePreviewKey);
           }
@@ -1391,6 +1489,54 @@ export function createLayoutPreviewService(
           );
         }
         return preview;
+      });
+    },
+
+    async waitForManifest(projectId, sessionNonce, sourceSyncGenerationId) {
+      assertProjectId(projectId);
+      const entry = previewForSession(
+        projectId,
+        sessionNonce,
+        sourceSyncGenerationId,
+      );
+      if (
+        !entry ||
+        entry.sourceSyncGenerationId !== sourceSyncGenerationId
+      ) {
+        throw new LayoutPreviewError(
+          'LAYOUT_PREVIEW_SESSION_MISMATCH',
+          'Layout preview session không còn hiệu lực.',
+        );
+      }
+      // A design request may race the preview start operation. Do not wait on
+      // manifest capture until the copied runtime workspace and Vite server
+      // are actually ready to receive it.
+      await entry.promise;
+      entry.lastAccessedAt = Date.now();
+      if (entry.manifest) {
+        return structuredClone(entry.manifest);
+      }
+      return new Promise<LayoutEditorManifest>((resolve, reject) => {
+        let waiter!: ManifestWaiter;
+        waiter = {
+          timer: null,
+          resolve: (manifest) => {
+            if (!entry.manifestWaiters.delete(waiter)) return;
+            if (waiter.timer) clearTimeout(waiter.timer);
+            resolve(structuredClone(manifest));
+          },
+          reject: (error) => {
+            if (!entry.manifestWaiters.delete(waiter)) return;
+            if (waiter.timer) clearTimeout(waiter.timer);
+            reject(error);
+          },
+        };
+        waiter.timer = setTimeout(() => {
+          waiter.reject(
+            manifestUnavailableError(entry, manifestWaitTimeoutMs),
+          );
+        }, manifestWaitTimeoutMs);
+        entry.manifestWaiters.add(waiter);
       });
     },
 
@@ -1411,10 +1557,7 @@ export function createLayoutPreviewService(
         );
       }
       if (!entry.manifest) {
-        throw new LayoutPreviewError(
-          'LAYOUT_PREVIEW_MANIFEST_UNAVAILABLE',
-          'Runtime chưa gửi node manifest. Hãy tải lại Layout preview.',
-        );
+        throw manifestUnavailableError(entry, 0);
       }
       return structuredClone(entry.manifest);
     },

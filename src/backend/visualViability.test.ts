@@ -3,6 +3,8 @@ import test from 'node:test';
 import {
   analyzeRgbaFrame,
   createVisualViabilitySampler,
+  sampleFramesForScene,
+  visualViabilityIsContinuous,
 } from './visualViability.ts';
 
 const sceneOne = '10000000-0000-4000-8000-000000000001';
@@ -73,10 +75,14 @@ test('video có một scene rỗng vẫn giữ metadata chẩn đoán mà không
   const scheduled = sampler.result().scenes.flatMap(scene => scene.sampleFrames);
   for (const frame of scheduled) sampler.inspect(frame, Buffer.alloc(0));
   const result = sampler.result();
-  assert.equal(result.scenes[0]?.viableSampleCount, 3);
+  assert.equal(result.scenes[0]?.viableSampleCount, 1);
   assert.equal(result.scenes[1]?.viableSampleCount, 0);
   assert.equal(result.scenes[1]?.samples[0]?.verdict, 'uniform');
-  // The sampler only records data; deciding whether that data is acceptable
-  // is Scene Review's job, not an automated final-render gate.
-  assert.equal(result.sampleCount, 6);
+  assert.equal(result.sampleCount, 2);
+  assert.equal(visualViabilityIsContinuous(result), false);
+});
+
+test('final render samples every interior second to catch long blank handoffs', () => {
+  assert.deepEqual(sampleFramesForScene(0, 6, 24), [12, 36, 60, 84, 108, 132]);
+  assert.deepEqual(sampleFramesForScene(6, 1, 24), [156]);
 });

@@ -141,7 +141,7 @@ function fallbackBeatLifecycle() {
     primaryBlock: 'block-concept-card',
     visualLifecycle: {
       enter: ['block-concept-card', 'concept-label'],
-      stay: ['block-concept-card', 'concept-label', 'progress-fill'],
+      stay: ['block-concept-card', 'concept-label'],
       exit: ['block-concept-card', 'concept-label'],
     },
   };

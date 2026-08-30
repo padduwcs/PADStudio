@@ -170,9 +170,15 @@ const plannerVisualBibleSchema = z
       .object({
         title: z.number().int().min(24).max(240),
         label: z.number().int().min(16).max(160),
-        body: z.number().int().min(14).max(120),
+        // The rendered quality gate rejects text below 18px; keep newly
+        // generated visual bibles compatible with that deterministic floor.
+        body: z.number().int().min(18).max(120),
       })
-      .strict(),
+      .strict()
+      .refine(
+        scale => scale.title > scale.label && scale.label > scale.body,
+        'typographyScale phải có title > label > body.',
+      ),
     shapeLanguage: z.string().trim().min(12).max(600),
     diagramLanguage: z.string().trim().min(12).max(600),
     motionTempo: z.string().trim().min(12).max(600),
@@ -486,10 +492,11 @@ function buildPrompt(request: NarrationVisualPlannerRequest) {
     'Visual-first: visualDescription và animationDescription phải xoay quanh vật thể, môi trường, quan hệ hoặc ẩn dụ nhìn thấy được mà một mình nó truyền tải được ý chính của unit. Chữ trên khung hình chỉ được dùng cho tiêu đề hoặc nhãn ngắn — không phải phương tiện chính để truyền đạt nội dung.',
     'topicInput.videoDirection và learningGoal là ràng buộc sáng tạo ưu tiên cao. Nếu người dùng yêu cầu một vật thể cụ thể hoặc cấm node/card/sơ đồ chung chung, kế hoạch phải giữ đúng yêu cầu đó ở entities, appearance, relations và actions.',
     'stateHandoffIncoming mô tả scene kế thừa gì từ scene trước (null nếu là scene đầu); stateHandoffOutgoing mô tả scene để lại gì cho scene sau (null nếu là scene cuối).',
-    'visualBible áp dụng cho toàn video: palette (không gồm màu nền, hệ thống tự khóa theo lựa chọn người dùng), typography scale, ngôn ngữ hình khối/sơ đồ, nhịp chuyển động, quy ước chuyển scene, và một visual anchor xuyên suốt toàn video.',
+    'visualBible áp dụng cho toàn video: palette (không gồm màu nền, hệ thống tự khóa theo lựa chọn người dùng), typography scale, ngôn ngữ hình khối/sơ đồ, nhịp chuyển động, quy ước chuyển scene, và một visual anchor xuyên suốt toàn video. Typography scale bắt buộc title > label > body.',
     'Không trả TSX, mã nguồn, Markdown fence, hay bất kỳ nội dung lời thoại mới nào. Chỉ trả đúng JSON theo schema.',
     'For every unit, visualIntent is REQUIRED and is the lossless semantic handoff. message states the visual claim; viewerShouldInfer states what a viewer should understand without reading narration; abstraction selects concrete/schematic/metaphorical/mixed. Declare 1-10 concrete entities with stable semantic kebab-case ids, open-vocabulary kind, visible appearance/state, role, and mustShow. Exactly one entity is primary. Declare every meaningful relation and action using those exact entity ids; mustShow marks obligations that the compiled scene must visibly bind. Do not collapse distinct people, objects, places, states, or data structures into generic nodes.',
     "When a unit's subject is a concrete data structure with countable elements (array, list, stack, queue, heap, tree, graph, hash table, matrix, and so on), do not declare one entity for the whole structure and leave its internal complexity to prose appearance text. Instead declare one entity per element actually being discussed (an array cell, a heap/tree node, a graph vertex) with a concrete sample value in its label or appearance — invent small consistent example values (numbers, short keys) when the source material implies content but never states literal numbers — and declare explicit relations between those element entities that mirror the real topology: parent/child edges for a tree or heap, sequential adjacency for a list/array/stack/queue, named edges for a graph. A single container/boundary entity is fine only in addition to its visible element entities, never instead of them.",
+    'visualBible is also consumed by a rendered quality gate: choose typographyScale.title, label, and body with title > label > body and body >= 18 so every planned text step remains readable; use exact palette colours and let the renderer use opacity for muted variants.',
     'Visual Intent describes subject matter and is deliberately open vocabulary. Do not choose renderer primitives, templates, coordinates, cards, or implementation details here. Name what the object is and why it matters; the downstream Visual Director will choose a safe composition.',
     JSON.stringify({
       topicInput: request.topicInput,

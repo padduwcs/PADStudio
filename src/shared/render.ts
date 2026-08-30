@@ -93,12 +93,15 @@ export const FinalRenderVisualSampleSchema = z
 export const FinalRenderVisualValidationSchema = z
   .object({
     backgroundColor: z.string().regex(/^#[0-9A-F]{6}$/).nullable(),
-    sampleCount: z.number().int().nonnegative().max(200),
+    // Final-render viability samples every interior second. A custom project
+    // may run for up to 180 minutes, so retain enough evidence for one full
+    // project instead of the obsolete three-samples-per-scene contract.
+    sampleCount: z.number().int().nonnegative().max(12_000),
     scenes: z.array(z.object({
       sceneId: z.string().uuid(),
-      sampleFrames: z.array(z.number().int().nonnegative()).min(1).max(3),
-      viableSampleCount: z.number().int().nonnegative().max(3),
-      samples: z.array(FinalRenderVisualSampleSchema).max(3),
+      sampleFrames: z.array(z.number().int().nonnegative()).min(1).max(12_000),
+      viableSampleCount: z.number().int().nonnegative().max(12_000),
+      samples: z.array(FinalRenderVisualSampleSchema).max(12_000),
     }).strict()).min(1).max(100),
   })
   .strict();
