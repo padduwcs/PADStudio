@@ -404,6 +404,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
   async function runProduction(
     source: 'generateScene' | 'regenerateScene' | 'combined' = 'combined',
     recoveryGuidance?: string,
+    recoveryGenerationId?: string,
   ) {
     if (!project || busyAction) return;
     const needsSceneGeneration =
@@ -434,8 +435,15 @@ export function ProductionPage({projectId}: {projectId: string}) {
         current = await generateSelectedAudio(current);
         setProject(current);
       }
-      const regenerateFromScratch = source === 'regenerateScene';
-      if (!current.motionCanvasBundle || motionCanvasIsStale(current) || regenerateFromScratch) {
+      const checkpointRecovery = Boolean(recoveryGenerationId);
+      const regenerateFromScratch =
+        source === 'regenerateScene' && !checkpointRecovery;
+      if (
+        !current.motionCanvasBundle ||
+        motionCanvasIsStale(current) ||
+        regenerateFromScratch ||
+        checkpointRecovery
+      ) {
         operationStage = 'scene';
         const selection = codex.getGenerationSelection('motionCanvas');
         if (!selection) {
@@ -443,7 +451,9 @@ export function ProductionPage({projectId}: {projectId: string}) {
         }
         setMessage(
           recoveryGuidance
-            ? 'Codex đang nhận lỗi kiểm tra của lượt trước và sinh một bản scene độc lập đã được định hướng sửa…'
+            ? checkpointRecovery
+              ? 'Codex đang chỉ sinh lại các scene lỗi từ checkpoint; các scene đã đạt được giữ nguyên…'
+              : 'Codex đang nhận lỗi kiểm tra của lượt trước và sinh một bản scene độc lập đã được định hướng sửa…'
             : 'Codex đang phân tích lời thoại và sinh scene trực tiếp…',
         );
         const sceneGenerationId = newGenerationId();
@@ -455,6 +465,7 @@ export function ProductionPage({projectId}: {projectId: string}) {
           generationId: sceneGenerationId,
           ...selection,
           ...(regenerateFromScratch ? {regenerateFromScratch: true as const} : {}),
+          ...(recoveryGenerationId ? {resumeFromGenerationId: recoveryGenerationId} : {}),
           ...(recoveryGuidance ? {guidance: recoveryGuidance} : {}),
         }, current.revision, {
           onProgress: progress => setSceneProgress(progress),
@@ -523,16 +534,20 @@ export function ProductionPage({projectId}: {projectId: string}) {
     } catch (error) {
       setActiveSceneGenerationId(null);
       setFailureKind(operationStage);
+      let sceneFailure: MotionCanvasFailureSummary | null = null;
       if (operationStage === 'scene') {
-        const failure = await getLatestMotionCanvasFailure(project.id).catch(
+        sceneFailure = await getLatestMotionCanvasFailure(project.id).catch(
           () => null,
         );
-        if (failure) setLatestSceneFailure(failure);
+        if (sceneFailure) setLatestSceneFailure(sceneFailure);
       }
       setState('error');
-      const errorMessage = error instanceof ApiRequestError || error instanceof Error
+      const baseErrorMessage = error instanceof ApiRequestError || error instanceof Error
         ? error.message
         : 'Không thể hoàn tất lượt tạo này.';
+      const errorMessage = sceneFailure?.firstIssueReason
+        ? `${baseErrorMessage} ${sceneFailure.firstIssueReason}`.slice(0, 1_800)
+        : baseErrorMessage;
       setMessage(errorMessage);
       notifyTaskFailed({
         id: `production:${taskId}`,
@@ -612,11 +627,11 @@ export function ProductionPage({projectId}: {projectId: string}) {
                   className="secondary-button"
                   type="button"
                   disabled={!canRecoverScene}
-                  onClick={() => void runProduction('regenerateScene', recoveryGuidance)}
+                  onClick={() => void runProduction('regenerateScene', recoveryGuidance, latestSceneFailure.generationId)}
                 >
                   Tự khắc phục scene bằng Codex
                 </button>
-                <small>PAD Studio chỉ gửi lỗi scene cho Codex. Audio và kế hoạch hình ảnh hiện hành không bị tạo lại.</small>
+                <small>PAD Studio chỉ gửi checkpoint và lỗi của scene hỏng cho Codex. Các scene đã đạt, audio và kế hoạch hình ảnh hiện hành không bị tạo lại.</small>
               </div>
             ) : (
               <small>{failureKind === 'audio'
@@ -641,11 +656,11 @@ export function ProductionPage({projectId}: {projectId: string}) {
                 className="secondary-button"
                 type="button"
                 disabled={!canRecoverScene}
-                onClick={() => void runProduction('regenerateScene', recoveryGuidance)}
+                onClick={() => void runProduction('regenerateScene', recoveryGuidance, latestSceneFailure.generationId)}
               >
                 Tự khắc phục bằng Codex
               </button>
-              <small>Không cần chép lỗi hay tự chỉnh mã scene. Lỗi được gửi kèm cho Codex; bản mới vẫn độc lập với scene hiện có.</small>
+              <small>Không cần chép lỗi hay tự chỉnh mã scene. Đây là một lần retry do bạn quyết định; chỉ scene lỗi được sinh lại khi checkpoint còn khớp kế hoạch.</small>
             </div>
           </div>
         </section>

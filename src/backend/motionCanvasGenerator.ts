@@ -49,7 +49,7 @@ import {
 } from './motionCanvasIconLibrary.ts';
 import type {MotionCanvasVisualEvidence} from './motionCanvasVisualQuality.ts';
 
-export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v20-direct-source';
+export const MOTION_CANVAS_PROMPT_VERSION = 'motion-canvas-v21-timing-budget';
 export const MOTION_CANVAS_VERSION = '3.17.2';
 export const MOTION_CANVAS_FPS = 30;
 export const MOTION_CANVAS_DEFAULT_FONT_FAMILY =
@@ -82,7 +82,11 @@ const DEFAULT_SCENE_TIMEOUT_MS = 20 * 60 * 1000;
 // One focused repair plus one clean regeneration is both more reliable and
 // more token-efficient than repeatedly feeding an increasingly broken source
 // back into the model.
+// Normal generation stays bounded at one focused repair plus one clean
+// regeneration. A user-decided recovery is allowed one extra focused repair
+// because the user explicitly opted into another Codex attempt.
 const MAX_SOURCE_REPAIR_ATTEMPTS = 1;
+const MAX_USER_RECOVERY_SOURCE_REPAIR_ATTEMPTS = 2;
 const sceneGenerationRunInstructions = {
   baseInstructions:
     'Write one complete Motion Canvas TSX scene for PAD Studio. Do not use tools or read files. Return only JSON matching the schema.',
@@ -147,6 +151,8 @@ export interface MotionCanvasGenerationRequest {
   sectionIndexes?: number[];
   /** A first-pass generation deliberately detached from an existing bundle. */
   regenerateFromScratch?: boolean;
+  /** A user-decided recovery may spend one additional focused source-repair attempt. */
+  userDecidedRetry?: boolean;
   guidance?: string;
   currentScenes?: MotionCanvasSourceScene[];
   /** Rendered evidence belonging only to the scene(s) selected for repair. */
@@ -781,6 +787,9 @@ function lifecycleScaffoldForPrompt(
 const DIRECT_TSX_TIMING_AUTHORITY_INSTRUCTION =
   'Required top-level beat order and timing authority: copy each literal lifecycle scaffold beat exactly as consecutive top-level statements—yield* waitUntil(startEvent); const beatDurationN = useDuration(endEvent); const beatEndTimeN = useThread().time() + beatDurationN; enter animations; visual animations/visual work; exit animations; then yield* waitFor(Math.max(0, beatEndTimeN - useThread().time())). Keep each scaffolded N unique and exact, never use unsuffixed beatDuration or beatEndTime, and never wrap a beat in { ... } to redeclare names.';
 
+const DIRECT_TSX_TIMING_BUDGET_INSTRUCTION =
+  'The planned beatDurationN is a hard timing budget: the total of sequential animation and waitFor durations inside one beat must fit inside it. Run concurrent ref animations together in one yield* all(...); never write many duration-bearing yield* ref().property(...) calls one after another when their durations would add past beatDurationN. The final waitFor only compensates unused time and must not be used to hide an over-budget beat.';
+
 const DIRECT_TSX_LIFECYCLE_VISIBILITY_INSTRUCTION =
   'Lifecycle visibility is part of the rendered-quality contract: keep every primary block and its information-bearing children visible at stable-start, middle, and pre-exit samples. Reserve exit animations for the final 10% of the beat only; after visual work, if needed, first wait with yield* waitFor(Math.max(0, beatEndTimeN - useThread().time() - beatDurationN * 0.1)), then run the exit animations, then keep the required final waitFor(Math.max(0, beatEndTimeN - useThread().time())). Never fade a lifecycle block out early and wait on an empty frame. For the first beat, do not make the entire meaningful visual start at opacity={0}; keep the primary block or a meaningful child visible from the initial tree.';
 
@@ -833,6 +842,7 @@ function directTsxPromptContract(
     'Every lifecycle binding is an inseparable triple: for every key listed in each marker, use exactly one matching JSX key string literal and attach ref={bareIdentifier} directly on that same JSX node. The lifecycle key-to-JSX-key/ref mapping is one-to-one. Every enter and exit animation must call that exact ref; do not substitute another key or ref.',
     'Lifecycle execution scope: each beat must be a sequence of statements directly at top level of the default makeScene2D generator body. Never wrap a beat in { ... }, a function, callback, helper, IIFE, if/else, loop, or any other control-flow wrapper.',
     DIRECT_TSX_TIMING_AUTHORITY_INSTRUCTION,
+    DIRECT_TSX_TIMING_BUDGET_INSTRUCTION,
     DIRECT_TSX_LIFECYCLE_VISIBILITY_INSTRUCTION,
     DIRECT_TSX_SEMANTIC_KEY_INSTRUCTION,
     DIRECT_TSX_SAFE_AREA_INSTRUCTION,
@@ -1638,6 +1648,219 @@ function sourceConstants(sourceFile: ts.SourceFile, frame: VideoFrame) {
     visit(sourceFile);
   }
   return constants;
+}
+
+type MotionCanvasTimingBudgetBeat = {id: string; durationSeconds?: number};
+type MotionCanvasTimingEstimate = {seconds: number; known: boolean};
+
+function timingExpressionNumber(
+  expression: ts.Expression | undefined,
+  constants: ReadonlyMap<string, number>,
+): number | null {
+  const direct = staticExpressionNumber(expression, constants);
+  if (direct !== null) return Number.isFinite(direct) ? direct : null;
+  if (!expression) return null;
+  const unwrapped = ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression)
+    ? expression.expression
+    : expression;
+  if (!ts.isCallExpression(unwrapped) || !ts.isPropertyAccessExpression(unwrapped.expression)) return null;
+  if (!ts.isIdentifier(unwrapped.expression.expression) || unwrapped.expression.expression.text !== 'Math') return null;
+  if (!['min', 'max'].includes(unwrapped.expression.name.text) || unwrapped.arguments.length === 0) return null;
+  const values = unwrapped.arguments.map(argument => timingExpressionNumber(argument, constants));
+  if (values.some(value => value === null || !Number.isFinite(value))) return null;
+  return unwrapped.expression.name.text === 'min'
+    ? Math.min(...values as number[])
+    : Math.max(...values as number[]);
+}
+
+function containsTimingIdentifier(node: ts.Node, predicate: (name: string) => boolean) {
+  let found = false;
+  function visit(current: ts.Node) {
+    if (ts.isIdentifier(current) && predicate(current.text)) found = true;
+    if (!found) ts.forEachChild(current, visit);
+  }
+  visit(node);
+  return found;
+}
+
+function containsThreadTimeCall(node: ts.Node) {
+  let found = false;
+  function visit(current: ts.Node) {
+    if (
+      ts.isCallExpression(current) &&
+      ts.isPropertyAccessExpression(current.expression) &&
+      current.expression.name.text === 'time' &&
+      ts.isCallExpression(current.expression.expression) &&
+      ts.isIdentifier(current.expression.expression.expression) &&
+      current.expression.expression.expression.text === 'useThread'
+    ) {
+      found = true;
+    }
+    if (!found) ts.forEachChild(current, visit);
+  }
+  visit(node);
+  return found;
+}
+
+function isTimingBudgetCompensation(
+  expression: ts.Expression,
+  constants: ReadonlyMap<string, number>,
+) {
+  const unwrapped = ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression)
+    ? expression.expression
+    : expression;
+  if (!ts.isCallExpression(unwrapped) || !ts.isPropertyAccessExpression(unwrapped.expression) || unwrapped.arguments.length < 2) return false;
+  if (!ts.isIdentifier(unwrapped.expression.expression) || unwrapped.expression.expression.text !== 'Math' || unwrapped.expression.name.text !== 'max') return false;
+  return timingExpressionNumber(unwrapped.arguments[0], constants) === 0 &&
+    containsThreadTimeCall(unwrapped.arguments[1]!) &&
+    containsTimingIdentifier(unwrapped.arguments[1]!, name => /endtime/i.test(name));
+}
+
+function timingEstimate(
+  expression: ts.Expression | undefined,
+  constants: ReadonlyMap<string, number>,
+): MotionCanvasTimingEstimate {
+  if (!expression) return {seconds: 0, known: false};
+  const unwrapped = ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression)
+    ? expression.expression
+    : expression;
+  if (!ts.isCallExpression(unwrapped)) return {seconds: 0, known: false};
+
+  if (ts.isIdentifier(unwrapped.expression)) {
+    const name = unwrapped.expression.text;
+    if (name === 'waitUntil') return {seconds: 0, known: true};
+    if (name === 'waitFor') {
+      const waitDuration = unwrapped.arguments[0];
+      if (!waitDuration) return {seconds: 0, known: false};
+      if (isTimingBudgetCompensation(waitDuration, constants)) return {seconds: 0, known: true};
+      const seconds = timingExpressionNumber(waitDuration, constants);
+      return seconds === null || !Number.isFinite(seconds)
+        ? {seconds: 0, known: false}
+        : {seconds: Math.max(0, seconds), known: true};
+    }
+    if (name === 'all') {
+      const children = unwrapped.arguments.map(argument =>
+        ts.isSpreadElement(argument) ? {seconds: 0, known: false} : timingEstimate(argument, constants),
+      );
+      return children.some(child => !child.known)
+        ? {seconds: 0, known: false}
+        : {seconds: Math.max(0, ...children.map(child => child.seconds)), known: true};
+    }
+    if (name === 'chain' || name === 'sequence') {
+      const children = unwrapped.arguments.map(argument =>
+        ts.isSpreadElement(argument) ? {seconds: 0, known: false} : timingEstimate(argument, constants),
+      );
+      return children.some(child => !child.known)
+        ? {seconds: 0, known: false}
+        : {seconds: children.reduce((total, child) => total + child.seconds, 0), known: true};
+    }
+  }
+
+  // Motion Canvas property animations have their duration as the second
+  // argument: ref().opacity(target, duration), ref().position(target,
+  // duration), etc. The exact property is intentionally unrestricted because
+  // generated scenes may animate a valid node property not listed here.
+  if (
+    unwrapped.arguments.length >= 2 &&
+    ts.isPropertyAccessExpression(unwrapped.expression) &&
+    ts.isCallExpression(unwrapped.expression.expression)
+  ) {
+    const seconds = timingExpressionNumber(unwrapped.arguments[1], constants);
+    return seconds === null || !Number.isFinite(seconds)
+      ? {seconds: 0, known: false}
+      : {seconds: Math.max(0, seconds), known: true};
+  }
+  return {seconds: 0, known: false};
+}
+
+function timingBudgetConstants(
+  sourceFile: ts.SourceFile,
+  durationValues: ReadonlyMap<string, number>,
+) {
+  const constants = new Map(durationValues);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    function visit(node: ts.Node) {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && !constants.has(node.name.text)) {
+        const value = timingExpressionNumber(node.initializer, constants);
+        if (value !== null && Number.isFinite(value)) {
+          constants.set(node.name.text, value);
+          changed = true;
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
+  }
+  return constants;
+}
+
+/** Rejects scenes whose statically visible sequential work can run past the
+ * planned beat boundary. Motion Canvas uses the real elapsed generator time
+ * to select a scene, so an over-budget scene shifts every later global frame
+ * into the wrong scene during quality sampling. Unknown custom generators are
+ * left to the runtime gate rather than rejected speculatively. */
+export function validateMotionCanvasBeatTimingBudget(
+  source: string,
+  beats: MotionCanvasTimingBudgetBeat[],
+) {
+  const plannedDurations = new Map(
+    beats
+      .filter(beat => Number.isFinite(beat.durationSeconds) && (beat.durationSeconds ?? 0) >= 0)
+      .map(beat => [beat.id, beat.durationSeconds!] as const),
+  );
+  if (plannedDurations.size === 0) return;
+
+  const sourceFile = ts.createSourceFile('generated-scene.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const statements = generatorStatements(sourceFile);
+  const durationValues = new Map<string, number>();
+  function collectDurationDeclarations(node: ts.Node) {
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      ts.isCallExpression(node.initializer) &&
+      ts.isIdentifier(node.initializer.expression) &&
+      node.initializer.expression.text === 'useDuration' &&
+      node.initializer.arguments.length === 1 &&
+      ts.isStringLiteral(node.initializer.arguments[0]!)
+    ) {
+      const durationCall = node.initializer;
+      const endEvent = durationCall.arguments[0];
+      const beatId = endEvent && ts.isStringLiteral(endEvent)
+        ? beats.find(candidate => `beat:${candidate.id}:end` === endEvent.text)?.id
+        : undefined;
+      const duration = beatId === undefined ? undefined : plannedDurations.get(beatId);
+      if (duration !== undefined) durationValues.set(node.name.text, duration);
+    }
+    ts.forEachChild(node, collectDurationDeclarations);
+  }
+  collectDurationDeclarations(sourceFile);
+  const constants = timingBudgetConstants(sourceFile, durationValues);
+
+  for (let beatIndex = 0; beatIndex < beats.length; beatIndex += 1) {
+    const beat = beats[beatIndex]!;
+    const planned = plannedDurations.get(beat.id);
+    if (planned === undefined) continue;
+    const startIndex = statements.findIndex(statement => statementHasStartEvent(statement, `beat:${beat.id}:start`));
+    const nextStartIndex = beatIndex + 1 < beats.length
+      ? statements.findIndex(statement => statementHasStartEvent(statement, `beat:${beats[beatIndex + 1]!.id}:start`))
+      : statements.length;
+    if (startIndex < 0 || nextStartIndex <= startIndex) continue;
+    const estimates = statements.slice(startIndex + 1, nextStartIndex).flatMap(statement => {
+      if (!ts.isExpressionStatement(statement) || !ts.isYieldExpression(statement.expression)) return [];
+      return [timingEstimate(statement.expression.expression, constants)];
+    });
+    if (estimates.some(estimate => !estimate.known)) continue;
+    const estimated = estimates.reduce((total, estimate) => total + estimate.seconds, 0);
+    if (estimated > planned + 0.05) {
+      throw new MotionCanvasGenerationError(
+        'CODEX_MOTION_CANVAS_INVALID_TIMING_BUDGET',
+        `Beat ${beat.id} has approximately ${estimated.toFixed(2)}s of sequential animation work but only ${planned.toFixed(2)}s is planned. Group concurrent animations with all(...) or shorten their durations.`,
+      );
+    }
+  }
 }
 
 export function validateMotionCanvasBeatLifecycle(
@@ -2984,6 +3207,7 @@ function motionCanvasAttemptFailureReason(
     if (error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE') return 'response_invalid';
     if (
       error.code === 'CODEX_MOTION_CANVAS_INVALID_TIMING_CONTRACT' ||
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_TIMING_BUDGET' ||
       error.code === 'CODEX_MOTION_CANVAS_INVALID_LIFECYCLE' ||
       error.code === 'CODEX_MOTION_CANVAS_INVALID_LAYOUT' ||
       error.code === 'CODEX_MOTION_CANVAS_UNSAFE_SOURCE'
@@ -3168,7 +3392,7 @@ export function createCodexMotionCanvasGenerator(
   const qualityRetryLimit = Math.max(
     0,
     Math.min(
-      2,
+      4,
       Math.floor(
         Number.isFinite(options.qualityRetryLimit)
           ? options.qualityRetryLimit!
@@ -3355,6 +3579,10 @@ export function createCodexMotionCanvasGenerator(
       source,
       request.voiceVisualPlan.sections[sectionIndex]!.beats,
     );
+    validateMotionCanvasBeatTimingBudget(
+      source,
+      request.voiceVisualPlan.sections[sectionIndex]!.beats,
+    );
     validateMotionCanvasBeatLifecycle(
       source,
       request.voiceVisualPlan.sections[sectionIndex]!.beats,
@@ -3399,6 +3627,7 @@ export function createCodexMotionCanvasGenerator(
       error instanceof MotionCanvasGenerationError &&
       (error.code === 'CODEX_MOTION_CANVAS_INVALID_RESPONSE' ||
         error.code === 'CODEX_MOTION_CANVAS_INVALID_TIMING_CONTRACT' ||
+        error.code === 'CODEX_MOTION_CANVAS_INVALID_TIMING_BUDGET' ||
         error.code === 'CODEX_MOTION_CANVAS_INVALID_LIFECYCLE' ||
         error.code === 'CODEX_MOTION_CANVAS_INVALID_LAYOUT' ||
         error.code === 'CODEX_MOTION_CANVAS_UNSAFE_SOURCE')
@@ -3779,8 +4008,11 @@ export function createCodexMotionCanvasGenerator(
       repairModel = scenePolicy.model;
       repairReasoningEffort = scenePolicy.reasoningEffort;
       let diagnostics = compilerDiagnostics;
+      const maxSourceRepairAttempts = request.userDecidedRetry
+        ? MAX_USER_RECOVERY_SOURCE_REPAIR_ATTEMPTS
+        : MAX_SOURCE_REPAIR_ATTEMPTS;
       const repairs: GeneratedSceneResult[] = [];
-      for (let attempt = 0; attempt < MAX_SOURCE_REPAIR_ATTEMPTS; attempt += 1) {
+      for (let attempt = 0; attempt < maxSourceRepairAttempts; attempt += 1) {
         let repaired: Awaited<ReturnType<typeof runCodexStructuredGenerationWithCapacityFallback>>;
         try {
           repaired = await runCodexStructuredGenerationWithCapacityFallback({
@@ -3959,7 +4191,7 @@ export function createCodexMotionCanvasGenerator(
           }
           if (
             !(validationError instanceof MotionCanvasGenerationError) ||
-            attempt + 1 >= MAX_SOURCE_REPAIR_ATTEMPTS
+            attempt + 1 >= maxSourceRepairAttempts
           ) {
             throw withMotionCanvasAttemptEvidence(mapped, attemptEvidence);
           }

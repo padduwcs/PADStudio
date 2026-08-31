@@ -33,6 +33,7 @@ import {MotionCanvasGenerationError} from './motionCanvasGenerator.ts';
 import {LayoutPreviewError} from './layoutPreviewService.ts';
 import type {MotionCanvasSourceScene} from './motionCanvasGenerator.ts';
 import type {
+  MotionCanvasFailureCheckpoint,
   MotionCanvasFailureRecord,
   MotionCanvasFailureSummary,
 } from './motionCanvasWorkspace.ts';
@@ -68,6 +69,7 @@ function fakeDependencies(root: string) {
   let historySaveCandidateCalls = 0;
   let historyDecisionCalls = 0;
   let fallbackCandidateGeneration = false;
+  let fallbackSceneIndexes: Set<number> | null = null;
   let motionGenerationGate: Promise<void> | null = null;
   let motionGenerationError: Error | null = null;
   let currentRender: ReturnType<typeof FinalRenderBundleSchema.parse> | null = null;
@@ -80,6 +82,7 @@ function fakeDependencies(root: string) {
   let autoPublishLayoutManifest = true;
   let layoutManifestError: Error | null = null;
   let latestMotionFailure: MotionCanvasFailureSummary | null = null;
+  const motionFailureCheckpoints = new Map<string, MotionCanvasFailureCheckpoint>();
   const sceneSourceOverrides = new Map<string, string>();
   const baseRepository = createFileProjectRepository(root);
   const repository = {
@@ -105,7 +108,15 @@ function fakeDependencies(root: string) {
       return baseHistoryStore.setCandidateDecision(...args);
     },
   };
-  const motionCanvasRequests: Array<{model?: string; reasoningEffort?: string; guidance?: string; regenerateFromScratch?: boolean; hasCurrentScenes: boolean}> = [];
+  const motionCanvasRequests: Array<{
+    model?: string;
+    reasoningEffort?: string;
+    guidance?: string;
+    regenerateFromScratch?: boolean;
+    sectionIndexes?: number[];
+    currentSceneIds?: string[];
+    hasCurrentScenes: boolean;
+  }> = [];
   const plannerRequests: Array<{
     model?: string;
     reasoningEffort?: string;
@@ -132,7 +143,15 @@ function fakeDependencies(root: string) {
       }) => void;
     }) {
       motionCalls += 1;
-      motionCanvasRequests.push({model: request.model, reasoningEffort: request.reasoningEffort, guidance: request.guidance, regenerateFromScratch: request.regenerateFromScratch, hasCurrentScenes: Boolean(request.currentScenes?.length)});
+      motionCanvasRequests.push({
+        model: request.model,
+        reasoningEffort: request.reasoningEffort,
+        guidance: request.guidance,
+        regenerateFromScratch: request.regenerateFromScratch,
+        sectionIndexes: request.sectionIndexes,
+        currentSceneIds: request.currentScenes?.map(scene => scene.id),
+        hasCurrentScenes: Boolean(request.currentScenes?.length),
+      });
       if (motionGenerationGate) await motionGenerationGate;
       const plan = request.voiceVisualPlan!;
       const indexes = request.sectionIndexes ?? plan.sections.map((_section, index) => index);
@@ -161,12 +180,17 @@ function fakeDependencies(root: string) {
       });
       return {
         model: 'fake-codex', usage: null,
-        scenes: fallbackCandidateGeneration
-          ? scenes.map(scene => ({
-            ...scene,
-            name: `${scene.name} safe fallback`,
-            source: `// pad-semantic:unverified-fallback\n${scene.source}`,
-          }))
+        scenes: fallbackCandidateGeneration || fallbackSceneIndexes
+          ? scenes.map((scene, resultIndex) => {
+            const sectionIndex = indexes[resultIndex]!;
+            return fallbackCandidateGeneration || fallbackSceneIndexes?.has(sectionIndex)
+              ? {
+                  ...scene,
+                  name: `${scene.name} safe fallback`,
+                  source: `// pad-semantic:unverified-fallback\n${scene.source}`,
+                }
+              : scene;
+          })
           : scenes,
       };
     },
@@ -268,10 +292,36 @@ function fakeDependencies(root: string) {
         rootCause: failure.rootCause ?? null,
         recoveryGuidance: failure.recoveryGuidance ?? null,
       };
+      if (failure.scenes?.length) {
+        const issueSceneIds = (failure.issues ?? [])
+          .flatMap(issue => {
+            if (!issue || typeof issue !== 'object') return [];
+            const sceneId = (issue as {sceneId?: unknown}).sceneId;
+            return typeof sceneId === 'string' ? [sceneId] : [];
+          });
+        motionFailureCheckpoints.set(generationId, {
+          scenes: failure.scenes,
+          failedSceneIds: [
+            ...new Set([
+              ...(failure.failedSceneIds ?? []),
+              ...issueSceneIds,
+              ...failure.scenes
+                .filter(scene => scene.name.includes('safe fallback'))
+                .map(scene => scene.id),
+            ]),
+          ],
+          ...(failure.sourceVoiceVisualContentRevision !== undefined
+            ? {sourceVoiceVisualContentRevision: failure.sourceVoiceVisualContentRevision}
+            : {}),
+        });
+      }
       return path.join(root, 'motion-canvas', 'failures', generationId);
     },
     async readLatestFailure() {
       return latestMotionFailure;
+    },
+    async readFailureCheckpoint(_projectId: string, generationId: string) {
+      return motionFailureCheckpoints.get(generationId) ?? null;
     },
   };
 
@@ -430,6 +480,9 @@ function fakeDependencies(root: string) {
     controls: {
       setFallbackCandidateGeneration(enabled: boolean) {
         fallbackCandidateGeneration = enabled;
+      },
+      setFallbackSceneIndexes(indexes: number[] | null) {
+        fallbackSceneIndexes = indexes ? new Set(indexes) : null;
       },
       setSceneSourceOverride(sceneId: string, source: string) {
         sceneSourceOverrides.set(sceneId, source);
@@ -1424,6 +1477,47 @@ test('unresolved deterministic fallback is recorded as generation response-inval
   assert.match(payload.failure?.firstIssueReason ?? '', /Deterministic fallback is not publishable/u);
 });
 
+test('user-decided scene recovery reuses the checkpoint and regenerates only failed scenes', async t => {
+  const app = await start(t, {narrationVisualPlanner: twoScenePlanner()});
+  const project = await prepareTwoScenes(app.baseUrl);
+  app.controls.setFallbackSceneIndexes([0]);
+  const failedGenerationId = randomUUID();
+  const failedResponse = await request(
+    app.baseUrl,
+    project,
+    'POST',
+    `/api/projects/${project.id}/motion-canvas/generate`,
+    {generationId: failedGenerationId},
+  );
+  assert.equal(failedResponse.status, 202);
+  await failedResponse.body?.cancel();
+  const failedProgress = await waitForMotionProgress(app.baseUrl, project.id);
+  assert.equal(failedProgress.state, 'failed');
+
+  app.controls.setFallbackSceneIndexes([]);
+  const beforeRecoveryCalls = app.metrics.motionCalls();
+  const recovered = await projectFrom(await request(
+    app.baseUrl,
+    project,
+    'POST',
+    `/api/projects/${project.id}/motion-canvas/generate`,
+    {
+      generationId: randomUUID(),
+      resumeFromGenerationId: failedGenerationId,
+      guidance: 'Regenerate only the failed scene from the retained checkpoint.',
+    },
+  ));
+
+  assert.equal(app.metrics.motionCalls() - beforeRecoveryCalls, 1);
+  const recoveryRequest = app.metrics.motionCanvasRequests.at(-1)!;
+  assert.deepEqual(recoveryRequest.sectionIndexes, [0]);
+  assert.equal(recoveryRequest.hasCurrentScenes, true);
+  assert.equal(recoveryRequest.currentSceneIds?.length, 2);
+  assert.equal(recoveryRequest.regenerateFromScratch, false);
+  assert.equal(recovered.motionCanvasBundle?.scenes.length, 2);
+  assert.equal(recovered.motionCanvasBundle?.scenes[1]?.name, 'Scene 2');
+});
+
 test('rendered-quality failures use bounded retries, re-validate the whole bundle, and never approve a failed bundle', async t => {
   const validatedSceneCounts: number[] = [];
   const failedAt = '2026-01-01T00:00:00.000Z';
@@ -1474,9 +1568,9 @@ test('rendered-quality failures use bounded retries, re-validate the whole bundl
   assert.equal(failedResponse.status, 202);
   const failedProgress = await waitForMotionProgress(blocked.baseUrl, stuck.id);
   assert.equal(failedProgress.state, 'failed');
-  // One initial bundle turn plus four bounded visual-quality retries; the
-  // fifth failed validation is terminal and must not trigger another turn.
-  assert.equal(blocked.metrics.motionCalls() - beforeBlockedCalls, 5);
+  // One initial bundle turn plus six bounded visual-quality retries; the
+  // seventh failed validation is terminal and must not trigger another turn.
+  assert.equal(blocked.metrics.motionCalls() - beforeBlockedCalls, 7);
   const failureStatus = await fetch(
     `${blocked.baseUrl}/api/projects/${stuck.id}/motion-canvas/failure`,
   );
@@ -1556,4 +1650,63 @@ test('renderer infrastructure retry stays local and never spends another Codex s
   };
   assert.equal(progressBody.progress.generationId, generationId);
   assert.equal(progressBody.progress.state, 'completed');
+});
+
+test('timeline mismatch renderer failure repairs the scene instead of retrying only the renderer', async t => {
+  const failedAt = '2026-01-01T00:00:00.000Z';
+  let validations = 0;
+  const timelineGate = {
+    async validate(input: {scenes: MotionCanvasSourceScene[]}) {
+      validations += 1;
+      if (validations === 1) {
+        const actual = input.scenes[0]!;
+        const expected = input.scenes[1]!;
+        const actualName = path.posix.basename(actual.filePath.replaceAll('\\', '/'), '.tsx');
+        const expectedName = path.posix.basename(expected.filePath.replaceAll('\\', '/'), '.tsx');
+        throw new MotionCanvasVisualQualityError({
+          version: VISUAL_QUALITY_GATE_VERSION,
+          status: 'failed',
+          validatedAt: failedAt,
+          sourceHash: 'a'.repeat(64),
+          scenes: [],
+          issues: [{
+            code: 'renderer-error',
+            sceneId: actual.id,
+            beatId: null,
+            timeSeconds: 0,
+            semanticKey: null,
+            bounds: null,
+            reason: `Quality sample synthetic-sample rendered scene ${actualName}, expected ${expectedName}.`,
+          }],
+        });
+      }
+      return {
+        version: VISUAL_QUALITY_GATE_VERSION as typeof VISUAL_QUALITY_GATE_VERSION,
+        status: 'passed' as const,
+        validatedAt: failedAt,
+        sourceHash: motionCanvasSceneSourceHash(input.scenes),
+        scenes: [],
+        issues: [],
+      };
+    },
+  };
+  const app = await start(t, {
+    narrationVisualPlanner: twoScenePlanner(),
+    motionCanvasVisualQualityGate: timelineGate,
+  });
+  let project = await prepareTwoScenes(app.baseUrl);
+  const beforeCalls = app.metrics.motionCalls();
+  project = await projectFrom(await request(
+    app.baseUrl,
+    project,
+    'POST',
+    `/api/projects/${project.id}/motion-canvas/generate`,
+    {generationId: randomUUID()},
+  ));
+
+  assert.equal(validations, 2);
+  assert.equal(app.metrics.motionCalls() - beforeCalls, 2);
+  assert.deepEqual(app.metrics.motionCanvasRequests.at(-1)?.sectionIndexes, [0]);
+  assert.match(app.metrics.motionCanvasRequests.at(-1)?.guidance ?? '', /timeline mismatch/u);
+  assert.ok(project.motionCanvasBundle);
 });

@@ -25,6 +25,7 @@ import {
   validateMotionCanvasIconReferences,
   validateMotionCanvasResponsiveLayout,
   validateMotionCanvasSceneSource,
+  validateMotionCanvasBeatTimingBudget,
   validateMotionCanvasTimingContract,
   validateMotionCanvasVisualIntentBindings,
 } from './motionCanvasGenerator.ts';
@@ -185,6 +186,27 @@ ${beatIds
   yield* waitFor(Math.max(0, beatEndTime${index} - useThread().time()));`,
   )
   .join('\n')}
+});
+`;
+}
+
+function timingBudgetSceneSource(beatId: string, grouped: boolean) {
+  const visualWork = grouped
+    ? `  yield* all(
+    conceptBlock().opacity(1, beatDuration0 * 0.6),
+    conceptBlock().x(40, beatDuration0 * 0.6),
+  );`
+    : `  yield* conceptBlock().opacity(1, beatDuration0 * 0.6);
+  yield* conceptBlock().x(40, beatDuration0 * 0.6);`;
+  return `import {makeScene2D} from '@motion-canvas/2d';
+import {all, useDuration, useThread, waitFor, waitUntil} from '@motion-canvas/core';
+
+export default makeScene2D(function* (view) {
+  yield* waitUntil('beat:${beatId}:start');
+  const beatDuration0 = useDuration('beat:${beatId}:end');
+  const beatEndTime0 = useThread().time() + beatDuration0;
+${visualWork}
+  yield* waitFor(Math.max(0, beatEndTime0 - useThread().time()));
 });
 `;
 }
@@ -2448,6 +2470,26 @@ test('Motion Canvas timing contract chỉ đăng ký start/end một lần', () 
     (error) =>
       error instanceof MotionCanvasGenerationError &&
       error.code === 'CODEX_MOTION_CANVAS_INVALID_TIMING_CONTRACT',
+  );
+});
+
+test('Motion Canvas timing budget rejects serial work but accepts concurrent all work', () => {
+  const beatId = randomUUID();
+  assert.throws(
+    () => validateMotionCanvasBeatTimingBudget(
+      timingBudgetSceneSource(beatId, false),
+      [{id: beatId, durationSeconds: 4}],
+    ),
+    (error) =>
+      error instanceof MotionCanvasGenerationError &&
+      error.code === 'CODEX_MOTION_CANVAS_INVALID_TIMING_BUDGET' &&
+      error.message.includes(beatId),
+  );
+  assert.doesNotThrow(() =>
+    validateMotionCanvasBeatTimingBudget(
+      timingBudgetSceneSource(beatId, true),
+      [{id: beatId, durationSeconds: 4}],
+    ),
   );
 });
 

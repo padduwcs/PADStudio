@@ -35,10 +35,56 @@ function failed(work: Promise<unknown>, code: string) { return assert.rejects(wo
 
 test('renderer-only quality failures are infrastructure faults, not scene repair guidance', () => {
   const rendererIssue = {code:'renderer-error' as const,sceneId,beatId:null,timeSeconds:0,semanticKey:null,bounds:null,reason:'Browser timeout.'};
+  const timelineMismatch = {...rendererIssue,reason:'Quality sample sample-id rendered scene earlier-scene, expected later-scene.'};
   const contentIssue = {...rendererIssue,code:'frame-too-sparse' as const};
   assert.equal(visualQualityFailureIsRendererOnly({issues:[rendererIssue]}), true);
+  assert.equal(visualQualityFailureIsRendererOnly({issues:[timelineMismatch]}), false);
   assert.equal(visualQualityFailureIsRendererOnly({issues:[rendererIssue,contentIssue]}), false);
   assert.equal(visualQualityFailureIsRendererOnly({issues:[]}), false);
+});
+
+test('timeline mismatch renderer errors are attributed to the scene still running', async () => {
+  const actualBeatId = '10000000-0000-4000-8000-000000000013';
+  const expectedBeatId = '10000000-0000-4000-8000-000000000014';
+  const actualScene: MotionCanvasSourceScene = {
+    ...scene,
+    id: '10000000-0000-4000-8000-000000000015',
+    outlineSectionId: '10000000-0000-4000-8000-000000000016',
+    name: 'Actual scene',
+    filePath: 'src/scenes/actual-scene.tsx',
+    durationSeconds: 4,
+    timingEvents: [{beatId: actualBeatId, startEvent: `beat:${actualBeatId}:start`, endEvent: `beat:${actualBeatId}:end`, plannedDurationSeconds: 4}],
+  };
+  const expectedScene: MotionCanvasSourceScene = {
+    ...scene,
+    id: '10000000-0000-4000-8000-000000000017',
+    outlineSectionId: '10000000-0000-4000-8000-000000000018',
+    name: 'Expected scene',
+    filePath: 'src/scenes/expected-scene.tsx',
+    durationSeconds: 4,
+    timingEvents: [{beatId: expectedBeatId, startEvent: `beat:${expectedBeatId}:start`, endEvent: `beat:${expectedBeatId}:end`, plannedDurationSeconds: 4}],
+  };
+  const expectedSample = visualQualitySamples([actualScene, expectedScene], 10)
+    .find(sample => sample.sceneId === expectedScene.id)!;
+  let caught: unknown;
+  try {
+    await validateRenderedMotionCanvas({
+      scenes: [actualScene, expectedScene],
+      lifecycle: new Map(),
+      frame: {width: 100, height: 100, fps: 10},
+      renderer: {async render() {
+        throw new Error(`Quality sample ${expectedSample.sampleId} rendered scene actual-scene, expected expected-scene.`);
+      }},
+      now: '2026-01-01T00:00:00.000Z',
+    });
+  } catch (error) {
+    caught = error;
+  }
+  assert.ok(caught instanceof MotionCanvasVisualQualityError);
+  assert.equal(caught.summary.issues[0]?.sceneId, actualScene.id);
+  assert.equal(visualQualityFailureIsRendererOnly(caught.summary), false);
+  assert.match(caught.summary.issues[0]?.reason ?? '', /exceeded its declared timing budget/u);
+  assert.match(formatVisualQualityRetryGuidance(caught.summary.issues), /timeline mismatch/u);
 });
 
 function semanticVisualEvidence(visibleSemanticKeys: string[], sourceScene: MotionCanvasSourceScene = scene) {

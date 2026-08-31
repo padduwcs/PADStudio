@@ -30,6 +30,7 @@ import {
 } from './motionCanvasHistoryStore.ts';
 import {
   MotionCanvasWorkspaceError,
+  type MotionCanvasFailureCheckpoint,
   type PreparedMotionCanvasWorkspace
 } from './motionCanvasWorkspace.ts';
 import {
@@ -106,7 +107,7 @@ export function motionCanvasCheckpointRecoveryGuidance(
 ) {
   return [
     guidance,
-    `Repair only the fallback-marked scenes in this checkpoint. Preserve every other scene exactly. ${DIRECT_TSX_SOURCE_GUIDANCE}`,
+    `Repair only the failed scenes selected by this checkpoint. Preserve every other scene exactly. ${DIRECT_TSX_SOURCE_GUIDANCE}`,
   ].filter(Boolean).join('\n\n');
 }
 
@@ -123,6 +124,31 @@ export function findMotionCanvasDeterministicFallbackScenes<
   T extends Pick<MotionCanvasSourceScene, 'name' | 'source'>,
 >(scenes: readonly T[]) {
   return scenes.filter(isMotionCanvasDeterministicFallbackScene);
+}
+
+function inferMotionCanvasFailureSceneIds(
+  scenes: readonly MotionCanvasSourceScene[],
+  issues: readonly unknown[],
+  diagnostics: string,
+) {
+  const sceneIds = new Set<string>();
+  for (const issue of issues) {
+    if (!issue || typeof issue !== 'object') continue;
+    const sceneId = (issue as {sceneId?: unknown}).sceneId;
+    if (typeof sceneId === 'string' && scenes.some(scene => scene.id === sceneId)) {
+      sceneIds.add(sceneId);
+    }
+  }
+  for (const scene of scenes) {
+    if (
+      diagnostics.includes(scene.filePath) ||
+      diagnostics.includes(scene.name) ||
+      isMotionCanvasDeterministicFallbackScene(scene)
+    ) {
+      sceneIds.add(scene.id);
+    }
+  }
+  return [...sceneIds];
 }
 
 /** Throws before a scene set can be handed to a workspace, quality gate, or
@@ -300,6 +326,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
         model: parsedRequest.data.model,
         reasoningEffort: parsedRequest.data.reasoningEffort,
         regenerateFromScratch: parsedRequest.data.regenerateFromScratch === true,
+        resumeFromGenerationId: parsedRequest.data.resumeFromGenerationId?.toLowerCase(),
         guidance: parsedRequest.data.guidance,
       });
       const existingJob = backgroundJobs.get(currentProject.id);
@@ -412,7 +439,14 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
       );
       const regenerateFromScratch =
         parsedRequest.data.regenerateFromScratch === true;
-      if (currentBundleUsable && !regenerateFromScratch) {
+      const resumeFromGenerationId =
+        parsedRequest.data.resumeFromGenerationId?.toLowerCase();
+      const checkpointRecoveryRequested = Boolean(resumeFromGenerationId);
+      if (
+        currentBundleUsable &&
+        !regenerateFromScratch &&
+        !checkpointRecoveryRequested
+      ) {
         throw new RequestBodyError(
           409,
           'MOTION_CANVAS_CANDIDATE_REQUIRED',
@@ -420,6 +454,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
         );
       }
       if (
+        !checkpointRecoveryRequested &&
         motionCanvasGuidanceOnStaleBundleIsUnsafe({
           hasGuidance: Boolean(parsedRequest.data.guidance),
           bundleExists: Boolean(currentProject.motionCanvasBundle),
@@ -447,16 +482,71 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
       };
       pendingJobs.set(currentProject.id, pendingReservation);
       const setup = await (async () => {
-        const currentScenes =
-          parsedRequest.data.guidance &&
-            !regenerateFromScratch &&
-            currentBundleUsable &&
-            currentProject.motionCanvasBundle
+        let checkpoint: MotionCanvasFailureCheckpoint | null = null;
+        if (resumeFromGenerationId) {
+          checkpoint = await motionCanvasWorkspace.readFailureCheckpoint?.(
+            currentProject.id,
+            resumeFromGenerationId,
+          ) ?? null;
+          if (!checkpoint) {
+            const checkpointScenes = await motionCanvasWorkspace.readFailureScenes?.(
+              currentProject.id,
+              resumeFromGenerationId,
+            ) ?? null;
+            if (checkpointScenes) {
+              checkpoint = {
+                scenes: checkpointScenes,
+                failedSceneIds: findMotionCanvasDeterministicFallbackScenes(
+                  checkpointScenes,
+                ).map(scene => scene.id),
+              };
+            }
+          }
+        }
+        const checkpointMatchesCurrentPlan = Boolean(
+          checkpoint &&
+          (checkpoint.sourceVoiceVisualContentRevision === undefined ||
+            checkpoint.sourceVoiceVisualContentRevision === voiceVisualPlan.contentRevision) &&
+          checkpoint.scenes.length === voiceVisualPlan.sections.length &&
+          checkpoint.scenes.every((scene, index) => {
+            const section = voiceVisualPlan.sections[index];
+            return section?.outlineSectionId === scene.outlineSectionId &&
+              section.beats.length === (scene.timingEvents?.length ?? 0) &&
+              section.beats.every((beat, beatIndex) =>
+                scene.timingEvents?.[beatIndex]?.beatId === beat.id,
+              );
+          }),
+        );
+        const checkpointFailedSceneIds = new Set([
+          ...(checkpoint?.failedSceneIds ?? []),
+          ...(checkpoint
+            ? findMotionCanvasDeterministicFallbackScenes(checkpoint.scenes)
+              .map(scene => scene.id)
+            : []),
+        ]);
+        const checkpointSectionIndexes = checkpointMatchesCurrentPlan && checkpoint
+          ? checkpoint.scenes
+            .map((scene, index) =>
+              checkpointFailedSceneIds.has(scene.id) ? index : -1,
+            )
+            .filter(index => index >= 0)
+          : [];
+        const useCheckpointRecovery = checkpointSectionIndexes.length > 0;
+        const currentScenes = useCheckpointRecovery
+          ? checkpoint!.scenes
+          : parsedRequest.data.guidance &&
+              !regenerateFromScratch &&
+              !checkpointRecoveryRequested &&
+              currentBundleUsable &&
+              currentProject.motionCanvasBundle
             ? await motionCanvasWorkspace.readSceneSources(
               currentProject.id,
               currentProject.motionCanvasBundle,
             )
             : undefined;
+        const effectiveRegenerateFromScratch =
+          regenerateFromScratch ||
+          (checkpointRecoveryRequested && !useCheckpointRecovery);
         const generationKey = `${currentProject.id}:${generationId}`;
         const fingerprint = JSON.stringify({
           topicInput: currentProject.topicInput,
@@ -466,16 +556,28 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
           voiceVisualContentRevision: voiceVisualPlan.contentRevision,
           model: parsedRequest.data.model,
           reasoningEffort: parsedRequest.data.reasoningEffort,
-          regenerateFromScratch,
+          regenerateFromScratch: effectiveRegenerateFromScratch,
+          resumeFromGenerationId,
           guidance: parsedRequest.data.guidance,
           currentScenes,
         });
         const initialProgress = await motionCanvasGenerationProgressStore.start({
           projectId: currentProject.id,
           generationId,
-          totalScenes: voiceVisualPlan.sections.length,
+          totalScenes: useCheckpointRecovery
+            ? checkpointSectionIndexes.length
+            : voiceVisualPlan.sections.length,
         });
-        return {currentScenes, generationKey, fingerprint, initialProgress};
+        return {
+          checkpoint,
+          checkpointSectionIndexes,
+          currentScenes,
+          effectiveRegenerateFromScratch,
+          generationKey,
+          fingerprint,
+          initialProgress,
+          useCheckpointRecovery,
+        };
       })().catch(error => {
         if (pendingJobs.get(currentProject.id) === pendingReservation) {
           pendingJobs.delete(currentProject.id);
@@ -483,7 +585,16 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
         }
         throw error;
       });
-      const {currentScenes, generationKey, fingerprint, initialProgress} = setup;
+      const {
+        checkpoint,
+        checkpointSectionIndexes,
+        currentScenes,
+        effectiveRegenerateFromScratch,
+        generationKey,
+        fingerprint,
+        initialProgress,
+        useCheckpointRecovery,
+      } = setup;
       const backgroundJob: MotionCanvasBackgroundJob = {
         generationId,
         expectedRevision,
@@ -551,7 +662,8 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
             generationId,
             model: parsedRequest.data.model,
             reasoningEffort: parsedRequest.data.reasoningEffort,
-            regenerateFromScratch,
+            regenerateFromScratch: effectiveRegenerateFromScratch,
+            userDecidedRetry: checkpointRecoveryRequested,
             topicInput: currentProject.topicInput,
             videoFrame: projectVideoFrame(currentProject),
             outline,
@@ -578,52 +690,20 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
               cachedSamples: 0,
             }),
           };
-          const checkpointScenes = await motionCanvasWorkspace
-            .readFailureScenes?.(currentProject.id, generationId) ?? null;
-          const checkpointMatchesCurrentPlan = checkpointScenes?.length === voiceVisualPlan.sections.length &&
-            checkpointScenes.every((scene, index) => {
-              const section = voiceVisualPlan.sections[index];
-              return section?.outlineSectionId === scene.outlineSectionId &&
-                section.beats.length === (scene.timingEvents?.length ?? 0) &&
-                section.beats.every((beat, beatIndex) =>
-                  scene.timingEvents?.[beatIndex]?.beatId === beat.id,
-                );
-            });
           let generated: MotionCanvasGenerationResult;
-          if (checkpointMatchesCurrentPlan) {
-            const fallbackIndexes = checkpointScenes!
-              .map((scene, index) =>
-                isMotionCanvasDeterministicFallbackScene(scene)
-                  ? index
-                  : -1,
-              )
-              .filter(index => index >= 0);
-            if (fallbackIndexes.length > 0) {
-              const repaired = await motionCanvasGenerator.generate({
-                ...generationRequest,
-                sectionIndexes: fallbackIndexes,
-                currentScenes: checkpointScenes!,
-                guidance: motionCanvasCheckpointRecoveryGuidance(
-                  generationRequest.guidance,
-                ),
-              });
-              const scenes = checkpointScenes!.map((scene, index) =>
-                repaired.scenes.find(candidate => candidate.outlineSectionId === scene.outlineSectionId) ?? scene,
-              );
-              generated = {...repaired, scenes};
-            } else {
-              generated = {
-                scenes: checkpointScenes!,
-                model: 'resumed-render-checkpoint',
-                usage: null,
-                qualityRetryDiagnostics: [{
-                  stage: 'quality-retry' as const,
-                  attempt: 0,
-                  reason: 'Resumed the exact failed compile/render scene checkpoint; no Codex call was made.',
-                  outcome: 'skipped' as const,
-                }],
-              };
-            }
+          if (useCheckpointRecovery && checkpoint) {
+            const repaired = await motionCanvasGenerator.generate({
+              ...generationRequest,
+              sectionIndexes: checkpointSectionIndexes,
+              currentScenes: checkpoint.scenes,
+              guidance: motionCanvasCheckpointRecoveryGuidance(
+                generationRequest.guidance,
+              ),
+            });
+            const scenes = checkpoint.scenes.map(scene =>
+              repaired.scenes.find(candidate => candidate.outlineSectionId === scene.outlineSectionId) ?? scene,
+            );
+            generated = {...repaired, scenes};
           } else {
             generated = await motionCanvasGenerator.generate(generationRequest).catch(async error => {
               await recordFailure({
@@ -632,6 +712,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                 message:
                   error instanceof Error ? error.message : String(error),
                 details: null,
+                sourceVoiceVisualContentRevision: voiceVisualPlan.contentRevision,
                 issues: [],
                 recoveryGuidance: generationRecoveryGuidance(error),
                 rootCause: motionCanvasRootCauseFromError(error),
@@ -648,6 +729,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
               code: 'CODEX_MOTION_CANVAS_INVALID_RESPONSE',
               message: 'Deterministic fallback output was rejected before compilation as source-validation/response-invalid; no publishable direct-TSX scene remained.',
               details: null,
+              sourceVoiceVisualContentRevision: voiceVisualPlan.contentRevision,
               issues: unresolvedFallbacks.map(scene => ({
                 reason: `Deterministic fallback is not publishable: ${scene.filePath}`,
                 sceneId: scene.id,
@@ -655,6 +737,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                 phase: 'fallback',
                 classification: 'source-validation/response-invalid',
               })),
+              failedSceneIds: unresolvedFallbacks.map(scene => scene.id),
               recoveryGuidance: `Regenerate only fallback-marked scenes as fresh direct-TSX output. ${DIRECT_TSX_SOURCE_GUIDANCE}`,
               rootCause: null,
               attempts: generated.attemptEvidence,
@@ -803,8 +886,11 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
             // so raising it only gives genuinely-converging scenes more room
             // rather than letting a permanently-broken scene burn the full
             // budget every round.
-            const maximumQualityRetries = 4;
-            const maximumRendererRetries = 1;
+            // Render-quality retries are scene-scoped, so a user-decided
+            // recovery can spend a little more time converging without
+            // re-running the scenes that already passed.
+            const maximumQualityRetries = 6;
+            const maximumRendererRetries = 2;
             let contentRepairAttempts = 0;
             let rendererRetryAttempts = 0;
             let lastRepairedSceneCount = 0;
@@ -948,7 +1034,7 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                   generationDiagnostics.push({stage: 'quality-retry', attempt: rendererRetryAttempts, reason: `Renderer infrastructure failed and was retried locally without Codex: ${error.summary.issues[0]?.reason ?? error.message}`.slice(0, 4_000), outcome: 'failed'});
                   reportProgress({
                     stage: 'quality-render',
-                    message: 'Renderer gặp lỗi kỹ thuật; đang khởi động lại và thử một lần, không tiêu quota Codex.',
+                    message: `Renderer gặp lỗi kỹ thuật; đang khởi động lại và thử lại tại chỗ (lượt ${rendererRetryAttempts}/${maximumRendererRetries}), không tiêu quota Codex.`,
                     attempt: rendererRetryAttempts,
                   });
                   continue;
@@ -1146,6 +1232,12 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
           } catch (error) {
             const visualFailure =
               error instanceof MotionCanvasVisualQualityError ? error : null;
+            const failureDetails =
+              error instanceof MotionCanvasWorkspaceError
+                ? error.details ?? ''
+                : '';
+            const failureMessage =
+              error instanceof Error ? error.message : String(error);
             await recordFailure({
               stage: visualFailure ? 'render-quality' : 'compile',
               code:
@@ -1154,13 +1246,15 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
                   : error instanceof MotionCanvasWorkspaceError
                     ? error.code
                     : 'MOTION_CANVAS_GENERATION_FAILED',
-              message:
-                error instanceof Error ? error.message : String(error),
-              details:
-                error instanceof MotionCanvasWorkspaceError
-                  ? error.details
-                  : null,
+              message: failureMessage,
+              details: failureDetails || null,
+              sourceVoiceVisualContentRevision: voiceVisualPlan.contentRevision,
               issues: visualFailure?.summary.issues ?? [],
+              failedSceneIds: inferMotionCanvasFailureSceneIds(
+                generated.scenes,
+                visualFailure?.summary.issues ?? [],
+                `${failureDetails}\n${failureMessage}`,
+              ),
               recoveryGuidance: visualFailure
                 ? formatVisualQualityRetryGuidance(
                   visualFailure.summary.issues,
@@ -1308,6 +1402,12 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
               error instanceof MotionCanvasWorkspaceError
                 ? error.details
                 : null,
+            // Do not label an older retained checkpoint with the current
+            // plan revision when a recovery failed before producing a new
+            // scene set. Legacy checkpoints intentionally leave this absent.
+            sourceVoiceVisualContentRevision: checkpoint
+              ? checkpoint.sourceVoiceVisualContentRevision
+              : voiceVisualPlan.contentRevision,
             issues: error instanceof MotionCanvasVisualQualityError
               ? error.summary.issues
               : [],
@@ -1316,7 +1416,11 @@ export function createMotionCanvasRouteHandler(context: MotionCanvasRouteContext
               : generationRecoveryGuidance(error),
             rootCause: motionCanvasRootCauseFromError(error),
             attempts: motionCanvasAttemptEvidenceFromError(error),
-            scenes: [],
+            // A failed user recovery must remain resumable. Keep the source
+            // checkpoint on the new failure artifact so the next explicit
+            // retry can continue from the same failed-scene scope.
+            failedSceneIds: checkpoint?.failedSceneIds ?? [],
+            scenes: checkpoint?.scenes ?? [],
           });
           await drainProgressWrites();
           await motionCanvasGenerationProgressStore

@@ -1282,6 +1282,10 @@ export const GenerateMotionCanvasSchema = z
     // revision context is sent to the model. The prior bundle is preserved
     // by the route's normal history snapshot before replacement.
     regenerateFromScratch: z.literal(true).optional(),
+    // A user-decided recovery may point at a retained failed generation. When
+    // the checkpoint is complete and matches the current Visual Plan, the
+    // route regenerates only its failed scenes and merges the rest unchanged.
+    resumeFromGenerationId: CreationIdSchema.optional(),
     guidance: z
       .string()
       .trim()

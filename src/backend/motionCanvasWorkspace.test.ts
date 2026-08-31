@@ -315,6 +315,7 @@ test('Motion Canvas workspace keeps bounded failure evidence after cleanup', asy
   assert.ok(workspace.recordFailure);
   assert.ok(workspace.readLatestFailure);
   assert.ok(workspace.readFailureScenes);
+  assert.ok(workspace.readFailureCheckpoint);
   const generationId = randomUUID();
   const beatId = randomUUID();
   const failedScene: MotionCanvasSourceScene = {
@@ -361,7 +362,9 @@ test('Motion Canvas workspace keeps bounded failure evidence after cleanup', asy
       stage: 'render-quality',
       code: 'MOTION_CANVAS_VISUAL_QUALITY_FAILED',
       message: 'Pre-exit frame is empty.',
+      sourceVoiceVisualContentRevision: 7,
       issues: [{code: 'empty-frame', reason: 'Pre-exit frame is empty.'}],
+      failedSceneIds: [failedScene.id],
       recoveryGuidance: 'Keep the primary visual visible until the exit window.',
       rootCause: {
         reason: 'turn_failed',
@@ -486,10 +489,61 @@ test('Motion Canvas workspace keeps bounded failure evidence after cleanup', asy
     ),
     failedScene.source,
   );
+  const checkpoint = await workspace.readFailureCheckpoint(
+    'failure-evidence-project',
+    generationId,
+  );
+  assert.deepEqual(checkpoint?.failedSceneIds, [failedScene.id]);
+  assert.equal(checkpoint?.sourceVoiceVisualContentRevision, 7);
+  assert.equal(checkpoint?.scenes[0]?.source, failedScene.source);
   const resumedScenes = await workspace.readFailureScenes(
     'failure-evidence-project',
     generationId,
   );
   assert.equal(resumedScenes?.[0]?.id, failedScene.id);
   assert.equal(resumedScenes?.[0]?.source, failedScene.source);
+});
+
+test('legacy timeline mismatch checkpoints replace stale scene attribution on recovery', async context => {
+  const projectsDirectory = await mkdtemp(
+    path.join(os.tmpdir(), 'pad-studio-motion-legacy-timeline-checkpoint-'),
+  );
+  context.after(() => rm(projectsDirectory, {recursive: true, force: true}));
+  const workspace = createMotionCanvasWorkspace(projectsDirectory);
+  const generationId = randomUUID();
+  const staleBeatId = randomUUID();
+  const runtimeBeatId = randomUUID();
+  const staleScene: MotionCanvasSourceScene = {
+    id: randomUUID(),
+    outlineSectionId: randomUUID(),
+    name: 'Opening',
+    filePath: 'src/scenes/01-opening.tsx',
+    durationSeconds: 4,
+    timingEvents: [{beatId: staleBeatId, startEvent: `beat:${staleBeatId}:start`, endEvent: `beat:${staleBeatId}:end`, plannedDurationSeconds: 4}],
+    source: 'stale-source',
+  };
+  const runtimeScene: MotionCanvasSourceScene = {
+    id: randomUUID(),
+    outlineSectionId: randomUUID(),
+    name: 'Emergency room',
+    filePath: 'src/scenes/02-emergency-room.tsx',
+    durationSeconds: 4,
+    timingEvents: [{beatId: runtimeBeatId, startEvent: `beat:${runtimeBeatId}:start`, endEvent: `beat:${runtimeBeatId}:end`, plannedDurationSeconds: 4}],
+    source: 'runtime-source',
+  };
+  await workspace.recordFailure!('legacy-timeline-project', generationId, {
+    stage: 'render-quality',
+    code: 'MOTION_CANVAS_VISUAL_QUALITY_FAILED',
+    message: 'Motion Canvas frame renderer failed.',
+    issues: [{
+      sceneId: staleScene.id,
+      reason: 'Quality sample sample-id rendered scene 02-emergency-room, expected 03-next-scene.',
+    }],
+    // This is the incorrect attribution written by the old renderer wrapper.
+    failedSceneIds: [staleScene.id],
+    scenes: [staleScene, runtimeScene],
+  });
+
+  const checkpoint = await workspace.readFailureCheckpoint!('legacy-timeline-project', generationId);
+  assert.deepEqual(checkpoint?.failedSceneIds, [runtimeScene.id]);
 });

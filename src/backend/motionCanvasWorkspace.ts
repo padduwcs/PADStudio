@@ -59,6 +59,42 @@ const staleStagingPattern =
   /^\.staging-[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const STALE_STAGING_AGE_MS = 6 * 60 * 60 * 1_000;
 
+const timelineMismatchPattern = /^Quality sample (.+?) rendered scene (.+?), expected (.+?)\./u;
+
+function sceneIdsFromFailureIssues(
+  issues: readonly unknown[],
+  scenes: readonly Pick<MotionCanvasScene, 'id' | 'filePath'>[] = [],
+) {
+  const ids = new Set<string>();
+  const replacedIds = new Set<string>();
+  for (const issue of issues) {
+    if (!issue || typeof issue !== 'object') continue;
+    const sceneId = (issue as {sceneId?: unknown}).sceneId;
+    const directId = typeof sceneId === 'string' && uuidPattern.test(sceneId)
+      ? sceneId
+      : null;
+    const reason = (issue as {reason?: unknown}).reason;
+    const mismatch = typeof reason === 'string'
+      ? timelineMismatchPattern.exec(reason)
+      : null;
+    const runtimeScene = mismatch
+      ? scenes.find(scene =>
+        path.posix.basename(
+          scene.filePath.replaceAll('\\', '/'),
+          path.posix.extname(scene.filePath.replaceAll('\\', '/')),
+        ) === mismatch[2]?.trim(),
+      )
+      : undefined;
+    if (runtimeScene) {
+      ids.add(runtimeScene.id);
+      if (directId) replacedIds.add(directId);
+    } else if (directId) {
+      ids.add(directId);
+    }
+  }
+  return {ids: [...ids], replacedIds};
+}
+
 export interface PreparedMotionCanvasWorkspace {
   workspacePath: string;
   projectFile: 'src/project.ts';
@@ -81,7 +117,11 @@ export interface MotionCanvasFailureRecord {
   code: string;
   message: string;
   details?: string | null;
+  /** Visual Plan revision used to create the retained scene checkpoint. */
+  sourceVoiceVisualContentRevision?: number;
   issues?: unknown[];
+  /** Scene IDs whose output blocked this generation, when attribution is known. */
+  failedSceneIds?: string[];
   /** Redacted structured root cause for failures that happen before a usable source exists. */
   rootCause?: MotionCanvasFailureRootCause | null;
   /** Bounded, model-ready remediation derived from rendered-frame evidence. */
@@ -105,6 +145,15 @@ export interface MotionCanvasFailureSummary {
   rootCause?: MotionCanvasFailureRootCause | null;
   /** Safe remediation context that a fresh Codex generation can use. */
   recoveryGuidance: string | null;
+}
+
+export interface MotionCanvasFailureCheckpoint {
+  /** Complete source checkpoint captured before the transient workspace was removed. */
+  scenes: MotionCanvasSourceScene[];
+  /** Only scenes that should be sent to Codex for the user-decided recovery. */
+  failedSceneIds: string[];
+  /** Exact Visual Plan revision, when recorded by the producer. */
+  sourceVoiceVisualContentRevision?: number;
 }
 
 export interface MotionCanvasWorkspace {
@@ -143,13 +192,18 @@ export interface MotionCanvasWorkspace {
   readLatestFailure?(
     projectId: string,
   ): Promise<MotionCanvasFailureSummary | null>;
-  /** Reloads an exact failed compile/render checkpoint for an idempotent
-   * retry. Generation-stage failures are excluded because their scene set may
-   * be incomplete. */
+  /** Reloads an exact retained checkpoint for a user-decided retry. The route
+   * verifies that the checkpoint is complete and matches the current plan
+   * before it is used for scene-level recovery. */
   readFailureScenes?(
     projectId: string,
     generationId: string,
   ): Promise<MotionCanvasSourceScene[] | null>;
+  /** Reads a complete retained checkpoint plus its scene-level failure scope. */
+  readFailureCheckpoint?(
+    projectId: string,
+    generationId: string,
+  ): Promise<MotionCanvasFailureCheckpoint | null>;
 }
 
 const StoredMotionCanvasManifestSchema = z
@@ -181,7 +235,9 @@ const StoredMotionCanvasFailureSchema = z
     stage: z.enum(['compile', 'render-quality', 'generation']),
     code: z.string().trim().min(1).max(160),
     message: z.string().trim().min(1).max(2_000),
+    sourceVoiceVisualContentRevision: z.number().int().nonnegative().optional(),
     issues: z.array(z.object({reason: z.string().trim().min(1).max(600)}).passthrough()).max(64),
+    failedSceneIds: z.array(z.string().uuid()).max(pipelineSafetyLimits.maximumSections).optional().default([]),
     recoveryGuidance: z.string().trim().min(1).max(4_000).nullable().optional(),
     attempts: z.array(z.object({
       phase: z.enum(['initial', 'repair', 'regeneration']),
@@ -611,6 +667,80 @@ export function createMotionCanvasWorkspace(
     }
   }
 
+  async function readFailureCheckpoint(
+    projectId: string,
+    generationId: string,
+  ): Promise<MotionCanvasFailureCheckpoint | null> {
+    assertProjectId(projectId);
+    if (!uuidPattern.test(generationId)) {
+      throw new MotionCanvasWorkspaceError(
+        'MOTION_CANVAS_WORKSPACE_INVALID',
+        'Generation ID không hợp lệ.',
+      );
+    }
+    const root = projectDirectory(projectId);
+    const failureRoot = path.join(root, 'motion-canvas', 'failures', generationId);
+    if (!isInside(root, failureRoot)) {
+      throw new MotionCanvasWorkspaceError(
+        'MOTION_CANVAS_WORKSPACE_INVALID',
+        'Checkpoint lỗi nằm ngoài project.',
+      );
+    }
+
+    let parsed;
+    try {
+      parsed = StoredMotionCanvasFailureSchema.safeParse(
+        JSON.parse(await readFile(path.join(failureRoot, 'failure.json'), 'utf8')),
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+    if (
+      !parsed.success ||
+      parsed.data.generationId !== generationId ||
+      !parsed.data.scenes?.length
+    ) return null;
+
+    const metadata = parsed.data.scenes.map(scene => MotionCanvasSceneSchema.safeParse(scene));
+    if (metadata.some(scene => !scene.success)) return null;
+    const scenes: MotionCanvasSourceScene[] = [];
+    for (const [index, result] of metadata.entries()) {
+      const scene = result.data!;
+      const sourcePath = path.join(
+        failureRoot,
+        'scenes',
+        `${String(index + 1).padStart(2, '0')}-${scene.id}.tsx`,
+      );
+      const source = await readFile(sourcePath, 'utf8');
+      scenes.push({...scene, source});
+    }
+
+    const checkpointSceneIds = new Set(scenes.map(scene => scene.id));
+    const inferredFallbackSceneIds = scenes
+      .filter(scene =>
+        scene.name.toLowerCase().includes('safe fallback') ||
+        scene.source.includes(MOTION_CANVAS_UNVERIFIED_SEMANTIC_FALLBACK_MARKER),
+      )
+      .map(scene => scene.id);
+    const issueAttribution = sceneIdsFromFailureIssues(parsed.data.issues, scenes);
+    const failedSceneIds = [
+      ...new Set([
+        ...(parsed.data.failedSceneIds ?? []).filter(sceneId => !issueAttribution.replacedIds.has(sceneId)),
+        ...issueAttribution.ids,
+        ...inferredFallbackSceneIds,
+      ]),
+    ].filter(sceneId => checkpointSceneIds.has(sceneId));
+
+    return {
+      scenes,
+      failedSceneIds,
+      ...(parsed.data.sourceVoiceVisualContentRevision !== undefined
+        ? {sourceVoiceVisualContentRevision: parsed.data.sourceVoiceVisualContentRevision}
+        : {}),
+    };
+  }
+
   return {
     async prepare(projectId, generationId, scenes, frame = defaultVideoFrame) {
       assertProjectId(projectId);
@@ -966,6 +1096,25 @@ declare type Callback = (...args: any[]) => void;
       await rm(target, {recursive: true, force: true});
       await mkdir(path.join(target, 'scenes'), {recursive: true});
       const scenes = failure.scenes ?? [];
+      const issueAttribution = sceneIdsFromFailureIssues(
+        failure.issues ?? [],
+        scenes,
+      );
+      const inferredFallbackSceneIds = scenes
+        .filter(scene =>
+          scene.name.toLowerCase().includes('safe fallback') ||
+          scene.source.includes(MOTION_CANVAS_UNVERIFIED_SEMANTIC_FALLBACK_MARKER),
+        )
+        .map(scene => scene.id);
+      const failedSceneIds = [
+        ...new Set([
+          ...(failure.failedSceneIds ?? []).filter(sceneId => !issueAttribution.replacedIds.has(sceneId)),
+          ...issueAttribution.ids,
+          ...inferredFallbackSceneIds,
+        ]),
+      ]
+        .filter(sceneId => scenes.some(scene => scene.id === sceneId))
+        .slice(0, pipelineSafetyLimits.maximumSections);
       const attempts = (failure.attempts ?? [])
         .slice(0, MOTION_CANVAS_FAILURE_ATTEMPT_MAX_COUNT)
         .map(sanitizeFailureAttempt);
@@ -1026,10 +1175,14 @@ declare type Callback = (...args: any[]) => void;
           stage: failure.stage,
           code: redactMotionCanvasFailureText(failure.code).slice(0, 160),
           message: redactMotionCanvasFailureText(failure.message).slice(0, 2_000),
+          ...(failure.sourceVoiceVisualContentRevision !== undefined
+            ? {sourceVoiceVisualContentRevision: failure.sourceVoiceVisualContentRevision}
+            : {}),
           details: failure.details
             ? redactMotionCanvasFailureText(failure.details).slice(0, 12_000)
             : null,
           issues: sanitizeFailureJsonValue(failure.issues ?? []),
+          failedSceneIds,
           recoveryGuidance: failure.recoveryGuidance
             ? redactMotionCanvasFailureText(failure.recoveryGuidance).slice(0, 4_000)
             : null,
@@ -1115,45 +1268,13 @@ declare type Callback = (...args: any[]) => void;
       return null;
     },
 
+    async readFailureCheckpoint(projectId, generationId) {
+      return readFailureCheckpoint(projectId, generationId);
+    },
+
     async readFailureScenes(projectId, generationId) {
-      assertProjectId(projectId);
-      if (!uuidPattern.test(generationId)) {
-        throw new MotionCanvasWorkspaceError('MOTION_CANVAS_WORKSPACE_INVALID', 'Generation ID không hợp lệ.');
-      }
-      const root = projectDirectory(projectId);
-      const failureRoot = path.join(root, 'motion-canvas', 'failures', generationId);
-      if (!isInside(root, failureRoot)) {
-        throw new MotionCanvasWorkspaceError('MOTION_CANVAS_WORKSPACE_INVALID', 'Checkpoint lỗi nằm ngoài project.');
-      }
-      let parsed;
-      try {
-        parsed = StoredMotionCanvasFailureSchema.safeParse(
-          JSON.parse(await readFile(path.join(failureRoot, 'failure.json'), 'utf8')),
-        );
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-        throw error;
-      }
-      if (
-        !parsed.success ||
-        parsed.data.generationId !== generationId ||
-        parsed.data.stage === 'generation' ||
-        !parsed.data.scenes?.length
-      ) return null;
-      const metadata = parsed.data.scenes.map(scene => MotionCanvasSceneSchema.safeParse(scene));
-      if (metadata.some(scene => !scene.success)) return null;
-      const scenes: MotionCanvasSourceScene[] = [];
-      for (const [index, result] of metadata.entries()) {
-        const scene = result.data!;
-        const sourcePath = path.join(
-          failureRoot,
-          'scenes',
-          `${String(index + 1).padStart(2, '0')}-${scene.id}.tsx`,
-        );
-        const source = await readFile(sourcePath, 'utf8');
-        scenes.push({...scene, source});
-      }
-      return scenes;
+      const checkpoint = await readFailureCheckpoint(projectId, generationId);
+      return checkpoint?.scenes ?? null;
     },
 
     async discard(projectId, generationId) {

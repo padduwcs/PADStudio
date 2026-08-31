@@ -104,6 +104,43 @@ export class MotionCanvasVisualValidationGateError extends Error {
 }
 
 function keyOf(sample: QualitySample) { return sample.sampleId; }
+function sceneFileStem(scene: MotionCanvasSourceScene) {
+  const filePath = scene.filePath.replaceAll('\\', '/');
+  return path.posix.basename(filePath, path.posix.extname(filePath));
+}
+
+const motionCanvasTimelineMismatchPattern = /^Quality sample (.+?) rendered scene (.+?), expected (.+?)\./u;
+
+function isMotionCanvasTimelineMismatchReason(reason: string) {
+  return motionCanvasTimelineMismatchPattern.test(reason);
+}
+
+function rendererFailureIssue(
+  error: unknown,
+  scenes: MotionCanvasSourceScene[],
+  samples: QualitySample[],
+): VisualQualityIssue {
+  const rawReason = error instanceof Error ? error.message : 'Renderer failed.';
+  const mismatch = motionCanvasTimelineMismatchPattern.exec(rawReason);
+  const sample = mismatch ? samples.find(candidate => candidate.sampleId === mismatch[1]) : undefined;
+  const runtimeScene = mismatch
+    ? scenes.find(scene => sceneFileStem(scene) === mismatch[2]?.trim())
+    : undefined;
+  const sampleScene = sample ? scenes.find(scene => scene.id === sample.sceneId) : undefined;
+  const scene = runtimeScene ?? sampleScene ?? scenes[0]!;
+  const reason = mismatch
+    ? `${rawReason} The runtime was still in an earlier scene at the planned global frame; a previous scene likely exceeded its declared timing budget. Keep sequential animation work within each beatDuration and group concurrent animations with all(...).`
+    : rawReason;
+  return {
+    code: 'renderer-error',
+    sceneId: scene.id,
+    beatId: null,
+    timeSeconds: 0,
+    semanticKey: null,
+    bounds: null,
+    reason: reason.slice(0, 600),
+  };
+}
 /** Canonical hash binding rendered-frame evidence to the exact scene sources. */
 export function motionCanvasSceneSourceHash(scenes: MotionCanvasSourceScene[]) { const hash = createHash('sha256'); for (const scene of [...scenes].sort((a,b) => a.id.localeCompare(b.id))) {hash.update(scene.id); hash.update('\0'); hash.update(scene.source); hash.update('\0');} return hash.digest('hex'); }
 
@@ -232,13 +269,18 @@ export function buildMotionCanvasSemanticValidation(
   return {version: 1, status, validatedAt: now, sourceHash, scenes: results};
 }
 
-/** Renderer/bridge failures are infrastructure faults. Sending them back to
- * Codex cannot improve scene semantics and only burns quota. */
+/** Pure renderer/bridge failures are infrastructure faults. A scene-name
+ * mismatch is different: it proves the source timeline drifted, so it must
+ * remain eligible for a scene repair instead of burning local renderer retry
+ * attempts. */
 export function visualQualityFailureIsRendererOnly(
   summary: Pick<VisualQualitySummary, 'issues'>,
 ) {
   return summary.issues.length > 0 &&
-    summary.issues.every(issue => issue.code === 'renderer-error');
+    summary.issues.every(issue =>
+      issue.code === 'renderer-error' &&
+      !isMotionCanvasTimelineMismatchReason(issue.reason),
+    );
 }
 export interface WaivedVisualQualityScene {
   sceneId: string;
@@ -366,9 +408,17 @@ export function formatVisualQualityRetryGuidance(
         'Keep every information-bearing primary visual visible throughout the stable-start, middle, and pre-exit samples. The exit animation belongs only in the reserved final exit window; never hide the visual early and wait on an empty frame.',
       ]
     : [];
+  const timingGuidance = issues.some(issue =>
+    issue.code === 'renderer-error' && isMotionCanvasTimelineMismatchReason(issue.reason),
+  )
+    ? [
+        'This is a Motion Canvas timeline mismatch, not a browser outage. Keep the total sequential animation and waitFor duration inside each planned beatDuration. Put concurrent ref animations in one yield* all(...), and do not let an earlier scene run past its declared duration.',
+      ]
+    : [];
   return [
     'Lượt render trước bị kiểm tra khung hình từ chối vì các lý do sau. Bản sinh lại phải khắc phục triệt để từng lý do, không chỉ đổi màu hoặc rút gọn chữ để né qua kiểm tra:',
     ...visibilityGuidance,
+    ...timingGuidance,
     ...lines,
   ].join('\n').slice(0, 4_000);
 }
@@ -509,7 +559,7 @@ export async function validateRenderedMotionCanvas(options: {scenes: MotionCanva
   // require resolving/upgrading the declared palette before comparison.
   const bible = options.visualBible ?? null;
   let rendered: Map<string, QualityRenderedFrame>;
-  try { rendered = await options.renderer.render({scenes: options.scenes, samples, frame: options.frame, workspaceDirectory: options.workspaceDirectory, projectFile: options.projectFile, managedKeysByBeat: new Map([...options.lifecycle].map(([id,value])=>[id,value.stay])), onProgress: options.onProgress}); } catch (error) { const scene = options.scenes[0]!; const summary = {version: VISUAL_QUALITY_GATE_VERSION, status: 'failed' as const, validatedAt: options.now ?? new Date().toISOString(), sourceHash: motionCanvasSceneSourceHash(options.scenes), scenes: [], issues: [{code: 'renderer-error' as const, sceneId: scene.id, beatId: null, timeSeconds: 0, semanticKey: null, bounds: null, reason: error instanceof Error ? error.message.slice(0,600) : 'Renderer failed.'}]}; throw new MotionCanvasVisualQualityError(VisualQualitySummarySchema.parse(summary), 'Motion Canvas frame renderer failed.'); }
+  try { rendered = await options.renderer.render({scenes: options.scenes, samples, frame: options.frame, workspaceDirectory: options.workspaceDirectory, projectFile: options.projectFile, managedKeysByBeat: new Map([...options.lifecycle].map(([id,value])=>[id,value.stay])), onProgress: options.onProgress}); } catch (error) { const summary = {version: VISUAL_QUALITY_GATE_VERSION, status: 'failed' as const, validatedAt: options.now ?? new Date().toISOString(), sourceHash: motionCanvasSceneSourceHash(options.scenes), scenes: [], issues: [rendererFailureIssue(error, options.scenes, samples)]}; throw new MotionCanvasVisualQualityError(VisualQualitySummarySchema.parse(summary), 'Motion Canvas frame renderer failed.'); }
   const sceneEntries: VisualQualitySummary['scenes'] = []; const middleByScene = new Map<string, QualityRenderedFrame[]>();
   /** Anchor position of each beat's primary block, in beat order, per scene. */
   const anchorsByScene = new Map<string, Array<{beatId: string; key: string; point: {x: number; y: number}; timeSeconds: number; role?: BeatCompositionContract['semanticRole']}>>();
@@ -604,7 +654,13 @@ export async function validateRenderedMotionCanvas(options: {scenes: MotionCanva
     const previous = (anchorsByScene.get(previousScene.id) ?? []).at(-1); const next = (anchorsByScene.get(nextScene.id) ?? [])[0];
     if (previous && next) reportJump(nextScene.id, previous, next, 'the scene handoff boundary');
   }
-  if (sceneEntries.some(scene => scene.samples.length !== samples.filter(sample=>sample.sceneId===scene.sceneId).length)) push({code:'renderer-error',sceneId:options.scenes[0]!.id,beatId:null,timeSeconds:0,semanticKey:null,bounds:null,reason:'One or more required beat samples are missing.'});
+  for (const scene of options.scenes) {
+    const expectedSampleCount = samples.filter(sample => sample.sceneId === scene.id).length;
+    const actualSampleCount = sceneEntries.find(entry => entry.sceneId === scene.id)?.samples.length ?? 0;
+    if (actualSampleCount !== expectedSampleCount) {
+      push({code:'renderer-error',sceneId:scene.id,beatId:null,timeSeconds:0,semanticKey:null,bounds:null,reason:'One or more required beat samples are missing.'});
+    }
+  }
   const summary=VisualQualitySummarySchema.parse({version:VISUAL_QUALITY_GATE_VERSION,status:issues.length?'failed':'passed',validatedAt:options.now??new Date().toISOString(),sourceHash:motionCanvasSceneSourceHash(options.scenes),scenes:sceneEntries,issues,warnings:warnings.length?warnings:undefined}); const evidence = summary.status === 'failed' ? visualEvidenceForIssues(samples, rendered, summary.issues) : []; options.onFailure?.(evidence); if(summary.status==='failed') throw new MotionCanvasVisualQualityError(summary, 'Rendered Motion Canvas visual quality gate failed.', evidence); return summary;
 }
 
