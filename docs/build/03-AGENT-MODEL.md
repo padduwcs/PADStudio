@@ -2,7 +2,9 @@
 
 ## Mục đích
 
-Tài liệu này định nghĩa cách Agent điều khiển PADStudio, đồng thời giữ hệ thống mở cho nhiều provider và phương thức kết nối Agent. Đây là build contract, không phải prompt để tạo một video cụ thể.
+Tài liệu này định hướng cách Agent điều khiển PADStudio, đồng thời giữ hệ thống mở cho nhiều provider và phương thức kết nối Agent. Đây là mô hình thiết kế cho việc xây dựng, không phải build contract kỹ thuật hoàn chỉnh hay prompt để tạo một video cụ thể.
+
+Các vai trò, phương thức kết nối và mức tự chủ ở đây là những khả năng cần hướng tới. Chi tiết session, adapter, permission và giao thức chỉ được chốt khi một luồng triển khai thực tế cần đến.
 
 ## Agent-first nghĩa là Agent dẫn dắt, không phải Agent không được kiểm soát
 

@@ -2,7 +2,9 @@
 
 ## Mục đích
 
-Contract cho phép các Agent, tool, provider, renderer và implementation tương lai phối hợp mà không cần chia sẻ code nội bộ hoặc phụ thuộc vào trí nhớ của hội thoại.
+Contract là hướng suy nghĩ về cách các Agent, tool, provider, renderer và implementation tương lai có thể phối hợp mà không cần chia sẻ code nội bộ hoặc phụ thuộc vào trí nhớ của hội thoại.
+
+Các lớp contract và ví dụ schema ở tài liệu này chưa phải danh sách phải triển khai ngay. Contract thật chỉ nên được chốt khi một boundary thực tế cần giao tiếp; trước đó có thể dùng cấu trúc đơn giản hơn để học và kiểm chứng luồng.
 
 ## Các lớp contract
 

@@ -2,7 +2,9 @@
 
 ## Mục đích của domain
 
-Domain model mô tả những thực thể bền vững mà PADStudio làm việc cùng. Nó phải độc lập với UI page, vendor Agent, provider SDK, render engine và ngôn ngữ implementation hiện tại.
+Domain model mô tả những thực thể bền vững mà PADStudio có thể cần làm việc cùng. Nó nên độc lập với UI page, vendor Agent, provider SDK, render engine và ngôn ngữ implementation hiện tại.
+
+Danh sách concept dưới đây là từ vựng chung và giả thuyết thiết kế ban đầu. Không phải project nào cũng cần mọi concept, và chưa cần biến từng concept thành class, bảng dữ liệu hoặc schema trước khi có nhu cầu thực tế.
 
 ## Concept cốt lõi
 

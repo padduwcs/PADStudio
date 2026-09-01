@@ -4,6 +4,8 @@
 
 Render ra file có thể phát là điều kiện cần nhưng chưa đủ. Chất lượng được đánh giá theo delivery promise của project, tài liệu đã cung cấp, direction được chọn và evidence thực tế.
 
+Mô hình chất lượng dưới đây mô tả cách tư duy và mục tiêu hội tụ, không phải bộ metric hoặc gate cố định cho mọi project. Các tiêu chí cụ thể sẽ phụ thuộc loại video, input và mức cam kết mà người dùng chọn.
+
 ## Delivery promise
 
 Trước production, Agent xác định output cam kết là loại gì:

@@ -6,6 +6,10 @@ PADStudio là nền tảng production theo hướng Agent-native. Agent là cont
 
 Không có yêu cầu phải tạo một creative orchestrator thứ hai ở application-level để cạnh tranh với Agent. Service deterministic có thể validate, persist, resume và execute operation, nhưng không quyết định hướng sáng tạo của video.
 
+## Mức độ của kiến trúc
+
+Sơ đồ dưới đây mô tả các trách nhiệm và ranh giới logic cần giữ, không bắt buộc phải tách thành đúng số service, process hoặc package như hình. Cách triển khai cụ thể sẽ được chọn dần khi các lát cắt thực tế cho thấy cần gì.
+
 ## Hình dạng hệ thống
 
 ```text

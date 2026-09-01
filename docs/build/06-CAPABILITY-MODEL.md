@@ -2,7 +2,9 @@
 
 ## Mục đích
 
-Capability model giữ PADStudio mở. Agent hỏi hệ thống có thể làm gì; Agent không giả định một provider, SDK, renderer hoặc ngôn ngữ lập trình cụ thể.
+Capability model là hướng thiết kế để PADStudio có thể mở rộng. Agent hỏi hệ thống có thể làm gì; Agent không nên giả định một provider, SDK, renderer hoặc ngôn ngữ lập trình cụ thể.
+
+Registry, selector, skill, playbook và renderer abstraction là các ý tưởng để giải quyết nhu cầu mở rộng. Chỉ xây phần cần thiết cho capability đang được triển khai; không cần dựng toàn bộ registry hoặc abstraction framework từ trước.
 
 ## Capability và implementation khác nhau thế nào
 

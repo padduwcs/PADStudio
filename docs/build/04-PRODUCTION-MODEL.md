@@ -4,6 +4,8 @@
 
 Production bắt đầu từ một `Input Bundle`, không bắt đầu từ screen hoặc stage bắt buộc. Trước hết Agent xác định người dùng đã cung cấp gì, phần nào đáng tin, phần nào còn thiếu và output mong muốn là gì. Sau đó Agent tạo production graph nhỏ nhất nhưng phù hợp.
 
+Đây là mô hình suy nghĩ chung cho production, không phải pipeline có số bước hoặc thứ tự cố định. Agent có thể bỏ qua, gộp, tách, lặp hoặc bổ sung bước tùy input và mục tiêu của project.
+
 ## Input Bundle
 
 Input bundle có thể chứa bất kỳ tổ hợp nào của:

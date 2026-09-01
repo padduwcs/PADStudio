@@ -4,6 +4,8 @@
 
 Protocol này giữ cho chủ dự án, developer và coding Agent đồng bộ trong quá trình xây dựng hệ thống. Nó tách khỏi runtime instruction mà production Agent dùng để làm video.
 
+Protocol này kiểm soát cách cộng tác, phạm vi và việc kiểm tra; nó không biến mọi ý tưởng trong `docs/build/` thành yêu cầu phải triển khai ngay. Task vẫn cần được chọn theo lộ trình và nhu cầu thực tế.
+
 ## Protocol bắt đầu task
 
 Trước khi đổi code, developer hoặc coding Agent phải:

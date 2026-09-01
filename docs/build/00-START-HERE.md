@@ -15,6 +15,10 @@ Nó trả lời các câu hỏi:
 
 Đây không phải hướng dẫn sử dụng PADStudio để làm một video cụ thể. Phần đó sẽ là một bộ tài liệu runtime riêng.
 
+## Mức độ của bản thiết kế
+
+Đây là bản đồ tư duy và hướng đi chung của dự án, không phải danh sách mọi thứ phải xây ngay. Luồng, ranh giới và nguyên tắc là phần cần giữ; tên concept, schema, API, trạng thái, công nghệ và cách tổ chức code sẽ được hình thành dần từ các lát cắt triển khai thực tế.
+
 ## Mô hình trong một câu
 
 PADStudio là workspace sản xuất video theo hướng Agent-native: Agent quyết định và điều phối production, còn PAD cung cấp các capability có thể khám phá, artifact bền vững, khả năng thực thi, bằng chứng và bề mặt rõ ràng để con người giám sát.

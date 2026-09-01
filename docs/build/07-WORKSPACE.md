@@ -11,6 +11,8 @@ Workspace      project người dùng, media, artifact, run, preview, render
 
 Build documentation thuộc `docs/build/`. Hướng dẫn runtime cho production Agent thuộc khu vực tài liệu runtime riêng. User data không thuộc source repository.
 
+Cấu trúc bên dưới là bản đồ boundary và một đề xuất tổ chức, không phải layout cuối cùng bắt buộc. Khi bắt đầu triển khai, chỉ tạo những thư mục và dữ liệu cần cho lát cắt hiện tại; điều quan trọng là không trộn source code, user data, artifact và file tạm một cách thiếu kiểm soát.
+
 ## Cấu trúc repository khuyến nghị
 
 Đây là bản đồ boundary logic. Ngôn ngữ implementation có thể là TypeScript, Python, ngôn ngữ khác hoặc kết hợp nhiều ngôn ngữ, miễn là boundary vẫn rõ ràng.
