@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+coverage/
+
+# Canonical build blueprint (documentation, not generated build output)
+!docs/build/
+!docs/build/**
+
+# Cache and temporary files
+.cache/
+.vite/
+tmp/
+temp/
+.runtime-tools/
+
+# Environment variables and secrets
+.env
+.pad-studio/
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local runtime data
+/projects/
+**/.staging-*/
+
+# Editor and operating system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
