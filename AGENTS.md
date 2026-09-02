@@ -1,25 +1,24 @@
-# PADStudio — Điểm bắt đầu cho coding Agent
+# PADStudio — hướng dẫn cho coding Agent
 
-Đây là hướng dẫn khởi động ngắn cho Agent hoặc developer làm việc trên codebase. Bản thiết kế định hướng về cách xây dựng hệ thống nằm tại [`docs/build/README.md`](docs/build/README.md) và [`docs/build/00-START-HERE.md`](docs/build/00-START-HERE.md).
+Đọc [`docs/build/PADSTUDIO-DESIGN.md`](docs/build/PADSTUDIO-DESIGN.md) để hiểu PADStudio trước khi thay đổi code.
 
 ## Trước khi thay đổi code
 
-1. Đọc `docs/build/00-START-HERE.md`.
-2. Đọc `docs/build/13-DEVELOPMENT-ROADMAP.md` để biết vị trí của task trong con đường phát triển tổng thể.
-3. Đọc task packet được giao trong `docs/build/tasks/` hoặc yêu cầu owner xác định scope.
-4. Đọc các tài liệu architecture, domain, contract, workspace và quality liên quan.
-5. Kiểm tra code/test hiện có; không suy ra thiết kế chỉ từ code cũ hoặc hội thoại cũ.
-6. Nêu lại mục tiêu, phạm vi, giả định và kế hoạch verification trước khi triển khai.
+1. Đọc `docs/build/PADSTUDIO-DESIGN.md`.
+2. Đọc `docs/build/DEVELOPMENT-PROTOCOL.md`.
+3. Đọc yêu cầu triển khai. Nếu chưa rõ phạm vi, hỏi người phụ trách trước khi bắt đầu.
+4. Kiểm tra code và test liên quan; không đoán thiết kế chỉ từ code cũ hoặc hội thoại cũ.
+5. Nêu lại mục tiêu, phạm vi, giả định và cách kiểm tra trước khi triển khai.
 
 ## Quy tắc bắt buộc
 
-- `docs/build/` là blueprint định hướng chuẩn; runtime documentation là loại tài liệu khác.
-- Mục tiêu, luồng, boundary và nguyên tắc là nền tảng cần giữ. Các concept, field, schema, trạng thái, API, cấu trúc thư mục và provider trong tài liệu chỉ là đề xuất cho đến khi được chốt bằng nhu cầu thực tế.
-- Agent là control plane sáng tạo; PAD cung cấp substrate, capability, artifact, execution và evidence.
-- Input linh hoạt; không ép mọi project đi qua workflow page cố định.
-- Giữ artifact, lineage, decision, run, checkpoint và evidence có thể kiểm tra; không dựa vào conversation memory.
-- Không đưa provider, renderer hoặc UI detail vào core domain.
-- Không âm thầm đổi boundary, contract, invariant, persistence, permission hoặc hướng thiết kế đã được chốt. Nếu cần đổi một quyết định nền tảng, tạo/request ADR; không cần tạo ADR cho mọi thử nghiệm nhỏ.
-- Bảo toàn user work và thay đổi ngoài scope; không dùng reset phá hủy để làm sạch commit.
+- `docs/build/PADSTUDIO-DESIGN.md` là tài liệu định hướng chính. Hướng dẫn runtime cho Agent là loại tài liệu khác.
+- Giữ mục tiêu, ranh giới và nguyên tắc trong bản thiết kế. Chỉ chốt cấu trúc dữ liệu, API, thư mục hay nhà cung cấp khi phần đang xây thực sự cần chúng.
+- Agent chọn việc sáng tạo cần làm. PADStudio giữ dự án, cho phép chạy công cụ và lưu dấu vết của kết quả.
+- Đầu vào và cách làm của mỗi dự án phải linh hoạt; không ép mọi dự án đi qua một màn hình hay chuỗi bước cố định.
+- Giữ được đầu vào, kết quả, quyết định, lịch sử, lần chạy, điểm tiếp tục và dấu vết để có thể kiểm tra lại; không chỉ dựa vào trí nhớ hội thoại.
+- Không để chi tiết của nhà cung cấp, renderer hoặc giao diện quyết định phần lõi của hệ thống.
+- Không tự ý đổi ranh giới, cách lưu dữ liệu, quyền hạn hay hướng thiết kế đã chốt. Nếu cần đổi, dừng và xin người phụ trách xác nhận.
+- Bảo toàn công việc của người dùng và thay đổi ngoài phạm vi; không dùng reset phá hủy để làm sạch commit.
 
-Protocol triển khai, verification, handoff và commit nằm trong [`docs/build/10-DEVELOPMENT-PROTOCOL.md`](docs/build/10-DEVELOPMENT-PROTOCOL.md).
+Protocol triển khai, verification, handoff và commit nằm trong [`docs/build/DEVELOPMENT-PROTOCOL.md`](docs/build/DEVELOPMENT-PROTOCOL.md).
