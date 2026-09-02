@@ -4,7 +4,7 @@ Tài liệu này dành cho developer và coding Agent. Nó hướng dẫn cách 
 
 ## Trước khi thay đổi code
 
-1. Đọc [`PADSTUDIO-DESIGN.md`](PADSTUDIO-DESIGN.md).
+1. Đọc [`PADSTUDIO-DESIGN.md`](PADSTUDIO-DESIGN.md) và phần liên quan trong [`PADSTUDIO-BUILD-OUTLINE.md`](PADSTUDIO-BUILD-OUTLINE.md).
 2. Đọc kỹ yêu cầu: cần làm gì, phần nào không được đụng tới và điều gì chưa rõ.
 3. Kiểm tra code, test và dữ liệu hiện có liên quan.
 4. Trước khi sửa, nêu lại mục tiêu, phạm vi, giả định và cách kiểm tra kết quả.
