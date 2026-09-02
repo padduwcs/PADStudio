@@ -79,4 +79,6 @@ Mỗi phần xây xong cần tạo được một vòng hoàn chỉnh: có đầ
 
 Tên bảng dữ liệu, cấu trúc thư mục, API, trạng thái, mô hình AI, công cụ dựng video và nhà cung cấp dịch vụ chưa cần chốt ở đây. Chỉ chọn chúng khi bắt đầu một phần triển khai cụ thể và khi chúng thực sự cần thiết.
 
-Khi cần dàn ý sâu hơn để bắt đầu một phần hệ thống, đọc [`PADSTUDIO-BUILD-OUTLINE.md`](PADSTUDIO-BUILD-OUTLINE.md). Khi chuẩn bị thay đổi code, đọc [`DEVELOPMENT-PROTOCOL.md`](DEVELOPMENT-PROTOCOL.md).
+Khi cần biết các định hướng đã được chốt trong quá trình phát triển, đọc [PADSTUDIO-CURRENT-DIRECTION.md](PADSTUDIO-CURRENT-DIRECTION.md). Tài liệu này làm rõ trạng thái hiện tại nhưng không thay thế bản thiết kế gốc.
+
+Khi cần dàn ý sâu hơn để bắt đầu một phần hệ thống, đọc [PADSTUDIO-BUILD-OUTLINE.md](PADSTUDIO-BUILD-OUTLINE.md). Khi chuẩn bị thay đổi code, đọc [DEVELOPMENT-PROTOCOL.md](DEVELOPMENT-PROTOCOL.md).

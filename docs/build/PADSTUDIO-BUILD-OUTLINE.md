@@ -4,6 +4,8 @@ Tài liệu này đi sâu hơn [`PADSTUDIO-DESIGN.md`](PADSTUDIO-DESIGN.md). Nó
 
 Mục tiêu là giữ được những gì cần thiết để dự án có thể tiếp tục và kiểm tra lại, nhưng không biến mọi dự án thành một pipeline có các bước cố định.
 
+Trước khi chọn phần cần xây tiếp theo, đọc [`PADSTUDIO-CURRENT-DIRECTION.md`](PADSTUDIO-CURRENT-DIRECTION.md) để biết các định hướng hiện tại đã được chốt. Tài liệu này không thay thế mục tiêu và ranh giới trong bản thiết kế gốc.
+
 ## Bản đồ các phần cần xây
 
 ```mermaid

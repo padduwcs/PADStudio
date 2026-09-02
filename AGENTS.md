@@ -5,11 +5,12 @@
 ## Trước khi thay đổi code
 
 1. Đọc `docs/build/PADSTUDIO-DESIGN.md`.
-2. Đọc phần liên quan trong `docs/build/PADSTUDIO-BUILD-OUTLINE.md`.
-3. Đọc `docs/build/DEVELOPMENT-PROTOCOL.md`.
-4. Đọc yêu cầu triển khai. Nếu chưa rõ phạm vi, hỏi người phụ trách trước khi bắt đầu.
-5. Kiểm tra code và test liên quan; không đoán thiết kế chỉ từ code cũ hoặc hội thoại cũ.
-6. Nêu lại mục tiêu, phạm vi, giả định và cách kiểm tra trước khi triển khai.
+2. Đọc `docs/build/PADSTUDIO-CURRENT-DIRECTION.md` để biết định hướng đã được chốt hiện tại.
+3. Đọc phần liên quan trong `docs/build/PADSTUDIO-BUILD-OUTLINE.md`.
+4. Đọc `docs/build/DEVELOPMENT-PROTOCOL.md`.
+5. Đọc yêu cầu triển khai. Nếu chưa rõ phạm vi, hỏi người phụ trách trước khi bắt đầu.
+6. Kiểm tra code và test liên quan; không đoán thiết kế chỉ từ code cũ hoặc hội thoại cũ.
+7. Nêu lại mục tiêu, phạm vi, giả định và cách kiểm tra trước khi triển khai.
 
 ## Quy tắc bắt buộc
 

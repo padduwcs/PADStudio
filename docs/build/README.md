@@ -2,6 +2,8 @@
 
 Đọc [`PADSTUDIO-DESIGN.md`](PADSTUDIO-DESIGN.md) trước. Đây là tài liệu chính để hiểu PADStudio là gì, một dự án vận hành ra sao và các phần nào cần được xây.
 
+Đọc tiếp [`PADSTUDIO-CURRENT-DIRECTION.md`](PADSTUDIO-CURRENT-DIRECTION.md) để biết các định hướng đã được chốt trong quá trình phát triển. Tài liệu này làm rõ trạng thái hiện tại, không thay thế bản thiết kế gốc.
+
 Đọc tiếp [`PADSTUDIO-BUILD-OUTLINE.md`](PADSTUDIO-BUILD-OUTLINE.md) khi cần dàn ý chi tiết hơn để tự triển khai từng phần của hệ thống.
 
 Khi bắt đầu sửa code, đọc thêm [`DEVELOPMENT-PROTOCOL.md`](DEVELOPMENT-PROTOCOL.md). Tài liệu này hướng dẫn cách thay đổi code an toàn và kiểm tra kết quả.
