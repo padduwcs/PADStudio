@@ -53,7 +53,7 @@ Xem các capability và công cụ thực sự dùng được trên máy:
 npm run tool:list
 ```
 
-Để chạy một công cụ, tạo file request JSON:
+Để chạy một công cụ, chuẩn bị request JSON:
 
 ```json
 {
@@ -66,7 +66,15 @@ npm run tool:list
 }
 ```
 
-Nếu resource là folder, thêm `itemPath` đúng với file bên trong resource. Sau đó chạy:
+Nếu resource là folder, thêm `itemPath` đúng với file bên trong resource. Agent có
+thể truyền JSON qua standard input, không cần tạo file tạm:
+
+```powershell
+$request = '{"capability":"media.inspect","tool":"ffprobe","purpose":"Đọc thông số kỹ thuật","inputs":{"resourceId":"resource-..."}}'
+$request | npm run tool:run -- <project-id> -
+```
+
+Cách truyền đường dẫn tới file request JSON vẫn được hỗ trợ khi cần:
 
 ```powershell
 npm run tool:run -- <project-id> <file-request-json>

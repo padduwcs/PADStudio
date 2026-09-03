@@ -1,20 +1,21 @@
-import { readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createDefaultToolRegistry } from "../execution/default-tool-registry.js";
 import { ToolExecutor } from "../execution/tool-executor.js";
 import { ProjectStore } from "../project/project-store.js";
+import { readToolRequest } from "./tool-request.js";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(currentDirectory, "..", "..", ".padstudio", "projects");
 
 async function main(args) {
-  const [projectId, requestPath] = args;
-  if (!projectId || !requestPath || args.length !== 2) {
-    throw new Error("Cách dùng: npm run tool:run -- <project-id> <file-request-json>");
+  const [projectId, requestSource] = args;
+  if (!projectId || !requestSource || args.length !== 2) {
+    throw new Error(
+      "Cách dùng: <request-json> | npm run tool:run -- <project-id> - hoặc <file-request-json>"
+    );
   }
-  const requestText = await readFile(resolve(requestPath), "utf8");
-  const request = JSON.parse(requestText.replace(/^\uFEFF/, ""));
+  const request = await readToolRequest(requestSource);
   const executor = new ToolExecutor({
     store: new ProjectStore(projectRoot),
     registry: createDefaultToolRegistry()
