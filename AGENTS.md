@@ -25,3 +25,5 @@
 - Bảo toàn công việc của người dùng và thay đổi ngoài phạm vi; không dùng reset phá hủy để làm sạch commit.
 
 Protocol triển khai, verification, handoff và commit nằm trong [`docs/build/DEVELOPMENT-PROTOCOL.md`](docs/build/DEVELOPMENT-PROTOCOL.md).
+
+Khi PADStudio đang chạy và Agent làm việc với một project, đọc thêm [`PADSTUDIO-AGENT-RUNTIME.md`](PADSTUDIO-AGENT-RUNTIME.md). Tài liệu này chỉ hướng dẫn cách Agent làm việc với project hiện tại; không thay thế bản thiết kế.

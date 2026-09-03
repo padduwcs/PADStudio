@@ -20,6 +20,7 @@ temp/
 # Environment variables and secrets
 .env
 .pad-studio/
+.padstudio/
 .env.*
 !.env.example
 

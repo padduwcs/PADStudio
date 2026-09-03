@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PADStudio</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">PADSTUDIO · OBSERVER</p>
+          <h1>Project đang được Agent làm</h1>
+        </div>
+        <p class="agent-status">Chat trong Agent host · Web chỉ quan sát</p>
+      </header>
+
+      <section class="workspace" aria-label="Quan sát project">
+        <aside class="project-pane" aria-label="Danh sách project">
+          <header class="pane-heading">
+            <div>
+              <p class="eyebrow">PROJECT</p>
+              <h2>Đang có</h2>
+            </div>
+            <p>Chọn một project để xem bản tóm tắt mà Agent đã lưu.</p>
+          </header>
+          <nav id="project-list" class="project-list" aria-label="Project"></nav>
+        </aside>
+
+        <article class="observer-pane" aria-label="Tóm tắt project">
+          <header class="pane-heading">
+            <div>
+              <p class="eyebrow">OVERVIEW</p>
+              <h2 id="project-title">Chưa chọn project</h2>
+            </div>
+            <p>Web đọc tệp, không gửi lệnh cho Agent.</p>
+          </header>
+          <pre id="overview" class="overview">Chưa có project nào để quan sát.</pre>
+        </article>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
