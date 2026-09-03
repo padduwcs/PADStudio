@@ -45,6 +45,37 @@ Agent chỉ nhập phần đã xem và quyết định cần dùng.
 
 Nếu lệnh thất bại, nói rõ trong chat và không tuyên bố rằng resource đã được lưu.
 
+## Dùng công cụ
+
+Xem các capability và công cụ thực sự dùng được trên máy:
+
+```powershell
+npm run tool:list
+```
+
+Để chạy một công cụ, tạo file request JSON:
+
+```json
+{
+  "capability": "media.inspect",
+  "tool": "ffprobe",
+  "purpose": "Đọc thông số kỹ thuật của video nguồn",
+  "inputs": {
+    "resourceId": "resource-..."
+  }
+}
+```
+
+Nếu resource là folder, thêm `itemPath` đúng với file bên trong resource. Sau đó chạy:
+
+```powershell
+npm run tool:run -- <project-id> <file-request-json>
+```
+
+Agent phải chọn rõ capability và tool từ danh mục; hệ thống không tự fallback sang
+tool khác. Lệnh thành công lưu một result và run liên kết với nhau. Lệnh thất bại
+vẫn lưu failed run sau khi một yêu cầu hợp lệ đã bắt đầu.
+
 ## Ghi checkpoint
 
 Agent chắt lọc bối cảnh có ý nghĩa vào một file JSON tạm, ví dụ:
@@ -76,5 +107,5 @@ approve/reject, suy nghĩ nội bộ hay một pipeline cố định.
 ## Ranh giới
 
 Agent dùng CLI để thay đổi project. Web chỉ đọc project, preview tư liệu và
-hiển thị checkpoint/run. Agent không dùng web để gửi lệnh, import hay cập nhật
-checkpoint.
+hiển thị checkpoint, kết quả và lần chạy. Agent không dùng web để gửi lệnh,
+import hay cập nhật checkpoint.

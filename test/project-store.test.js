@@ -84,3 +84,12 @@ test("uninitialized folders are ignored and unsafe project ids are rejected", as
     /Tên project không hợp lệ/
   );
 });
+
+test("projects created before results existed still open with an empty result list", async (t) => {
+  const { rootDir, store } = await temporaryStore(t);
+  await store.createProject({ projectId: "legacy-project", title: "Legacy" });
+  await rm(join(rootDir, "legacy-project", "results"), { recursive: true });
+
+  const context = await new ProjectStore(rootDir).readContext("legacy-project");
+  assert.deepEqual(context.results, []);
+});

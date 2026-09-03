@@ -11,6 +11,8 @@
     "project:import": "node src/cli/import-project-input.js",
     "project:checkpoint": "node src/cli/write-project-checkpoint.js",
     "project:context": "node src/cli/read-project-context.js",
+    "tool:list": "node src/cli/list-tools.js",
+    "tool:run": "node src/cli/run-tool.js",
     "test": "node --test"
   },
   "engines": {

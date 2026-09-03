@@ -5,6 +5,7 @@ const elements = {
   projectList: document.querySelector("#project-list"),
   resourceList: document.querySelector("#resource-list"),
   inputPreview: document.querySelector("#input-preview"),
+  resultList: document.querySelector("#result-list"),
   runList: document.querySelector("#run-list")
 };
 
@@ -58,6 +59,44 @@ function formatDate(value) {
     dateStyle: "short",
     timeStyle: "medium"
   }).format(new Date(value));
+}
+
+function formatDuration(seconds) {
+  if (!Number.isFinite(seconds)) return "không rõ";
+  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 2 : 1)} giây`;
+  const minutes = Math.floor(seconds / 60);
+  const remaining = seconds - minutes * 60;
+  return `${minutes}:${remaining.toFixed(0).padStart(2, "0")}`;
+}
+
+function formatBitRate(value) {
+  if (!Number.isFinite(value)) return "không rõ";
+  return value >= 1_000_000
+    ? `${(value / 1_000_000).toFixed(2)} Mbps`
+    : `${Math.round(value / 1000)} kbps`;
+}
+
+function formatRunDuration(milliseconds) {
+  if (!Number.isFinite(milliseconds)) return null;
+  return milliseconds < 1000
+    ? `${Math.round(milliseconds)} ms`
+    : `${(milliseconds / 1000).toFixed(2)} giây`;
+}
+
+function formatCost(cost) {
+  if (!cost || !Number.isFinite(cost.actual)) return null;
+  return cost.actual === 0 ? "Miễn phí" : `${cost.actual.toFixed(4)} ${cost.currency}`;
+}
+
+function labelValue(label, value) {
+  const item = document.createElement("div");
+  item.className = "result-fact";
+  const term = document.createElement("span");
+  term.textContent = label;
+  const detail = document.createElement("strong");
+  detail.textContent = value;
+  item.append(term, detail);
+  return item;
 }
 
 function renderPreview(projectId, item) {
@@ -181,6 +220,138 @@ function renderResources(context) {
   renderPreview(context.project.id, allItems.find((item) => item.path === selectedItemPath));
 }
 
+function streamSummary(stream) {
+  if (stream.type === "video") {
+    return [
+      stream.codec,
+      Number.isFinite(stream.width) && Number.isFinite(stream.height)
+        ? `${stream.width}×${stream.height}`
+        : null,
+      stream.frameRate ? `${stream.frameRate} fps` : null,
+      stream.pixelFormat
+    ].filter(Boolean).join(" · ");
+  }
+  if (stream.type === "audio") {
+    return [
+      stream.codec,
+      Number.isFinite(stream.sampleRate) ? `${stream.sampleRate / 1000} kHz` : null,
+      Number.isFinite(stream.channels) ? `${stream.channels} kênh` : null,
+      stream.channelLayout
+    ].filter(Boolean).join(" · ");
+  }
+  return [stream.type, stream.codec].filter(Boolean).join(" · ") || "Stream khác";
+}
+
+function renderMediaMetadata(result, body) {
+  const media = result.data?.media;
+  if (!media?.format || !Array.isArray(media.streams)) return false;
+
+  const facts = document.createElement("div");
+  facts.className = "result-facts";
+  facts.append(
+    labelValue("Thời lượng", formatDuration(media.format.durationSeconds)),
+    labelValue("Định dạng", media.format.longName || media.format.name || "không rõ"),
+    labelValue("Dung lượng", formatSize(media.format.sizeBytes)),
+    labelValue("Bitrate", formatBitRate(media.format.bitRate))
+  );
+  body.append(facts);
+
+  if (media.streams.length) {
+    const streams = document.createElement("div");
+    streams.className = "stream-list";
+    streams.replaceChildren(...media.streams.map((stream, index) => {
+      const row = document.createElement("div");
+      row.className = "stream-row";
+      const label = document.createElement("strong");
+      label.textContent = stream.type === "video"
+        ? "Video"
+        : stream.type === "audio" ? "Audio" : `Stream ${index + 1}`;
+      const summary = document.createElement("span");
+      summary.textContent = streamSummary(stream);
+      row.append(label, summary);
+      return row;
+    }));
+    body.append(streams);
+  }
+  return true;
+}
+
+function renderRawResult(result, body) {
+  const details = document.createElement("details");
+  details.className = "result-raw";
+  const summary = document.createElement("summary");
+  summary.textContent = "Xem dữ liệu kết quả";
+  const contents = document.createElement("pre");
+  contents.textContent = JSON.stringify(result.data, null, 2);
+  details.append(summary, contents);
+  body.append(details);
+}
+
+function renderResults(context) {
+  const results = Array.isArray(context.results) ? context.results : [];
+  if (!results.length) {
+    elements.resultList.textContent = "Chưa có kết quả nào.";
+    return;
+  }
+
+  const resources = new Map(context.resources.map((resource) => [resource.id, resource]));
+  const runs = new Map(context.runs.map((run) => [run.id, run]));
+  elements.resultList.replaceChildren(...[...results].reverse().map((result) => {
+    const card = document.createElement("article");
+    card.className = "result-card";
+
+    const header = document.createElement("header");
+    const identity = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = result.name;
+    const type = document.createElement("span");
+    type.className = "input-meta";
+    type.textContent = result.type;
+    identity.append(name, type);
+    const verification = document.createElement("span");
+    verification.className = "result-verification";
+    verification.textContent = result.verification?.status === "passed" ? "Đã kiểm tra" : "Chưa rõ";
+    header.append(identity, verification);
+
+    const body = document.createElement("div");
+    body.className = "result-body";
+    if (result.type !== "media.metadata" || !renderMediaMetadata(result, body)) {
+      renderRawResult(result, body);
+    }
+
+    const run = runs.get(result.createdByRun);
+    const sourceNames = result.inputResources
+      .map((id) => resources.get(id)?.name || id)
+      .join(", ");
+    const trace = document.createElement("div");
+    trace.className = "result-trace";
+    trace.append(
+      labelValue("Nguồn", sourceNames || "Không có"),
+      labelValue(
+        "Công cụ",
+        [result.tool?.provider, result.tool?.name, result.tool?.version]
+          .filter(Boolean)
+          .join(" · ") || "không rõ"
+      ),
+      labelValue("Run", run?.purpose || result.createdByRun),
+      labelValue("Tạo lúc", formatDate(result.createdAt))
+    );
+
+    const evidence = document.createElement("details");
+    evidence.className = "result-evidence";
+    const summary = document.createElement("summary");
+    summary.textContent = "Bằng chứng và liên kết";
+    const evidenceText = document.createElement("p");
+    const checks = result.verification?.checks?.join(", ") || "không có";
+    evidenceText.textContent =
+      `Result ${result.id} · Run ${result.createdByRun} · Kiểm tra: ${checks}`;
+    evidence.append(summary, evidenceText);
+
+    card.append(header, body, trace, evidence);
+    return card;
+  }));
+}
+
 function renderRuns(context) {
   if (!context.runs.length) {
     elements.runList.textContent = "Chưa có lần chạy nào.";
@@ -199,7 +370,26 @@ function renderRuns(context) {
     const time = document.createElement("span");
     time.className = "input-meta";
     time.textContent = `${formatDate(run.startedAt)} → ${formatDate(run.finishedAt)}`;
-    card.append(top, time);
+    card.append(top);
+    if (run.purpose) {
+      const purpose = document.createElement("p");
+      purpose.className = "run-purpose";
+      purpose.textContent = run.purpose;
+      card.append(purpose);
+    }
+    const detailParts = [
+      run.tool ? [run.tool.provider, run.tool.name, run.tool.version].filter(Boolean).join(" · ") : null,
+      formatRunDuration(run.durationMs),
+      formatCost(run.cost),
+      run.outputs?.length ? `${run.outputs.length} kết quả` : null
+    ].filter(Boolean);
+    if (detailParts.length) {
+      const details = document.createElement("span");
+      details.className = "input-meta";
+      details.textContent = detailParts.join(" · ");
+      card.append(details);
+    }
+    card.append(time);
     if (run.error) {
       const error = document.createElement("p");
       error.className = "run-error";
@@ -215,6 +405,7 @@ function renderContext(context) {
   elements.projectId.textContent = context.project.id;
   renderCheckpoint(context);
   renderResources(context);
+  renderResults(context);
   renderRuns(context);
 }
 
@@ -223,6 +414,7 @@ function renderEmpty() {
   elements.projectId.textContent = "";
   elements.checkpoint.textContent = "Chưa có project nào để quan sát.";
   elements.resourceList.textContent = "Chưa có tư liệu.";
+  elements.resultList.textContent = "Chưa có kết quả nào.";
   elements.runList.textContent = "Chưa có lần chạy nào.";
   renderPreview("", null);
 }

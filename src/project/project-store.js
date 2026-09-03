@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, readdir, readFile, rename, rm } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { readJson, writeJsonAtomic, writeTextAtomic } from "./atomic-files.js";
 import {
@@ -47,6 +47,23 @@ function stringList(value, label) {
     throw new ProjectStoreError(`${label} phải là danh sách chuỗi không rỗng.`);
   }
   return value.map((item) => item.trim());
+}
+
+function objectValue(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ProjectStoreError(label + " phải là một object.");
+  }
+  return value;
+}
+
+function optionalTool(value) {
+  if (value === null || value === undefined) return null;
+  objectValue(value, "Thông tin công cụ");
+  return {
+    name: requireText(value.name, "Tên công cụ"),
+    version: requireText(value.version, "Phiên bản công cụ"),
+    provider: requireText(value.provider, "Nhà cung cấp công cụ")
+  };
 }
 
 async function directoryInfo(path) {
@@ -104,11 +121,42 @@ function validateRun(run, projectId) {
     run.projectId !== projectId ||
     typeof run.id !== "string" ||
     typeof run.capability !== "string" ||
+    !Array.isArray(run.outputs) ||
     !["in_progress", "completed", "failed"].includes(run.status)
   ) {
     throw new ProjectStoreError(`Run không hợp lệ trong project: ${projectId}`);
   }
   return run;
+}
+
+function validateResult(result, projectId) {
+  if (
+    !result ||
+    result.version !== PROJECT_VERSION ||
+    result.projectId !== projectId ||
+    typeof result.id !== "string" ||
+    typeof result.type !== "string" ||
+    typeof result.name !== "string" ||
+    typeof result.capability !== "string" ||
+    typeof result.createdByRun !== "string" ||
+    !Array.isArray(result.inputResources) ||
+    result.inputResources.some((id) => typeof id !== "string" || !id) ||
+    !result.tool ||
+    typeof result.tool.name !== "string" ||
+    typeof result.tool.version !== "string" ||
+    typeof result.tool.provider !== "string" ||
+    !result.data ||
+    typeof result.data !== "object" ||
+    Array.isArray(result.data) ||
+    !result.verification ||
+    typeof result.verification !== "object" ||
+    Array.isArray(result.verification) ||
+    result.verification.status !== "passed" ||
+    !Array.isArray(result.verification.checks)
+  ) {
+    throw new ProjectStoreError("Kết quả không hợp lệ trong project: " + projectId);
+  }
+  return result;
 }
 
 function validateResource(resource, projectId, projectRoot) {
@@ -176,6 +224,7 @@ export class ProjectStore {
     try {
       await mkdir(join(staging, "inputs"), { recursive: true });
       await mkdir(join(staging, "resources"), { recursive: true });
+      await mkdir(join(staging, "results"), { recursive: true });
       await mkdir(join(staging, "runs"), { recursive: true });
       await writeJsonAtomic(join(staging, "project.json"), {
         version: PROJECT_VERSION,
@@ -245,25 +294,49 @@ export class ProjectStore {
     }
   }
 
-  async startRun(projectId, { capability, inputs = {} }) {
+  async startRun(projectId, {
+    capability,
+    inputs = {},
+    purpose = null,
+    tool = null,
+    estimatedCostUsd = null
+  }) {
     await this.readProject(projectId);
+    objectValue(inputs, "Đầu vào run");
+    if (estimatedCostUsd !== null && (!Number.isFinite(estimatedCostUsd) || estimatedCostUsd < 0)) {
+      throw new ProjectStoreError("Chi phí ước lượng của run không hợp lệ.");
+    }
     const run = {
       version: PROJECT_VERSION,
       id: recordId("run"),
       projectId,
       capability: requireText(capability, "Capability"),
+      purpose: purpose === null ? null : requireText(purpose, "Mục đích run"),
+      tool: optionalTool(tool),
       status: "in_progress",
       startedAt: now(),
       finishedAt: null,
       inputs,
       outputs: [],
-      error: null
+      error: null,
+      durationMs: null,
+      cost: estimatedCostUsd === null ? null : {
+        currency: "USD",
+        estimated: estimatedCostUsd,
+        actual: null
+      }
     };
     await writeJsonAtomic(join(projectDirectory(this.rootDir, projectId), "runs", `${run.id}.json`), run);
     return run;
   }
 
-  async finishRun(projectId, runId, { status, outputs = [], error = null }) {
+  async finishRun(projectId, runId, {
+    status,
+    outputs = [],
+    error = null,
+    durationMs = null,
+    actualCostUsd = null
+  }) {
     if (!["completed", "failed"].includes(status)) {
       throw new ProjectStoreError("Trạng thái kết thúc run không hợp lệ.");
     }
@@ -272,12 +345,24 @@ export class ProjectStore {
     if (run.status !== "in_progress") {
       throw new ProjectStoreError(`Run đã kết thúc: ${runId}`);
     }
+    if (durationMs !== null && (!Number.isFinite(durationMs) || durationMs < 0)) {
+      throw new ProjectStoreError("Thời lượng run không hợp lệ.");
+    }
+    if (actualCostUsd !== null && (!Number.isFinite(actualCostUsd) || actualCostUsd < 0)) {
+      throw new ProjectStoreError("Chi phí thực tế của run không hợp lệ.");
+    }
+    const finishedAt = now();
     const finished = {
       ...run,
       status,
-      finishedAt: now(),
+      finishedAt,
       outputs: stringList(outputs, "Outputs của run"),
-      error: error === null ? null : String(error)
+      error: error === null ? null : String(error),
+      durationMs: durationMs ?? Math.max(0, Date.parse(finishedAt) - Date.parse(run.startedAt)),
+      cost: run.cost === null ? null : {
+        ...run.cost,
+        actual: actualCostUsd
+      }
     };
     await writeJsonAtomic(path, finished);
     return finished;
@@ -342,6 +427,137 @@ export class ProjectStore {
         available: await storedPathAvailable(projectRoot, item.path, "file")
       })))
     })));
+  }
+
+  async resolveInputResourceItem(projectId, { resourceId, itemPath = null }) {
+    const projectRoot = projectDirectory(this.rootDir, projectId);
+    const resources = await this.readResources(projectId);
+    const resource = resources.find((candidate) => candidate.id === resourceId);
+    if (!resource) {
+      throw new ProjectStoreError("Không tìm thấy resource đầu vào: " + resourceId);
+    }
+
+    let item;
+    if (resource.kind === "file") {
+      if (itemPath !== null && itemPath !== resource.items[0]?.relativePath) {
+        throw new ProjectStoreError("Resource " + resourceId + " không chứa file: " + itemPath);
+      }
+      item = resource.items[0];
+    } else {
+      if (typeof itemPath !== "string" || !itemPath.trim()) {
+        throw new ProjectStoreError("Cần chỉ rõ itemPath cho resource folder: " + resourceId);
+      }
+      item = resource.items.find((candidate) => candidate.relativePath === itemPath);
+    }
+    if (!item) {
+      throw new ProjectStoreError("Resource " + resourceId + " không chứa file: " + (itemPath ?? ""));
+    }
+
+    const inputRoot = join(projectRoot, "inputs");
+    const inputInfo = await directoryInfo(inputRoot);
+    if (!inputInfo?.isDirectory() || inputInfo.isSymbolicLink()) {
+      throw new ProjectStoreError("Thư mục inputs không an toàn hoặc không còn tồn tại.");
+    }
+    const candidatePath = resolveProjectPath(projectRoot, item.path);
+    if (!isPathInside(inputRoot, candidatePath)) {
+      throw new ProjectStoreError("File của resource " + resourceId + " phải nằm trong inputs.");
+    }
+    try {
+      const [resolvedInputRoot, resolvedFile] = await Promise.all([
+        realpath(inputRoot),
+        realpath(candidatePath)
+      ]);
+      const info = await lstat(candidatePath);
+      if (info.isSymbolicLink() || !info.isFile() || !isPathInside(resolvedInputRoot, resolvedFile)) {
+        throw new ProjectStoreError(
+          "File của resource " + resourceId + " không an toàn hoặc không còn tồn tại."
+        );
+      }
+      return {
+        resourceId: resource.id,
+        resourceName: resource.name,
+        itemPath: item.relativePath,
+        itemName: item.name,
+        mediaType: item.mediaType,
+        filePath: resolvedFile
+      };
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        throw new ProjectStoreError("File của resource " + resourceId + " không còn tồn tại.");
+      }
+      throw error;
+    }
+  }
+
+  async addResult(projectId, {
+    runId,
+    type,
+    name,
+    capability,
+    inputResources,
+    tool,
+    data,
+    verification
+  }) {
+    const projectRoot = projectDirectory(this.rootDir, projectId);
+    const run = await this.readRun(projectId, runId);
+    if (run.status !== "in_progress") {
+      throw new ProjectStoreError("Không thể thêm kết quả vào run đã kết thúc: " + runId);
+    }
+    const normalizedCapability = requireText(capability, "Capability của kết quả");
+    const normalizedTool = optionalTool(tool);
+    if (run.capability !== normalizedCapability) {
+      throw new ProjectStoreError("Capability của kết quả không khớp với run.");
+    }
+    if (
+      !run.tool ||
+      run.tool.name !== normalizedTool?.name ||
+      run.tool.version !== normalizedTool?.version ||
+      run.tool.provider !== normalizedTool?.provider
+    ) {
+      throw new ProjectStoreError("Công cụ của kết quả không khớp với run.");
+    }
+    const resourceIds = new Set((await this.readResources(projectId)).map((resource) => resource.id));
+    const normalizedInputs = stringList(inputResources, "Resource đầu vào của kết quả");
+    const missing = normalizedInputs.filter((id) => !resourceIds.has(id));
+    if (missing.length) {
+      throw new ProjectStoreError("Kết quả tham chiếu resource không tồn tại: " + missing.join(", "));
+    }
+    const result = {
+      version: PROJECT_VERSION,
+      id: recordId("result"),
+      projectId,
+      type: requireText(type, "Loại kết quả"),
+      name: requireText(name, "Tên kết quả"),
+      capability: normalizedCapability,
+      inputResources: normalizedInputs,
+      tool: normalizedTool,
+      data: objectValue(data, "Dữ liệu kết quả"),
+      verification: objectValue(verification, "Kiểm tra kết quả"),
+      createdAt: now(),
+      createdByRun: requireText(runId, "Run tạo kết quả")
+    };
+    validateResult(result, projectId);
+    await writeJsonAtomic(join(projectRoot, "results", result.id + ".json"), result);
+    return result;
+  }
+
+  async discardResult(projectId, resultId, runId) {
+    const projectRoot = projectDirectory(this.rootDir, projectId);
+    const path = join(projectRoot, "results", requireText(resultId, "Result id") + ".json");
+    const result = validateResult(await readJson(path), projectId);
+    if (result.createdByRun !== runId) {
+      throw new ProjectStoreError("Run " + runId + " không tạo kết quả " + resultId + ".");
+    }
+    await rm(path, { force: true });
+  }
+
+  async readResults(projectId) {
+    await this.readProject(projectId);
+    const results = await readRecords(join(projectDirectory(this.rootDir, projectId), "results"));
+    return results
+      .map((result) => validateResult(result, projectId))
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   }
 
   async readRuns(projectId) {
@@ -425,13 +641,14 @@ export class ProjectStore {
   }
 
   async readContext(projectId) {
-    const [project, checkpoint, resources, runs, overview] = await Promise.all([
+    const [project, checkpoint, resources, results, runs, overview] = await Promise.all([
       this.readProject(projectId),
       this.readCheckpoint(projectId),
       this.readResources(projectId),
+      this.readResults(projectId),
       this.readRuns(projectId),
       this.readOverview(projectId)
     ]);
-    return { project, checkpoint, resources, runs, overview };
+    return { project, checkpoint, resources, results, runs, overview };
   }
 }

@@ -90,6 +90,7 @@ test("observer endpoints expose context and serve registered byte ranges", async
   const { port } = server.address();
   const pageResponse = await fetch(`http://127.0.0.1:${port}/`);
   const appResponse = await fetch(`http://127.0.0.1:${port}/app.js`);
+  const stylesResponse = await fetch(`http://127.0.0.1:${port}/styles.css`);
   const listResponse = await fetch(`http://127.0.0.1:${port}/api/projects`);
   const listBody = await listResponse.json();
   const contextResponse = await fetch(`http://127.0.0.1:${port}/api/projects/coffee-video`);
@@ -100,9 +101,15 @@ test("observer endpoints expose context and serve registered byte ranges", async
   });
 
   assert.equal(pageResponse.status, 200);
-  assert.match(await pageResponse.text(), /id="checkpoint"/);
+  const pageBody = await pageResponse.text();
+  assert.match(pageBody, /id="checkpoint"/);
+  assert.match(pageBody, /id="result-list"/);
   assert.equal(appResponse.status, 200);
-  assert.match(await appResponse.text(), /renderResources/);
+  const appBody = await appResponse.text();
+  assert.match(appBody, /renderResources/);
+  assert.match(appBody, /renderResults/);
+  assert.equal(stylesResponse.status, 200);
+  assert.match(await stylesResponse.text(), /\.result-card/);
   assert.equal(listResponse.status, 200);
   assert.deepEqual(listBody.projects.map((project) => project.id), ["coffee-video"]);
   assert.equal(contextResponse.status, 200);
@@ -113,6 +120,82 @@ test("observer endpoints expose context and serve registered byte ranges", async
   assert.equal(rangeResponse.status, 206);
   assert.equal(rangeResponse.headers.get("content-range"), `bytes 0-5/${sourceBytes.length}`);
   assert.deepEqual(new Uint8Array(await rangeResponse.arrayBuffer()), sourceBytes.slice(0, 6));
+});
+
+test("observer API exposes a result with its input, tool and run trace", async (t) => {
+  const workspace = await temporaryDirectory(t);
+  const rootDir = join(workspace, "projects");
+  const sourcePath = join(workspace, "clip.mp4");
+  await writeFile(sourcePath, "test fixture", "utf8");
+  const store = new ProjectStore(rootDir);
+  await store.createProject({ projectId: "result-project", title: "Result project" });
+  const imported = await importProjectInput({
+    rootDir,
+    projectId: "result-project",
+    sourcePath
+  });
+  const tool = { name: "ffprobe", version: "1.0.0", provider: "FFmpeg" };
+  const run = await store.startRun("result-project", {
+    capability: "media.inspect",
+    purpose: "Đọc thông số video nguồn",
+    tool,
+    inputs: { resourceId: imported.resourceId },
+    estimatedCostUsd: 0
+  });
+  const result = await store.addResult("result-project", {
+    runId: run.id,
+    type: "media.metadata",
+    name: "Metadata: clip.mp4",
+    capability: "media.inspect",
+    inputResources: [imported.resourceId],
+    tool,
+    data: {
+      source: {
+        resourceId: imported.resourceId,
+        itemPath: "clip.mp4",
+        itemName: "clip.mp4",
+        mediaType: "video"
+      },
+      media: {
+        format: {
+          name: "mov,mp4",
+          durationSeconds: 3.5,
+          sizeBytes: 2048,
+          bitRate: 4681
+        },
+        streams: [{ index: 0, type: "video", codec: "h264", width: 1280, height: 720 }]
+      }
+    },
+    verification: {
+      status: "passed",
+      checks: ["ffprobe_exit_0", "valid_json"]
+    }
+  });
+  await store.finishRun("result-project", run.id, {
+    status: "completed",
+    outputs: [result.id],
+    durationMs: 25,
+    actualCostUsd: 0
+  });
+
+  const server = createPadStudioServer({ reader: new ProjectReader(rootDir) });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const response = await fetch(
+    `http://127.0.0.1:${server.address().port}/api/projects/result-project`
+  );
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.context.results.length, 1);
+  assert.equal(body.context.results[0].id, result.id);
+  assert.deepEqual(body.context.results[0].inputResources, [imported.resourceId]);
+  assert.equal(body.context.results[0].createdByRun, run.id);
+  assert.deepEqual(
+    body.context.runs.find((candidate) => candidate.id === run.id).outputs,
+    [result.id]
+  );
+  assert.equal(body.context.results[0].data.media.streams[0].codec, "h264");
 });
 
 test("web server exposes no project mutation or chat endpoint", async (t) => {
