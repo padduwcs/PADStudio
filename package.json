@@ -5,9 +5,12 @@
   "type": "module",
   "description": "A small, agent-led video project prototype.",
   "scripts": {
-    "dev": "node src/server.js",
-    "start": "node src/server.js",
-    "project:import": "node src/import-project-input.js",
+    "dev": "node src/web/server.js",
+    "start": "node src/web/server.js",
+    "project:create": "node src/cli/create-project.js",
+    "project:import": "node src/cli/import-project-input.js",
+    "project:checkpoint": "node src/cli/write-project-checkpoint.js",
+    "project:context": "node src/cli/read-project-context.js",
     "test": "node --test"
   },
   "engines": {

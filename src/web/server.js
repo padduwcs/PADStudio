@@ -4,10 +4,10 @@ import { readFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ProjectInputNotFoundError, ProjectNotFoundError, ProjectReader } from "./project-reader.js";
-import { ProjectPathError } from "./project-paths.js";
+import { ProjectPathError } from "../project/project-paths.js";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
-const applicationRoot = join(currentDirectory, "..");
+const applicationRoot = join(currentDirectory, "..", "..");
 const uiDirectory = join(applicationRoot, "ui");
 const projectRoot = join(applicationRoot, ".padstudio", "projects");
 
@@ -116,7 +116,7 @@ export function createPadStudioServer({ reader }) {
       const projectMatch = /^\/api\/projects\/(.+)$/.exec(url.pathname);
       if (request.method === "GET" && projectMatch) {
         const projectId = decodeURIComponent(projectMatch[1]);
-        return sendJson(response, 200, { project: await reader.readProject(projectId) });
+        return sendJson(response, 200, { context: await reader.readProject(projectId) });
       }
 
       const inputMatch = /^\/project-inputs\/([^/]+)\/(.+)$/.exec(url.pathname);

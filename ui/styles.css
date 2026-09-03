@@ -111,6 +111,8 @@ h3 {
 }
 
 .project-button {
+  display: grid;
+  gap: 0.25rem;
   width: 100%;
   padding: 0.75rem 0.9rem;
   border: 1px solid var(--line);
@@ -128,7 +130,7 @@ h3 {
   background: rgba(94, 234, 212, 0.08);
 }
 
-.overview {
+.context-card {
   min-height: 280px;
   margin: 1.5rem 0 0;
   padding: 1.25rem;
@@ -138,7 +140,26 @@ h3 {
   color: var(--text);
   font: inherit;
   line-height: 1.7;
-  white-space: pre-wrap;
+}
+
+.project-id {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.context-goal {
+  font-size: 1.05rem;
+}
+
+.context-group + .context-group {
+  margin-top: 1rem;
+}
+
+.context-group ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+  color: var(--muted);
 }
 
 .inputs-section {
@@ -163,11 +184,58 @@ h3 {
   text-align: right;
 }
 
-.input-list {
+.resource-list,
+.run-list {
   display: grid;
   gap: 0.5rem;
   margin-top: 1rem;
   color: var(--muted);
+}
+
+.resource-card,
+.run-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: rgba(31, 41, 55, 0.35);
+}
+
+.resource-card > header,
+.run-card > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.resource-items {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.empty-note,
+.run-error {
+  margin: 0;
+  color: var(--muted);
+}
+
+.run-status {
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.status-completed {
+  color: var(--accent);
+}
+
+.status-failed,
+.run-error {
+  color: #fca5a5;
+}
+
+.status-in_progress {
+  color: #fde68a;
 }
 
 .input-button {
@@ -188,6 +256,11 @@ h3 {
 .input-button.is-active {
   border-color: var(--accent);
   background: rgba(94, 234, 212, 0.08);
+}
+
+.input-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .input-name {

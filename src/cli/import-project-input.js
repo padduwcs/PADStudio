@@ -1,9 +1,9 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { importProjectInput } from "./project-importer.js";
+import { importProjectInput } from "../resources/project-importer.js";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
-const projectRoot = join(currentDirectory, "..", ".padstudio", "projects");
+const projectRoot = join(currentDirectory, "..", "..", ".padstudio", "projects");
 
 async function main(args) {
   const [projectId, sourcePath] = args;

@@ -1,21 +1,80 @@
 # PADStudio — quy ước tạm thời cho Agent host
 
-Trong prototype này, chat nằm trong Agent host mà người dùng đang dùng. Web PADStudio chỉ đọc project local; nó không gửi lệnh cho Agent.
+Trong prototype này, chat nằm trong Agent host mà người dùng đang dùng. Web
+PADStudio chỉ quan sát project local; nó không gửi lệnh cho Agent.
 
-## Project đang làm
+## Bắt đầu hoặc tiếp tục project
 
-Mỗi project là một thư mục trong `.padstudio/projects/`. Agent tự chọn hoặc tạo thư mục project khi người dùng bắt đầu một project mới. Trước khi làm việc, đọc các tệp đang có trong thư mục đó.
+Mỗi project hợp lệ là một thư mục trong `.padstudio/projects/` có
+`project.json`. Khi bắt đầu project mới, tạo rõ danh tính:
 
-Khi người dùng upload file hoặc folder trong chat và Agent có đường dẫn local thật, nhập ngay vào project bằng:
+```powershell
+npm run project:create -- <project-id> "<tiêu đề>"
+```
+
+Trước khi tiếp tục một project, đọc context:
+
+```powershell
+npm run project:context -- <project-id>
+```
+
+Không suy luận trạng thái chỉ từ tên file hoặc trí nhớ cuộc chat.
+
+## Nhập tư liệu
+
+Khi người dùng upload file/folder trong chat và Agent có đường dẫn local thật:
 
 ```powershell
 npm run project:import -- <project-id> <file-hoặc-folder-nguồn>
 ```
 
-Lệnh này sao chép nguồn vào `inputs/`, giữ nguyên nguồn gốc và không ghi đè file đã có. Tư liệu chỉ xuất hiện trong `inputs/` sau khi sao chép hoàn tất; nếu có lỗi, Agent nói rõ trong chat và không được nói rằng tư liệu đã được lưu. Với path hoặc URL bên ngoài, Agent chỉ nhập phần đã xem và quyết định cần dùng. Nếu Agent host không cung cấp path local, nói rõ trong chat.
+Nếu project chưa tồn tại, lệnh import tạo project với tiêu đề suy ra từ id.
+Nên dùng `project:create` trước khi cần tiêu đề chính xác.
 
-Agent duy trì `overview.md` ngắn gọn khi có thay đổi có ý nghĩa. Đây là bản tóm tắt để Agent khác và web hiểu project hiện tại, không phải schema cố định hay lịch sử hội thoại. Nội dung cần giữ các sự thật còn hiệu lực: mục tiêu/ràng buộc, tư liệu hoặc kết quả đã chọn, quyết định quan trọng, và điều đang dở hoặc đang chờ người dùng nếu có. Không lập kế hoạch từ tên file: khi sẽ dựa vào một ảnh, audio hoặc video, Agent phải xem hoặc phân tích file thật trước.
+Import:
 
-Không lưu transcript chat, chuỗi approve/reject, suy nghĩ nội bộ hoặc kế hoạch cố định chỉ để ghi nhớ. Không ghi một việc chưa xảy ra như thể đã hoàn thành. Tệp kết quả, tư liệu và bằng chứng thật vẫn được giữ riêng trong project khi chúng xuất hiện.
+- không sửa nguồn;
+- không ghi đè file đã có;
+- từ chối symbolic link, junction không an toàn và đường dẫn chồng lên project;
+- chỉ tạo resource sau khi bản sao hoàn chỉnh đã vào `inputs/`;
+- luôn giữ run thành công hoặc thất bại khi yêu cầu import hợp lệ đã bắt đầu.
 
-Web hiển thị nội dung `overview.md` và tư liệu trong `inputs/` nếu chúng có mặt. Agent không dùng web để gửi lệnh hay thay đổi project.
+Folder được ghi là một resource; các file bên trong là items của resource đó,
+không bị hiểu thành nhiều lần import độc lập. Với path hoặc URL bên ngoài,
+Agent chỉ nhập phần đã xem và quyết định cần dùng.
+
+Nếu lệnh thất bại, nói rõ trong chat và không tuyên bố rằng resource đã được lưu.
+
+## Ghi checkpoint
+
+Agent chắt lọc bối cảnh có ý nghĩa vào một file JSON tạm, ví dụ:
+
+```json
+{
+  "goal": "Video giới thiệu quán cà phê, dài 30 giây",
+  "constraints": ["Tông ấm", "Không dùng nhạc có bản quyền"],
+  "selectedResources": ["resource-..."],
+  "pending": ["Chờ người dùng chọn giọng đọc"],
+  "next": "Phân tích video nguồn"
+}
+```
+
+Sau đó ghi vào project:
+
+```powershell
+npm run project:checkpoint -- <project-id> <file-json>
+```
+
+`selectedResources` chỉ được tham chiếu resource đang tồn tại.
+`next` là quyết định của Agent, không do PADStudio tự suy ra.
+`overview.md` được sinh lại từ checkpoint để con người đọc nhanh; không sửa
+file này thay cho checkpoint.
+
+Checkpoint giữ các sự thật còn hiệu lực, không giữ full transcript, chuỗi
+approve/reject, suy nghĩ nội bộ hay một pipeline cố định.
+
+## Ranh giới
+
+Agent dùng CLI để thay đổi project. Web chỉ đọc project, preview tư liệu và
+hiển thị checkpoint/run. Agent không dùng web để gửi lệnh, import hay cập nhật
+checkpoint.
