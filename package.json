@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "node src/server.js",
     "start": "node src/server.js",
+    "project:import": "node src/import-project-input.js",
     "test": "node --test"
   },
   "engines": {

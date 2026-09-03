@@ -1,8 +1,10 @@
+import { createReadStream } from "node:fs";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ProjectNotFoundError, ProjectReader } from "./project-reader.js";
+import { ProjectInputNotFoundError, ProjectNotFoundError, ProjectReader } from "./project-reader.js";
+import { ProjectPathError } from "./project-paths.js";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const applicationRoot = join(currentDirectory, "..");
@@ -15,9 +17,91 @@ const staticFiles = {
   "/styles.css": { file: "styles.css", type: "text/css; charset=utf-8" }
 };
 
+const previewContentTypes = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".avif": "image/avif",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".m4v": "video/x-m4v",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".m4a": "audio/mp4",
+  ".ogg": "audio/ogg",
+  ".aac": "audio/aac",
+  ".flac": "audio/flac"
+};
+
 function sendJson(response, status, value) {
   response.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   response.end(JSON.stringify(value));
+}
+
+function contentType(filePath) {
+  return previewContentTypes[extname(filePath).toLowerCase()] || "application/octet-stream";
+}
+
+function sendInputFile(request, response, input) {
+  if (input.size === 0) {
+    response.writeHead(200, {
+      "Accept-Ranges": "bytes",
+      "Content-Disposition": "inline",
+      "Content-Length": 0,
+      "Content-Type": contentType(input.filePath)
+    });
+    return response.end();
+  }
+
+  const range = request.headers.range;
+  const headers = {
+    "Accept-Ranges": "bytes",
+    "Content-Type": contentType(input.filePath),
+    "Content-Disposition": "inline"
+  };
+
+  let start = 0;
+  let end = input.size - 1;
+  let status = 200;
+
+  if (range) {
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+    if (!match) {
+      response.writeHead(416, { "Content-Range": `bytes */${input.size}` });
+      return response.end();
+    }
+
+    const [, requestedStart, requestedEnd] = match;
+    if (!requestedStart) {
+      const suffixLength = Number(requestedEnd);
+      if (!Number.isInteger(suffixLength) || suffixLength <= 0) {
+        response.writeHead(416, { "Content-Range": `bytes */${input.size}` });
+        return response.end();
+      }
+      start = Math.max(input.size - suffixLength, 0);
+      end = input.size - 1;
+    } else {
+      start = Number(requestedStart);
+      end = requestedEnd ? Math.min(Number(requestedEnd), input.size - 1) : input.size - 1;
+    }
+
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start > end || start >= input.size) {
+      response.writeHead(416, { "Content-Range": `bytes */${input.size}` });
+      return response.end();
+    }
+
+    status = 206;
+    headers["Content-Range"] = `bytes ${start}-${end}/${input.size}`;
+  }
+
+  headers["Content-Length"] = end - start + 1;
+  response.writeHead(status, headers);
+  const stream = createReadStream(input.filePath, { start, end });
+  stream.on("error", () => response.destroy());
+  stream.pipe(response);
 }
 
 export function createPadStudioServer({ reader }) {
@@ -32,7 +116,14 @@ export function createPadStudioServer({ reader }) {
       const projectMatch = /^\/api\/projects\/(.+)$/.exec(url.pathname);
       if (request.method === "GET" && projectMatch) {
         const projectId = decodeURIComponent(projectMatch[1]);
-        return sendJson(response, 200, { project: await reader.readOverview(projectId) });
+        return sendJson(response, 200, { project: await reader.readProject(projectId) });
+      }
+
+      const inputMatch = /^\/project-inputs\/([^/]+)\/(.+)$/.exec(url.pathname);
+      if (request.method === "GET" && inputMatch) {
+        const projectId = decodeURIComponent(inputMatch[1]);
+        const inputPath = decodeURIComponent(inputMatch[2]);
+        return sendInputFile(request, response, await reader.readInputFile(projectId, inputPath));
       }
 
       if (request.method === "GET" && staticFiles[url.pathname]) {
@@ -45,7 +136,11 @@ export function createPadStudioServer({ reader }) {
       return sendJson(response, 404, { error: "Không tìm thấy." });
     } catch (error) {
       console.error(error);
-      if (error instanceof ProjectNotFoundError) {
+      if (
+        error instanceof ProjectNotFoundError ||
+        error instanceof ProjectInputNotFoundError ||
+        error instanceof ProjectPathError
+      ) {
         return sendJson(response, 404, { error: error.message });
       }
       return sendJson(response, 500, { error: error.message || "Đã có lỗi không xác định." });

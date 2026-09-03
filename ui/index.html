@@ -28,7 +28,7 @@
           <nav id="project-list" class="project-list" aria-label="Project"></nav>
         </aside>
 
-        <article class="observer-pane" aria-label="Tóm tắt project">
+        <article class="observer-pane" aria-label="Nội dung project">
           <header class="pane-heading">
             <div>
               <p class="eyebrow">OVERVIEW</p>
@@ -37,6 +37,18 @@
             <p>Web đọc tệp, không gửi lệnh cho Agent.</p>
           </header>
           <pre id="overview" class="overview">Chưa có project nào để quan sát.</pre>
+
+          <section class="inputs-section" aria-labelledby="inputs-heading">
+            <header class="section-heading">
+              <div>
+                <p class="eyebrow">INPUTS</p>
+                <h3 id="inputs-heading">Tư liệu đầu vào</h3>
+              </div>
+              <p>Được Agent lưu từ chat; web chỉ xem.</p>
+            </header>
+            <div id="input-list" class="input-list"></div>
+            <div id="input-preview" class="input-preview">Chọn tư liệu để xem preview.</div>
+          </section>
         </article>
       </section>
     </main>
