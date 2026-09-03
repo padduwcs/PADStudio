@@ -287,6 +287,58 @@ function renderRawResult(result, body) {
   body.append(details);
 }
 
+const decisionLabels = {
+  accepted: "Đã chấp nhận",
+  changes_requested: "Cần sửa",
+  rejected: "Đã loại"
+};
+
+function renderResultDecision(decisions) {
+  const section = document.createElement("section");
+  section.className = "result-decision";
+  if (!decisions.length) {
+    section.classList.add("is-undecided");
+    const status = document.createElement("strong");
+    status.textContent = "Chưa có quyết định";
+    const hint = document.createElement("span");
+    hint.textContent = "Phản hồi với Agent trong chat khi kết quả này cần được chọn hoặc sửa.";
+    section.append(status, hint);
+    return section;
+  }
+
+  const latest = decisions.at(-1);
+  section.classList.add(`is-${latest.outcome}`);
+  const heading = document.createElement("div");
+  const status = document.createElement("strong");
+  status.textContent = decisionLabels[latest.outcome] || latest.outcome;
+  const time = document.createElement("span");
+  time.textContent = formatDate(latest.createdAt);
+  heading.append(status, time);
+  section.append(heading);
+  if (latest.note) {
+    const note = document.createElement("p");
+    note.textContent = latest.note;
+    section.append(note);
+  }
+
+  if (decisions.length > 1) {
+    const history = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = `Lịch sử quyết định (${decisions.length})`;
+    const list = document.createElement("ol");
+    list.append(...[...decisions].reverse().map((decision) => {
+      const item = document.createElement("li");
+      const label = decisionLabels[decision.outcome] || decision.outcome;
+      item.textContent = `${formatDate(decision.createdAt)} · ${label}`;
+      if (decision.note) item.textContent += ` — ${decision.note}`;
+      return item;
+    }));
+    history.append(summary, list);
+    section.append(history);
+  }
+  return section;
+}
+
 function renderResults(context) {
   const results = Array.isArray(context.results) ? context.results : [];
   if (!results.length) {
@@ -296,6 +348,12 @@ function renderResults(context) {
 
   const resources = new Map(context.resources.map((resource) => [resource.id, resource]));
   const runs = new Map(context.runs.map((run) => [run.id, run]));
+  const decisionsByResult = new Map();
+  for (const decision of Array.isArray(context.decisions) ? context.decisions : []) {
+    const decisions = decisionsByResult.get(decision.resultId) || [];
+    decisions.push(decision);
+    decisionsByResult.set(decision.resultId, decisions);
+  }
   elements.resultList.replaceChildren(...[...results].reverse().map((result) => {
     const card = document.createElement("article");
     card.className = "result-card";
@@ -347,7 +405,13 @@ function renderResults(context) {
       `Result ${result.id} · Run ${result.createdByRun} · Kiểm tra: ${checks}`;
     evidence.append(summary, evidenceText);
 
-    card.append(header, body, trace, evidence);
+    card.append(
+      header,
+      body,
+      renderResultDecision(decisionsByResult.get(result.id) || []),
+      trace,
+      evidence
+    );
     return card;
   }));
 }

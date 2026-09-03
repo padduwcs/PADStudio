@@ -60,7 +60,7 @@ test("import preserves sources and records grouped resources and completed runs"
   );
   assert.deepEqual(
     (await readdir(join(projectRoot, "coffee-video"))).sort(),
-    ["inputs", "project.json", "resources", "results", "runs"]
+    ["decisions", "inputs", "project.json", "resources", "results", "runs"]
   );
   assert.equal(
     (await readdir(join(projectRoot, "coffee-video"))).some((name) => name.startsWith(".import-")),

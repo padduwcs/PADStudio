@@ -159,6 +159,35 @@ function validateResult(result, projectId) {
   return result;
 }
 
+function validateDecision(decision, projectId) {
+  if (
+    !decision ||
+    decision.version !== PROJECT_VERSION ||
+    decision.projectId !== projectId ||
+    typeof decision.id !== "string" ||
+    typeof decision.resultId !== "string" ||
+    !["accepted", "changes_requested", "rejected"].includes(decision.outcome) ||
+    !(decision.note === null || typeof decision.note === "string") ||
+    decision.decidedBy !== "user" ||
+    typeof decision.createdAt !== "string" ||
+    !Number.isFinite(Date.parse(decision.createdAt))
+  ) {
+    throw new ProjectStoreError("Quyết định không hợp lệ trong project: " + projectId);
+  }
+  if (decision.outcome === "changes_requested" && !decision.note?.trim()) {
+    throw new ProjectStoreError("Quyết định yêu cầu sửa phải có phản hồi.");
+  }
+  return decision;
+}
+
+function resultReference(value) {
+  const resultId = requireText(value, "Result id");
+  if (!/^result-[a-z0-9-]+$/i.test(resultId)) {
+    throw new ProjectStoreError("Result id không hợp lệ.");
+  }
+  return resultId;
+}
+
 function validateResource(resource, projectId, projectRoot) {
   if (
     !resource ||
@@ -225,6 +254,7 @@ export class ProjectStore {
       await mkdir(join(staging, "inputs"), { recursive: true });
       await mkdir(join(staging, "resources"), { recursive: true });
       await mkdir(join(staging, "results"), { recursive: true });
+      await mkdir(join(staging, "decisions"), { recursive: true });
       await mkdir(join(staging, "runs"), { recursive: true });
       await writeJsonAtomic(join(staging, "project.json"), {
         version: PROJECT_VERSION,
@@ -544,7 +574,8 @@ export class ProjectStore {
 
   async discardResult(projectId, resultId, runId) {
     const projectRoot = projectDirectory(this.rootDir, projectId);
-    const path = join(projectRoot, "results", requireText(resultId, "Result id") + ".json");
+    const normalizedResultId = resultReference(resultId);
+    const path = join(projectRoot, "results", normalizedResultId + ".json");
     const result = validateResult(await readJson(path), projectId);
     if (result.createdByRun !== runId) {
       throw new ProjectStoreError("Run " + runId + " không tạo kết quả " + resultId + ".");
@@ -552,11 +583,81 @@ export class ProjectStore {
     await rm(path, { force: true });
   }
 
+  async readResult(projectId, resultId) {
+    await this.readProject(projectId);
+    const normalizedResultId = resultReference(resultId);
+    try {
+      return validateResult(
+        await readJson(
+          join(projectDirectory(this.rootDir, projectId), "results", normalizedResultId + ".json")
+        ),
+        projectId
+      );
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        throw new ProjectStoreError("Không tìm thấy result trong project: " + normalizedResultId);
+      }
+      throw error;
+    }
+  }
+
   async readResults(projectId) {
     await this.readProject(projectId);
     const results = await readRecords(join(projectDirectory(this.rootDir, projectId), "results"));
     return results
       .map((result) => validateResult(result, projectId))
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+  }
+
+  async recordDecision(projectId, value) {
+    objectValue(value, "Nội dung quyết định");
+    const allowedFields = new Set(["resultId", "outcome", "note"]);
+    const unknownFields = Object.keys(value).filter((key) => !allowedFields.has(key));
+    if (unknownFields.length) {
+      throw new ProjectStoreError(
+        "Quyết định chứa field không được hỗ trợ: " + unknownFields.join(", ")
+      );
+    }
+    const resultId = resultReference(value.resultId);
+    await this.readResult(projectId, resultId);
+    const outcome = requireText(value.outcome, "Kết quả quyết định");
+    if (!["accepted", "changes_requested", "rejected"].includes(outcome)) {
+      throw new ProjectStoreError("Kết quả quyết định không được hỗ trợ: " + outcome);
+    }
+    const note = value.note === null || value.note === undefined
+      ? null
+      : requireText(value.note, "Phản hồi quyết định");
+    if (outcome === "changes_requested" && note === null) {
+      throw new ProjectStoreError("Quyết định yêu cầu sửa phải có phản hồi.");
+    }
+    const existingDecisions = await this.readDecisions(projectId);
+    const latestTimestamp = existingDecisions.reduce(
+      (latest, decision) => Math.max(latest, Date.parse(decision.createdAt)),
+      0
+    );
+    const decision = {
+      version: PROJECT_VERSION,
+      id: recordId("decision"),
+      projectId,
+      resultId,
+      outcome,
+      note,
+      decidedBy: "user",
+      createdAt: new Date(Math.max(Date.now(), latestTimestamp + 1)).toISOString()
+    };
+    validateDecision(decision, projectId);
+    await writeJsonAtomic(
+      join(projectDirectory(this.rootDir, projectId), "decisions", decision.id + ".json"),
+      decision
+    );
+    return decision;
+  }
+
+  async readDecisions(projectId) {
+    await this.readProject(projectId);
+    const decisions = await readRecords(join(projectDirectory(this.rootDir, projectId), "decisions"));
+    return decisions
+      .map((decision) => validateDecision(decision, projectId))
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   }
 
@@ -641,14 +742,15 @@ export class ProjectStore {
   }
 
   async readContext(projectId) {
-    const [project, checkpoint, resources, results, runs, overview] = await Promise.all([
+    const [project, checkpoint, resources, results, decisions, runs, overview] = await Promise.all([
       this.readProject(projectId),
       this.readCheckpoint(projectId),
       this.readResources(projectId),
       this.readResults(projectId),
+      this.readDecisions(projectId),
       this.readRuns(projectId),
       this.readOverview(projectId)
     ]);
-    return { project, checkpoint, resources, results, runs, overview };
+    return { project, checkpoint, resources, results, decisions, runs, overview };
   }
 }

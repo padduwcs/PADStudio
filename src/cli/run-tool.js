@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { createDefaultToolRegistry } from "../execution/default-tool-registry.js";
 import { ToolExecutor } from "../execution/tool-executor.js";
 import { ProjectStore } from "../project/project-store.js";
-import { readToolRequest } from "./tool-request.js";
+import { readJsonInput } from "./json-input.js";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(currentDirectory, "..", "..", ".padstudio", "projects");
@@ -15,7 +15,7 @@ async function main(args) {
       "Cách dùng: <request-json> | npm run tool:run -- <project-id> - hoặc <file-request-json>"
     );
   }
-  const request = await readToolRequest(requestSource);
+  const request = await readJsonInput(requestSource);
   const executor = new ToolExecutor({
     store: new ProjectStore(projectRoot),
     registry: createDefaultToolRegistry()

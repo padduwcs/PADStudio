@@ -59,6 +59,13 @@ Project giữ trí nhớ có ý nghĩa để Agent có thể tiếp tục hoặc
 
 Project không lấy full transcript chat hay suy nghĩ nội bộ của Agent làm lõi. Checkpoint không phải bước cố định: nó cho biết project đang ở đâu, điều gì đã chốt, việc nào đang dở hoặc chờ duyệt và Agent nên làm gì tiếp theo.
 
+Lát cắt decision đầu tiên ghi phản hồi rõ ràng của người dùng đối với một result:
+chấp nhận, yêu cầu sửa hoặc loại bỏ. Các decision được ghi nối tiếp để giữ lịch sử;
+decision mới nhất của result là trạng thái hiện hành. Một decision không tự sửa
+result, không tự loại result khác và không tự cập nhật checkpoint. Không bắt buộc
+mọi result phải có decision; các kết quả chỉ mang tính bằng chứng kỹ thuật có thể
+không cần người dùng lựa chọn.
+
 ## Linh hoạt và tiếp tục
 
 Project có thể bắt đầu từ ý tưởng, file, video, ảnh, đường dẫn đến tài nguyên có sẵn hoặc yêu cầu bất kỳ. Khi người dùng đổi hướng, Agent chỉ làm lại phần bị ảnh hưởng và giữ lại phần vẫn còn giá trị.

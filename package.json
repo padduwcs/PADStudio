@@ -10,6 +10,7 @@
     "project:create": "node src/cli/create-project.js",
     "project:import": "node src/cli/import-project-input.js",
     "project:checkpoint": "node src/cli/write-project-checkpoint.js",
+    "project:decide": "node src/cli/record-project-decision.js",
     "project:context": "node src/cli/read-project-context.js",
     "tool:list": "node src/cli/list-tools.js",
     "tool:run": "node src/cli/run-tool.js",

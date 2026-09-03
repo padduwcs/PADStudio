@@ -237,6 +237,61 @@ h3 {
   gap: 0.75rem;
 }
 
+.result-decision {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.7rem 0.8rem;
+  border-left: 3px solid var(--muted);
+  border-radius: 0.45rem;
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.result-decision > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.result-decision strong {
+  font-size: 0.86rem;
+}
+
+.result-decision span,
+.result-decision p,
+.result-decision summary,
+.result-decision li {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.result-decision p {
+  margin: 0;
+  color: var(--text);
+}
+
+.result-decision summary {
+  cursor: pointer;
+}
+
+.result-decision ol {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.55rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.result-decision.is-accepted {
+  border-left-color: var(--accent);
+}
+
+.result-decision.is-changes_requested {
+  border-left-color: #fbbf24;
+}
+
+.result-decision.is-rejected {
+  border-left-color: #fb7185;
+}
+
 .result-facts,
 .result-trace {
   display: grid;

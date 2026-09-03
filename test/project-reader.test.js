@@ -108,12 +108,16 @@ test("observer endpoints expose context and serve registered byte ranges", async
   const appBody = await appResponse.text();
   assert.match(appBody, /renderResources/);
   assert.match(appBody, /renderResults/);
+  assert.match(appBody, /renderResultDecision/);
   assert.equal(stylesResponse.status, 200);
-  assert.match(await stylesResponse.text(), /\.result-card/);
+  const stylesBody = await stylesResponse.text();
+  assert.match(stylesBody, /\.result-card/);
+  assert.match(stylesBody, /\.result-decision/);
   assert.equal(listResponse.status, 200);
   assert.deepEqual(listBody.projects.map((project) => project.id), ["coffee-video"]);
   assert.equal(contextResponse.status, 200);
   assert.equal(contextBody.context.checkpoint.goal, "Video cà phê.");
+  assert.deepEqual(contextBody.context.decisions, []);
   assert.equal(contextBody.context.resources[0].items[0].modifiedAt, inputInfo.mtime.toISOString());
   assert.equal(inputResponse.status, 200);
   assert.equal(await inputResponse.text(), sourceText);
@@ -122,7 +126,7 @@ test("observer endpoints expose context and serve registered byte ranges", async
   assert.deepEqual(new Uint8Array(await rangeResponse.arrayBuffer()), sourceBytes.slice(0, 6));
 });
 
-test("observer API exposes a result with its input, tool and run trace", async (t) => {
+test("observer API exposes a result with its input, tool, run and decision trace", async (t) => {
   const workspace = await temporaryDirectory(t);
   const rootDir = join(workspace, "projects");
   const sourcePath = join(workspace, "clip.mp4");
@@ -177,6 +181,11 @@ test("observer API exposes a result with its input, tool and run trace", async (
     durationMs: 25,
     actualCostUsd: 0
   });
+  const decision = await store.recordDecision("result-project", {
+    resultId: result.id,
+    outcome: "accepted",
+    note: "Dùng thông số này làm cơ sở tiếp theo"
+  });
 
   const server = createPadStudioServer({ reader: new ProjectReader(rootDir) });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -196,6 +205,8 @@ test("observer API exposes a result with its input, tool and run trace", async (
     [result.id]
   );
   assert.equal(body.context.results[0].data.media.streams[0].codec, "h264");
+  assert.equal(body.context.decisions.length, 1);
+  assert.deepEqual(body.context.decisions[0], decision);
 });
 
 test("web server exposes no project mutation or chat endpoint", async (t) => {

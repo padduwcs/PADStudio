@@ -70,9 +70,12 @@ Nếu resource là folder, thêm `itemPath` đúng với file bên trong resourc
 thể truyền JSON qua standard input, không cần tạo file tạm:
 
 ```powershell
+$OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $request = '{"capability":"media.inspect","tool":"ffprobe","purpose":"Đọc thông số kỹ thuật","inputs":{"resourceId":"resource-..."}}'
 $request | npm run tool:run -- <project-id> -
 ```
+
+Dòng `OutputEncoding` bảo toàn Unicode khi Agent chạy trong Windows PowerShell 5.
 
 Cách truyền đường dẫn tới file request JSON vẫn được hỗ trợ khi cần:
 
@@ -83,6 +86,31 @@ npm run tool:run -- <project-id> <file-request-json>
 Agent phải chọn rõ capability và tool từ danh mục; hệ thống không tự fallback sang
 tool khác. Lệnh thành công lưu một result và run liên kết với nhau. Lệnh thất bại
 vẫn lưu failed run sau khi một yêu cầu hợp lệ đã bắt đầu.
+
+## Ghi quyết định về kết quả
+
+Chỉ ghi decision khi người dùng đã phản hồi rõ về một result. Chuẩn bị JSON:
+
+```json
+{
+  "resultId": "result-...",
+  "outcome": "changes_requested",
+  "note": "Giữ bản này nhưng thay câu kết"
+}
+```
+
+Sau đó truyền trực tiếp qua standard input:
+
+```powershell
+$OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$decision = '{"resultId":"result-...","outcome":"changes_requested","note":"Giữ bản này nhưng thay câu kết"}'
+$decision | npm run project:decide -- <project-id> -
+```
+
+`outcome` là `accepted`, `changes_requested` hoặc `rejected`. Khi yêu cầu sửa,
+`note` là bắt buộc. Decision mới được ghi nối tiếp lịch sử; không sửa hay xóa result
+và không ngầm loại result khác. Nếu quyết định làm thay đổi trạng thái tổng thể của
+project, Agent cập nhật checkpoint bằng một hành động riêng.
 
 ## Ghi checkpoint
 
