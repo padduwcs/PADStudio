@@ -237,6 +237,14 @@ h3 {
   gap: 0.75rem;
 }
 
+.result-video {
+  display: block;
+  width: 100%;
+  max-height: 28rem;
+  border-radius: 0.55rem;
+  background: #000;
+}
+
 .result-decision {
   display: grid;
   gap: 0.4rem;

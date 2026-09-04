@@ -27,6 +27,9 @@ phục vụ observer trong trình duyệt; chúng không phải cầu nối đi�
 │   └── resource-*.json
 ├── results/
 │   └── result-*.json
+├── outputs/
+│   └── run-*/
+│       └── clip.mp4
 ├── decisions/
 │   └── decision-*.json
 └── runs/
@@ -37,6 +40,8 @@ phục vụ observer trong trình duyệt; chúng không phải cầu nối đi�
 - `resources/`: tư liệu đã được nhập thành công và các file thuộc mỗi resource.
 - `results/`: kết quả bền vững do công cụ tạo ra, kèm đầu vào, công cụ và bằng
   chứng kiểm tra.
+- `outputs/`: file media do công cụ tạo, tách theo run; chỉ file đã được result đăng ký
+  mới được web phục vụ hoặc dùng lại làm đầu vào.
 - `decisions/`: lịch sử phản hồi nối tiếp của người dùng đối với từng result.
 - `runs/`: dấu vết từng thao tác import hoặc chạy công cụ, gồm cả lỗi, thời lượng
   và chi phí khi có.
@@ -102,6 +107,11 @@ $request | npm run tool:run -- coffee-video -
 npm run tool:run -- coffee-video D:\Temp\tool-request.json
 ```
 
+Prototype hiện có hai capability thật:
+
+- `media.inspect` / `ffprobe`: đọc metadata audio/video, không tạo file.
+- `video.trim` / `ffmpeg-trim`: cắt chính xác video bằng re-encode và tạo `video.clip`.
+
 Ghi decision sau khi người dùng phản hồi rõ về một result:
 
 ```powershell
@@ -126,5 +136,6 @@ npm test
 ```
 
 Test bao phủ persistence, import thành công/thất bại, path safety, context khi
-mở lại, danh mục công cụ, Bộ thực thi, ffprobe thật, result và decision có dấu
-vết, observer API, byte ranges và việc web không có endpoint thay đổi project.
+mở lại, danh mục công cụ, Bộ thực thi, ffprobe/ffmpeg thật, output rollback,
+result dùng lại result trước, observer API, byte ranges và việc web không có
+endpoint thay đổi project.

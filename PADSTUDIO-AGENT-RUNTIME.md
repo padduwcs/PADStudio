@@ -87,6 +87,47 @@ Agent phải chọn rõ capability và tool từ danh mục; hệ thống không
 tool khác. Lệnh thành công lưu một result và run liên kết với nhau. Lệnh thất bại
 vẫn lưu failed run sau khi một yêu cầu hợp lệ đã bắt đầu.
 
+### Cắt video
+
+`video.trim` tạo một clip mới; Agent chỉ tham chiếu nguồn và mốc cắt, không truyền
+đường dẫn file hệ thống hay đường dẫn output:
+
+```json
+{
+  "capability": "video.trim",
+  "tool": "ffmpeg-trim",
+  "purpose": "Cắt đoạn mở đầu đã chọn",
+  "inputs": {
+    "source": {
+      "kind": "resource",
+      "id": "resource-...",
+      "itemPath": null
+    },
+    "startSeconds": 2,
+    "endSeconds": 8
+  }
+}
+```
+
+Nguồn cũng có thể là clip từ result trước:
+
+```json
+{
+  "source": {
+    "kind": "result",
+    "id": "result-...",
+    "file": "primary"
+  },
+  "startSeconds": 0,
+  "endSeconds": 3
+}
+```
+
+Mốc thời gian là số giây, `startSeconds >= 0`, `endSeconds > startSeconds` và
+không vượt quá thời lượng nguồn. PADStudio tự cấp vùng output, chỉ ghi result sau
+khi file MP4/H.264 đã qua ffprobe; nếu lỗi, file tạm hoặc output chưa hoàn tất bị
+thu hồi. Tool không sửa file nguồn và không tự chuyển sang stream copy.
+
 ## Ghi quyết định về kết quả
 
 Chỉ ghi decision khi người dùng đã phản hồi rõ về một result. Chuẩn bị JSON:

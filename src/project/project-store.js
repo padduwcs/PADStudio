@@ -75,11 +75,21 @@ async function directoryInfo(path) {
   }
 }
 
-async function storedPathAvailable(projectRoot, projectPath, expectedKind) {
+async function storedPathAvailable(projectRoot, projectPath, expectedKind, containerRoot = projectRoot) {
   try {
     const path = resolveProjectPath(projectRoot, projectPath);
-    const info = await lstat(path);
-    if (info.isSymbolicLink()) return false;
+    const [info, containerInfo, resolvedRoot, resolvedPath] = await Promise.all([
+      lstat(path),
+      lstat(containerRoot),
+      realpath(containerRoot),
+      realpath(path)
+    ]);
+    if (
+      info.isSymbolicLink() ||
+      !containerInfo.isDirectory() ||
+      containerInfo.isSymbolicLink() ||
+      !isPathInside(resolvedRoot, resolvedPath)
+    ) return false;
     return expectedKind === "folder" ? info.isDirectory() : info.isFile();
   } catch {
     return false;
@@ -129,7 +139,28 @@ function validateRun(run, projectId) {
   return run;
 }
 
+async function resultWithAvailability(projectRoot, result) {
+  const runOutputRoot = join(projectRoot, "outputs", result.createdByRun);
+  return {
+    ...result,
+    files: await Promise.all(result.files.map(async (file) => ({
+      ...file,
+      available:
+        (() => {
+          try {
+            return isPathInside(runOutputRoot, resolveProjectPath(projectRoot, file.path));
+          } catch {
+            return false;
+          }
+        })() &&
+        await storedPathAvailable(projectRoot, file.path, "file", runOutputRoot)
+    })))
+  };
+}
+
 function validateResult(result, projectId) {
+  const inputResults = result?.inputResults ?? [];
+  const files = result?.files ?? [];
   if (
     !result ||
     result.version !== PROJECT_VERSION ||
@@ -141,6 +172,24 @@ function validateResult(result, projectId) {
     typeof result.createdByRun !== "string" ||
     !Array.isArray(result.inputResources) ||
     result.inputResources.some((id) => typeof id !== "string" || !id) ||
+    !Array.isArray(inputResults) ||
+    inputResults.some((id) => typeof id !== "string" || !id) ||
+    !Array.isArray(files) ||
+    files.some((file) =>
+      !file ||
+      typeof file.id !== "string" ||
+      !file.id ||
+      typeof file.role !== "string" ||
+      !file.role ||
+      typeof file.path !== "string" ||
+      !file.path ||
+      typeof file.name !== "string" ||
+      !file.name ||
+      typeof file.mediaType !== "string" ||
+      !file.mediaType ||
+      !Number.isInteger(file.sizeBytes) ||
+      file.sizeBytes < 0
+    ) ||
     !result.tool ||
     typeof result.tool.name !== "string" ||
     typeof result.tool.version !== "string" ||
@@ -156,7 +205,7 @@ function validateResult(result, projectId) {
   ) {
     throw new ProjectStoreError("Kết quả không hợp lệ trong project: " + projectId);
   }
-  return result;
+  return { ...result, inputResults, files };
 }
 
 function validateDecision(decision, projectId) {
@@ -186,6 +235,14 @@ function resultReference(value) {
     throw new ProjectStoreError("Result id không hợp lệ.");
   }
   return resultId;
+}
+
+function resultFileReference(value) {
+  const fileId = requireText(value, "File id");
+  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(fileId)) {
+    throw new ProjectStoreError("File id không hợp lệ.");
+  }
+  return fileId;
 }
 
 function validateResource(resource, projectId, projectRoot) {
@@ -238,6 +295,7 @@ function validateCheckpoint(checkpoint, projectId) {
 export class ProjectStore {
   constructor(rootDir) {
     this.rootDir = rootDir;
+    this.outputWorkspaces = new Map();
   }
 
   async createProject({ projectId, title }) {
@@ -254,6 +312,7 @@ export class ProjectStore {
       await mkdir(join(staging, "inputs"), { recursive: true });
       await mkdir(join(staging, "resources"), { recursive: true });
       await mkdir(join(staging, "results"), { recursive: true });
+      await mkdir(join(staging, "outputs"), { recursive: true });
       await mkdir(join(staging, "decisions"), { recursive: true });
       await mkdir(join(staging, "runs"), { recursive: true });
       await writeJsonAtomic(join(staging, "project.json"), {
@@ -519,12 +578,161 @@ export class ProjectStore {
     }
   }
 
+  async createRunOutputWorkspace(projectId, runId) {
+    const projectRoot = projectDirectory(this.rootDir, projectId);
+    const run = await this.readRun(projectId, runId);
+    if (run.status !== "in_progress") {
+      throw new ProjectStoreError("Không thể tạo output cho run đã kết thúc: " + runId);
+    }
+    const outputRoot = join(projectRoot, "outputs");
+    await mkdir(outputRoot, { recursive: true });
+    const rootInfo = await lstat(outputRoot);
+    if (!rootInfo.isDirectory() || rootInfo.isSymbolicLink()) {
+      throw new ProjectStoreError("Thư mục outputs không an toàn.");
+    }
+    const finalDirectory = join(outputRoot, runId);
+    if (await directoryInfo(finalDirectory)) {
+      throw new ProjectStoreError("Output của run đã tồn tại: " + runId);
+    }
+    const token = randomUUID();
+    const temporaryDirectory = join(outputRoot, "." + runId + "-" + token);
+    await mkdir(temporaryDirectory);
+    const workspace = {
+      token,
+      projectId,
+      runId,
+      temporaryDirectory,
+      finalDirectory,
+      projectRelativeDirectory: "outputs/" + runId
+    };
+    this.outputWorkspaces.set(token, { ...workspace, committed: false });
+    return workspace;
+  }
+
+  async commitRunOutputWorkspace(workspace) {
+    const registered = this.#registeredOutputWorkspace(workspace);
+    const info = await directoryInfo(registered.temporaryDirectory);
+    if (!info?.isDirectory() || info.isSymbolicLink()) {
+      throw new ProjectStoreError("Output tạm không an toàn hoặc không còn tồn tại.");
+    }
+    if (await directoryInfo(registered.finalDirectory)) {
+      throw new ProjectStoreError("Output đích đã tồn tại: " + registered.runId);
+    }
+    await rename(registered.temporaryDirectory, registered.finalDirectory);
+    registered.committed = true;
+  }
+
+  async discardRunOutputWorkspace(workspace) {
+    const registered = this.#registeredOutputWorkspace(workspace);
+    this.outputWorkspaces.delete(registered.token);
+    const target = registered.committed
+      ? registered.finalDirectory
+      : registered.temporaryDirectory;
+    await rm(target, { recursive: true, force: true });
+  }
+
+  releaseRunOutputWorkspace(workspace) {
+    const registered = this.#registeredOutputWorkspace(workspace);
+    if (!registered.committed) {
+      throw new ProjectStoreError("Không thể bàn giao workspace output chưa commit.");
+    }
+    this.outputWorkspaces.delete(registered.token);
+  }
+
+  #registeredOutputWorkspace(workspace) {
+    const registered = workspace && this.outputWorkspaces.get(workspace.token);
+    if (
+      !registered ||
+      workspace.projectId !== registered.projectId ||
+      workspace.runId !== registered.runId ||
+      workspace.temporaryDirectory !== registered.temporaryDirectory ||
+      workspace.finalDirectory !== registered.finalDirectory
+    ) {
+      throw new ProjectStoreError("Workspace output không do ProjectStore cấp.");
+    }
+    return registered;
+  }
+
+  async resolveResultFile(projectId, resultId, fileId) {
+    const projectRoot = projectDirectory(this.rootDir, projectId);
+    const result = await this.readResult(projectId, resultId);
+    const normalizedFileId = resultFileReference(fileId);
+    const file = result.files.find((candidate) => candidate.id === normalizedFileId);
+    if (!file) {
+      throw new ProjectStoreError("Result " + resultId + " không chứa file: " + normalizedFileId);
+    }
+    const outputRoot = join(projectRoot, "outputs");
+    const runOutputRoot = join(outputRoot, result.createdByRun);
+    const outputRootInfo = await directoryInfo(outputRoot);
+    const runOutputInfo = await directoryInfo(runOutputRoot);
+    if (
+      !outputRootInfo?.isDirectory() ||
+      outputRootInfo.isSymbolicLink() ||
+      !runOutputInfo?.isDirectory() ||
+      runOutputInfo.isSymbolicLink()
+    ) {
+      throw new ProjectStoreError("Thư mục outputs không an toàn hoặc không còn tồn tại.");
+    }
+    const candidatePath = resolveProjectPath(projectRoot, file.path);
+    if (!isPathInside(runOutputRoot, candidatePath)) {
+      throw new ProjectStoreError("File của result phải nằm trong output của run đã tạo nó.");
+    }
+    try {
+      const [resolvedRunOutputRoot, resolvedFile] = await Promise.all([
+        realpath(runOutputRoot),
+        realpath(candidatePath)
+      ]);
+      const info = await lstat(candidatePath);
+      if (info.isSymbolicLink() || !info.isFile() || !isPathInside(resolvedRunOutputRoot, resolvedFile)) {
+        throw new ProjectStoreError("File của result không an toàn hoặc không còn tồn tại.");
+      }
+      return { ...file, filePath: resolvedFile, size: info.size, resultId: result.id };
+    } catch (error) {
+      if (error?.code === "ENOENT") {
+        throw new ProjectStoreError("File của result không còn tồn tại.");
+      }
+      throw error;
+    }
+  }
+
+  async resolveMediaSource(projectId, source) {
+    objectValue(source, "Nguồn media");
+    if (source.kind === "resource") {
+      const input = await this.resolveInputResourceItem(projectId, {
+        resourceId: source.id,
+        itemPath: source.itemPath ?? null
+      });
+      return {
+        filePath: input.filePath,
+        mediaType: input.mediaType,
+        itemName: input.itemName,
+        trace: { kind: "resource", id: input.resourceId, itemPath: input.itemPath },
+        inputResources: [input.resourceId],
+        inputResults: []
+      };
+    }
+    if (source.kind === "result") {
+      const file = await this.resolveResultFile(projectId, source.id, source.file ?? "primary");
+      return {
+        filePath: file.filePath,
+        mediaType: file.mediaType,
+        itemName: file.name,
+        trace: { kind: "result", id: source.id, file: file.id },
+        inputResources: [],
+        inputResults: [source.id]
+      };
+    }
+    throw new ProjectStoreError("Nguồn media phải là resource hoặc result.");
+  }
+
   async addResult(projectId, {
     runId,
     type,
     name,
     capability,
     inputResources,
+    inputResults = [],
+    files = [],
     tool,
     data,
     verification
@@ -553,6 +761,61 @@ export class ProjectStore {
     if (missing.length) {
       throw new ProjectStoreError("Kết quả tham chiếu resource không tồn tại: " + missing.join(", "));
     }
+    const existingResultIds = new Set((await this.readResults(projectId)).map((item) => item.id));
+    const normalizedInputResults = stringList(inputResults, "Result đầu vào của kết quả");
+    const missingResults = normalizedInputResults.filter((id) => !existingResultIds.has(id));
+    if (missingResults.length) {
+      throw new ProjectStoreError("Kết quả tham chiếu result không tồn tại: " + missingResults.join(", "));
+    }
+    if (!Array.isArray(files)) {
+      throw new ProjectStoreError("Files của kết quả phải là một danh sách.");
+    }
+    const normalizedFiles = files.map((file) => ({
+      id: resultFileReference(file?.id),
+      role: requireText(file?.role, "Vai trò file"),
+      path: requireText(file?.path, "Đường dẫn file"),
+      name: requireText(file?.name, "Tên file"),
+      mediaType: requireText(file?.mediaType, "Loại media"),
+      sizeBytes: file?.sizeBytes
+    }));
+    if (new Set(normalizedFiles.map((file) => file.id)).size !== normalizedFiles.length) {
+      throw new ProjectStoreError("File id trong kết quả phải là duy nhất.");
+    }
+    const outputRoot = join(projectRoot, "outputs");
+    const runOutputRoot = join(outputRoot, runId);
+    const outputRootInfo = await directoryInfo(outputRoot);
+    const runOutputInfo = await directoryInfo(runOutputRoot);
+    if (
+      normalizedFiles.length &&
+      (
+        !outputRootInfo?.isDirectory() ||
+        outputRootInfo.isSymbolicLink() ||
+        !runOutputInfo?.isDirectory() ||
+        runOutputInfo.isSymbolicLink()
+      )
+    ) {
+      throw new ProjectStoreError("Thư mục outputs không an toàn hoặc không còn tồn tại.");
+    }
+    for (const file of normalizedFiles) {
+      if (!Number.isInteger(file.sizeBytes) || file.sizeBytes < 0) {
+        throw new ProjectStoreError("Kích thước file kết quả không hợp lệ.");
+      }
+      const candidatePath = resolveProjectPath(projectRoot, file.path);
+      if (!isPathInside(runOutputRoot, candidatePath)) {
+        throw new ProjectStoreError("File kết quả phải nằm trong output của run hiện tại.");
+      }
+      const [resolvedRunOutputRoot, resolvedFile] = await Promise.all([
+        realpath(runOutputRoot),
+        realpath(candidatePath)
+      ]);
+      const info = await lstat(candidatePath);
+      if (info.isSymbolicLink() || !info.isFile() || !isPathInside(resolvedRunOutputRoot, resolvedFile)) {
+        throw new ProjectStoreError("File kết quả không an toàn.");
+      }
+      if (info.size !== file.sizeBytes) {
+        throw new ProjectStoreError("Kích thước file kết quả không khớp với file đã ghi.");
+      }
+    }
     const result = {
       version: PROJECT_VERSION,
       id: recordId("result"),
@@ -561,6 +824,8 @@ export class ProjectStore {
       name: requireText(name, "Tên kết quả"),
       capability: normalizedCapability,
       inputResources: normalizedInputs,
+      inputResults: normalizedInputResults,
+      files: normalizedFiles,
       tool: normalizedTool,
       data: objectValue(data, "Dữ liệu kết quả"),
       verification: objectValue(verification, "Kiểm tra kết quả"),
@@ -587,12 +852,14 @@ export class ProjectStore {
     await this.readProject(projectId);
     const normalizedResultId = resultReference(resultId);
     try {
-      return validateResult(
+      const projectRoot = projectDirectory(this.rootDir, projectId);
+      const result = validateResult(
         await readJson(
-          join(projectDirectory(this.rootDir, projectId), "results", normalizedResultId + ".json")
+          join(projectRoot, "results", normalizedResultId + ".json")
         ),
         projectId
       );
+      return resultWithAvailability(projectRoot, result);
     } catch (error) {
       if (error?.code === "ENOENT") {
         throw new ProjectStoreError("Không tìm thấy result trong project: " + normalizedResultId);
@@ -603,10 +870,12 @@ export class ProjectStore {
 
   async readResults(projectId) {
     await this.readProject(projectId);
-    const results = await readRecords(join(projectDirectory(this.rootDir, projectId), "results"));
-    return results
+    const projectRoot = projectDirectory(this.rootDir, projectId);
+    const results = await readRecords(join(projectRoot, "results"));
+    const validated = results
       .map((result) => validateResult(result, projectId))
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    return Promise.all(validated.map((result) => resultWithAvailability(projectRoot, result)));
   }
 
   async recordDecision(projectId, value) {

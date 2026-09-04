@@ -287,6 +287,46 @@ function renderRawResult(result, body) {
   body.append(details);
 }
 
+function resultFileUrl(projectId, resultId, fileId) {
+  return [
+    "/project-results",
+    encodeURIComponent(projectId),
+    encodeURIComponent(resultId),
+    encodeURIComponent(fileId)
+  ].join("/");
+}
+
+function renderVideoClip(result, body) {
+  const primary = result.files?.find((file) => file.id === "primary");
+  if (!primary) return false;
+  if (primary.available) {
+    const video = document.createElement("video");
+    video.className = "result-video";
+    video.controls = true;
+    video.preload = "metadata";
+    video.src = resultFileUrl(result.projectId, result.id, primary.id);
+    body.append(video);
+  } else {
+    const missing = document.createElement("p");
+    missing.className = "empty-note";
+    missing.textContent = "File video đầu ra không còn khả dụng.";
+    body.append(missing);
+  }
+  const facts = document.createElement("div");
+  facts.className = "result-facts";
+  facts.append(
+    labelValue(
+      "Đoạn cắt",
+      formatDuration(result.data.startSeconds) + " → " + formatDuration(result.data.endSeconds)
+    ),
+    labelValue("Thời lượng", formatDuration(result.data.durationSeconds)),
+    labelValue("Chế độ", result.data.cutMode === "accurate" ? "Cắt chính xác" : result.data.cutMode),
+    labelValue("Dung lượng", formatSize(primary.sizeBytes))
+  );
+  body.append(facts);
+  return true;
+}
+
 const decisionLabels = {
   accepted: "Đã chấp nhận",
   changes_requested: "Cần sửa",
@@ -347,6 +387,7 @@ function renderResults(context) {
   }
 
   const resources = new Map(context.resources.map((resource) => [resource.id, resource]));
+  const resultNames = new Map(results.map((result) => [result.id, result.name]));
   const runs = new Map(context.runs.map((run) => [run.id, run]));
   const decisionsByResult = new Map();
   for (const decision of Array.isArray(context.decisions) ? context.decisions : []) {
@@ -373,13 +414,18 @@ function renderResults(context) {
 
     const body = document.createElement("div");
     body.className = "result-body";
-    if (result.type !== "media.metadata" || !renderMediaMetadata(result, body)) {
+    const renderedKnownType =
+      (result.type === "media.metadata" && renderMediaMetadata(result, body)) ||
+      (result.type === "video.clip" && renderVideoClip(result, body));
+    if (!renderedKnownType) {
       renderRawResult(result, body);
     }
 
     const run = runs.get(result.createdByRun);
-    const sourceNames = result.inputResources
-      .map((id) => resources.get(id)?.name || id)
+    const sourceNames = [
+      ...result.inputResources.map((id) => resources.get(id)?.name || id),
+      ...(result.inputResults || []).map((id) => resultNames.get(id) || id)
+    ]
       .join(", ");
     const trace = document.createElement("div");
     trace.className = "result-trace";

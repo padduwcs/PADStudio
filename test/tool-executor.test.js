@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -205,6 +205,54 @@ test("executor records tool errors but invalid selection does not create a run",
   assert.equal(run.status, "failed");
   assert.equal(run.error, "probe failed clearly");
   assert.deepEqual(context.results, []);
+});
+
+test("executor removes produced files when a tool declares an unsafe result path", async (t) => {
+  const { rootDir, store, imported } = await fixture(t);
+  const tool = fakeTool({
+    producesFiles: true,
+    sideEffects: ["creates a file"],
+    async prepare({ outputWorkspace }) {
+      return {
+        runtime: { outputPath: join(outputWorkspace.temporaryDirectory, "clip.mp4") },
+        trace: {}
+      };
+    },
+    async execute({ outputPath }) {
+      await writeFile(outputPath, "rendered");
+      return {
+        verification: { status: "passed", checks: ["rendered"] },
+        actualCostUsd: 0
+      };
+    },
+    createResult({ execution }) {
+      return {
+        type: "video.clip",
+        name: "Unsafe clip",
+        inputResources: [],
+        files: [{
+          id: "primary",
+          role: "primary",
+          path: "inputs/voice.wav",
+          name: "clip.mp4",
+          mediaType: "video",
+          sizeBytes: 8
+        }],
+        data: {},
+        verification: execution.verification
+      };
+    }
+  });
+  const executor = new ToolExecutor({ store, registry: new ToolRegistry([tool]) });
+
+  await assert.rejects(
+    executor.execute("demo", request(imported.resourceId)),
+    /phải nằm trong output của run hiện tại/
+  );
+  assert.deepEqual(await readdir(join(rootDir, "demo", "outputs")), []);
+  const context = await store.readContext("demo");
+  assert.deepEqual(context.results, []);
+  assert.equal(context.runs.find((run) => run.capability === "media.inspect").status, "failed");
 });
 
 test("executor refuses an input directory redirected outside the project", async (t) => {

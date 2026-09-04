@@ -3,7 +3,12 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ProjectInputNotFoundError, ProjectNotFoundError, ProjectReader } from "./project-reader.js";
+import {
+  ProjectInputNotFoundError,
+  ProjectNotFoundError,
+  ProjectReader,
+  ProjectResultFileNotFoundError
+} from "./project-reader.js";
 import { ProjectPathError } from "../project/project-paths.js";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
@@ -45,7 +50,7 @@ function contentType(filePath) {
   return previewContentTypes[extname(filePath).toLowerCase()] || "application/octet-stream";
 }
 
-function sendInputFile(request, response, input) {
+function sendMediaFile(request, response, input) {
   if (input.size === 0) {
     response.writeHead(200, {
       "Accept-Ranges": "bytes",
@@ -123,7 +128,19 @@ export function createPadStudioServer({ reader }) {
       if (request.method === "GET" && inputMatch) {
         const projectId = decodeURIComponent(inputMatch[1]);
         const inputPath = decodeURIComponent(inputMatch[2]);
-        return sendInputFile(request, response, await reader.readInputFile(projectId, inputPath));
+        return sendMediaFile(request, response, await reader.readInputFile(projectId, inputPath));
+      }
+
+      const resultMatch = /^\/project-results\/([^/]+)\/([^/]+)\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && resultMatch) {
+        const projectId = decodeURIComponent(resultMatch[1]);
+        const resultId = decodeURIComponent(resultMatch[2]);
+        const fileId = decodeURIComponent(resultMatch[3]);
+        return sendMediaFile(
+          request,
+          response,
+          await reader.readResultFile(projectId, resultId, fileId)
+        );
       }
 
       if (request.method === "GET" && staticFiles[url.pathname]) {
@@ -135,14 +152,15 @@ export function createPadStudioServer({ reader }) {
 
       return sendJson(response, 404, { error: "Không tìm thấy." });
     } catch (error) {
-      console.error(error);
       if (
         error instanceof ProjectNotFoundError ||
         error instanceof ProjectInputNotFoundError ||
+        error instanceof ProjectResultFileNotFoundError ||
         error instanceof ProjectPathError
       ) {
         return sendJson(response, 404, { error: error.message });
       }
+      console.error(error);
       return sendJson(response, 500, { error: error.message || "Đã có lỗi không xác định." });
     }
   });

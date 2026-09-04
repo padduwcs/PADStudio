@@ -83,6 +83,7 @@ export class ToolExecutor {
       estimatedCostUsd: tool.cost.estimated
     });
     let result = null;
+    let outputWorkspace = null;
 
     try {
       const availability = await tool.checkAvailability();
@@ -98,16 +99,38 @@ export class ToolExecutor {
           { code: "approval_required" }
         );
       }
+      if (tool.producesFiles) {
+        outputWorkspace = await this.store.createRunOutputWorkspace(projectId, run.id);
+      }
       const prepared = await tool.prepare({
         store: this.store,
         projectId,
-        inputs: request.inputs
+        inputs: request.inputs,
+        runId: run.id,
+        outputWorkspace: outputWorkspace && {
+          temporaryDirectory: outputWorkspace.temporaryDirectory,
+          projectRelativeDirectory: outputWorkspace.projectRelativeDirectory
+        }
       });
       const execution = await tool.execute({
         ...prepared.runtime,
         availability
       });
       const resultValue = tool.createResult({ prepared, execution });
+      const declaredFiles = resultValue?.files;
+      if (tool.producesFiles && (!Array.isArray(declaredFiles) || declaredFiles.length === 0)) {
+        throw new ToolExecutorError("Công cụ tạo file nhưng không khai báo file kết quả.", {
+          code: "invalid_tool_result"
+        });
+      }
+      if (!tool.producesFiles && Array.isArray(declaredFiles) && declaredFiles.length > 0) {
+        throw new ToolExecutorError("Công cụ chưa khai báo quyền tạo file kết quả.", {
+          code: "invalid_tool_result"
+        });
+      }
+      if (outputWorkspace) {
+        await this.store.commitRunOutputWorkspace(outputWorkspace);
+      }
       result = await this.store.addResult(projectId, {
         runId: run.id,
         capability: request.capability,
@@ -120,6 +143,9 @@ export class ToolExecutor {
         durationMs: Date.now() - started,
         actualCostUsd: execution.actualCostUsd ?? null
       });
+      if (outputWorkspace) {
+        this.store.releaseRunOutputWorkspace(outputWorkspace);
+      }
       return {
         projectId,
         runId: run.id,
@@ -129,18 +155,32 @@ export class ToolExecutor {
       };
     } catch (error) {
       const failure = executionError(error);
-      await this.#recordFailure(projectId, run.id, result?.id ?? null, failure, started);
+      await this.#recordFailure(
+        projectId,
+        run.id,
+        result?.id ?? null,
+        outputWorkspace,
+        failure,
+        started
+      );
       throw failure;
     }
   }
 
-  async #recordFailure(projectId, runId, resultId, failure, started) {
+  async #recordFailure(projectId, runId, resultId, outputWorkspace, failure, started) {
     let rollbackError = null;
     if (resultId) {
       try {
         await this.store.discardResult(projectId, resultId, runId);
       } catch (error) {
         rollbackError = error;
+      }
+    }
+    if (outputWorkspace) {
+      try {
+        await this.store.discardRunOutputWorkspace(outputWorkspace);
+      } catch (error) {
+        rollbackError ??= error;
       }
     }
 
@@ -162,7 +202,7 @@ export class ToolExecutor {
 
     if (rollbackError) {
       throw new ToolExecutorError(
-        "Run thất bại và không thể thu hồi result chưa hoàn tất: " + rollbackError.message,
+        "Run thất bại và không thể thu hồi dữ liệu chưa hoàn tất: " + rollbackError.message,
         { code: "result_rollback_failed", cause: failure }
       );
     }

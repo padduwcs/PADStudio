@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import test from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -92,4 +92,32 @@ test("projects created before results existed still open with an empty result li
 
   const context = await new ProjectStore(rootDir).readContext("legacy-project");
   assert.deepEqual(context.results, []);
+});
+
+test("results created before file outputs normalize to empty provenance and files", async (t) => {
+  const { rootDir, store } = await temporaryStore(t);
+  await store.createProject({ projectId: "legacy-result", title: "Legacy result" });
+  const result = {
+    version: "1.0",
+    id: "result-legacy",
+    projectId: "legacy-result",
+    type: "media.metadata",
+    name: "Legacy metadata",
+    capability: "media.inspect",
+    inputResources: [],
+    tool: { name: "ffprobe", version: "1.0.0", provider: "FFmpeg" },
+    data: {},
+    verification: { status: "passed", checks: ["legacy_check"] },
+    createdAt: new Date().toISOString(),
+    createdByRun: "run-legacy"
+  };
+  await writeFile(
+    join(rootDir, "legacy-result", "results", "result-legacy.json"),
+    JSON.stringify(result),
+    "utf8"
+  );
+
+  const reopened = await new ProjectStore(rootDir).readResult("legacy-result", "result-legacy");
+  assert.deepEqual(reopened.inputResults, []);
+  assert.deepEqual(reopened.files, []);
 });

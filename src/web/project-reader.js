@@ -8,7 +8,11 @@ import {
   resolveInputPath
 } from "../project/project-paths.js";
 import { mediaType } from "../resources/media-files.js";
-import { ProjectStore, StoredProjectNotFoundError } from "../project/project-store.js";
+import {
+  ProjectStore,
+  ProjectStoreError,
+  StoredProjectNotFoundError
+} from "../project/project-store.js";
 
 export class ProjectNotFoundError extends Error {
   constructor(projectId) {
@@ -21,6 +25,13 @@ export class ProjectInputNotFoundError extends Error {
   constructor(message = "Không tìm thấy tư liệu trong project.") {
     super(message);
     this.name = "ProjectInputNotFoundError";
+  }
+}
+
+export class ProjectResultFileNotFoundError extends Error {
+  constructor(message = "Không tìm thấy file kết quả trong project.") {
+    super(message);
+    this.name = "ProjectResultFileNotFoundError";
   }
 }
 
@@ -108,6 +119,24 @@ export class ProjectReader {
     } catch (error) {
       if (error?.code === "ENOENT" || error instanceof ProjectPathError) {
         throw new ProjectInputNotFoundError();
+      }
+      throw error;
+    }
+  }
+
+  async readResultFile(projectId, resultId, fileId) {
+    try {
+      const file = await this.store.resolveResultFile(projectId, resultId, fileId);
+      return {
+        filePath: file.filePath,
+        name: file.name,
+        size: file.size,
+        mediaType: file.mediaType
+      };
+    } catch (error) {
+      if (error instanceof StoredProjectNotFoundError) throw new ProjectNotFoundError(projectId);
+      if (error instanceof ProjectStoreError || error instanceof ProjectPathError) {
+        throw new ProjectResultFileNotFoundError();
       }
       throw error;
     }

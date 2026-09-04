@@ -53,6 +53,25 @@ Lát cắt đầu tiên chỉ cần một danh mục khả năng, một Bộ th�
 
 PADStudio học cách tổ chức công cụ và khám phá khả năng từ OpenMontage nhưng không tích hợp hoặc phụ thuộc vào code của họ. Cấu trúc dữ liệu, API, cách đăng ký và công cụ đầu tiên chỉ được chốt khi bắt đầu lát cắt triển khai.
 
+## Media output có vòng đời thuộc project
+
+Lát cắt tiếp theo được chốt là `video.trim`: một tool FFmpeg trong cùng đường
+Registry → Bộ thực thi → run/result, không phải một pipeline dựng video. Phạm vi
+hiện tại chỉ gồm cắt một đoạn video chính xác; chưa gồm speed, concat, transition
+hay timeline.
+
+File do tool tạo nằm trong `outputs/<run-id>/`, nhưng Agent và request không được
+chỉ định đường dẫn input/output tùy ý. PADStudio resolve nguồn từ resource hoặc
+result đã đăng ký, cấp vùng ghi tạm riêng, kiểm tra output rồi mới đưa file vào vị
+trí bền vững và ghi result. Nếu run lỗi trước khi hoàn tất, output của run bị thu
+hồi và input không bị sửa.
+
+Result có thể đăng ký `files` và tham chiếu `inputResults`, nhờ đó media đầu ra
+được preview hoặc dùng làm nguồn cho tool sau mà không biến một thử nghiệm thành
+chuỗi bước bắt buộc. Result cũ không có hai field này vẫn được đọc như danh sách
+rỗng. Web tiếp tục chỉ đọc: chỉ phục vụ file đã đăng ký theo result/file id, không
+nhận raw path và không chạy tool.
+
 ## Trí nhớ project và checkpoint
 
 Project giữ trí nhớ có ý nghĩa để Agent có thể tiếp tục hoặc kiểm tra lại: yêu cầu/ràng buộc còn hiệu lực, tư liệu và kết quả quan trọng, bản được chọn, quyết định/phê duyệt, run, lỗi, bằng chứng và checkpoint. Agent chắt lọc ý nghĩa; hệ thống giữ các bằng chứng khách quan để chúng không chỉ tồn tại trong hội thoại.

@@ -67,6 +67,7 @@ function publicToolInfo(tool, availability) {
     sideEffects: [...tool.sideEffects],
     cost: { ...tool.cost },
     approvalRequired: Boolean(tool.approvalRequired),
+    producesFiles: Boolean(tool.producesFiles),
     availability
   };
 }
