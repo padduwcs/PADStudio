@@ -15,15 +15,20 @@ flowchart TB
 
     subgraph PAD[PADStudio]
         UI[Giao diện<br/>Xem, góp ý, phê duyệt]
-        P[Kho dự án<br/>Bối cảnh, kết quả, quyết định và checkpoint]
+        P[Kho dự án<br/>Bối cảnh, artifacts, kết quả, quyết định và checkpoint]
         G[Cầu nối Agent<br/>Bối cảnh và các yêu cầu được phép]
+        I[Trí tuệ project<br/>Hiểu biết, hướng sáng tạo và review]
+        W[Workflow thích nghi<br/>Kế hoạch hiện hành có thể thay đổi]
         E[Bộ thực thi<br/>Chạy công cụ và dịch vụ]
         R[Kết quả của lần chạy<br/>Bản xem trước, lỗi, chi phí và bằng chứng]
 
         UI -->|Phản hồi và quyết định| P
         P -->|Thông tin để xem lại| UI
-        P --> G
-        G --> E --> R --> P
+        P --> G --> I
+        I <--> W
+        I --> E --> R --> P
+        I --> P
+        W --> P
     end
 
     U --> UI
@@ -56,7 +61,29 @@ Agent là nơi suy nghĩ và chọn hướng sáng tạo; PADStudio không thay 
 
 Khi xây phần này, chưa cần cố định giao thức cho mọi Agent. Chỉ cần một Agent có thể đọc một dự án và yêu cầu một việc thật.
 
-## 3. Bộ thực thi
+## 3. Trí tuệ project và workflow thích nghi
+
+Agent cần nhiều hơn danh sách tool và một checkpoint ngắn để duy trì công việc
+xuyên suốt. Project cần giữ được ở mức phù hợp:
+
+- mục tiêu, khán giả, kết quả mong muốn và ràng buộc còn hiệu lực;
+- điều Agent đã hiểu từ tư liệu và điều vẫn chưa chắc chắn;
+- hướng sáng tạo, điều cần giữ và tiêu chí để đánh giá kết quả;
+- kế hoạch làm việc hiện hành, việc đang dở, phụ thuộc và điểm cần người dùng quyết định;
+- lý do khi Agent thay đổi một lựa chọn hoặc điều chỉnh kế hoạch.
+
+PADStudio không quy định một chuỗi stage chung cho mọi project. Workflow có thể
+được Agent chọn từ mẫu, kết hợp hoặc hình thành theo project, rồi thay đổi khi có
+thông tin mới. Dù linh hoạt, workflow phải đủ rõ để người dùng hiểu Agent đang làm
+gì, hệ thống biết cần giữ thông tin nào và một Agent khác có thể tiếp tục.
+
+Instruction hoặc skill có thể cung cấp kiến thức nghề và cách review cho Agent;
+chúng không thay thế dữ liệu của project. Artifact giữ kết quả hiểu biết hoặc sáng
+tạo, workflow giữ kế hoạch hiện hành, result/run giữ việc đã thực thi, decision giữ
+lựa chọn và checkpoint giữ điểm tiếp tục. Cấu trúc cụ thể của các phần này sẽ được
+chốt qua từng lát cắt, không suy ra thành một pipeline cố định từ dàn ý này.
+
+## 4. Bộ thực thi
 
 Bộ thực thi là lớp chạy công cụ, dịch vụ AI, công cụ dựng video hoặc tiến trình xử lý. Nó cần tách khỏi phần lưu dự án và phần suy nghĩ của Agent.
 
@@ -76,7 +103,7 @@ Một lần thực thi tối thiểu cần cho biết:
 
 Khi thêm một công cụ mới, nó đi vào bộ thực thi thay vì làm thay đổi cách dự án hiểu mục tiêu, quyết định hoặc kết quả.
 
-## 4. Kết quả, lần chạy, quyết định và checkpoint
+## 5. Kết quả, lần chạy, quyết định và checkpoint
 
 Đây là bốn loại thông tin khác nhau nhưng liên quan chặt chẽ:
 
@@ -102,7 +129,7 @@ Không cần tạo một hệ thống kiểm tra phức tạp từ đầu. Bắt
 
 Trước khi dùng một kết quả cho việc tiếp theo, cần có kiểm tra tối thiểu phù hợp: ví dụ file có tồn tại và mở được, bản xem trước có xem được, hoặc thông tin bắt buộc không bị thiếu. Quy tắc kiểm tra cụ thể sẽ được chọn khi có loại kết quả cụ thể.
 
-## 5. Giao diện cho người dùng
+## 6. Giao diện cho người dùng
 
 Board là giao diện đầu tiên có thể làm, không phải quy trình bắt buộc. Giao diện cần giúp người dùng:
 
@@ -113,13 +140,13 @@ Board là giao diện đầu tiên có thể làm, không phải quy trình bắ
 
 Giao diện đọc và ghi thông tin vào kho dự án. Nó không tự giữ một trạng thái chính khác với dự án.
 
-## 6. Vòng chỉnh sửa
+## 7. Vòng chỉnh sửa
 
 Sau mỗi lần tạo kết quả, hệ thống cần hỗ trợ một trong ba hướng: giữ kết quả, sửa cục bộ hoặc đổi hướng. Phản hồi của người dùng phải được ghi vào dự án; Agent dùng bối cảnh mới đó để chọn việc tiếp theo.
 
 Khi chỉ một phần bị ảnh hưởng, phần tốt nên được giữ lại. Ví dụ, thay lời thoại không bắt buộc phải làm lại phần tìm hiểu; thay phong cách hình ảnh không tự động xóa kịch bản đã được chấp nhận.
 
-## 7. Kiểm soát và khả năng khôi phục
+## 8. Kiểm soát và khả năng khôi phục
 
 Ngay từ lát cắt đầu, hệ thống cần làm rõ những điều có thể gây bất ngờ:
 
@@ -134,17 +161,18 @@ Nếu theo dõi chi phí, cần cho biết ước lượng trước khi chạy k
 
 Mức độ xác thực, phân quyền, hàng đợi hay cơ chế chạy lại chỉ quyết định khi nhu cầu triển khai yêu cầu chúng.
 
-## 8. Thứ tự xây nên ưu tiên
+## 9. Thứ tự xây nên ưu tiên
 
 ```mermaid
 flowchart LR
     A[Kho dự án<br/>có thể tạo và mở lại]
     B[Cầu nối Agent<br/>đọc bối cảnh và biết khả năng hiện có]
     C[Một công cụ thật<br/>lưu kết quả, lần chạy và dấu vết]
-    D[Xem lại<br/>người dùng phản hồi và tiếp tục được]
-    E[Mở rộng<br/>theo nhu cầu đã chứng minh]
+    D[Trí tuệ project và workflow thích nghi<br/>hiểu, lập kế hoạch, review và tiếp tục]
+    E[Xem lại<br/>người dùng phản hồi và tiếp tục được]
+    F[Mở rộng<br/>theo nhu cầu đã chứng minh]
 
-    A --> B --> C --> D --> E
+    A --> B --> C --> D --> E --> F
 ```
 
 Đây là thứ tự để nhanh có một vòng hoàn chỉnh từ đầu vào đến phản hồi. Không cần xây xong tất cả các phần trong một mục trước khi chuyển sang mục kế tiếp.
@@ -166,4 +194,7 @@ Sau đó đọc [`DEVELOPMENT-PROTOCOL.md`](DEVELOPMENT-PROTOCOL.md) trước kh
 
 Cơ sở dữ liệu, cấu trúc dữ liệu, API, sự kiện, trạng thái, hàng đợi, mô hình AI, nhà cung cấp dịch vụ, công cụ dựng video, cách chia thành phần hệ thống và cấu trúc thư mục đều là quyết định của từng lát cắt triển khai. Chúng không được suy ra chỉ từ dàn ý này.
 
-Đặc biệt, dàn ý này không quy định tên loại kết quả cố định, danh sách giai đoạn, checkpoint theo từng giai đoạn hay quy trình bắt buộc cho mọi dự án.
+Đặc biệt, dàn ý này không quy định tên loại kết quả cố định, danh sách giai đoạn,
+checkpoint theo từng giai đoạn hay quy trình bắt buộc cho mọi dự án. Workflow mẫu
+có thể được thêm khi nhu cầu thực tế chứng minh giá trị của chúng, nhưng chúng là
+điểm khởi đầu có thể thích nghi chứ không phải đường duy nhất Agent được phép đi.

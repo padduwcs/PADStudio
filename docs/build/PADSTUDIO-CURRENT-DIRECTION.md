@@ -25,6 +25,74 @@ Agent phân tích yêu cầu, chọn cách làm, tư liệu và công cụ phù 
 
 Agent phải hỏi trong chat khi cần quyết định từ người dùng, đồng thời nói rõ lỗi, chi phí, rủi ro hoặc thay đổi quan trọng. Agent không được âm thầm đổi một lựa chọn có ảnh hưởng đáng kể.
 
+## Bức tranh phát triển: workflow thích nghi do Agent dẫn dắt
+
+PADStudio hướng tới một studio chung nơi người dùng và Agent có thể đi hết vòng
+`hiểu → đề xuất → quyết định → thực hiện → xem → phản hồi → tiếp tục`. Agent vẫn
+là nơi hiểu project, sáng tạo và chọn việc cần làm; PADStudio giúp sự hiểu biết,
+kế hoạch, kết quả và quyết định đó tồn tại bền vững ngoài cuộc hội thoại.
+
+```mermaid
+flowchart TB
+    U[Người dùng<br/>Mục tiêu, tư liệu, phản hồi và phê duyệt]
+    W[Không gian làm việc chung<br/>Chat, quan sát và so sánh kết quả]
+    A[Agent<br/>Hiểu project, sáng tạo và chọn việc tiếp theo]
+    I[Trí tuệ project<br/>Brief, hiểu tư liệu, hướng sáng tạo và tiêu chí review]
+    F[Workflow thích nghi<br/>Kế hoạch hiện hành có thể thay đổi]
+    P[Kho project<br/>Artifacts, decisions, checkpoints, resources, runs và results]
+    E[Bộ thực thi<br/>Khả năng, quyền, chi phí, chạy và rollback]
+    T[Công cụ và nhà cung cấp]
+
+    U <--> W <--> A
+    A <--> I
+    A <--> F
+    I <--> P
+    F <--> P
+    A --> E --> T --> P
+    P --> W
+```
+
+Workflow thích nghi nằm giữa hai cực: để Agent làm hoàn toàn tùy hứng và bắt mọi
+project đi qua một pipeline cố định. PADStudio có thể cung cấp workflow mẫu để
+Agent chọn, kết hợp hoặc điều chỉnh, nhưng không có một workflow bắt buộc cho mọi
+project. Project nhỏ có thể chỉ có vài việc; project phức tạp có thể có nhiều
+chặng, phụ thuộc, lần review và điểm phê duyệt.
+
+Workflow hiện hành là một phần của project chứ không chỉ là kế hoạch tạm trong
+chat. Agent được thay đổi nó khi có thông tin hoặc phản hồi mới, nhưng thay đổi có
+ảnh hưởng đáng kể phải có lý do, giữ dấu vết và xin người dùng quyết định khi liên
+quan đến hướng sáng tạo, chi phí, rủi ro hoặc hành động khó đảo ngược. PADStudio
+không thay Agent lập kế hoạch và cũng không âm thầm tự chuyển stage.
+
+Chi tiết như mô hình task, phụ thuộc, trạng thái, workflow template, artifact hay
+approval chưa được chốt ở mức định hướng này. Chúng chỉ được chọn khi phân tích
+và triển khai lát cắt tương ứng.
+
+## Học OpenMontage có chọn lọc
+
+PADStudio tiếp tục tham khảo OpenMontage về cách dùng instruction/skill để truyền
+kiến thức nghề cho Agent, biến hiểu biết thành artifact có cấu trúc, review theo
+mục tiêu sáng tạo, lưu quyết định có lý do và checkpoint để tiếp tục giữa chừng.
+
+PADStudio không sao chép nguyên tắc mọi video phải đi qua một pipeline và danh
+sách stage cố định. Những cơ chế học được sẽ là các khối có thể lắp ghép trong
+workflow thích nghi. PADStudio cũng giữ cơ chế quản lý input/output thuộc project:
+Agent và công cụ không được tùy ý chọn đường dẫn chỉ vì cách đó thuận tiện cho một
+tool hay nhà cung cấp cụ thể.
+
+## Trí tuệ project
+
+Để Agent làm việc xuyên suốt, project cần giữ không chỉ việc đã xảy ra mà còn phần
+hiểu biết đang có hiệu lực: mục tiêu và ý định của người dùng, điều đã hiểu từ tư
+liệu, hướng sáng tạo hiện hành, lựa chọn và lý do, điều chưa chắc chắn, tiêu chí
+đánh giá kết quả và ý định tiếp theo.
+
+Phần này không lưu full transcript hoặc suy nghĩ nội bộ. Agent chắt lọc nội dung
+có ích thành những thông tin có thể xem lại, thay thế có dấu vết và dùng làm căn
+cứ cho công việc tiếp theo. Instruction/skill hướng dẫn Agent cách làm; artifact
+giữ kết quả hiểu và sáng tạo; workflow giữ kế hoạch hiện hành; checkpoint chỉ ra
+điểm tiếp tục.
+
 ## Hệ thống công cụ và Bộ thực thi
 
 PADStudio cung cấp một đường chung để Agent dùng chương trình trên máy, mô hình local và dịch vụ bên ngoài. Agent chọn việc và công cụ; Bộ thực thi chỉ kiểm soát cách yêu cầu đó được chạy và ghi lại.
@@ -51,7 +119,7 @@ Mỗi công cụ phải mô tả đủ để Agent gọi đúng và hệ thống
 
 Lát cắt đầu tiên chỉ cần một danh mục khả năng, một Bộ thực thi dùng chung, hợp đồng chung cho công cụ và kết quả, cùng một công cụ thật để chứng minh toàn bộ vòng chạy. Chưa mặc định xây hàng đợi, worker, chạy song song, tự động thử lại hay tự động fallback.
 
-PADStudio học cách tổ chức công cụ và khám phá khả năng từ OpenMontage nhưng không tích hợp hoặc phụ thuộc vào code của họ. Cấu trúc dữ liệu, API, cách đăng ký và công cụ đầu tiên chỉ được chốt khi bắt đầu lát cắt triển khai.
+PADStudio không tích hợp hoặc phụ thuộc vào code của OpenMontage. Cấu trúc dữ liệu, API, cách đăng ký và từng công cụ chỉ được chốt khi bắt đầu lát cắt triển khai tương ứng.
 
 ## Media output có vòng đời thuộc project
 
@@ -88,6 +156,22 @@ không cần người dùng lựa chọn.
 ## Linh hoạt và tiếp tục
 
 Project có thể bắt đầu từ ý tưởng, file, video, ảnh, đường dẫn đến tài nguyên có sẵn hoặc yêu cầu bất kỳ. Khi người dùng đổi hướng, Agent chỉ làm lại phần bị ảnh hưởng và giữ lại phần vẫn còn giá trị.
+
+## Lát cắt ưu tiên tiếp theo
+
+Sau khi kho project, Bộ thực thi, công cụ thật đầu tiên và web observer đã chứng
+minh được vòng kỹ thuật, ưu tiên tiếp theo là **Project Intelligence + Adaptive
+Workflow**. Lát cắt này phải chứng minh được một Agent có thể:
+
+1. chắt lọc và lưu cách hiểu hiện hành về mục tiêu và tư liệu;
+2. ghi một hướng sáng tạo đủ để giữ sự nhất quán;
+3. đề xuất và lưu kế hoạch làm việc phù hợp với project thay vì dùng chuỗi bước cố định;
+4. thực hiện một việc, review kết quả theo cả bằng chứng kỹ thuật và mục tiêu sáng tạo;
+5. cập nhật checkpoint để một Agent có thể mở lại và tiếp tục đúng hướng.
+
+Tên artifact, schema, API, giao diện chỉnh workflow và mức tự động hóa chưa được
+chốt. Trước khi triển khai cần tiếp tục khảo sát OpenMontage, đối chiếu với các
+loại project thực tế và chọn lát cắt nhỏ nhất chứng minh được vòng trên.
 
 ## Triển khai tạm thời
 
