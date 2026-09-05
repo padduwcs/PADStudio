@@ -139,6 +139,16 @@ function renderCheckpoint(context) {
     return;
   }
 
+  if (context.checkpointFreshness?.status === "stale") {
+    const warning = document.createElement("div");
+    warning.className = "checkpoint-warning";
+    const kinds = context.checkpointFreshness.newerActivityKinds.join(", ");
+    warning.textContent =
+      `Checkpoint có thể đã cũ: có ${context.checkpointFreshness.newerActivityCount} ` +
+      `hoạt động mới hơn${kinds ? ` (${kinds})` : ""}. Agent cần đọc lại context trước khi tiếp tục.`;
+    elements.checkpoint.append(warning);
+  }
+
   const goal = document.createElement("p");
   goal.className = "context-goal";
   goal.textContent = checkpoint.goal;
@@ -172,6 +182,7 @@ function renderWorkflow(context) {
     elements.workflow.textContent = "No active workflow yet.";
     return;
   }
+
   const header = document.createElement("div");
   header.className = "workflow-header";
   const identity = document.createElement("div");
@@ -566,6 +577,9 @@ function renderRuns(context) {
     elements.runList.textContent = "Chưa có lần chạy nào.";
     return;
   }
+  const pendingFinalizations = new Map(
+    (context.runRecovery?.pendingFinalizations ?? []).map((entry) => [entry.runId, entry])
+  );
   elements.runList.replaceChildren(...context.runs.slice(0, 20).map((run) => {
     const card = document.createElement("article");
     card.className = "run-card";
@@ -573,8 +587,10 @@ function renderRuns(context) {
     const capability = document.createElement("strong");
     capability.textContent = run.capability;
     const status = document.createElement("span");
-    status.className = `run-status status-${run.status}`;
-    status.textContent = run.status;
+    const recovery = pendingFinalizations.get(run.id);
+    const displayedStatus = recovery?.recoverable ? "finalization_pending" : run.status;
+    status.className = `run-status status-${displayedStatus}`;
+    status.textContent = displayedStatus;
     top.append(capability, status);
     const time = document.createElement("span");
     time.className = "input-meta";
@@ -599,6 +615,13 @@ function renderRuns(context) {
       card.append(details);
     }
     card.append(time);
+    if (recovery?.recoverable) {
+      const recoveryNote = document.createElement("p");
+      recoveryNote.className = "run-warning";
+      recoveryNote.textContent =
+        "Kết quả đã được bảo toàn; cần hoàn tất lại dấu vết run bằng CLI phục hồi.";
+      card.append(recoveryNote);
+    }
     if (run.error) {
       const error = document.createElement("p");
       error.className = "run-error";

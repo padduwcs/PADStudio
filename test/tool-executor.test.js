@@ -133,6 +133,92 @@ test("executor stores a durable result and a completed run with full trace", asy
   assert.ok(Number.isFinite(run.durationMs));
 });
 
+test("executor preserves a durable output when run finalization fails and supports recovery", async (t) => {
+  const { rootDir, store, imported } = await fixture(t);
+  const tool = fakeTool({
+    producesFiles: true,
+    sideEffects: ["creates a file"],
+    async prepare({ outputWorkspace }) {
+      return {
+        runtime: { outputPath: join(outputWorkspace.temporaryDirectory, "clip.mp4") },
+        trace: { finalPath: outputWorkspace.projectRelativeDirectory + "/clip.mp4" }
+      };
+    },
+    async execute({ outputPath }) {
+      await writeFile(outputPath, "rendered");
+      return {
+        verification: { status: "passed", checks: ["rendered"] },
+        actualCostUsd: 0
+      };
+    },
+    createResult({ prepared, execution }) {
+      return {
+        type: "video.clip",
+        name: "Durable clip",
+        inputResources: [],
+        files: [{
+          id: "primary",
+          role: "primary",
+          path: prepared.trace.finalPath,
+          name: "clip.mp4",
+          mediaType: "video",
+          sizeBytes: 8
+        }],
+        data: {},
+        verification: execution.verification
+      };
+    }
+  });
+  let failCompletionOnce = true;
+  const failingStore = new Proxy(store, {
+    get(target, property) {
+      if (property === "finishRun") {
+        return async (...args) => {
+          if (args[2]?.status === "completed" && failCompletionOnce) {
+            failCompletionOnce = false;
+            throw new Error("simulated finalization failure");
+          }
+          return target.finishRun(...args);
+        };
+      }
+      const value = target[property];
+      return typeof value === "function" ? value.bind(target) : value;
+    }
+  });
+  const executor = new ToolExecutor({
+    store: failingStore,
+    registry: new ToolRegistry([tool])
+  });
+
+  const response = await executor.execute("demo", request(imported.resourceId));
+  assert.equal(response.status, "finalization_pending");
+  assert.match(response.warning, /đã được bảo toàn/);
+
+  const pending = await new ProjectStore(rootDir).readContext("demo");
+  const result = pending.results.find((candidate) => candidate.id === response.resultId);
+  const run = pending.runs.find((candidate) => candidate.id === response.runId);
+  assert.equal(result.files[0].available, true);
+  assert.equal(run.status, "in_progress");
+  assert.deepEqual(run.outputs, []);
+  assert.deepEqual(pending.runRecovery.pendingFinalizations, [{
+    runId: response.runId,
+    resultIds: [response.resultId],
+    recoverable: true
+  }]);
+
+  const recovered = await store.recoverRunFinalization("demo", response.runId);
+  assert.equal(recovered.status, "completed");
+  assert.deepEqual(recovered.outputs, [response.resultId]);
+  assert.equal(recovered.cost.actual, 0);
+  const reopened = await new ProjectStore(rootDir).readContext("demo");
+  assert.equal(reopened.results[0].files[0].available, true);
+  assert.deepEqual(reopened.runRecovery.pendingFinalizations, []);
+  await assert.rejects(
+    store.recoverRunFinalization("demo", "../../outside"),
+    /Run id không hợp lệ/
+  );
+});
+
 test("executor records an unavailable tool as a failed run without a result", async (t) => {
   const { store, imported } = await fixture(t);
   const executor = new ToolExecutor({

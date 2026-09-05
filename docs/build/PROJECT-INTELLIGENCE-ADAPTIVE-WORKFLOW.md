@@ -46,7 +46,11 @@ PADStudio từ chối:
 - có đồng thời nhiều hơn một workflow active;
 - dependency không tồn tại hoặc tạo chu trình;
 - bắt đầu/hoàn tất work item khi dependency chưa hoàn tất;
+- chuyển sang `awaiting_review` khi chưa có output;
+- ghi review work item khi item chưa ở `awaiting_review`, review sai perspective hoặc
+  không bao phủ đủ tiêu chí bắt buộc;
 - chuyển sang awaiting_approval khi chưa có output, hoặc review bắt buộc chưa pass;
+- ghi decision approval khi item chưa ở `awaiting_approval`;
 - hoàn tất khi review bắt buộc chưa pass;
 - hoàn tất khi approval bắt buộc chưa do người dùng chấp thuận;
 - hoàn tất workflow khi còn work item chưa kết thúc;
@@ -57,6 +61,11 @@ PADStudio từ chối:
 Workflow template chỉ là điểm khởi đầu. Agent có thể bỏ template, sửa, thêm nhánh
 hoặc tạo workflow riêng. Hai template ban đầu là quick-media-task và
 creative-production.
+
+Review work item được gắn với workflow revision, perspective, tiêu chí bắt buộc và
+chính xác tập output đã review. Approval cũng được gắn với tập output và review đã
+pass. Nếu ý nghĩa hoặc output thay đổi, review/approval cũ không còn mở gate; Agent
+phải tạo identity mới hoặc đưa item qua review và approval lại.
 
 ## Artifact và revision
 
@@ -100,6 +109,10 @@ view với workflow revision cùng blocker hiện hành.
 
 Context chỉ tổng hợp trạng thái đã lưu và dependency; nó không tự chọn bước sáng
 tạo tiếp theo.
+
+Context đồng thời báo `checkpointFreshness`. Khi có resource, run, result, artifact,
+workflow, review hoặc decision mới hơn checkpoint, observer cảnh báo checkpoint có
+thể đã cũ; PADStudio không tự viết lại nội dung sáng tạo thay Agent.
 
 ## Ranh giới đã giữ
 

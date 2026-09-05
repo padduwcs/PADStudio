@@ -120,6 +120,13 @@ $request | npm run tool:run -- coffee-video -
 npm run tool:run -- coffee-video D:\Temp\tool-request.json
 ```
 
+Nếu kết quả đã được bảo toàn nhưng bước đóng Run lỗi, lệnh trả
+`finalization_pending`. Hoàn tất lại dấu vết mà không chạy lại tool:
+
+```powershell
+npm run project:run:recover -- coffee-video run-...
+```
+
 Prototype hiện có hai capability thật:
 
 - `media.inspect` / `ffprobe`: đọc metadata audio/video, không tạo file.

@@ -9,6 +9,7 @@ import {
   isPlainObject,
   normalizeReferences,
   normalizeReviewCriteria,
+  normalizeStringList,
   normalizeWorkItems,
   optionalText,
   requireId,
@@ -43,6 +44,20 @@ function targetKey(target) {
   return target.kind === "work_item"
     ? `work_item:${target.workflowId}:${target.workItemId}`
     : `${target.kind}:${target.id}`;
+}
+
+function referenceKey(reference) {
+  return `${reference.kind}:${reference.id}`;
+}
+
+function sameReferences(left, right) {
+  if (left.length !== right.length) return false;
+  const rightKeys = new Set(right.map(referenceKey));
+  return left.every((reference) => rightKeys.has(referenceKey(reference)));
+}
+
+function normalizedCriterion(value) {
+  return value.trim().toLocaleLowerCase("en-US");
 }
 
 function assertTimestamp(value, label) {
@@ -234,7 +249,7 @@ export class ProjectIntelligenceStore {
       "review"
     );
     const target = this.#normalizeReviewTarget(value.target);
-    await this.#assertReviewTarget(projectId, target);
+    const targetState = await this.#assertReviewTarget(projectId, target);
     const perspective = value.perspective ?? "combined";
     if (!["creative", "technical", "combined"].includes(perspective)) {
       throw new IntelligenceValidationError(`review.perspective is not supported: ${perspective}.`);
@@ -245,6 +260,42 @@ export class ProjectIntelligenceStore {
     }
     const criteria = normalizeReviewCriteria(value.criteria);
     assertReviewVerdict(verdict, criteria);
+    let binding = null;
+    if (target.kind === "work_item") {
+      const { workflow, item } = targetState;
+      if (workflow.status !== "active" || item.status !== "awaiting_review") {
+        throw new IntelligenceValidationError(
+          `Work item ${item.id} must be awaiting_review before it can be reviewed.`
+        );
+      }
+      if (item.outputReferences.length === 0) {
+        throw new IntelligenceValidationError(
+          `Work item ${item.id} requires an output reference before review.`
+        );
+      }
+      if (perspective !== item.review.perspective) {
+        throw new IntelligenceValidationError(
+          `Review perspective must be ${item.review.perspective} for work item ${item.id}.`
+        );
+      }
+      const reviewedCriteria = new Set(
+        criteria.map((criterion) => normalizedCriterion(criterion.criterion))
+      );
+      const missingCriteria = item.review.criteria.filter(
+        (criterion) => !reviewedCriteria.has(normalizedCriterion(criterion))
+      );
+      if (missingCriteria.length) {
+        throw new IntelligenceValidationError(
+          `Review does not cover required criteria: ${missingCriteria.join(", ")}.`
+        );
+      }
+      binding = {
+        workflowRevision: workflow.revision,
+        outputReferences: structuredClone(item.outputReferences),
+        requiredCriteria: [...item.review.criteria],
+        perspective,
+      };
+    }
     const previous = (await this.readReviews(projectId)).filter((review) => targetKey(review.target) === targetKey(target));
     const review = {
       version: VERSION,
@@ -257,6 +308,7 @@ export class ProjectIntelligenceStore {
       summary: requireText(value.summary, "review.summary"),
       criteria,
       reviewer: value.reviewer ?? "agent",
+      ...(binding ? { binding } : {}),
       createdAt: timestamp(),
     };
     if (!["agent", "user", "system"].includes(review.reviewer)) {
@@ -293,7 +345,9 @@ export class ProjectIntelligenceStore {
       ["ready", "in_progress", "awaiting_review", "awaiting_approval", "blocked"].includes(item.status),
     ) ?? [];
     const pendingApprovals = activeWorkflow?.items.filter((item) =>
-      item.approval === "required" && item.status === "awaiting_approval" && !this.#hasApproval(projectDecisions, activeWorkflow.id, item.id),
+      item.approval === "required" &&
+      item.status === "awaiting_approval" &&
+      !this.#hasApproval(projectDecisions, reviews, activeWorkflow.id, item),
     ) ?? [];
     const skillIds = [...new Set(currentWorkItems.flatMap((item) => item.skillIds))];
     const catalog = await this.#catalog(projectId);
@@ -374,7 +428,7 @@ export class ProjectIntelligenceStore {
     requireObject(value, "stored review");
     assertOnlyFields(
       value,
-      ["version", "id", "projectId", "target", "round", "perspective", "verdict", "summary", "criteria", "reviewer", "createdAt"],
+      ["version", "id", "projectId", "target", "round", "perspective", "verdict", "summary", "criteria", "reviewer", "binding", "createdAt"],
       "stored review"
     );
     if (value.projectId !== projectId || value.version !== VERSION || !Number.isInteger(value.round) || value.round < 1) {
@@ -393,7 +447,32 @@ export class ProjectIntelligenceStore {
       throw new IntelligenceValidationError("Stored review payload is invalid.");
     }
     assertReviewVerdict(value.verdict, criteria);
+    if (value.binding !== undefined) {
+      this.#validateReviewBinding(value.binding);
+    }
     return value;
+  }
+
+  #validateReviewBinding(value) {
+    const binding = requireObject(value, "review.binding");
+    assertOnlyFields(
+      binding,
+      ["workflowRevision", "outputReferences", "requiredCriteria", "perspective"],
+      "review.binding"
+    );
+    if (!Number.isInteger(binding.workflowRevision) || binding.workflowRevision < 1) {
+      throw new IntelligenceValidationError(
+        "review.binding.workflowRevision must be a positive integer."
+      );
+    }
+    if (normalizeReferences(binding.outputReferences, "review.binding.outputReferences").length === 0) {
+      throw new IntelligenceValidationError("review.binding.outputReferences must not be empty.");
+    }
+    normalizeStringList(binding.requiredCriteria, "review.binding.requiredCriteria");
+    if (!["creative", "technical", "combined"].includes(binding.perspective)) {
+      throw new IntelligenceValidationError("review.binding.perspective is invalid.");
+    }
+    return binding;
   }
 
   #normalizeReviewTarget(value) {
@@ -459,13 +538,14 @@ export class ProjectIntelligenceStore {
         if (pending.length) throw new IntelligenceValidationError(`Work item ${item.id} cannot be ${item.status}; incomplete dependencies: ${pending.join(", ")}.`);
       }
       if (item.status === "completed" && item.review.required) {
-        const latest = reviews
-          .filter((review) => targetKey(review.target) === `work_item:${workflowId}:${item.id}`)
-          .sort((a, b) => a.round - b.round)
-          .at(-1);
-        if (!latest || !["passed", "passed_with_notes"].includes(latest.verdict)) {
+        if (!this.#passingReviewForItem(reviews, workflowId, item)) {
           throw new IntelligenceValidationError(`Work item ${item.id} requires a passing review before completion.`);
         }
+      }
+      if (item.status === "awaiting_review" && item.outputReferences.length === 0) {
+        throw new IntelligenceValidationError(
+          `Work item ${item.id} requires an output reference before awaiting review.`
+        );
       }
       if (item.status === "awaiting_approval") {
         if (item.outputReferences.length === 0) {
@@ -474,11 +554,7 @@ export class ProjectIntelligenceStore {
           );
         }
         if (item.review.required) {
-          const latest = reviews
-            .filter((review) => targetKey(review.target) === `work_item:${workflowId}:${item.id}`)
-            .sort((a, b) => a.round - b.round)
-            .at(-1);
-          if (!latest || !["passed", "passed_with_notes"].includes(latest.verdict)) {
+          if (!this.#passingReviewForItem(reviews, workflowId, item)) {
             throw new IntelligenceValidationError(
               `Work item ${item.id} requires a passing review before awaiting approval.`
             );
@@ -488,7 +564,11 @@ export class ProjectIntelligenceStore {
       if (item.status === "completed" && item.outputReferences.length === 0) {
         throw new IntelligenceValidationError(`Work item ${item.id} requires at least one output reference before completion.`);
       }
-      if (item.status === "completed" && item.approval === "required" && !this.#hasApproval(decisions, workflowId, item.id)) {
+      if (
+        item.status === "completed" &&
+        item.approval === "required" &&
+        !this.#hasApproval(decisions, reviews, workflowId, item)
+      ) {
         throw new IntelligenceValidationError(`Work item ${item.id} requires user approval before completion.`);
       }
     }
@@ -509,16 +589,24 @@ export class ProjectIntelligenceStore {
       const stableBefore = {
         title: oldItem.title,
         purpose: oldItem.purpose,
+        dependsOn: oldItem.dependsOn,
+        skillIds: oldItem.skillIds,
+        inputReferences: oldItem.inputReferences,
         expectedOutputs: oldItem.expectedOutputs,
         review: oldItem.review,
         approval: oldItem.approval,
+        notes: oldItem.notes,
       };
       const stableAfter = {
         title: nextItem.title,
         purpose: nextItem.purpose,
+        dependsOn: nextItem.dependsOn,
+        skillIds: nextItem.skillIds,
+        inputReferences: nextItem.inputReferences,
         expectedOutputs: nextItem.expectedOutputs,
         review: nextItem.review,
         approval: nextItem.approval,
+        notes: nextItem.notes,
       };
       if (JSON.stringify(stableBefore) !== JSON.stringify(stableAfter)) {
         throw new IntelligenceValidationError(
@@ -542,29 +630,86 @@ export class ProjectIntelligenceStore {
     }
   }
 
-  #hasApproval(decisions, workflowId, workItemId) {
+  #passingReviewForItem(reviews, workflowId, item) {
+    const latest = reviews
+      .filter((review) => targetKey(review.target) === `work_item:${workflowId}:${item.id}`)
+      .sort((a, b) => a.round - b.round)
+      .at(-1);
+    if (!latest || !["passed", "passed_with_notes"].includes(latest.verdict)) return null;
+    const binding = latest.binding;
+    if (!binding || !sameReferences(binding.outputReferences, item.outputReferences)) return null;
+    if (binding.perspective !== item.review.perspective) return null;
+    if (
+      binding.requiredCriteria.length !== item.review.criteria.length ||
+      binding.requiredCriteria.some((criterion, index) => criterion !== item.review.criteria[index])
+    ) return null;
+    return latest;
+  }
+
+  #hasApproval(decisions, reviews, workflowId, item) {
+    const passingReview = item.review.required
+      ? this.#passingReviewForItem(reviews, workflowId, item)
+      : null;
     const latest = decisions.filter((decision) =>
       decision.kind === "project_decision" &&
       decision.decidedBy === "user" &&
       decision.target?.kind === "work_item" &&
       decision.target.workflowId === workflowId &&
-      decision.target.workItemId === workItemId
+      decision.target.workItemId === item.id
     ).at(-1);
-    return latest?.outcome === "approved";
+    return Boolean(
+      latest?.outcome === "approved" &&
+      latest.binding &&
+      sameReferences(latest.binding.outputReferences, item.outputReferences) &&
+      latest.binding.reviewId === (passingReview?.id ?? null)
+    );
+  }
+
+  async createWorkItemDecisionBinding(projectId, workflowId, workItemId) {
+    const workflow = await this.readActiveWorkflow(projectId);
+    if (!workflow || workflow.id !== workflowId) {
+      throw new IntelligenceValidationError("Approval must target the active workflow.");
+    }
+    const item = workflow.items.find((candidate) => candidate.id === workItemId);
+    if (!item) throw new IntelligenceValidationError(`Unknown work item: ${workflowId}/${workItemId}.`);
+    if (item.status !== "awaiting_approval") {
+      throw new IntelligenceValidationError(
+        `Work item ${item.id} must be awaiting_approval before a decision can be recorded.`
+      );
+    }
+    if (item.outputReferences.length === 0) {
+      throw new IntelligenceValidationError(`Work item ${item.id} has no output to approve.`);
+    }
+    const reviews = await this.readReviews(projectId);
+    const passingReview = item.review.required
+      ? this.#passingReviewForItem(reviews, workflow.id, item)
+      : null;
+    if (item.review.required && !passingReview) {
+      throw new IntelligenceValidationError(
+        `Work item ${item.id} requires a matching passing review before approval.`
+      );
+    }
+    return {
+      workflowRevision: workflow.revision,
+      outputReferences: structuredClone(item.outputReferences),
+      reviewId: passingReview?.id ?? null,
+    };
   }
 
   async #assertReviewTarget(projectId, target) {
     if (target.kind === "artifact") {
       if (!(await this.readArtifacts(projectId)).some((artifact) => artifact.id === target.id)) throw new IntelligenceValidationError(`Unknown artifact: ${target.id}.`);
-      return;
+      return null;
     }
     if (target.kind === "result") {
       await this.projectStore.readResult(projectId, target.id);
-      return;
+      return null;
     }
     const workflow = (await this.readWorkflows(projectId)).filter((item) => item.id === target.workflowId).at(-1);
-    if (!workflow?.items.some((item) => item.id === target.workItemId)) {
+    const item = workflow?.items.find((candidate) => candidate.id === target.workItemId);
+    if (!item) {
       throw new IntelligenceValidationError(`Unknown work item: ${target.workflowId}/${target.workItemId}.`);
     }
+    return { workflow, item };
   }
 }

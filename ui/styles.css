@@ -152,6 +152,15 @@ h3 {
   font-size: 1.05rem;
 }
 
+.checkpoint-warning {
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  border-radius: 0.5rem;
+  background: rgba(251, 191, 36, 0.1);
+  color: #fcd34d;
+}
+
 .context-group + .context-group {
   margin-top: 1rem;
 }
@@ -588,4 +597,12 @@ h3 {
   .result-trace {
     grid-template-columns: 1fr;
   }
+}
+
+.status-finalization_pending {
+  color: #fcd34d;
+}
+
+.run-warning {
+  color: #fcd34d;
 }

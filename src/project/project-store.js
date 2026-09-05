@@ -163,6 +163,7 @@ async function resultWithAvailability(projectRoot, result) {
 function validateResult(result, projectId) {
   const inputResults = result?.inputResults ?? [];
   const files = result?.files ?? [];
+  const runCompletion = result?.runCompletion ?? null;
   if (
     !result ||
     result.version !== PROJECT_VERSION ||
@@ -203,11 +204,24 @@ function validateResult(result, projectId) {
     typeof result.verification !== "object" ||
     Array.isArray(result.verification) ||
     result.verification.status !== "passed" ||
-    !Array.isArray(result.verification.checks)
+    !Array.isArray(result.verification.checks) ||
+    !(
+      runCompletion === null ||
+      (
+        typeof runCompletion === "object" &&
+        !Array.isArray(runCompletion) &&
+        Number.isFinite(runCompletion.durationMs) &&
+        runCompletion.durationMs >= 0 &&
+        (
+          runCompletion.actualCostUsd === null ||
+          (Number.isFinite(runCompletion.actualCostUsd) && runCompletion.actualCostUsd >= 0)
+        )
+      )
+    )
   ) {
     throw new ProjectStoreError("Kết quả không hợp lệ trong project: " + projectId);
   }
-  return { ...result, inputResults, files };
+  return { ...result, inputResults, files, runCompletion };
 }
 
 function validateDecision(decision, projectId) {
@@ -237,6 +251,30 @@ function validateDecision(decision, projectId) {
           Boolean(option.label.trim()) &&
           (option.description === null || typeof option.description === "string")
       );
+    const binding = decision.binding ?? null;
+    const bindingKeys = binding && typeof binding === "object" && !Array.isArray(binding)
+      ? Object.keys(binding)
+      : [];
+    const validBinding =
+      binding === null ||
+      (
+        target?.kind === "work_item" &&
+        bindingKeys.every((key) => ["workflowRevision", "outputReferences", "reviewId"].includes(key)) &&
+        bindingKeys.length === 3 &&
+        Number.isInteger(binding.workflowRevision) &&
+        binding.workflowRevision > 0 &&
+        Array.isArray(binding.outputReferences) &&
+        binding.outputReferences.length > 0 &&
+        binding.outputReferences.every(
+          (reference) =>
+            reference &&
+            typeof reference.kind === "string" &&
+            Boolean(reference.kind.trim()) &&
+            typeof reference.id === "string" &&
+            Boolean(reference.id.trim())
+        ) &&
+        (binding.reviewId === null || (typeof binding.reviewId === "string" && Boolean(binding.reviewId.trim())))
+      );
     if (
       decision.version !== PROJECT_VERSION ||
       decision.projectId !== projectId ||
@@ -248,6 +286,7 @@ function validateDecision(decision, projectId) {
       !decision.subject.trim() ||
       !["approved", "changes_requested", "rejected", "recorded"].includes(decision.outcome) ||
       !validOptions ||
+      !validBinding ||
       !(decision.selected === null || typeof decision.selected === "string") ||
       typeof decision.reason !== "string" ||
       !decision.reason.trim() ||
@@ -262,7 +301,7 @@ function validateDecision(decision, projectId) {
     if (decision.selected !== null && !decision.options.some((option) => option.id === decision.selected)) {
       throw new ProjectStoreError("Selected decision option does not exist.");
     }
-    return decision;
+    return { ...decision, binding };
   }
   if (
     !decision ||
@@ -290,6 +329,14 @@ function resultReference(value) {
     throw new ProjectStoreError("Result id không hợp lệ.");
   }
   return resultId;
+}
+
+function runReference(value) {
+  const runId = requireText(value, "Run id");
+  if (!/^run-[a-z0-9-]+$/i.test(runId)) {
+    throw new ProjectStoreError("Run id không hợp lệ.");
+  }
+  return runId;
 }
 
 function resultFileReference(value) {
@@ -512,7 +559,8 @@ export class ProjectStore {
     if (!["completed", "failed"].includes(status)) {
       throw new ProjectStoreError("Trạng thái kết thúc run không hợp lệ.");
     }
-    const path = join(projectDirectory(this.rootDir, projectId), "runs", `${runId}.json`);
+    const normalizedRunId = runReference(runId);
+    const path = join(projectDirectory(this.rootDir, projectId), "runs", `${normalizedRunId}.json`);
     const run = validateRun(await readJson(path), projectId);
     if (run.status !== "in_progress") {
       throw new ProjectStoreError(`Run đã kết thúc: ${runId}`);
@@ -541,7 +589,8 @@ export class ProjectStore {
   }
 
   async readRun(projectId, runId) {
-    const path = join(projectDirectory(this.rootDir, projectId), "runs", `${runId}.json`);
+    const normalizedRunId = runReference(runId);
+    const path = join(projectDirectory(this.rootDir, projectId), "runs", `${normalizedRunId}.json`);
     return validateRun(await readJson(path), projectId);
   }
 
@@ -818,7 +867,8 @@ export class ProjectStore {
     files = [],
     tool,
     data,
-    verification
+    verification,
+    runCompletion = null
   }) {
     const projectRoot = projectDirectory(this.rootDir, projectId);
     const run = await this.readRun(projectId, runId);
@@ -912,6 +962,7 @@ export class ProjectStore {
       tool: normalizedTool,
       data: objectValue(data, "Dữ liệu kết quả"),
       verification: objectValue(verification, "Kiểm tra kết quả"),
+      runCompletion,
       createdAt: now(),
       createdByRun: requireText(runId, "Run tạo kết quả")
     };
@@ -1071,6 +1122,17 @@ export class ProjectStore {
     if (outcome === "recorded" && (normalizedOptions.length < 2 || !selected)) {
       throw new ProjectStoreError("A recorded choice requires at least two options and a selection.");
     }
+    const decidedBy = value.decidedBy ?? "agent";
+    if (normalizedTarget.kind === "work_item" && outcome === "approved" && decidedBy !== "user") {
+      throw new ProjectStoreError("A work item approval must be decided by the user.");
+    }
+    const binding = normalizedTarget.kind === "work_item" && outcome !== "recorded"
+      ? await this.intelligence.createWorkItemDecisionBinding(
+          projectId,
+          normalizedTarget.workflowId,
+          normalizedTarget.workItemId
+        )
+      : null;
     const existingDecisions = await this.readDecisions(projectId);
     const latestTimestamp = existingDecisions.reduce(
       (latest, entry) => Math.max(latest, Date.parse(entry.createdAt)),
@@ -1088,9 +1150,10 @@ export class ProjectStore {
       options: normalizedOptions,
       selected,
       reason: requireText(value.reason, "Decision reason"),
-      decidedBy: value.decidedBy ?? "agent",
+      decidedBy,
       userVisible: value.userVisible ?? true,
       confidence: value.confidence ?? null,
+      ...(binding ? { binding } : {}),
       createdAt: new Date(Math.max(Date.now(), latestTimestamp + 1)).toISOString()
     };
     validateDecision(decision, projectId);
@@ -1140,6 +1203,35 @@ export class ProjectStore {
     return runs
       .map((run) => validateRun(run, projectId))
       .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+  }
+
+  async recoverRunFinalization(projectId, runId) {
+    const run = await this.readRun(projectId, runId);
+    if (run.status === "completed") return run;
+    if (run.status !== "in_progress") {
+      throw new ProjectStoreError(`Run không thể được phục hồi từ trạng thái ${run.status}: ${runId}`);
+    }
+    const results = (await this.readResults(projectId)).filter(
+      (result) => result.createdByRun === runId
+    );
+    if (results.length !== 1) {
+      throw new ProjectStoreError(
+        `Run ${runId} cần đúng một result bền vững để hoàn tất lại.`
+      );
+    }
+    const [result] = results;
+    if (!result.runCompletion) {
+      throw new ProjectStoreError(`Result của run ${runId} không có dữ liệu hoàn tất.`);
+    }
+    if (result.files.some((file) => !file.available)) {
+      throw new ProjectStoreError(`Output của run ${runId} không còn đầy đủ.`);
+    }
+    return this.finishRun(projectId, runId, {
+      status: "completed",
+      outputs: [result.id],
+      durationMs: result.runCompletion.durationMs,
+      actualCostUsd: result.runCompletion.actualCostUsd
+    });
   }
 
   async writeCheckpoint(projectId, value) {
@@ -1278,6 +1370,21 @@ export class ProjectStore {
       this.readOverview(projectId)
     ]);
     const intelligence = await this.intelligence.readIntelligence(projectId);
+    const runRecovery = {
+      pendingFinalizations: runs
+        .filter((run) => run.status === "in_progress")
+        .map((run) => {
+          const durableResults = results.filter((result) => result.createdByRun === run.id);
+          return {
+            runId: run.id,
+            resultIds: durableResults.map((result) => result.id),
+            recoverable:
+              durableResults.length === 1 &&
+              Boolean(durableResults[0].runCompletion) &&
+              durableResults[0].files.every((file) => file.available)
+          };
+        })
+    };
     return {
       project,
       checkpoint,
@@ -1286,6 +1393,7 @@ export class ProjectStore {
       decisions,
       runs,
       overview,
+      runRecovery,
       ...intelligence,
       intelligence: {
         activeArtifacts: intelligence.activeArtifacts,

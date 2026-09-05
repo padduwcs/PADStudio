@@ -144,6 +144,11 @@ chuỗi bước bắt buộc. Result cũ không có hai field này vẫn đượ
 rỗng. Web tiếp tục chỉ đọc: chỉ phục vụ file đã đăng ký theo result/file id, không
 nhận raw path và không chạy tool.
 
+Sau khi output đã kiểm tra và Result đã được ghi bền vững, lỗi khi hoàn tất record
+Run không được phép xóa Result hoặc file output. Context đánh dấu Run đó là đang chờ
+hoàn tất dấu vết; Agent dùng lệnh phục hồi để hoàn tất Run mà không chạy lại tool.
+Rollback chỉ xóa output khi chưa có Result bền vững.
+
 ## Trí nhớ project và checkpoint
 
 Project giữ trí nhớ có ý nghĩa để Agent có thể tiếp tục hoặc kiểm tra lại: yêu cầu/ràng buộc còn hiệu lực, tư liệu và kết quả quan trọng, bản được chọn, quyết định/phê duyệt, run, lỗi, bằng chứng và checkpoint. Agent chắt lọc ý nghĩa; hệ thống giữ các bằng chứng khách quan để chúng không chỉ tồn tại trong hội thoại.

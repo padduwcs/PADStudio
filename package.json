@@ -16,6 +16,7 @@
     "project:workflow:init": "node src/cli/initialize-project-workflow.js",
     "project:review": "node src/cli/record-project-review.js",
     "project:context": "node src/cli/read-project-context.js",
+    "project:run:recover": "node src/cli/recover-run-finalization.js",
     "workflow:list": "node src/cli/list-workflow-templates.js",
     "skill:list": "node src/cli/list-skills.js",
     "skill:read": "node src/cli/read-skill.js",

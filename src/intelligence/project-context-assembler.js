@@ -1,13 +1,51 @@
+function activity(kind, id, value) {
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) return null;
+  return { kind, id, at: value };
+}
+
+function checkpointFreshness(context) {
+  const activities = [
+    ...context.resources.map((item) => activity("resource", item.id, item.createdAt)),
+    ...context.results.map((item) => activity("result", item.id, item.createdAt)),
+    ...context.runs.map((item) => activity("run", item.id, item.finishedAt ?? item.startedAt)),
+    ...context.decisions.map((item) => activity("decision", item.id, item.createdAt)),
+    ...context.artifacts.map((item) => activity("artifact", item.id, item.createdAt)),
+    ...context.workflows.map((item) => activity("workflow", `${item.id}:r${item.revision}`, item.createdAt)),
+    ...context.reviews.map((item) => activity("review", item.id, item.createdAt)),
+  ].filter(Boolean).sort((left, right) => left.at.localeCompare(right.at));
+  const latestActivityAt = activities.at(-1)?.at ?? null;
+  if (!context.checkpoint) {
+    return {
+      status: "missing",
+      checkpointUpdatedAt: null,
+      latestActivityAt,
+      newerActivityCount: activities.length,
+      newerActivityKinds: [...new Set(activities.map((item) => item.kind))],
+    };
+  }
+  const newer = activities.filter((item) => item.at > context.checkpoint.updatedAt);
+  return {
+    status: newer.length ? "stale" : "current",
+    checkpointUpdatedAt: context.checkpoint.updatedAt,
+    latestActivityAt,
+    newerActivityCount: newer.length,
+    newerActivityKinds: [...new Set(newer.map((item) => item.kind))],
+  };
+}
+
 export class ProjectContextAssembler {
-  constructor({ projectStore, toolRegistry = null }) {
+  constructor({ projectStore, toolRegistry = null, capabilityCacheTtlMs = 5_000, now = Date.now }) {
     this.projectStore = projectStore;
     this.toolRegistry = toolRegistry;
-    this.capabilitiesPromise = null;
+    this.capabilityCacheTtlMs = capabilityCacheTtlMs;
+    this.now = now;
+    this.capabilitiesCache = null;
   }
 
   async build(projectId) {
     const context = await this.projectStore.readContext(projectId);
     const capabilities = await this.#capabilities();
+    const freshness = checkpointFreshness(context);
     const current = context.intelligence.currentWorkItems;
     const activeWorkflow = context.intelligence.activeWorkflow;
     const checkpointMatches = Boolean(
@@ -21,8 +59,10 @@ export class ProjectContextAssembler {
     return {
       ...context,
       capabilities,
+      checkpointFreshness: freshness,
       resumeView: {
         checkpoint: context.checkpoint?.resume ?? null,
+        checkpointFreshness: freshness,
         activeWorkflowId: activeWorkflow?.id ?? null,
         activeWorkflowRevision: activeWorkflow?.revision ?? null,
         activeWorkItemId: checkpointItem?.id ?? null,
@@ -44,7 +84,20 @@ export class ProjectContextAssembler {
 
   async #capabilities() {
     if (!this.toolRegistry) return { capabilities: [] };
-    this.capabilitiesPromise ??= this.toolRegistry.describeCapabilities();
-    return this.capabilitiesPromise;
+    const checkedAt = this.now();
+    if (
+      !this.capabilitiesCache ||
+      checkedAt - this.capabilitiesCache.checkedAt >= this.capabilityCacheTtlMs
+    ) {
+      const promise = this.toolRegistry.describeCapabilities();
+      this.capabilitiesCache = { checkedAt, promise };
+      try {
+        return await promise;
+      } catch (error) {
+        if (this.capabilitiesCache?.promise === promise) this.capabilitiesCache = null;
+        throw error;
+      }
+    }
+    return this.capabilitiesCache.promise;
   }
 }

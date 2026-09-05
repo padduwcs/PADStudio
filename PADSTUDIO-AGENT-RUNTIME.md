@@ -103,6 +103,10 @@ Luồng chuẩn là `in_progress → awaiting_review → awaiting_approval → c
 Chỉ đưa item vào `awaiting_approval` sau khi đã có output reference và review bắt
 buộc đã pass. Một project chỉ có một workflow `active` tại một thời điểm.
 
+Review chỉ được ghi khi work item đang `awaiting_review` và đã có output. Approval
+chỉ được ghi khi item đang `awaiting_approval`. Review và approval được khóa theo
+đúng tập output; thay output hoặc đổi ý nghĩa item bắt buộc phải review/duyệt lại.
+
 ```json
 {
   "target": {
@@ -173,6 +177,17 @@ npm run tool:run -- <project-id> <file-request-json>
 Agent phải chọn rõ capability và tool từ danh mục; hệ thống không tự fallback sang
 tool khác. Lệnh thành công lưu một result và run liên kết với nhau. Lệnh thất bại
 vẫn lưu failed run sau khi một yêu cầu hợp lệ đã bắt đầu.
+
+Nếu tool trả `status: "finalization_pending"`, Result và file output đã được bảo
+toàn nhưng record Run chưa đóng xong. Không chạy lại tool. Đọc context để lấy Run
+đang recoverable rồi hoàn tất dấu vết:
+
+```powershell
+npm run project:run:recover -- <project-id> <run-id>
+```
+
+Nếu context báo `checkpointFreshness.status: "stale"`, Agent phải đọc các hoạt động
+mới hơn và ghi checkpoint mới trước khi dựa vào trường `next` cũ.
 
 ### Cắt video
 

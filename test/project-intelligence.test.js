@@ -90,6 +90,16 @@ test("adaptive workflow preserves revisions and rejects cycles or premature prog
     status: "active",
     items: [workItem()]
   });
+  const direction = await store.recordArtifact("demo", {
+    key: "direction-for-review",
+    type: "creative.direction",
+    name: "Direction",
+    summary: "Direction output ready for review.",
+    data: {},
+    references: [],
+    status: "active",
+    createdBy: "agent"
+  });
 
   await assert.rejects(
     store.writeWorkflow("demo", {
@@ -109,7 +119,10 @@ test("adaptive workflow preserves revisions and rejects cycles or premature prog
     purpose: workflow.purpose,
     status: "active",
     changeReason: "Direction is ready for review.",
-    items: [workItem({ status: "awaiting_review" })]
+    items: [workItem({
+      status: "awaiting_review",
+      outputReferences: [{ kind: "artifact", id: direction.id }]
+    })]
   });
   const beforeApproval = await store.readContext("demo");
   assert.equal(beforeApproval.intelligence.currentWorkItems[0].status, "awaiting_review");
@@ -168,11 +181,22 @@ test("adaptive workflow preserves revisions and rejects cycles or premature prog
 
 test("review and user approval are hard gates while decisions retain rationale", async (t) => {
   const { rootDir, store } = await fixture(t);
+  const direction = await store.recordArtifact("demo", {
+    key: "selected-direction",
+    type: "creative.direction",
+    name: "Selected direction",
+    summary: "The direction that is ready for review.",
+    data: {},
+    references: [],
+    status: "active",
+    createdBy: "agent"
+  });
+  const directionOutput = [{ kind: "artifact", id: direction.id }];
   const workflow = await store.writeWorkflow("demo", {
     name: "Creative choice",
     purpose: "Choose a direction before production.",
     status: "active",
-    items: [workItem({ status: "awaiting_review" })]
+    items: [workItem({ status: "awaiting_review", outputReferences: directionOutput })]
   });
   await assert.rejects(
     store.recordReview("demo", {
@@ -226,7 +250,7 @@ test("review and user approval are hard gates while decisions retain rationale",
     changeReason: "Review passed; the direction is ready for user approval.",
     items: [workItem({
       status: "awaiting_approval",
-      outputReferences: [{ kind: "review", id: review.id }]
+      outputReferences: directionOutput
     })]
   });
   assert.equal(awaitingApproval.revision, 2);
@@ -267,7 +291,7 @@ test("review and user approval are hard gates while decisions retain rationale",
     changeReason: "Review passed and the user approved the direction.",
     items: [workItem({
       status: "completed",
-      outputReferences: [{ kind: "review", id: review.id }]
+      outputReferences: directionOutput
     })]
   };
   await assert.rejects(store.writeWorkflow("demo", completedRequest), /user approval/);
@@ -283,6 +307,8 @@ test("review and user approval are hard gates while decisions retain rationale",
     userVisible: true,
     confidence: "high"
   });
+  assert.deepEqual(finalApproval.binding.outputReferences, directionOutput);
+  assert.equal(finalApproval.binding.reviewId, review.id);
   const completed = await store.writeWorkflow("demo", completedRequest);
 
   assert.equal(completed.revision, 3);
@@ -294,6 +320,123 @@ test("review and user approval are hard gates while decisions retain rationale",
   assert.equal(reopened.intelligence.activeWorkflow, null);
   assert.equal(reopened.projectDecisions[0].reason, decision.reason);
   assert.equal(reopened.reviews[0].round, 1);
+});
+
+test("review and approval are bound to the current work item outputs", async (t) => {
+  const { store } = await fixture(t);
+  const workflow = await store.writeWorkflow("demo", {
+    name: "Bound gate",
+    purpose: "Prevent stale review and approval reuse.",
+    status: "active",
+    items: [workItem({ status: "planned" })]
+  });
+  const reviewValue = {
+    target: { kind: "work_item", workflowId: workflow.id, workItemId: "direction" },
+    perspective: "creative",
+    verdict: "passed",
+    summary: "The current direction passes.",
+    criteria: [{
+      id: "serves-brief",
+      criterion: "Serves the brief",
+      status: "passed",
+      evidence: "The evidence matches the current output."
+    }],
+    reviewer: "agent"
+  };
+  await assert.rejects(store.recordReview("demo", reviewValue), /awaiting_review/);
+  await assert.rejects(
+    store.recordDecision("demo", {
+      target: { kind: "work_item", workflowId: workflow.id, workItemId: "direction" },
+      category: "approval",
+      subject: "Premature approval",
+      outcome: "approved",
+      options: [],
+      selected: null,
+      reason: "There is no output yet.",
+      decidedBy: "user",
+      userVisible: true,
+      confidence: "high"
+    }),
+    /awaiting_approval/
+  );
+
+  const firstOutput = await store.recordArtifact("demo", {
+    key: "first-direction",
+    type: "creative.direction",
+    name: "First direction",
+    summary: "First reviewable output.",
+    data: {}, references: [], status: "active", createdBy: "agent"
+  });
+  const secondOutput = await store.recordArtifact("demo", {
+    key: "second-direction",
+    type: "creative.direction",
+    name: "Second direction",
+    summary: "A different, unreviewed output.",
+    data: {}, references: [], status: "active", createdBy: "agent"
+  });
+  const awaitingReview = await store.writeWorkflow("demo", {
+    id: workflow.id,
+    name: workflow.name,
+    purpose: workflow.purpose,
+    status: "active",
+    changeReason: "The first output is ready for review.",
+    items: [workItem({
+      status: "awaiting_review",
+      outputReferences: [{ kind: "artifact", id: firstOutput.id }]
+    })]
+  });
+  await assert.rejects(
+    store.recordReview("demo", { ...reviewValue, perspective: "technical" }),
+    /perspective/
+  );
+  await assert.rejects(
+    store.recordReview("demo", {
+      ...reviewValue,
+      criteria: [{
+        id: "unrelated",
+        criterion: "Unrelated criterion",
+        status: "passed",
+        evidence: "This does not cover the required criterion."
+      }]
+    }),
+    /does not cover required criteria/
+  );
+  const review = await store.recordReview("demo", reviewValue);
+  assert.equal(review.binding.workflowRevision, awaitingReview.revision);
+  assert.deepEqual(review.binding.outputReferences, awaitingReview.items[0].outputReferences);
+
+  await assert.rejects(
+    store.writeWorkflow("demo", {
+      id: workflow.id,
+      name: workflow.name,
+      purpose: workflow.purpose,
+      status: "active",
+      changeReason: "Attempt to add an unreviewed output.",
+      items: [workItem({
+        status: "awaiting_approval",
+        outputReferences: [
+          { kind: "artifact", id: firstOutput.id },
+          { kind: "artifact", id: secondOutput.id }
+        ]
+      })]
+    }),
+    /passing review/
+  );
+  await assert.rejects(
+    store.writeWorkflow("demo", {
+      id: workflow.id,
+      name: workflow.name,
+      purpose: workflow.purpose,
+      status: "active",
+      changeReason: "Attempt to rewrite reviewed work.",
+      items: [workItem({
+        title: "A different task",
+        status: "awaiting_approval",
+        outputReferences: [{ kind: "artifact", id: firstOutput.id }]
+      })]
+    }),
+    /change its identity/
+  );
 });
 
 test("skill and workflow template catalogs expose method, standards, and optional starting points", async () => {
@@ -421,6 +564,49 @@ test("context assembler joins durable intelligence, resume state, and real capab
   assert.equal(context.resumeView.attention[0].purpose, workItem().purpose);
   assert.equal(context.capabilities.capabilities[0].id, "media.inspect");
   assert.equal(context.intelligence.relevantSkills[0].id, "creative-direction");
+  assert.equal(context.checkpointFreshness.status, "current");
+});
+
+test("context reports stale checkpoints and refreshes capability availability after its TTL", async (t) => {
+  const { store } = await fixture(t);
+  await store.writeCheckpoint("demo", {
+    goal: "Keep the resume point current.",
+    selectedResources: [],
+    next: "Continue."
+  });
+  await store.recordArtifact("demo", {
+    key: "new-understanding",
+    type: "project.brief",
+    name: "New understanding",
+    summary: "This was recorded after the checkpoint.",
+    data: {}, references: [], status: "active", createdBy: "agent"
+  });
+
+  let clock = 0;
+  let checks = 0;
+  const registry = {
+    async describeCapabilities() {
+      checks += 1;
+      return { capabilities: [{ id: "dynamic", check: checks }] };
+    }
+  };
+  const assembler = new ProjectContextAssembler({
+    projectStore: store,
+    toolRegistry: registry,
+    capabilityCacheTtlMs: 100,
+    now: () => clock
+  });
+  const first = await assembler.build("demo");
+  assert.equal(first.checkpointFreshness.status, "stale");
+  assert.deepEqual(first.checkpointFreshness.newerActivityKinds, ["artifact"]);
+  assert.equal(first.capabilities.capabilities[0].check, 1);
+
+  clock = 50;
+  const cached = await assembler.build("demo");
+  assert.equal(cached.capabilities.capabilities[0].check, 1);
+  clock = 100;
+  const refreshed = await assembler.build("demo");
+  assert.equal(refreshed.capabilities.capabilities[0].check, 2);
 });
 
 test("legacy projects without intelligence directories still reopen", async (t) => {

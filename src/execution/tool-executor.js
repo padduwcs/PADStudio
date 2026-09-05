@@ -131,21 +131,38 @@ export class ToolExecutor {
       if (outputWorkspace) {
         await this.store.commitRunOutputWorkspace(outputWorkspace);
       }
+      const runCompletion = {
+        durationMs: Date.now() - started,
+        actualCostUsd: execution.actualCostUsd ?? null
+      };
       result = await this.store.addResult(projectId, {
         runId: run.id,
         capability: request.capability,
         tool: reference,
-        ...resultValue
+        ...resultValue,
+        runCompletion
       });
-      await this.store.finishRun(projectId, run.id, {
-        status: "completed",
-        outputs: [result.id],
-        durationMs: Date.now() - started,
-        actualCostUsd: execution.actualCostUsd ?? null
-      });
-      if (outputWorkspace) {
-        this.store.releaseRunOutputWorkspace(outputWorkspace);
+      try {
+        await this.store.finishRun(projectId, run.id, {
+          status: "completed",
+          outputs: [result.id],
+          durationMs: runCompletion.durationMs,
+          actualCostUsd: runCompletion.actualCostUsd
+        });
+      } catch (finalizationError) {
+        this.#releaseCommittedWorkspace(outputWorkspace);
+        return {
+          projectId,
+          runId: run.id,
+          resultId: result.id,
+          status: "finalization_pending",
+          warning:
+            "Kết quả đã được bảo toàn nhưng trạng thái run chưa thể hoàn tất: " +
+            (finalizationError?.message || "lỗi không xác định"),
+          result
+        };
       }
+      this.#releaseCommittedWorkspace(outputWorkspace);
       return {
         projectId,
         runId: run.id,
@@ -164,6 +181,15 @@ export class ToolExecutor {
         started
       );
       throw failure;
+    }
+  }
+
+  #releaseCommittedWorkspace(outputWorkspace) {
+    if (!outputWorkspace) return;
+    try {
+      this.store.releaseRunOutputWorkspace(outputWorkspace);
+    } catch {
+      // Output and result are already durable. In-memory cleanup must never delete them.
     }
   }
 
