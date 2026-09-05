@@ -77,11 +77,14 @@ PADStudio không quy định một chuỗi stage chung cho mọi project. Workfl
 thông tin mới. Dù linh hoạt, workflow phải đủ rõ để người dùng hiểu Agent đang làm
 gì, hệ thống biết cần giữ thông tin nào và một Agent khác có thể tiếp tục.
 
-Instruction hoặc skill có thể cung cấp kiến thức nghề và cách review cho Agent;
-chúng không thay thế dữ liệu của project. Artifact giữ kết quả hiểu biết hoặc sáng
-tạo, workflow giữ kế hoạch hiện hành, result/run giữ việc đã thực thi, decision giữ
-lựa chọn và checkpoint giữ điểm tiếp tục. Cấu trúc cụ thể của các phần này sẽ được
-chốt qua từng lát cắt, không suy ra thành một pipeline cố định từ dàn ý này.
+Instruction hoặc skill cung cấp kiến thức nghề và cách review cho Agent; chúng
+không thay thế dữ liệu của project. Artifact giữ kết quả hiểu biết hoặc sáng tạo,
+workflow giữ kế hoạch hiện hành, result/run giữ việc đã thực thi, decision giữ
+lựa chọn và checkpoint giữ điểm tiếp tục.
+
+Contract đầu tiên của phần này đã được triển khai đầy đủ; xem
+[PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md](./PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md).
+Các extension sau vẫn phải giữ nguyên nguyên tắc không suy ra pipeline cố định.
 
 ## 4. Bộ thực thi
 

@@ -1,0 +1,55 @@
+{
+  "version": "1.0",
+  "skills": [
+    {
+      "id": "project-intake",
+      "version": "1.0",
+      "name": "Project intake",
+      "description": "Turn an incomplete request into a useful brief without forcing a fixed questionnaire.",
+      "appliesTo": ["understand", "plan"],
+      "artifactTypes": ["project.brief"],
+      "reviewCriteria": ["intent is explicit", "unknowns are separated from assumptions", "constraints are actionable"],
+      "instructions": "project-intake.md"
+    },
+    {
+      "id": "source-understanding",
+      "version": "1.0",
+      "name": "Source understanding",
+      "description": "Inspect source material and preserve observations that should influence creative work.",
+      "appliesTo": ["understand", "review"],
+      "artifactTypes": ["source.understanding"],
+      "reviewCriteria": ["claims point to evidence", "technical facts and interpretation are separated", "opportunities and risks are visible"],
+      "instructions": "source-understanding.md"
+    },
+    {
+      "id": "creative-direction",
+      "version": "1.0",
+      "name": "Creative direction",
+      "description": "Develop and compare creative directions before committing production effort.",
+      "appliesTo": ["ideate", "plan", "review"],
+      "artifactTypes": ["creative.direction", "creative.proposal"],
+      "reviewCriteria": ["direction serves the brief", "choices are meaningfully different", "taste is expressed as usable principles"],
+      "instructions": "creative-direction.md"
+    },
+    {
+      "id": "adaptive-planning",
+      "version": "1.0",
+      "name": "Adaptive planning",
+      "description": "Build and revise a project-specific graph of work from current evidence.",
+      "appliesTo": ["plan", "replan"],
+      "artifactTypes": ["project.plan"],
+      "reviewCriteria": ["each work item has a purpose", "dependencies reflect real constraints", "gates match impact"],
+      "instructions": "adaptive-planning.md"
+    },
+    {
+      "id": "result-review",
+      "version": "1.0",
+      "name": "Result review",
+      "description": "Review creative intent and technical integrity as distinct but connected concerns.",
+      "appliesTo": ["review", "verify"],
+      "artifactTypes": ["review.findings"],
+      "reviewCriteria": ["verdict cites evidence", "failed checks propose action", "creative and technical findings are not conflated"],
+      "instructions": "result-review.md"
+    }
+  ]
+}

@@ -45,6 +45,93 @@ Agent chỉ nhập phần đã xem và quyết định cần dùng.
 
 Nếu lệnh thất bại, nói rõ trong chat và không tuyên bố rằng resource đã được lưu.
 
+## Dùng project intelligence và workflow thích nghi
+
+Sau khi đọc context, xem skill và workflow template đang có:
+
+```powershell
+npm run skill:list -- <project-id>
+npm run skill:read -- <skill-id> <project-id>
+npm run workflow:list
+```
+
+Skill hướng dẫn cách làm và tiêu chuẩn review; không phải lệnh tự chạy. Template
+chỉ là điểm khởi đầu:
+
+```powershell
+npm run project:workflow:init -- <project-id> quick-media-task
+```
+
+Agent có thể ghi artifact hiểu biết hoặc sáng tạo qua standard input:
+
+```json
+{
+  "key": "project-brief",
+  "type": "project.brief",
+  "name": "Brief hiện hành",
+  "summary": "Video ngắn giới thiệu không gian và con người.",
+  "status": "active",
+  "data": {
+    "purpose": "Tạo cảm giác gần gũi",
+    "audience": "Khách địa phương"
+  },
+  "references": [],
+  "createdBy": "agent"
+}
+```
+
+```powershell
+$artifact | npm run project:artifact -- <project-id> -
+```
+
+Ghi workflow riêng bằng `project:workflow`. Mỗi item phải có `id`, `title`,
+`purpose`, `status`, `dependsOn`, `skillIds`, `inputReferences`,
+`expectedOutputs`, `outputReferences`, `review` và `approval`. Khi sửa,
+gửi lại snapshot đầy đủ với cùng workflow `id` và `changeReason`; PADStudio tự
+tạo revision kế tiếp.
+
+```powershell
+$workflow | npm run project:workflow -- <project-id> -
+$review | npm run project:review -- <project-id> -
+```
+
+Không đánh dấu item `completed` khi dependency chưa xong. Nếu review là bắt buộc,
+ghi review pass trước. Nếu approval là `required`, ghi decision do người dùng
+quyết định trước:
+
+Luồng chuẩn là `in_progress → awaiting_review → awaiting_approval → completed`.
+Chỉ đưa item vào `awaiting_approval` sau khi đã có output reference và review bắt
+buộc đã pass. Một project chỉ có một workflow `active` tại một thời điểm.
+
+```json
+{
+  "target": {
+    "kind": "work_item",
+    "workflowId": "workflow-...",
+    "workItemId": "choose-direction"
+  },
+  "category": "creative_direction_approval",
+  "subject": "Duyệt hướng sáng tạo",
+  "outcome": "approved",
+  "options": [
+    { "id": "warm", "label": "Ấm áp", "description": "Gần gũi và đời thường" },
+    { "id": "graphic", "label": "Đồ họa", "description": "Nhanh và trừu tượng" }
+  ],
+  "selected": "warm",
+  "reason": "Phù hợp hơn với khán giả đã chọn.",
+  "decidedBy": "user",
+  "userVisible": true,
+  "confidence": "high"
+}
+```
+
+Decision lựa chọn của Agent dùng `outcome: "recorded"`, ít nhất hai option và
+selection có lý do. Không ghi approval `decidedBy: "user"` nếu người dùng chưa
+thực sự xác nhận.
+
+Contract đầy đủ:
+[PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md](docs/build/PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md).
+
 ## Dùng công cụ
 
 Xem các capability và công cụ thực sự dùng được trên máy:
@@ -171,6 +258,7 @@ Sau đó ghi vào project:
 
 ```powershell
 npm run project:checkpoint -- <project-id> <file-json>
+$checkpoint | npm run project:checkpoint -- <project-id> -
 ```
 
 `selectedResources` chỉ được tham chiếu resource đang tồn tại.

@@ -1,0 +1,61 @@
+{
+  "id": "creative-production",
+  "version": "1.0",
+  "name": "Creative production",
+  "description": "A starting graph for work where concept and taste should be settled before expensive production.",
+  "purpose": "Build understanding, choose a direction, then adapt the remaining production work to the project.",
+  "items": [
+    {
+      "id": "build-brief",
+      "title": "Build project brief",
+      "purpose": "Make intent, audience, outcome, and constraints explicit.",
+      "status": "ready",
+      "dependsOn": [],
+      "skillIds": ["project-intake"],
+      "inputReferences": [],
+      "expectedOutputs": [{ "kind": "artifact", "type": "project.brief", "description": "Active project brief." }],
+      "outputReferences": [],
+      "review": { "required": false, "perspective": "combined", "criteria": [] },
+      "approval": "auto"
+    },
+    {
+      "id": "understand-sources",
+      "title": "Understand sources",
+      "purpose": "Discover evidence, opportunities, and limitations in supplied material.",
+      "status": "planned",
+      "dependsOn": ["build-brief"],
+      "skillIds": ["source-understanding"],
+      "inputReferences": [],
+      "expectedOutputs": [{ "kind": "artifact", "type": "source.understanding", "description": "Source synthesis." }],
+      "outputReferences": [],
+      "review": { "required": false, "perspective": "combined", "criteria": [] },
+      "approval": "auto"
+    },
+    {
+      "id": "choose-direction",
+      "title": "Choose creative direction",
+      "purpose": "Explore meaningful options and commit to a direction before production.",
+      "status": "planned",
+      "dependsOn": ["understand-sources"],
+      "skillIds": ["creative-direction"],
+      "inputReferences": [],
+      "expectedOutputs": [{ "kind": "artifact", "type": "creative.direction", "description": "Approved creative direction." }],
+      "outputReferences": [],
+      "review": { "required": true, "perspective": "creative", "criteria": ["serves the brief", "clear creative principles"] },
+      "approval": "required"
+    },
+    {
+      "id": "adapt-production-plan",
+      "title": "Adapt production plan",
+      "purpose": "Define the remaining work from the chosen direction and current capabilities.",
+      "status": "planned",
+      "dependsOn": ["choose-direction"],
+      "skillIds": ["adaptive-planning"],
+      "inputReferences": [],
+      "expectedOutputs": [{ "kind": "workflow", "description": "A revised project-specific production graph." }],
+      "outputReferences": [],
+      "review": { "required": false, "perspective": "combined", "criteria": [] },
+      "approval": "notify"
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "id": "quick-media-task",
+  "version": "1.0",
+  "name": "Quick media task",
+  "description": "A lightweight starting graph for a bounded change to supplied media.",
+  "purpose": "Understand the request and source, perform a bounded change, then verify the result.",
+  "items": [
+    {
+      "id": "understand-request",
+      "title": "Understand the request",
+      "purpose": "Establish intent, constraints, and success criteria.",
+      "status": "ready",
+      "dependsOn": [],
+      "skillIds": ["project-intake"],
+      "inputReferences": [],
+      "expectedOutputs": [{ "kind": "artifact", "type": "project.brief", "description": "A dependable brief." }],
+      "outputReferences": [],
+      "review": { "required": false, "perspective": "combined", "criteria": [] },
+      "approval": "auto"
+    },
+    {
+      "id": "inspect-source",
+      "title": "Inspect source",
+      "purpose": "Understand technical properties and content relevant to the change.",
+      "status": "planned",
+      "dependsOn": ["understand-request"],
+      "skillIds": ["source-understanding"],
+      "inputReferences": [],
+      "expectedOutputs": [{ "kind": "artifact", "type": "source.understanding", "description": "Evidence-backed source understanding." }],
+      "outputReferences": [],
+      "review": { "required": false, "perspective": "technical", "criteria": [] },
+      "approval": "auto"
+    },
+    {
+      "id": "produce-change",
+      "title": "Produce change",
+      "purpose": "Create the requested result with managed tools and traceable inputs.",
+      "status": "planned",
+      "dependsOn": ["inspect-source"],
+      "skillIds": [],
+      "inputReferences": [],
+      "expectedOutputs": [{ "kind": "result", "description": "Managed project result." }],
+      "outputReferences": [],
+      "review": { "required": false, "perspective": "combined", "criteria": [] },
+      "approval": "auto"
+    },
+    {
+      "id": "review-result",
+      "title": "Review result",
+      "purpose": "Check technical integrity and fitness for the brief.",
+      "status": "planned",
+      "dependsOn": ["produce-change"],
+      "skillIds": ["result-review"],
+      "inputReferences": [],
+      "expectedOutputs": [{ "kind": "review", "description": "Evidence-backed review and verdict." }],
+      "outputReferences": [],
+      "review": { "required": false, "perspective": "combined", "criteria": [] },
+      "approval": "notify"
+    }
+  ]
+}

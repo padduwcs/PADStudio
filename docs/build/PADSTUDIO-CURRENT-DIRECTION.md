@@ -64,9 +64,10 @@ chat. Agent được thay đổi nó khi có thông tin hoặc phản hồi mớ
 quan đến hướng sáng tạo, chi phí, rủi ro hoặc hành động khó đảo ngược. PADStudio
 không thay Agent lập kế hoạch và cũng không âm thầm tự chuyển stage.
 
-Chi tiết như mô hình task, phụ thuộc, trạng thái, workflow template, artifact hay
-approval chưa được chốt ở mức định hướng này. Chúng chỉ được chọn khi phân tích
-và triển khai lát cắt tương ứng.
+Contract đầu tiên cho task, phụ thuộc, trạng thái, workflow template, artifact,
+review và approval đã được triển khai trong
+[PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md](./PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md).
+Đây là nền móng có version, không phải danh sách stage bắt buộc.
 
 ## Học OpenMontage có chọn lọc
 
@@ -119,7 +120,10 @@ Mỗi công cụ phải mô tả đủ để Agent gọi đúng và hệ thống
 
 Lát cắt đầu tiên chỉ cần một danh mục khả năng, một Bộ thực thi dùng chung, hợp đồng chung cho công cụ và kết quả, cùng một công cụ thật để chứng minh toàn bộ vòng chạy. Chưa mặc định xây hàng đợi, worker, chạy song song, tự động thử lại hay tự động fallback.
 
-PADStudio không tích hợp hoặc phụ thuộc vào code của OpenMontage. Cấu trúc dữ liệu, API, cách đăng ký và từng công cụ chỉ được chốt khi bắt đầu lát cắt triển khai tương ứng.
+PADStudio không tích hợp hoặc phụ thuộc vào code của OpenMontage. Những cơ chế đã
+học và áp dụng gồm artifact có revision, decision có lý do, review có tiêu chí,
+checkpoint tiếp tục giữa chừng và skill truyền phương pháp. Pipeline type, stage
+cố định và raw output path của OpenMontage không được đưa vào lõi PADStudio.
 
 ## Media output có vòng đời thuộc project
 
@@ -157,11 +161,11 @@ không cần người dùng lựa chọn.
 
 Project có thể bắt đầu từ ý tưởng, file, video, ảnh, đường dẫn đến tài nguyên có sẵn hoặc yêu cầu bất kỳ. Khi người dùng đổi hướng, Agent chỉ làm lại phần bị ảnh hưởng và giữ lại phần vẫn còn giá trị.
 
-## Lát cắt ưu tiên tiếp theo
+## Phần vừa hoàn thành
 
-Sau khi kho project, Bộ thực thi, công cụ thật đầu tiên và web observer đã chứng
-minh được vòng kỹ thuật, ưu tiên tiếp theo là **Project Intelligence + Adaptive
-Workflow**. Lát cắt này phải chứng minh được một Agent có thể:
+Sau kho project, Bộ thực thi, công cụ thật đầu tiên và web observer, PADStudio đã
+triển khai **Project Intelligence + Adaptive Workflow** thành một subsystem hoàn
+chỉnh. Nó cho phép Agent:
 
 1. chắt lọc và lưu cách hiểu hiện hành về mục tiêu và tư liệu;
 2. ghi một hướng sáng tạo đủ để giữ sự nhất quán;
@@ -169,9 +173,17 @@ Workflow**. Lát cắt này phải chứng minh được một Agent có thể:
 4. thực hiện một việc, review kết quả theo cả bằng chứng kỹ thuật và mục tiêu sáng tạo;
 5. cập nhật checkpoint để một Agent có thể mở lại và tiếp tục đúng hướng.
 
-Tên artifact, schema, API, giao diện chỉnh workflow và mức tự động hóa chưa được
-chốt. Trước khi triển khai cần tiếp tục khảo sát OpenMontage, đối chiếu với các
-loại project thực tế và chọn lát cắt nhỏ nhất chứng minh được vòng trên.
+Artifact/workflow/review/decision được lưu bền vững và có validation; context có
+phần active, capability, skill liên quan và resume view; CLI là đường mutation;
+Observer trực quan hóa nhưng vẫn chỉ đọc. Workflow mẫu chỉ là điểm khởi đầu và
+mọi lần điều chỉnh workflow đều giữ revision cùng lý do.
+
+## Ưu tiên sau nền móng này
+
+Việc tiếp theo không phải mở rộng thêm schema chung. Hãy dùng subsystem với một
+project sáng tạo thật từ đầu đến cuối, quan sát chỗ Agent thiếu năng lực thực tế,
+rồi bổ sung capability/tool và skill tương ứng. Chỉ sửa contract lõi khi bằng
+chứng từ project thật cho thấy ranh giới hiện tại không đủ.
 
 ## Triển khai tạm thời
 

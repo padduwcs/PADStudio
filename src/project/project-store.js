@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { ProjectIntelligenceStore } from "../intelligence/project-intelligence-store.js";
+import { createDefaultSkillCatalog } from "../intelligence/skill-catalog.js";
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { readJson, writeJsonAtomic, writeTextAtomic } from "./atomic-files.js";
@@ -209,6 +211,59 @@ function validateResult(result, projectId) {
 }
 
 function validateDecision(decision, projectId) {
+  if (decision?.kind === "project_decision") {
+    const target = decision.target;
+    const validTarget =
+      target &&
+      typeof target === "object" &&
+      (
+        (["project", "artifact", "result", "workflow"].includes(target.kind) && typeof target.id === "string" && Boolean(target.id.trim())) ||
+        (
+          target.kind === "work_item" &&
+          typeof target.workflowId === "string" &&
+          Boolean(target.workflowId.trim()) &&
+          typeof target.workItemId === "string" &&
+          Boolean(target.workItemId.trim())
+        )
+      );
+    const validOptions =
+      Array.isArray(decision.options) &&
+      decision.options.every(
+        (option) =>
+          option &&
+          typeof option.id === "string" &&
+          Boolean(option.id.trim()) &&
+          typeof option.label === "string" &&
+          Boolean(option.label.trim()) &&
+          (option.description === null || typeof option.description === "string")
+      );
+    if (
+      decision.version !== PROJECT_VERSION ||
+      decision.projectId !== projectId ||
+      typeof decision.id !== "string" ||
+      !validTarget ||
+      typeof decision.category !== "string" ||
+      !decision.category.trim() ||
+      typeof decision.subject !== "string" ||
+      !decision.subject.trim() ||
+      !["approved", "changes_requested", "rejected", "recorded"].includes(decision.outcome) ||
+      !validOptions ||
+      !(decision.selected === null || typeof decision.selected === "string") ||
+      typeof decision.reason !== "string" ||
+      !decision.reason.trim() ||
+      !["user", "agent"].includes(decision.decidedBy) ||
+      typeof decision.userVisible !== "boolean" ||
+      !(decision.confidence === null || ["low", "medium", "high"].includes(decision.confidence)) ||
+      typeof decision.createdAt !== "string" ||
+      !Number.isFinite(Date.parse(decision.createdAt))
+    ) {
+      throw new ProjectStoreError("Project decision is invalid in project: " + projectId);
+    }
+    if (decision.selected !== null && !decision.options.some((option) => option.id === decision.selected)) {
+      throw new ProjectStoreError("Selected decision option does not exist.");
+    }
+    return decision;
+  }
   if (
     !decision ||
     decision.version !== PROJECT_VERSION ||
@@ -289,6 +344,24 @@ function validateCheckpoint(checkpoint, projectId) {
   ) {
     throw new ProjectStoreError(`Checkpoint không hợp lệ trong project: ${projectId}`);
   }
+  if (
+    !(checkpoint.activeWorkflowId === undefined || checkpoint.activeWorkflowId === null || typeof checkpoint.activeWorkflowId === "string") ||
+    !(checkpoint.activeWorkItemId === undefined || checkpoint.activeWorkItemId === null || typeof checkpoint.activeWorkItemId === "string") ||
+    !(checkpoint.activeArtifacts === undefined || Array.isArray(checkpoint.activeArtifacts)) ||
+    !(checkpoint.pendingDecisions === undefined || Array.isArray(checkpoint.pendingDecisions)) ||
+    !(
+      checkpoint.resume === undefined ||
+      (
+        checkpoint.resume &&
+        typeof checkpoint.resume === "object" &&
+        typeof checkpoint.resume.summary === "string" &&
+        Array.isArray(checkpoint.resume.risks) &&
+        Array.isArray(checkpoint.resume.blockedBy)
+      )
+    )
+  ) {
+    throw new ProjectStoreError("Checkpoint intelligence pointers are invalid in project: " + projectId);
+  }
   return checkpoint;
 }
 
@@ -296,6 +369,12 @@ export class ProjectStore {
   constructor(rootDir) {
     this.rootDir = rootDir;
     this.outputWorkspaces = new Map();
+    this.intelligence = new ProjectIntelligenceStore({
+      rootDir,
+      projectStore: this,
+      skillCatalog: (projectId) =>
+        createDefaultSkillCatalog({ projectRoot: projectDirectory(rootDir, projectId) })
+    });
   }
 
   async createProject({ projectId, title }) {
@@ -315,6 +394,10 @@ export class ProjectStore {
       await mkdir(join(staging, "outputs"), { recursive: true });
       await mkdir(join(staging, "decisions"), { recursive: true });
       await mkdir(join(staging, "runs"), { recursive: true });
+      await mkdir(join(staging, "artifacts"), { recursive: true });
+      await mkdir(join(staging, "workflows"), { recursive: true });
+      await mkdir(join(staging, "reviews"), { recursive: true });
+      await mkdir(join(staging, "skills"), { recursive: true });
       await writeJsonAtomic(join(staging, "project.json"), {
         version: PROJECT_VERSION,
         id: projectId,
@@ -879,6 +962,7 @@ export class ProjectStore {
   }
 
   async recordDecision(projectId, value) {
+    if (value?.target) return this.recordProjectDecision(projectId, value);
     objectValue(value, "Nội dung quyết định");
     const allowedFields = new Set(["resultId", "outcome", "note"]);
     const unknownFields = Object.keys(value).filter((key) => !allowedFields.has(key));
@@ -922,6 +1006,126 @@ export class ProjectStore {
     return decision;
   }
 
+  async recordProjectDecision(projectId, value) {
+    objectValue(value, "Project decision");
+    const allowedFields = new Set([
+      "target", "category", "subject", "outcome", "options", "selected",
+      "reason", "decidedBy", "userVisible", "confidence"
+    ]);
+    const unknownFields = Object.keys(value).filter((key) => !allowedFields.has(key));
+    if (unknownFields.length) {
+      throw new ProjectStoreError("Project decision contains unsupported fields: " + unknownFields.join(", "));
+    }
+    const target = objectValue(value.target, "Decision target");
+    const targetKind = requireText(target.kind, "Decision target kind");
+    let normalizedTarget;
+    if (["project", "artifact", "result", "workflow"].includes(targetKind)) {
+      const unknownTargetFields = Object.keys(target).filter((key) => !["kind", "id"].includes(key));
+      if (unknownTargetFields.length) {
+        throw new ProjectStoreError("Decision target contains unsupported fields: " + unknownTargetFields.join(", "));
+      }
+      normalizedTarget = { kind: targetKind, id: requireText(target.id, "Decision target id") };
+    } else if (targetKind === "work_item") {
+      const unknownTargetFields = Object.keys(target).filter(
+        (key) => !["kind", "workflowId", "workItemId"].includes(key)
+      );
+      if (unknownTargetFields.length) {
+        throw new ProjectStoreError("Decision target contains unsupported fields: " + unknownTargetFields.join(", "));
+      }
+      normalizedTarget = {
+        kind: targetKind,
+        workflowId: requireText(target.workflowId, "Workflow id"),
+        workItemId: requireText(target.workItemId, "Work item id")
+      };
+    } else {
+      throw new ProjectStoreError("Decision target kind is not supported: " + targetKind);
+    }
+    await this.#assertDecisionTarget(projectId, normalizedTarget);
+    const options = value.options ?? [];
+    if (!Array.isArray(options)) throw new ProjectStoreError("Decision options must be an array.");
+    const normalizedOptions = options.map((option, index) => {
+      objectValue(option, "Decision option " + index);
+      const unknownOptionFields = Object.keys(option).filter(
+        (key) => !["id", "label", "description"].includes(key)
+      );
+      if (unknownOptionFields.length) {
+        throw new ProjectStoreError("Decision option contains unsupported fields: " + unknownOptionFields.join(", "));
+      }
+      return {
+        id: requireText(option.id, "Decision option id"),
+        label: requireText(option.label, "Decision option label"),
+        description: option.description == null ? null : requireText(option.description, "Decision option description")
+      };
+    });
+    if (new Set(normalizedOptions.map((option) => option.id)).size !== normalizedOptions.length) {
+      throw new ProjectStoreError("Decision option IDs must be unique.");
+    }
+    const outcome = requireText(value.outcome, "Decision outcome");
+    if (!["approved", "changes_requested", "rejected", "recorded"].includes(outcome)) {
+      throw new ProjectStoreError("Decision outcome is not supported: " + outcome);
+    }
+    const selected = value.selected == null ? null : requireText(value.selected, "Selected option");
+    if (selected && !normalizedOptions.some((option) => option.id === selected)) {
+      throw new ProjectStoreError("Selected decision option does not exist.");
+    }
+    if (outcome === "recorded" && (normalizedOptions.length < 2 || !selected)) {
+      throw new ProjectStoreError("A recorded choice requires at least two options and a selection.");
+    }
+    const existingDecisions = await this.readDecisions(projectId);
+    const latestTimestamp = existingDecisions.reduce(
+      (latest, entry) => Math.max(latest, Date.parse(entry.createdAt)),
+      0
+    );
+    const decision = {
+      version: PROJECT_VERSION,
+      kind: "project_decision",
+      id: recordId("decision"),
+      projectId,
+      target: normalizedTarget,
+      category: requireText(value.category, "Decision category"),
+      subject: requireText(value.subject, "Decision subject"),
+      outcome,
+      options: normalizedOptions,
+      selected,
+      reason: requireText(value.reason, "Decision reason"),
+      decidedBy: value.decidedBy ?? "agent",
+      userVisible: value.userVisible ?? true,
+      confidence: value.confidence ?? null,
+      createdAt: new Date(Math.max(Date.now(), latestTimestamp + 1)).toISOString()
+    };
+    validateDecision(decision, projectId);
+    await writeJsonAtomic(
+      join(projectDirectory(this.rootDir, projectId), "decisions", decision.id + ".json"),
+      decision
+    );
+    return decision;
+  }
+
+  async #assertDecisionTarget(projectId, target) {
+    if (target.kind === "project") {
+      if (target.id !== projectId) throw new ProjectStoreError("Decision targets another project.");
+      await this.readProject(projectId);
+      return;
+    }
+    if (target.kind === "result") {
+      await this.readResult(projectId, target.id);
+      return;
+    }
+    if (target.kind === "artifact") {
+      if (!(await this.readArtifacts(projectId)).some((artifact) => artifact.id === target.id)) {
+        throw new ProjectStoreError("Decision targets an unknown artifact: " + target.id);
+      }
+      return;
+    }
+    const workflow = (await this.readWorkflows(projectId))
+      .filter((candidate) => candidate.id === (target.id ?? target.workflowId))
+      .at(-1);
+    if (!workflow) throw new ProjectStoreError("Decision targets an unknown workflow.");
+    if (target.kind === "work_item" && !workflow.items.some((item) => item.id === target.workItemId)) {
+      throw new ProjectStoreError("Decision targets an unknown work item.");
+    }
+  }
+
   async readDecisions(projectId) {
     await this.readProject(projectId);
     const decisions = await readRecords(join(projectDirectory(this.rootDir, projectId), "decisions"));
@@ -942,7 +1146,10 @@ export class ProjectStore {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       throw new ProjectStoreError("Nội dung checkpoint phải là một JSON object.");
     }
-    const allowedFields = new Set(["goal", "constraints", "selectedResources", "pending", "next"]);
+    const allowedFields = new Set([
+      "goal", "constraints", "selectedResources", "pending", "next",
+      "activeWorkflowId", "activeWorkItemId", "activeArtifacts", "pendingDecisions", "resume"
+    ]);
     const unknownFields = Object.keys(value).filter((key) => !allowedFields.has(key));
     if (unknownFields.length) {
       throw new ProjectStoreError(`Checkpoint chứa field không được hỗ trợ: ${unknownFields.join(", ")}`);
@@ -966,6 +1173,29 @@ export class ProjectStore {
       pending: stringList(value.pending, "Việc đang chờ"),
       next: value.next === null || value.next === undefined ? null : requireText(value.next, "Việc tiếp theo")
     };
+    if (value.activeWorkflowId !== undefined) {
+      checkpoint.activeWorkflowId =
+        value.activeWorkflowId === null ? null : requireText(value.activeWorkflowId, "Active workflow id");
+    }
+    if (value.activeWorkItemId !== undefined) {
+      checkpoint.activeWorkItemId =
+        value.activeWorkItemId === null ? null : requireText(value.activeWorkItemId, "Active work item id");
+    }
+    if (value.activeArtifacts !== undefined) {
+      checkpoint.activeArtifacts = stringList(value.activeArtifacts, "Active artifacts");
+    }
+    if (value.pendingDecisions !== undefined) {
+      checkpoint.pendingDecisions = stringList(value.pendingDecisions, "Pending decisions");
+    }
+    if (value.resume !== undefined) {
+      objectValue(value.resume, "Resume state");
+      checkpoint.resume = {
+        summary: requireText(value.resume.summary, "Resume summary"),
+        risks: stringList(value.resume.risks, "Resume risks"),
+        blockedBy: stringList(value.resume.blockedBy, "Resume blockers")
+      };
+    }
+    await this.#assertCheckpointPointers(projectId, checkpoint);
     validateCheckpoint(checkpoint, projectId);
 
     const projectRoot = projectDirectory(this.rootDir, projectId);
@@ -985,6 +1215,33 @@ export class ProjectStore {
     ].join("\n");
     await writeTextAtomic(join(projectRoot, "overview.md"), overview);
     return checkpoint;
+  }
+
+  async #assertCheckpointPointers(projectId, checkpoint) {
+    if (checkpoint.activeWorkflowId) {
+      const workflow = (await this.readWorkflows(projectId))
+        .filter((candidate) => candidate.id === checkpoint.activeWorkflowId)
+        .at(-1);
+      if (!workflow) throw new ProjectStoreError("Checkpoint targets an unknown workflow.");
+      if (
+        checkpoint.activeWorkItemId &&
+        !workflow.items.some((item) => item.id === checkpoint.activeWorkItemId)
+      ) {
+        throw new ProjectStoreError("Checkpoint targets an unknown work item.");
+      }
+    } else if (checkpoint.activeWorkItemId) {
+      throw new ProjectStoreError("Active work item requires an active workflow.");
+    }
+    if (checkpoint.activeArtifacts) {
+      const known = new Set((await this.readArtifacts(projectId)).map((artifact) => artifact.id));
+      const missing = checkpoint.activeArtifacts.filter((id) => !known.has(id));
+      if (missing.length) throw new ProjectStoreError("Checkpoint targets unknown artifacts: " + missing.join(", "));
+    }
+    if (checkpoint.pendingDecisions) {
+      const known = new Set((await this.readDecisions(projectId)).map((decision) => decision.id));
+      const missing = checkpoint.pendingDecisions.filter((id) => !known.has(id));
+      if (missing.length) throw new ProjectStoreError("Checkpoint targets unknown decisions: " + missing.join(", "));
+    }
   }
 
   async readCheckpoint(projectId) {
@@ -1020,6 +1277,48 @@ export class ProjectStore {
       this.readRuns(projectId),
       this.readOverview(projectId)
     ]);
-    return { project, checkpoint, resources, results, decisions, runs, overview };
+    const intelligence = await this.intelligence.readIntelligence(projectId);
+    return {
+      project,
+      checkpoint,
+      resources,
+      results,
+      decisions,
+      runs,
+      overview,
+      ...intelligence,
+      intelligence: {
+        activeArtifacts: intelligence.activeArtifacts,
+        activeWorkflow: intelligence.activeWorkflow,
+        currentWorkItems: intelligence.currentWorkItems,
+        pendingApprovals: intelligence.pendingApprovals,
+        latestReviews: intelligence.latestReviews,
+        relevantSkills: intelligence.relevantSkills
+      }
+    };
+  }
+
+  async recordArtifact(projectId, value) {
+    return this.intelligence.recordArtifact(projectId, value);
+  }
+
+  async readArtifacts(projectId) {
+    return this.intelligence.readArtifacts(projectId);
+  }
+
+  async writeWorkflow(projectId, value) {
+    return this.intelligence.writeWorkflow(projectId, value);
+  }
+
+  async readWorkflows(projectId) {
+    return this.intelligence.readWorkflows(projectId);
+  }
+
+  async recordReview(projectId, value) {
+    return this.intelligence.recordReview(projectId, value);
+  }
+
+  async readReviews(projectId) {
+    return this.intelligence.readReviews(projectId);
   }
 }

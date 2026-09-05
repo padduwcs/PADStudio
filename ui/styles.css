@@ -186,7 +186,10 @@ h3 {
 
 .resource-list,
 .result-list,
-.run-list {
+.run-list,
+.workflow-view,
+.intelligence-grid,
+.review-list {
   display: grid;
   gap: 0.5rem;
   margin-top: 1rem;
@@ -210,6 +213,83 @@ h3 {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.workflow-view,
+.workflow-items,
+.intelligence-grid,
+.review-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.workflow-header {
+  display: grid;
+  gap: 0.4rem;
+  padding: 1rem;
+  border-left: 3px solid var(--accent);
+  background: rgba(31, 41, 55, 0.35);
+}
+
+.workflow-header > div,
+.work-item {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.workflow-header p,
+.work-item p,
+.intelligence-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.workflow-items {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.work-item,
+.intelligence-card {
+  padding: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: rgba(31, 41, 55, 0.35);
+}
+
+.work-item > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.work-status {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.work-in_progress,
+.work-ready {
+  border-color: rgba(94, 234, 212, 0.55);
+}
+
+.work-blocked,
+.work-awaiting_approval {
+  border-color: rgba(251, 191, 36, 0.6);
+}
+
+.work-completed {
+  opacity: 0.7;
+}
+
+.intelligence-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.intelligence-card ul {
+  margin-bottom: 0;
+  padding-left: 1.2rem;
+  color: var(--muted);
 }
 
 .result-card > header > div {

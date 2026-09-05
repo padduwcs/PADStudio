@@ -2,6 +2,9 @@ const elements = {
   title: document.querySelector("#project-title"),
   projectId: document.querySelector("#project-id"),
   checkpoint: document.querySelector("#checkpoint"),
+  workflow: document.querySelector("#workflow-view"),
+  artifactList: document.querySelector("#artifact-list"),
+  reviewList: document.querySelector("#review-list"),
   projectList: document.querySelector("#project-list"),
   resourceList: document.querySelector("#resource-list"),
   inputPreview: document.querySelector("#input-preview"),
@@ -161,6 +164,102 @@ function renderCheckpoint(context) {
     group.append(heading, list);
     elements.checkpoint.append(group);
   }
+}
+
+function renderWorkflow(context) {
+  const workflow = context.intelligence?.activeWorkflow;
+  if (!workflow) {
+    elements.workflow.textContent = "No active workflow yet.";
+    return;
+  }
+  const header = document.createElement("div");
+  header.className = "workflow-header";
+  const identity = document.createElement("div");
+  const name = document.createElement("strong");
+  name.textContent = workflow.name;
+  const meta = document.createElement("span");
+  meta.className = "input-meta";
+  meta.textContent = `revision ${workflow.revision} · ${workflow.status} · ${workflow.changeReason}`;
+  identity.append(name, meta);
+  const purpose = document.createElement("p");
+  purpose.textContent = workflow.purpose;
+  header.append(identity, purpose);
+
+  const items = document.createElement("div");
+  items.className = "workflow-items";
+  items.replaceChildren(...workflow.items.map((item) => {
+    const card = document.createElement("article");
+    card.className = `work-item work-${item.status}`;
+    const top = document.createElement("div");
+    const title = document.createElement("strong");
+    title.textContent = item.title;
+    const status = document.createElement("span");
+    status.className = "work-status";
+    status.textContent = item.status.replaceAll("_", " ");
+    top.append(title, status);
+    const detail = document.createElement("p");
+    detail.textContent = item.purpose;
+    const flags = document.createElement("span");
+    flags.className = "input-meta";
+    flags.textContent = [
+      item.dependsOn.length ? `after: ${item.dependsOn.join(", ")}` : "entry",
+      item.skillIds.length ? `skills: ${item.skillIds.join(", ")}` : null,
+      item.review.required ? `${item.review.perspective} review` : null,
+      item.approval !== "auto" ? `approval: ${item.approval}` : null
+    ].filter(Boolean).join(" · ");
+    card.append(top, detail, flags);
+    return card;
+  }));
+  elements.workflow.replaceChildren(header, items);
+}
+
+function renderIntelligence(context) {
+  const artifacts = context.intelligence?.activeArtifacts ?? [];
+  if (!artifacts.length) {
+    elements.artifactList.textContent = "No active understanding artifact yet.";
+  } else {
+    elements.artifactList.replaceChildren(...artifacts.map((artifact) => {
+      const card = document.createElement("article");
+      card.className = "intelligence-card";
+      const name = document.createElement("strong");
+      name.textContent = artifact.name;
+      const type = document.createElement("span");
+      type.className = "input-meta";
+      type.textContent = `${artifact.type} · revision ${artifact.revision}`;
+      const summary = document.createElement("p");
+      summary.textContent = artifact.summary;
+      card.append(name, type, summary);
+      return card;
+    }));
+  }
+  const reviews = context.intelligence?.latestReviews ?? [];
+  const skills = context.intelligence?.relevantSkills ?? [];
+  const blocks = [];
+  if (reviews.length) {
+    const block = document.createElement("div");
+    block.className = "intelligence-card";
+    const heading = document.createElement("strong");
+    heading.textContent = "Latest reviews";
+    const list = document.createElement("ul");
+    list.replaceChildren(...reviews.map((review) => {
+      const item = document.createElement("li");
+      item.textContent = `${review.perspective} · ${review.verdict} — ${review.summary}`;
+      return item;
+    }));
+    block.append(heading, list);
+    blocks.push(block);
+  }
+  if (skills.length) {
+    const block = document.createElement("div");
+    block.className = "intelligence-card";
+    const heading = document.createElement("strong");
+    heading.textContent = "Skills relevant now";
+    const text = document.createElement("p");
+    text.textContent = skills.map((skill) => skill.name).join(" · ");
+    block.append(heading, text);
+    blocks.push(block);
+  }
+  elements.reviewList.replaceChildren(...blocks);
 }
 
 function renderResources(context) {
@@ -514,6 +613,8 @@ function renderContext(context) {
   elements.title.textContent = context.project.title;
   elements.projectId.textContent = context.project.id;
   renderCheckpoint(context);
+  renderWorkflow(context);
+  renderIntelligence(context);
   renderResources(context);
   renderResults(context);
   renderRuns(context);
@@ -523,6 +624,9 @@ function renderEmpty() {
   elements.title.textContent = "Chưa chọn project";
   elements.projectId.textContent = "";
   elements.checkpoint.textContent = "Chưa có project nào để quan sát.";
+  elements.workflow.textContent = "No active workflow yet.";
+  elements.artifactList.textContent = "No active understanding artifact yet.";
+  elements.reviewList.replaceChildren();
   elements.resourceList.textContent = "Chưa có tư liệu.";
   elements.resultList.textContent = "Chưa có kết quả nào.";
   elements.runList.textContent = "Chưa có lần chạy nào.";

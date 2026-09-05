@@ -32,6 +32,13 @@ phục vụ observer trong trình duyệt; chúng không phải cầu nối đi�
 │       └── clip.mp4
 ├── decisions/
 │   └── decision-*.json
+├── artifacts/
+│   └── artifact-*.json
+├── workflows/
+│   └── workflow-*-r*.json
+├── reviews/
+│   └── review-*.json
+├── skills/
 └── runs/
     └── run-*.json
 ```
@@ -43,6 +50,10 @@ phục vụ observer trong trình duyệt; chúng không phải cầu nối đi�
 - `outputs/`: file media do công cụ tạo, tách theo run; chỉ file đã được result đăng ký
   mới được web phục vụ hoặc dùng lại làm đầu vào.
 - `decisions/`: lịch sử phản hồi nối tiếp của người dùng đối với từng result.
+- `artifacts/`: hiểu biết và lựa chọn sáng tạo có revision, không ghi đè lịch sử.
+- `workflows/`: đồ thị công việc thích nghi; mỗi thay đổi là một revision có lý do.
+- `reviews/`: đánh giá creative/technical có tiêu chí và bằng chứng.
+- `skills/`: catalog skill riêng của project khi cần; skill hệ thống nằm ở `skills/`.
 - `runs/`: dấu vết từng thao tác import hoặc chạy công cụ, gồm cả lỗi, thời lượng
   và chi phí khi có.
 - `checkpoint.json`: phần bối cảnh có ý nghĩa do Agent chắt lọc.
@@ -56,6 +67,7 @@ không có `project.json` không được coi là project hợp lệ.
 ```text
 src/
 ├── project/     # Lưu trữ, đường dẫn và tính toàn vẹn của project
+├── intelligence/# Artifact, adaptive workflow, review, skill và context assembler
 ├── resources/   # Nhập và lập chỉ mục tài nguyên
 ├── execution/   # Danh mục công cụ và Bộ thực thi dùng chung
 ├── tools/       # Logic của từng công cụ cụ thể
@@ -82,10 +94,11 @@ Nhập file hoặc folder:
 npm run project:import -- coffee-video "D:\Footage\coffee.mp4"
 ```
 
-Ghi checkpoint từ một file JSON:
+Ghi checkpoint từ file JSON hoặc standard input:
 
 ```powershell
 npm run project:checkpoint -- coffee-video "D:\Temp\coffee-checkpoint.json"
+$checkpoint | npm run project:checkpoint -- coffee-video -
 ```
 
 Đọc toàn bộ context:
@@ -117,6 +130,21 @@ Ghi decision sau khi người dùng phản hồi rõ về một result:
 ```powershell
 $decision | npm run project:decide -- coffee-video -
 ```
+
+Project intelligence và adaptive workflow:
+
+```powershell
+npm run skill:list -- coffee-video
+npm run skill:read -- creative-direction coffee-video
+npm run workflow:list
+npm run project:workflow:init -- coffee-video creative-production
+$artifact | npm run project:artifact -- coffee-video -
+$workflow | npm run project:workflow -- coffee-video -
+$review | npm run project:review -- coffee-video -
+```
+
+Contract chi tiết nằm trong
+[PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md](docs/build/PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md).
 
 Chi tiết contract và cách Agent dùng các lệnh nằm trong
 [PADSTUDIO-AGENT-RUNTIME.md](PADSTUDIO-AGENT-RUNTIME.md).
