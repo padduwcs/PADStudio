@@ -127,10 +127,13 @@ cố định và raw output path của OpenMontage không được đưa vào l�
 
 ## Media output có vòng đời thuộc project
 
-Lát cắt tiếp theo được chốt là `video.trim`: một tool FFmpeg trong cùng đường
-Registry → Bộ thực thi → run/result, không phải một pipeline dựng video. Phạm vi
-hiện tại chỉ gồm cắt một đoạn video chính xác; chưa gồm speed, concat, transition
-hay timeline.
+Lát cắt đầu tiên được chốt là `video.trim`: một tool FFmpeg trong cùng đường
+Registry → Bộ thực thi → run/result, không phải một pipeline dựng video. Cùng
+đường đó đã mở rộng thêm `video.concat` (ghép nhiều clip, có transition),
+`video.reformat` (đổi tỷ lệ khung hình/độ phân giải) và `video.thumbnail` (trích
+một khung hình). Mỗi tool vẫn tự chịu trách nhiệm về đúng một việc rõ ràng; PADStudio
+chưa có timeline nhiều lớp hay pipeline dựng video cố định, và sẽ chỉ thêm tool
+mới khi có việc sáng tạo thật cần đến.
 
 File do tool tạo nằm trong `outputs/<run-id>/`, nhưng Agent và request không được
 chỉ định đường dẫn input/output tùy ý. PADStudio resolve nguồn từ resource hoặc

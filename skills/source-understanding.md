@@ -7,10 +7,11 @@ Creative or technical decisions depend on media, documents, previous results, or
 ## Method
 
 1. Inspect the material with the least destructive available capability.
-2. Separate measured facts from interpretation.
-3. Capture notable structure, content, quality, limitations, opportunities, and risks.
-4. Link every consequential observation to its resource, result, or run.
-5. Record the synthesis as a `source.understanding` artifact.
+2. Before combining multiple sources into one result (e.g. concatenation), confirm each source's technical shape individually — do not assume compatibility.
+3. Separate measured facts from interpretation.
+4. Capture notable structure, content, quality, limitations, opportunities, and risks.
+5. Link every consequential observation to its resource, result, or run.
+6. Record the synthesis as a `source.understanding` artifact.
 
 ## Standard
 

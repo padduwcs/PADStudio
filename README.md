@@ -127,10 +127,16 @@ Nếu kết quả đã được bảo toàn nhưng bước đóng Run lỗi, l�
 npm run project:run:recover -- coffee-video run-...
 ```
 
-Prototype hiện có hai capability thật:
+Prototype hiện có năm capability thật:
 
 - `media.inspect` / `ffprobe`: đọc metadata audio/video, không tạo file.
 - `video.trim` / `ffmpeg-trim`: cắt chính xác video bằng re-encode và tạo `video.clip`.
+- `video.concat` / `ffmpeg-concat`: ghép nhiều clip theo thứ tự, tự chọn ghép nhanh không mất
+  chất lượng khi các clip đã cùng định dạng, hoặc tự đưa về cùng khung hình và chèn tiếng im
+  lặng khi cần, có thể chuyển cảnh mờ dần hoặc qua đen.
+- `video.reformat` / `ffmpeg-reformat`: đổi tỷ lệ khung hình/độ phân giải theo preset
+  (`portrait`, `square`, `landscape`, `cinematic`, `vertical4x5`) hoặc kích thước tùy chọn.
+- `video.thumbnail` / `ffmpeg-thumbnail`: trích chính xác một khung hình làm ảnh đại diện.
 
 Ghi decision sau khi người dùng phản hồi rõ về một result:
 

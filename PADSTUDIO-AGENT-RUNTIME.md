@@ -230,6 +230,75 @@ không vượt quá thời lượng nguồn. PADStudio tự cấp vùng output, 
 khi file MP4/H.264 đã qua ffprobe; nếu lỗi, file tạm hoặc output chưa hoàn tất bị
 thu hồi. Tool không sửa file nguồn và không tự chuyển sang stream copy.
 
+### Ghép video
+
+`video.concat` ghép từ 2 clip trở lên theo thứ tự đã cho; mỗi phần tử của
+`sources` có cùng hình dạng như `source` của `video.trim` (resource hoặc result):
+
+```json
+{
+  "capability": "video.concat",
+  "tool": "ffmpeg-concat",
+  "purpose": "Ghép cảnh mở đầu và cảnh sản phẩm",
+  "inputs": {
+    "sources": [
+      { "kind": "resource", "id": "resource-...", "itemPath": null },
+      { "kind": "result", "id": "result-...", "file": "primary" }
+    ],
+    "transition": "crossfade",
+    "transitionSeconds": 0.5
+  }
+}
+```
+
+`transition` là `cut` (mặc định), `crossfade` hoặc `fadeBlack`; `transitionSeconds`
+chỉ được truyền khi có transition, trong khoảng 0.1-3 giây. Nếu các clip đã cùng
+định dạng và không có transition, PADStudio tự ghép kiểu lossless tức thì; nếu
+không, PADStudio tự đưa các clip về cùng khung hình/tốc độ khung hình (không méo
+hình) và tự chèn track im lặng cho clip nào thiếu audio trước khi ghép — Agent
+không cần kiểm tra tương thích trước. Result ghi rõ có dùng đường lossless không
+và clip nào bị chèn tiếng im lặng (`losslessFastPath`, `audioSynthesizedIndexes`).
+
+### Đổi khung hình video
+
+`video.reformat` đổi tỷ lệ khung hình hoặc độ phân giải của một video, dùng
+`preset` (`portrait`, `square`, `landscape`, `cinematic`, `vertical4x5`) hoặc
+`width`+`height` tường minh — chỉ được chọn đúng một trong hai cách:
+
+```json
+{
+  "capability": "video.reformat",
+  "tool": "ffmpeg-reformat",
+  "purpose": "Đổi sang khung dọc cho mạng xã hội",
+  "inputs": {
+    "source": { "kind": "resource", "id": "resource-...", "itemPath": null },
+    "preset": "portrait",
+    "fit": "pad"
+  }
+}
+```
+
+`fit` là `pad` (mặc định, giữ nguyên toàn khung hình, thêm viền đen khi cần) hoặc
+`crop` (lấp đầy khung, có thể mất mép hình). Thời lượng và audio của nguồn được
+giữ nguyên; chỉ khung hình thay đổi.
+
+### Trích ảnh đại diện
+
+`video.thumbnail` trích chính xác một khung hình tại `atSeconds` (nhỏ hơn thời
+lượng nguồn) thành ảnh PNG:
+
+```json
+{
+  "capability": "video.thumbnail",
+  "tool": "ffmpeg-thumbnail",
+  "purpose": "Lấy ảnh đại diện cho video giới thiệu",
+  "inputs": {
+    "source": { "kind": "result", "id": "result-...", "file": "primary" },
+    "atSeconds": 4.5
+  }
+}
+```
+
 ## Ghi quyết định về kết quả
 
 Chỉ ghi decision khi người dùng đã phản hồi rõ về một result. Chuẩn bị JSON:
