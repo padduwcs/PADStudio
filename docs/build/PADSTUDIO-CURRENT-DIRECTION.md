@@ -130,10 +130,16 @@ cố định và raw output path của OpenMontage không được đưa vào l�
 Lát cắt đầu tiên được chốt là `video.trim`: một tool FFmpeg trong cùng đường
 Registry → Bộ thực thi → run/result, không phải một pipeline dựng video. Cùng
 đường đó đã mở rộng thêm `video.concat` (ghép nhiều clip, có transition),
-`video.reformat` (đổi tỷ lệ khung hình/độ phân giải) và `video.thumbnail` (trích
-một khung hình). Mỗi tool vẫn tự chịu trách nhiệm về đúng một việc rõ ràng; PADStudio
-chưa có timeline nhiều lớp hay pipeline dựng video cố định, và sẽ chỉ thêm tool
-mới khi có việc sáng tạo thật cần đến.
+`video.reformat` (đổi tỷ lệ khung hình/độ phân giải), `video.thumbnail` (trích
+một khung hình), `audio.overlay` (chèn track âm thanh có sẵn, có ducking),
+`subtitle.burn` (ghim phụ đề đã có sẵn văn bản/mốc thời gian) và `image.to-video`
+(biến ảnh tĩnh thành video, giữ nguyên khung hình hoặc thêm zoom/pan/Ken Burns
+nhẹ theo preset cố định). Mỗi tool vẫn tự chịu trách nhiệm về đúng một
+việc rõ ràng; PADStudio chưa có timeline nhiều lớp hay pipeline dựng video cố
+định, và sẽ chỉ thêm tool mới khi có việc sáng tạo thật cần đến. Các tool này
+đều chưa cần dịch vụ bên ngoài hay duyệt chi phí; công cụ trả phí đầu tiên
+(ví dụ giọng đọc AI) sẽ là lát cắt tiếp theo, cùng với cơ chế duyệt chi phí/rủi
+ro thật thay cho việc luôn báo lỗi khi `approvalRequired` bật.
 
 File do tool tạo nằm trong `outputs/<run-id>/`, nhưng Agent và request không được
 chỉ định đường dẫn input/output tùy ý. PADStudio resolve nguồn từ resource hoặc

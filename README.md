@@ -127,7 +127,7 @@ Nếu kết quả đã được bảo toàn nhưng bước đóng Run lỗi, l�
 npm run project:run:recover -- coffee-video run-...
 ```
 
-Prototype hiện có năm capability thật:
+Prototype hiện có tám capability thật:
 
 - `media.inspect` / `ffprobe`: đọc metadata audio/video, không tạo file.
 - `video.trim` / `ffmpeg-trim`: cắt chính xác video bằng re-encode và tạo `video.clip`.
@@ -137,6 +137,14 @@ Prototype hiện có năm capability thật:
 - `video.reformat` / `ffmpeg-reformat`: đổi tỷ lệ khung hình/độ phân giải theo preset
   (`portrait`, `square`, `landscape`, `cinematic`, `vertical4x5`) hoặc kích thước tùy chọn.
 - `video.thumbnail` / `ffmpeg-thumbnail`: trích chính xác một khung hình làm ảnh đại diện.
+- `audio.overlay` / `ffmpeg-audio-overlay`: chèn một track âm thanh có sẵn (nhạc nền hoặc
+  giọng đọc, không phải TTS) vào video, tự lặp/cắt cho khớp thời lượng, có thể tự giảm âm
+  lượng track mới khi video đã có tiếng (ducking).
+- `subtitle.burn` / `ffmpeg-subtitle-burn`: ghim cứng phụ đề đã có sẵn văn bản và mốc thời
+  gian lên video, tự chọn cỡ chữ theo khung dọc/ngang.
+- `image.to-video` / `ffmpeg-image-to-video`: biến một ảnh tĩnh thành đoạn video trong thời
+  lượng cho trước, giữ nguyên khung hình hoặc thêm chuyển động máy quay nhẹ (`zoomIn`,
+  `zoomOut`, `panLeft`, `panRight`, `kenBurns`).
 
 Ghi decision sau khi người dùng phản hồi rõ về một result:
 

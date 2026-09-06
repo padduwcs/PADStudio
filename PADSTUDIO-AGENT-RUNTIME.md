@@ -299,6 +299,88 @@ lượng nguồn) thành ảnh PNG:
 }
 ```
 
+### Chèn âm thanh
+
+`audio.overlay` chèn một track âm thanh *có sẵn* (nhạc nền hoặc file giọng đọc,
+chưa phải TTS) vào video; track được tự lặp hoặc cắt cho khớp đúng thời lượng
+video, Agent không cần tính trước:
+
+```json
+{
+  "capability": "audio.overlay",
+  "tool": "ffmpeg-audio-overlay",
+  "purpose": "Thêm nhạc nền cho video",
+  "inputs": {
+    "video": { "kind": "result", "id": "result-...", "file": "primary" },
+    "audio": { "kind": "resource", "id": "resource-...", "itemPath": null },
+    "mode": "duck",
+    "audioVolume": 0.4,
+    "fadeInSeconds": 1,
+    "fadeOutSeconds": 1
+  }
+}
+```
+
+`mode` là `mix` (mặc định, lớp âm thanh mới ở nguyên mức `audioVolume`) hoặc
+`duck` (tự giảm âm thanh mới xuống còn `duckLevel`, mặc định 0.15, khi video
+gốc đang có tiếng — video gốc luôn là track được giữ rõ, không phải chiều
+ngược lại). Nếu video gốc không có audio, `duck` tự chuyển thành `mix`; result
+ghi rõ `duckApplied` có thật sự áp dụng không. `loudnessTargetLufs` (tùy chọn)
+chuẩn hóa độ to cuối cùng — dùng -16 cho giọng nói/podcast, -14 cho mạng xã
+hội/YouTube, chỉ chuẩn hóa một lần ở bước cuối.
+
+### Ghim phụ đề
+
+`subtitle.burn` nhận danh sách `cues` đã có sẵn văn bản và mốc thời gian (Agent
+tự quyết định cách chia câu; PADStudio không tự nhận dạng giọng nói) rồi ghim
+cứng lên video:
+
+```json
+{
+  "capability": "subtitle.burn",
+  "tool": "ffmpeg-subtitle-burn",
+  "purpose": "Ghim phụ đề tiếng Việt",
+  "inputs": {
+    "source": { "kind": "result", "id": "result-...", "file": "primary" },
+    "cues": [
+      { "text": "Chào mừng bạn", "startSeconds": 0, "endSeconds": 1.8 },
+      { "text": "đến với quán cà phê của chúng tôi", "startSeconds": 1.8, "endSeconds": 4 }
+    ]
+  }
+}
+```
+
+Cues phải theo thứ tự thời gian, không chồng lấp và không kết thúc sau thời
+lượng nguồn. Cỡ chữ và margin tự chọn theo khung dọc/ngang của video (`fontSize`,
+`marginV` có thể ghi đè khi cần).
+
+### Video từ ảnh
+
+`image.to-video` biến một ảnh tĩnh thành đoạn video trong `durationSeconds`
+cho trước (0.1-300 giây), có thể giữ nguyên khung hình hoặc thêm chuyển động
+máy quay nhẹ:
+
+```json
+{
+  "capability": "image.to-video",
+  "tool": "ffmpeg-image-to-video",
+  "purpose": "Mở đầu video bằng ảnh chụp không gian quán",
+  "inputs": {
+    "source": { "kind": "resource", "id": "resource-...", "itemPath": null },
+    "durationSeconds": 3,
+    "motion": "kenBurns"
+  }
+}
+```
+
+`motion` là `static` (mặc định, giữ nguyên khung hình), `zoomIn`, `zoomOut`,
+`panLeft`, `panRight` hoặc `kenBurns` (zoom kèm lia chéo nhẹ). Biên độ zoom/lia
+cố định ở mức dè dặt, không đẩy tới sát mép crop nên không lộ viền — Agent chọn
+kiểu chuyển động, không tự chỉnh tay mức độ. Clip quá ngắn để nội suy chuyển
+động sẽ tự quay lại `static`; result ghi rõ `motion` thực sự đã dùng. Nếu cần
+đổi tỷ lệ khung hình, ghép nối hay thêm âm thanh, dùng tiếp `video.reformat`,
+`video.concat` hoặc `audio.overlay` trên kết quả này.
+
 ## Ghi quyết định về kết quả
 
 Chỉ ghi decision khi người dùng đã phản hồi rõ về một result. Chuẩn bị JSON:

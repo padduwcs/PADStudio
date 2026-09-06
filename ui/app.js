@@ -406,35 +406,75 @@ function resultFileUrl(projectId, resultId, fileId) {
   ].join("/");
 }
 
-function renderVideoClip(result, body) {
+// Handles every tool that outputs a single "primary" file (trim, concat,
+// reformat, audio overlay, subtitle burn, image-to-video, thumbnail) instead
+// of gating on result.type: several of those tools intentionally share the
+// "video.clip" type, and each has a different shape of result.data, so the
+// facts panel below only renders a field when it actually finds it rather
+// than assuming one tool's fields (e.g. video.trim's startSeconds/cutMode).
+function renderMediaResult(result, body) {
   const primary = result.files?.find((file) => file.id === "primary");
-  if (!primary) return false;
+  if (!primary || (primary.mediaType !== "video" && primary.mediaType !== "image")) return false;
+
   if (primary.available) {
-    const video = document.createElement("video");
-    video.className = "result-video";
-    video.controls = true;
-    video.preload = "metadata";
-    video.src = resultFileUrl(result.projectId, result.id, primary.id);
-    body.append(video);
+    const media = document.createElement(primary.mediaType === "video" ? "video" : "img");
+    media.className = primary.mediaType === "video" ? "result-video" : "result-image";
+    if (primary.mediaType === "video") {
+      media.controls = true;
+      media.preload = "metadata";
+      media.src = resultFileUrl(result.projectId, result.id, primary.id);
+    } else {
+      media.src = resultFileUrl(result.projectId, result.id, primary.id);
+      media.alt = result.name;
+    }
+    body.append(media);
   } else {
     const missing = document.createElement("p");
     missing.className = "empty-note";
-    missing.textContent = "File video đầu ra không còn khả dụng.";
+    missing.textContent = `File ${primary.mediaType === "video" ? "video" : "ảnh"} đầu ra không còn khả dụng.`;
     body.append(missing);
   }
+  body.append(mediaResultFacts(result.data || {}, primary));
+  return true;
+}
+
+function mediaResultFacts(data, primary) {
   const facts = document.createElement("div");
   facts.className = "result-facts";
-  facts.append(
-    labelValue(
-      "Đoạn cắt",
-      formatDuration(result.data.startSeconds) + " → " + formatDuration(result.data.endSeconds)
-    ),
-    labelValue("Thời lượng", formatDuration(result.data.durationSeconds)),
-    labelValue("Chế độ", result.data.cutMode === "accurate" ? "Cắt chính xác" : result.data.cutMode),
-    labelValue("Dung lượng", formatSize(primary.sizeBytes))
-  );
-  body.append(facts);
-  return true;
+  const entries = [];
+  if (Number.isFinite(data.startSeconds) && Number.isFinite(data.endSeconds)) {
+    entries.push(labelValue("Đoạn cắt", formatDuration(data.startSeconds) + " → " + formatDuration(data.endSeconds)));
+  }
+  if (data.atSeconds !== undefined) {
+    entries.push(labelValue("Tại giây", formatDuration(data.atSeconds)));
+  }
+  if (Number.isFinite(data.durationSeconds)) {
+    entries.push(labelValue("Thời lượng", formatDuration(data.durationSeconds)));
+  }
+  if (data.cutMode) {
+    entries.push(labelValue("Chế độ", data.cutMode === "accurate" ? "Cắt chính xác" : data.cutMode));
+  }
+  if (data.transition) {
+    entries.push(labelValue("Chuyển cảnh", data.transition === "cut" ? "Cắt cứng" : data.transition));
+  }
+  if (data.fit) {
+    entries.push(labelValue("Khung hình", data.fit === "pad" ? "Giữ nguyên, thêm viền" : "Lấp đầy, có thể mất mép"));
+  }
+  if (data.targetResolution) {
+    entries.push(labelValue("Độ phân giải", `${data.targetResolution.width}x${data.targetResolution.height}`));
+  }
+  if (typeof data.duckApplied === "boolean") {
+    entries.push(labelValue("Ducking", data.duckApplied ? "Đã áp dụng" : "Không áp dụng"));
+  }
+  if (Number.isInteger(data.cueCount)) {
+    entries.push(labelValue("Số dòng phụ đề", String(data.cueCount)));
+  }
+  if (data.motion) {
+    entries.push(labelValue("Chuyển động", data.motion === "static" ? "Giữ nguyên khung hình" : data.motion));
+  }
+  entries.push(labelValue("Dung lượng", formatSize(primary.sizeBytes)));
+  facts.append(...entries);
+  return facts;
 }
 
 const decisionLabels = {
@@ -526,7 +566,7 @@ function renderResults(context) {
     body.className = "result-body";
     const renderedKnownType =
       (result.type === "media.metadata" && renderMediaMetadata(result, body)) ||
-      (result.type === "video.clip" && renderVideoClip(result, body));
+      renderMediaResult(result, body);
     if (!renderedKnownType) {
       renderRawResult(result, body);
     }

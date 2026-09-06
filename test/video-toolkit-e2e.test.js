@@ -93,6 +93,26 @@ test("video toolkit chains concat, reformat and thumbnail into a durable pipelin
   assert.equal(crossfadeResult.data.video.width, 320);
   assert.equal(crossfadeResult.data.video.height, 180);
 
+  // fadeBlack takes the same normalize path as crossfade but with a
+  // different xfade transition name — only "crossfade" had been exercised
+  // against real ffmpeg before, so confirm "fadeBlack" is accepted too.
+  const fadeBlackConcat = await executor.execute("toolkit", {
+    capability: "video.concat",
+    tool: "ffmpeg-concat",
+    purpose: "Ghép hai clip khác định dạng, chuyển cảnh qua đen",
+    inputs: {
+      sources: [
+        { kind: "resource", id: importedA.resourceId },
+        { kind: "resource", id: importedC.resourceId }
+      ],
+      transition: "fadeBlack",
+      transitionSeconds: 0.5
+    }
+  });
+  const fadeBlackResult = await store.readResult("toolkit", fadeBlackConcat.resultId);
+  assert.equal(fadeBlackResult.data.transition, "fadeBlack");
+  assert.ok(Math.abs(fadeBlackResult.data.durationSeconds - 3.5) <= 0.5);
+
   // One clip has no audio track at all -> forced onto the normalize path even
   // with a plain cut, and a silent track must be synthesized so the concat
   // filter's audio graph does not fail.
@@ -126,6 +146,24 @@ test("video toolkit chains concat, reformat and thumbnail into a durable pipelin
   const reformatResult = await store.readResult("toolkit", reformat.resultId);
   assert.deepEqual(reformatResult.data.targetResolution, { width: 1080, height: 1920 });
   assert.deepEqual(reformatResult.inputResults, [fastConcat.resultId]);
+  assert.equal(reformatResult.data.fit, "pad");
+
+  // fit="crop" takes a different filter chain (force_original_aspect_ratio=
+  // increase + crop) than the default "pad" above, which had been the only
+  // one exercised against real ffmpeg.
+  const cropReformat = await executor.execute("toolkit", {
+    capability: "video.reformat",
+    tool: "ffmpeg-reformat",
+    purpose: "Đổi sang khung vuông, lấp đầy khung",
+    inputs: {
+      source: { kind: "result", id: fastConcat.resultId, file: "primary" },
+      preset: "square",
+      fit: "crop"
+    }
+  });
+  const cropReformatResult = await store.readResult("toolkit", cropReformat.resultId);
+  assert.equal(cropReformatResult.data.fit, "crop");
+  assert.deepEqual(cropReformatResult.data.targetResolution, { width: 1080, height: 1080 });
 
   // Thumbnail the reformatted result partway through its duration.
   const thumbnail = await executor.execute("toolkit", {

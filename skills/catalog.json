@@ -50,6 +50,16 @@
       "artifactTypes": ["review.findings"],
       "reviewCriteria": ["verdict cites evidence", "failed checks propose action", "creative and technical findings are not conflated"],
       "instructions": "result-review.md"
+    },
+    {
+      "id": "video-editing-craft",
+      "version": "1.0",
+      "name": "Video editing craft",
+      "description": "Choose cuts, transitions, audio levels and caption timing that serve the video, not just settings that make a tool call succeed.",
+      "appliesTo": ["plan", "review"],
+      "artifactTypes": [],
+      "reviewCriteria": ["cuts and transitions serve intent rather than default habit", "added audio stays legible against the video's own sound", "captions are sized and timed for the frame's orientation"],
+      "instructions": "video-editing-craft.md"
     }
   ]
 }
