@@ -508,6 +508,7 @@ export class AnalysisService {
 
   async #runOwned(projectId, initialJob, lease) {
     let job = await this.#reconcile(projectId, initialJob, lease);
+    job = await this.#revalidateSuccessfulUnits(projectId, job, lease);
     for (const plannedUnit of job.units) {
       job = await this.analysisStore.readJob(projectId, job.id);
       const cancellation = await this.analysisStore.readCancellation(projectId, job.id);
@@ -546,6 +547,7 @@ export class AnalysisService {
   async #runUnit(projectId, job, unitIdValue, lease) {
     let unit = job.units.find((candidate) => candidate.id === unitIdValue);
     const snapshot = job.sourceSnapshots.find((candidate) => candidate.sourceKey === unit.sourceKey);
+    const definition = this.operationDefinitions[unit.operation];
     try {
       await this.#assertCurrentSource(projectId, snapshot);
     } catch (originalError) {
@@ -568,7 +570,7 @@ export class AnalysisService {
       });
     }
     if (job.request.reuse === "verified") {
-      const reusable = await this.#findReusableResult(projectId, unit);
+      const reusable = await this.#findReusableResult(projectId, unit, snapshot, definition);
       if (reusable) {
         return this.#updateUnit(projectId, job, unit.id, lease, (draft) => {
           const time = this.analysisStore.now();
@@ -604,7 +606,6 @@ export class AnalysisService {
       });
     });
     unit = job.units.find((candidate) => candidate.id === unitIdValue);
-    const definition = this.operationDefinitions[unit.operation];
     const controller = new AbortController();
     let startedRunId = null;
     let leaseFailure = null;
@@ -696,8 +697,7 @@ export class AnalysisService {
     return job;
   }
 
-  async #refreshUnitFingerprint(projectId, job, unitIdValue, lease) {
-    const unit = job.units.find((candidate) => candidate.id === unitIdValue);
+  async #resolveUnitFingerprint(projectId, job, unit) {
     const snapshot = job.sourceSnapshots.find((candidate) => candidate.sourceKey === unit.sourceKey);
     const definition = this.operationDefinitions[unit.operation];
     const analysisInput = unit.executorRequest.inputs.analysis;
@@ -735,6 +735,12 @@ export class AnalysisService {
       });
     }
     const fingerprint = analysisFingerprint({ planFingerprint, upstream });
+    return { method, planFingerprint, fingerprint };
+  }
+
+  async #refreshUnitFingerprint(projectId, job, unitIdValue, lease) {
+    const unit = job.units.find((candidate) => candidate.id === unitIdValue);
+    const { method, planFingerprint, fingerprint } = await this.#resolveUnitFingerprint(projectId, job, unit);
     if (
       unit.planFingerprint === planFingerprint &&
       unit.fingerprint === fingerprint &&
@@ -749,6 +755,91 @@ export class AnalysisService {
     });
   }
 
+  #resultMatchesUnit(result, unit, snapshot, definition, {
+    requireRun = true,
+    requireCurrentJob = false,
+    jobId = null
+  } = {}) {
+    if (
+      result.type !== definition.resultType ||
+      (requireRun && result.createdByRun !== unit.runId) ||
+      result.data?.schemaVersion !== ANALYSIS_SCHEMA_VERSION ||
+      result.data?.sourceKey !== unit.sourceKey ||
+      result.data?.sourceVersion !== snapshot.sourceVersion ||
+      result.data?.fingerprint !== unit.fingerprint ||
+      result.data?.operation !== unit.operation ||
+      canonicalJson(result.data?.source) !== canonicalJson(snapshot.source) ||
+      canonicalJson(result.data?.method) !== canonicalJson(unit.method)
+    ) return false;
+    if (requireCurrentJob && (result.data?.analysisJobId !== jobId || result.data?.unitId !== unit.id)) {
+      return false;
+    }
+    return true;
+  }
+
+  async #revalidateSuccessfulUnits(projectId, initialJob, lease) {
+    let job = initialJob;
+    const visited = new Set();
+    const sourceChecks = new Map();
+    const visit = async (unitIdValue) => {
+      if (visited.has(unitIdValue)) return;
+      let unit = job.units.find((candidate) => candidate.id === unitIdValue);
+      for (const dependencyId of unit.dependencies) await visit(dependencyId);
+      unit = job.units.find((candidate) => candidate.id === unitIdValue);
+      if (!SUCCESS_STATES.has(unit.state)) {
+        visited.add(unitIdValue);
+        return;
+      }
+      const snapshot = job.sourceSnapshots.find((candidate) => candidate.sourceKey === unit.sourceKey);
+      const definition = this.operationDefinitions[unit.operation];
+      let invalidationReason = null;
+      try {
+        if (!sourceChecks.has(unit.sourceKey)) {
+          sourceChecks.set(unit.sourceKey, this.#assertCurrentSource(projectId, snapshot));
+        }
+        await sourceChecks.get(unit.sourceKey);
+        const current = await this.#resolveUnitFingerprint(projectId, job, unit);
+        if (
+          unit.planFingerprint !== current.planFingerprint ||
+          unit.fingerprint !== current.fingerprint ||
+          canonicalJson(unit.method) !== canonicalJson(current.method)
+        ) {
+          invalidationReason = "Method, options hoặc dependency hiện tại không còn khớp fingerprint đã lưu.";
+        } else if (unit.state !== "not_applicable") {
+          const result = await this.store.readResult(projectId, unit.resultId);
+          if (!this.#resultMatchesUnit(result, unit, snapshot, definition)) {
+            invalidationReason = "Result hiện tại không còn khớp provenance của unit.";
+          } else if (!await this.#resultFilesCurrent(projectId, result)) {
+            invalidationReason = "File bằng chứng của Result bị thiếu hoặc sai checksum.";
+          }
+        }
+      } catch (error) {
+        invalidationReason = error?.message || "Không thể xác minh bằng chứng hiện tại.";
+      }
+      if (invalidationReason) {
+        const invalidatedResultId = unit.resultId;
+        job = await this.analysisStore.updateJob(projectId, job.id, (draft) => {
+          const invalidated = draft.units.find((candidate) => candidate.id === unit.id);
+          invalidated.state = "pending";
+          invalidated.runId = null;
+          invalidated.resultId = null;
+          invalidated.error = null;
+          invalidated.notApplicableReason = null;
+          draft.warnings.push({
+            code: "analysis_evidence_invalidated",
+            unitId: unit.id,
+            resultId: invalidatedResultId,
+            reason: invalidationReason,
+            invalidatedAt: this.analysisStore.now()
+          });
+        }, { expectedRevision: job.revision, lease });
+      }
+      visited.add(unitIdValue);
+    };
+    for (const unit of job.units) await visit(unit.id);
+    return job;
+  }
+
   async #assertCurrentSource(projectId, snapshot) {
     const current = await resolveAnalysisSource({ store: this.store, projectId, source: snapshot.source });
     if (current.sourceKey !== snapshot.sourceKey || current.sourceVersion !== snapshot.sourceVersion) {
@@ -759,13 +850,16 @@ export class AnalysisService {
     return current;
   }
 
-  async #findReusableResult(projectId, unit) {
+  async #findReusableResult(projectId, unit, snapshot, definition) {
     const results = await this.store.readResults(projectId);
     const candidates = results.filter((result) =>
-      result.data?.schemaVersion === ANALYSIS_SCHEMA_VERSION &&
-      result.data?.sourceKey === unit.sourceKey &&
-      result.data?.fingerprint === unit.fingerprint &&
-      result.data?.operation === unit.operation
+      this.#resultMatchesUnit(
+        result,
+        unit,
+        snapshot,
+        definition,
+        { requireRun: false }
+      )
     );
     for (const result of candidates.reverse()) {
       if (await this.#resultFilesCurrent(projectId, result)) return result;
@@ -790,12 +884,15 @@ export class AnalysisService {
     const results = await this.store.readResults(projectId);
     for (const plannedUnit of job.units) {
       if (SUCCESS_STATES.has(plannedUnit.state)) continue;
-      const durable = results.find((result) =>
-        result.data?.analysisJobId === job.id &&
-        result.data?.unitId === plannedUnit.id &&
-        result.data?.fingerprint === plannedUnit.fingerprint &&
-        result.data?.sourceKey === plannedUnit.sourceKey
-      );
+      const snapshot = job.sourceSnapshots.find((candidate) => candidate.sourceKey === plannedUnit.sourceKey);
+      const definition = this.operationDefinitions[plannedUnit.operation];
+      const durable = results.find((result) => this.#resultMatchesUnit(
+        result,
+        plannedUnit,
+        snapshot,
+        definition,
+        { requireCurrentJob: true, jobId: job.id }
+      ));
       if (durable && await this.#resultFilesCurrent(projectId, durable)) {
         const run = await this.store.readRun(projectId, durable.createdByRun);
         if (run.status === "in_progress") await this.store.recoverRunFinalization(projectId, run.id);

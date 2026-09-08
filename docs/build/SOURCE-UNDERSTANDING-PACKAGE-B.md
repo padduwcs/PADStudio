@@ -21,11 +21,14 @@ holdout rộng.
 - Job manifest có revision, source snapshot, unit/dependency, method/fingerprint, attempt, Run,
   Result, warning, trạng thái, owner lease và yêu cầu hủy.
 - Một writer giữ exclusive lease theo project. Lease lưu PID, process-start identity, owner token
-  và heartbeat; writer còn sống gây conflict, lease chết được lưu vào archive trước khi takeover.
+  và heartbeat; acquisition claim bất biến theo token serialize các contender trước khi takeover,
+  writer còn sống gây conflict, lease chết được lưu vào archive trước khi thay thế.
 - Mỗi unit chạy qua `ToolExecutor`. Hook nội bộ ghi Run ID vào attempt trước khi tool chạy; hook lỗi
   kết thúc Run failed và không gọi tool. Hash nguồn được kiểm tra lại trước khi commit Result.
 - Resume đối soát Result/Run với manifest. Result đã durable được dùng để hoàn tất/recover Run và
-  không chạy tool lần hai nếu lần ghi manifest sau Result bị lỗi.
+  không chạy tool lần hai nếu lần ghi manifest sau Result bị lỗi. Trước khi dùng lại unit đã thành
+  công, resume xác minh source, method, dependency provenance và checksum; bằng chứng không còn
+  current bị bỏ khỏi active unit nhưng Result/attempt lịch sử không bị xóa.
 - Fingerprint bind source logic, source bytes, range/track/options/profile, identity tool/runtime và
   Result/checksum upstream. Đổi tool hoặc dependency chỉ làm mất hiệu lực unit liên quan.
 - Cancel là yêu cầu bền vững; coordinator đang chạy nhận `AbortSignal`, dừng unit hiện hành theo
@@ -82,8 +85,9 @@ checkpoint, decision hoặc quyền web.
 
 Test chuyên biệt bao phủ canonical fingerprint dùng chung Node/Python, timebase, source logic khác
 nhau dù bytes giống nhau, folder snapshot, lease conflict/takeover, dependency, tool-version,
-environment drift và upstream invalidation, source đổi giữa run, checksum bị sửa, cancel, hook
-lỗi, Result/job schema và resume sau fault injection trước Run lẫn ở ranh giới Result/manifest.
+environment drift và upstream invalidation, source đổi giữa run, checksum bị sửa trước cache lẫn
+resume, takeover race có interleaving kiểm soát, cancel, hook lỗi, Result/job schema và resume sau
+fault injection trước Run lẫn ở ranh giới Result/manifest.
 
 Chạy:
 
@@ -91,3 +95,7 @@ Chạy:
 npm test
 npm run analysis:test
 ```
+
+Hai lỗi concurrency/freshness phát hiện trong
+[`SOURCE-UNDERSTANDING-PACKAGE-B-REVIEW.md`](SOURCE-UNDERSTANDING-PACKAGE-B-REVIEW.md)
+đã được tái hiện và khóa bằng regression chính thức nêu trên.

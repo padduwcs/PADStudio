@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -86,6 +86,97 @@ function fakeProbe({ onExecute = null, availability = { status: "available" } } 
           contentReview: "not_performed"
         },
         verification: { status: "passed", checks: ["fixture_probe"] }
+      };
+    }
+  };
+}
+
+function fakeFrames({ onExecute = null, availability = { status: "available" } } = {}) {
+  return {
+    ...fakeProbe({ onExecute, availability }),
+    name: "fake-frames",
+    capability: "source.extract-frames",
+    description: "Frame fixture",
+    outputDescription: "Frame evidence fixture",
+    createResult({ prepared }) {
+      return {
+        type: "source.frames",
+        name: `Frames: ${prepared.trace.itemName}`,
+        data: {
+          coverage: { startSeconds: 0, endSeconds: 1, mode: "sampled" },
+          outcome: "produced",
+          counts: { frames: 1 },
+          datasets: [],
+          warnings: [],
+          contentReview: "not_performed"
+        },
+        verification: { status: "passed", checks: ["fixture_frame"] }
+      };
+    }
+  };
+}
+
+function fakePreview({ onExecute = null, availability = { status: "available" } } = {}) {
+  return {
+    ...fakeFrames({ onExecute, availability }),
+    name: "fake-preview",
+    capability: "source.preview",
+    description: "Preview fixture",
+    outputDescription: "Preview evidence fixture",
+    createResult({ prepared }) {
+      return {
+        type: "source.preview",
+        name: `Preview: ${prepared.trace.itemName}`,
+        data: {
+          coverage: { startSeconds: 0, endSeconds: 1, mode: "sampled" },
+          outcome: "produced",
+          counts: { previews: 1 },
+          datasets: [],
+          warnings: [],
+          contentReview: "not_performed"
+        },
+        verification: { status: "passed", checks: ["fixture_preview"] }
+      };
+    }
+  };
+}
+
+function fileProducingProbe({ onExecute = null } = {}) {
+  return {
+    ...fakeProbe(),
+    producesFiles: true,
+    sideEffects: ["creates fixture evidence"],
+    async prepare({ store, projectId, inputs, outputWorkspace }) {
+      const media = await store.resolveMediaSource(projectId, inputs.source);
+      return {
+        runtime: { outputPath: join(outputWorkspace.temporaryDirectory, "metadata.jsonl") },
+        trace: {
+          itemName: media.itemName,
+          finalPath: `${outputWorkspace.projectRelativeDirectory}/metadata.jsonl`
+        }
+      };
+    },
+    async execute({ outputPath }) {
+      const contents = await onExecute?.() ?? "{\"fixture\":true}\n";
+      await writeFile(outputPath, contents, "utf8");
+      return { actualCostUsd: 0, sizeBytes: Buffer.byteLength(contents) };
+    },
+    createResult({ prepared, execution }) {
+      const base = fakeProbe().createResult({ prepared });
+      return {
+        ...base,
+        files: [{
+          id: "metadata",
+          role: "dataset",
+          path: prepared.trace.finalPath,
+          name: "metadata.jsonl",
+          mediaType: "application/x-ndjson",
+          sizeBytes: execution.sizeBytes
+        }],
+        data: {
+          ...base.data,
+          datasets: [{ kind: "metadata", fileId: "metadata" }]
+        }
       };
     }
   };
@@ -221,6 +312,168 @@ test("tool version changes invalidate reuse even when source bytes and request s
   assert.equal(executions, 2);
 });
 
+test("resume revalidates a successful upstream unit after tool version drift", async (t) => {
+  const { rootDir, imported, store } = await fixture(t);
+  const definitions = {
+    probe: probeDefinition(),
+    frames: {
+      capability: "source.extract-frames",
+      tool: "fake-frames",
+      resultType: "source.frames",
+      dependencies: ["probe"],
+      profileGroup: "visual"
+    },
+    preview: {
+      capability: "source.preview",
+      tool: "fake-preview",
+      resultType: "source.preview",
+      dependencies: ["frames"],
+      profileGroup: "preview"
+    }
+  };
+  let probeExecutions = 0;
+  let frameExecutions = 0;
+  const source = { kind: "resource", id: imported.resourceId, itemPath: null };
+  const first = await createService({
+    rootDir,
+    store,
+    tools: [
+      fakeProbe({ onExecute: async () => { probeExecutions += 1; } }),
+      fakeFrames({ onExecute: async () => { frameExecutions += 1; } }),
+      fakePreview({ availability: { status: "unavailable", reason: "fixture blocked" } })
+    ],
+    definitions
+  }).service.createAndRun("demo", analysisRequest(source, ["preview"]));
+  assert.equal(first.state, "partial");
+  const oldProbeResultId = first.job.units[0].resultId;
+  const oldFramesResultId = first.job.units[1].resultId;
+
+  const probeV2 = {
+    ...fakeProbe({ onExecute: async () => { probeExecutions += 1; } }),
+    version: "2.0.0"
+  };
+  const resumed = await createService({
+    rootDir,
+    store,
+    tools: [
+      probeV2,
+      fakeFrames({ onExecute: async () => { frameExecutions += 1; } }),
+      fakePreview()
+    ],
+    definitions
+  }).service.resume("demo", first.analysisJobId);
+  assert.equal(resumed.state, "completed");
+  assert.equal(probeExecutions, 2);
+  assert.equal(frameExecutions, 2);
+  const [probeUnit, framesUnit, previewUnit] = resumed.job.units;
+  assert.equal(probeUnit.method.tool.version, "2.0.0");
+  assert.notEqual(probeUnit.resultId, oldProbeResultId);
+  assert.notEqual(framesUnit.resultId, oldFramesResultId);
+  assert.deepEqual(probeUnit.attempts.map((attempt) => attempt.state), ["succeeded", "succeeded"]);
+  const framesResult = await store.readResult("demo", framesUnit.resultId);
+  assert.ok(framesResult.inputResults.includes(probeUnit.resultId));
+  assert.ok(!framesResult.inputResults.includes(oldProbeResultId));
+  const previewResult = await store.readResult("demo", previewUnit.resultId);
+  assert.ok(previewResult.inputResults.includes(framesUnit.resultId));
+  assert.ok(!previewResult.inputResults.includes(oldFramesResultId));
+  assert.ok(resumed.job.warnings.some((warning) =>
+    warning.code === "analysis_evidence_invalidated" && warning.unitId === probeUnit.id
+  ));
+  assert.ok(resumed.job.warnings.some((warning) =>
+    warning.code === "analysis_evidence_invalidated" && warning.unitId === framesUnit.id
+  ));
+});
+
+test("resume reruns evidence whose output checksum changed and preserves the historical Result", async (t) => {
+  const { rootDir, imported, store } = await fixture(t);
+  const definitions = {
+    probe: probeDefinition(),
+    frames: {
+      capability: "source.extract-frames",
+      tool: "fake-frames",
+      resultType: "source.frames",
+      dependencies: ["probe"],
+      profileGroup: "visual"
+    }
+  };
+  let executions = 0;
+  const probe = fileProducingProbe({
+    onExecute: async () => `{"execution":${++executions}}\n`
+  });
+  const source = { kind: "resource", id: imported.resourceId, itemPath: null };
+  const first = await createService({
+    rootDir,
+    store,
+    tools: [probe, fakeFrames({ availability: { status: "unavailable", reason: "fixture blocked" } })],
+    definitions
+  }).service.createAndRun("demo", analysisRequest(source, ["frames"]));
+  assert.equal(first.state, "partial");
+  const oldUnit = first.job.units[0];
+  const oldResult = await store.readResult("demo", oldUnit.resultId);
+  const oldEvidencePath = join(rootDir, "demo", ...oldResult.files[0].path.split("/"));
+  await writeFile(oldEvidencePath, "tampered\n", "utf8");
+
+  const resumed = await createService({
+    rootDir,
+    store,
+    tools: [probe, fakeFrames()],
+    definitions
+  }).service.resume("demo", first.analysisJobId);
+  assert.equal(resumed.state, "completed");
+  assert.equal(executions, 2);
+  const newUnit = resumed.job.units[0];
+  assert.notEqual(newUnit.resultId, oldUnit.resultId);
+  assert.equal(await readFile(oldEvidencePath, "utf8"), "tampered\n");
+  assert.equal((await store.readResult("demo", oldResult.id)).id, oldResult.id);
+  const newResult = await store.readResult("demo", newUnit.resultId);
+  assert.match(newResult.files[0].sha256, /^[a-f0-9]{64}$/);
+  assert.ok(resumed.job.warnings.some((warning) =>
+    warning.code === "analysis_evidence_invalidated" && warning.resultId === oldResult.id
+  ));
+});
+
+test("resume rejects previously successful evidence after source bytes change", async (t) => {
+  const { rootDir, imported, store } = await fixture(t);
+  const definitions = {
+    probe: probeDefinition(),
+    frames: {
+      capability: "source.extract-frames",
+      tool: "fake-frames",
+      resultType: "source.frames",
+      dependencies: ["probe"],
+      profileGroup: "visual"
+    }
+  };
+  let probeExecutions = 0;
+  const probe = fakeProbe({ onExecute: async () => { probeExecutions += 1; } });
+  const source = { kind: "resource", id: imported.resourceId, itemPath: null };
+  const first = await createService({
+    rootDir,
+    store,
+    tools: [probe, fakeFrames({ availability: { status: "unavailable", reason: "fixture blocked" } })],
+    definitions
+  }).service.createAndRun("demo", analysisRequest(source, ["frames"]));
+  assert.equal(first.state, "partial");
+  const historicalResultId = first.job.units[0].resultId;
+  const managedSource = await store.resolveMediaSource("demo", source);
+  await writeFile(managedSource.filePath, "source bytes changed after the partial job", "utf8");
+
+  const resumed = await createService({
+    rootDir,
+    store,
+    tools: [probe, fakeFrames()],
+    definitions
+  }).service.resume("demo", first.analysisJobId);
+  assert.equal(resumed.state, "failed");
+  assert.equal(resumed.job.units[0].state, "failed");
+  assert.match(resumed.job.units[0].error, /thay đổi/);
+  assert.equal(probeExecutions, 1);
+  assert.equal((await store.readResult("demo", historicalResultId)).id, historicalResultId);
+  assert.ok(resumed.job.warnings.some((warning) =>
+    warning.code === "analysis_evidence_invalidated" && warning.resultId === historicalResultId
+  ));
+});
+
 test("requested operations include technical dependencies and bind downstream fingerprints to upstream Results", async (t) => {
   const { rootDir, imported, store } = await fixture(t);
   const framesTool = {
@@ -317,6 +570,56 @@ test("a live writer lease blocks a second coordinator and a dead lease is archiv
   const takeover = await takeoverStore.acquireLease("demo");
   assert.notEqual(takeover.token, firstLease.token);
   await takeoverStore.releaseLease("demo", takeover);
+});
+
+test("a paused stale takeover serializes a competing takeover", async (t) => {
+  const { rootDir, store } = await fixture(t);
+  const initialStore = new AnalysisStore({ rootDir, projectStore: store });
+  const staleLease = await initialStore.acquireLease("demo");
+  let staleCheckStartedResolve;
+  const staleCheckStarted = new Promise((resolve) => { staleCheckStartedResolve = resolve; });
+  let allowTakeoverResolve;
+  const allowTakeover = new Promise((resolve) => { allowTakeoverResolve = resolve; });
+  const pausedStore = new AnalysisStore({
+    rootDir,
+    projectStore: store,
+    ownerAlive: async (lease) => {
+      assert.equal(lease.token, staleLease.token);
+      staleCheckStartedResolve();
+      await allowTakeover;
+      return false;
+    }
+  });
+  const pendingTakeover = pausedStore.acquireLease("demo");
+  await staleCheckStarted;
+
+  const competingStore = new AnalysisStore({
+    rootDir,
+    projectStore: store,
+    ownerAlive: async () => false
+  });
+  await assert.rejects(
+    competingStore.acquireLease("demo"),
+    (error) => error instanceof AnalysisLeaseConflictError
+  );
+  allowTakeoverResolve();
+  const electedLease = await pendingTakeover;
+  await pausedStore.assertLease("demo", electedLease);
+
+  const archiveDirectory = join(rootDir, "demo", "analysis", "leases", "archive");
+  const archived = await Promise.all(
+    (await readdir(archiveDirectory)).map(async (name) =>
+      JSON.parse(await readFile(join(archiveDirectory, name), "utf8"))
+    )
+  );
+  assert.ok(archived.some((lease) => lease.token === staleLease.token));
+  assert.ok(!archived.some((lease) => lease.token === electedLease.token));
+  assert.deepEqual(
+    (await readdir(join(rootDir, "demo", "analysis", "leases")))
+      .filter((name) => name.startsWith("acquire-")),
+    []
+  );
+  await pausedStore.releaseLease("demo", electedLease);
 });
 
 test("source mutation during execution fails the Run and never commits a Result", async (t) => {

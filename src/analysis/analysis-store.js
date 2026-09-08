@@ -355,6 +355,14 @@ function publicLease(lease) {
   };
 }
 
+function acquisitionClaimName(token) {
+  return `acquire-${token}.json`;
+}
+
+function isCurrentProcessLease(lease) {
+  return lease.pid === process.pid && lease.processStartIdentity === PROCESS_START_IDENTITY;
+}
+
 async function defaultOwnerAlive(lease) {
   if (lease.pid === process.pid) return lease.processStartIdentity === PROCESS_START_IDENTITY;
   try {
@@ -394,29 +402,72 @@ export class AnalysisStore {
 
   async acquireLease(projectId) {
     const paths = await this.ensureLayout(projectId);
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const acquiredAt = this.now();
-      const lease = {
-        version: ANALYSIS_SCHEMA_VERSION,
-        projectId,
-        token: randomUUID(),
-        pid: process.pid,
-        processStartIdentity: PROCESS_START_IDENTITY,
-        acquiredAt,
-        heartbeatAt: acquiredAt
-      };
-      let handle;
-      try {
-        handle = await open(paths.writerLease, "wx");
-        await handle.writeFile(`${JSON.stringify(lease, null, 2)}\n`, "utf8");
-        await handle.sync();
-        return lease;
-      } catch (error) {
-        if (error?.code !== "EEXIST") throw new AnalysisStoreError("Không thể tạo analysis lease.", { cause: error });
-        let existing;
+    const acquiredAt = this.now();
+    const lease = {
+      version: ANALYSIS_SCHEMA_VERSION,
+      projectId,
+      token: randomUUID(),
+      pid: process.pid,
+      processStartIdentity: PROCESS_START_IDENTITY,
+      acquiredAt,
+      heartbeatAt: acquiredAt
+    };
+    const claimPath = join(paths.leases, acquisitionClaimName(lease.token));
+    await writeJsonAtomic(claimPath, lease);
+    try {
+      const entries = await readdir(paths.leases, { withFileTypes: true });
+      const liveClaims = [];
+      for (const entry of entries) {
+        if (!entry.isFile() || !/^acquire-[a-f0-9-]+\.json$/i.test(entry.name)) continue;
+        const candidatePath = join(paths.leases, entry.name);
+        let candidate;
         try {
-          existing = JSON.parse(await readFile(paths.writerLease, "utf8"));
-        } catch (readError) {
+          candidate = await readJson(candidatePath);
+          if (
+            candidate.version !== ANALYSIS_SCHEMA_VERSION ||
+            candidate.projectId !== projectId ||
+            entry.name !== acquisitionClaimName(candidate.token)
+          ) throw new Error("invalid acquisition claim");
+          validateLeaseReference(publicLease(candidate), "analysis acquisition claim");
+        } catch {
+          throw new AnalysisLeaseConflictError("Có acquisition claim không thể kiểm tra an toàn.");
+        }
+        const alive = isCurrentProcessLease(candidate) || await this.ownerAlive(candidate);
+        if (alive) {
+          liveClaims.push(candidate);
+          continue;
+        }
+        const archived = join(
+          paths.leaseArchive,
+          `acquire-${candidate.token}-${Date.now()}.json`
+        );
+        await rename(candidatePath, archived).catch((error) => {
+          if (error?.code !== "ENOENT") throw error;
+        });
+      }
+      const competing = liveClaims.find((candidate) => candidate.token !== lease.token);
+      if (competing) {
+        throw new AnalysisLeaseConflictError(
+          "Project đang có một tiến trình nhận analysis lease khác.",
+          publicLease(competing)
+        );
+      }
+
+      let existing = null;
+      try {
+        existing = JSON.parse(await readFile(paths.writerLease, "utf8"));
+      } catch (error) {
+        if (error?.code !== "ENOENT") {
+          throw new AnalysisLeaseConflictError("Analysis lease hiện có nhưng không thể kiểm tra an toàn.");
+        }
+      }
+      if (existing) {
+        try {
+          if (existing.version !== ANALYSIS_SCHEMA_VERSION || existing.projectId !== projectId) {
+            throw new Error("invalid writer lease");
+          }
+          validateLeaseReference(publicLease(existing), "analysis writer lease");
+        } catch {
           throw new AnalysisLeaseConflictError("Analysis lease hiện có nhưng không thể kiểm tra an toàn.");
         }
         if (await this.ownerAlive(existing)) {
@@ -429,13 +480,33 @@ export class AnalysisStore {
         try {
           await rename(paths.writerLease, archived);
         } catch (renameError) {
-          if (renameError?.code !== "ENOENT") continue;
+          if (renameError?.code !== "ENOENT") {
+            throw new AnalysisStoreError("Không thể archive analysis lease cũ.", { cause: renameError });
+          }
         }
+      }
+      let handle;
+      let createdWriter = false;
+      try {
+        handle = await open(paths.writerLease, "wx");
+        createdWriter = true;
+        await handle.writeFile(`${JSON.stringify(lease, null, 2)}\n`, "utf8");
+        await handle.sync();
+      } catch (error) {
+        await handle?.close().catch(() => {});
+        handle = null;
+        if (createdWriter) {
+          await rm(paths.writerLease, { force: true }).catch(() => {});
+          throw new AnalysisStoreError("Không thể ghi analysis lease mới.", { cause: error });
+        }
+        throw new AnalysisLeaseConflictError("Không thể nhận analysis lease do writer thay đổi đồng thời.");
       } finally {
         await handle?.close().catch(() => {});
       }
+      return lease;
+    } finally {
+      await rm(claimPath, { force: true }).catch(() => {});
     }
-    throw new AnalysisLeaseConflictError("Không thể nhận analysis lease do writer thay đổi đồng thời.");
   }
 
   async assertLease(projectId, lease) {
