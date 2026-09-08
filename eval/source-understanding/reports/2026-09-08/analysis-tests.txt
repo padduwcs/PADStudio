@@ -1,0 +1,24 @@
+test_annotation_timing_must_be_finite_and_in_source (test_evaluate.CorpusTests.test_annotation_timing_must_be_finite_and_in_source) ... ok
+test_atomic_json_rejects_nan_without_destroying_previous (test_evaluate.CorpusTests.test_atomic_json_rejects_nan_without_destroying_previous) ... ok
+test_chunk_midpoint_owns_boundary_word_once (test_evaluate.CorpusTests.test_chunk_midpoint_owns_boundary_word_once) ... ok
+test_complete_synthetic_schema_can_lock_and_detect_gold_change (test_evaluate.CorpusTests.test_complete_synthetic_schema_can_lock_and_detect_gold_change) ... ok
+test_dependency_drift_is_rejected (test_evaluate.CorpusTests.test_dependency_drift_is_rejected) ... ok
+test_holdout_lock_rejects_missing_corpus (test_evaluate.CorpusTests.test_holdout_lock_rejects_missing_corpus) ... ok
+test_inventory_does_not_overwrite_labels (test_evaluate.CorpusTests.test_inventory_does_not_overwrite_labels) ... ok
+test_label_preparation_preserves_unlabelled_vs_no_speech (test_evaluate.CorpusTests.test_label_preparation_preserves_unlabelled_vs_no_speech) ... ok
+test_metadata_tampering_cannot_inflate_benchmark_duration (test_evaluate.CorpusTests.test_metadata_tampering_cannot_inflate_benchmark_duration) ... ok
+test_missing_gold_blocks_audit (test_evaluate.CorpusTests.test_missing_gold_blocks_audit) ... ok
+test_model_manifest_cannot_self_authorize_modified_model (test_evaluate.CorpusTests.test_model_manifest_cannot_self_authorize_modified_model) ... ok
+test_score_rejects_machine_gold_and_coverage_mismatch (test_evaluate.CorpusTests.test_score_rejects_machine_gold_and_coverage_mismatch) ... ok
+test_source_hash_and_path_escape (test_evaluate.CorpusTests.test_source_hash_and_path_escape) ... ok
+test_unlabelled_text_does_not_count_as_qualified_audio (test_evaluate.CorpusTests.test_unlabelled_text_does_not_count_as_qualified_audio) ... ok
+test_explicit_timing_and_empty_are_not_passes (test_evaluate.MetricsTests.test_explicit_timing_and_empty_are_not_passes) ... ok
+test_known_edit_distance_and_empty_gold (test_evaluate.MetricsTests.test_known_edit_distance_and_empty_gold) ... ok
+test_numeric_punctuation_is_not_erased (test_evaluate.MetricsTests.test_numeric_punctuation_is_not_erased) ... ok
+test_scene_matching_is_one_to_one (test_evaluate.MetricsTests.test_scene_matching_is_one_to_one) ... ok
+test_vietnamese_nfc_diacritics_and_digits (test_evaluate.MetricsTests.test_vietnamese_nfc_diacritics_and_digits) ... ok
+
+----------------------------------------------------------------------
+Ran 19 tests in 0.210s
+
+OK

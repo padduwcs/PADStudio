@@ -1,0 +1,909 @@
+{
+  "version": "1.0",
+  "root": "D:\\Test\\vid",
+  "createdAt": 1788864583.8454707,
+  "purpose": "candidate-corpus-not-gold",
+  "clips": [
+    {
+      "id": "clip-0c1275b300a9350e",
+      "path": "vd00_CP_overview.mp4",
+      "sha256": "abb77c59216dd568f49598586916431cc2e1113124a330d0f5e1fb72f78dc277",
+      "sizeBytes": 11814535,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 96.456009,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/30",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "44100",
+          "channels": 2,
+          "time_base": "1/44100",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-e5c461656f62129e",
+      "path": "vd01_time_complexity.mp4",
+      "sha256": "774af35db06c62e3c6165d4542f0684f2ae2ca18800225d06a1ec82013073059",
+      "sizeBytes": 20066880,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 147.215011,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/30",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "44100",
+          "channels": 2,
+          "time_base": "1/44100",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-8f145e75974759c2",
+      "path": "vd02_space_complexity.mp4",
+      "sha256": "31aeb81dbf72dd84d2e5db0caf3fe251086a4c1030374a0e27695014c7b5d04d",
+      "sizeBytes": 34153274,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 224.746009,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/30",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "44100",
+          "channels": 2,
+          "time_base": "1/44100",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-b5fe6980578c4971",
+      "path": "vd03_brute_force.mp4",
+      "sha256": "25d01a85ac7603a65b56e639b8ba0d4e9302e775bb50886f933b96fc5e38fb99",
+      "sizeBytes": 12487345,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 85.589002,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/30",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "44100",
+          "channels": 2,
+          "time_base": "1/44100",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-294c1a082f068577",
+      "path": "vd04_brute_force_to_optimization.mp4",
+      "sha256": "46f51a0e967e01e48d533d4ffb3c1455f1925fee2a79b6764bced9d5ac67823b",
+      "sizeBytes": 24327844,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 154.436009,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/30",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "44100",
+          "channels": 2,
+          "time_base": "1/44100",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-3c8440c563120588",
+      "path": "vd05_prefix_sum.mp4",
+      "sha256": "b60427d0e0c890be44efbff4bfeccff115db563444b8f0e0711d428163ced614",
+      "sizeBytes": 32283912,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 212.347007,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/30",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "44100",
+          "channels": 2,
+          "time_base": "1/44100",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-d8bb60b29a655f59",
+      "path": "vd06_prefix_sum_2D.mp4",
+      "sha256": "c12ecd500ce94e563789eae705e2d1c15ab5141fe6b077aa65625ad4787815ef",
+      "sizeBytes": 58159860,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 353.315011,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/30",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "44100",
+          "channels": 2,
+          "time_base": "1/44100",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-e031344968be560c",
+      "path": "vd07_difference_array.mp4",
+      "sha256": "3e01874217e21588832be48c29b2cb1b2b82905ac7263b7932be80b66f40aebe",
+      "sizeBytes": 42398633,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 313.47,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/30",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "44100",
+          "channels": 2,
+          "time_base": "1/44100",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-915ab9f27ab90796",
+      "path": "vd08_difference_array_2d.mp4",
+      "sha256": "972f8a3facb1d7024b0ce8b7ffaf236fda2af3a12a5c777379c2bab7873f3ba8",
+      "sizeBytes": 15819825,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 259.111995,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/15360",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "44100",
+          "channels": 2,
+          "time_base": "1/44100",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-7916e2118bc26fd3",
+      "path": "vd10_karane_algo.mp4",
+      "sha256": "424826a8b15ba215d77270b141a77fe57f19333b62ba782e4999323d629eb110",
+      "sizeBytes": 16622044,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 286.279002,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/15360",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "44100",
+          "channels": 2,
+          "time_base": "1/44100",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-83fa9e5ee84eab74",
+      "path": "vd11_hash_table.mp4",
+      "sha256": "dea5e55235d5020a2e330a510a813569bd07d2a838d3c268495069e49a445e84",
+      "sizeBytes": 52383969,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 369.081995,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/30",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "44100",
+          "channels": 2,
+          "time_base": "1/44100",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-2f84857bc7d034a9",
+      "path": "vd12_two_pointer.mp4",
+      "sha256": "2816aab8ed3b21532ae51d9f90e8e569dff300ef18f4d0eb80509d31179f23d7",
+      "sizeBytes": 46410264,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 332.58,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/30",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "44100",
+          "channels": 2,
+          "time_base": "1/44100",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-570f4a6f3f60b5f9",
+      "path": "vd13_fixed_sliding_window.mp4",
+      "sha256": "b8cf11715e813b84d7496f15750b1f8270495cfa6900f34f41de4045c0486d36",
+      "sizeBytes": 29965772,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 204.15,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/30",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "44100",
+          "channels": 2,
+          "time_base": "1/44100",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-05f1fd36324c0f41",
+      "path": "vid09_frequency_array.mp4",
+      "sha256": "505827312c2e877ccd0e496d7937096f41f9ab017455e01ba65dc88f11f9e622",
+      "sizeBytes": 18111201,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 288.112993,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/15360",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "44100",
+          "channels": 2,
+          "time_base": "1/44100",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-6988c6cfffd0f30f",
+      "path": "vid14_dynamic_sliding_window.mp4",
+      "sha256": "06dd348adbc7c1c10e989fb27084a6b9806b6988183eabbfc1b0261a59c496f9",
+      "sizeBytes": 9750505,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 206.0,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/15360",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "48000",
+          "channels": 2,
+          "time_base": "1/48000",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-d9965d9a607f553c",
+      "path": "vid15_Longest_Substring_Without_Repeating_Characters.mp4",
+      "sha256": "3077756cb9fb481ed2a7f4d4c5872664d589ea1c82731c9108d68fd3c6a001cd",
+      "sizeBytes": 15451499,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 336.075,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/15360",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "48000",
+          "channels": 2,
+          "time_base": "1/48000",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-7285b464290af2fc",
+      "path": "vid16_sort.mp4",
+      "sha256": "aab0081d91c7eb53a867a94c8b7ce16081cea8acb5011251abf8144159e6ea36",
+      "sizeBytes": 11471937,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 249.933333,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/15360",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "48000",
+          "channels": 2,
+          "time_base": "1/48000",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-90d20668ea84e7bd",
+      "path": "vid17_insertion_sort.mp4",
+      "sha256": "3bb3a70433cf35f70c66c065672d0e29699940e464d3cc109649d59c1c1b30a9",
+      "sizeBytes": 10469531,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 219.533333,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/15360",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "48000",
+          "channels": 2,
+          "time_base": "1/48000",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-ae6397e9af383a53",
+      "path": "vid18_merge_sort.mp4",
+      "sha256": "3ceeba8ec42628f5b2fdc283665a656eecd1a6edbad93faf68441aff17c661fb",
+      "sizeBytes": 13291466,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 262.733333,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/15360",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "48000",
+          "channels": 2,
+          "time_base": "1/48000",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-dc4b9e0b8284b8d5",
+      "path": "vid19_binary_search.mp4",
+      "sha256": "16154e959b5abf7285e44cfd02a33ccbdb99c57d7d7efac9849b5a7465221a34",
+      "sizeBytes": 11102913,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 226.733333,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/15360",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "48000",
+          "channels": 2,
+          "time_base": "1/48000",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-e7e6873ca4fde5a7",
+      "path": "vid20_stack.mp4",
+      "sha256": "ccaec478e213e7363a599b9c944c57143f9e4ab064fc3451167b80bdfea2a02a",
+      "sizeBytes": 12127737,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 265.04,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/15360",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "48000",
+          "channels": 2,
+          "time_base": "1/48000",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-d89eb04d73285516",
+      "path": "vid21_queue.mp4",
+      "sha256": "93f16cdec3d6b87a599970780c2d6ad47d93b2840d783d1e4dbf2cdc90a2d199",
+      "sizeBytes": 11948715,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 233.84,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/15360",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "48000",
+          "channels": 2,
+          "time_base": "1/48000",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-930a0d33db8d98ac",
+      "path": "vid22_deque.mp4",
+      "sha256": "5c809f0f3d0f9aa49a022d36dc25f485861f0ab377ec2342c5a48acd0a52e65a",
+      "sizeBytes": 11646692,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 211.28,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/15360",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "48000",
+          "channels": 2,
+          "time_base": "1/48000",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-fcd471407a004168",
+      "path": "vid23_binary_number.mp4",
+      "sha256": "1bf060f13d82759921a6eb8a9cbbfc5b4ed8dc4021c1c4b977cb54c38515b112",
+      "sizeBytes": 11538224,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 235.133333,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/15360",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "48000",
+          "channels": 2,
+          "time_base": "1/48000",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    },
+    {
+      "id": "clip-9b15c3ad7b8bf856",
+      "path": "vid24_logarithm.mp4",
+      "sha256": "e4f8240fc2d8f64e9147deda56fa479e1fdd318b7b17c52272e127003e3d4fce",
+      "sizeBytes": 12984995,
+      "source": "Owner supplied for local evaluation",
+      "license": "owner-authorized-local-evaluation-no-redistribution",
+      "split": "unassigned",
+      "group": null,
+      "speakerGroup": null,
+      "sourceGroup": null,
+      "annotation": null,
+      "annotationVersion": null,
+      "durationSeconds": 283.533333,
+      "streams": [
+        {
+          "index": 0,
+          "codec_type": "video",
+          "codec_name": "h264",
+          "width": 1080,
+          "height": 1920,
+          "time_base": "1/15360",
+          "start_time": "0.000000"
+        },
+        {
+          "index": 1,
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "sample_rate": "48000",
+          "channels": 2,
+          "time_base": "1/48000",
+          "start_time": "0.000000"
+        }
+      ],
+      "status": "inventoried"
+    }
+  ],
+  "durationSeconds": 6056.725041
+}

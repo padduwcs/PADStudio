@@ -12,3 +12,6 @@ Bản thiết kế chỉ giữ mục tiêu và cách các phần phối hợp. C
 
 Phần cấu trúc video, bản dựng có phiên bản và vòng sửa cục bộ:
 [VIDEO-SEQUENCE-PRODUCTION.md](VIDEO-SEQUENCE-PRODUCTION.md).
+
+Đặc tả đề xuất cho đợt 1, hoàn thiện phân hệ phân tích và hiểu tư liệu theo chiều ngang:
+[SOURCE-UNDERSTANDING-SPEC.md](SOURCE-UNDERSTANDING-SPEC.md). Tài liệu xác định phạm vi, hợp đồng, cách triển khai và nghiệm thu; không mô tả tính năng đã hoàn thành.

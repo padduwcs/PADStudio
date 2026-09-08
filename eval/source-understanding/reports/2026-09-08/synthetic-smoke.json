@@ -1,0 +1,24 @@
+{
+  "version": "1.0",
+  "status": "passed",
+  "results": [
+    {
+      "operation": "scenes",
+      "report": "D:\\Current_Projects\\PADStudio\\.cache\\source-eval\\runs\\20260908-215302-5413d46b\\report.json",
+      "status": "passed"
+    },
+    {
+      "operation": "asr",
+      "report": "D:\\Current_Projects\\PADStudio\\.cache\\source-eval\\runs\\20260908-215303-0584a0a7\\report.json",
+      "status": "passed"
+    }
+  ],
+  "timeout": {
+    "report": "D:\\Current_Projects\\PADStudio\\.cache\\source-eval\\runs\\20260908-215308-d072e8ba\\report.json",
+    "status": "failed",
+    "clips": 0,
+    "qualityStatus": "unscored",
+    "workerFailure": "timeout"
+  },
+  "scope": "synthetic invariants only; not human ASR/scene release quality"
+}

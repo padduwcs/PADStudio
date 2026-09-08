@@ -1,0 +1,92 @@
+{
+  "version": "1.0",
+  "runId": "20260908-215332-d47a1fc7",
+  "operation": "asr",
+  "profileId": "large-v3-cpu-int8",
+  "profile": {
+    "model": "large-v3",
+    "device": "cpu",
+    "computeType": "int8_float32",
+    "beamSize": 5,
+    "vad": true,
+    "language": "vi",
+    "chunkSeconds": 300,
+    "overlapSeconds": 2
+  },
+  "profilesHash": "67571d5bdcc0a1347f0401255d6c6f554f67195cf629b902c277dd3f1e43882e",
+  "manifestHash": "e2841a07c786ec3731e794b6d8d7789570badffab9b9d79dbfd8ae1f87e416c7",
+  "harnessHash": "59e25cc1ebbc0ffe0d9cb2809e4bb029127321b43912689b7603fea878ef731f",
+  "packages": {
+    "faster-whisper": "1.2.1",
+    "ctranslate2": "4.8.2",
+    "scenedetect": "0.7.1",
+    "opencv-python": "5.0.0.93",
+    "av": "18.1.0",
+    "onnxruntime": "1.29.0",
+    "psutil": "7.2.2",
+    "numpy": "2.5.3",
+    "nvidia-cublas-cu12": "12.9.2.10",
+    "nvidia-cudnn-cu12": "9.25.1.1",
+    "nvidia-cuda-nvrtc-cu12": "12.9.86"
+  },
+  "clips": [
+    {
+      "id": "clip-0c1275b300a9350e",
+      "sourceHash": "abb77c59216dd568f49598586916431cc2e1113124a330d0f5e1fb72f78dc277",
+      "split": "unassigned",
+      "status": "completed",
+      "prediction": "clip-0c1275b300a9350e.json",
+      "predictionHash": "163e9362f8df3116d7adfb1d373f29c93537ea67351b995afc8d75f860312662",
+      "elapsedSeconds": 7.450602500000969,
+      "durationSeconds": 15.0,
+      "rtf": 0.4967068333333979,
+      "firstInference": true
+    }
+  ],
+  "requestedClipIds": [
+    "clip-0c1275b300a9350e"
+  ],
+  "status": "completed",
+  "qualityStatus": "unscored",
+  "modelLoadSeconds": 2.937985299999127,
+  "scope": "smoke-prefix",
+  "method": {
+    "temperature": 0,
+    "conditionOnPreviousText": false,
+    "wordTimestamps": true,
+    "vadMinSilenceMs": 500,
+    "sampleRate": 16000,
+    "cpuThreads": 8,
+    "chunkOwnership": "word-midpoint-source-time",
+    "timebase": "source-playback-seconds"
+  },
+  "executables": {
+    "ffmpeg": "ffmpeg version 8.1.2-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+    "ffprobe": "ffprobe version 8.1.2-full_build-www.gyan.dev Copyright (c) 2007-2026 the FFmpeg developers"
+  },
+  "model": {
+    "version": "1.0",
+    "model": "large-v3",
+    "repository": "Systran/faster-whisper-large-v3",
+    "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
+    "files": {
+      "config.json": "a9306624f5ec14270a014b647e5c316b6e03a662c369758d1b90697a7b0655b9",
+      "model.bin": "69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1",
+      "preprocessor_config.json": "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711",
+      "tokenizer.json": "6d8cbd7cd0d8d5815e478dac67b85a26bbe77c1f5e0c6d76d1ce2abc0e5f21ca",
+      "vocabulary.json": "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1"
+    },
+    "downloadedAt": 1788864647.8937738
+  },
+  "resolvedComputeType": "int8_float32",
+  "resolvedDevice": "cpu",
+  "memory": {
+    "peakProcessTreeRssBytesSampled": 3144204288,
+    "peakGpuDeviceUsedBytesSampled": 2234515456,
+    "samples": 22,
+    "gpuScope": "whole-device-including-other-apps",
+    "sampleIntervalSeconds": 0.5
+  },
+  "timeoutSeconds": 14400,
+  "workerStdout": "worker.stdout.log"
+}

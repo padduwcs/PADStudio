@@ -1,0 +1,154 @@
+{
+  "version": "1.0",
+  "status": "blocked",
+  "candidateClips": 25,
+  "verifiedClips": 0,
+  "verifiedAudioSeconds": 0,
+  "hardCuts": 0,
+  "speechBoundaries": 0,
+  "holdoutDurationFraction": null,
+  "blockers": [
+    {
+      "clip": "clip-0c1275b300a9350e",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-e5c461656f62129e",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-8f145e75974759c2",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-b5fe6980578c4971",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-294c1a082f068577",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-3c8440c563120588",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-d8bb60b29a655f59",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-e031344968be560c",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-915ab9f27ab90796",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-7916e2118bc26fd3",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-83fa9e5ee84eab74",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-2f84857bc7d034a9",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-570f4a6f3f60b5f9",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-05f1fd36324c0f41",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-6988c6cfffd0f30f",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-d9965d9a607f553c",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-7285b464290af2fc",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-90d20668ea84e7bd",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-ae6397e9af383a53",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-dc4b9e0b8284b8d5",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-e7e6873ca4fde5a7",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-d89eb04d73285516",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-930a0d33db8d98ac",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-fcd471407a004168",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "clip": "clip-9b15c3ad7b8bf856",
+      "reason": "Annotation has not been human verified"
+    },
+    {
+      "reason": "Need >=36 human-labelled audio clips and >=90 minutes"
+    },
+    {
+      "reason": "Insufficient annotated group: vi_clean"
+    },
+    {
+      "reason": "Insufficient annotated group: vi_hard"
+    },
+    {
+      "reason": "Insufficient annotated group: no_speech"
+    },
+    {
+      "reason": "Missing verified diversity tags",
+      "tags": [
+        "central",
+        "code_switch",
+        "conversation",
+        "english",
+        "fade",
+        "flash",
+        "long_shot",
+        "names_numbers",
+        "noise_music",
+        "north",
+        "overlap",
+        "pan",
+        "quiet_speech",
+        "slides",
+        "south"
+      ]
+    },
+    {
+      "reason": "Need >=12 scene-labelled clips and >=100 hard cuts"
+    },
+    {
+      "reason": "Need >=300 manually labelled speech boundaries"
+    },
+    {
+      "reason": "Target 40/60 development/holdout by audio duration (55-65% holdout tolerance)"
+    }
+  ],
+  "releaseAccepted": false
+}

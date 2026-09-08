@@ -23,7 +23,10 @@
     "tool:list": "node src/cli/list-tools.js",
     "tool:run": "node src/cli/run-tool.js",
     "test": "node --test",
-    "project:sequence": "node src/cli/write-video-sequence.js"
+    "project:sequence": "node src/cli/write-video-sequence.js",
+    "analysis:eval": "node scripts/source-eval.mjs",
+    "analysis:doctor": "node scripts/source-eval.mjs doctor",
+    "analysis:test": "node scripts/source-eval.mjs test"
   },
   "engines": {
     "node": ">=20"

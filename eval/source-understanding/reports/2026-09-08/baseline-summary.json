@@ -1,0 +1,146 @@
+{
+  "version": "1.0",
+  "runs": [
+    {
+      "runId": "20260908-175655-3b939404",
+      "reportHash": "aede995e1ff3fe50abb5ae676d407e50e1bb0d20d1946a8a6a8a0d79c310b83f",
+      "operation": "asr",
+      "profileId": "large-v3-gpu-fp16",
+      "profile": {
+        "model": "large-v3",
+        "device": "cuda",
+        "computeType": "float16",
+        "beamSize": 5,
+        "vad": true,
+        "language": "vi",
+        "chunkSeconds": 300,
+        "overlapSeconds": 2
+      },
+      "status": "completed",
+      "scope": "full-selected-clips",
+      "completed": 25,
+      "requested": 25,
+      "mediaSeconds": 6056.725041,
+      "processingSeconds": 405.4558902999852,
+      "rtf": 0.06694309012796826,
+      "warmRtf": 0.06685211512445433,
+      "modelLoadSeconds": 1.9636867999943206,
+      "memory": {
+        "peakProcessTreeRssBytesSampled": 3015069696,
+        "peakGpuDeviceUsedBytesSampled": 6414139392,
+        "samples": 721,
+        "gpuScope": "whole-device-including-other-apps",
+        "sampleIntervalSeconds": 0.5
+      },
+      "selectionFingerprint": "32cb7b5b2aff55cb732ca7bf2c727f2d4e5ae272412a7059898145875af32f0f",
+      "predictionsVerified": true,
+      "qualityStatus": "unscored"
+    },
+    {
+      "runId": "20260908-180636-adf9cf78",
+      "reportHash": "4d87645de7ec5d396b1288ccc88cdae397b5eb7d517b79946ff29dfaefc56d6c",
+      "operation": "asr",
+      "profileId": "large-v3-gpu-int8",
+      "profile": {
+        "model": "large-v3",
+        "device": "cuda",
+        "computeType": "int8_float16",
+        "beamSize": 5,
+        "vad": true,
+        "language": "vi",
+        "chunkSeconds": 300,
+        "overlapSeconds": 2
+      },
+      "status": "completed",
+      "scope": "full-selected-clips",
+      "completed": 25,
+      "requested": 25,
+      "mediaSeconds": 6056.725041,
+      "processingSeconds": 457.8616311000078,
+      "rtf": 0.07559557813844761,
+      "warmRtf": 0.07546115336157663,
+      "modelLoadSeconds": 3.224028000011458,
+      "memory": {
+        "peakProcessTreeRssBytesSampled": 3140849664,
+        "peakGpuDeviceUsedBytesSampled": 4453302272,
+        "samples": 812,
+        "gpuScope": "whole-device-including-other-apps",
+        "sampleIntervalSeconds": 0.5
+      },
+      "selectionFingerprint": "32cb7b5b2aff55cb732ca7bf2c727f2d4e5ae272412a7059898145875af32f0f",
+      "predictionsVerified": true,
+      "qualityStatus": "unscored"
+    },
+    {
+      "runId": "20260908-181419-64eaf0ef",
+      "reportHash": "063ceedcc61585b17c3aaa9b2bad94fe217a04e36618036a62e0072ed0598de0",
+      "operation": "asr",
+      "profileId": "medium-gpu-fp16",
+      "profile": {
+        "model": "medium",
+        "device": "cuda",
+        "computeType": "float16",
+        "beamSize": 5,
+        "vad": true,
+        "language": "vi",
+        "chunkSeconds": 300,
+        "overlapSeconds": 2
+      },
+      "status": "completed",
+      "scope": "full-selected-clips",
+      "completed": 25,
+      "requested": 25,
+      "mediaSeconds": 6056.725041,
+      "processingSeconds": 302.80960510003206,
+      "rtf": 0.0499956004359142,
+      "warmRtf": 0.04992471460641114,
+      "modelLoadSeconds": 0.9846613999980036,
+      "memory": {
+        "peakProcessTreeRssBytesSampled": 1539448832,
+        "peakGpuDeviceUsedBytesSampled": 4310695936,
+        "samples": 536,
+        "gpuScope": "whole-device-including-other-apps",
+        "sampleIntervalSeconds": 0.5
+      },
+      "selectionFingerprint": "32cb7b5b2aff55cb732ca7bf2c727f2d4e5ae272412a7059898145875af32f0f",
+      "predictionsVerified": true,
+      "qualityStatus": "unscored"
+    },
+    {
+      "runId": "20260908-181925-eabfb899",
+      "reportHash": "938be8133fe090ac7540766be481be07c1d9234e12b475b22ee4cef4440daf86",
+      "operation": "scenes",
+      "profileId": "adaptive-v1",
+      "profile": {
+        "detector": "AdaptiveDetector",
+        "adaptiveThreshold": 3.0,
+        "minSceneLengthFrames": 15,
+        "windowWidth": 2,
+        "minContentValue": 15.0
+      },
+      "status": "completed",
+      "scope": "full-selected-clips",
+      "completed": 25,
+      "requested": 25,
+      "mediaSeconds": 6056.725041,
+      "processingSeconds": 543.9369422000163,
+      "rtf": 0.08980710508037348,
+      "warmRtf": 0.08971440601576208,
+      "modelLoadSeconds": null,
+      "memory": {
+        "peakProcessTreeRssBytesSampled": 152477696,
+        "peakGpuDeviceUsedBytesSampled": 1954545664,
+        "samples": 977,
+        "gpuScope": "whole-device-including-other-apps",
+        "sampleIntervalSeconds": 0.5
+      },
+      "selectionFingerprint": "32cb7b5b2aff55cb732ca7bf2c727f2d4e5ae272412a7059898145875af32f0f",
+      "predictionsVerified": true,
+      "qualityStatus": "unscored"
+    }
+  ],
+  "sameAsrInputCoverage": true,
+  "releaseDefault": null,
+  "releaseAccepted": false,
+  "note": "Desktop baseline, not controlled performance or human quality certification. First inference excluded from warm RTF. GPU memory is device-wide sampled peak."
+}

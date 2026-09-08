@@ -1,0 +1,60 @@
+{
+  "version": "1.0",
+  "timestamp": 1788865790.1332355,
+  "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+  "executable": "D:\\Current_Projects\\PADStudio\\.runtime-tools\\source-eval\\Scripts\\python.exe",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "cpu": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+  "logicalCpus": 16,
+  "ramBytes": 33407430656,
+  "diskFreeBytes": 209693806592,
+  "packages": {
+    "faster-whisper": "1.2.1",
+    "ctranslate2": "4.8.2",
+    "scenedetect": "0.7.1",
+    "opencv-python": "5.0.0.93",
+    "av": "18.1.0",
+    "onnxruntime": "1.29.0",
+    "psutil": "7.2.2",
+    "numpy": "2.5.3",
+    "nvidia-cublas-cu12": "12.9.2.10",
+    "nvidia-cudnn-cu12": "9.25.1.1",
+    "nvidia-cuda-nvrtc-cu12": "12.9.86"
+  },
+  "executables": {
+    "ffmpeg": "ffmpeg version 8.1.2-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+    "ffprobe": "ffprobe version 8.1.2-full_build-www.gyan.dev Copyright (c) 2007-2026 the FFmpeg developers",
+    "nvidia-smi": "NVIDIA GeForce RTX 5070, 12227 MiB, 610.88"
+  },
+  "computeTypes": {
+    "cpu": [
+      "float32",
+      "int8",
+      "int8_float32"
+    ],
+    "cuda": [
+      "bfloat16",
+      "float16",
+      "float32",
+      "int8",
+      "int8_bfloat16",
+      "int8_float16",
+      "int8_float32"
+    ]
+  },
+  "models": [
+    {
+      "model": "large-v3",
+      "revision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
+      "integrityChecked": false
+    },
+    {
+      "model": "medium",
+      "revision": "08e178d48790749d25932bbc082711ddcfdfbc4f",
+      "integrityChecked": false
+    }
+  ],
+  "blockers": [],
+  "inferenceVerified": false,
+  "note": "Compute types/package presence do not prove CUDA DLLs or model inference work. Run CPU/GPU baselines."
+}

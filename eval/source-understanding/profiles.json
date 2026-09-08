@@ -1,0 +1,60 @@
+{
+  "version": "1.0",
+  "releaseDefault": null,
+  "profiles": {
+    "large-v3-gpu-fp16": {
+      "model": "large-v3",
+      "device": "cuda",
+      "computeType": "float16",
+      "beamSize": 5,
+      "vad": true,
+      "language": "vi",
+      "chunkSeconds": 300,
+      "overlapSeconds": 2
+    },
+    "large-v3-gpu-int8": {
+      "model": "large-v3",
+      "device": "cuda",
+      "computeType": "int8_float16",
+      "beamSize": 5,
+      "vad": true,
+      "language": "vi",
+      "chunkSeconds": 300,
+      "overlapSeconds": 2
+    },
+    "medium-gpu-fp16": {
+      "model": "medium",
+      "device": "cuda",
+      "computeType": "float16",
+      "beamSize": 5,
+      "vad": true,
+      "language": "vi",
+      "chunkSeconds": 300,
+      "overlapSeconds": 2
+    },
+    "large-v3-cpu-int8": {
+      "model": "large-v3",
+      "device": "cpu",
+      "computeType": "int8_float32",
+      "beamSize": 5,
+      "vad": true,
+      "language": "vi",
+      "chunkSeconds": 300,
+      "overlapSeconds": 2
+    }
+  },
+  "scenes": {
+    "detector": "AdaptiveDetector",
+    "adaptiveThreshold": 3.0,
+    "minSceneLengthFrames": 15,
+    "windowWidth": 2,
+    "minContentValue": 15.0
+  },
+  "practicalDefault": "large-v3-gpu-fp16",
+  "practicalAcceptance": {
+    "scope": "owner-machine-and-available-media",
+    "basis": "25-clip real execution plus sampled agent semantic review",
+    "formalQualityCertified": false,
+    "reviewRequired": "Technical terms, numbers, formulas and disputed passages; preserve raw transcript."
+  }
+}

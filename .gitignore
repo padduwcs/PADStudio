@@ -40,3 +40,7 @@ pnpm-debug.log*
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Python evaluation bytecode (media/models/reports use existing .cache ignore)
+__pycache__/
+*.pyc
