@@ -192,6 +192,17 @@ phần active, capability, skill liên quan và resume view; CLI là đường m
 Observer trực quan hóa nhưng vẫn chỉ đọc. Workflow mẫu chỉ là điểm khởi đầu và
 mọi lần điều chỉnh workflow đều giữ revision cùng lý do.
 
+## Nền vòng đời Source Understanding đã triển khai
+
+Sau nền đánh giá thực tế của gói A, gói B đã bổ sung contract source identity/timebase,
+Result bằng chứng, analysis job có revision, single-writer lease, dependency, cancel,
+resume/reconcile và cache có kiểm chứng. Mỗi unit vẫn đi qua Bộ thực thi và tạo Run/Result;
+job chỉ giữ kế hoạch kỹ thuật và điểm tiếp tục, không thay workflow sáng tạo.
+
+Sáu adapter media production chưa nằm trong gói B. Trước gói C, operation thiếu tool phải
+hiện `blocked`, không tự fallback hoặc gọi harness đánh giá như production. Chi tiết contract
+đã triển khai: [SOURCE-UNDERSTANDING-PACKAGE-B.md](./SOURCE-UNDERSTANDING-PACKAGE-B.md).
+
 ## Cấu trúc video và vòng sửa đã triển khai
 
 Theo quyết định triển khai tiếp, PADStudio bổ sung artifact `video.sequence`:

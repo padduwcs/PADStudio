@@ -11,6 +11,12 @@ from metrics import normalize, text_metrics, scene_metrics, timing_metrics
 
 
 class MetricsTests(unittest.TestCase):
+    def test_source_identity_golden_matches_node_contract(self):
+        golden = json.loads((Path(__file__).parent / "source-identity-golden.json").read_text(encoding="utf-8"))
+        canonical = json.dumps(golden["value"], sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+        self.assertEqual(canonical, golden["canonicalJson"])
+        self.assertEqual(ev.fingerprint(golden["value"]), golden["sha256"])
+
     def test_vietnamese_nfc_diacritics_and_digits(self):
         self.assertEqual(normalize("  TÔI, có 12! "), "tôi có 12")
         self.assertEqual(normalize("a\u0301"), "á")

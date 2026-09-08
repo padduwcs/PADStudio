@@ -51,10 +51,45 @@ function toolReference(tool) {
 
 function executionError(error) {
   if (error instanceof ToolExecutorError) return error;
+  if (error?.name === "AbortError") {
+    return new ToolExecutorError(error?.message || "Analysis unit đã bị hủy.", {
+      code: "analysis_cancelled",
+      cause: error
+    });
+  }
   return new ToolExecutorError(error?.message || "Không thể chạy công cụ.", {
     code: error?.code || "execution_failed",
     cause: error
   });
+}
+
+function validateInternalOptions(value) {
+  if (value === undefined) return {};
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new ToolExecutorError("Tùy chọn nội bộ của Executor không hợp lệ.", { code: "invalid_internal_options" });
+  }
+  const unknown = Object.keys(value).filter(
+    (field) => !["onRunStarted", "beforeResultCommit", "decorateResult", "signal"].includes(field)
+  );
+  if (unknown.length) {
+    throw new ToolExecutorError("Tùy chọn nội bộ không được hỗ trợ: " + unknown.join(", "), {
+      code: "invalid_internal_options"
+    });
+  }
+  for (const hook of ["onRunStarted", "beforeResultCommit", "decorateResult"]) {
+    if (value[hook] !== undefined && typeof value[hook] !== "function") {
+      throw new ToolExecutorError(`${hook} phải là function.`, { code: "invalid_internal_options" });
+    }
+  }
+  if (value.signal !== undefined && !(value.signal instanceof AbortSignal)) {
+    throw new ToolExecutorError("signal phải là AbortSignal.", { code: "invalid_internal_options" });
+  }
+  return value;
+}
+
+function throwIfAborted(signal) {
+  if (!signal?.aborted) return;
+  throw new ToolExecutorError("Analysis unit đã bị hủy.", { code: "analysis_cancelled" });
 }
 
 export class ToolExecutor {
@@ -70,8 +105,9 @@ export class ToolExecutor {
     return this.registry.describeCapabilities();
   }
 
-  async execute(projectId, requestValue) {
+  async execute(projectId, requestValue, internalValue) {
     const request = validateRequest(requestValue);
+    const internal = validateInternalOptions(internalValue);
     const tool = this.registry.get(request.tool, request.capability);
     const reference = toolReference(tool);
     const started = Date.now();
@@ -86,7 +122,19 @@ export class ToolExecutor {
     let outputWorkspace = null;
 
     try {
-      const availability = await tool.checkAvailability();
+      throwIfAborted(internal.signal);
+      if (internal.onRunStarted) {
+        try {
+          await internal.onRunStarted({ projectId, run, request, tool: reference });
+        } catch (error) {
+          throw new ToolExecutorError("Không thể đăng ký Run vào owner trước khi chạy tool.", {
+            code: "run_start_hook_failed",
+            cause: error
+          });
+        }
+      }
+      throwIfAborted(internal.signal);
+      const availability = await tool.checkAvailability({ signal: internal.signal });
       if (availability?.status !== "available") {
         throw new ToolExecutorError(
           availability?.reason || "Công cụ " + tool.name + " hiện không dùng được.",
@@ -107,6 +155,7 @@ export class ToolExecutor {
         projectId,
         inputs: request.inputs,
         runId: run.id,
+        signal: internal.signal,
         outputWorkspace: outputWorkspace && {
           temporaryDirectory: outputWorkspace.temporaryDirectory,
           projectRelativeDirectory: outputWorkspace.projectRelativeDirectory
@@ -114,9 +163,23 @@ export class ToolExecutor {
       });
       const execution = await tool.execute({
         ...prepared.runtime,
-        availability
+        availability,
+        signal: internal.signal
       });
-      const resultValue = tool.createResult({ prepared, execution });
+      throwIfAborted(internal.signal);
+      let resultValue = tool.createResult({ prepared, execution });
+      if (internal.decorateResult) {
+        resultValue = await internal.decorateResult({
+          projectId,
+          run,
+          request,
+          tool: reference,
+          availability,
+          prepared,
+          execution,
+          resultValue
+        });
+      }
       const declaredFiles = resultValue?.files;
       if (tool.producesFiles && (!Array.isArray(declaredFiles) || declaredFiles.length === 0)) {
         throw new ToolExecutorError("Công cụ tạo file nhưng không khai báo file kết quả.", {
@@ -128,6 +191,20 @@ export class ToolExecutor {
           code: "invalid_tool_result"
         });
       }
+      throwIfAborted(internal.signal);
+      if (internal.beforeResultCommit) {
+        await internal.beforeResultCommit({
+          projectId,
+          run,
+          request,
+          tool: reference,
+          availability,
+          prepared,
+          execution,
+          resultValue
+        });
+      }
+      throwIfAborted(internal.signal);
       if (outputWorkspace) {
         await this.store.commitRunOutputWorkspace(outputWorkspace);
       }

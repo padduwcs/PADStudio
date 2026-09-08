@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { isAnalysisResultType, validateAnalysisResultData } from "../analysis/contracts.js";
+import { sha256File } from "../analysis/source-identity.js";
 import { ProjectIntelligenceStore } from "../intelligence/project-intelligence-store.js";
 import { createDefaultSkillCatalog } from "../intelligence/skill-catalog.js";
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
@@ -193,7 +195,11 @@ function validateResult(result, projectId) {
       typeof file.mediaType !== "string" ||
       !file.mediaType ||
       !Number.isInteger(file.sizeBytes) ||
-      file.sizeBytes < 0
+      file.sizeBytes < 0 ||
+      !(
+        file.sha256 === undefined ||
+        (typeof file.sha256 === "string" && /^[a-f0-9]{64}$/.test(file.sha256))
+      )
     ) ||
     !result.tool ||
     typeof result.tool.name !== "string" ||
@@ -222,6 +228,26 @@ function validateResult(result, projectId) {
     )
   ) {
     throw new ProjectStoreError("Kết quả không hợp lệ trong project: " + projectId);
+  }
+  if (isAnalysisResultType(result.type)) {
+    const normalizedData = validateAnalysisResultData(result.data, { resultType: result.type });
+    const fileIds = new Set(files.map((file) => file.id));
+    const missingDatasetFiles = normalizedData.datasets.flatMap((dataset) =>
+      [dataset.fileId, dataset.indexFileId].filter(Boolean)
+    ).filter((id) => !fileIds.has(id));
+    if (missingDatasetFiles.length) {
+      throw new ProjectStoreError(
+        "Result phân tích tham chiếu dataset file không tồn tại: " + missingDatasetFiles.join(", ")
+      );
+    }
+    for (const dataset of normalizedData.datasets) {
+      if (dataset.checksum === undefined) continue;
+      const file = files.find((candidate) => candidate.id === dataset.fileId);
+      if (file?.sha256 !== dataset.checksum) {
+        throw new ProjectStoreError(`Checksum dataset ${dataset.kind} không khớp file Result.`);
+      }
+    }
+    result = { ...result, data: normalizedData };
   }
   return { ...result, inputResults, inputArtifacts, files, runCompletion };
 }
@@ -447,6 +473,10 @@ export class ProjectStore {
       await mkdir(join(staging, "workflows"), { recursive: true });
       await mkdir(join(staging, "reviews"), { recursive: true });
       await mkdir(join(staging, "skills"), { recursive: true });
+      await mkdir(join(staging, "analysis", "jobs"), { recursive: true });
+      await mkdir(join(staging, "analysis", "indexes"), { recursive: true });
+      await mkdir(join(staging, "analysis", "leases", "archive"), { recursive: true });
+      await mkdir(join(staging, "analysis", "cancellations"), { recursive: true });
       await writeJsonAtomic(join(staging, "project.json"), {
         version: PROJECT_VERSION,
         id: projectId,
@@ -879,6 +909,7 @@ export class ProjectStore {
       throw new ProjectStoreError("Không thể thêm kết quả vào run đã kết thúc: " + runId);
     }
     const normalizedCapability = requireText(capability, "Capability của kết quả");
+    const normalizedType = requireText(type, "Loại kết quả");
     const normalizedTool = optionalTool(tool);
     if (run.capability !== normalizedCapability) {
       throw new ProjectStoreError("Capability của kết quả không khớp với run.");
@@ -917,7 +948,8 @@ export class ProjectStore {
       path: requireText(file?.path, "Đường dẫn file"),
       name: requireText(file?.name, "Tên file"),
       mediaType: requireText(file?.mediaType, "Loại media"),
-      sizeBytes: file?.sizeBytes
+      sizeBytes: file?.sizeBytes,
+      ...(file?.sha256 === undefined ? {} : { sha256: file.sha256 })
     }));
     if (new Set(normalizedFiles.map((file) => file.id)).size !== normalizedFiles.length) {
       throw new ProjectStoreError("File id trong kết quả phải là duy nhất.");
@@ -956,12 +988,19 @@ export class ProjectStore {
       if (info.size !== file.sizeBytes) {
         throw new ProjectStoreError("Kích thước file kết quả không khớp với file đã ghi.");
       }
+      if (isAnalysisResultType(normalizedType) || file.sha256 !== undefined) {
+        const checksum = await sha256File(resolvedFile);
+        if (file.sha256 !== undefined && file.sha256 !== checksum) {
+          throw new ProjectStoreError("SHA-256 file kết quả không khớp với file đã ghi.");
+        }
+        file.sha256 = checksum;
+      }
     }
     const result = {
       version: PROJECT_VERSION,
       id: recordId("result"),
       projectId,
-      type: requireText(type, "Loại kết quả"),
+      type: normalizedType,
       name: requireText(name, "Tên kết quả"),
       capability: normalizedCapability,
       inputResources: normalizedInputs,

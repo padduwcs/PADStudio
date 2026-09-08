@@ -1,6 +1,6 @@
 # Đợt 1 — Đặc tả triển khai phân tích và hiểu tư liệu
 
-Phiên bản đặc tả: **1.0 — 2026-09-08**. Trạng thái: **đề xuất triển khai, chưa phải tính năng đã có**.
+Phiên bản đặc tả: **1.0 — 2026-09-08**. Trạng thái: **đặc tả toàn đợt; xem §18–§19 để biết phần đã triển khai, chưa coi toàn phân hệ là hoàn thành**.
 
 Tài liệu này đáp ứng yêu cầu hoàn thiện **một phân hệ theo chiều ngang**. Các gói công việc bên dưới là thứ tự xây nội bộ; chỉ nghiệm thu đợt khi toàn bộ phạm vi bắt buộc đạt. Không lấy một video demo chạy được làm tiêu chuẩn hoàn thành.
 
@@ -495,3 +495,12 @@ Chọn `large-v3-gpu-fp16` làm `practicalDefault`; giữ `releaseDefault: null`
 Agent có thể phát hiện thuật ngữ sai, phép tính mâu thuẫn, câu thiếu nghĩa bằng transcript, rồi lưu nhận xét riêng với timestamp/segment. Đó là review văn bản/ngữ nghĩa, không tự đánh dấu đã nghe/xem toàn bộ; số, công thức và các kết luận còn mơ hồ cần đối chiếu nguồn khi sử dụng. Giữ raw ASR bất biến; không biến suy luận thành nhãn gold.
 
 Bằng chứng: `eval/source-understanding/reports/2026-09-08/semantic-review.json` và `eval/source-understanding/PRACTICAL-REVIEW.md`. Điều chỉnh này chỉ áp dụng gói A; không coi các công cụ/UI/job của gói B–F đã triển khai.
+
+## 19. Trạng thái triển khai
+
+Gói B — hợp đồng và vòng đời — đã được triển khai sau gói A. Contract thực tế, CLI, semantics
+resume/cancel/reconcile, giới hạn và bản đồ test được ghi tại
+[`SOURCE-UNDERSTANDING-PACKAGE-B.md`](SOURCE-UNDERSTANDING-PACKAGE-B.md).
+
+Việc hoàn thành gói B không thay đổi điều chỉnh nghiệm thu gói A tại §18 và không ngụ ý các adapter
+gói C, artifact/query gói D, observer gói E hay nghiệm thu toàn phân hệ gói F đã hoàn thành.

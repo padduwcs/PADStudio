@@ -3,9 +3,9 @@ import { basename, extname, join, relative, sep } from "node:path";
 import { toProjectRelativePath } from "../project/project-paths.js";
 
 const mediaExtensions = {
-  image: new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"]),
-  video: new Set([".mp4", ".webm", ".mov", ".m4v"]),
-  audio: new Set([".mp3", ".wav", ".m4a", ".ogg", ".aac", ".flac"])
+  image: new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".bmp", ".tif", ".tiff"]),
+  video: new Set([".mp4", ".webm", ".mov", ".m4v", ".mkv"]),
+  audio: new Set([".mp3", ".wav", ".m4a", ".ogg", ".opus", ".aac", ".flac"])
 };
 
 export function mediaType(fileName) {

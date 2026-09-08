@@ -26,7 +26,10 @@
     "project:sequence": "node src/cli/write-video-sequence.js",
     "analysis:eval": "node scripts/source-eval.mjs",
     "analysis:doctor": "node scripts/source-eval.mjs doctor",
-    "analysis:test": "node scripts/source-eval.mjs test"
+    "analysis:test": "node scripts/source-eval.mjs test",
+    "project:analyze": "node src/cli/analyze-project.js",
+    "analysis:resume": "node src/cli/resume-analysis.js",
+    "analysis:cancel": "node src/cli/cancel-analysis.js"
   },
   "engines": {
     "node": ">=20"

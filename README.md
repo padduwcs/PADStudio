@@ -38,6 +38,11 @@ phục vụ observer trong trình duyệt; chúng không phải cầu nối đi�
 │   └── workflow-*-r*.json
 ├── reviews/
 │   └── review-*.json
+├── analysis/
+│   ├── jobs/
+│   ├── indexes/
+│   ├── cancellations/
+│   └── leases/
 ├── skills/
 └── runs/
     └── run-*.json
@@ -53,6 +58,8 @@ phục vụ observer trong trình duyệt; chúng không phải cầu nối đi�
 - `artifacts/`: hiểu biết và lựa chọn sáng tạo có revision, không ghi đè lịch sử.
 - `workflows/`: đồ thị công việc thích nghi; mỗi thay đổi là một revision có lý do.
 - `reviews/`: đánh giá creative/technical có tiêu chí và bằng chứng.
+- `analysis/`: job phân tích kỹ thuật có thể resume, source snapshot, lease và cache/index dẫn
+  xuất. Project cũ chưa có thư mục này vẫn mở bình thường.
 - `skills/`: catalog skill riêng của project khi cần; skill hệ thống nằm ở `skills/`.
 - `runs/`: dấu vết từng thao tác import hoặc chạy công cụ, gồm cả lỗi, thời lượng
   và chi phí khi có.
@@ -66,6 +73,7 @@ không có `project.json` không được coi là project hợp lệ.
 
 ```text
 src/
+├── analysis/    # Source identity/timebase, contract Result, job/lease/resume/cancel
 ├── project/     # Lưu trữ, đường dẫn và tính toàn vẹn của project
 ├── intelligence/# Artifact, adaptive workflow, review, skill và context assembler
 ├── resources/   # Nhập và lập chỉ mục tài nguyên
@@ -171,6 +179,21 @@ Contract chi tiết nằm trong
 
 Chi tiết contract và cách Agent dùng các lệnh nằm trong
 [PADSTUDIO-AGENT-RUNTIME.md](PADSTUDIO-AGENT-RUNTIME.md).
+
+## Source Understanding — vòng đời gói B
+
+Gói B đã có contract và coordinator bền vững:
+
+```powershell
+$request | npm run project:analyze -- <project-id> -
+npm run analysis:resume -- <project-id> <analysis-id>
+npm run analysis:cancel -- <project-id> <analysis-id>
+```
+
+Sáu adapter phân tích media thuộc gói C chưa được đăng ký vào default tool registry. Vì vậy CLI
+hiện giữ job và báo `blocked` khi tool chưa có; nó không tự tải model, không dùng fallback và không
+coi harness gói A là production tool. Contract và giới hạn cụ thể nằm trong
+[SOURCE-UNDERSTANDING-PACKAGE-B.md](docs/build/SOURCE-UNDERSTANDING-PACKAGE-B.md).
 
 ## Cấu trúc video và sửa từng phần
 

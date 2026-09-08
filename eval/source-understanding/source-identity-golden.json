@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "value": {
+    "projectId": "demo",
+    "source": {
+      "kind": "resource",
+      "id": "resource-1",
+      "itemPath": "clip/video.mp4"
+    }
+  },
+  "canonicalJson": "{\"projectId\":\"demo\",\"source\":{\"id\":\"resource-1\",\"itemPath\":\"clip/video.mp4\",\"kind\":\"resource\"}}",
+  "sha256": "9a29c7445ee9d1ae2946583e6cac1c53190ba16a27726cdc5e0084c1b3fdb08b"
+}
