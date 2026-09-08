@@ -60,6 +60,26 @@
       "artifactTypes": [],
       "reviewCriteria": ["cuts and transitions serve intent rather than default habit", "added audio stays legible against the video's own sound", "captions are sized and timed for the frame's orientation"],
       "instructions": "video-editing-craft.md"
+    },
+    {
+      "id": "video-sequence-planning",
+      "version": "1.0",
+      "name": "Video sequence planning",
+      "description": "Plan, render and revise a concrete video with exact references and honest review.",
+      "appliesTo": [
+        "plan",
+        "replan",
+        "review"
+      ],
+      "artifactTypes": [
+        "video.sequence"
+      ],
+      "reviewCriteria": [
+        "each segment serves intent",
+        "media gaps remain explicit",
+        "review matches the rendered revision"
+      ],
+      "instructions": "video-sequence-planning.md"
     }
   ]
 }

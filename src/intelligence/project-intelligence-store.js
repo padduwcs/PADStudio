@@ -17,6 +17,8 @@ import {
   requireText,
 } from "./contracts.js";
 
+import { SEQUENCE_TYPE, normalizeSequence, sequenceReferences } from "../production/video-sequence.js";
+
 const VERSION = "1.0";
 
 function timestamp() {
@@ -91,7 +93,7 @@ export class ProjectIntelligenceStore {
     requireObject(value, "artifact");
     assertOnlyFields(
       value,
-      ["key", "type", "name", "summary", "status", "data", "references", "createdBy"],
+      ["key", "type", "name", "summary", "status", "data", "references", "createdBy", "expectedRevision"],
       "artifact"
     );
     const key = requireId(value.key, "artifact.key");
@@ -103,12 +105,30 @@ export class ProjectIntelligenceStore {
       throw new IntelligenceValidationError(`artifact.status is not supported: ${status}.`);
     }
     if (!isPlainObject(value.data)) throw new IntelligenceValidationError("artifact.data must be an object.");
+    const data = type === SEQUENCE_TYPE ? normalizeSequence(value.data) : structuredClone(value.data);
     const references = normalizeReferences(value.references);
+    if (type === SEQUENCE_TYPE) {
+      // Keep local dependencies inside their segment, not in the global reference list.
+      // Otherwise revising one segment would invalidate the cache of every other segment.
+      await this.#assertReferences(projectId, sequenceReferences(data));
+      if (status !== "retired") {
+        for (const segment of data.segments) {
+          for (const source of [segment.visual?.source, segment.narration?.source].filter(Boolean)) {
+            await this.projectStore.resolveMediaSource(projectId, source);
+          }
+        }
+      }
+    }
     await this.#assertReferences(projectId, references);
     const previous = (await this.readArtifacts(projectId))
       .filter((artifact) => artifact.key === key)
       .sort((a, b) => a.revision - b.revision)
       .at(-1);
+    if ((type === SEQUENCE_TYPE && previous) || value.expectedRevision !== undefined) {
+      if (!Number.isInteger(value.expectedRevision) || value.expectedRevision !== (previous?.revision ?? 0)) {
+        throw new IntelligenceValidationError("Artifact revision conflict: reread the latest revision before writing.");
+      }
+    }
     if (previous && previous.type !== type) {
       throw new IntelligenceValidationError(`Artifact ${key} cannot change type from ${previous.type} to ${type}.`);
     }
@@ -123,7 +143,7 @@ export class ProjectIntelligenceStore {
       name,
       summary,
       status,
-      data: structuredClone(value.data),
+      data,
       references,
       createdBy: value.createdBy ?? "agent",
       createdAt: timestamp(),
@@ -394,6 +414,7 @@ export class ProjectIntelligenceStore {
       throw new IntelligenceValidationError("Stored artifact payload is invalid.");
     }
     normalizeReferences(value.references);
+    if (value.type === SEQUENCE_TYPE) normalizeSequence(value.data);
     return value;
   }
 
@@ -531,7 +552,26 @@ export class ProjectIntelligenceStore {
 
   async #assertWorkflowState(projectId, workflowId, items) {
     const itemMap = new Map(items.map((item) => [item.id, item]));
-    const [reviews, decisions] = await Promise.all([this.readReviews(projectId), this.projectStore.readDecisions(projectId)]);
+    const [reviews, decisions, artifacts, results, resources, workflows] = await Promise.all([
+      this.readReviews(projectId), this.projectStore.readDecisions(projectId), this.readArtifacts(projectId),
+      this.projectStore.readResults(projectId), this.projectStore.readResources(projectId), this.readWorkflows(projectId),
+    ]);
+    const outputs = new Map([
+      ...artifacts.map((r) => ["artifact:" + r.id, r]), ...results.map((r) => ["result:" + r.id, r]),
+      ...resources.map((r) => ["resource:" + r.id, r]), ...reviews.map((r) => ["review:" + r.id, r]),
+      ...decisions.map((r) => ["decision:" + r.id, r]), ...workflows.map((r) => ["workflow:" + r.id, r]),
+    ]);
+    for (const item of items) {
+      if (["awaiting_review", "awaiting_approval", "completed"].includes(item.status)) {
+        for (const expected of item.expectedOutputs) {
+          if (!item.outputReferences.some((ref) => ref.kind === expected.kind &&
+            outputs.has(ref.kind + ":" + ref.id) &&
+            (!expected.type || outputs.get(ref.kind + ":" + ref.id).type === expected.type))) {
+            throw new IntelligenceValidationError("Work item " + item.id + " is missing expected output " + expected.kind + (expected.type ? ":" + expected.type : "") + ".");
+          }
+        }
+      }
+    }
     for (const item of items) {
       if (["ready", "in_progress", "awaiting_review", "awaiting_approval", "completed"].includes(item.status)) {
         const pending = item.dependsOn.filter((id) => itemMap.get(id).status !== "completed");

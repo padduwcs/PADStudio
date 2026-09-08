@@ -108,7 +108,7 @@ test("adaptive workflow preserves revisions and rejects cycles or premature prog
       purpose: workflow.purpose,
       status: "active",
       changeReason: "Invalid completion.",
-      items: [workItem({ status: "completed" })]
+      items: [workItem({ status: "completed", outputReferences: [{ kind: "artifact", id: direction.id }] })]
     }),
     /passing review/
   );
@@ -443,7 +443,7 @@ test("skill and workflow template catalogs expose method, standards, and optiona
   const skills = await createDefaultSkillCatalog().listPublic();
   assert.deepEqual(
     skills.map((skill) => skill.id),
-    ["adaptive-planning", "creative-direction", "project-intake", "result-review", "source-understanding", "video-editing-craft"]
+    ["adaptive-planning", "creative-direction", "project-intake", "result-review", "source-understanding", "video-editing-craft", "video-sequence-planning"]
   );
   const reviewSkill = await createDefaultSkillCatalog().read("result-review");
   assert.match(reviewSkill.instructionsText, /technical integrity and creative effectiveness separately/i);
@@ -504,6 +504,7 @@ test("workflow lifecycle stays singular, terminal, and safe to resume", async (t
       status: "completed",
       review: { required: false, perspective: "combined", criteria: [] },
       approval: "auto",
+      expectedOutputs: [{ kind: "workflow", description: "Recorded workflow." }],
       outputReferences: [{ kind: "workflow", id: first.id }]
     })]
   });

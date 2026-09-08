@@ -1,3 +1,5 @@
+import { buildProductionContext } from "../production/production-context.js";
+
 function activity(kind, id, value) {
   if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) return null;
   return { kind, id, at: value };
@@ -45,6 +47,7 @@ export class ProjectContextAssembler {
   async build(projectId) {
     const context = await this.projectStore.readContext(projectId);
     const capabilities = await this.#capabilities();
+    const production = buildProductionContext(context);
     const freshness = checkpointFreshness(context);
     const current = context.intelligence.currentWorkItems;
     const activeWorkflow = context.intelligence.activeWorkflow;
@@ -59,8 +62,10 @@ export class ProjectContextAssembler {
     return {
       ...context,
       capabilities,
+      production,
       checkpointFreshness: freshness,
       resumeView: {
+        affectedWorkItems: production.affectedWorkItems,
         checkpoint: context.checkpoint?.resume ?? null,
         checkpointFreshness: freshness,
         activeWorkflowId: activeWorkflow?.id ?? null,

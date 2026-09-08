@@ -22,7 +22,8 @@
     "skill:read": "node src/cli/read-skill.js",
     "tool:list": "node src/cli/list-tools.js",
     "tool:run": "node src/cli/run-tool.js",
-    "test": "node --test"
+    "test": "node --test",
+    "project:sequence": "node src/cli/write-video-sequence.js"
   },
   "engines": {
     "node": ">=20"

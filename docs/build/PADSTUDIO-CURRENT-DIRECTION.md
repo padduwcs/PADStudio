@@ -192,6 +192,20 @@ phần active, capability, skill liên quan và resume view; CLI là đường m
 Observer trực quan hóa nhưng vẫn chỉ đọc. Workflow mẫu chỉ là điểm khởi đầu và
 mọi lần điều chỉnh workflow đều giữ revision cùng lý do.
 
+## Cấu trúc video và vòng sửa đã triển khai
+
+Theo quyết định triển khai tiếp, PADStudio bổ sung artifact `video.sequence`:
+các đoạn có ý định, nguồn, thời lượng, lời đọc và phụ đề. Workflow vẫn mô tả
+công việc; sequence mô tả sản phẩm, không bắt buộc mọi project phải có sequence.
+
+Renderer đầu tiên là `video.render-sequence` / `ffmpeg-sequence`, local và
+không tính phí. Bản dựng gắn với revision chính xác, giữ các đoạn và khung hình
+để review; có thể dùng lại đoạn khớp spec và hash. Context báo phụ thuộc đổi
+phiên bản; observer cho xem và so sánh. Không tự sửa kế hoạch hay kế thừa approval.
+Đây chưa phải timeline nhiều lớp, dịch vụ tạo nội dung hay chat tích hợp.
+
+Chi tiết: [VIDEO-SEQUENCE-PRODUCTION.md](./VIDEO-SEQUENCE-PRODUCTION.md).
+
 ## Ưu tiên sau nền móng này
 
 Việc tiếp theo không phải mở rộng thêm schema chung. Hãy dùng subsystem với một

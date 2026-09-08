@@ -9,3 +9,6 @@
 Khi bắt đầu sửa code, đọc thêm [`DEVELOPMENT-PROTOCOL.md`](DEVELOPMENT-PROTOCOL.md). Tài liệu này hướng dẫn cách thay đổi code an toàn và kiểm tra kết quả.
 
 Bản thiết kế chỉ giữ mục tiêu và cách các phần phối hợp. Cấu trúc dữ liệu, API, thư mục, công nghệ hay nhà cung cấp dịch vụ sẽ được chọn khi bắt đầu xây một phần cụ thể.
+
+Phần cấu trúc video, bản dựng có phiên bản và vòng sửa cục bộ:
+[VIDEO-SEQUENCE-PRODUCTION.md](VIDEO-SEQUENCE-PRODUCTION.md).

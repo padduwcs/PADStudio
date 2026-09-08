@@ -162,6 +162,7 @@ async function resultWithAvailability(projectRoot, result) {
 
 function validateResult(result, projectId) {
   const inputResults = result?.inputResults ?? [];
+  const inputArtifacts = result?.inputArtifacts ?? [];
   const files = result?.files ?? [];
   const runCompletion = result?.runCompletion ?? null;
   if (
@@ -177,6 +178,7 @@ function validateResult(result, projectId) {
     result.inputResources.some((id) => typeof id !== "string" || !id) ||
     !Array.isArray(inputResults) ||
     inputResults.some((id) => typeof id !== "string" || !id) ||
+    !Array.isArray(inputArtifacts) || inputArtifacts.some((id) => typeof id !== "string" || !id) ||
     !Array.isArray(files) ||
     files.some((file) =>
       !file ||
@@ -221,7 +223,7 @@ function validateResult(result, projectId) {
   ) {
     throw new ProjectStoreError("Kết quả không hợp lệ trong project: " + projectId);
   }
-  return { ...result, inputResults, files, runCompletion };
+  return { ...result, inputResults, inputArtifacts, files, runCompletion };
 }
 
 function validateDecision(decision, projectId) {
@@ -864,6 +866,7 @@ export class ProjectStore {
     capability,
     inputResources,
     inputResults = [],
+    inputArtifacts = [],
     files = [],
     tool,
     data,
@@ -899,6 +902,11 @@ export class ProjectStore {
     const missingResults = normalizedInputResults.filter((id) => !existingResultIds.has(id));
     if (missingResults.length) {
       throw new ProjectStoreError("Kết quả tham chiếu result không tồn tại: " + missingResults.join(", "));
+    }
+    const artifactIds = new Set((await this.readArtifacts(projectId)).map((artifact) => artifact.id));
+    const normalizedInputArtifacts = stringList(inputArtifacts, "Input artifact IDs");
+    if (normalizedInputArtifacts.some((id) => !artifactIds.has(id))) {
+      throw new ProjectStoreError("Result references an unknown input artifact.");
     }
     if (!Array.isArray(files)) {
       throw new ProjectStoreError("Files của kết quả phải là một danh sách.");
@@ -958,6 +966,7 @@ export class ProjectStore {
       capability: normalizedCapability,
       inputResources: normalizedInputs,
       inputResults: normalizedInputResults,
+      inputArtifacts: normalizedInputArtifacts,
       files: normalizedFiles,
       tool: normalizedTool,
       data: objectValue(data, "Dữ liệu kết quả"),

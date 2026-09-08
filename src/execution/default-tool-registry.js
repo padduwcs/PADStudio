@@ -7,6 +7,7 @@ import { createFfmpegAudioOverlay } from "../tools/ffmpeg-audio-overlay.js";
 import { createFfmpegSubtitleBurner } from "../tools/ffmpeg-subtitle-burner.js";
 import { createFfmpegImageToVideo } from "../tools/ffmpeg-image-to-video.js";
 import { ToolRegistry } from "./tool-registry.js";
+import { createFfmpegSequenceRenderer } from "../tools/ffmpeg-sequence-renderer.js";
 
 export function createDefaultToolRegistry(options = {}) {
   return new ToolRegistry([
@@ -17,6 +18,7 @@ export function createDefaultToolRegistry(options = {}) {
     createFfmpegVideoThumbnailer(options.ffmpegThumbnail),
     createFfmpegAudioOverlay(options.ffmpegAudioOverlay),
     createFfmpegSubtitleBurner(options.ffmpegSubtitleBurn),
-    createFfmpegImageToVideo(options.ffmpegImageToVideo)
+    createFfmpegImageToVideo(options.ffmpegImageToVideo),
+    createFfmpegSequenceRenderer(options.ffmpegSequence)
   ]);
 }

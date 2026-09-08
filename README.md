@@ -127,7 +127,7 @@ Nếu kết quả đã được bảo toàn nhưng bước đóng Run lỗi, l�
 npm run project:run:recover -- coffee-video run-...
 ```
 
-Prototype hiện có tám capability thật:
+Prototype hiện có chín capability thật:
 
 - `media.inspect` / `ffprobe`: đọc metadata audio/video, không tạo file.
 - `video.trim` / `ffmpeg-trim`: cắt chính xác video bằng re-encode và tạo `video.clip`.
@@ -145,6 +145,8 @@ Prototype hiện có tám capability thật:
 - `image.to-video` / `ffmpeg-image-to-video`: biến một ảnh tĩnh thành đoạn video trong thời
   lượng cho trước, giữ nguyên khung hình hoặc thêm chuyển động máy quay nhẹ (`zoomIn`,
   `zoomOut`, `panLeft`, `panRight`, `kenBurns`).
+- `video.render-sequence` / `ffmpeg-sequence`: dựng đúng revision cấu trúc video, giữ từng
+  đoạn và khung hình review; dùng lại đoạn khớp spec/hash khi sửa cục bộ.
 
 Ghi decision sau khi người dùng phản hồi rõ về một result:
 
@@ -169,6 +171,15 @@ Contract chi tiết nằm trong
 
 Chi tiết contract và cách Agent dùng các lệnh nằm trong
 [PADSTUDIO-AGENT-RUNTIME.md](PADSTUDIO-AGENT-RUNTIME.md).
+
+## Cấu trúc video và sửa từng phần
+
+Agent có thể lưu cấu trúc video có revision qua `npm run project:sequence -- <project-id> <json-file|->`,
+sau đó dùng `video.render-sequence` / `ffmpeg-sequence` để dựng preview local.
+Context và observer cho biết đoạn thay đổi, phụ thuộc cần xem lại và các bản dựng.
+Đoạn không đổi có thể được dùng lại sau khi kiểm tra spec/hash; bản mới không kế thừa approval cũ.
+
+Contract, ví dụ và giới hạn: [VIDEO-SEQUENCE-PRODUCTION.md](docs/build/VIDEO-SEQUENCE-PRODUCTION.md).
 
 ## Chạy observer
 

@@ -1,4 +1,7 @@
+import { renderProduction, clearProduction } from "./production-view.js";
+
 const elements = {
+  production: document.querySelector("#production-view"),
   title: document.querySelector("#project-title"),
   projectId: document.querySelector("#project-id"),
   checkpoint: document.querySelector("#checkpoint"),
@@ -673,6 +676,7 @@ function renderRuns(context) {
 }
 
 function renderContext(context) {
+  renderProduction(elements.production, context);
   elements.title.textContent = context.project.title;
   elements.projectId.textContent = context.project.id;
   renderCheckpoint(context);
@@ -684,6 +688,7 @@ function renderContext(context) {
 }
 
 function renderEmpty() {
+  clearProduction(elements.production);
   elements.title.textContent = "Chưa chọn project";
   elements.projectId.textContent = "";
   elements.checkpoint.textContent = "Chưa có project nào để quan sát.";

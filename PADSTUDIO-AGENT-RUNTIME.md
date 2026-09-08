@@ -136,6 +136,24 @@ thực sự xác nhận.
 Contract đầy đủ:
 [PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md](docs/build/PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md).
 
+## Cấu trúc video và bản dựng có phiên bản
+
+Đọc skill `video-sequence-planning` khi cần tổ chức và sửa một video.
+Lưu sequence qua `npm run project:sequence -- <project-id> <json-file|->`.
+Mỗi lần sửa cần `expectedRevision` vừa đọc và `data.changeReason`.
+
+Dựng bằng `video.render-sequence` / `ffmpeg-sequence`, truyền `artifactId`
+chính xác; `reuseResultId` tùy chọn để dùng lại các đoạn thực sự khớp.
+Nguồn còn thiếu sẽ được báo, không tự tạo hoặc bỏ qua. Không có API tính phí.
+
+Đọc `context.production` trước khi tiếp tục: phân biệt revision đang active,
+các dependency đã đổi và review/decision của đúng result. Xem/nghe preview và
+khung hình đã đăng ký trước khi review; kiểm tra kỹ thuật không chứng minh
+đúng lời đọc, phụ đề hay chất lượng sáng tạo.
+
+Xem contract và ví dụ tại
+[VIDEO-SEQUENCE-PRODUCTION.md](docs/build/VIDEO-SEQUENCE-PRODUCTION.md).
+
 ## Dùng công cụ
 
 Xem các capability và công cụ thực sự dùng được trên máy:

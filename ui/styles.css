@@ -615,3 +615,14 @@ h3 {
 .run-warning {
   color: #fcd34d;
 }
+.sequence-controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+.sequence-controls select { max-width: 100%; padding: 8px; border-radius: 8px; background: #172239; color: var(--text); border: 1px solid var(--line); }
+.sequence-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 20px; }
+.sequence-panel { min-width: 0; border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: var(--card); color: var(--text); }
+.sequence-panel h4 { margin-top: 0; }
+.sequence-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); gap: 12px; margin-top: 16px; }
+.sequence-segment { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; background: var(--panel); }
+.sequence-segment img { width: 100%; aspect-ratio: 16 / 9; object-fit: contain; background: #111; border-radius: 4px; }
+.sequence-segment h5 { margin: 8px 0; font-size: 1rem; }
+.sequence-warning { color: #fde68a; background: rgba(146, 64, 14, 0.2); padding: 10px; border-radius: 6px; }
+.sequence-group + .sequence-group { margin-top: 24px; }
