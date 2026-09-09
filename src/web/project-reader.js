@@ -15,6 +15,7 @@ import {
 } from "../project/project-store.js";
 import { ProjectContextAssembler } from "../intelligence/project-context-assembler.js";
 import { createDefaultToolRegistry } from "../execution/default-tool-registry.js";
+import { AnalysisReader } from "../analysis/analysis-reader.js";
 
 export class ProjectNotFoundError extends Error {
   constructor(projectId) {
@@ -58,9 +59,11 @@ export class ProjectReader {
   constructor(rootDir) {
     this.rootDir = rootDir;
     this.store = new ProjectStore(rootDir);
+    this.analysisReader = new AnalysisReader({ rootDir, projectStore: this.store });
     this.contextAssembler = new ProjectContextAssembler({
       projectStore: this.store,
-      toolRegistry: createDefaultToolRegistry()
+      toolRegistry: createDefaultToolRegistry(),
+      analysisReader: this.analysisReader
     });
   }
 
@@ -84,6 +87,24 @@ export class ProjectReader {
   async readProject(projectId) {
     try {
       return await this.contextAssembler.build(projectId);
+    } catch (error) {
+      if (error instanceof StoredProjectNotFoundError) throw new ProjectNotFoundError(projectId);
+      throw error;
+    }
+  }
+
+  async readProjectSummary(projectId) {
+    try {
+      return await this.contextAssembler.buildSummary(projectId);
+    } catch (error) {
+      if (error instanceof StoredProjectNotFoundError) throw new ProjectNotFoundError(projectId);
+      throw error;
+    }
+  }
+
+  async readAnalysis(projectId, query = {}) {
+    try {
+      return await this.analysisReader.query(projectId, query);
     } catch (error) {
       if (error instanceof StoredProjectNotFoundError) throw new ProjectNotFoundError(projectId);
       throw error;

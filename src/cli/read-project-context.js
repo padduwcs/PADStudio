@@ -8,14 +8,17 @@ const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(currentDirectory, "..", "..", ".padstudio", "projects");
 
 async function main(args) {
-  const [projectId] = args;
-  if (!projectId || args.length !== 1) {
-    throw new Error("Cách dùng: npm run project:context -- <project-id>");
+  const [projectId, option, view] = args;
+  if (!projectId || ![1, 3].includes(args.length) || (args.length === 3 && (option !== "--view" || view !== "summary"))) {
+    throw new Error("Usage: npm run project:context -- <project-id> [--view summary]");
   }
-  const context = await new ProjectContextAssembler({
+  const assembler = new ProjectContextAssembler({
     projectStore: new ProjectStore(projectRoot),
     toolRegistry: createDefaultToolRegistry()
-  }).build(projectId);
+  });
+  const context = view === "summary"
+    ? await assembler.buildSummary(projectId)
+    : await assembler.build(projectId);
   process.stdout.write(`${JSON.stringify(context, null, 2)}\n`);
 }
 

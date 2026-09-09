@@ -113,6 +113,7 @@ $checkpoint | npm run project:checkpoint -- coffee-video -
 
 ```powershell
 npm run project:context -- coffee-video
+npm run project:context -- coffee-video --view summary
 ```
 
 Xem capability và công cụ hiện có:
@@ -135,7 +136,7 @@ Nếu kết quả đã được bảo toàn nhưng bước đóng Run lỗi, l�
 npm run project:run:recover -- coffee-video run-...
 ```
 
-Prototype hiện có chín capability thật:
+Prototype hiện có 15 capability thật:
 
 - `media.inspect` / `ffprobe`: đọc metadata audio/video, không tạo file.
 - `video.trim` / `ffmpeg-trim`: cắt chính xác video bằng re-encode và tạo `video.clip`.
@@ -155,6 +156,12 @@ Prototype hiện có chín capability thật:
   `zoomOut`, `panLeft`, `panRight`, `kenBurns`).
 - `video.render-sequence` / `ffmpeg-sequence`: dựng đúng revision cấu trúc video, giữ từng
   đoạn và khung hình review; dùng lại đoạn khớp spec/hash khi sửa cục bộ.
+- `source.probe` / `ffprobe-source`: metadata và kiểm tra decode có source identity/coverage.
+- `video.detect-scenes` / `pyscenedetect-scenes`: phát hiện shot và giữ boundary score.
+- `source.extract-frames` / `ffmpeg-source-frames`: frame, mapping thời gian và contact sheet.
+- `audio.analyze` / `ffmpeg-audio-analysis`: waveform, khoảng lặng, loudness và clipping candidate.
+- `audio.transcribe` / `faster-whisper-transcribe`: raw transcript/word timestamp theo chunk.
+- `source.preview` / `ffmpeg-source-preview`: proxy browser-safe có mapping về source time.
 
 Ghi decision sau khi người dùng phản hồi rõ về một result:
 
@@ -180,9 +187,9 @@ Contract chi tiết nằm trong
 Chi tiết contract và cách Agent dùng các lệnh nằm trong
 [PADSTUDIO-AGENT-RUNTIME.md](PADSTUDIO-AGENT-RUNTIME.md).
 
-## Source Understanding — vòng đời gói B
+## Source Understanding — gói B–D
 
-Gói B đã có contract và coordinator bền vững:
+Gói B/C đã có contract, coordinator và sáu adapter production:
 
 ```powershell
 $request | npm run project:analyze -- <project-id> -
@@ -190,10 +197,21 @@ npm run analysis:resume -- <project-id> <analysis-id>
 npm run analysis:cancel -- <project-id> <analysis-id>
 ```
 
-Sáu adapter phân tích media thuộc gói C chưa được đăng ký vào default tool registry. Vì vậy CLI
-hiện giữ job và báo `blocked` khi tool chưa có; nó không tự tải model, không dùng fallback và không
-coi harness gói A là production tool. Contract và giới hạn cụ thể nằm trong
-[SOURCE-UNDERSTANDING-PACKAGE-B.md](docs/build/SOURCE-UNDERSTANDING-PACKAGE-B.md).
+Gói D bổ sung đường đọc/verify và ba artifact hiểu biết:
+
+```powershell
+npm run analysis:read -- <project-id> '{"view":"summary"}'
+npm run analysis:verify -- <project-id>
+$profile | npm run project:source-profile -- <project-id> -
+$assessment | npm run project:source-assessment -- <project-id> -
+$edit | npm run project:transcript-edit -- <project-id> -
+```
+
+Reader hỗ trợ transcript/scene/frame/audio/assessment/search theo range và cursor; raw transcript
+không bị sửa bởi correction. CLI, context và observer dùng chung đường đọc. Contract và giới hạn:
+[gói B](docs/build/SOURCE-UNDERSTANDING-PACKAGE-B.md),
+[gói C](docs/build/SOURCE-UNDERSTANDING-PACKAGE-C.md),
+[gói D](docs/build/SOURCE-UNDERSTANDING-PACKAGE-D.md).
 
 ## Cấu trúc video và sửa từng phần
 
@@ -220,5 +238,6 @@ npm test
 
 Test bao phủ persistence, import thành công/thất bại, path safety, context khi
 mở lại, danh mục công cụ, Bộ thực thi, ffprobe/ffmpeg thật, output rollback,
+analysis lifecycle/adapter/reader, evidence validation, search/freshness,
 result dùng lại result trước, observer API, byte ranges và việc web không có
 endpoint thay đổi project.

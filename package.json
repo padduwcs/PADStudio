@@ -27,6 +27,11 @@
     "analysis:eval": "node scripts/source-eval.mjs",
     "analysis:doctor": "node src/cli/analysis-doctor.js",
     "analysis:test": "node scripts/source-eval.mjs test",
+    "analysis:read": "node src/cli/read-analysis.js",
+    "analysis:verify": "node src/cli/verify-analysis.js",
+    "project:source-profile": "node src/cli/write-source-artifact.js source.profile",
+    "project:source-assessment": "node src/cli/write-source-artifact.js source.assessment",
+    "project:transcript-edit": "node src/cli/write-source-artifact.js source.transcript-edit",
     "project:analyze": "node src/cli/analyze-project.js",
     "analysis:resume": "node src/cli/resume-analysis.js",
     "analysis:cancel": "node src/cli/cancel-analysis.js"

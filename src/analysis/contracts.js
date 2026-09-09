@@ -30,6 +30,17 @@ export const ANALYSIS_UNIT_STATES = Object.freeze([
   "cancelled"
 ]);
 
+export const ANALYSIS_QUERY_VIEWS = Object.freeze([
+  "summary",
+  "transcript",
+  "scenes",
+  "frames",
+  "audio",
+  "assessment",
+  "search",
+  "job"
+]);
+
 const ANALYSIS_RESULT_OPERATION = Object.freeze({
   "source.metadata": "probe",
   "source.scenes": "scenes",
@@ -412,6 +423,68 @@ export function normalizeAnalysisRequest(value) {
     ranges: structuredClone(ranges),
     tracks: structuredClone(tracks),
     options: structuredClone(options)
+  };
+}
+
+export function normalizeAnalysisQuery(value) {
+  const query = requireObject(value, "analysis query");
+  onlyFields(query, [
+    "version", "view", "sourceKey", "jobId", "resultId", "range", "limit",
+    "cursor", "text", "diacriticInsensitive", "transcriptMode"
+  ], "analysis query");
+  const version = query.version ?? ANALYSIS_SCHEMA_VERSION;
+  if (version !== ANALYSIS_SCHEMA_VERSION) {
+    throw new AnalysisValidationError("Unsupported analysis query version.");
+  }
+  const view = query.view ?? "summary";
+  if (!ANALYSIS_QUERY_VIEWS.includes(view)) {
+    throw new AnalysisValidationError("Unsupported analysis query view: " + view + ".");
+  }
+  return normalizeAnalysisQueryFields(query, view);
+}
+
+function normalizeAnalysisQueryFields(query, view) {
+  const sourceKey = query.sourceKey === undefined ? null : requireHash(query.sourceKey, "analysis query.sourceKey");
+  const jobId = query.jobId === undefined ? null : requireId(query.jobId, "analysis query.jobId");
+  const resultId = query.resultId === undefined ? null : requireId(query.resultId, "analysis query.resultId");
+  const limit = query.limit ?? 50;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
+    throw new AnalysisValidationError("analysis query.limit must be an integer from 1 to 200.");
+  }
+  const cursor = query.cursor === undefined || query.cursor === null
+    ? null
+    : requireText(query.cursor, "analysis query.cursor");
+  if (cursor !== null && cursor.length > 2048) {
+    throw new AnalysisValidationError("analysis query.cursor is too large.");
+  }
+  const text = query.text === undefined || query.text === null
+    ? null
+    : requireText(query.text, "analysis query.text");
+  if (text !== null && text.length > 500) {
+    throw new AnalysisValidationError("analysis query.text must not exceed 500 characters.");
+  }
+  if (view === "search" && !text) throw new AnalysisValidationError("Search requires text.");
+  if (view !== "search" && text !== null) {
+    throw new AnalysisValidationError("analysis query.text is only valid for search.");
+  }
+  if (["transcript", "scenes", "frames", "audio"].includes(view) && !sourceKey && !resultId) {
+    throw new AnalysisValidationError(view + " requires sourceKey or resultId.");
+  }
+  if (view === "job" && !jobId) throw new AnalysisValidationError("Job view requires jobId.");
+  if (query.diacriticInsensitive !== undefined && typeof query.diacriticInsensitive !== "boolean") {
+    throw new AnalysisValidationError("analysis query.diacriticInsensitive must be boolean.");
+  }
+  const transcriptMode = query.transcriptMode ?? "raw";
+  if (!["raw", "corrected", "both"].includes(transcriptMode)) {
+    throw new AnalysisValidationError("analysis query.transcriptMode must be raw, corrected, or both.");
+  }
+  if (!["transcript", "search"].includes(view) && query.transcriptMode !== undefined) {
+    throw new AnalysisValidationError("analysis query.transcriptMode is only valid for transcript or search.");
+  }
+  return {
+    version: ANALYSIS_SCHEMA_VERSION, view, sourceKey, jobId, resultId,
+    range: normalizeTimeRange(query.range, "analysis query.range"), limit, cursor, text,
+    diacriticInsensitive: query.diacriticInsensitive ?? false, transcriptMode
   };
 }
 

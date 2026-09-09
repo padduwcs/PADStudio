@@ -10,6 +10,8 @@ import {
   ProjectResultFileNotFoundError
 } from "./project-reader.js";
 import { ProjectPathError } from "../project/project-paths.js";
+import { AnalysisReaderError } from "../analysis/analysis-reader.js";
+import { AnalysisValidationError } from "../analysis/contracts.js";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const applicationRoot = join(currentDirectory, "..", "..");
@@ -119,10 +121,38 @@ export function createPadStudioServer({ reader }) {
         return sendJson(response, 200, { projects: await reader.list() });
       }
 
-      const projectMatch = /^\/api\/projects\/(.+)$/.exec(url.pathname);
+      const analysisQueryMatch = /^\/api\/projects\/([^/]+)\/analysis\/query$/.exec(url.pathname);
+      if (request.method === "GET" && analysisQueryMatch) {
+        const projectId = decodeURIComponent(analysisQueryMatch[1]);
+        const query = Object.fromEntries(url.searchParams.entries());
+        if (query.limit !== undefined) query.limit = Number(query.limit);
+        if (query.diacriticInsensitive !== undefined) {
+          if (!["true", "false"].includes(query.diacriticInsensitive)) {
+            return sendJson(response, 400, { error: "diacriticInsensitive must be true or false." });
+          }
+          query.diacriticInsensitive = query.diacriticInsensitive === "true";
+        }
+        if (query.startSeconds !== undefined || query.endSeconds !== undefined) {
+          query.range = { startSeconds: Number(query.startSeconds), endSeconds: Number(query.endSeconds) };
+          delete query.startSeconds;
+          delete query.endSeconds;
+        }
+        return sendJson(response, 200, await reader.readAnalysis(projectId, query));
+      }
+
+      const analysisMatch = /^\/api\/projects\/([^/]+)\/analysis$/.exec(url.pathname);
+      if (request.method === "GET" && analysisMatch) {
+        const projectId = decodeURIComponent(analysisMatch[1]);
+        return sendJson(response, 200, await reader.readAnalysis(projectId, { view: "summary" }));
+      }
+
+      const projectMatch = /^\/api\/projects\/([^/]+)$/.exec(url.pathname);
       if (request.method === "GET" && projectMatch) {
         const projectId = decodeURIComponent(projectMatch[1]);
-        return sendJson(response, 200, { context: await reader.readProject(projectId) });
+        const context = url.searchParams.get("view") === "summary"
+          ? await reader.readProjectSummary(projectId)
+          : await reader.readProject(projectId);
+        return sendJson(response, 200, { context });
       }
 
       const inputMatch = /^\/project-inputs\/([^/]+)\/(.+)$/.exec(url.pathname);
@@ -153,6 +183,17 @@ export function createPadStudioServer({ reader }) {
 
       return sendJson(response, 404, { error: "Không tìm thấy." });
     } catch (error) {
+      if (
+        error instanceof AnalysisValidationError
+      ) {
+        return sendJson(response, 400, { error: error.message, code: error.code });
+      }
+      if (error instanceof AnalysisReaderError) {
+        const status = ["cursor_stale", "index_not_ready", "dataset_stale", "ambiguous_result"].includes(error.code)
+          ? 409
+          : error.code === "result_not_found" ? 404 : 400;
+        return sendJson(response, status, { error: error.message, code: error.code });
+      }
       if (
         error instanceof ProjectNotFoundError ||
         error instanceof ProjectInputNotFoundError ||

@@ -18,6 +18,7 @@ Phần cấu trúc video, bản dựng có phiên bản và vòng sửa cục b�
 
 Trạng thái triển khai Source Understanding:
 [gói B — hợp đồng và vòng đời](SOURCE-UNDERSTANDING-PACKAGE-B.md);
-[gói C — sáu adapter production](SOURCE-UNDERSTANDING-PACKAGE-C.md).
+[gói C — sáu adapter production](SOURCE-UNDERSTANDING-PACKAGE-C.md);
+[gói D — hiểu biết và truy xuất](SOURCE-UNDERSTANDING-PACKAGE-D.md).
 
 Lộ trình phát triển và vị trí hiện tại: [PADSTUDIO-ROADMAP.md](PADSTUDIO-ROADMAP.md). Phân biệt 6 đợt phát triển với các bước bên trong đợt 1; chỉ chi tiết hóa đợt đang làm.

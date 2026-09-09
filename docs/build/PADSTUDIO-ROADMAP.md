@@ -1,6 +1,6 @@
 # PADStudio — lộ trình 6 đợt
 
-Cập nhật: **2026-09-09**. Hiện tại: **đợt 1 đã hoàn thành bước 3 (gói C), còn bước 4–6**. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt chuẩn bị triển khai.
+Cập nhật: **2026-09-09**. Hiện tại: **đợt 1 đã hoàn thành bước 4 (gói D), còn bước 5–6**. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt chuẩn bị triển khai.
 
 ## 1. Cách dùng lộ trình
 
@@ -31,26 +31,26 @@ Các điều kiện trên là định hướng đầu ra. Trước mỗi đợt 
 
 ## 3. Đang ở đâu trong đợt 1?
 
-Đối chiếu ngày 2026-09-09: registry đã đăng ký sáu adapter; AnalysisService có dependency, Run/Result và vòng đời phân tích. Báo cáo gói C ghi kiểm chứng production trên media thật, nhưng chưa có reader/artifact chuyên biệt và giao diện khảo sát đầy đủ. Đây là rà soát code và báo cáo đã lưu, không phải chạy lại toàn bộ kiểm thử trong lần viết lộ trình.
+Đối chiếu ngày 2026-09-09: registry đã đăng ký sáu adapter; AnalysisService có dependency, Run/Result và vòng đời phân tích. Gói D đã bổ sung artifact chuyên biệt, reader/search/summary dùng chung, verify freshness, context và API chỉ đọc. Giao diện khảo sát nguồn vẫn chưa được xây.
 
 | Bước của đợt 1 | Tên cũ | Trạng thái và ý nghĩa |
 | --- | --- | --- |
 | **1. Kiểm chứng công nghệ** | Gói A | Đã chốt cho sử dụng thực tế trên máy hiện tại: large-v3 GPU FP16; chưa chứng nhận chất lượng rộng |
 | **2. Nền dữ liệu và thực thi** | Gói B | Đã có identity/hash, bằng chứng, job, cache, hủy và tiếp tục sau lỗi |
 | **3. Bộ công cụ phân tích** | Gói C | Đã có probe, cảnh, frame/contact sheet, phân tích audio, transcript và preview; còn giới hạn đã ghi nhận |
-| **4. Hiểu biết và tra cứu** | Gói D | Tiếp theo: vai trò nguồn, nhận xét có bằng chứng, hiệu chỉnh giữ raw, đọc/tìm kiếm/summary và hướng dẫn Agent |
-| **5. Giao diện xem tư liệu** | Gói E | Sau đó: chọn nguồn, xem frame/transcript/preview, đến đúng thời điểm, thấy phần đã phân tích và cảnh báo |
+| **4. Hiểu biết và tra cứu** | Gói D | Đã có profile/assessment/correction giữ raw, evidence validation, đọc/tìm kiếm/summary, freshness và hướng dẫn Agent |
+| **5. Giao diện xem tư liệu** | Gói E | Tiếp theo: chọn nguồn, xem frame/transcript/preview, đến đúng thời điểm, thấy phần đã phân tích và cảnh báo |
 | **6. Nghiệm thu phân hệ** | Gói F | Cuối đợt: kiểm tra cả vòng sử dụng, nguồn dài, lỗi/phục hồi, chất lượng và các chức năng cũ; ghi rõ giới hạn |
 
-Không quy đổi “xong 3/6 bước” thành “xong 50%”: khối lượng các bước khác nhau. Tuy vậy, nền thực thi và công cụ đã có, phần còn lại phải nối vào nền này thay vì thiết kế lại từ đầu.
+Không quy đổi “xong 4/6 bước” thành một tỷ lệ hoàn thành tuyến tính: khối lượng các bước khác nhau. Nền thực thi, công cụ và đường truy xuất đã có; phần còn lại phải nối vào nền này thay vì thiết kế lại từ đầu.
 
-**Việc tiếp theo: bước 4 — Hiểu biết và tra cứu.** Phạm vi làm cùng một phần gồm ba đầu ra:
+**Việc tiếp theo: bước 5 — Giao diện xem tư liệu.** Phạm vi cần nối trực tiếp vào reader chỉ đọc của gói D:
 
-1. Agent đọc/tìm bằng chứng theo nguồn, thời gian và văn bản mà không phải tự mở hàng loạt JSONL.
-2. Agent lưu vai trò, nhận xét và hiệu chỉnh có liên kết nguồn; dữ liệu máy gốc vẫn còn và phần chưa chắc chắn hiện rõ.
-3. CLI/context cung cấp thông tin đủ gọn để tiếp tục công việc, đồng thời dùng chung đường đọc với UI ở bước 5.
+1. Chọn nguồn và xem media/preview cùng transcript, frame, scene và assessment liên quan.
+2. Điều hướng đến đúng timestamp/evidence, phân biệt raw với corrected và hiển thị coverage/freshness/warning.
+3. Lazy-load theo trang/range, giữ playback khi đổi lớp dữ liệu và không thêm mutation vào web.
 
-Tận dụng Result và artifact có revision hiện tại. Không cần thêm model, cơ sở dữ liệu hay cơ chế workflow mới chỉ để hoàn thành bước này. Chi tiết dùng [đặc tả đợt 1](SOURCE-UNDERSTANDING-SPEC.md); cập nhật tại đó nếu thực tế cho thấy cần điều chỉnh, không mở thêm hệ thống tài liệu song song.
+Tận dụng API/read service đã có; không đọc thẳng JSONL trong UI và không tạo một nguồn trạng thái riêng. Contract gói D nằm tại [SOURCE-UNDERSTANDING-PACKAGE-D.md](SOURCE-UNDERSTANDING-PACKAGE-D.md); phạm vi tổng thể dùng [đặc tả đợt 1](SOURCE-UNDERSTANDING-SPEC.md).
 
 **Lưu ý nghiệm thu:** §18 đặc tả đã nới điều kiện corpus cho việc đóng bước 1 trên tư liệu hiện có; điều chỉnh đó không tự miễn toàn bộ yêu cầu bước 6. Trước nghiệm thu đợt 1, đối chiếu rõ tiêu chí dùng thực tế và phần đánh giá rộng ở §13. Nếu thay phạm vi nghiệm thu thì ghi quyết định vào đặc tả; không báo đạt các ngưỡng chưa đo và không tự khởi động việc dựng corpus rộng chỉ vì bản lộ trình này.
 
@@ -69,7 +69,7 @@ Sau mỗi đợt chỉ cần ghi: **đã dùng được gì, còn giới hạn g
 ## 5. Tài liệu để tiếp tục
 
 - [Đặc tả đợt 1](SOURCE-UNDERSTANDING-SPEC.md): phạm vi kỹ thuật, các bước, nghiệm thu và điều chỉnh đã ghi.
-- [Bước 1 — review thực tế](../../eval/source-understanding/PRACTICAL-REVIEW.md), [bước 2 — hợp đồng/vòng đời](SOURCE-UNDERSTANDING-PACKAGE-B.md), [bước 3 — công cụ](SOURCE-UNDERSTANDING-PACKAGE-C.md): kết quả và giới hạn đã có. Giữ tên file cũ để không phá liên kết.
+- [Bước 1 — review thực tế](../../eval/source-understanding/PRACTICAL-REVIEW.md), [bước 2 — hợp đồng/vòng đời](SOURCE-UNDERSTANDING-PACKAGE-B.md), [bước 3 — công cụ](SOURCE-UNDERSTANDING-PACKAGE-C.md), [bước 4 — hiểu biết/truy xuất](SOURCE-UNDERSTANDING-PACKAGE-D.md): kết quả và giới hạn đã có.
 - [Báo cáo kiểm chứng bước 3](../../eval/source-understanding/reports/2026-09-09/package-c-verification.json): bằng chứng kiểm tra đã lưu.
 - [Trí tuệ project và workflow](PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md), [sequence và renderer](VIDEO-SEQUENCE-PRODUCTION.md): nền dùng tiếp ở các đợt sau.
 

@@ -18,6 +18,11 @@ import {
 } from "./contracts.js";
 
 import { SEQUENCE_TYPE, normalizeSequence, sequenceReferences } from "../production/video-sequence.js";
+import {
+  SOURCE_ARTIFACT_TYPES,
+  normalizeSourceArtifactData,
+  validateSourceArtifactAgainstProject
+} from "./source-artifacts.js";
 
 const VERSION = "1.0";
 
@@ -105,7 +110,10 @@ export class ProjectIntelligenceStore {
       throw new IntelligenceValidationError(`artifact.status is not supported: ${status}.`);
     }
     if (!isPlainObject(value.data)) throw new IntelligenceValidationError("artifact.data must be an object.");
-    const data = type === SEQUENCE_TYPE ? normalizeSequence(value.data) : structuredClone(value.data);
+    const sourceData = normalizeSourceArtifactData(type, value.data);
+    const data = type === SEQUENCE_TYPE
+      ? normalizeSequence(value.data)
+      : sourceData ?? structuredClone(value.data);
     const references = normalizeReferences(value.references);
     if (type === SEQUENCE_TYPE) {
       // Keep local dependencies inside their segment, not in the global reference list.
@@ -119,12 +127,22 @@ export class ProjectIntelligenceStore {
         }
       }
     }
+    if (SOURCE_ARTIFACT_TYPES.has(type)) {
+      await validateSourceArtifactAgainstProject({
+        projectStore: this.projectStore,
+        projectId,
+        type,
+        data,
+        references,
+        status
+      });
+    }
     await this.#assertReferences(projectId, references);
     const previous = (await this.readArtifacts(projectId))
       .filter((artifact) => artifact.key === key)
       .sort((a, b) => a.revision - b.revision)
       .at(-1);
-    if ((type === SEQUENCE_TYPE && previous) || value.expectedRevision !== undefined) {
+    if ((previous && (type === SEQUENCE_TYPE || SOURCE_ARTIFACT_TYPES.has(type))) || value.expectedRevision !== undefined) {
       if (!Number.isInteger(value.expectedRevision) || value.expectedRevision !== (previous?.revision ?? 0)) {
         throw new IntelligenceValidationError("Artifact revision conflict: reread the latest revision before writing.");
       }
@@ -415,6 +433,7 @@ export class ProjectIntelligenceStore {
     }
     normalizeReferences(value.references);
     if (value.type === SEQUENCE_TYPE) normalizeSequence(value.data);
+    if (SOURCE_ARTIFACT_TYPES.has(value.type)) normalizeSourceArtifactData(value.type, value.data);
     return value;
   }
 

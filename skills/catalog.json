@@ -17,7 +17,7 @@
       "name": "Source understanding",
       "description": "Inspect source material and preserve observations that should influence creative work.",
       "appliesTo": ["understand", "review"],
-      "artifactTypes": ["source.understanding"],
+      "artifactTypes": ["source.understanding", "source.profile", "source.assessment", "source.transcript-edit"],
       "reviewCriteria": ["claims point to evidence", "technical facts and interpretation are separated", "opportunities and risks are visible"],
       "instructions": "source-understanding.md"
     },

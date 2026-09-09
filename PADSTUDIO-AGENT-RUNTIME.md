@@ -45,6 +45,60 @@ Agent chỉ nhập phần đã xem và quyết định cần dùng.
 
 Nếu lệnh thất bại, nói rõ trong chat và không tuyên bố rằng resource đã được lưu.
 
+## Đọc và ghi hiểu biết về nguồn
+
+Đọc skill trước khi đánh giá tư liệu:
+
+```powershell
+npm run skill:read -- source-understanding <project-id>
+```
+
+Để tiếp tục nhanh, dùng context summary; chỉ đọc full context khi cần toàn bộ lịch sử:
+
+```powershell
+npm run project:context -- <project-id> --view summary
+npm run analysis:read -- <project-id> '{"view":"summary"}'
+```
+
+Reader hỗ trợ các view `transcript`, `scenes`, `frames`, `audio`, `assessment`,
+`search` và `job`. View dataset cần `sourceKey` hoặc `resultId`, có thể thêm `range`,
+`limit`, `cursor`; transcript có `transcriptMode` là `raw`, `corrected` hoặc `both`.
+Không tự đọc hàng loạt JSONL hoặc giữ toàn bộ transcript trong checkpoint.
+
+```powershell
+npm run analysis:read -- <project-id> '{"view":"transcript","resultId":"result-...","limit":50}'
+npm run analysis:read -- <project-id> '{"view":"search","text":"cụm cần tìm","diacriticInsensitive":true}'
+```
+
+Search chỉ dùng index đã verify. Khi index chưa sẵn sàng hoặc stale:
+
+```powershell
+npm run analysis:verify -- <project-id>
+```
+
+Verify hash source và file hiện hành nhưng không sửa Result lịch sử. Phân biệt
+`verified_current`, `stale`, `missing` và `unchecked`; không bỏ qua warning freshness.
+
+Ba artifact chuyên biệt được ghi qua CLI:
+
+```powershell
+$profile | npm run project:source-profile -- <project-id> -
+$assessment | npm run project:source-assessment -- <project-id> -
+$edit | npm run project:transcript-edit -- <project-id> -
+```
+
+- `source.profile` ghi vai trò, mục đích, ràng buộc và nguồn gốc.
+- `source.assessment` tách observation/inference, certainty, limitation/open question,
+  usable range và coverage thật sự đã xem/nghe/đọc.
+- `source.transcript-edit` chỉ phủ correction lên raw transcript; phải giữ
+  `originalText` và dẫn segment đã nghe.
+
+Mọi nhận xét có hệ quả phải dẫn Result/item/file/range tồn tại và nằm trong
+`evidenceReviewed`. Không ghi `watched`/`listened` nếu chỉ đọc transcript hoặc xem
+contact sheet. Khi sửa artifact, đọc revision mới nhất và truyền `expectedRevision`
+cùng `changeReason`. Contract đầy đủ:
+[SOURCE-UNDERSTANDING-PACKAGE-D.md](docs/build/SOURCE-UNDERSTANDING-PACKAGE-D.md).
+
 ## Dùng project intelligence và workflow thích nghi
 
 Sau khi đọc context, xem skill và workflow template đang có:

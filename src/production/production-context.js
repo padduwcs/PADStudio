@@ -5,6 +5,7 @@ export function buildProductionContext(context) {
   const results = new Map(context.results.map((r) => [r.id, r]));
   const resources = new Map(context.resources.map((r) => [r.id, r]));
   const active = new Map(context.intelligence.activeArtifacts.map((a) => [a.key, a]));
+  const analysisSources = new Map((context.analysis?.sources ?? []).map((source) => [source.sourceKey, source]));
   const memo = new Map();
   function mediaReasons(source) {
     if (!source) return [];
@@ -32,6 +33,11 @@ export function buildProductionContext(context) {
       const a = artifacts.get(ref.id);
       if (!a) return [{ ...ref, reason: "missing" }];
       if (active.get(a.key)?.id !== a.id) found.push({ ...ref, reason: "not_active_revision", replacementId: active.get(a.key)?.id ?? null });
+      const sourceKey = a.data?.sourceKey;
+      const sourceState = sourceKey ? analysisSources.get(sourceKey) : null;
+      if (sourceState && ["stale", "missing"].includes(sourceState.freshness)) {
+        found.push({ ...ref, reason: "source_evidence_" + sourceState.freshness, sourceKey });
+      }
       const dependencies = [...a.references, ...(a.type === SEQUENCE_TYPE ? sequenceReferences(a.data) : [])];
       found.push(...dependencies.flatMap((r) => reasons(r, nextTrail)));
       if (a.type === SEQUENCE_TYPE) found.push(...a.data.segments.flatMap((s) => mediaDependencies(s).flatMap(mediaReasons)));
@@ -39,6 +45,10 @@ export function buildProductionContext(context) {
       const r = results.get(ref.id);
       if (!r) return [{ ...ref, reason: "missing" }];
       if (r.files.some((file) => file.available === false)) found.push({ ...ref, reason: "missing_media" });
+      const sourceState = r.data?.sourceKey ? analysisSources.get(r.data.sourceKey) : null;
+      if (sourceState && ["stale", "missing"].includes(sourceState.freshness)) {
+        found.push({ ...ref, reason: "source_evidence_" + sourceState.freshness, sourceKey: r.data.sourceKey });
+      }
       found.push(...(r.inputArtifacts ?? []).flatMap((id) => reasons({ kind: "artifact", id }, nextTrail)));
       found.push(...r.inputResults.flatMap((id) => reasons({ kind: "result", id }, nextTrail)));
       found.push(...r.inputResources.flatMap((id) => reasons({ kind: "resource", id }, nextTrail)));

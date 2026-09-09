@@ -305,7 +305,7 @@ project:analyze <project-id> <json-file|->         Tạo và chạy job phân t�
 analysis:resume <project-id> <analysis-id>         Tiếp tục unit chưa hoàn tất
 analysis:cancel <project-id> <analysis-id>         Yêu cầu dừng an toàn
 analysis:read <project-id> <query-json|->          Summary/detail/search có giới hạn
-analysis:verify <project-id> <query-json|->        Rehash và báo freshness
+analysis:verify <project-id> [query-json|->]       Rehash và báo freshness; mặc định toàn project
 project:source-profile <project-id> <json|->      Ghi vai trò nguồn
 project:source-assessment <project-id> <json|->   Ghi hiểu biết có evidence
 project:transcript-edit <project-id> <json|->      Ghi hiệu chỉnh, giữ raw
@@ -507,6 +507,10 @@ audio analysis, ASR và preview đã được đăng ký vào default registry, 
 được kiểm chứng trên tư liệu owner. Cấu hình, bằng chứng và giới hạn được ghi tại
 [`SOURCE-UNDERSTANDING-PACKAGE-C.md`](SOURCE-UNDERSTANDING-PACKAGE-C.md).
 
-Việc hoàn thành gói C không thay đổi điều chỉnh nghiệm thu gói A tại §18: cấu hình dùng thực tế
-không đồng nghĩa đã đạt ngưỡng corpus rộng. Artifact/query gói D, observer gói E và nghiệm thu
-toàn phân hệ gói F chưa được triển khai trong đợt này.
+Gói D — hiểu biết và truy xuất — đã được triển khai sau gói C. Ba artifact chuyên biệt,
+evidence validation, reader/search/summary, verify freshness, context và observer API dùng chung
+được ghi tại [`SOURCE-UNDERSTANDING-PACKAGE-D.md`](SOURCE-UNDERSTANDING-PACKAGE-D.md).
+
+Việc hoàn thành gói D không thay đổi điều chỉnh nghiệm thu gói A tại §18: cấu hình dùng thực tế
+không đồng nghĩa đã đạt ngưỡng corpus rộng. Workspace observer gói E và nghiệm thu toàn phân hệ
+gói F chưa được triển khai trong đợt này.
