@@ -511,6 +511,10 @@ Gói D — hiểu biết và truy xuất — đã được triển khai sau gói
 evidence validation, reader/search/summary, verify freshness, context và observer API dùng chung
 được ghi tại [`SOURCE-UNDERSTANDING-PACKAGE-D.md`](SOURCE-UNDERSTANDING-PACKAGE-D.md).
 
-Việc hoàn thành gói D không thay đổi điều chỉnh nghiệm thu gói A tại §18: cấu hình dùng thực tế
-không đồng nghĩa đã đạt ngưỡng corpus rộng. Workspace observer gói E và nghiệm thu toàn phân hệ
-gói F chưa được triển khai trong đợt này.
+Gói E — workspace observer — đã được triển khai sau gói D. Chọn nguồn/Result set, media theo
+source time, coverage/freshness, lazy-load evidence/search và browser acceptance được ghi tại
+[`SOURCE-UNDERSTANDING-PACKAGE-E.md`](SOURCE-UNDERSTANDING-PACKAGE-E.md).
+
+Việc hoàn thành gói E không thay đổi điều chỉnh nghiệm thu gói A tại §18: cấu hình dùng thực tế
+không đồng nghĩa đã đạt ngưỡng corpus rộng. Nghiệm thu toàn phân hệ gói F chưa được triển khai
+trong đợt này.

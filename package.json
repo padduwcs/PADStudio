@@ -23,6 +23,7 @@
     "tool:list": "node src/cli/list-tools.js",
     "tool:run": "node src/cli/run-tool.js",
     "test": "node --test",
+    "observer:browser-test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/source-observer-browser-smoke.ps1",
     "project:sequence": "node src/cli/write-video-sequence.js",
     "analysis:eval": "node scripts/source-eval.mjs",
     "analysis:doctor": "node src/cli/analysis-doctor.js",

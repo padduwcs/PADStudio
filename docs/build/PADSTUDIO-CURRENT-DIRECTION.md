@@ -192,7 +192,7 @@ phần active, capability, skill liên quan và resume view; CLI là đường m
 Observer trực quan hóa nhưng vẫn chỉ đọc. Workflow mẫu chỉ là điểm khởi đầu và
 mọi lần điều chỉnh workflow đều giữ revision cùng lý do.
 
-## Source Understanding từ vòng đời đến truy xuất đã triển khai
+## Source Understanding từ vòng đời đến observer đã triển khai
 
 Sau nền đánh giá thực tế của gói A, gói B đã bổ sung contract source identity/timebase,
 Result bằng chứng, analysis job có revision, single-writer lease, dependency, cancel,
@@ -206,10 +206,16 @@ thể đọc theo nguồn/Result/range, tìm transcript và assessment, lưu pro
 transcript correction có revision và bằng chứng đã kiểm tra. Raw analysis vẫn bất biến;
 verify riêng phát hiện source/file stale hoặc missing và đưa cảnh báo vào context.
 
+Gói E đã nối reader vào workspace observer chỉ đọc: chọn nguồn/Result set, phát nguồn hoặc
+proxy theo source time, xem coverage và lazy-load transcript/scene/frame/audio/assessment,
+tìm kiếm index, hiển thị freshness/warning và giữ playback qua polling. UI không đọc JSONL,
+không verify hay chạy tool ngầm và không thêm đường mutation.
+
 Runtime thiếu hoặc profile/model không đúng lock trả `blocked`, modality không tồn tại trả
 `not_applicable`; không tự tải model, fallback hay gọi harness gói A như production.
 Chi tiết: [gói B](./SOURCE-UNDERSTANDING-PACKAGE-B.md) và
-[gói C](./SOURCE-UNDERSTANDING-PACKAGE-C.md), [gói D](./SOURCE-UNDERSTANDING-PACKAGE-D.md).
+[gói C](./SOURCE-UNDERSTANDING-PACKAGE-C.md), [gói D](./SOURCE-UNDERSTANDING-PACKAGE-D.md),
+[gói E](./SOURCE-UNDERSTANDING-PACKAGE-E.md).
 
 ## Cấu trúc video và vòng sửa đã triển khai
 
@@ -227,14 +233,13 @@ Chi tiết: [VIDEO-SEQUENCE-PRODUCTION.md](./VIDEO-SEQUENCE-PRODUCTION.md).
 
 ## Ưu tiên tiếp theo
 
-Trong đợt Source Understanding, việc tiếp theo là workspace observer chỉ đọc: chọn
-nguồn, xem preview/frame/transcript/assessment, đi đến đúng timestamp và hiển thị rõ
-coverage/freshness/warning bằng chính read service của gói D. Web không được tạo
-đường mutation hoặc đọc thẳng file JSONL.
+Trong đợt Source Understanding, việc tiếp theo là gói F: nghiệm thu cả vòng trên nguồn dài,
+pagination/range và nhiều Result set; kiểm tra cancel/resume/reconcile, lỗi runtime,
+stale/missing/tampered data, browser acceptance có fixture và regression các capability cũ.
 
-Sau khi có workspace, nghiệm thu cả vòng trên nguồn dài, lỗi/phục hồi, browser
-acceptance và regression. Chỉ sửa contract lõi khi bằng chứng triển khai hoặc project
-thật cho thấy ranh giới hiện tại không đủ.
+Tổng kết phải phân biệt rõ cấu hình dùng thực tế với quality gate corpus rộng chưa được đo.
+Chỉ sửa contract lõi hoặc thêm tính năng khi bằng chứng nghiệm thu/project thật cho thấy
+ranh giới hiện tại không đủ.
 
 ## Triển khai tạm thời
 

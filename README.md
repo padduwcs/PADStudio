@@ -187,7 +187,7 @@ Contract chi tiết nằm trong
 Chi tiết contract và cách Agent dùng các lệnh nằm trong
 [PADSTUDIO-AGENT-RUNTIME.md](PADSTUDIO-AGENT-RUNTIME.md).
 
-## Source Understanding — gói B–D
+## Source Understanding — gói B–E
 
 Gói B/C đã có contract, coordinator và sáu adapter production:
 
@@ -213,6 +213,10 @@ không bị sửa bởi correction. CLI, context và observer dùng chung đư�
 [gói C](docs/build/SOURCE-UNDERSTANDING-PACKAGE-C.md),
 [gói D](docs/build/SOURCE-UNDERSTANDING-PACKAGE-D.md).
 
+Gói E thêm workspace observer chỉ đọc để chọn nguồn/Result set, phát nguồn hoặc proxy theo source
+time, xem coverage/freshness và lazy-load transcript, scene, frame, audio, assessment, search.
+Contract UI và browser acceptance: [gói E](docs/build/SOURCE-UNDERSTANDING-PACKAGE-E.md).
+
 ## Cấu trúc video và sửa từng phần
 
 Agent có thể lưu cấu trúc video có revision qua `npm run project:sequence -- <project-id> <json-file|->`,
@@ -229,6 +233,13 @@ npm start
 ```
 
 Mở `http://127.0.0.1:7603`.
+
+Có thể mở thẳng project bằng `http://127.0.0.1:7603/?project=<project-id>`. Với một project
+đã có preview/timeline/transcript, chạy browser acceptance bằng:
+
+```powershell
+npm run observer:browser-test -- -ProjectId <project-id>
+```
 
 ## Kiểm tra
 

@@ -21,6 +21,7 @@ const projectRoot = join(applicationRoot, ".padstudio", "projects");
 const staticFiles = {
   "/": { file: "index.html", type: "text/html; charset=utf-8" },
   "/app.js": { file: "app.js", type: "text/javascript; charset=utf-8" },
+  "/source-analysis-view.js": { file: "source-analysis-view.js", type: "text/javascript; charset=utf-8" },
   "/production-view.js": { file: "production-view.js", type: "text/javascript; charset=utf-8" },
   "/styles.css": { file: "styles.css", type: "text/css; charset=utf-8" }
 };

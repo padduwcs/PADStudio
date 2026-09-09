@@ -1,7 +1,9 @@
 import { renderProduction, clearProduction } from "./production-view.js";
+import { renderSourceAnalysis, clearSourceAnalysis } from "./source-analysis-view.js";
 
 const elements = {
   production: document.querySelector("#production-view"),
+  sourceAnalysis: document.querySelector("#source-analysis-view"),
   title: document.querySelector("#project-title"),
   projectId: document.querySelector("#project-id"),
   checkpoint: document.querySelector("#checkpoint"),
@@ -15,9 +17,11 @@ const elements = {
   runList: document.querySelector("#run-list")
 };
 
-let selectedProjectId = null;
+let selectedProjectId = new URLSearchParams(window.location.search).get("project");
 let selectedItemPath = null;
 let renderedPreviewKey = null;
+let contextRequest = null;
+let contextRequestVersion = 0;
 
 function renderProjectList(projects) {
   elements.projectList.replaceChildren(
@@ -32,10 +36,18 @@ function renderProjectList(projects) {
       id.textContent = project.id;
       button.append(title, id);
       button.addEventListener("click", () => {
+        if (project.id === selectedProjectId) return;
         selectedProjectId = project.id;
+        const location = new URL(window.location.href);
+        location.searchParams.set("project", project.id);
+        window.history.replaceState(null, "", location);
         selectedItemPath = null;
         renderedPreviewKey = null;
-        loadProjects().catch(showError);
+        contextRequest?.abort();
+        clearSourceAnalysis(elements.sourceAnalysis);
+        loadProjects().catch((error) => {
+          if (error.name !== "AbortError") showError(error);
+        });
       });
       return button;
     })
@@ -677,6 +689,7 @@ function renderRuns(context) {
 
 function renderContext(context) {
   renderProduction(elements.production, context);
+  renderSourceAnalysis(elements.sourceAnalysis, context);
   elements.title.textContent = context.project.title;
   elements.projectId.textContent = context.project.id;
   renderCheckpoint(context);
@@ -689,6 +702,7 @@ function renderContext(context) {
 
 function renderEmpty() {
   clearProduction(elements.production);
+  clearSourceAnalysis(elements.sourceAnalysis);
   elements.title.textContent = "Chưa chọn project";
   elements.projectId.textContent = "";
   elements.checkpoint.textContent = "Chưa có project nào để quan sát.";
@@ -703,9 +717,16 @@ function renderEmpty() {
 
 async function loadContext() {
   if (!selectedProjectId) return renderEmpty();
-  const response = await fetch(`/api/projects/${encodeURIComponent(selectedProjectId)}`);
+  const requestedProjectId = selectedProjectId;
+  const version = ++contextRequestVersion;
+  contextRequest?.abort();
+  contextRequest = new AbortController();
+  const response = await fetch(`/api/projects/${encodeURIComponent(requestedProjectId)}`, {
+    signal: contextRequest.signal
+  });
   const body = await response.json();
   if (!response.ok) throw new Error(body.error || "Không thể đọc project.");
+  if (version !== contextRequestVersion || requestedProjectId !== selectedProjectId) return;
   renderContext(body.context);
 }
 
@@ -722,5 +743,7 @@ async function loadProjects() {
   await loadContext();
 }
 
-loadProjects().catch(showError);
+loadProjects().catch((error) => {
+  if (error.name !== "AbortError") showError(error);
+});
 window.setInterval(() => loadProjects().catch(() => {}), 2_000);
