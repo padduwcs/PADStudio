@@ -161,6 +161,86 @@ try {
     throw ("Transcript/seek chưa hoạt động: " + $transcriptJson)
   }
 
+  $datasetJson = Evaluate @'
+(async () => {
+  const sourceCount = document.querySelectorAll(".source-browser-button").length;
+  let multipleResultSets = false;
+  let resultSetSwitch = false;
+  let pagination = false;
+  let rowsAfterPagination = 0;
+  const selectorCounts = [];
+  for (let index = 0; index < sourceCount; index += 1) {
+    document.querySelectorAll(".source-browser-button")[index]?.click();
+    await new Promise(resolve => setTimeout(resolve, 150));
+    const tab = [...document.querySelectorAll(".source-tab")].find(node => node.textContent === "Transcript");
+    if (!tab || tab.disabled) continue;
+    tab.click();
+    const deadline = Date.now() + 10000;
+    while (!document.querySelector(".transcript-row") && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    const more = document.querySelector(".source-load-more");
+    if (more) {
+      const before = document.querySelectorAll(".transcript-row").length;
+      more.click();
+      const pageDeadline = Date.now() + 10000;
+      while (document.querySelectorAll(".transcript-row").length <= before && Date.now() < pageDeadline) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      rowsAfterPagination = document.querySelectorAll(".transcript-row").length;
+      pagination = rowsAfterPagination > before;
+    }
+    const resultSelector = () => [...document.querySelectorAll(".source-result-select select")]
+      .find(node => [...node.options].every(option => option.value.startsWith("result-")));
+    const selector = resultSelector();
+    selectorCounts.push(selector?.options.length ?? 0);
+    if (selector?.options.length > 1) {
+      multipleResultSets = true;
+      const previous = selector.value;
+      selector.selectedIndex = selector.selectedIndex === 0 ? 1 : 0;
+      const changed = selector.value !== previous;
+      selector.dispatchEvent(new Event("change", { bubbles: true }));
+      await new Promise(resolve => setTimeout(resolve, 500));
+      resultSetSwitch = changed && selector.value !== previous
+        && document.querySelectorAll(".transcript-row").length > 0
+        && !document.querySelector(".source-state-error");
+    }
+    if (multipleResultSets && resultSetSwitch && pagination) break;
+  }
+  return JSON.stringify({ multipleResultSets, resultSetSwitch, pagination, rowsAfterPagination, selectorCounts });
+})()
+'@
+  $dataset = $datasetJson | ConvertFrom-Json
+  if (-not $dataset.multipleResultSets -or -not $dataset.resultSetSwitch -or -not $dataset.pagination) {
+    throw ("Fixture chưa kiểm chứng được nhiều Result set và pagination: " + $datasetJson)
+  }
+
+  $searchJson = Evaluate @'
+(async () => {
+  const text = document.querySelector(".transcript-text p")?.textContent ?? "";
+  const term = text.split(/\s+/).map(value => value.replace(/[^\p{L}\p{N}]/gu, "")).find(value => value.length >= 3);
+  const input = document.querySelector('.source-search-form input[type="search"]');
+  const form = document.querySelector(".source-search-form");
+  if (!term || !input || !form) return JSON.stringify({ searched: false, results: 0, term });
+  input.value = term;
+  form.requestSubmit();
+  const deadline = Date.now() + 10000;
+  while (!document.querySelector(".search-result") && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  return JSON.stringify({
+    searched: true,
+    results: document.querySelectorAll(".search-result").length,
+    term
+  });
+})()
+'@
+  $search = $searchJson | ConvertFrom-Json
+  if (-not $search.searched -or $search.results -lt 1) {
+    throw ("Search index/browser chưa hoạt động: " + $searchJson)
+  }
+  Evaluate 'const player = document.querySelector(".source-player"); if (player) player.dataset.browserMarker = "preserve-me"; !!player' | Out-Null
+
   $preserved = Evaluate @'
 (async () => {
   await new Promise(resolve => setTimeout(resolve, 2600));
@@ -207,6 +287,10 @@ JSON.stringify([...document.querySelectorAll("*")]
     url = $Url
     sources = $initial.sources
     transcriptRows = $transcript.rows
+    multipleResultSets = [bool]$dataset.multipleResultSets
+    resultSetSwitch = [bool]$dataset.resultSetSwitch
+    paginatedTranscriptRows = $dataset.rowsAfterPagination
+    searchResults = $search.results
     playerPreservedAcrossPolling = [bool]$preserved
     viewports = @(390, 768, 1440)
   } | ConvertTo-Json -Depth 5

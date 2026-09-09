@@ -1,0 +1,191 @@
+{
+  "version": "1.0",
+  "package": "F",
+  "scope": "practical_owner_machine",
+  "status": "passed_with_documented_limits",
+  "startedAt": "2026-09-09T16:23:50.513Z",
+  "completedAt": "2026-09-09T16:24:09.958Z",
+  "environment": {
+    "node": "v24.18.1",
+    "platform": "win32",
+    "practicalDefault": "large-v3-gpu-fp16",
+    "releaseDefault": null
+  },
+  "automatedVerification": {
+    "repositoryTests": {
+      "status": "passed",
+      "tests": 129,
+      "passed": 129,
+      "failed": 0,
+      "skipped": 0,
+      "durationMs": 12995
+    },
+    "analysisHarness": {
+      "status": "passed",
+      "tests": 20,
+      "durationMs": 298
+    },
+    "doctor": {
+      "status": "ready",
+      "capabilities": [
+        "audio.analyze",
+        "audio.transcribe",
+        "source.extract-frames",
+        "source.preview",
+        "source.probe",
+        "video.detect-scenes"
+      ],
+      "durationMs": 297
+    },
+    "browser": {
+      "status": "passed",
+      "durationMs": 5456,
+      "verification": {
+        "resultCount": 52,
+        "searchIndexRows": 367
+      },
+      "browser": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "url": "http://127.0.0.1:64490/?project=source-c-verification-20260909",
+      "sources": 4,
+      "transcriptRows": 1,
+      "multipleResultSets": true,
+      "resultSetSwitch": true,
+      "paginatedTranscriptRows": 86,
+      "searchResults": 16,
+      "playerPreservedAcrossPolling": true,
+      "viewports": [
+        390,
+        768,
+        1440
+      ]
+    }
+  },
+  "acceptanceMatrix": [
+    {
+      "id": "project_round_trip",
+      "requirement": "Tạo/import, giữ danh tính và mở lại project/checkpoint.",
+      "tests": [
+        "import preserves sources and records grouped resources and completed runs",
+        "project identity and checkpoint survive reopening without temporary files"
+      ],
+      "missingTests": [],
+      "status": "passed"
+    },
+    {
+      "id": "analysis_lifecycle",
+      "requirement": "Run/Result, dependency, reuse và source identity đi qua lifecycle chung.",
+      "tests": [
+        "analysis job persists source identity, attempt, Run and Result and reuses verified evidence",
+        "requested operations include technical dependencies and bind downstream fingerprints to upstream Results"
+      ],
+      "missingTests": [],
+      "status": "passed"
+    },
+    {
+      "id": "cancel_resume_reconcile",
+      "requirement": "Cancel, resume và reconcile không làm mất hoặc chạy lặp Result durable.",
+      "tests": [
+        "cancel persists intent, aborts the active unit and cancels pending units",
+        "resume keeps an interrupted attempt and retries it with a new Run",
+        "resume reconciles a durable Result after manifest persistence fails without rerunning tool"
+      ],
+      "missingTests": [],
+      "status": "passed"
+    },
+    {
+      "id": "runtime_and_dependency_failure",
+      "requirement": "Runtime thiếu hoặc dependency lỗi được báo blocked, không fallback ngầm.",
+      "tests": [
+        "a blocked probe blocks dependent units without running them",
+        "tool environment drift after planning fails without committing mismatched evidence"
+      ],
+      "missingTests": [],
+      "status": "passed"
+    },
+    {
+      "id": "freshness_and_tamper",
+      "requirement": "Source stale và evidence/index bị sửa được phát hiện, lịch sử được giữ.",
+      "tests": [
+        "resume reruns evidence whose output checksum changed and preserves the historical Result",
+        "resume rejects previously successful evidence after source bytes change",
+        "verify reports stale managed source without rewriting historical Results",
+        "verify reports missing source and dataset without rewriting historical Results"
+      ],
+      "missingTests": [],
+      "status": "passed"
+    },
+    {
+      "id": "range_pagination_result_sets",
+      "requirement": "Reader phân trang, range và nhiều Result set mà không tự chọn mơ hồ.",
+      "tests": [
+        "reader streams paged transcript, verifies evidence, and searches Vietnamese text",
+        "source workspace keeps profile and range result sets distinct and newest first"
+      ],
+      "missingTests": [],
+      "status": "passed"
+    },
+    {
+      "id": "legacy_capability_regression",
+      "requirement": "Các capability media và sequence cũ vẫn chạy end-to-end.",
+      "tests": [
+        "image, concat, audio overlay and subtitle tools chain into one finished video",
+        "video toolkit chains concat, reformat and thumbnail into a durable pipeline",
+        "local production renders, reuses unchanged segments, preserves reviews and fails without output on invalid sources"
+      ],
+      "missingTests": [],
+      "status": "passed"
+    }
+  ],
+  "carriedEvidence": {
+    "packageCStatus": "passed_with_documented_limits",
+    "packageCCapabilities": [
+      "source.probe",
+      "video.detect-scenes",
+      "source.extract-frames",
+      "audio.analyze",
+      "audio.transcribe",
+      "source.preview"
+    ],
+    "transcriptChunkBoundarySeconds": 300,
+    "longestProductionTranscriptRangeSeconds": 305,
+    "duplicateSegmentIdsAtChunkBoundary": 0
+  },
+  "qualityAndScaleGates": [
+    {
+      "id": "owner_media_practical_profile",
+      "status": "passed",
+      "evidence": "Package A/C practical verification on this machine."
+    },
+    {
+      "id": "independent_gold_holdout",
+      "status": "not_measured",
+      "releaseBlocking": true
+    },
+    {
+      "id": "asr_cer_and_timing_thresholds",
+      "status": "not_measured",
+      "releaseBlocking": true
+    },
+    {
+      "id": "scene_precision_recall",
+      "status": "not_measured",
+      "releaseBlocking": true
+    },
+    {
+      "id": "two_hour_4k_vfr_nonzero_offset",
+      "status": "not_measured",
+      "releaseBlocking": true
+    },
+    {
+      "id": "hundred_file_ten_hour_query_benchmark",
+      "status": "not_measured",
+      "releaseBlocking": true
+    }
+  ],
+  "limits": [
+    "Kết quả này đóng phạm vi sử dụng thực dụng trên máy owner; không phải chứng nhận phát hành rộng.",
+    "releaseDefault tiếp tục là null.",
+    "Corpus/holdout định lượng, nguồn 2 giờ/4K/VFR/offset và benchmark 100 file/10 giờ chưa được đo.",
+    "Không thêm OCR, vector search, diarization, UI mutation, dịch vụ trả phí hoặc capability mới."
+  ]
+}

@@ -231,15 +231,26 @@ phiên bản; observer cho xem và so sánh. Không tự sửa kế hoạch hay 
 
 Chi tiết: [VIDEO-SEQUENCE-PRODUCTION.md](./VIDEO-SEQUENCE-PRODUCTION.md).
 
+## Source Understanding đã nghiệm thu ở phạm vi thực dụng
+
+Gói F đã tổng hợp vòng nghiệm thu fail-closed cho project round-trip, Analysis lifecycle,
+cancel/resume/reconcile, runtime/dependency failure, stale/missing/tampered evidence,
+pagination/range/nhiều Result set, regression các capability cũ, doctor và browser acceptance.
+Kết quả trên máy hiện tại: 129/129 test repository, 20/20 test harness, sáu capability analysis
+ready; browser kiểm tra chuyển Result set, 86 transcript rows qua pagination, search, giữ player và
+ba viewport.
+
+Đợt 1 được đóng theo phạm vi practical đã chốt ở §18 đặc tả. `releaseDefault` vẫn là `null`;
+corpus holdout, ngưỡng ASR/scene, nguồn 2 giờ/4K/VFR/offset và benchmark 100 file/10 giờ vẫn là
+`not_measured`, không được mô tả là đã đạt. Chi tiết tại
+[SOURCE-UNDERSTANDING-PACKAGE-F.md](./SOURCE-UNDERSTANDING-PACKAGE-F.md).
+
 ## Ưu tiên tiếp theo
 
-Trong đợt Source Understanding, việc tiếp theo là gói F: nghiệm thu cả vòng trên nguồn dài,
-pagination/range và nhiều Result set; kiểm tra cancel/resume/reconcile, lỗi runtime,
-stale/missing/tampered data, browser acceptance có fixture và regression các capability cũ.
-
-Tổng kết phải phân biệt rõ cấu hình dùng thực tế với quality gate corpus rộng chưa được đo.
-Chỉ sửa contract lõi hoặc thêm tính năng khi bằng chứng nghiệm thu/project thật cho thấy
-ranh giới hiện tại không đủ.
+Chuẩn bị đợt 2 — định hướng sáng tạo và duyệt mẫu. Chọn một loại video/project mục tiêu rồi dùng
+brief, bằng chứng nguồn, artifact/workflow/review/decision và renderer đã có để đi trọn vòng đề
+xuất hướng → người dùng chọn → làm mẫu → review → sửa/tiếp tục. Chỉ thêm công cụ tạo nguyên liệu
+hoặc thay contract khi project mục tiêu chứng minh phần hiện tại không đủ.
 
 ## Triển khai tạm thời
 

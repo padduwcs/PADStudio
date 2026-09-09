@@ -67,12 +67,14 @@ Project được chọn phải có ít nhất một nguồn với preview, timel
 - `test/project-reader.test.js`: HTML section và module tĩnh được server phục vụ.
 - `scripts/source-observer-browser-smoke.ps1`: acceptance trên browser thật với project local.
 
-## Giới hạn và phần để gói F
+## Giới hạn và kết quả gói F
 
 Gói E là observer kiểm tra bằng chứng, chưa phải editor timeline hoặc nơi gửi lệnh cho Agent.
 Nó không tự tạo preview/index, không phát media ngoài file đã đăng ký và không thay thế chat.
 Search hiện là lexical index của gói D; chưa có vector search, OCR hoặc speaker diarization.
 
-Gói F còn phải nghiệm thu toàn phân hệ: luồng mới/mở lại, nguồn dài và pagination/range,
-cancel/resume/reconcile cùng lỗi runtime, stale/missing/tampered data, regression các capability cũ,
-browser acceptance có fixture được kiểm soát, và tổng hợp rõ gate chất lượng nào đã đo hay chưa đo.
+Gói F đã nghiệm thu toàn phân hệ ở phạm vi sử dụng thực dụng: luồng mới/mở lại,
+cancel/resume/reconcile cùng lỗi runtime, stale/missing/tampered data, pagination/range/nhiều Result
+set, regression các capability cũ và browser acceptance mở rộng. Các gate corpus/scale phát hành
+rộng chưa đo được giữ riêng; xem
+[`SOURCE-UNDERSTANDING-PACKAGE-F.md`](SOURCE-UNDERSTANDING-PACKAGE-F.md).

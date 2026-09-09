@@ -93,6 +93,19 @@ npm test
 
 Smoke tạo media synthetic trong cache, kiểm tra 2 hard cuts chuẩn, ASR CPU trên silence/tone, và timeout thật. Không thay corpus tự nhiên. Báo cáo lần triển khai và kết quả thực tế: [BASELINE-REPORT.md](BASELINE-REPORT.md).
 
+## Acceptance gói F
+
+Sau khi có một project local với preview/transcript, nhiều Result set và transcript đủ phân trang,
+chạy gate đóng phạm vi practical:
+
+```powershell
+npm run analysis:acceptance -- --browser-project <project-id> --report eval/source-understanding/reports/<date>/package-f-verification.json
+```
+
+Runner chạy repository test, harness, doctor, `analysis:verify` và browser acceptance; thiếu project
+browser sẽ trả `incomplete`. Report tách các gate practical đã đạt khỏi corpus/scale release còn
+`not_measured`. Kết quả hiện tại: [package-f-verification.json](reports/2026-09-09/package-f-verification.json).
+
 Thư viện tham chiếu: [faster-whisper](https://github.com/SYSTRAN/faster-whisper), [CTranslate2 installation](https://opennmt.net/CTranslate2/installation.html), [PySceneDetect AdaptiveDetector](https://www.scenedetect.com/docs/latest/api/detectors.html). Lock lưu phiên bản đã cài/thử, không lấy benchmark của thư viện làm kết quả PADStudio.
 
 Tổng hợp nhiều baseline (kiểm checksum prediction và cùng coverage ASR):

@@ -249,6 +249,41 @@ test("verify reports stale managed source without rewriting historical Results",
   assert.equal((await state.store.readResult("demo", result.id)).data.sourceVersion, state.identity.sourceVersion);
 });
 
+test("verify reports missing source and dataset without rewriting historical Results", async (t) => {
+  const sourceState = await fixture(t);
+  const sourceResult = await transcriptResult(sourceState, transcriptRows());
+  const managed = await sourceState.store.resolveMediaSource("demo", sourceState.source);
+  await rm(managed.filePath);
+  const sourceReader = new AnalysisReader({
+    rootDir: sourceState.rootDir,
+    projectStore: sourceState.store
+  });
+  const sourceVerification = await sourceReader.verify("demo", { resultId: sourceResult.id });
+  assert.equal(sourceVerification.results[sourceResult.id].status, "missing");
+  assert.equal(
+    (await sourceState.store.readResult("demo", sourceResult.id)).data.sourceVersion,
+    sourceState.identity.sourceVersion
+  );
+
+  const datasetState = await fixture(t);
+  const datasetResult = await transcriptResult(datasetState, transcriptRows());
+  const dataset = await datasetState.store.resolveResultFile("demo", datasetResult.id, "segments");
+  await rm(dataset.filePath);
+  const datasetReader = new AnalysisReader({
+    rootDir: datasetState.rootDir,
+    projectStore: datasetState.store
+  });
+  const datasetVerification = await datasetReader.verify("demo", { resultId: datasetResult.id });
+  assert.equal(datasetVerification.results[datasetResult.id].status, "missing");
+  assert.ok(datasetVerification.results[datasetResult.id].files.some((file) =>
+    file.id === "segments" && file.status === "missing"
+  ));
+  assert.equal(
+    (await datasetState.store.readResult("demo", datasetResult.id)).data.sourceVersion,
+    datasetState.identity.sourceVersion
+  );
+});
+
 test("observer exposes specific analysis routes without treating suffixes as project IDs", async (t) => {
   const state = await fixture(t);
   await transcriptResult(state, transcriptRows());

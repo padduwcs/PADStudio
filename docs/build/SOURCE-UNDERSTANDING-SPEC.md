@@ -1,6 +1,6 @@
 # Đợt 1 — Đặc tả triển khai phân tích và hiểu tư liệu
 
-Phiên bản đặc tả: **1.0 — 2026-09-08**. Trạng thái: **đặc tả toàn đợt; xem §18–§19 để biết phần đã triển khai, chưa coi toàn phân hệ là hoàn thành**.
+Phiên bản đặc tả: **1.0 — 2026-09-08**. Trạng thái: **đã hoàn thành toàn đợt ở phạm vi practical theo §18–§19; chưa chứng nhận các gate release rộng §13**.
 
 Tài liệu này đáp ứng yêu cầu hoàn thiện **một phân hệ theo chiều ngang**. Các gói công việc bên dưới là thứ tự xây nội bộ; chỉ nghiệm thu đợt khi toàn bộ phạm vi bắt buộc đạt. Không lấy một video demo chạy được làm tiêu chuẩn hoàn thành.
 
@@ -515,6 +515,11 @@ Gói E — workspace observer — đã được triển khai sau gói D. Chọn 
 source time, coverage/freshness, lazy-load evidence/search và browser acceptance được ghi tại
 [`SOURCE-UNDERSTANDING-PACKAGE-E.md`](SOURCE-UNDERSTANDING-PACKAGE-E.md).
 
-Việc hoàn thành gói E không thay đổi điều chỉnh nghiệm thu gói A tại §18: cấu hình dùng thực tế
-không đồng nghĩa đã đạt ngưỡng corpus rộng. Nghiệm thu toàn phân hệ gói F chưa được triển khai
-trong đợt này.
+Gói F — nghiệm thu phân hệ — đã hoàn thành sau gói E trong phạm vi sử dụng thực dụng trên máy
+owner. Acceptance runner, ma trận bằng chứng, browser gate mở rộng, kết quả và giới hạn được ghi tại
+[`SOURCE-UNDERSTANDING-PACKAGE-F.md`](SOURCE-UNDERSTANDING-PACKAGE-F.md).
+
+Việc hoàn thành gói F áp dụng điều chỉnh §18: cấu hình dùng thực tế không đồng nghĩa đã đạt ngưỡng
+corpus rộng. Các gate §13 về gold holdout, chất lượng định lượng, nguồn 2 giờ/4K/VFR/offset và quy
+mô 100 file/10 giờ được giữ `not_measured`; `releaseDefault` vẫn là `null`. Vì vậy đợt 1 được đóng
+ở phạm vi practical, không phải chứng nhận release tổng quát.

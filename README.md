@@ -187,7 +187,7 @@ Contract chi tiết nằm trong
 Chi tiết contract và cách Agent dùng các lệnh nằm trong
 [PADSTUDIO-AGENT-RUNTIME.md](PADSTUDIO-AGENT-RUNTIME.md).
 
-## Source Understanding — gói B–E
+## Source Understanding — gói B–F
 
 Gói B/C đã có contract, coordinator và sáu adapter production:
 
@@ -216,6 +216,17 @@ không bị sửa bởi correction. CLI, context và observer dùng chung đư�
 Gói E thêm workspace observer chỉ đọc để chọn nguồn/Result set, phát nguồn hoặc proxy theo source
 time, xem coverage/freshness và lazy-load transcript, scene, frame, audio, assessment, search.
 Contract UI và browser acceptance: [gói E](docs/build/SOURCE-UNDERSTANDING-PACKAGE-E.md).
+
+Gói F đã đóng nghiệm thu practical trên máy hiện tại bằng acceptance runner tổng hợp test, harness,
+doctor, verify và browser gate mở rộng. Chạy lại và ghi report bằng:
+
+```powershell
+npm run analysis:acceptance -- --browser-project <project-id> --report <report-path>
+```
+
+Project browser acceptance cần có preview/transcript, nhiều Result set và đủ transcript để phân
+trang. Không truyền project sẽ trả trạng thái `incomplete`. Kết quả và các gate release còn
+`not_measured`: [gói F](docs/build/SOURCE-UNDERSTANDING-PACKAGE-F.md).
 
 ## Cấu trúc video và sửa từng phần
 
