@@ -799,16 +799,20 @@ test("a blocked probe blocks dependent units without running them", async (t) =>
   assert.equal((await store.readRuns("demo")).filter((run) => run.capability.startsWith("source.")).length, 1);
 });
 
-test("default package-B coordinator reports missing package-C tools as blocked without fallback", async (t) => {
-  const { rootDir, imported, store } = await fixture(t);
-  const response = await createDefaultAnalysisService({ rootDir }).createAndRun(
-    "demo",
-    { ...analysisRequest({ kind: "resource", id: imported.resourceId, itemPath: null }), reuse: "never" }
-  );
-  assert.equal(response.state, "failed");
-  assert.equal(response.job.units[0].state, "blocked");
-  assert.match(response.job.units[0].error, /Không tìm thấy công cụ/);
-  assert.equal((await store.readRuns("demo")).filter((run) => run.capability === "source.probe").length, 0);
+test("default coordinator registers the package-C production adapters", async (t) => {
+  const { rootDir } = await fixture(t);
+  const service = createDefaultAnalysisService({ rootDir });
+  const expected = [
+    ["ffprobe-source", "source.probe"],
+    ["pyscenedetect-scenes", "video.detect-scenes"],
+    ["ffmpeg-source-frames", "source.extract-frames"],
+    ["ffmpeg-audio-analysis", "audio.analyze"],
+    ["faster-whisper-transcribe", "audio.transcribe"],
+    ["ffmpeg-source-preview", "source.preview"]
+  ];
+  for (const [name, capability] of expected) {
+    assert.equal(service.executor.registry.get(name, capability).name, name);
+  }
 });
 
 test("Result file checksums prevent reuse after evidence is tampered", async (t) => {

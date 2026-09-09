@@ -502,5 +502,11 @@ Gói B — hợp đồng và vòng đời — đã được triển khai sau gó
 resume/cancel/reconcile, giới hạn và bản đồ test được ghi tại
 [`SOURCE-UNDERSTANDING-PACKAGE-B.md`](SOURCE-UNDERSTANDING-PACKAGE-B.md).
 
-Việc hoàn thành gói B không thay đổi điều chỉnh nghiệm thu gói A tại §18 và không ngụ ý các adapter
-gói C, artifact/query gói D, observer gói E hay nghiệm thu toàn phân hệ gói F đã hoàn thành.
+Gói C — adapter production — đã được triển khai sau gói B. Sáu capability probe, scene, frame,
+audio analysis, ASR và preview đã được đăng ký vào default registry, chạy qua cùng lifecycle và
+được kiểm chứng trên tư liệu owner. Cấu hình, bằng chứng và giới hạn được ghi tại
+[`SOURCE-UNDERSTANDING-PACKAGE-C.md`](SOURCE-UNDERSTANDING-PACKAGE-C.md).
+
+Việc hoàn thành gói C không thay đổi điều chỉnh nghiệm thu gói A tại §18: cấu hình dùng thực tế
+không đồng nghĩa đã đạt ngưỡng corpus rộng. Artifact/query gói D, observer gói E và nghiệm thu
+toàn phân hệ gói F chưa được triển khai trong đợt này.

@@ -134,7 +134,16 @@ export class ToolExecutor {
         }
       }
       throwIfAborted(internal.signal);
-      const availability = await tool.checkAvailability({ signal: internal.signal });
+      const analysis = request.inputs?.analysis;
+      const availability = await tool.checkAvailability({
+        ...(analysis && typeof analysis === "object" && !Array.isArray(analysis) ? {
+          profileId: analysis.profileId,
+          language: analysis.language,
+          track: analysis.track,
+          options: analysis.options
+        } : {}),
+        signal: internal.signal
+      });
       if (availability?.status !== "available") {
         throw new ToolExecutorError(
           availability?.reason || "Công cụ " + tool.name + " hiện không dùng được.",

@@ -2,7 +2,7 @@
 
 **Cập nhật sử dụng thực tế:** đã chọn `practicalDefault: large-v3-gpu-fp16` theo chỉ đạo owner; corpus định lượng không còn chặn đóng gói A. Xem [PRACTICAL-REVIEW.md](PRACTICAL-REVIEW.md). Hướng dẫn gold/holdout dưới đây dành cho đánh giá mở rộng, không bắt buộc để bắt đầu dùng.
 
-Harness khảo sát local, độc lập với kho project và các tool production. Không thay đổi input, workflow, quyền UI hay contract Run/Result. Đây là bộ đo để chuẩn bị gói B/C, không phải phân hệ Source Understanding đã nghiệm thu.
+Harness khảo sát local, độc lập với kho project và các tool production. Không thay đổi input, workflow, quyền UI hay contract Run/Result. Gói B/C nay đã có lifecycle và adapter production riêng; thư mục này vẫn là bộ đo gói A, không phải đường chạy project.
 
 ## Cài môi trường
 
@@ -15,10 +15,10 @@ py -3.12 -m venv .runtime-tools/source-eval
 .runtime-tools/source-eval/Scripts/python.exe -m pip install -r eval/source-understanding/requirements-cpu.lock.txt
 # GPU Windows: bổ sung DLL NVIDIA vào chính venv, không đổi driver/system PATH.
 .runtime-tools/source-eval/Scripts/python.exe -m pip install -r eval/source-understanding/requirements-windows-gpu.lock.txt
-npm run analysis:doctor
+npm run analysis:eval -- doctor
 ```
 
-CPU/GPU là profile riêng, không tự fallback. CPU int8 khai báo chính xác compute type `int8_float32`; backend resolve khác profile thì từ chối. Dependency runtime phải khớp lock trước khi benchmark. `analysis:doctor` không tải model; `inferenceVerified: false` là chủ ý: phải kiểm tra report của lần chạy model thật. Package/compute type có mặt chưa chứng minh inference dùng được. DLL được thêm vào search path của tiến trình từ venv. CPU lock không yêu cầu package NVIDIA.
+CPU/GPU là profile riêng, không tự fallback. CPU int8 khai báo chính xác compute type `int8_float32`; backend resolve khác profile thì từ chối. Dependency runtime phải khớp lock trước khi benchmark. `analysis:eval -- doctor` không tải model; `inferenceVerified: false` là chủ ý: phải kiểm tra report của lần chạy model thật. Package/compute type có mặt chưa chứng minh inference dùng được. DLL được thêm vào search path của tiến trình từ venv. CPU lock không yêu cầu package NVIDIA.
 
 Setup model là **lệnh online riêng**, tải từ `Systran/faster-whisper-large-v3` và `Systran/faster-whisper-medium` trên Hugging Face; không gửi media lên mạng:
 

@@ -16,5 +16,8 @@ Phần cấu trúc video, bản dựng có phiên bản và vòng sửa cục b�
 Đặc tả đề xuất cho đợt 1, hoàn thiện phân hệ phân tích và hiểu tư liệu theo chiều ngang:
 [SOURCE-UNDERSTANDING-SPEC.md](SOURCE-UNDERSTANDING-SPEC.md). Tài liệu xác định phạm vi, hợp đồng, cách triển khai và nghiệm thu; không mô tả tính năng đã hoàn thành.
 
-Trạng thái triển khai hợp đồng và vòng đời Source Understanding gói B:
-[SOURCE-UNDERSTANDING-PACKAGE-B.md](SOURCE-UNDERSTANDING-PACKAGE-B.md). Sáu adapter media vẫn thuộc gói C.
+Trạng thái triển khai Source Understanding:
+[gói B — hợp đồng và vòng đời](SOURCE-UNDERSTANDING-PACKAGE-B.md);
+[gói C — sáu adapter production](SOURCE-UNDERSTANDING-PACKAGE-C.md).
+
+Lộ trình phát triển và vị trí hiện tại: [PADSTUDIO-ROADMAP.md](PADSTUDIO-ROADMAP.md). Phân biệt 6 đợt phát triển với các bước bên trong đợt 1; chỉ chi tiết hóa đợt đang làm.

@@ -72,10 +72,11 @@ có unit thực thi `failed`; `2` khi `partial/interrupted/cancelled` hoặc job
 
 ## Ranh giới còn lại
 
-Gói B không cài hoặc đăng ký sáu adapter production. Cho đến khi gói C hoàn thành,
-`project:analyze` với default registry sẽ giữ job và báo unit `blocked`; không tự gọi harness gói A,
-không tải model và không fallback sang profile khác. Việc dừng cây tiến trình FFmpeg/Python thật
-phải được adapter gói C nối với `AbortSignal` đã có.
+Gói C đã cài và đăng ký sáu adapter production trên contract này; xem
+[`SOURCE-UNDERSTANDING-PACKAGE-C.md`](SOURCE-UNDERSTANDING-PACKAGE-C.md). Default registry
+hiện có probe, scene, frame, audio analysis, ASR và preview; cây tiến trình FFmpeg/Python được
+nối với `AbortSignal`. Quy tắc của gói B vẫn giữ nguyên: runtime/model thiếu là `blocked`,
+không tự gọi harness gói A, tải model hay fallback profile.
 
 Artifact `source.profile`/`source.assessment`/`source.transcript-edit`, reader/search/summary và skill
 thuộc gói D; observer thuộc gói E; holdout/long-run cuối cùng thuộc gói F. Gói B không đổi workflow,

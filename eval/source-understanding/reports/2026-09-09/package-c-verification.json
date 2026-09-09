@@ -1,0 +1,234 @@
+{
+  "version": "1.0",
+  "package": "C",
+  "status": "passed_with_documented_limits",
+  "verifiedAt": "2026-09-09",
+  "scope": [
+    "source.probe",
+    "video.detect-scenes",
+    "source.extract-frames",
+    "audio.analyze",
+    "audio.transcribe",
+    "source.preview"
+  ],
+  "environment": {
+    "node": "v24.18.1",
+    "ffmpeg": "8.1.2-full_build-www.gyan.dev",
+    "python": "3.12.10",
+    "fasterWhisper": "1.2.1",
+    "ctranslate2": "4.8.2",
+    "sceneDetect": "0.7.1",
+    "av": "18.1.0",
+    "asrProfile": "large-v3-gpu-fp16",
+    "asrProfileDigest": "e1f37acb9be728f2570cd729485d7a91d16e167bf0a631d692f5da0f8489bb53",
+    "modelLockDigest": "fa09beb558414904fc90b2a1ecaed4182ce2d502fb983635b7cd0588c85a5063",
+    "modelRevision": "edaa852ec7e145841d8ffdb056a99866b5f0a478",
+    "releaseDefault": null,
+    "doctorStatus": "ready"
+  },
+  "automatedVerification": {
+    "npmTest": {
+      "passed": 119,
+      "failed": 0
+    },
+    "analysisTest": {
+      "passed": 20,
+      "failed": 0
+    },
+    "packageCIntegration": {
+      "passed": 10,
+      "failed": 0,
+      "checks": [
+        "profile-and-model-lock-consistency",
+        "real-child-abort",
+        "ambiguous-stream-selection",
+        "local-playlist-rejection",
+        "video-lifecycle-source-integrity-and-sar",
+        "long-gop-frame-pts-and-pixel-binding",
+        "frame-omission-dataset",
+        "image-not-applicable-semantics",
+        "animated-image-time-sampling",
+        "audio-only-analysis-and-preview"
+      ]
+    },
+    "executorProfileContextRegression": {
+      "passed": 1,
+      "failed": 0
+    }
+  },
+  "longGopFrameRegression": {
+    "reportedEvidence": ".cache/package-c-review/long-gop-result.json",
+    "fixture": ".cache/package-c-review/long-gop.mp4",
+    "fixtureSha256BeforeAndAfter": "0ebf1854f10a3b85fc7c86b5ce8204dd5bb88ed6f363451dab778ca522a1fa86",
+    "keyframes": 1,
+    "previousFailure": {
+      "requestedTime": 15,
+      "actualTime": 4.866667,
+      "verificationIncorrectlyPassed": true
+    },
+    "fixedLifecycle": {
+      "resourceId": "resource-mttilx8g-52ab8667",
+      "jobId": "analysis-mttimfh5-c831be0e",
+      "resultId": "result-mttimhf9-ef053e4f",
+      "toolVersion": "1.0.1",
+      "durationMs": 323,
+      "requestedActualPts": [
+        [15, 15, 230400],
+        [19.999, 19.966667, 306688]
+      ],
+      "verificationCheck": "output_pts_matches_metadata",
+      "decodedPixelMd5MatchesIndependentFullDecode": [true, true]
+    }
+  },
+  "realMedia": [
+    {
+      "name": "vd03_brute_force.mp4",
+      "originalPath": "D:\\Test\\vid\\vd03_brute_force.mp4",
+      "resourceId": "resource-mtt3r1dx-6cb3c330",
+      "sourceVersion": "25d01a85ac7603a65b56e639b8ba0d4e9302e775bb50886f933b96fc5e38fb99",
+      "originalHashAfterVerification": "25d01a85ac7603a65b56e639b8ba0d4e9302e775bb50886f933b96fc5e38fb99",
+      "coverageSeconds": {
+        "start": 0,
+        "end": 30
+      },
+      "jobIds": [
+        "analysis-mtt3rtko-efdc58fd",
+        "analysis-mtt3tfgn-360317ab",
+        "analysis-mtt4b2sa-ddbfc019",
+        "analysis-mtt53xaa-567bc931",
+        "analysis-mtt5aso3-fb2aba85",
+        "analysis-mtten5y3-f6ef3d85",
+        "analysis-mttenoao-ad83d173",
+        "analysis-mttesv0l-5c070bb6",
+        "analysis-mttij4fp-3b76cc28"
+      ],
+      "results": {
+        "probe": {
+          "id": "result-mtten6ep-d0f9a1ee",
+          "coverageMode": "sampled",
+          "decodeSamples": 3,
+          "durationMs": 316
+        },
+        "transcript": {
+          "id": "result-mttenu5z-12c7505f",
+          "segments": 7,
+          "words": 104,
+          "chunks": 1,
+          "durationMs": 6901,
+          "profileDigest": "e1f37acb9be728f2570cd729485d7a91d16e167bf0a631d692f5da0f8489bb53",
+          "modelLockDigest": "fa09beb558414904fc90b2a1ecaed4182ce2d502fb983635b7cd0588c85a5063"
+        },
+        "scenes": {
+          "id": "result-mtten93i-e7d9a81c",
+          "shots": 1,
+          "cuts": 0,
+          "durationMs": 3372
+        },
+        "framesAfterPtsFix": {
+          "id": "result-mttij8b1-50472724",
+          "jobId": "analysis-mttij4fp-3b76cc28",
+          "toolVersion": "1.0.1",
+          "frames": 3,
+          "contactSheets": 0,
+          "requestedActualPts": [
+            [0, 0, 0],
+            [15, 15, 450],
+            [29.999, 29.966667, 899]
+          ],
+          "outputPtsMatchesMetadata": true,
+          "frame15DecodedPixelMd5": "6e014157344512716b925714f751547c",
+          "frame15ReferenceDecodedPixelMd5": "6e014157344512716b925714f751547c",
+          "durationMs": 832
+        },
+        "audioAnalysis": {
+          "id": "result-mttena8l-3bb7f562",
+          "levelWindows": 300,
+          "silenceIntervals": 5,
+          "clippingCandidates": 0,
+          "durationMs": 240
+        },
+        "preview": {
+          "id": "result-mttenblc-74043ef2",
+          "mediaType": "video/mp4",
+          "sizeBytes": 1045361,
+          "durationMs": 1686
+        },
+        "alternateProfileSmoke": {
+          "jobId": "analysis-mttesv0l-5c070bb6",
+          "id": "result-mttet0bn-b7ee691b",
+          "profile": "large-v3-gpu-int8",
+          "computeType": "int8_float16",
+          "coverageSeconds": 5,
+          "segments": 1,
+          "words": 23,
+          "durationMs": 6166
+        }
+      },
+      "semanticSpotCheck": {
+        "basis": "raw transcript rows",
+        "summary": "Đoạn nói về tư duy brute force và ví dụ thử một chùm chìa khóa.",
+        "possibleAsrError": {
+          "startSeconds": 26.43,
+          "endSeconds": 29.63,
+          "raw": "Trong thật toán",
+          "possibleIntendedText": "Trong thuật toán"
+        },
+        "goldLabel": false
+      }
+    },
+    {
+      "name": "vd11_hash_table.mp4",
+      "originalPath": "D:\\Test\\vid\\vd11_hash_table.mp4",
+      "resourceId": "resource-mtt3x3p7-a0e7cfee",
+      "sourceVersion": "dea5e55235d5020a2e330a510a813569bd07d2a838d3c268495069e49a445e84",
+      "originalHashAfterVerification": "dea5e55235d5020a2e330a510a813569bd07d2a838d3c268495069e49a445e84",
+      "coverageSeconds": {
+        "start": 0,
+        "end": 305
+      },
+      "jobId": "analysis-mttfcr9g-79e54842",
+      "transcriptResult": {
+        "id": "result-mttfddhr-76c4e76a",
+        "segments": 86,
+        "words": 1127,
+        "chunks": 2,
+        "leftOwnershipWords": 1111,
+        "rightOwnershipWords": 16,
+        "duplicateSegmentIds": 0,
+        "duplicateWordIds": 0,
+        "outOfCoverageRows": 0,
+        "durationMs": 27898,
+        "datasetSizeBytes": 135568,
+        "datasetSha256": "0158c1db6690234440eabf9020cf03d1f1b8c85e0168f924c662f82cfacd2e5b"
+      }
+    }
+  ],
+  "emptySpeechVerification": {
+    "source": "synthetic 3-second mono PCM silence",
+    "resourceId": "resource-mtt4cntk-a4dfb76d",
+    "jobId": "analysis-mttffqpz-68bbb85c",
+    "resultId": "result-mttffujt-cb967338",
+    "outcome": "empty",
+    "emptyReason": "no_speech_detected",
+    "segments": 0,
+    "words": 0,
+    "chunks": 1,
+    "warning": "no_speech_is_model_outcome",
+    "durationMs": 4394,
+    "datasetSizeBytes": 0,
+    "datasetSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "contentReview": {
+    "resultField": "not_performed",
+    "note": "Technical output and selected transcript rows were inspected; no claim of complete audiovisual review."
+  },
+  "remainingLimits": [
+    "No independent holdout or Package-F quantitative certification.",
+    "Scene boundaries are technical hard cuts, not semantic chapters.",
+    "Secondary video-stream scene detection is rejected explicitly.",
+    "Animated-image detection depends on container frame-count or duration metadata.",
+    "An extreme GOP can require decoding from a distant earlier keyframe, so an accurate frame request can be slower than a keyframe-only seek.",
+    "Owner media has zero stream offsets; non-zero offset and VFR are not end-to-end certified.",
+    "No Package-D artifact/query/summary or Package-E Observer work is included."
+  ]
+}

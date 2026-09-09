@@ -1,0 +1,83 @@
+{
+  "version": "1.0",
+  "practicalDefault": "large-v3-gpu-fp16",
+  "releaseDefault": null,
+  "profiles": {
+    "source-probe-v1": {
+      "decodeCheck": "sampled",
+      "sampleSeconds": 1
+    },
+    "source-standard-v1": {
+      "detector": "AdaptiveDetector",
+      "adaptiveThreshold": 3.0,
+      "minSceneLengthFrames": 15,
+      "windowWidth": 2,
+      "minContentValue": 15.0,
+      "frameBudget": 24,
+      "longShotSeconds": 30,
+      "contactSheetColumns": 4,
+      "contactSheetRows": 3,
+      "contactCellWidth": 320,
+      "contactCellHeight": 180
+    },
+    "audio-standard-v1": {
+      "sampleRate": 16000,
+      "windowSeconds": 0.1,
+      "silenceThresholdDbfs": -40,
+      "minimumSilenceSeconds": 0.5,
+      "clippingThreshold": 0.99
+    },
+    "large-v3-gpu-fp16": {
+      "model": "large-v3",
+      "device": "cuda",
+      "computeType": "float16",
+      "beamSize": 5,
+      "vad": true,
+      "vadMinimumSilenceMs": 500,
+      "chunkSeconds": 300,
+      "overlapSeconds": 2,
+      "temperature": 0
+    },
+    "large-v3-gpu-int8": {
+      "model": "large-v3",
+      "device": "cuda",
+      "computeType": "int8_float16",
+      "beamSize": 5,
+      "vad": true,
+      "vadMinimumSilenceMs": 500,
+      "chunkSeconds": 300,
+      "overlapSeconds": 2,
+      "temperature": 0
+    },
+    "medium-gpu-fp16": {
+      "model": "medium",
+      "device": "cuda",
+      "computeType": "float16",
+      "beamSize": 5,
+      "vad": true,
+      "vadMinimumSilenceMs": 500,
+      "chunkSeconds": 300,
+      "overlapSeconds": 2,
+      "temperature": 0
+    },
+    "large-v3-cpu-int8": {
+      "model": "large-v3",
+      "device": "cpu",
+      "computeType": "int8_float32",
+      "beamSize": 5,
+      "vad": true,
+      "vadMinimumSilenceMs": 500,
+      "chunkSeconds": 300,
+      "overlapSeconds": 2,
+      "temperature": 0
+    },
+    "source-preview-v1": {
+      "maxWidth": 1280,
+      "videoCodec": "libx264",
+      "videoCrf": 23,
+      "videoPreset": "medium",
+      "audioCodec": "aac",
+      "audioBitrate": "128k"
+    }
+  }
+}

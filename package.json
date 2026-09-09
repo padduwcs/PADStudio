@@ -25,7 +25,7 @@
     "test": "node --test",
     "project:sequence": "node src/cli/write-video-sequence.js",
     "analysis:eval": "node scripts/source-eval.mjs",
-    "analysis:doctor": "node scripts/source-eval.mjs doctor",
+    "analysis:doctor": "node src/cli/analysis-doctor.js",
     "analysis:test": "node scripts/source-eval.mjs test",
     "project:analyze": "node src/cli/analyze-project.js",
     "analysis:resume": "node src/cli/resume-analysis.js",

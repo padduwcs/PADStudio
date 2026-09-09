@@ -133,6 +133,31 @@ test("executor stores a durable result and a completed run with full trace", asy
   assert.ok(Number.isFinite(run.durationMs));
 });
 
+test("executor passes analysis profile context to the tool availability preflight", async (t) => {
+  const { store, imported } = await fixture(t);
+  let preflight = null;
+  const tool = fakeTool({
+    async checkAvailability(value) {
+      preflight = value;
+      return { status: "available", executableVersion: "test-1" };
+    }
+  });
+  const executor = new ToolExecutor({ store, registry: new ToolRegistry([tool]) });
+  const value = request(imported.resourceId);
+  value.inputs.analysis = {
+    profileId: "quality-v2",
+    language: "vi",
+    track: 3,
+    options: { beamSize: 5 }
+  };
+  await executor.execute("demo", value);
+  assert.equal(preflight.profileId, "quality-v2");
+  assert.equal(preflight.language, "vi");
+  assert.equal(preflight.track, 3);
+  assert.deepEqual(preflight.options, { beamSize: 5 });
+  assert.ok(preflight.signal === undefined || preflight.signal instanceof AbortSignal);
+});
+
 test("executor preserves a durable output when run finalization fails and supports recovery", async (t) => {
   const { rootDir, store, imported } = await fixture(t);
   const tool = fakeTool({

@@ -129,7 +129,8 @@ function availabilityIdentity(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return { status: "invalid" };
   const allowed = [
     "status", "executableVersion", "modelRevision", "helperVersion", "libraryVersions",
-    "device", "computeType", "profileVersion", "protocolVersion"
+    "device", "computeType", "pythonVersion", "profileVersion", "profileDigest", "modelLockDigest",
+    "protocolVersion"
   ];
   return Object.fromEntries(allowed.filter((field) => value[field] !== undefined).map((field) => [field, value[field]]));
 }
@@ -382,7 +383,12 @@ export class AnalysisService {
     }
     let availability;
     try {
-      availability = availabilityIdentity(await tool.checkAvailability());
+      availability = availabilityIdentity(await tool.checkAvailability({
+        profileId,
+        language,
+        track,
+        options
+      }));
     } catch {
       availability = { status: "check_failed" };
     }
@@ -632,7 +638,9 @@ export class AnalysisService {
       const dependencyResultIds = unit.dependencies
         .map((dependencyId) => job.units.find((candidate) => candidate.id === dependencyId)?.resultId)
         .filter(Boolean);
-      const response = await this.executor.execute(projectId, unit.executorRequest, {
+      const executorRequest = structuredClone(unit.executorRequest);
+      executorRequest.inputs.analysis.dependencyResultIds = dependencyResultIds;
+      const response = await this.executor.execute(projectId, executorRequest, {
         signal: controller.signal,
         onRunStarted: async ({ run }) => {
           startedRunId = run.id;
