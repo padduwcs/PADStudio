@@ -16,12 +16,14 @@ Phần cấu trúc video, bản dựng có phiên bản và vòng sửa cục b�
 Đặc tả đề xuất cho đợt 1, hoàn thiện phân hệ phân tích và hiểu tư liệu theo chiều ngang:
 [SOURCE-UNDERSTANDING-SPEC.md](SOURCE-UNDERSTANDING-SPEC.md). Tài liệu xác định phạm vi, hợp đồng, cách triển khai và nghiệm thu; không mô tả tính năng đã hoàn thành.
 
-Đặc tả đang triển khai cho đợt 2 — định hướng sáng tạo và duyệt mẫu:
-[CREATIVE-DIRECTION-SPEC.md](CREATIVE-DIRECTION-SPEC.md). Gói A đã hoàn thành hợp đồng strict cho brief, proposal và direction; các gói pilot, dựng mẫu, observer và nghiệm thu được theo dõi trong tài liệu này.
+Đặc tả đã hoàn thành practical cho đợt 2 — định hướng sáng tạo và duyệt mẫu:
+[CREATIVE-DIRECTION-SPEC.md](CREATIVE-DIRECTION-SPEC.md). Các gói A–E đã hoàn tất từ hợp đồng, pilot, dựng mẫu đến observer và nghiệm thu.
 
 Trạng thái pilot Đợt 2:
 [Gói B — khởi tạo pilot và duyệt hướng](CREATIVE-DIRECTION-PACKAGE-B.md);
-[Gói C — dựng, sửa cục bộ và duyệt mẫu](CREATIVE-DIRECTION-PACKAGE-C.md).
+[Gói C — dựng, sửa cục bộ và duyệt mẫu](CREATIVE-DIRECTION-PACKAGE-C.md);
+[Gói D — observer creative chỉ đọc](CREATIVE-DIRECTION-PACKAGE-D.md);
+[Gói E — nghiệm thu Đợt 2](CREATIVE-DIRECTION-PACKAGE-E.md).
 
 Trạng thái triển khai Source Understanding:
 [gói B — hợp đồng và vòng đời](SOURCE-UNDERSTANDING-PACKAGE-B.md);

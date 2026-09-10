@@ -28,6 +28,7 @@
     "analysis:eval": "node scripts/source-eval.mjs",
     "analysis:doctor": "node src/cli/analysis-doctor.js",
     "analysis:acceptance": "node scripts/source-understanding-acceptance.mjs",
+    "creative:acceptance": "node scripts/creative-direction-acceptance.mjs",
     "analysis:test": "node scripts/source-eval.mjs test",
     "analysis:read": "node src/cli/read-analysis.js",
     "analysis:verify": "node src/cli/verify-analysis.js",

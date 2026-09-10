@@ -229,3 +229,15 @@ test("web server exposes no project mutation or chat endpoint", async (t) => {
     assert.equal(response.status, 404);
   }
 });
+
+test("observer serves the creative direction module as JavaScript", async (t) => {
+  const workspace = await temporaryDirectory(t);
+  const rootDir = join(workspace, "projects");
+  const server = createPadStudioServer({ reader: new ProjectReader(rootDir) });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/creative-direction-view.js`);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /^text\/javascript/);
+  assert.match(await response.text(), /buildCreativeObserverModel/);
+});

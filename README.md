@@ -187,6 +187,19 @@ Contract chi tiết nằm trong
 Chi tiết contract và cách Agent dùng các lệnh nằm trong
 [PADSTUDIO-AGENT-RUNTIME.md](PADSTUDIO-AGENT-RUNTIME.md).
 
+## Creative Direction — Đợt 2
+
+Đợt 2 đã hoàn thành ở phạm vi practical: hợp đồng brief/proposal/direction, pilot `keys-first`,
+mẫu r2 có reuse 6/7 đoạn, exact user approval và workspace observer chỉ đọc cho toàn bộ mạch
+creative. Cổng nghiệm thu đạt 138/138 test, freshness và browser ở 390/768/1440 px.
+
+```powershell
+npm run creative:acceptance -- --project phase2-brute-force-pilot --report reports/phase2-creative-direction-acceptance.json
+```
+
+Kết quả và giới hạn: [Gói D](docs/build/CREATIVE-DIRECTION-PACKAGE-D.md) và
+[Gói E](docs/build/CREATIVE-DIRECTION-PACKAGE-E.md).
+
 ## Source Understanding — gói B–F
 
 Gói B/C đã có contract, coordinator và sáu adapter production:

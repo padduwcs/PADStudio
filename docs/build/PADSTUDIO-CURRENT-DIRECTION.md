@@ -247,7 +247,7 @@ corpus holdout, ngưỡng ASR/scene, nguồn 2 giờ/4K/VFR/offset và benchmark
 
 ## Ưu tiên tiếp theo
 
-Đợt 2 — định hướng sáng tạo và duyệt mẫu — đang triển khai theo
+Đợt 2 — định hướng sáng tạo và duyệt mẫu — đã hoàn thành practical theo
 [đặc tả](./CREATIVE-DIRECTION-SPEC.md). Pilot là micro-lesson dọc 30–60 giây từ video bài giảng
 được cung cấp. Gói A đã chốt hợp đồng `project.brief`, `creative.proposal`, `creative.direction`,
 provenance/revision và tách bước đề xuất khỏi bước người dùng chọn trong workflow mẫu.
@@ -255,9 +255,13 @@ provenance/revision và tách bước đề xuất khỏi bước người dùng
 Gói B đã khởi tạo pilot thật và chốt direction `keys-first` + takeaway-only. Gói C đã tạo
 `video.sequence` 7 đoạn, render mẫu r1, review và sửa cục bộ nhịp nối thành r2; renderer reuse
 6/7 đoạn. Người dùng đã duyệt exact r2 dài 47,421 giây; decision bind đúng final Result/review
-và workflow đã hoàn tất. Việc tiếp theo là Gói D: observer chỉ đọc cho vòng creative/sample.
-Chi tiết tại [Gói B](./CREATIVE-DIRECTION-PACKAGE-B.md) và
-[Gói C](./CREATIVE-DIRECTION-PACKAGE-C.md).
+và workflow đã hoàn tất. Gói D đã bổ sung observer chỉ đọc cho vòng creative/sample; Gói E đã
+nghiệm thu round-trip, failure/recovery, freshness và browser. Việc tiếp theo là xác định nhu cầu
+nguyên liệu thật trước khi chốt phạm vi Đợt 3; không tự mở provider hay chi phí trả phí.
+Chi tiết tại [Gói B](./CREATIVE-DIRECTION-PACKAGE-B.md),
+[Gói C](./CREATIVE-DIRECTION-PACKAGE-C.md),
+[Gói D](./CREATIVE-DIRECTION-PACKAGE-D.md) và
+[Gói E](./CREATIVE-DIRECTION-PACKAGE-E.md).
 
 ## Triển khai tạm thời
 

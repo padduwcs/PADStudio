@@ -1,7 +1,8 @@
 param(
   [string]$Url = "http://127.0.0.1:7603",
   [string]$ProjectId = "",
-  [string]$Browser = ""
+  [string]$Browser = "",
+  [switch]$Creative
 )
 
 $ErrorActionPreference = "Stop"
@@ -140,6 +141,37 @@ try {
     throw ("Workspace chưa render đầy đủ: " + $initialJson)
   }
 
+  $creativeJson = Evaluate @'
+(async () => {
+  const deadline = Date.now() + 15000;
+  while (!document.querySelector(".creative-workspace") && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  return JSON.stringify({
+    workspace: !!document.querySelector(".creative-workspace"),
+    brief: !!document.querySelector(".creative-brief"),
+    proposal: !!document.querySelector(".creative-proposal"),
+    options: document.querySelectorAll(".creative-option").length,
+    selectedOptions: document.querySelectorAll(".creative-option.is-selected").length,
+    direction: !!document.querySelector(".creative-direction"),
+    sample: !!document.querySelector(".creative-sample"),
+    directionApproved: !!document.querySelector(".creative-direction .creative-approval.is-approved"),
+    renderApproved: !!document.querySelector(".creative-sample .creative-pill.is-approved"),
+    history: !!document.querySelector(".creative-history")
+  });
+})()
+'@
+  $creativeState = $creativeJson | ConvertFrom-Json
+  if ($Creative -and (
+    -not $creativeState.workspace -or -not $creativeState.brief -or -not $creativeState.proposal -or
+    $creativeState.options -lt 2 -or $creativeState.selectedOptions -ne 1 -or
+    -not $creativeState.direction -or -not $creativeState.sample -or
+    -not $creativeState.directionApproved -or -not $creativeState.renderApproved -or
+    -not $creativeState.history
+  )) {
+    throw ("Creative observer chưa render/bind đầy đủ: " + $creativeJson)
+  }
+
   $transcriptJson = Evaluate @'
 (async () => {
   const tab = [...document.querySelectorAll(".source-tab")].find(node => node.textContent === "Transcript");
@@ -211,7 +243,9 @@ try {
 })()
 '@
   $dataset = $datasetJson | ConvertFrom-Json
-  if (-not $dataset.multipleResultSets -or -not $dataset.resultSetSwitch -or -not $dataset.pagination) {
+  if (-not $Creative -and (
+    -not $dataset.multipleResultSets -or -not $dataset.resultSetSwitch -or -not $dataset.pagination
+  )) {
     throw ("Fixture chưa kiểm chứng được nhiều Result set và pagination: " + $datasetJson)
   }
 
@@ -292,6 +326,7 @@ JSON.stringify([...document.querySelectorAll("*")]
     paginatedTranscriptRows = $dataset.rowsAfterPagination
     searchResults = $search.results
     playerPreservedAcrossPolling = [bool]$preserved
+    creative = $creativeState
     viewports = @(390, 768, 1440)
   } | ConvertTo-Json -Depth 5
 } finally {

@@ -1,8 +1,10 @@
 import { renderProduction, clearProduction } from "./production-view.js";
 import { renderSourceAnalysis, clearSourceAnalysis } from "./source-analysis-view.js";
+import { renderCreativeDirection, clearCreativeDirection } from "./creative-direction-view.js";
 
 const elements = {
   production: document.querySelector("#production-view"),
+  creativeDirection: document.querySelector("#creative-direction-view"),
   sourceAnalysis: document.querySelector("#source-analysis-view"),
   title: document.querySelector("#project-title"),
   projectId: document.querySelector("#project-id"),
@@ -45,6 +47,7 @@ function renderProjectList(projects) {
         renderedPreviewKey = null;
         contextRequest?.abort();
         clearSourceAnalysis(elements.sourceAnalysis);
+        clearCreativeDirection(elements.creativeDirection);
         loadProjects().catch((error) => {
           if (error.name !== "AbortError") showError(error);
         });
@@ -689,6 +692,7 @@ function renderRuns(context) {
 
 function renderContext(context) {
   renderProduction(elements.production, context);
+  renderCreativeDirection(elements.creativeDirection, context);
   renderSourceAnalysis(elements.sourceAnalysis, context);
   elements.title.textContent = context.project.title;
   elements.projectId.textContent = context.project.id;
@@ -709,6 +713,7 @@ function renderEmpty() {
   elements.workflow.textContent = "No active workflow yet.";
   elements.artifactList.textContent = "No active understanding artifact yet.";
   elements.reviewList.replaceChildren();
+  clearCreativeDirection(elements.creativeDirection);
   elements.resourceList.textContent = "Chưa có tư liệu.";
   elements.resultList.textContent = "Chưa có kết quả nào.";
   elements.runList.textContent = "Chưa có lần chạy nào.";

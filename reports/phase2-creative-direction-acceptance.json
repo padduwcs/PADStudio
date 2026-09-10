@@ -1,0 +1,147 @@
+{
+  "version": "1.0",
+  "phase": 2,
+  "package": "E",
+  "status": "passed_with_documented_limits",
+  "scope": "practical_owner_machine",
+  "startedAt": "2026-09-10T17:57:40.513Z",
+  "completedAt": "2026-09-10T17:57:57.671Z",
+  "projectId": "phase2-brute-force-pilot",
+  "automatedVerification": {
+    "repositoryTests": {
+      "status": "passed",
+      "tests": 138,
+      "passed": 138,
+      "failed": 0,
+      "durationMs": 12372
+    },
+    "analysisDoctor": {
+      "status": "ready",
+      "practicalDefault": "large-v3-gpu-fp16",
+      "releaseDefault": null,
+      "durationMs": 299
+    },
+    "analysisVerification": {
+      "status": "passed",
+      "resultCount": 6,
+      "staleResults": 0,
+      "searchRows": 22,
+      "durationMs": 108
+    },
+    "browser": {
+      "durationMs": 3994,
+      "status": "passed",
+      "browser": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "url": "http://127.0.0.1:56233/?project=phase2-brute-force-pilot",
+      "sources": 1,
+      "transcriptRows": 22,
+      "multipleResultSets": false,
+      "resultSetSwitch": false,
+      "paginatedTranscriptRows": 0,
+      "searchResults": 1,
+      "playerPreservedAcrossPolling": true,
+      "creative": {
+        "workspace": true,
+        "brief": true,
+        "proposal": true,
+        "options": 3,
+        "selectedOptions": 1,
+        "direction": true,
+        "sample": true,
+        "directionApproved": true,
+        "renderApproved": true,
+        "history": true
+      },
+      "viewports": [
+        390,
+        768,
+        1440
+      ]
+    }
+  },
+  "evidence": {
+    "briefArtifactId": "artifact-mtv19l9s-8422ee80",
+    "proposalArtifactId": "artifact-mtv1bpqh-e8c34781",
+    "directionArtifactId": "artifact-mtv2gjv3-8e1b4682",
+    "selectedOptionId": "keys-first",
+    "sequenceArtifactId": "artifact-mtv3beyw-b7ed21b0",
+    "sequenceRevision": 2,
+    "renderResultId": "result-mtv3bvo3-2508c5de",
+    "reviewId": "review-mtv3joaw-75723312",
+    "approvalDecisionId": "decision-mtv400uy-fa67712a",
+    "reusedSegments": 6,
+    "totalSegments": 7,
+    "pendingApprovals": 0,
+    "trace": [
+      "artifact-mtv19l9s-8422ee80",
+      "artifact-mtv1bpqh-e8c34781",
+      "artifact-mtv2gjv3-8e1b4682",
+      "artifact-mtv3beyw-b7ed21b0",
+      "result-mtv3bvo3-2508c5de"
+    ]
+  },
+  "acceptanceMatrix": [
+    {
+      "id": "project-reopen",
+      "label": "Project state survives reopening",
+      "tests": [
+        "project identity and checkpoint survive reopening without temporary files",
+        "context assembler joins durable intelligence, resume state, and real capabilities"
+      ],
+      "status": "passed",
+      "missingTests": []
+    },
+    {
+      "id": "creative-provenance",
+      "label": "Brief, proposal, direction and approvals have exact provenance",
+      "tests": [
+        "creative artifact contracts reject ambiguous or incomplete content",
+        "brief, proposal and chosen direction keep exact provenance and revisions",
+        "creative provenance rejects missing, mismatched, or unknown basis",
+        "a source-backed direction reopens at the explicit approval boundary"
+      ],
+      "status": "passed",
+      "missingTests": []
+    },
+    {
+      "id": "sample-review-reuse",
+      "label": "Sample rendering, review and selective reuse remain durable",
+      "tests": [
+        "local production renders, reuses unchanged segments, preserves reviews and fails without output on invalid sources",
+        "dependency impact propagates without deleting historical approvals or selecting new work"
+      ],
+      "status": "passed",
+      "missingTests": []
+    },
+    {
+      "id": "failure-recovery",
+      "label": "Interrupted finalization can be recovered without rendering twice",
+      "tests": [
+        "an executor finalization failure preserves sequence media and is recoverable without rendering twice",
+        "executor preserves a durable output when run finalization fails and supports recovery"
+      ],
+      "status": "passed",
+      "missingTests": []
+    },
+    {
+      "id": "observer",
+      "label": "Read-only observer exposes the full creative chain",
+      "tests": [
+        "creative observer maps brief, proposal, direction, sample and exact approval",
+        "creative observer keeps superseded revisions and reports stale dependencies",
+        "creative observer degrades gracefully without creative artifacts",
+        "observer serves the creative direction module as JavaScript",
+        "web server exposes no project mutation or chat endpoint"
+      ],
+      "status": "passed",
+      "missingTests": []
+    }
+  ],
+  "limits": [
+    "Acceptance covers one representative local pilot, not every future project shape.",
+    "Approval applies only to the exact approved render and is never inherited by a newer render.",
+    "Creative listening remains a user playback responsibility in the current Agent host.",
+    "No paid provider or external service was used.",
+    "Phase 1 releaseDefault remains unset and is not silently promoted."
+  ]
+}

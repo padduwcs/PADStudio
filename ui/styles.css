@@ -1161,6 +1161,212 @@ h3 {
   place-items: center;
 }
 
+.creative-workspace {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.creative-status-line,
+.creative-card > header,
+.creative-option-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.creative-status-line {
+  align-items: center;
+  min-width: 0;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: rgba(15, 23, 42, 0.5);
+  color: var(--muted);
+}
+
+.creative-status-line > span:last-child,
+.creative-meta code,
+.creative-history-list code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.creative-card {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid rgba(94, 234, 212, 0.24);
+  border-radius: 0.75rem;
+  background: rgba(31, 41, 55, 0.35);
+}
+
+.creative-card h4,
+.creative-card h5,
+.creative-card p {
+  margin-top: 0;
+}
+
+.creative-card-title h4,
+.creative-option h5 {
+  margin-bottom: 0;
+}
+
+.creative-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  color: var(--muted);
+}
+
+.creative-meta code,
+.creative-history-list code {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.creative-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.creative-pill.is-active {
+  border-color: rgba(94, 234, 212, 0.5);
+  color: var(--accent);
+}
+
+.creative-pill.is-approved {
+  border-color: rgba(110, 231, 183, 0.5);
+  color: #6ee7b7;
+}
+
+.creative-pill.is-warning {
+  border-color: rgba(251, 191, 36, 0.5);
+  color: #fcd34d;
+}
+
+.creative-summary,
+.creative-option > p,
+.creative-list li,
+.creative-sample-state span,
+.creative-render-state span,
+.creative-history-list span {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.creative-facts,
+.creative-list-grid,
+.creative-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+
+.creative-facts > div,
+.creative-list,
+.creative-option,
+.creative-sample-state,
+.creative-render-state,
+.creative-history-list article {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.creative-facts > div,
+.creative-sample-state,
+.creative-render-state,
+.creative-history-list article {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.creative-facts span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.creative-list h5,
+.creative-list ul {
+  margin-bottom: 0;
+}
+
+.creative-list ul {
+  padding-left: 1.15rem;
+}
+
+.creative-list.is-assumption {
+  border-color: rgba(196, 181, 253, 0.35);
+}
+
+.creative-list.is-question,
+.creative-list.is-warning {
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.creative-option.is-selected {
+  border-color: rgba(110, 231, 183, 0.65);
+  background: rgba(6, 78, 59, 0.16);
+}
+
+.creative-hook,
+.creative-selection {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.creative-option details {
+  margin-top: 0.6rem;
+}
+
+.creative-option summary,
+.creative-history > summary {
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.creative-approval {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border-left: 3px solid #fbbf24;
+  background: rgba(120, 53, 15, 0.12);
+}
+
+.creative-approval.is-approved {
+  border-left-color: #6ee7b7;
+  background: rgba(6, 78, 59, 0.14);
+}
+
+.creative-approval span {
+  color: var(--muted);
+}
+
+.creative-history {
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+}
+
+.creative-history-list {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
 @media (max-width: 980px) {
   .source-workspace {
     grid-template-columns: 1fr;
@@ -1179,6 +1385,15 @@ h3 {
 }
 
 @media (max-width: 700px) {
+  .creative-status-line,
+  .creative-card > header {
+    flex-direction: column;
+  }
+
+  .creative-meta {
+    justify-content: flex-start;
+  }
+
   .source-workspace-main {
     padding: 0.7rem;
   }
