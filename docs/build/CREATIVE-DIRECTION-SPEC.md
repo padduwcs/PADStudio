@@ -124,7 +124,7 @@ ngược được, lỗi không tạo Result giả và dependency đổi phải 
 | Gói | Nội dung | Trạng thái |
 | --- | --- | --- |
 | **A. Hợp đồng creative** | Schema strict, revision, provenance, legacy, workflow/skill | **Đã triển khai** |
-| **B. Khởi tạo pilot** | Resource, source synthesis, brief, proposal, active direction chờ duyệt | **Đã hoàn thành tại ranh giới user approval** |
+| **B. Khởi tạo pilot** | Resource, source synthesis, brief, proposal, direction và user approval | **Đã hoàn thành** |
 | **C. Dựng và duyệt mẫu** | Sequence, render, review, decision, sửa cục bộ/reuse | Chưa làm |
 | **D. Quan sát Đợt 2** | Brief/proposal/direction/sample/review trong observer chỉ đọc | Chưa làm |
 | **E. Nghiệm thu** | Round-trip, failure/recovery, browser và báo cáo bằng chứng | Chưa làm |
@@ -154,6 +154,6 @@ Kết quả của một video không được suy diễn thành chất lượng 
 Chưa chốt storyboard schema riêng, timeline nhiều lớp, provider sinh nội dung, scoring model,
 template library, chat tích hợp hay ngân sách trả phí. Chỉ mở khi pilot chứng minh cần thiết.
 
-Việc gần nhất là người dùng duyệt direction hiện hành. Sau approval, bắt đầu **gói C: tạo
-`video.sequence`, render, review và sửa cục bộ mẫu 30–60 giây**. Bằng chứng Gói B nằm tại
+Người dùng đã duyệt hướng `keys-first` với phần kết takeaway-only. Việc gần nhất là bắt đầu
+**gói C: tạo `video.sequence`, render, review và sửa cục bộ mẫu 30–60 giây**. Bằng chứng Gói B nằm tại
 [CREATIVE-DIRECTION-PACKAGE-B.md](./CREATIVE-DIRECTION-PACKAGE-B.md).

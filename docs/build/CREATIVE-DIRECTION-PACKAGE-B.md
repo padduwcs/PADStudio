@@ -1,6 +1,6 @@
 # Đợt 2 — Gói B: khởi tạo pilot và chốt điểm duyệt hướng
 
-Trạng thái: **hoàn thành đến đúng ranh giới phê duyệt của người dùng**. Ngày kiểm tra: **2026-09-10**.
+Trạng thái: **đã hoàn thành, hướng pilot đã được người dùng phê duyệt**. Ngày kiểm tra: **2026-09-10**.
 
 Gói này hiện thực hóa pilot đã chốt trong [đặc tả Đợt 2](./CREATIVE-DIRECTION-SPEC.md).
 Nó không dựng sample; việc đó thuộc Gói C sau khi người dùng duyệt hướng.
@@ -12,8 +12,8 @@ Project local `phase2-brute-force-pilot` đã được tạo trong `.padstudio/p
 - bản sao resource của `vd03_brute_force.mp4`, không tham chiếu raw path trong artifact;
 - một analysis job với đủ probe, scenes, frames, audio, transcript và preview;
 - `project.brief`, `source.understanding`, `creative.proposal` và active `creative.direction`;
-- review proposal và review direction gắn đúng workflow/output revision;
-- workflow hiện hành dừng ở `awaiting_approval` và checkpoint mở lại được.
+- review và quyết định phê duyệt gắn đúng workflow/output revision;
+- workflow phê duyệt đã hoàn tất và checkpoint mở lại ở đầu Gói C.
 
 Project runtime được gitignore theo thiết kế. Báo cáo bằng chứng có thể review nằm tại
 [`package-b-pilot.json`](../../eval/creative-direction/reports/2026-09-10/package-b-pilot.json).
@@ -35,25 +35,28 @@ Project runtime được gitignore theo thiết kế. Báo cáo bằng chứng c
 3. `slow-but-sure` — mở bằng đánh đổi “chậm nhưng nếu duyệt đủ thì chắc chắn đúng”.
 
 Agent khuyến nghị `keys-first` vì cụ thể nhất cho người mới và có cả lời/hình gốc phù hợp.
-Active direction `artifact-mtv1k3wk-51601995` là ứng viên hiện hành, **không phải bằng chứng
-người dùng đã phê duyệt**.
+Người dùng đã chọn phương án này và chọn kết thúc bằng takeaway kiến thức, không dùng CTA.
+Lựa chọn được ghi trong active direction `artifact-mtv2gjv3-8e1b4682` revision 3.
 
-## Điểm tiếp tục
+## Phê duyệt và điểm tiếp tục
 
-Workflow `workflow-mtv1krag-744cc2ee` revision 2 đang chờ người dùng:
+Decision `decision-mtv2i4lg-c0d63afa` ghi nhận phê duyệt rõ ràng của người dùng và được bind tới:
 
-- chọn `keys-first`, `not-guessing` hoặc `slow-but-sure`;
-- chọn kết thúc bằng takeaway kiến thức hay giữ CTA theo dõi.
+- direction revision 3 nêu trên;
+- review `review-mtv2i4hz-a6af8a8c`;
+- workflow `workflow-mtv2i4g2-ce41e255`, đã hoàn tất ở revision 3.
 
-Sau quyết định, hệ thống phải ghi decision có binding tới review/output hiện hành, hoàn tất work
-item rồi mới mở Gói C. Không được tự kế thừa approval từ draft hoặc workflow cũ.
+Không còn pending approval hay active workflow. Checkpoint hiện yêu cầu bắt đầu Gói C bằng
+`video.sequence` khoảng 45 giây, sau đó render, review và sửa cục bộ/reuse.
 
 ## Phục hồi đã kiểm chứng
 
 Trong lần đầu, direction được ghi ở status `draft` và vì thế dependency analyzer đánh dấu
 `not_active_revision`. Hệ thống không xóa hay sửa lịch sử: tạo revision 2 active, abandon workflow
-gắn draft với lý do rõ ràng, tạo workflow approval tối giản và review lại đúng active revision.
-Context cuối không còn affected work item và pending approval trỏ đúng active artifact.
+gắn draft với lý do rõ ràng, rồi tạo workflow approval tối giản và review lại đúng active revision.
+Khi người dùng chốt thêm `takeaway-only`, hệ thống tạo direction revision 3 thay vì sửa revision 2,
+abandon workflow đã bind bản cũ, review lại và chỉ gắn approval vào revision 3. Context cuối không
+còn affected work item, pending approval hoặc active workflow.
 
 ## Cách kiểm tra lại
 

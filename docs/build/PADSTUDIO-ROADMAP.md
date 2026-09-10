@@ -1,6 +1,6 @@
 # PADStudio — lộ trình 6 đợt
 
-Cập nhật: **2026-09-10**. Hiện tại: **đợt 1 đã hoàn thành ở phạm vi sử dụng thực dụng trên máy owner; đợt 2 đang triển khai, gói A và B đã xong, đang chờ duyệt hướng pilot trước gói C**. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt đang triển khai.
+Cập nhật: **2026-09-10**. Hiện tại: **đợt 1 đã hoàn thành ở phạm vi sử dụng thực dụng trên máy owner; đợt 2 đang triển khai, gói A và B đã xong, hướng pilot đã được duyệt và bước tiếp theo là gói C**. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt đang triển khai.
 
 ## 1. Cách dùng lộ trình
 
@@ -46,7 +46,7 @@ Các điều kiện trên là định hướng đầu ra. Trước mỗi đợt 
 
 Bằng chứng và cách chạy lại nằm tại [SOURCE-UNDERSTANDING-PACKAGE-F.md](SOURCE-UNDERSTANDING-PACKAGE-F.md) và [package-f-verification.json](../../eval/source-understanding/reports/2026-09-09/package-f-verification.json). Không được suy diễn trạng thái practical thành các gate §13 chưa đo.
 
-**Đợt 2 đang triển khai — Định hướng sáng tạo và duyệt mẫu.** Gói A đã chốt hợp đồng strict. Gói B đã tạo project micro-lesson thật, chạy đủ sáu operation phân tích, lưu brief/source understanding/proposal ba phương án/active direction và dừng đúng tại user approval. Việc tiếp theo sau khi duyệt hướng là gói C: dựng, review và sửa cục bộ mẫu. Chi tiết tại [đặc tả](CREATIVE-DIRECTION-SPEC.md) và [báo cáo Gói B](CREATIVE-DIRECTION-PACKAGE-B.md).
+**Đợt 2 đang triển khai — Định hướng sáng tạo và duyệt mẫu.** Gói A đã chốt hợp đồng strict. Gói B đã tạo project micro-lesson thật, chạy đủ sáu operation phân tích, lưu brief/source understanding/proposal ba phương án và ghi đúng user approval cho direction `keys-first` + takeaway-only. Việc tiếp theo là gói C: dựng, review và sửa cục bộ mẫu. Chi tiết tại [đặc tả](CREATIVE-DIRECTION-SPEC.md) và [báo cáo Gói B](CREATIVE-DIRECTION-PACKAGE-B.md).
 
 ## 4. Giữ khối lượng vừa đủ ở các đợt sau
 
@@ -63,7 +63,7 @@ Sau mỗi đợt chỉ cần ghi: **đã dùng được gì, còn giới hạn g
 ## 5. Tài liệu để tiếp tục
 
 - [Đặc tả đợt 2](CREATIVE-DIRECTION-SPEC.md): pilot, hợp đồng, workflow, các gói và nghiệm thu định hướng sáng tạo/duyệt mẫu.
-- [Gói B đợt 2](CREATIVE-DIRECTION-PACKAGE-B.md): project pilot thật, bằng chứng nguồn, ba phương án và điểm chờ user approval.
+- [Gói B đợt 2](CREATIVE-DIRECTION-PACKAGE-B.md): project pilot thật, bằng chứng nguồn, ba phương án và user approval gắn đúng revision.
 - [Đặc tả đợt 1](SOURCE-UNDERSTANDING-SPEC.md): phạm vi kỹ thuật, các bước, nghiệm thu và điều chỉnh đã ghi.
 - [Bước 1 — review thực tế](../../eval/source-understanding/PRACTICAL-REVIEW.md), [bước 2 — hợp đồng/vòng đời](SOURCE-UNDERSTANDING-PACKAGE-B.md), [bước 3 — công cụ](SOURCE-UNDERSTANDING-PACKAGE-C.md), [bước 4 — hiểu biết/truy xuất](SOURCE-UNDERSTANDING-PACKAGE-D.md), [bước 5 — workspace observer](SOURCE-UNDERSTANDING-PACKAGE-E.md), [bước 6 — nghiệm thu phân hệ](SOURCE-UNDERSTANDING-PACKAGE-F.md): kết quả và giới hạn đã có.
 - [Báo cáo kiểm chứng bước 3](../../eval/source-understanding/reports/2026-09-09/package-c-verification.json): bằng chứng kiểm tra đã lưu.

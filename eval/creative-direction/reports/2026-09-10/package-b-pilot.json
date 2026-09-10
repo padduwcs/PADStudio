@@ -1,8 +1,8 @@
 {
   "version": "1.0",
   "package": "phase-2-b",
-  "status": "complete_at_user_approval_boundary",
-  "verifiedAt": "2026-09-10T04:41:34.484Z",
+  "status": "completed",
+  "verifiedAt": "2026-09-10T05:10:01.006Z",
   "projectId": "phase2-brute-force-pilot",
   "source": {
     "resourceId": "resource-mtv0pwzc-8cc5c954",
@@ -37,16 +37,20 @@
     "brief": "artifact-mtv19l9s-8422ee80",
     "sourceUnderstanding": "artifact-mtv1ajhl-cd0d1489",
     "proposal": "artifact-mtv1bpqh-e8c34781",
-    "activeDirection": "artifact-mtv1k3wk-51601995",
-    "activeDirectionRevision": 2,
-    "recommendedOptionId": "keys-first"
+    "activeDirection": "artifact-mtv2gjv3-8e1b4682",
+    "activeDirectionRevision": 3,
+    "recommendedOptionId": "keys-first",
+    "approvedOptionId": "keys-first",
+    "ending": "takeaway_only"
   },
   "workflow": {
-    "id": "workflow-mtv1krag-744cc2ee",
-    "revision": 2,
+    "id": "workflow-mtv2i4g2-ce41e255",
+    "revision": 3,
     "workItemId": "approve-direction",
-    "workItemStatus": "awaiting_approval",
-    "pendingApproval": true
+    "workItemStatus": "completed",
+    "pendingApproval": false,
+    "reviewId": "review-mtv2i4hz-a6af8a8c",
+    "decisionId": "decision-mtv2i4lg-c0d63afa"
   },
   "checks": {
     "resourceImported": true,
@@ -57,7 +61,9 @@
     "contextReopened": true,
     "checkpointCurrent": true,
     "noPaidServiceUsed": true,
-    "userApprovalRecorded": false
+    "userApprovalRecorded": true,
+    "approvalBoundToActiveDirection": true,
+    "noActiveWorkflowAfterReopen": true
   },
   "limitations": [
     "Raw ASR may contain minor spelling errors and requires subtitle review.",

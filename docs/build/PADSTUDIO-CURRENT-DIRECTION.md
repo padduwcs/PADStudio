@@ -253,9 +253,9 @@ corpus holdout, ngưỡng ASR/scene, nguồn 2 giờ/4K/VFR/offset và benchmark
 provenance/revision và tách bước đề xuất khỏi bước người dùng chọn trong workflow mẫu.
 
 Gói B đã khởi tạo pilot thật, tạo sáu Result analysis verified, brief, source understanding,
-ba phương án và active direction khuyến nghị `keys-first`. Workflow đang dừng tại user approval;
-khuyến nghị của Agent chưa được coi là quyết định của người dùng. Sau approval mới triển khai
-Gói C để dựng/review/sửa mẫu bằng renderer hiện có. Chi tiết tại
+ba phương án và active direction `keys-first`. Người dùng đã phê duyệt hướng chùm chìa khóa với
+phần kết takeaway-only; decision được bind đúng direction revision 3 và workflow đã hoàn tất.
+Việc tiếp theo là Gói C: dựng/review/sửa mẫu bằng renderer hiện có. Chi tiết tại
 [CREATIVE-DIRECTION-PACKAGE-B.md](./CREATIVE-DIRECTION-PACKAGE-B.md).
 
 ## Triển khai tạm thời
