@@ -41,6 +41,42 @@ function workItem(overrides = {}) {
   };
 }
 
+function briefData(purpose = "Make a short, useful video.") {
+  return {
+    version: "1.0",
+    purpose,
+    audience: "People who need a clear introduction.",
+    desiredOutcome: "The viewer understands the main idea and can decide what to do next.",
+    constraints: [],
+    knownFacts: [],
+    assumptions: [],
+    openQuestions: [],
+  };
+}
+
+function directionData(briefArtifactId, principle = "Keep the explanation clear and grounded.") {
+  return {
+    version: "1.0",
+    basis: { kind: "direct", briefArtifactId },
+    selectionReason: "The user chose this direction directly from the brief.",
+    principles: [principle],
+    avoidances: ["Do not add decoration that competes with the explanation."],
+    reviewCriteria: ["The result serves the brief."],
+    sample: null,
+  };
+}
+
+async function supportingBrief(store, key = "supporting-brief") {
+  return store.recordArtifact("demo", {
+    key,
+    type: "project.brief",
+    name: "Supporting brief",
+    summary: "Grounds the creative direction used by this test.",
+    data: briefData(),
+    references: [],
+  });
+}
+
 test("artifacts are immutable revisions with traceable active state", async (t) => {
   const { rootDir, store } = await fixture(t);
   const brief = await store.recordArtifact("demo", {
@@ -48,7 +84,7 @@ test("artifacts are immutable revisions with traceable active state", async (t) 
     type: "project.brief",
     name: "Project brief",
     summary: "A concise first brief.",
-    data: { purpose: "Make a short launch film." },
+    data: briefData("Make a short launch film."),
     references: [],
     status: "active",
     createdBy: "agent"
@@ -58,10 +94,11 @@ test("artifacts are immutable revisions with traceable active state", async (t) 
     type: "project.brief",
     name: "Project brief",
     summary: "A proposed revision.",
-    data: { purpose: "Make a warmer launch film." },
+    data: briefData("Make a warmer launch film."),
     references: [{ kind: "artifact", id: brief.id }],
     status: "draft",
-    createdBy: "agent"
+    createdBy: "agent",
+    expectedRevision: brief.revision,
   });
 
   assert.equal(draft.revision, 2);
@@ -75,7 +112,7 @@ test("artifacts are immutable revisions with traceable active state", async (t) 
       type: "project.brief",
       name: "Bad",
       summary: "Broken provenance.",
-      data: {},
+      data: briefData(),
       references: [{ kind: "result", id: "missing-result" }]
     }),
     IntelligenceValidationError
@@ -84,6 +121,7 @@ test("artifacts are immutable revisions with traceable active state", async (t) 
 
 test("adaptive workflow preserves revisions and rejects cycles or premature progress", async (t) => {
   const { store } = await fixture(t);
+  const brief = await supportingBrief(store);
   const workflow = await store.writeWorkflow("demo", {
     name: "Creative choice",
     purpose: "Choose a direction before production.",
@@ -95,8 +133,8 @@ test("adaptive workflow preserves revisions and rejects cycles or premature prog
     type: "creative.direction",
     name: "Direction",
     summary: "Direction output ready for review.",
-    data: {},
-    references: [],
+    data: directionData(brief.id),
+    references: [{ kind: "artifact", id: brief.id }],
     status: "active",
     createdBy: "agent"
   });
@@ -181,13 +219,14 @@ test("adaptive workflow preserves revisions and rejects cycles or premature prog
 
 test("review and user approval are hard gates while decisions retain rationale", async (t) => {
   const { rootDir, store } = await fixture(t);
+  const brief = await supportingBrief(store);
   const direction = await store.recordArtifact("demo", {
     key: "selected-direction",
     type: "creative.direction",
     name: "Selected direction",
     summary: "The direction that is ready for review.",
-    data: {},
-    references: [],
+    data: directionData(brief.id),
+    references: [{ kind: "artifact", id: brief.id }],
     status: "active",
     createdBy: "agent"
   });
@@ -324,6 +363,7 @@ test("review and user approval are hard gates while decisions retain rationale",
 
 test("review and approval are bound to the current work item outputs", async (t) => {
   const { store } = await fixture(t);
+  const brief = await supportingBrief(store);
   const workflow = await store.writeWorkflow("demo", {
     name: "Bound gate",
     purpose: "Prevent stale review and approval reuse.",
@@ -365,14 +405,16 @@ test("review and approval are bound to the current work item outputs", async (t)
     type: "creative.direction",
     name: "First direction",
     summary: "First reviewable output.",
-    data: {}, references: [], status: "active", createdBy: "agent"
+    data: directionData(brief.id, "Make the first direction specific."),
+    references: [{ kind: "artifact", id: brief.id }], status: "active", createdBy: "agent"
   });
   const secondOutput = await store.recordArtifact("demo", {
     key: "second-direction",
     type: "creative.direction",
     name: "Second direction",
     summary: "A different, unreviewed output.",
-    data: {}, references: [], status: "active", createdBy: "agent"
+    data: directionData(brief.id, "Make the second direction meaningfully different."),
+    references: [{ kind: "artifact", id: brief.id }], status: "active", createdBy: "agent"
   });
   const awaitingReview = await store.writeWorkflow("demo", {
     id: workflow.id,
@@ -580,7 +622,7 @@ test("context reports stale checkpoints and refreshes capability availability af
     type: "project.brief",
     name: "New understanding",
     summary: "This was recorded after the checkpoint.",
-    data: {}, references: [], status: "active", createdBy: "agent"
+    data: briefData(), references: [], status: "active", createdBy: "agent"
   });
 
   let clock = 0;

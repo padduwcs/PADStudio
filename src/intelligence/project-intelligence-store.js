@@ -23,6 +23,11 @@ import {
   normalizeSourceArtifactData,
   validateSourceArtifactAgainstProject
 } from "./source-artifacts.js";
+import {
+  CREATIVE_ARTIFACT_TYPES,
+  normalizeCreativeArtifactData,
+  validateCreativeArtifactReferences,
+} from "./creative-artifacts.js";
 
 const VERSION = "1.0";
 
@@ -111,9 +116,12 @@ export class ProjectIntelligenceStore {
     }
     if (!isPlainObject(value.data)) throw new IntelligenceValidationError("artifact.data must be an object.");
     const sourceData = normalizeSourceArtifactData(type, value.data);
+    const creativeData = normalizeCreativeArtifactData(type, value.data, {
+      allowLegacy: status === "retired",
+    });
     const data = type === SEQUENCE_TYPE
       ? normalizeSequence(value.data)
-      : sourceData ?? structuredClone(value.data);
+      : sourceData ?? creativeData ?? structuredClone(value.data);
     const references = normalizeReferences(value.references);
     if (type === SEQUENCE_TYPE) {
       // Keep local dependencies inside their segment, not in the global reference list.
@@ -138,11 +146,22 @@ export class ProjectIntelligenceStore {
       });
     }
     await this.#assertReferences(projectId, references);
+    if (CREATIVE_ARTIFACT_TYPES.has(type) && !(status === "retired" && value.data.version === undefined)) {
+      await validateCreativeArtifactReferences({
+        type,
+        data,
+        references,
+        artifacts: await this.readArtifacts(projectId),
+      });
+    }
     const previous = (await this.readArtifacts(projectId))
       .filter((artifact) => artifact.key === key)
       .sort((a, b) => a.revision - b.revision)
       .at(-1);
-    if ((previous && (type === SEQUENCE_TYPE || SOURCE_ARTIFACT_TYPES.has(type))) || value.expectedRevision !== undefined) {
+    if (
+      (previous && (type === SEQUENCE_TYPE || SOURCE_ARTIFACT_TYPES.has(type) || CREATIVE_ARTIFACT_TYPES.has(type))) ||
+      value.expectedRevision !== undefined
+    ) {
       if (!Number.isInteger(value.expectedRevision) || value.expectedRevision !== (previous?.revision ?? 0)) {
         throw new IntelligenceValidationError("Artifact revision conflict: reread the latest revision before writing.");
       }
@@ -434,6 +453,9 @@ export class ProjectIntelligenceStore {
     normalizeReferences(value.references);
     if (value.type === SEQUENCE_TYPE) normalizeSequence(value.data);
     if (SOURCE_ARTIFACT_TYPES.has(value.type)) normalizeSourceArtifactData(value.type, value.data);
+    if (CREATIVE_ARTIFACT_TYPES.has(value.type)) {
+      normalizeCreativeArtifactData(value.type, value.data, { allowLegacy: true });
+    }
     return value;
   }
 

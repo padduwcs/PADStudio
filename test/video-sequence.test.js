@@ -17,6 +17,22 @@ import { createPadStudioServer } from "../src/web/server.js";
 const exec = promisify(execFile);
 const segment = (id, visual = null, rest = {}) => ({ id, title: id, intent: "Show the subject clearly", durationSeconds: 1, visual, ...rest });
 const sequence = (segments, changeReason = "Initial proposal") => ({ version: "1.0", changeReason, format: { width: 320, height: 180, fps: 25 }, segments });
+const briefData = (purpose) => ({
+  version: "1.0",
+  purpose,
+  audience: "People learning the subject.",
+  desiredOutcome: "The viewer understands the intended point.",
+  constraints: [], knownFacts: [], assumptions: [], openQuestions: [],
+});
+const directionData = (briefArtifactId, principle) => ({
+  version: "1.0",
+  basis: { kind: "direct", briefArtifactId },
+  selectionReason: "The direction is set directly for this production test.",
+  principles: [principle],
+  avoidances: [],
+  reviewCriteria: ["The rendered segment serves its stated intent."],
+  sample: null,
+});
 async function fixture(t, projectFolder = "projects") {
   const workspace = await mkdtemp(join(tmpdir(), "padstudio-sequence-"));
   t.after(() => rm(workspace, { recursive: true, force: true }));
@@ -46,12 +62,15 @@ test("sequence supports unresolved ideas, validates timing and rejects raw media
 
 test("dependency impact propagates without deleting historical approvals or selecting new work", async (t) => {
   const { store, save, rootDir } = await fixture(t);
-  const brief = (message) => store.recordArtifact("demo", { key: "brief", type: "project.brief", name: "Brief", summary: message, data: { message } });
+  const brief = (message, expectedRevision) => store.recordArtifact("demo", {
+    key: "brief", type: "project.brief", name: "Brief", summary: message,
+    data: briefData(message), ...(expectedRevision ? { expectedRevision } : {}),
+  });
   const a = await brief("A");
   const film = await save(sequence([segment("opening", null, { references: [{ kind: "artifact", id: a.id }] })]));
   await store.recordReview("demo", { target: { kind: "artifact", id: film.id }, verdict: "passed", summary: "Approved planning shape",
     criteria: [{ id: "intent", criterion: "intent", status: "passed", evidence: "Opening serves brief A." }] });
-  await brief("B");
+  await brief("B", a.revision);
   const reopened = await new ProjectContextAssembler({ projectStore: new ProjectStore(rootDir) }).build("demo");
   assert.equal(reopened.production.sequences[0].active, true);
   assert.equal(reopened.production.sequences[0].reasons[0].reason, "not_active_revision");
@@ -91,8 +110,13 @@ test("local production renders, reuses unchanged segments, preserves reviews and
   const imported = await importProjectInput({ rootDir, projectId: "demo", sourcePath: inputPath });
   const source = { kind: "resource", id: imported.resourceId };
   const executor = new ToolExecutor({ store, registry: createDefaultToolRegistry() });
+  const brief = await store.recordArtifact("demo", {
+    key: "production-brief", type: "project.brief", name: "Production brief",
+    summary: "Ground the local production direction.", data: briefData("Render a small local production."),
+  });
   const direction = await store.recordArtifact("demo", {
-    key: "b-direction", type: "creative.direction", name: "B direction", summary: "First version", data: { mood: "calm" },
+    key: "b-direction", type: "creative.direction", name: "B direction", summary: "First version",
+    data: directionData(brief.id, "Keep the mood calm."), references: [{ kind: "artifact", id: brief.id }],
   });
   const first = await save(sequence([segment("a", { source }), segment("b", { source }, { references: [{ kind: "artifact", id: direction.id }] })]));
   const firstRun = await executor.execute("demo", { capability: "video.render-sequence", tool: "ffmpeg-sequence", purpose: "Render first cut", inputs: { artifactId: first.id } });
@@ -103,7 +127,9 @@ test("local production renders, reuses unchanged segments, preserves reviews and
   assert.ok(r1.data.segments.every((s) => s.reusedFrom === null));
   await store.recordDecision("demo", { resultId: r1.id, outcome: "accepted", note: "User accepted this exact version." });
   const changedDirection = await store.recordArtifact("demo", {
-    key: "b-direction", type: "creative.direction", name: "B direction", summary: "Second version", data: { mood: "precise" },
+    key: "b-direction", type: "creative.direction", name: "B direction", summary: "Second version",
+    data: directionData(brief.id, "Make the explanation precise."), references: [{ kind: "artifact", id: brief.id }],
+    expectedRevision: direction.revision,
   });
   const nextData = sequence([segment("a", { source }), segment("b", { source }, {
     references: [{ kind: "artifact", id: changedDirection.id }],

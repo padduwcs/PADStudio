@@ -32,11 +32,24 @@
       "approval": "auto"
     },
     {
-      "id": "choose-direction",
-      "title": "Choose creative direction",
-      "purpose": "Explore meaningful options and commit to a direction before production.",
+      "id": "develop-proposals",
+      "title": "Develop creative proposals",
+      "purpose": "Compare meaningfully different source-backed options before committing.",
       "status": "planned",
       "dependsOn": ["understand-sources"],
+      "skillIds": ["creative-direction"],
+      "inputReferences": [],
+      "expectedOutputs": [{ "kind": "artifact", "type": "creative.proposal", "description": "Comparable creative options with a recommendation." }],
+      "outputReferences": [],
+      "review": { "required": true, "perspective": "creative", "criteria": ["options are meaningfully different", "claims and constraints are source-backed"] },
+      "approval": "auto"
+    },
+    {
+      "id": "choose-direction",
+      "title": "Choose creative direction",
+      "purpose": "Record the chosen option as durable principles and criteria before production.",
+      "status": "planned",
+      "dependsOn": ["develop-proposals"],
       "skillIds": ["creative-direction"],
       "inputReferences": [],
       "expectedOutputs": [{ "kind": "artifact", "type": "creative.direction", "description": "Approved creative direction." }],

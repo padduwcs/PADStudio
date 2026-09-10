@@ -247,10 +247,14 @@ corpus holdout, ngưỡng ASR/scene, nguồn 2 giờ/4K/VFR/offset và benchmark
 
 ## Ưu tiên tiếp theo
 
-Chuẩn bị đợt 2 — định hướng sáng tạo và duyệt mẫu. Chọn một loại video/project mục tiêu rồi dùng
-brief, bằng chứng nguồn, artifact/workflow/review/decision và renderer đã có để đi trọn vòng đề
-xuất hướng → người dùng chọn → làm mẫu → review → sửa/tiếp tục. Chỉ thêm công cụ tạo nguyên liệu
-hoặc thay contract khi project mục tiêu chứng minh phần hiện tại không đủ.
+Đợt 2 — định hướng sáng tạo và duyệt mẫu — đang triển khai theo
+[đặc tả](./CREATIVE-DIRECTION-SPEC.md). Pilot là micro-lesson dọc 30–60 giây từ video bài giảng
+được cung cấp. Gói A đã chốt hợp đồng `project.brief`, `creative.proposal`, `creative.direction`,
+provenance/revision và tách bước đề xuất khỏi bước người dùng chọn trong workflow mẫu.
+
+Việc tiếp theo là khởi tạo pilot thật, dùng brief và bằng chứng nguồn để tạo các phương án rồi
+ghi đúng hướng được duyệt. Sau đó mới dựng/review/sửa mẫu bằng renderer hiện có. Chỉ thêm công cụ
+tạo nguyên liệu hoặc thay contract khi pilot chứng minh phần hiện tại không đủ.
 
 ## Triển khai tạm thời
 

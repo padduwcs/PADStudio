@@ -1,6 +1,6 @@
 # PADStudio — lộ trình 6 đợt
 
-Cập nhật: **2026-09-09**. Hiện tại: **đợt 1 đã hoàn thành ở phạm vi sử dụng thực dụng trên máy owner; chuẩn bị đợt 2**. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt chuẩn bị triển khai.
+Cập nhật: **2026-09-10**. Hiện tại: **đợt 1 đã hoàn thành ở phạm vi sử dụng thực dụng trên máy owner; đợt 2 đang triển khai, đã xong gói A — hợp đồng creative**. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt đang triển khai.
 
 ## 1. Cách dùng lộ trình
 
@@ -46,7 +46,7 @@ Các điều kiện trên là định hướng đầu ra. Trước mỗi đợt 
 
 Bằng chứng và cách chạy lại nằm tại [SOURCE-UNDERSTANDING-PACKAGE-F.md](SOURCE-UNDERSTANDING-PACKAGE-F.md) và [package-f-verification.json](../../eval/source-understanding/reports/2026-09-09/package-f-verification.json). Không được suy diễn trạng thái practical thành các gate §13 chưa đo.
 
-**Việc tiếp theo: chuẩn bị đợt 2 — Định hướng sáng tạo và duyệt mẫu.** Trước khi chi tiết hóa, chọn một loại video/project mục tiêu và trả lời sáu câu hỏi triển khai trong build outline. Tận dụng artifact/workflow/review/decision, tư liệu đã hiểu và renderer hiện có; chỉ phụ thuộc đợt 3 nếu mẫu thật sự cần nguyên liệu chưa có.
+**Đợt 2 đang triển khai — Định hướng sáng tạo và duyệt mẫu.** Pilot đã chốt là micro-lesson dọc 30–60 giây từ video bài giảng được cung cấp. Gói A đã bổ sung hợp đồng strict cho brief/proposal/direction, provenance, revision và workflow đề xuất trước khi chọn. Việc tiếp theo là gói B: khởi tạo pilot và tạo bộ brief → proposal → direction thật để duyệt. Chi tiết tại [CREATIVE-DIRECTION-SPEC.md](CREATIVE-DIRECTION-SPEC.md).
 
 ## 4. Giữ khối lượng vừa đủ ở các đợt sau
 
@@ -62,6 +62,7 @@ Sau mỗi đợt chỉ cần ghi: **đã dùng được gì, còn giới hạn g
 
 ## 5. Tài liệu để tiếp tục
 
+- [Đặc tả đợt 2](CREATIVE-DIRECTION-SPEC.md): pilot, hợp đồng, workflow, các gói và nghiệm thu định hướng sáng tạo/duyệt mẫu.
 - [Đặc tả đợt 1](SOURCE-UNDERSTANDING-SPEC.md): phạm vi kỹ thuật, các bước, nghiệm thu và điều chỉnh đã ghi.
 - [Bước 1 — review thực tế](../../eval/source-understanding/PRACTICAL-REVIEW.md), [bước 2 — hợp đồng/vòng đời](SOURCE-UNDERSTANDING-PACKAGE-B.md), [bước 3 — công cụ](SOURCE-UNDERSTANDING-PACKAGE-C.md), [bước 4 — hiểu biết/truy xuất](SOURCE-UNDERSTANDING-PACKAGE-D.md), [bước 5 — workspace observer](SOURCE-UNDERSTANDING-PACKAGE-E.md), [bước 6 — nghiệm thu phân hệ](SOURCE-UNDERSTANDING-PACKAGE-F.md): kết quả và giới hạn đã có.
 - [Báo cáo kiểm chứng bước 3](../../eval/source-understanding/reports/2026-09-09/package-c-verification.json): bằng chứng kiểm tra đã lưu.
