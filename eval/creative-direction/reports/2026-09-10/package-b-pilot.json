@@ -1,0 +1,67 @@
+{
+  "version": "1.0",
+  "package": "phase-2-b",
+  "status": "complete_at_user_approval_boundary",
+  "verifiedAt": "2026-09-10T04:41:34.484Z",
+  "projectId": "phase2-brute-force-pilot",
+  "source": {
+    "resourceId": "resource-mtv0pwzc-8cc5c954",
+    "sourceKey": "79962d0a57e862e3a61a28fb00c2153bae0f047e656b26ee5bd663e29f0ef63b",
+    "sourceVersion": "25d01a85ac7603a65b56e639b8ba0d4e9302e775bb50886f933b96fc5e38fb99",
+    "durationSeconds": 85.589002,
+    "width": 1080,
+    "height": 1920
+  },
+  "analysis": {
+    "jobId": "analysis-mtv0yw1a-3c8b2329",
+    "state": "completed",
+    "unitCounts": { "succeeded": 6 },
+    "actualCostUsd": 0,
+    "resultIds": {
+      "probe": "result-mtv0ywnm-915d17df",
+      "scenes": "result-mtv0z3ii-53d73b4f",
+      "frames": "result-mtv0z5en-c58e3c00",
+      "audio": "result-mtv0z5rn-c165514a",
+      "transcript": "result-mtv0zil6-d97dc9b1",
+      "preview": "result-mtv0zlt1-3de6fc4d"
+    },
+    "freshness": "verified_current",
+    "transcriptSegments": 22,
+    "transcriptWords": 281,
+    "sceneCandidates": 2,
+    "frames": 7,
+    "integratedLufs": -16.7,
+    "clippingCandidates": 0
+  },
+  "artifacts": {
+    "brief": "artifact-mtv19l9s-8422ee80",
+    "sourceUnderstanding": "artifact-mtv1ajhl-cd0d1489",
+    "proposal": "artifact-mtv1bpqh-e8c34781",
+    "activeDirection": "artifact-mtv1k3wk-51601995",
+    "activeDirectionRevision": 2,
+    "recommendedOptionId": "keys-first"
+  },
+  "workflow": {
+    "id": "workflow-mtv1krag-744cc2ee",
+    "revision": 2,
+    "workItemId": "approve-direction",
+    "workItemStatus": "awaiting_approval",
+    "pendingApproval": true
+  },
+  "checks": {
+    "resourceImported": true,
+    "allAnalysisUnitsSucceeded": true,
+    "allAnalysisResultsVerifiedCurrent": true,
+    "creativeProvenanceValid": true,
+    "reviewBoundToActiveDirection": true,
+    "contextReopened": true,
+    "checkpointCurrent": true,
+    "noPaidServiceUsed": true,
+    "userApprovalRecorded": false
+  },
+  "limitations": [
+    "Raw ASR may contain minor spelling errors and requires subtitle review.",
+    "Some source typography is small for phone viewing.",
+    "Probe decoding was sampled rather than full-file certification."
+  ]
+}

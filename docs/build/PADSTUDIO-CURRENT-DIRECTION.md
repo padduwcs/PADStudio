@@ -252,9 +252,11 @@ corpus holdout, ngưỡng ASR/scene, nguồn 2 giờ/4K/VFR/offset và benchmark
 được cung cấp. Gói A đã chốt hợp đồng `project.brief`, `creative.proposal`, `creative.direction`,
 provenance/revision và tách bước đề xuất khỏi bước người dùng chọn trong workflow mẫu.
 
-Việc tiếp theo là khởi tạo pilot thật, dùng brief và bằng chứng nguồn để tạo các phương án rồi
-ghi đúng hướng được duyệt. Sau đó mới dựng/review/sửa mẫu bằng renderer hiện có. Chỉ thêm công cụ
-tạo nguyên liệu hoặc thay contract khi pilot chứng minh phần hiện tại không đủ.
+Gói B đã khởi tạo pilot thật, tạo sáu Result analysis verified, brief, source understanding,
+ba phương án và active direction khuyến nghị `keys-first`. Workflow đang dừng tại user approval;
+khuyến nghị của Agent chưa được coi là quyết định của người dùng. Sau approval mới triển khai
+Gói C để dựng/review/sửa mẫu bằng renderer hiện có. Chi tiết tại
+[CREATIVE-DIRECTION-PACKAGE-B.md](./CREATIVE-DIRECTION-PACKAGE-B.md).
 
 ## Triển khai tạm thời
 

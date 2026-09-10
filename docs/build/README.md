@@ -19,6 +19,8 @@ Phần cấu trúc video, bản dựng có phiên bản và vòng sửa cục b�
 Đặc tả đang triển khai cho đợt 2 — định hướng sáng tạo và duyệt mẫu:
 [CREATIVE-DIRECTION-SPEC.md](CREATIVE-DIRECTION-SPEC.md). Gói A đã hoàn thành hợp đồng strict cho brief, proposal và direction; các gói pilot, dựng mẫu, observer và nghiệm thu được theo dõi trong tài liệu này.
 
+Trạng thái pilot Đợt 2: [Gói B — khởi tạo pilot và điểm duyệt hướng](CREATIVE-DIRECTION-PACKAGE-B.md).
+
 Trạng thái triển khai Source Understanding:
 [gói B — hợp đồng và vòng đời](SOURCE-UNDERSTANDING-PACKAGE-B.md);
 [gói C — sáu adapter production](SOURCE-UNDERSTANDING-PACKAGE-C.md);

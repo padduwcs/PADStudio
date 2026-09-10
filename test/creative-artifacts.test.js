@@ -244,3 +244,61 @@ test("legacy creative artifacts remain readable and can be retired", async (t) =
   assert.equal(retired.status, "retired");
   assert.deepEqual(await store.intelligence.readActiveArtifacts("demo"), []);
 });
+
+test("a source-backed direction reopens at the explicit approval boundary", async (t) => {
+  const { rootDir, store } = await fixture(t);
+  const brief = await store.recordArtifact("demo", {
+    key: "brief", type: "project.brief", name: "Pilot brief",
+    summary: "Brief for the pilot.", data: briefData(), references: [],
+  });
+  const understanding = await store.recordArtifact("demo", {
+    key: "understanding", type: "source.understanding", name: "Source understanding",
+    summary: "Evidence-backed source synthesis.", data: { version: "1.0", summary: "Usable source." },
+    references: [],
+  });
+  const proposal = await store.recordArtifact("demo", {
+    key: "proposal", type: "creative.proposal", name: "Pilot proposal",
+    summary: "Comparable directions.", data: proposalData(),
+    references: [{ kind: "artifact", id: brief.id }, { kind: "artifact", id: understanding.id }],
+  });
+  const direction = await store.recordArtifact("demo", {
+    key: "direction", type: "creative.direction", name: "Direction candidate",
+    summary: "Current candidate, not yet user-approved.", data: directionData(proposal.id),
+    references: [{ kind: "artifact", id: proposal.id }, { kind: "artifact", id: understanding.id }],
+  });
+  const item = {
+    id: "approve-direction", title: "Approve direction", purpose: "Bind explicit approval.",
+    status: "awaiting_review", dependsOn: [], skillIds: [],
+    inputReferences: [{ kind: "artifact", id: brief.id }, { kind: "artifact", id: proposal.id }],
+    expectedOutputs: [{ kind: "artifact", type: "creative.direction", description: "Direction candidate." }],
+    outputReferences: [{ kind: "artifact", id: direction.id }],
+    review: { required: true, perspective: "creative", criteria: ["serves the brief"] },
+    approval: "required",
+  };
+  const workflow = await store.writeWorkflow("demo", {
+    name: "Pilot approval", purpose: "Stop at the user approval boundary.", status: "active",
+    items: [item], metadata: { phase: "2", package: "B" },
+  });
+  await store.recordReview("demo", {
+    target: { kind: "work_item", workflowId: workflow.id, workItemId: item.id },
+    perspective: "creative", verdict: "passed", summary: "Ready for user choice.",
+    criteria: [{ id: "brief", criterion: "serves the brief", status: "passed", evidence: "The direction traces to the brief." }],
+  });
+  const awaitingApproval = await store.writeWorkflow("demo", {
+    id: workflow.id, name: workflow.name, purpose: workflow.purpose, status: "active",
+    changeReason: "Review passed; wait for explicit user approval.",
+    items: [{ ...item, status: "awaiting_approval" }], metadata: workflow.metadata,
+  });
+  await store.writeCheckpoint("demo", {
+    goal: "Approve the pilot direction.", selectedResources: [],
+    pending: ["Explicit user approval"], next: "Approve or revise the direction.",
+    activeWorkflowId: workflow.id, activeWorkItemId: item.id,
+    activeArtifacts: [brief.id, understanding.id, proposal.id, direction.id],
+  });
+
+  const reopened = await new ProjectStore(rootDir).readContext("demo");
+  assert.equal(reopened.intelligence.activeWorkflow.revision, awaitingApproval.revision);
+  assert.equal(reopened.intelligence.pendingApprovals[0].id, "approve-direction");
+  assert.equal(reopened.intelligence.activeArtifacts.find((entry) => entry.type === "creative.direction").id, direction.id);
+  assert.equal(reopened.checkpoint.activeWorkItemId, "approve-direction");
+});
