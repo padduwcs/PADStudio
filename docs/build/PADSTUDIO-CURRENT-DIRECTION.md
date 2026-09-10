@@ -252,11 +252,12 @@ corpus holdout, ngưỡng ASR/scene, nguồn 2 giờ/4K/VFR/offset và benchmark
 được cung cấp. Gói A đã chốt hợp đồng `project.brief`, `creative.proposal`, `creative.direction`,
 provenance/revision và tách bước đề xuất khỏi bước người dùng chọn trong workflow mẫu.
 
-Gói B đã khởi tạo pilot thật, tạo sáu Result analysis verified, brief, source understanding,
-ba phương án và active direction `keys-first`. Người dùng đã phê duyệt hướng chùm chìa khóa với
-phần kết takeaway-only; decision được bind đúng direction revision 3 và workflow đã hoàn tất.
-Việc tiếp theo là Gói C: dựng/review/sửa mẫu bằng renderer hiện có. Chi tiết tại
-[CREATIVE-DIRECTION-PACKAGE-B.md](./CREATIVE-DIRECTION-PACKAGE-B.md).
+Gói B đã khởi tạo pilot thật và chốt direction `keys-first` + takeaway-only. Gói C đã tạo
+`video.sequence` 7 đoạn, render mẫu r1, review và sửa cục bộ nhịp nối thành r2; renderer reuse
+6/7 đoạn. Người dùng đã duyệt exact r2 dài 47,421 giây; decision bind đúng final Result/review
+và workflow đã hoàn tất. Việc tiếp theo là Gói D: observer chỉ đọc cho vòng creative/sample.
+Chi tiết tại [Gói B](./CREATIVE-DIRECTION-PACKAGE-B.md) và
+[Gói C](./CREATIVE-DIRECTION-PACKAGE-C.md).
 
 ## Triển khai tạm thời
 

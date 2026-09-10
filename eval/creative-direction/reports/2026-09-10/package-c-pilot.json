@@ -1,0 +1,89 @@
+{
+  "version": "1.0",
+  "package": "phase-2-c",
+  "status": "completed",
+  "verifiedAt": "2026-09-10T05:51:50.869Z",
+  "projectId": "phase2-brute-force-pilot",
+  "direction": {
+    "artifactId": "artifact-mtv2gjv3-8e1b4682",
+    "revision": 3,
+    "optionId": "keys-first",
+    "ending": "takeaway_only"
+  },
+  "sequence": {
+    "key": "brute-force-sample",
+    "initialArtifactId": "artifact-mtv36sf1-527434e8",
+    "initialRevision": 1,
+    "activeArtifactId": "artifact-mtv3beyw-b7ed21b0",
+    "activeRevision": 2,
+    "segmentCount": 7,
+    "plannedDurationSeconds": 47.4,
+    "localChange": {
+      "segmentId": "algorithm-bridge",
+      "change": "Added a readable caption linking keys to candidate possibilities.",
+      "unchangedSegments": 6
+    }
+  },
+  "renders": {
+    "revision1": {
+      "runId": "run-mtv378vg-cf2a15a3",
+      "resultId": "result-mtv37cli-f93956b7",
+      "reviewId": "review-mtv3bevl-6792b964",
+      "reviewVerdict": "revise"
+    },
+    "revision2": {
+      "runId": "run-mtv3bu4k-7cbe2621",
+      "resultId": "result-mtv3bvo3-2508c5de",
+      "reviewId": "review-mtv3joaw-75723312",
+      "reviewVerdict": "passed_with_notes",
+      "durationSeconds": 47.421333,
+      "width": 1080,
+      "height": 1920,
+      "fps": 30,
+      "videoCodec": "h264",
+      "audioCodec": "aac",
+      "audioChannels": 2,
+      "audioSampleRate": 48000,
+      "integratedLufs": -16.6,
+      "truePeakDbfs": -2.8,
+      "sha256": "dd2a8c560cb06e6678f5f93b0c90cbad7a75dc1ab1e9e9abac115cd4967c2212",
+      "reusedSegments": 6,
+      "rebuiltSegments": 1,
+      "rebuiltSegmentIds": ["algorithm-bridge"],
+      "actualCostUsd": 0
+    }
+  },
+  "approval": {
+    "decisionId": "decision-mtv400uy-fa67712a",
+    "outcome": "approved",
+    "selected": "approve-r2",
+    "boundResultId": "result-mtv3bvo3-2508c5de",
+    "boundReviewId": "review-mtv3joaw-75723312"
+  },
+  "workflow": {
+    "id": "workflow-mtv36sbw-f7edf8de",
+    "revision": 4,
+    "status": "completed",
+    "workItemId": "produce-sample",
+    "workItemStatus": "completed"
+  },
+  "checks": {
+    "sourceVerifiedCurrent": true,
+    "sequenceContractValid": true,
+    "initialRenderCompleted": true,
+    "localRevisionRecorded": true,
+    "unchangedSegmentsReused": true,
+    "finalRenderFullDecodePassed": true,
+    "finalPreviewHashMatched": true,
+    "reviewBoundToFinalResult": true,
+    "userApprovalBoundToFinalResult": true,
+    "contextReopenedAtPackageD": true,
+    "noPaidServiceUsed": true
+  },
+  "limitations": [
+    "The agent host could not directly play motion or listen to audio input.",
+    "The user approval records final acceptance of exact render revision 2.",
+    "Raw ASR may still contain minor transcription errors.",
+    "This pilot does not establish quality across unrelated video genres."
+  ]
+}

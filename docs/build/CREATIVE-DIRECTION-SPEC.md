@@ -125,7 +125,7 @@ ngược được, lỗi không tạo Result giả và dependency đổi phải 
 | --- | --- | --- |
 | **A. Hợp đồng creative** | Schema strict, revision, provenance, legacy, workflow/skill | **Đã triển khai** |
 | **B. Khởi tạo pilot** | Resource, source synthesis, brief, proposal, direction và user approval | **Đã hoàn thành** |
-| **C. Dựng và duyệt mẫu** | Sequence, render, review, decision, sửa cục bộ/reuse | Chưa làm |
+| **C. Dựng và duyệt mẫu** | Sequence, render, review, decision, sửa cục bộ/reuse | **Đã hoàn thành** |
 | **D. Quan sát Đợt 2** | Brief/proposal/direction/sample/review trong observer chỉ đọc | Chưa làm |
 | **E. Nghiệm thu** | Round-trip, failure/recovery, browser và báo cáo bằng chứng | Chưa làm |
 
@@ -154,6 +154,8 @@ Kết quả của một video không được suy diễn thành chất lượng 
 Chưa chốt storyboard schema riêng, timeline nhiều lớp, provider sinh nội dung, scoring model,
 template library, chat tích hợp hay ngân sách trả phí. Chỉ mở khi pilot chứng minh cần thiết.
 
-Người dùng đã duyệt hướng `keys-first` với phần kết takeaway-only. Việc gần nhất là bắt đầu
-**gói C: tạo `video.sequence`, render, review và sửa cục bộ mẫu 30–60 giây**. Bằng chứng Gói B nằm tại
-[CREATIVE-DIRECTION-PACKAGE-B.md](./CREATIVE-DIRECTION-PACKAGE-B.md).
+Người dùng đã duyệt exact render r2 sau một sửa đổi cục bộ và 6/7 segment được reuse.
+Việc gần nhất là **gói D: bổ sung observer chỉ đọc cho creative artifacts, sequence, render,
+review và approval**. Bằng chứng Gói B/C nằm tại
+[CREATIVE-DIRECTION-PACKAGE-B.md](./CREATIVE-DIRECTION-PACKAGE-B.md) và
+[CREATIVE-DIRECTION-PACKAGE-C.md](./CREATIVE-DIRECTION-PACKAGE-C.md).
