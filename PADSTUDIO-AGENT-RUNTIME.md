@@ -512,3 +512,7 @@ approve/reject, suy nghĩ nội bộ hay một pipeline cố định.
 Agent dùng CLI để thay đổi project. Web chỉ đọc project, preview tư liệu và
 hiển thị checkpoint, kết quả và lần chạy. Agent không dùng web để gửi lệnh,
 import hay cập nhật checkpoint.
+
+## Đợt 3 — gói nguyên liệu dùng chung
+
+Theo yêu cầu mở rộng các khả năng phổ biến, gói đầu đã bổ sung graphic.render, audio.prepare và media.acquire qua Executor hiện có. Không gắn với video mẫu; nghiệm thu nhiều project và khung hình. TTS/ảnh AI/provider trả phí và search stock chưa triển khai. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](docs/build/ASSET-CAPABILITIES-SPEC.md).

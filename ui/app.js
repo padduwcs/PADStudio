@@ -24,6 +24,7 @@ let selectedItemPath = null;
 let renderedPreviewKey = null;
 let contextRequest = null;
 let contextRequestVersion = 0;
+let renderedResultsKey = null;
 
 function renderProjectList(projects) {
   elements.projectList.replaceChildren(
@@ -432,12 +433,12 @@ function resultFileUrl(projectId, resultId, fileId) {
 // than assuming one tool's fields (e.g. video.trim's startSeconds/cutMode).
 function renderMediaResult(result, body) {
   const primary = result.files?.find((file) => file.id === "primary");
-  if (!primary || (primary.mediaType !== "video" && primary.mediaType !== "image")) return false;
+  if (!primary || !["video", "image", "audio"].includes(primary.mediaType)) return false;
 
   if (primary.available) {
-    const media = document.createElement(primary.mediaType === "video" ? "video" : "img");
-    media.className = primary.mediaType === "video" ? "result-video" : "result-image";
-    if (primary.mediaType === "video") {
+    const media = document.createElement(primary.mediaType === "image" ? "img" : primary.mediaType);
+    media.className = primary.mediaType === "image" ? "result-image" : primary.mediaType === "audio" ? "result-audio" : "result-video";
+    if (primary.mediaType !== "image") {
       media.controls = true;
       media.preload = "metadata";
       media.src = resultFileUrl(result.projectId, result.id, primary.id);
@@ -449,7 +450,7 @@ function renderMediaResult(result, body) {
   } else {
     const missing = document.createElement("p");
     missing.className = "empty-note";
-    missing.textContent = `File ${primary.mediaType === "video" ? "video" : "ảnh"} đầu ra không còn khả dụng.`;
+    missing.textContent = `File ${primary.mediaType === "video" ? "video" : primary.mediaType === "audio" ? "audio" : "ảnh"} đầu ra không còn khả dụng.`;
     body.append(missing);
   }
   body.append(mediaResultFacts(result.data || {}, primary));
@@ -489,6 +490,15 @@ function mediaResultFacts(data, primary) {
   }
   if (data.motion) {
     entries.push(labelValue("Chuyển động", data.motion === "static" ? "Giữ nguyên khung hình" : data.motion));
+  }
+  if (data.graphic) entries.push(labelValue("Đồ họa", ({ card: "Thẻ chữ", "bar-chart": "Biểu đồ cột", steps: "Sơ đồ bước" })[data.graphic.kind] || data.graphic.kind));
+  if (data.resolution) entries.push(labelValue("Kích thước", data.resolution.width + "×" + data.resolution.height));
+  if (Number.isFinite(data.loudnessTargetLufs)) entries.push(labelValue("Loudness mục tiêu", data.loudnessTargetLufs + " LUFS"));
+  if (data.acquisition) {
+    entries.push(labelValue("Nguồn tải", data.acquisition.finalUrl));
+    entries.push(labelValue("Tác giả", data.acquisition.attribution?.creator || "Chưa có"));
+    entries.push(labelValue("Giấy phép đã khai báo", data.acquisition.attribution?.license || "Chưa có"));
+    entries.push(labelValue("Kiểm tra quyền sử dụng", "Thông tin do người gọi cung cấp; chưa xác minh"));
   }
   entries.push(labelValue("Dung lượng", formatSize(primary.sizeBytes)));
   facts.append(...entries);
@@ -548,6 +558,9 @@ function renderResultDecision(decisions) {
 }
 
 function renderResults(context) {
+  const key = JSON.stringify([context.project.id, context.results, context.runs, context.decisions, context.resources, context.artifacts]);
+  if (key === renderedResultsKey) return;
+  renderedResultsKey = key;
   const results = Array.isArray(context.results) ? context.results : [];
   if (!results.length) {
     elements.resultList.textContent = "Chưa có kết quả nào.";

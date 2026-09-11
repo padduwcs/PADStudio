@@ -37,7 +37,8 @@
     "project:transcript-edit": "node src/cli/write-source-artifact.js source.transcript-edit",
     "project:analyze": "node src/cli/analyze-project.js",
     "analysis:resume": "node src/cli/resume-analysis.js",
-    "analysis:cancel": "node src/cli/cancel-analysis.js"
+    "analysis:cancel": "node src/cli/cancel-analysis.js",
+    "assets:acceptance": "node scripts/asset-capabilities-acceptance.mjs"
   },
   "engines": {
     "node": ">=20"

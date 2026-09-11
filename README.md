@@ -136,7 +136,7 @@ Nếu kết quả đã được bảo toàn nhưng bước đóng Run lỗi, l�
 npm run project:run:recover -- coffee-video run-...
 ```
 
-Prototype hiện có 15 capability thật:
+Prototype hiện có 18 capability thật:
 
 - `media.inspect` / `ffprobe`: đọc metadata audio/video, không tạo file.
 - `video.trim` / `ffmpeg-trim`: cắt chính xác video bằng re-encode và tạo `video.clip`.
@@ -276,3 +276,7 @@ mở lại, danh mục công cụ, Bộ thực thi, ffprobe/ffmpeg thật, outpu
 analysis lifecycle/adapter/reader, evidence validation, search/freshness,
 result dùng lại result trước, observer API, byte ranges và việc web không có
 endpoint thay đổi project.
+
+## Nguyên liệu dùng chung — Đợt 3, gói đầu
+
+Đã bổ sung graphic.render (thẻ chữ/biểu đồ/sơ đồ bước), audio.prepare (tách/cắt, fade, loudness) và media.acquire (file HTTPS đã chọn, có attribution). Xem [contract và giới hạn](docs/build/ASSET-CAPABILITIES-SPEC.md).

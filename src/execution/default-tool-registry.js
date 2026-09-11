@@ -15,6 +15,10 @@ import { createFfmpegAudioAnalysis } from "../tools/ffmpeg-audio-analysis.js";
 import { createFasterWhisperTranscribe } from "../tools/faster-whisper-transcribe.js";
 import { createFfmpegSourcePreview } from "../tools/ffmpeg-source-preview.js";
 
+import { createFfmpegAudioPreparer } from "../tools/ffmpeg-audio-preparer.js";
+import { createBrowserGraphicRenderer } from "../tools/browser-graphic-renderer.js";
+import { createUrlMediaAcquirer } from "../tools/url-media-acquirer.js";
+
 export function createDefaultToolRegistry(options = {}) {
   return new ToolRegistry([
     createFfprobeMediaInspector(options.ffprobe),
@@ -31,6 +35,9 @@ export function createDefaultToolRegistry(options = {}) {
     createFfmpegSourceFrames(options.sourceFrames),
     createFfmpegAudioAnalysis(options.audioAnalysis),
     createFasterWhisperTranscribe(options.transcription),
-    createFfmpegSourcePreview(options.sourcePreview)
+    createFfmpegSourcePreview(options.sourcePreview),
+    createFfmpegAudioPreparer(options.audioPrepare),
+    createBrowserGraphicRenderer(options.graphicRender),
+    createUrlMediaAcquirer(options.mediaAcquire)
   ]);
 }

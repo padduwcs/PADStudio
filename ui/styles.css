@@ -1448,3 +1448,5 @@ h3 {
     grid-column: 1 / -1;
   }
 }
+
+.result-audio { width: 100%; margin-block: 0.75rem; }

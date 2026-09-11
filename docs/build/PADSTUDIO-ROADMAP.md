@@ -1,6 +1,6 @@
 # PADStudio — lộ trình 6 đợt
 
-Cập nhật: **2026-09-11**. Hiện tại: **đợt 1 và đợt 2 đã hoàn thành ở phạm vi sử dụng thực dụng trên máy owner; bước tiếp theo là xác định nhu cầu thật trước khi chốt phạm vi đợt 3**. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt đang triển khai.
+Cập nhật: **2026-09-11**. Hiện tại: **đợt 1 và đợt 2 đã hoàn thành ở phạm vi sử dụng thực dụng trên máy owner; đợt 3 đã có gói đầu nguyên liệu dùng chung; TTS/ảnh AI và provider trả phí chưa triển khai**. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt đang triển khai.
 
 ## 1. Cách dùng lộ trình
 
@@ -73,3 +73,7 @@ Sau mỗi đợt chỉ cần ghi: **đã dùng được gì, còn giới hạn g
 - [Trí tuệ project và workflow](PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md), [sequence và renderer](VIDEO-SEQUENCE-PRODUCTION.md): nền dùng tiếp ở các đợt sau.
 
 Lộ trình bổ sung cách tổ chức công việc; không thay thế [thiết kế](PADSTUDIO-DESIGN.md), [định hướng](PADSTUDIO-CURRENT-DIRECTION.md) hoặc tự ghi đè hợp đồng đã triển khai.
+
+## Đợt 3 — gói nguyên liệu dùng chung
+
+Theo yêu cầu mở rộng các khả năng phổ biến, gói đầu đã bổ sung graphic.render, audio.prepare và media.acquire qua Executor hiện có. Không gắn với video mẫu; nghiệm thu nhiều project và khung hình. TTS/ảnh AI/provider trả phí và search stock chưa triển khai. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md).

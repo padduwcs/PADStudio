@@ -1,0 +1,31 @@
+{
+  "scope": "phase3_initial_common_assets",
+  "repositoryTests": {
+    "passed": 144,
+    "failed": 0,
+    "skipped": 0
+  },
+  "browser": {
+    "status": "passed",
+    "audio": true,
+    "images": true,
+    "attribution": true,
+    "playerPreserved": true,
+    "viewports": [
+      390,
+      768,
+      1440
+    ]
+  },
+  "capabilities": [
+    "graphic.render",
+    "audio.prepare",
+    "media.acquire"
+  ],
+  "limits": [
+    "HTTPS acquisition tested with injected transport; no external site smoke",
+    "No TTS or AI image provider",
+    "No paid execution approval changes",
+    "System fonts affect cross-machine graphics appearance"
+  ]
+}

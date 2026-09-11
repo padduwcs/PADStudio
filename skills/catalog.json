@@ -80,6 +80,24 @@
         "review matches the rendered revision"
       ],
       "instructions": "video-sequence-planning.md"
+    },
+    {
+      "id": "asset-preparation",
+      "version": "1.0",
+      "name": "Asset preparation",
+      "description": "Choose and prepare reusable graphics, audio and acquired media with traceable sources.",
+      "appliesTo": [
+        "plan",
+        "execute",
+        "review"
+      ],
+      "artifactTypes": [],
+      "reviewCriteria": [
+        "material serves intent",
+        "source and versions remain traceable",
+        "preview is reviewed before selection"
+      ],
+      "instructions": "asset-preparation.md"
     }
   ]
 }

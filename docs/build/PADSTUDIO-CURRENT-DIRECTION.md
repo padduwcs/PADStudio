@@ -256,8 +256,8 @@ Gói B đã khởi tạo pilot thật và chốt direction `keys-first` + takeaw
 `video.sequence` 7 đoạn, render mẫu r1, review và sửa cục bộ nhịp nối thành r2; renderer reuse
 6/7 đoạn. Người dùng đã duyệt exact r2 dài 47,421 giây; decision bind đúng final Result/review
 và workflow đã hoàn tất. Gói D đã bổ sung observer chỉ đọc cho vòng creative/sample; Gói E đã
-nghiệm thu round-trip, failure/recovery, freshness và browser. Việc tiếp theo là xác định nhu cầu
-nguyên liệu thật trước khi chốt phạm vi Đợt 3; không tự mở provider hay chi phí trả phí.
+nghiệm thu round-trip, failure/recovery, freshness và browser. Gói đầu Đợt 3 đã bổ sung ba capability nguyên liệu dùng chung theo yêu cầu mở rộng;
+phạm vi và giới hạn được ghi ở cuối tài liệu. Không tự mở dịch vụ trả phí.
 Chi tiết tại [Gói B](./CREATIVE-DIRECTION-PACKAGE-B.md),
 [Gói C](./CREATIVE-DIRECTION-PACKAGE-C.md),
 [Gói D](./CREATIVE-DIRECTION-PACKAGE-D.md) và
@@ -268,3 +268,7 @@ Chi tiết tại [Gói B](./CREATIVE-DIRECTION-PACKAGE-B.md),
 Trong giai đoạn đầu, chat chưa nằm trong web PADStudio. Người dùng mở project bằng Agent họ đang dùng và chat trong chính cửa sổ Agent đó; Agent đọc và cập nhật project. Web PADStudio là cửa sổ local chỉ quan sát project.
 
 Đây là cách làm tạm thời để không tạo chat client, cơ chế đăng nhập hay connector riêng chỉ nhằm bắt chước Agent host. Mục tiêu UI một ứng dụng chia chat và web vẫn được giữ; chỉ triển khai khi có cách tích hợp phù hợp với Agent host.
+
+## Đợt 3 — gói nguyên liệu dùng chung
+
+Theo yêu cầu mở rộng các khả năng phổ biến, gói đầu đã bổ sung graphic.render, audio.prepare và media.acquire qua Executor hiện có. Không gắn với video mẫu; nghiệm thu nhiều project và khung hình. TTS/ảnh AI/provider trả phí và search stock chưa triển khai. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md).
