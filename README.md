@@ -279,4 +279,4 @@ endpoint thay đổi project.
 
 ## Nguyên liệu dùng chung — Đợt 3, gói đầu
 
-Đã bổ sung graphic.render (thẻ chữ/biểu đồ/sơ đồ bước), audio.prepare (tách/cắt, fade, loudness) và media.acquire (file HTTPS đã chọn, có attribution). Xem [contract và giới hạn](docs/build/ASSET-CAPABILITIES-SPEC.md).
+Đã bổ sung graphic.render (thẻ chữ/biểu đồ/sơ đồ bước), audio.prepare (tách/cắt, fade, loudness) và media.acquire (file HTTPS đã chọn, có attribution). Capability `tts.synthesize` có Piper local và ElevenLabs cloud, cùng tạo Result audio có thể nghe/dùng trong video; cloud bắt buộc authorization credit dùng một lần. Xem [asset contract](docs/build/ASSET-CAPABILITIES-SPEC.md) và [hướng dẫn TTS](docs/build/TTS-CAPABILITY.md).

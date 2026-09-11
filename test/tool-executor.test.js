@@ -269,11 +269,14 @@ test("executor records an unavailable tool as a failed run without a result", as
   assert.deepEqual(context.results, []);
 });
 
-test("executor refuses tools that require approval until approval is supported", async (t) => {
+test("executor refuses a paid tool without an exact authorization", async (t) => {
   const { store, imported } = await fixture(t);
   const executor = new ToolExecutor({
     store,
-    registry: new ToolRegistry([fakeTool({ approvalRequired: true })])
+    registry: new ToolRegistry([fakeTool({
+      approvalRequired: true,
+      async estimateUsage() { return { unit: "credits", amount: 1, basis: "test" }; }
+    })])
   });
   await assert.rejects(
     executor.execute("demo", request(imported.resourceId)),
@@ -283,7 +286,7 @@ test("executor refuses tools that require approval until approval is supported",
     (candidate) => candidate.capability === "media.inspect"
   );
   assert.equal(run.status, "failed");
-  assert.match(run.error, /cần phê duyệt/);
+  assert.match(run.error, /authorization/);
 });
 
 test("executor records tool errors but invalid selection does not create a run", async (t) => {

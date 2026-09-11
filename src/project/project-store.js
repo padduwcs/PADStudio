@@ -3,6 +3,7 @@ import { isAnalysisResultType, validateAnalysisResultData } from "../analysis/co
 import { sha256File } from "../analysis/source-identity.js";
 import { ProjectIntelligenceStore } from "../intelligence/project-intelligence-store.js";
 import { createDefaultSkillCatalog } from "../intelligence/skill-catalog.js";
+import { readExecutionAuthorizations } from "../execution/execution-authorizations.js";
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { readJson, writeJsonAtomic, writeTextAtomic } from "./atomic-files.js";
@@ -469,6 +470,7 @@ export class ProjectStore {
       await mkdir(join(staging, "outputs"), { recursive: true });
       await mkdir(join(staging, "decisions"), { recursive: true });
       await mkdir(join(staging, "runs"), { recursive: true });
+      await mkdir(join(staging, "authorizations"), { recursive: true });
       await mkdir(join(staging, "artifacts"), { recursive: true });
       await mkdir(join(staging, "workflows"), { recursive: true });
       await mkdir(join(staging, "reviews"), { recursive: true });
@@ -1408,13 +1410,14 @@ export class ProjectStore {
   }
 
   async readContext(projectId) {
-    const [project, checkpoint, resources, results, decisions, runs, overview] = await Promise.all([
+    const [project, checkpoint, resources, results, decisions, runs, authorizations, overview] = await Promise.all([
       this.readProject(projectId),
       this.readCheckpoint(projectId),
       this.readResources(projectId),
       this.readResults(projectId),
       this.readDecisions(projectId),
       this.readRuns(projectId),
+      readExecutionAuthorizations(this, projectId),
       this.readOverview(projectId)
     ]);
     const intelligence = await this.intelligence.readIntelligence(projectId);
@@ -1440,6 +1443,7 @@ export class ProjectStore {
       results,
       decisions,
       runs,
+      authorizations,
       overview,
       runRecovery,
       ...intelligence,

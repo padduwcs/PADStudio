@@ -36,8 +36,8 @@ function validateTool(tool) {
   if (
     !tool.cost ||
     tool.cost.currency !== "USD" ||
-    !Number.isFinite(tool.cost.estimated) ||
-    tool.cost.estimated < 0
+    !(tool.cost.estimated === null || Number.isFinite(tool.cost.estimated)) ||
+    (tool.cost.estimated !== null && tool.cost.estimated < 0)
   ) {
     throw new ToolRegistryError("Chi phí của công cụ " + tool.name + " không hợp lệ.");
   }
@@ -49,6 +49,9 @@ function validateTool(tool) {
   }
   if (typeof tool.approvalRequired !== "boolean") {
     throw new ToolRegistryError("approvalRequired của công cụ " + tool.name + " không hợp lệ.");
+  }
+  if (tool.approvalRequired && typeof tool.estimateUsage !== "function") {
+    throw new ToolRegistryError("Paid tools must declare estimateUsage: " + tool.name);
   }
   return tool;
 }

@@ -1,0 +1,10 @@
+{
+  "piper": {
+    "pythonCommand": "python",
+    "modelDirectory": "D:/Models/piper",
+    "defaultModel": "vi_VN-vais1000-medium"
+  },
+  "elevenLabs": {
+    "apiKey": "replace-in-padstudio.local.json-only"
+  }
+}

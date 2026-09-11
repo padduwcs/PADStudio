@@ -18,6 +18,8 @@ import { createFfmpegSourcePreview } from "../tools/ffmpeg-source-preview.js";
 import { createFfmpegAudioPreparer } from "../tools/ffmpeg-audio-preparer.js";
 import { createBrowserGraphicRenderer } from "../tools/browser-graphic-renderer.js";
 import { createUrlMediaAcquirer } from "../tools/url-media-acquirer.js";
+import { createPiperTts } from "../tools/piper-tts.js";
+import { createElevenLabsTts } from "../tools/elevenlabs-tts.js";
 
 export function createDefaultToolRegistry(options = {}) {
   return new ToolRegistry([
@@ -38,6 +40,8 @@ export function createDefaultToolRegistry(options = {}) {
     createFfmpegSourcePreview(options.sourcePreview),
     createFfmpegAudioPreparer(options.audioPrepare),
     createBrowserGraphicRenderer(options.graphicRender),
-    createUrlMediaAcquirer(options.mediaAcquire)
+    createUrlMediaAcquirer(options.mediaAcquire),
+    createPiperTts(options.piperTts),
+    createElevenLabsTts(options.elevenLabsTts)
   ]);
 }

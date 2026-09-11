@@ -1,3 +1,10 @@
+import {
+  claimExecutionAuthorization,
+  createExecutionAuthorization,
+  executionRequestHash,
+  settleExecutionAuthorization
+} from "./execution-authorizations.js";
+
 export class ToolExecutorError extends Error {
   constructor(message, { code = "execution_failed", cause } = {}) {
     super(message, cause ? { cause } : undefined);
@@ -13,7 +20,7 @@ function validateRequest(value) {
     });
   }
   const unknown = Object.keys(value).filter(
-    (field) => !["capability", "tool", "purpose", "inputs"].includes(field)
+    (field) => !["capability", "tool", "purpose", "inputs", "authorizationId"].includes(field)
   );
   if (unknown.length) {
     throw new ToolExecutorError(
@@ -37,7 +44,8 @@ function validateRequest(value) {
     capability: value.capability.trim(),
     tool: value.tool.trim(),
     purpose: value.purpose.trim(),
-    inputs: value.inputs
+    inputs: value.inputs,
+    authorizationId: value.authorizationId === undefined ? null : value.authorizationId
   };
 }
 
@@ -57,10 +65,12 @@ function executionError(error) {
       cause: error
     });
   }
-  return new ToolExecutorError(error?.message || "Không thể chạy công cụ.", {
+  const wrapped = new ToolExecutorError(error?.message || "Không thể chạy công cụ.", {
     code: error?.code || "execution_failed",
     cause: error
   });
+  wrapped.requestSubmitted = Boolean(error?.requestSubmitted);
+  return wrapped;
 }
 
 function validateInternalOptions(value) {
@@ -105,6 +115,37 @@ export class ToolExecutor {
     return this.registry.describeCapabilities();
   }
 
+  async plan(projectId, requestValue) {
+    await this.store.readProject(projectId);
+    const request = validateRequest(requestValue);
+    const tool = this.registry.get(request.tool, request.capability);
+    const availability = await tool.checkAvailability();
+    if (availability?.status !== "available") {
+      throw new ToolExecutorError(availability?.reason || "Tool is unavailable.", { code: "tool_unavailable" });
+    }
+    const estimatedUsage = tool.approvalRequired ? await tool.estimateUsage({ inputs: request.inputs }) : null;
+    return { projectId, requestHash: executionRequestHash(request), tool: toolReference(tool),
+      approvalRequired: tool.approvalRequired, estimatedUsage };
+  }
+
+  async authorize(projectId, requestValue, approval) {
+    const plan = await this.plan(projectId, requestValue);
+    if (!plan.approvalRequired) {
+      throw new ToolExecutorError("This tool does not require credit approval.", { code: "approval_not_required" });
+    }
+    if (!approval || typeof approval !== "object" || Array.isArray(approval)) {
+      throw new ToolExecutorError("Approval must be an object.", { code: "invalid_request" });
+    }
+    const unknown = Object.keys(approval).filter((key) => !["approvedBy", "maxCredits", "reason"].includes(key));
+    if (unknown.length) {
+      throw new ToolExecutorError("Approval has unsupported fields: " + unknown.join(", "), { code: "invalid_request" });
+    }
+    return createExecutionAuthorization(this.store, projectId, {
+      requestHash: plan.requestHash, tool: plan.tool, estimatedUsage: plan.estimatedUsage,
+      approvedBy: approval.approvedBy, maxCredits: approval.maxCredits, reason: approval.reason
+    });
+  }
+
   async execute(projectId, requestValue, internalValue) {
     const request = validateRequest(requestValue);
     const internal = validateInternalOptions(internalValue);
@@ -120,6 +161,8 @@ export class ToolExecutor {
     });
     let result = null;
     let outputWorkspace = null;
+    let authorization = null;
+    let requestWasSubmitted = false;
 
     try {
       throwIfAborted(internal.signal);
@@ -151,10 +194,13 @@ export class ToolExecutor {
         );
       }
       if (tool.approvalRequired) {
-        throw new ToolExecutorError(
-          "Công cụ " + tool.name + " cần phê duyệt nhưng lát cắt hiện tại chưa hỗ trợ xác nhận.",
-          { code: "approval_required" }
-        );
+        if (!request.authorizationId) {
+          throw new ToolExecutorError("Tool requires an exact, single-use credit authorization.", { code: "approval_required" });
+        }
+        const currentUsage = await tool.estimateUsage({ inputs: request.inputs, signal: internal.signal });
+        authorization = await claimExecutionAuthorization(this.store, projectId, request.authorizationId, {
+          requestHash: executionRequestHash(request), tool: reference, runId: run.id, currentUsage
+        });
       }
       if (tool.producesFiles) {
         outputWorkspace = await this.store.createRunOutputWorkspace(projectId, run.id);
@@ -170,11 +216,18 @@ export class ToolExecutor {
           projectRelativeDirectory: outputWorkspace.projectRelativeDirectory
         }
       });
+      requestWasSubmitted = Boolean(tool.approvalRequired);
       const execution = await tool.execute({
         ...prepared.runtime,
         availability,
         signal: internal.signal
       });
+      if (authorization) {
+        authorization = await settleExecutionAuthorization(this.store, projectId, authorization.id, {
+          status: "consumed", actualUsage: execution.actualUsage,
+          providerRequestId: execution.providerRequestId, traceId: execution.traceId
+        });
+      }
       throwIfAborted(internal.signal);
       let resultValue = tool.createResult({ prepared, execution });
       if (internal.decorateResult) {
@@ -258,6 +311,16 @@ export class ToolExecutor {
       };
     } catch (error) {
       const failure = executionError(error);
+      let settlementFailure = null;
+      if (authorization?.status === "claimed") {
+        try {
+          authorization = await settleExecutionAuthorization(this.store, projectId, authorization.id, {
+            status: requestWasSubmitted || failure.requestSubmitted ? "usage_unknown" : "released"
+          });
+        } catch (error) {
+          settlementFailure = error;
+        }
+      }
       await this.#recordFailure(
         projectId,
         run.id,
@@ -266,6 +329,11 @@ export class ToolExecutor {
         failure,
         started
       );
+      if (settlementFailure) {
+        throw new ToolExecutorError("Execution failed and credit authorization could not be settled.", {
+          code: "authorization_settlement_failed", cause: settlementFailure
+        });
+      }
       throw failure;
     }
   }

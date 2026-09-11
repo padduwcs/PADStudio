@@ -515,4 +515,4 @@ import hay cập nhật checkpoint.
 
 ## Đợt 3 — gói nguyên liệu dùng chung
 
-Theo yêu cầu mở rộng các khả năng phổ biến, gói đầu đã bổ sung graphic.render, audio.prepare và media.acquire qua Executor hiện có. Không gắn với video mẫu; nghiệm thu nhiều project và khung hình. TTS/ảnh AI/provider trả phí và search stock chưa triển khai. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](docs/build/ASSET-CAPABILITIES-SPEC.md).
+Theo yêu cầu mở rộng các khả năng phổ biến, gói đầu đã bổ sung graphic.render, audio.prepare và media.acquire qua Executor hiện có. Capability `tts.synthesize` tiếp theo có Piper local và ElevenLabs; ElevenLabs bắt buộc plan/authorization credit đúng request. Xem lệnh, cấu hình bí mật và model tiếng Việt trong [TTS-CAPABILITY.md](docs/build/TTS-CAPABILITY.md). Ảnh AI và search stock chưa triển khai.

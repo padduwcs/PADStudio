@@ -11,6 +11,7 @@ function checkpointFreshness(context, analysis = null) {
     ...context.resources.map((item) => activity("resource", item.id, item.createdAt)),
     ...context.results.map((item) => activity("result", item.id, item.createdAt)),
     ...context.runs.map((item) => activity("run", item.id, item.finishedAt ?? item.startedAt)),
+    ...context.authorizations.map((item) => activity("authorization", item.id, item.finishedAt ?? item.approvedAt)),
     ...context.decisions.map((item) => activity("decision", item.id, item.createdAt)),
     ...context.artifacts.map((item) => activity("artifact", item.id, item.createdAt)),
     ...context.workflows.map((item) => activity("workflow", `${item.id}:r${item.revision}`, item.createdAt)),

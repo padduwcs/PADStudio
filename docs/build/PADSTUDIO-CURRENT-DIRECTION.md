@@ -136,10 +136,9 @@ một khung hình), `audio.overlay` (chèn track âm thanh có sẵn, có duckin
 (biến ảnh tĩnh thành video, giữ nguyên khung hình hoặc thêm zoom/pan/Ken Burns
 nhẹ theo preset cố định). Mỗi tool vẫn tự chịu trách nhiệm về đúng một
 việc rõ ràng; PADStudio chưa có timeline nhiều lớp hay pipeline dựng video cố
-định, và sẽ chỉ thêm tool mới khi có việc sáng tạo thật cần đến. Các tool này
-đều chưa cần dịch vụ bên ngoài hay duyệt chi phí; công cụ trả phí đầu tiên
-(ví dụ giọng đọc AI) sẽ là lát cắt tiếp theo, cùng với cơ chế duyệt chi phí/rủi
-ro thật thay cho việc luôn báo lỗi khi `approvalRequired` bật.
+định, và sẽ chỉ thêm tool mới khi có việc sáng tạo thật cần đến. Các tool media cũ không cần dịch vụ bên ngoài. Capability `tts.synthesize` nay có
+Piper local và ElevenLabs cloud; backend cloud chỉ chạy với authorization credit bind
+đúng request và dùng một lần, thay cho cơ chế luôn báo lỗi khi `approvalRequired` bật.
 
 File do tool tạo nằm trong `outputs/<run-id>/`, nhưng Agent và request không được
 chỉ định đường dẫn input/output tùy ý. PADStudio resolve nguồn từ resource hoặc
@@ -271,4 +270,4 @@ Trong giai đoạn đầu, chat chưa nằm trong web PADStudio. Người dùng 
 
 ## Đợt 3 — gói nguyên liệu dùng chung
 
-Theo yêu cầu mở rộng các khả năng phổ biến, gói đầu đã bổ sung graphic.render, audio.prepare và media.acquire qua Executor hiện có. Không gắn với video mẫu; nghiệm thu nhiều project và khung hình. TTS/ảnh AI/provider trả phí và search stock chưa triển khai. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md).
+Theo yêu cầu mở rộng các khả năng phổ biến, gói đầu đã bổ sung graphic.render, audio.prepare và media.acquire qua Executor hiện có. Gói TTS tiếp theo đã bổ sung Piper local và ElevenLabs qua cùng `tts.synthesize`, Result audio dùng lại được và approval credit dùng một lần. Ảnh AI và search stock chưa triển khai. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md) và [TTS-CAPABILITY.md](./TTS-CAPABILITY.md).

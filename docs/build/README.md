@@ -33,3 +33,7 @@ Trạng thái triển khai Source Understanding:
 [gói F — nghiệm thu phân hệ](SOURCE-UNDERSTANDING-PACKAGE-F.md).
 
 Lộ trình phát triển và vị trí hiện tại: [PADSTUDIO-ROADMAP.md](PADSTUDIO-ROADMAP.md). Phân biệt 6 đợt phát triển với các bước bên trong đợt 1; chỉ chi tiết hóa đợt đang làm.
+
+
+Capability TTS dùng chung, cài Piper tiếng Việt, cấu hình ElevenLabs và phê duyệt credit:
+[TTS-CAPABILITY.md](TTS-CAPABILITY.md).
