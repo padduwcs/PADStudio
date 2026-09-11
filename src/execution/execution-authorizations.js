@@ -54,7 +54,10 @@ function validateRecord(record, projectId) {
       typeof record.tool.provider !== "string" ||
       record.approvedBy !== "user" || typeof record.reason !== "string" || !record.reason ||
       !Number.isSafeInteger(record.maxCredits) || record.maxCredits < 0 ||
-      typeof record.approvedAt !== "string" || Number.isNaN(Date.parse(record.approvedAt))) {
+      typeof record.approvedAt !== "string" || Number.isNaN(Date.parse(record.approvedAt)) ||
+      (record.providerResponseReceivedAt !== undefined &&
+        (typeof record.providerResponseReceivedAt !== "string" ||
+          Number.isNaN(Date.parse(record.providerResponseReceivedAt))))) {
     throw new ExecutionAuthorizationError("Stored credit authorization is invalid.");
   }
   usage(record.estimatedUsage, "Stored estimated usage");
@@ -141,6 +144,24 @@ export async function claimExecutionAuthorization(store, projectId, authorizatio
   }
 }
 
+export async function recordExecutionAuthorizationReceipt(store, projectId, authorizationId, value) {
+  const target = paths(store, projectId, authorizationId);
+  const record = await readRecord(store, projectId, authorizationId);
+  if (record.status !== "claimed") {
+    throw new ExecutionAuthorizationError("Only a claimed authorization can record a provider receipt.");
+  }
+  const received = {
+    ...record,
+    providerResponseReceivedAt: new Date().toISOString(),
+    actualUsage: value.actualUsage === null || value.actualUsage === undefined ?
+      null : usage(value.actualUsage, "Actual usage"),
+    providerRequestId: value.providerRequestId || null,
+    traceId: value.traceId || null
+  };
+  await writeJsonAtomic(target.record, received);
+  return received;
+}
+
 export async function settleExecutionAuthorization(store, projectId, authorizationId, value) {
   if (!["consumed", "released", "usage_unknown"].includes(value.status)) {
     throw new ExecutionAuthorizationError("Authorization settlement status is invalid.");
@@ -150,12 +171,14 @@ export async function settleExecutionAuthorization(store, projectId, authorizati
   if (record.status !== "claimed") {
     throw new ExecutionAuthorizationError("Only a claimed authorization can be settled.");
   }
+  const actualUsage = value.actualUsage === null || value.actualUsage === undefined ?
+    (record.actualUsage ?? null) : usage(value.actualUsage, "Actual usage");
   const finished = {
     ...record, status: value.status, finishedAt: new Date().toISOString(),
-    actualUsage: value.actualUsage === null || value.actualUsage === undefined ? null : usage(value.actualUsage, "Actual usage"),
-    providerRequestId: value.providerRequestId || null, traceId: value.traceId || null,
-    exceededApprovedCeiling: value.actualUsage === null || value.actualUsage === undefined ? null :
-      usage(value.actualUsage, "Actual usage").amount > record.maxCredits
+    actualUsage,
+    providerRequestId: value.providerRequestId || record.providerRequestId || null,
+    traceId: value.traceId || record.traceId || null,
+    exceededApprovedCeiling: actualUsage === null ? null : actualUsage.amount > record.maxCredits
   };
   await writeJsonAtomic(target.record, finished);
   await rm(target.claim, { recursive: true, force: true });

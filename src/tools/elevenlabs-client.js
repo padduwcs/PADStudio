@@ -78,7 +78,11 @@ export class ElevenLabsClient {
     let token = null;
     const seen = new Set();
     for (let page = 0; page < 20; page += 1) {
-      const query = new URLSearchParams({ language, page_size: "100" });
+      const query = new URLSearchParams({
+        language,
+        page_size: "100",
+        include_custom_rates: "false"
+      });
       if (token) query.set("next_page_token", token);
       const response = await this.request("/v2/voices?" + query, { signal });
       const value = await this.responseJson(response, "voice catalog");
@@ -126,11 +130,15 @@ export class ElevenLabsClient {
           creditMultiplier: Number(model.model_rates?.character_cost_multiplier ?? model.token_cost_factor ?? 1)
         };
       });
-    const voices = voiceValues.map((voice) => ({
-      voiceId: voice.voice_id, name: voice.name, category: voice.category ?? null,
-      description: voice.description ?? null, labels: voice.labels ?? {},
-      verifiedLanguages: voice.verified_languages ?? [], previewUrl: voice.preview_url ?? null
-    }));
+    const voices = voiceValues.map((voice) => {
+      const rate = Number(voice.sharing?.rate ?? voice.rate);
+      return {
+        voiceId: voice.voice_id, name: voice.name, category: voice.category ?? null,
+        description: voice.description ?? null, labels: voice.labels ?? {},
+        verifiedLanguages: voice.verified_languages ?? [], previewUrl: voice.preview_url ?? null,
+        customRate: Number.isFinite(rate) && rate > 0 ? rate : null
+      };
+    });
     return {
       status: "connected", requestedLanguage,
       subscription: {
@@ -152,6 +160,11 @@ export class ElevenLabsClient {
     if (!voice) {
       throw new ElevenLabsError("Selected ElevenLabs voice is not available for " + requestedLanguage + ".", {
         code: "invalid_input"
+      });
+    }
+    if (voice.customRate !== null) {
+      throw new ElevenLabsError("Selected ElevenLabs voice has a custom rate that cannot be bounded safely.", {
+        code: "approval_limit_unknown"
       });
     }
     if (model.supportsRequestedLanguage === false) {

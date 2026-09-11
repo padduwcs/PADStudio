@@ -87,7 +87,10 @@ Lệnh gọi thật các API chỉ đọc subscription, toàn bộ các trang vo
 model. Output không chứa key; nó gồm quota, model TTS, ngôn ngữ, giới hạn text/request, khả năng
 style/speaker boost, hệ số credit, voice id/name, `verifiedLanguages` và `previewUrl`.
 `supportsRequestedLanguage` là `true/false` khi provider công bố danh sách, hoặc `null` khi
-catalog không đủ dữ liệu. Model công bố không hỗ trợ ngôn ngữ đã chọn, voice không có trong catalog ngôn ngữ, hoặc style/speaker boost không được model hỗ trợ đều bị từ chối trước request.
+catalog không đủ dữ liệu. Model công bố không hỗ trợ ngôn ngữ đã chọn, voice không có trong
+catalog ngôn ngữ, hoặc style/speaker boost không được model hỗ trợ đều bị từ chối trước request.
+Mẫu tiếng Việt dùng `eleven_v3`; `eleven_multilingual_v2` không hỗ trợ tiếng Việt theo danh sách
+hiện hành của provider.
 Người dùng nên nghe preview và duyệt cách phát âm tiếng Việt trước khi tạo hàng loạt.
 
 Request mẫu:
@@ -100,7 +103,7 @@ Request mẫu:
   "inputs": {
     "text": "Xin chào, đây là PADStudio.",
     "languageCode": "vi",
-    "modelId": "eleven_multilingual_v2",
+    "modelId": "eleven_v3",
     "voiceId": "<voice-id>",
     "outputFormat": "mp3_44100_128"
   }
@@ -110,6 +113,15 @@ Request mẫu:
 `languageCode` là mã ISO 639-1 chữ thường, mặc định `vi`, được gửi rõ trong request synthesize.
 Model và voice khả dụng phụ thuộc tài khoản/provider tại thời điểm chạy; dùng output inspect thay
 vì hard-code một voice id.
+
+Catalog voice được lấy với `include_custom_rates=false`. Voice Library có custom rate bị loại khỏi
+lựa chọn vì hệ số thực tế còn phụ thuộc rate của voice và subscription, nên PADStudio không thể
+chứng minh một trần credit an toàn chỉ từ số ký tự. Nếu provider vẫn trả một voice có custom rate,
+bước plan/estimate dừng với `approval_limit_unknown`; hệ thống không gửi request trả phí.
+
+`ffprobe` là dependency bắt buộc để xác minh file audio. Availability kiểm tra dependency này trước
+khi plan/authorize, và Executor kiểm tra lại ngay trước POST để không dùng credit nếu môi trường đã
+thay đổi giữa hai bước.
 
 ## Phê duyệt credit
 
@@ -137,17 +149,23 @@ với capability, tool, purpose và toàn bộ inputs; sửa một ký tự cũn
 lượng lại trước khi gửi và chặn khi vượt trần. Authorization được claim nguyên tử, link trực tiếp
 trong Run và chỉ dùng một lần.
 
-- Thành công: `consumed`, lưu usage từ `character-cost` nếu provider trả về, request/trace id,
-  và cờ `exceededApprovedCeiling` nếu actual lớn hơn trần (không thể hoàn tác request đã tính phí).
+- Ngay khi provider trả response: receipt gồm usage từ `character-cost`, request id và trace id được
+  lưu trước khi ghi/probe file cục bộ. Authorization sau đó là `consumed`, kể cả khi kiểm tra file lỗi,
+  vì request cloud đã hoàn tất và credit không thể hoàn tác.
 - Lỗi chắc chắn trước POST: `released`; đây vẫn là record terminal, cần phê duyệt mới nếu chạy lại.
-- Lỗi trong/sau POST hoặc không biết provider đã nhận chưa: `usage_unknown`, không tái dùng.
+- Lỗi mạng trong/sau POST mà chưa nhận được response, hoặc không biết provider đã nhận chưa:
+  `usage_unknown`, không tái dùng.
+- Nếu output đã commit nhưng lưu Result/đóng Run lỗi, Executor giữ MP3 và pending Result draft rồi
+  trả `finalization_pending`. Chạy `npm run project:run:recover -- <project-id> <run-id>` để hoàn tất
+  dấu vết; không gọi lại tool/provider và không phát sinh request trả phí thứ hai.
 - Không có auto-approve, auto-retry hoặc fallback.
 
 ## Verification và giới hạn
 
 Test tự động bao phủ Piper/ElevenLabs giả lập, UTF-8 tiếng Việt, metadata/speaker/sample rate,
-voice pagination, model-language, giới hạn credit, exact binding/single-use, lỗi trước/sau POST,
-không lưu key, thư mục output chỉ có file khai báo và Result audio dùng được làm source video.
+voice pagination/custom rate, model-language, giới hạn credit, exact binding/single-use, preflight
+`ffprobe`, receipt sau response, phục hồi lỗi lưu Result không gọi lại provider, không lưu key, thư
+mục output chỉ có file khai báo và Result audio dùng được làm source video.
 
 Máy nghiệm thu hiện tại chưa có API key người dùng nên chưa gọi ElevenLabs cloud thật và chưa
 nghe duyệt voice thật. Piper thật cũng chỉ chạy khi runtime/model được cài trên máy. Đây là giới

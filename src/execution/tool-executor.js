@@ -2,6 +2,7 @@ import {
   claimExecutionAuthorization,
   createExecutionAuthorization,
   executionRequestHash,
+  recordExecutionAuthorizationReceipt,
   settleExecutionAuthorization
 } from "./execution-authorizations.js";
 
@@ -173,6 +174,11 @@ export class ToolExecutor {
     let result = null;
     let outputWorkspace = null;
     let authorization = null;
+    let execution = null;
+    let resultValue = null;
+    let runCompletion = null;
+    let paidResultStaged = false;
+    let outputCommitted = false;
 
     try {
       throwIfAborted(internal.signal);
@@ -226,19 +232,18 @@ export class ToolExecutor {
           projectRelativeDirectory: outputWorkspace.projectRelativeDirectory
         }
       });
-      const execution = await tool.execute({
+      execution = await tool.execute({
         ...prepared.runtime,
         availability,
-        signal: internal.signal
+        signal: internal.signal,
+        onProviderResponse: authorization ? async (receipt) => {
+          authorization = await recordExecutionAuthorizationReceipt(
+            this.store, projectId, authorization.id, receipt
+          );
+        } : undefined
       });
-      if (authorization) {
-        authorization = await settleExecutionAuthorization(this.store, projectId, authorization.id, {
-          status: "consumed", actualUsage: execution.actualUsage,
-          providerRequestId: execution.providerRequestId, traceId: execution.traceId
-        });
-      }
       throwIfAborted(internal.signal);
-      let resultValue = tool.createResult({ prepared, execution });
+      resultValue = tool.createResult({ prepared, execution });
       if (internal.decorateResult) {
         resultValue = await internal.decorateResult({
           projectId,
@@ -262,6 +267,19 @@ export class ToolExecutor {
           code: "invalid_tool_result"
         });
       }
+      runCompletion = {
+        durationMs: Date.now() - started,
+        actualCostUsd: execution.actualCostUsd ?? null
+      };
+      if (authorization) {
+        await this.store.stageRunResult(projectId, run.id, {
+          capability: request.capability,
+          tool: reference,
+          ...resultValue,
+          runCompletion
+        });
+        paidResultStaged = true;
+      }
       throwIfAborted(internal.signal);
       if (internal.beforeResultCommit) {
         await internal.beforeResultCommit({
@@ -278,11 +296,16 @@ export class ToolExecutor {
       throwIfAborted(internal.signal);
       if (outputWorkspace) {
         await this.store.commitRunOutputWorkspace(outputWorkspace);
+        outputCommitted = true;
       }
-      const runCompletion = {
-        durationMs: Date.now() - started,
-        actualCostUsd: execution.actualCostUsd ?? null
-      };
+      if (authorization?.status === "claimed") {
+        authorization = await settleExecutionAuthorization(this.store, projectId, authorization.id, {
+          status: "consumed",
+          actualUsage: execution.actualUsage,
+          providerRequestId: execution.providerRequestId,
+          traceId: execution.traceId
+        });
+      }
       result = await this.store.addResult(projectId, {
         runId: run.id,
         capability: request.capability,
@@ -320,11 +343,46 @@ export class ToolExecutor {
       };
     } catch (error) {
       const failure = executionError(error);
+      if (paidResultStaged) {
+        try {
+          if (outputWorkspace && !outputCommitted) {
+            await this.store.commitRunOutputWorkspace(outputWorkspace);
+            outputCommitted = true;
+          }
+          if (authorization?.status === "claimed") {
+            authorization = await settleExecutionAuthorization(this.store, projectId, authorization.id, {
+              status: "consumed",
+              actualUsage: execution?.actualUsage,
+              providerRequestId: execution?.providerRequestId,
+              traceId: execution?.traceId
+            });
+          }
+          this.#releaseCommittedWorkspace(outputWorkspace);
+          return {
+            projectId,
+            runId: run.id,
+            resultId: result?.id ?? null,
+            status: "finalization_pending",
+            warning: "Paid output was preserved and can be recovered without calling the provider again.",
+            result
+          };
+        } catch (preservationError) {
+          throw new ToolExecutorError("Paid output could not be preserved for recovery.", {
+            code: "paid_output_preservation_failed",
+            cause: preservationError
+          });
+        }
+      }
       let settlementFailure = null;
       if (authorization?.status === "claimed") {
         try {
+          const responseReceived = Boolean(authorization.providerResponseReceivedAt);
           authorization = await settleExecutionAuthorization(this.store, projectId, authorization.id, {
-            status: failure.requestSubmitted ? "usage_unknown" : "released"
+            status: responseReceived ? "consumed" :
+              failure.requestSubmitted ? "usage_unknown" : "released",
+            actualUsage: responseReceived ? authorization.actualUsage : null,
+            providerRequestId: responseReceived ? authorization.providerRequestId : null,
+            traceId: responseReceived ? authorization.traceId : null
           });
         } catch (error) {
           settlementFailure = error;

@@ -250,9 +250,10 @@ Agent phải chọn rõ capability và tool từ danh mục; hệ thống không
 tool khác. Lệnh thành công lưu một result và run liên kết với nhau. Lệnh thất bại
 vẫn lưu failed run sau khi một yêu cầu hợp lệ đã bắt đầu.
 
-Nếu tool trả `status: "finalization_pending"`, Result và file output đã được bảo
-toàn nhưng record Run chưa đóng xong. Không chạy lại tool. Đọc context để lấy Run
-đang recoverable rồi hoàn tất dấu vết:
+Nếu tool trả `status: "finalization_pending"`, file output và Result hoặc pending
+Result draft đã được bảo toàn nhưng record Run chưa đóng xong. Không chạy lại tool
+(đặc biệt với provider trả phí). Đọc context để lấy Run đang recoverable rồi hoàn
+tất dấu vết:
 
 ```powershell
 npm run project:run:recover -- <project-id> <run-id>

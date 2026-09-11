@@ -136,6 +136,8 @@ function validateRun(run, projectId) {
     run.projectId !== projectId ||
     typeof run.id !== "string" ||
     typeof run.capability !== "string" ||
+    (run.pendingResult !== undefined && run.pendingResult !== null &&
+      (!run.pendingResult || typeof run.pendingResult !== "object" || Array.isArray(run.pendingResult))) ||
     (run.authorizationId !== undefined && run.authorizationId !== null &&
       (typeof run.authorizationId !== "string" || !/^authorization-[a-z0-9-]+$/.test(run.authorizationId))) ||
     !Array.isArray(run.outputs) ||
@@ -579,6 +581,7 @@ export class ProjectStore {
       finishedAt: null,
       inputs,
       outputs: [],
+      pendingResult: null,
       error: null,
       durationMs: null,
       cost: estimatedCostUsd === null ? null : {
@@ -589,6 +592,19 @@ export class ProjectStore {
     };
     await writeJsonAtomic(join(projectDirectory(this.rootDir, projectId), "runs", `${run.id}.json`), run);
     return run;
+  }
+
+  async stageRunResult(projectId, runId, value) {
+    const normalizedRunId = runReference(runId);
+    const path = join(projectDirectory(this.rootDir, projectId), "runs", `${normalizedRunId}.json`);
+    const run = validateRun(await readJson(path), projectId);
+    if (run.status !== "in_progress") {
+      throw new ProjectStoreError("Không thể stage Result cho Run đã kết thúc: " + runId);
+    }
+    objectValue(value, "Pending Result");
+    const staged = { ...run, pendingResult: value };
+    await writeJsonAtomic(path, staged);
+    return staged;
   }
 
   async finishRun(projectId, runId, {
@@ -619,6 +635,7 @@ export class ProjectStore {
       status,
       finishedAt,
       outputs: stringList(outputs, "Outputs của run"),
+      pendingResult: null,
       error: error === null ? null : String(error),
       durationMs: durationMs ?? Math.max(0, Date.parse(finishedAt) - Date.parse(run.startedAt)),
       cost: run.cost === null ? null : {
@@ -1269,9 +1286,18 @@ export class ProjectStore {
     if (run.status !== "in_progress") {
       throw new ProjectStoreError(`Run không thể được phục hồi từ trạng thái ${run.status}: ${runId}`);
     }
-    const results = (await this.readResults(projectId)).filter(
+    let results = (await this.readResults(projectId)).filter(
       (result) => result.createdByRun === runId
     );
+    if (results.length === 0 && run.pendingResult) {
+      await this.addResult(projectId, {
+        runId,
+        ...run.pendingResult
+      });
+      results = (await this.readResults(projectId)).filter(
+        (result) => result.createdByRun === runId
+      );
+    }
     if (results.length !== 1) {
       throw new ProjectStoreError(
         `Run ${runId} cần đúng một result bền vững để hoàn tất lại.`
@@ -1429,21 +1455,30 @@ export class ProjectStore {
       this.readOverview(projectId)
     ]);
     const intelligence = await this.intelligence.readIntelligence(projectId);
-    const runRecovery = {
-      pendingFinalizations: runs
-        .filter((run) => run.status === "in_progress")
-        .map((run) => {
-          const durableResults = results.filter((result) => result.createdByRun === run.id);
-          return {
-            runId: run.id,
-            resultIds: durableResults.map((result) => result.id),
-            recoverable:
-              durableResults.length === 1 &&
+    const projectRoot = projectDirectory(this.rootDir, projectId);
+    const pendingFinalizations = await Promise.all(runs
+      .filter((run) => run.status === "in_progress")
+      .map(async (run) => {
+        const durableResults = results.filter((result) => result.createdByRun === run.id);
+        const pendingFiles = Array.isArray(run.pendingResult?.files) ? run.pendingResult.files : [];
+        const pendingOutputRoot = join(projectRoot, "outputs", run.id);
+        const pendingFilesAvailable = pendingFiles.length > 0 && (await Promise.all(
+          pendingFiles.map((file) => storedPathAvailable(
+            projectRoot, file.path, "file", pendingOutputRoot
+          ))
+        )).every(Boolean);
+        return {
+          runId: run.id,
+          resultIds: durableResults.map((result) => result.id),
+          recoverable:
+            (durableResults.length === 1 &&
               Boolean(durableResults[0].runCompletion) &&
-              durableResults[0].files.every((file) => file.available)
-          };
-        })
-    };
+              durableResults[0].files.every((file) => file.available)) ||
+            (durableResults.length === 0 && Boolean(run.pendingResult?.runCompletion) &&
+              pendingFilesAvailable)
+        };
+      }));
+    const runRecovery = { pendingFinalizations };
     return {
       project,
       checkpoint,

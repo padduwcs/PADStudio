@@ -67,7 +67,7 @@ export function createElevenLabsTts({
 
   return {
     name: "elevenlabs",
-    version: "1.1.0",
+    version: "1.2.0",
     provider: "ElevenLabs",
     capability: "tts.synthesize",
     description: "Generate cloud narration with an explicitly selected ElevenLabs model and voice.",
@@ -99,17 +99,27 @@ export function createElevenLabsTts({
     async checkAvailability() {
       try {
         await client();
+      } catch {
+        return {
+          status: "unavailable",
+          credentialConfigured: false,
+          reason: "Set elevenLabs.apiKey in ignored padstudio.local.json; the key is never read from project inputs."
+        };
+      }
+      try {
+        const ffprobe = await executeCommand(ffprobeCommand, ["-version"], { timeout: 5000 });
         return {
           status: "available",
           credentialConfigured: true,
+          ffprobeVersion: ffprobe.stdout.split(/\r?\n/)[0] || "available",
           connection: "unchecked",
           connectionCheck: "npm run tts:inspect"
         };
       } catch {
         return {
           status: "unavailable",
-          credentialConfigured: false,
-          reason: "Set elevenLabs.apiKey in ignored padstudio.local.json; the key is never read from project inputs."
+          credentialConfigured: true,
+          reason: "Install ffprobe or configure PADSTUDIO_FFPROBE_PATH before using ElevenLabs."
         };
       }
     },
@@ -128,9 +138,10 @@ export function createElevenLabsTts({
       });
       return estimate.usage;
     },
-    async prepare({ inputs, outputWorkspace }) {
+    async prepare({ inputs, outputWorkspace, signal }) {
       const spec = parseInputs(inputs);
       const target = workspace(outputWorkspace);
+      await executeCommand(ffprobeCommand, ["-version"], { signal, timeout: 5000 });
       return {
         runtime: {
           client: await client(),
@@ -140,8 +151,25 @@ export function createElevenLabsTts({
         trace: { directory: target.projectRelativeDirectory, spec }
       };
     },
-    async execute({ client, spec, outputPath, signal }) {
+    async execute({ client, spec, outputPath, signal, onProviderResponse }) {
       const response = await client.synthesize({ ...spec, signal });
+      const actualUsage = response.actualCredits === null ? null : {
+        unit: "credits",
+        amount: response.actualCredits,
+        basis: "character-cost response header"
+      };
+      if (onProviderResponse) {
+        try {
+          await onProviderResponse({
+            actualUsage,
+            providerRequestId: response.providerRequestId,
+            traceId: response.traceId
+          });
+        } catch (error) {
+          if (error && typeof error === "object") error.requestSubmitted = true;
+          throw error;
+        }
+      }
       try {
         await writeFile(outputPath, response.bytes);
         const file = await fileEvidence(outputPath);
@@ -163,11 +191,7 @@ export function createElevenLabsTts({
           file,
           durationSeconds,
           actualCostUsd: null,
-          actualUsage: response.actualCredits === null ? null : {
-            unit: "credits",
-            amount: response.actualCredits,
-            basis: "character-cost response header"
-          },
+          actualUsage,
           providerRequestId: response.providerRequestId,
           traceId: response.traceId,
           verification: {
