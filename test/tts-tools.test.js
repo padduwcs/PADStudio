@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { ToolExecutor, ToolExecutorError } from "../src/execution/tool-executor.js";
+import { settleExecutionAuthorization } from "../src/execution/execution-authorizations.js";
 import { ToolRegistry } from "../src/execution/tool-registry.js";
 import { ProjectStore } from "../src/project/project-store.js";
 import { createElevenLabsTts } from "../src/tools/elevenlabs-tts.js";
@@ -181,7 +182,12 @@ test("ElevenLabs never submits without approval and preserves uncertain credit s
   let posts = 0;
   const fetchImpl = async (url) => {
     if (String(url).endsWith("/v1/user/subscription")) return Response.json({ status: "active" });
-    if (String(url).endsWith("/v1/models")) return Response.json([{ model_id: "eleven_v3", can_do_text_to_speech: true }]);
+    if (String(url).endsWith("/v1/models")) {
+      return Response.json([{
+        model_id: "eleven_v3", can_do_text_to_speech: true,
+        model_rates: { character_cost_multiplier: 1 }
+      }]);
+    }
     if (String(url).includes("/v2/voices?")) return Response.json({ voices: [{ voice_id: "voice_vi", name: "Vietnamese" }] });
     posts += 1;
     throw new Error("network outcome unknown");
@@ -564,14 +570,33 @@ test("paid audio survives Result persistence failure and recovers without anothe
   }]);
   assert.deepEqual(await readdir(join(store.rootDir, "tts-demo", "outputs", pending.runId)), ["speech.mp3"]);
 
+  const authorizationDirectory = join(store.rootDir, "tts-demo", "authorizations");
+  const authorizationPath = join(authorizationDirectory, authorization.id + ".json");
+  const interruptedAuthorization = JSON.parse(await readFile(authorizationPath, "utf8"));
+  interruptedAuthorization.status = "claimed";
+  interruptedAuthorization.finishedAt = null;
+  await writeFile(authorizationPath, JSON.stringify(interruptedAuthorization, null, 2) + "\n", "utf8");
+  const claimPath = join(authorizationDirectory, authorization.id + ".claim");
+  await mkdir(claimPath);
+
   const recovered = await store.recoverRunFinalization("tts-demo", pending.runId);
   assert.equal(recovered.status, "completed");
   assert.equal(posts, 1);
   const reopened = await store.readContext("tts-demo");
   const result = reopened.results.find((entry) => entry.createdByRun === pending.runId);
+  const recoveredAuthorization = reopened.authorizations.find((entry) => entry.id === authorization.id);
   assert.ok(result);
   assert.equal(result.files[0].available, true);
   assert.equal(result.data.providerRequestId, "req-paid");
+  assert.equal(recoveredAuthorization.status, "consumed");
+  await assert.rejects(access(claimPath), (error) => error.code === "ENOENT");
+
+  await mkdir(claimPath);
+  const repeatedSettlement = await settleExecutionAuthorization(store, "tts-demo", authorization.id, {
+    status: "consumed"
+  });
+  assert.equal(repeatedSettlement.status, "consumed");
+  await assert.rejects(access(claimPath), (error) => error.code === "ENOENT");
 });
 
 
@@ -678,6 +703,101 @@ test("provider usage and request IDs persist when local verification fails after
   assert.equal(record.actualUsage.amount, 11);
   assert.equal(record.providerRequestId, "req-receipt");
   assert.equal(record.traceId, "trace-receipt");
+  assert.ok(record.providerResponseReceivedAt);
+  assert.equal(context.results.length, 0);
+});
+
+test("ElevenLabs refuses approval when the model credit multiplier is unknown", async () => {
+  let posts = 0;
+  const tool = createElevenLabsTts({
+    loadConfig: async () => ({ piper: {}, elevenLabs: { apiKey: "test-key" } }),
+    executeCommand: async () => ({ stdout: "ffprobe version test", stderr: "" }),
+    fetchImpl: async (url) => {
+      const value = String(url);
+      if (value.endsWith("/v1/user/subscription")) return Response.json({});
+      if (value.endsWith("/v1/models")) {
+        return Response.json([{
+          model_id: "eleven_v3",
+          can_do_text_to_speech: true,
+          languages: [{ language_id: "vi" }]
+        }]);
+      }
+      if (value.includes("/v2/voices?")) {
+        return Response.json({ voices: [{ voice_id: "voice_vi" }], has_more: false });
+      }
+      posts += 1;
+      return new Response(silentWav());
+    },
+    baseUrl: "https://example.test"
+  });
+
+  await assert.rejects(
+    tool.estimateUsage({ inputs: {
+      text: "Xin chào", modelId: "eleven_v3", voiceId: "voice_vi"
+    }}),
+    (error) => error.code === "approval_limit_unknown"
+  );
+  assert.equal(posts, 0);
+});
+
+test("provider receipt persists before a paid audio response body fails", async (t) => {
+  const { store } = await fixture(t);
+  let posts = 0;
+  const tool = createElevenLabsTts({
+    loadConfig: async () => ({ piper: {}, elevenLabs: { apiKey: "test-key" } }),
+    fetchImpl: async (url) => {
+      const value = String(url);
+      if (value.endsWith("/v1/user/subscription")) return Response.json({});
+      if (value.endsWith("/v1/models")) {
+        return Response.json([{
+          model_id: "eleven_v3",
+          can_do_text_to_speech: true,
+          languages: [{ language_id: "vi" }],
+          model_rates: { character_cost_multiplier: 1 }
+        }]);
+      }
+      if (value.includes("/v2/voices?")) {
+        return Response.json({ voices: [{ voice_id: "voice_vi" }], has_more: false });
+      }
+      posts += 1;
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          "character-cost": "13",
+          "request-id": "req-body-failed",
+          "x-trace-id": "trace-body-failed"
+        }),
+        async arrayBuffer() {
+          throw new Error("response body interrupted");
+        }
+      };
+    },
+    baseUrl: "https://example.test",
+    executeCommand: async () => ({ stdout: "ffprobe version test", stderr: "" })
+  });
+  const executor = new ToolExecutor({ store, registry: new ToolRegistry([tool]) });
+  const request = {
+    capability: "tts.synthesize",
+    tool: "elevenlabs",
+    purpose: "Persist response headers before body",
+    inputs: { text: "Xin chào", modelId: "eleven_v3", voiceId: "voice_vi" }
+  };
+  const authorization = await executor.authorize("tts-demo", request, {
+    approvedBy: "user", maxCredits: 13, reason: "One body-read attempt"
+  });
+
+  await assert.rejects(
+    executor.execute("tts-demo", { ...request, authorizationId: authorization.id }),
+    (error) => error.code === "provider_error" && error.requestSubmitted
+  );
+  assert.equal(posts, 1);
+  const context = await store.readContext("tts-demo");
+  const record = context.authorizations.find((entry) => entry.id === authorization.id);
+  assert.equal(record.status, "consumed");
+  assert.equal(record.actualUsage.amount, 13);
+  assert.equal(record.providerRequestId, "req-body-failed");
+  assert.equal(record.traceId, "trace-body-failed");
   assert.ok(record.providerResponseReceivedAt);
   assert.equal(context.results.length, 0);
 });

@@ -67,7 +67,7 @@ export function createElevenLabsTts({
 
   return {
     name: "elevenlabs",
-    version: "1.2.0",
+    version: "1.3.0",
     provider: "ElevenLabs",
     capability: "tts.synthesize",
     description: "Generate cloud narration with an explicitly selected ElevenLabs model and voice.",
@@ -152,24 +152,19 @@ export function createElevenLabsTts({
       };
     },
     async execute({ client, spec, outputPath, signal, onProviderResponse }) {
-      const response = await client.synthesize({ ...spec, signal });
-      const actualUsage = response.actualCredits === null ? null : {
-        unit: "credits",
-        amount: response.actualCredits,
-        basis: "character-cost response header"
+      const usage = (credits) => credits === null ? null : {
+        unit: "credits", amount: credits, basis: "character-cost response header"
       };
-      if (onProviderResponse) {
-        try {
-          await onProviderResponse({
-            actualUsage,
-            providerRequestId: response.providerRequestId,
-            traceId: response.traceId
-          });
-        } catch (error) {
-          if (error && typeof error === "object") error.requestSubmitted = true;
-          throw error;
-        }
-      }
+      const response = await client.synthesize({
+        ...spec,
+        signal,
+        onProviderResponse: onProviderResponse ? (receipt) => onProviderResponse({
+          actualUsage: usage(receipt.actualCredits),
+          providerRequestId: receipt.providerRequestId,
+          traceId: receipt.traceId
+        }) : undefined
+      });
+      const actualUsage = usage(response.actualCredits);
       try {
         await writeFile(outputPath, response.bytes);
         const file = await fileEvidence(outputPath);

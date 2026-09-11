@@ -253,7 +253,8 @@ vẫn lưu failed run sau khi một yêu cầu hợp lệ đã bắt đầu.
 Nếu tool trả `status: "finalization_pending"`, file output và Result hoặc pending
 Result draft đã được bảo toàn nhưng record Run chưa đóng xong. Không chạy lại tool
 (đặc biệt với provider trả phí). Đọc context để lấy Run đang recoverable rồi hoàn
-tất dấu vết:
+tất dấu vết; recovery cũng settle authorization còn `claimed` khi đã có provider
+receipt:
 
 ```powershell
 npm run project:run:recover -- <project-id> <run-id>

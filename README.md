@@ -130,8 +130,8 @@ npm run tool:run -- coffee-video D:\Temp\tool-request.json
 ```
 
 Nếu output và Result hoặc pending Result draft đã được bảo toàn nhưng bước lưu/đóng
-Run lỗi, lệnh trả `finalization_pending`. Hoàn tất lại dấu vết mà không chạy lại tool
-hoặc provider trả phí:
+Run lỗi, lệnh trả `finalization_pending`. Hoàn tất Result, authorization và Run mà
+không chạy lại tool hoặc provider trả phí:
 
 ```powershell
 npm run project:run:recover -- coffee-video run-...

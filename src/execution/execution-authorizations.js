@@ -168,6 +168,10 @@ export async function settleExecutionAuthorization(store, projectId, authorizati
   }
   const target = paths(store, projectId, authorizationId);
   const record = await readRecord(store, projectId, authorizationId);
+  if (record.status === value.status) {
+    await rm(target.claim, { recursive: true, force: true });
+    return record;
+  }
   if (record.status !== "claimed") {
     throw new ExecutionAuthorizationError("Only a claimed authorization can be settled.");
   }

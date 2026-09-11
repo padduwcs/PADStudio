@@ -153,9 +153,12 @@ rỗng. Web tiếp tục chỉ đọc: chỉ phục vụ file đã đăng ký th
 nhận raw path và không chạy tool.
 
 Sau khi output đã kiểm tra và Result đã được ghi bền vững, lỗi khi hoàn tất record
-Run không được phép xóa Result hoặc file output. Context đánh dấu Run đó là đang chờ
-hoàn tất dấu vết; Agent dùng lệnh phục hồi để hoàn tất Run mà không chạy lại tool.
-Rollback chỉ xóa output khi chưa có Result bền vững.
+Run không được phép xóa Result hoặc file output. Với provider trả phí, nếu response
+và output đã được xác minh nhưng bước ghi Result lỗi, Run giữ pending Result draft
+cùng output để phục hồi. Context đánh dấu Run đó là đang chờ hoàn tất dấu vết; Agent
+dùng lệnh phục hồi để ghi Result, settle authorization còn `claimed` từ provider
+receipt và hoàn tất Run mà không chạy lại tool. Rollback chỉ xóa output khi chưa có
+Result/pending Result có thể phục hồi và chưa cần bảo toàn output đã trả phí.
 
 ## Trí nhớ project và checkpoint
 

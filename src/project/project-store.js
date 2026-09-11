@@ -3,7 +3,10 @@ import { isAnalysisResultType, validateAnalysisResultData } from "../analysis/co
 import { sha256File } from "../analysis/source-identity.js";
 import { ProjectIntelligenceStore } from "../intelligence/project-intelligence-store.js";
 import { createDefaultSkillCatalog } from "../intelligence/skill-catalog.js";
-import { readExecutionAuthorizations } from "../execution/execution-authorizations.js";
+import {
+  readExecutionAuthorizations,
+  settleExecutionAuthorization
+} from "../execution/execution-authorizations.js";
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { readJson, writeJsonAtomic, writeTextAtomic } from "./atomic-files.js";
@@ -1309,6 +1312,30 @@ export class ProjectStore {
     }
     if (result.files.some((file) => !file.available)) {
       throw new ProjectStoreError(`Output của run ${runId} không còn đầy đủ.`);
+    }
+    if (run.authorizationId) {
+      const authorization = (await readExecutionAuthorizations(this, projectId))
+        .find((candidate) => candidate.id === run.authorizationId);
+      if (!authorization) {
+        throw new ProjectStoreError(`Authorization của run ${runId} không còn tồn tại.`);
+      }
+      if (authorization.status === "claimed") {
+        if (!authorization.providerResponseReceivedAt) {
+          throw new ProjectStoreError(
+            `Authorization của run ${runId} chưa có provider receipt để phục hồi an toàn.`
+          );
+        }
+        await settleExecutionAuthorization(this, projectId, authorization.id, {
+          status: "consumed",
+          actualUsage: authorization.actualUsage,
+          providerRequestId: authorization.providerRequestId,
+          traceId: authorization.traceId
+        });
+      } else if (authorization.status !== "consumed") {
+        throw new ProjectStoreError(
+          `Authorization của run ${runId} có trạng thái không thể phục hồi: ${authorization.status}.`
+        );
+      }
     }
     return this.finishRun(projectId, runId, {
       status: "completed",

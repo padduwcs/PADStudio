@@ -117,7 +117,8 @@ vì hard-code một voice id.
 Catalog voice được lấy với `include_custom_rates=false`. Voice Library có custom rate bị loại khỏi
 lựa chọn vì hệ số thực tế còn phụ thuộc rate của voice và subscription, nên PADStudio không thể
 chứng minh một trần credit an toàn chỉ từ số ký tự. Nếu provider vẫn trả một voice có custom rate,
-bước plan/estimate dừng với `approval_limit_unknown`; hệ thống không gửi request trả phí.
+hoặc model catalog không có multiplier hữu hạn dương, bước plan/estimate dừng với
+`approval_limit_unknown`; hệ thống không gửi request trả phí.
 
 `ffprobe` là dependency bắt buộc để xác minh file audio. Availability kiểm tra dependency này trước
 khi plan/authorize, và Executor kiểm tra lại ngay trước POST để không dùng credit nếu môi trường đã
@@ -149,23 +150,26 @@ với capability, tool, purpose và toàn bộ inputs; sửa một ký tự cũn
 lượng lại trước khi gửi và chặn khi vượt trần. Authorization được claim nguyên tử, link trực tiếp
 trong Run và chỉ dùng một lần.
 
-- Ngay khi provider trả response: receipt gồm usage từ `character-cost`, request id và trace id được
-  lưu trước khi ghi/probe file cục bộ. Authorization sau đó là `consumed`, kể cả khi kiểm tra file lỗi,
-  vì request cloud đã hoàn tất và credit không thể hoàn tác.
+- Ngay khi provider trả response headers: receipt gồm usage từ `character-cost`, request id và
+  trace id được lưu trước cả lúc đọc audio body, ghi hoặc probe file cục bộ. Authorization sau đó là
+  `consumed`, kể cả khi body bị đứt hay kiểm tra file lỗi, vì request cloud đã hoàn tất và credit
+  không thể hoàn tác.
 - Lỗi chắc chắn trước POST: `released`; đây vẫn là record terminal, cần phê duyệt mới nếu chạy lại.
 - Lỗi mạng trong/sau POST mà chưa nhận được response, hoặc không biết provider đã nhận chưa:
   `usage_unknown`, không tái dùng.
 - Nếu output đã commit nhưng lưu Result/đóng Run lỗi, Executor giữ MP3 và pending Result draft rồi
-  trả `finalization_pending`. Chạy `npm run project:run:recover -- <project-id> <run-id>` để hoàn tất
-  dấu vết; không gọi lại tool/provider và không phát sinh request trả phí thứ hai.
+  trả `finalization_pending`. Chạy `npm run project:run:recover -- <project-id> <run-id>` để ghi
+  Result còn thiếu, settle authorization còn `claimed` từ receipt và hoàn tất Run. Recovery là
+  idempotent, không gọi lại tool/provider và không phát sinh request trả phí thứ hai.
 - Không có auto-approve, auto-retry hoặc fallback.
 
 ## Verification và giới hạn
 
 Test tự động bao phủ Piper/ElevenLabs giả lập, UTF-8 tiếng Việt, metadata/speaker/sample rate,
-voice pagination/custom rate, model-language, giới hạn credit, exact binding/single-use, preflight
-`ffprobe`, receipt sau response, phục hồi lỗi lưu Result không gọi lại provider, không lưu key, thư
-mục output chỉ có file khai báo và Result audio dùng được làm source video.
+voice pagination/custom rate, model-language/multiplier, giới hạn credit, exact binding/single-use,
+preflight `ffprobe`, receipt trước khi đọc response body, phục hồi Result và authorization không gọi
+lại provider, không lưu key, thư mục output chỉ có file khai báo và Result audio dùng được làm
+source video.
 
 Máy nghiệm thu hiện tại chưa có API key người dùng nên chưa gọi ElevenLabs cloud thật và chưa
 nghe duyệt voice thật. Piper thật cũng chỉ chạy khi runtime/model được cài trên máy. Đây là giới

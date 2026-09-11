@@ -127,7 +127,10 @@ export class ElevenLabsClient {
           maximumTextLengthPerRequest: model.maximum_text_length_per_request ?? null,
           maxCharactersRequestFreeUser: model.max_characters_request_free_user ?? null,
           maxCharactersRequestSubscribedUser: model.max_characters_request_subscribed_user ?? null,
-          creditMultiplier: Number(model.model_rates?.character_cost_multiplier ?? model.token_cost_factor ?? 1)
+          creditMultiplier: (() => {
+            const value = Number(model.model_rates?.character_cost_multiplier ?? model.token_cost_factor);
+            return Number.isFinite(value) && value > 0 ? value : null;
+          })()
         };
       });
     const voices = voiceValues.map((voice) => {
@@ -183,7 +186,12 @@ export class ElevenLabsClient {
         model.maximumTextLengthPerRequest > 0 && textLength > model.maximumTextLengthPerRequest) {
       throw new ElevenLabsError("Text exceeds the selected ElevenLabs model request limit.", { code: "invalid_input" });
     }
-    const multiplier = Number.isFinite(model.creditMultiplier) && model.creditMultiplier > 0 ? model.creditMultiplier : 1;
+    if (model.creditMultiplier === null) {
+      throw new ElevenLabsError("Selected ElevenLabs model has no reliable credit multiplier.", {
+        code: "approval_limit_unknown"
+      });
+    }
+    const multiplier = model.creditMultiplier;
     return {
       usage: {
         unit: "credits",
@@ -194,7 +202,10 @@ export class ElevenLabsClient {
     };
   }
 
-  async synthesize({ voiceId, modelId, text, languageCode: language, voiceSettings, outputFormat, seed, signal }) {
+  async synthesize({
+    voiceId, modelId, text, languageCode: language, voiceSettings, outputFormat, seed,
+    signal, onProviderResponse
+  }) {
     const response = await this.request(
       "/v1/text-to-speech/" + encodeURIComponent(safeId(voiceId, "voiceId")) +
         "?output_format=" + encodeURIComponent(outputFormat),
@@ -206,16 +217,27 @@ export class ElevenLabsClient {
         }
       }
     );
+    const characterCostValue = response.headers.get("character-cost");
+    const actualCredits = characterCostValue === null ? null : Number(characterCostValue);
+    const receipt = {
+      actualCredits: Number.isFinite(actualCredits) && actualCredits >= 0 ? actualCredits : null,
+      providerRequestId: response.headers.get("request-id"),
+      traceId: response.headers.get("x-trace-id")
+    };
+    if (onProviderResponse) {
+      try {
+        await onProviderResponse(receipt);
+      } catch (error) {
+        if (error && typeof error === "object") error.requestSubmitted = true;
+        throw error;
+      }
+    }
     try {
       const bytes = Buffer.from(await response.arrayBuffer());
-      const characterCostValue = response.headers.get("character-cost");
-      const actualCredits = characterCostValue === null ? null : Number(characterCostValue);
       if (bytes.length === 0) throw submittedError("ElevenLabs returned an empty audio response.", "invalid_output");
       return {
         bytes,
-        actualCredits: Number.isFinite(actualCredits) && actualCredits >= 0 ? actualCredits : null,
-        providerRequestId: response.headers.get("request-id"),
-        traceId: response.headers.get("x-trace-id")
+        ...receipt
       };
     } catch (error) {
       if (error?.requestSubmitted) throw error;
