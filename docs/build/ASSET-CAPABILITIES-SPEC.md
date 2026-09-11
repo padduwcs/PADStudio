@@ -86,4 +86,10 @@ Không mang raw path, silent fallback hoặc pipeline stage vào lõi.
 
 ## Kết quả nghiệm thu gói đầu
 
-Repository: 144/144 pass, 0 fail/skip. Browser: PNG/audio, attribution, giữ player qua polling và viewport 390/768/1440 đạt. Báo cáo: [phase3-asset-capabilities-acceptance.json](../../reports/phase3-asset-capabilities-acceptance.json). Chạy lại bằng npm test và npm run assets:acceptance (Windows, Chrome/Edge). Runner tạo project fixture riêng dưới .cache/asset-browser-projects; không dùng project owner. Không coi fixture transport là kiểm chứng mạng ngoài.
+Mốc nghiệm thu ban đầu của gói là 144/144. Sau khi tích hợp TTS và pilot, repository hiện đạt
+160/160; browser vẫn đạt PNG/audio, attribution, giữ player qua polling và viewport
+390/768/1440. Báo cáo gói: [phase3-asset-capabilities-acceptance.json](../../reports/phase3-asset-capabilities-acceptance.json).
+Chạy lại bằng `npm test` và `npm run assets:acceptance` (Windows, Chrome/Edge). Runner tạo project
+fixture riêng dưới `.cache/asset-browser-projects`; không dùng project owner. Không coi fixture
+transport là kiểm chứng mạng ngoài. Bằng chứng kết hợp asset + Piper + sequence thật nằm trong
+[phase3-vd04-pilot-acceptance.json](../../reports/phase3-vd04-pilot-acceptance.json).

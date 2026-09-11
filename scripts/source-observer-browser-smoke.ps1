@@ -8,6 +8,7 @@ param(
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $OutputEncoding = [Text.UTF8Encoding]::new($false)
+. (Join-Path $PSScriptRoot "browser-smoke-profile.ps1")
 
 if (-not $Browser) {
   $candidates = @(
@@ -30,8 +31,7 @@ $port = ([Net.IPEndPoint]$listener.LocalEndpoint).Port
 $listener.Stop()
 
 $workspace = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$profile = Join-Path $workspace (".browser-test-" + [Guid]::NewGuid().ToString("N"))
-New-Item -ItemType Directory -Path $profile | Out-Null
+$profile = New-BrowserSmokeProfile -Workspace $workspace
 $process = $null
 $script:CdpSocket = $null
 $script:CdpId = 0
@@ -75,15 +75,7 @@ function Send-Cdp {
 
 function Evaluate {
   param([string]$Expression)
-  $result = Send-Cdp "Runtime.evaluate" @{
-    expression = $Expression
-    awaitPromise = $true
-    returnByValue = $true
-  }
-  if ($result.exceptionDetails) {
-    throw ("Browser JavaScript error: " + $result.exceptionDetails.text)
-  }
-  return $result.result.value
+  return Invoke-BrowserSmokeEvaluation -Expression $Expression
 }
 
 try {
@@ -334,15 +326,5 @@ JSON.stringify([...document.querySelectorAll("*")]
     try { Send-Cdp "Browser.close" | Out-Null } catch {}
     $script:CdpSocket.Dispose()
   }
-  if ($process -and -not $process.HasExited) {
-    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
-  }
-  if (Test-Path -LiteralPath $profile) {
-    $resolved = (Resolve-Path -LiteralPath $profile).Path
-    $rootPrefix = $workspace + [IO.Path]::DirectorySeparatorChar
-    if (-not $resolved.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-      throw "Từ chối dọn profile ngoài workspace: $resolved"
-    }
-    Remove-Item -LiteralPath $resolved -Recurse -Force
-  }
+  Remove-BrowserSmokeProfile -Workspace $workspace -Profile $profile -BrowserProcess $process
 }

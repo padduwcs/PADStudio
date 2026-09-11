@@ -47,8 +47,18 @@ test("sequence supports unresolved ideas, validates timing and rejects raw media
   const { store, save } = await fixture(t);
   const first = await save(sequence([segment("opening", null, { narration: { text: "Hello" } })]));
   assert.equal(first.data.segments[0].visual, null);
-  const context = await new ProjectContextAssembler({ projectStore: store }).build("demo");
+  const assembler = new ProjectContextAssembler({ projectStore: store });
+  const context = await assembler.build("demo");
   assert.deepEqual(context.production.sequences[0].segments[0].blockers, ["missing_visual", "missing_narration_audio"]);
+  const summary = await assembler.buildSummary("demo");
+  assert.equal(summary.checkpointFreshness.status, "missing");
+  assert.equal(summary.production.activeSequences[0].artifactId, first.id);
+  assert.deepEqual(
+    summary.production.activeSequences[0].blockedSegments[0].blockers,
+    ["missing_visual", "missing_narration_audio"]
+  );
+  assert.deepEqual(summary.production.pendingFinalizations, []);
+  assert.deepEqual(summary.resumeView.affectedWorkItems, []);
   await assert.rejects(save({}, { expectedRevision: 1 }), /version/);
   assert.throws(() => normalizeSequence(sequence([segment("a"), segment("a")])), /unique/);
   assert.throws(() => normalizeSequence(sequence([segment("a", { source: { kind: "resource", id: "x", path: "C:/raw.mp4" } })])), /unsupported fields/);

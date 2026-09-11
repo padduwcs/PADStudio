@@ -38,6 +38,65 @@ function checkpointFreshness(context, analysis = null) {
   };
 }
 
+function buildResumeView(context, production, freshness) {
+  const current = context.intelligence.currentWorkItems;
+  const activeWorkflow = context.intelligence.activeWorkflow;
+  const checkpointMatches = Boolean(
+    activeWorkflow &&
+    context.checkpoint?.activeWorkflowId &&
+    context.checkpoint.activeWorkflowId === activeWorkflow.id
+  );
+  const checkpointItem = checkpointMatches
+    ? activeWorkflow.items.find((item) => item.id === context.checkpoint?.activeWorkItemId)
+    : null;
+  return {
+    affectedWorkItems: production.affectedWorkItems,
+    checkpoint: context.checkpoint?.resume ?? null,
+    checkpointFreshness: freshness,
+    activeWorkflowId: activeWorkflow?.id ?? null,
+    activeWorkflowRevision: activeWorkflow?.revision ?? null,
+    activeWorkItemId: checkpointItem?.id ?? null,
+    attention: current.map((item) => ({
+      id: item.id,
+      status: item.status,
+      purpose: item.purpose,
+      blockedBy: item.dependsOn.filter((dependencyId) => {
+        const dependency = activeWorkflow?.items.find(
+          (candidate) => candidate.id === dependencyId
+        );
+        return dependency?.status !== "completed";
+      })
+    })),
+    pendingApprovalIds: context.intelligence.pendingApprovals.map((item) => item.id)
+  };
+}
+
+function summarizeProduction(production, runRecovery) {
+  return {
+    activeSequences: production.sequences.filter((sequence) => sequence.active).map((sequence) => ({
+      artifactId: sequence.artifactId,
+      key: sequence.key,
+      revision: sequence.revision,
+      name: sequence.name,
+      status: sequence.status,
+      durationSeconds: sequence.durationSeconds,
+      reasons: sequence.reasons,
+      blockedSegments: sequence.segments
+        .filter((segment) => segment.blockers.length || segment.reasons.length)
+        .map((segment) => ({
+          id: segment.id,
+          title: segment.title,
+          blockers: segment.blockers,
+          reasons: segment.reasons
+        })),
+      latestRenderId: sequence.renders.at(-1)?.resultId ?? null
+    })),
+    affectedWorkItems: production.affectedWorkItems,
+    pendingFinalizations: runRecovery?.pendingFinalizations ?? [],
+    note: production.note
+  };
+}
+
 export class ProjectContextAssembler {
   constructor({ projectStore, toolRegistry = null, analysisReader = null, capabilityCacheTtlMs = 5_000, now = Date.now }) {
     this.projectStore = projectStore;
@@ -59,61 +118,34 @@ export class ProjectContextAssembler {
     ]);
     const production = buildProductionContext({ ...context, analysis });
     const freshness = checkpointFreshness(context, analysis);
-    const current = context.intelligence.currentWorkItems;
-    const activeWorkflow = context.intelligence.activeWorkflow;
-    const checkpointMatches = Boolean(
-      activeWorkflow &&
-      context.checkpoint?.activeWorkflowId &&
-      context.checkpoint.activeWorkflowId === activeWorkflow.id
-    );
-    const checkpointItem = checkpointMatches
-      ? activeWorkflow.items.find((item) => item.id === context.checkpoint?.activeWorkItemId)
-      : null;
     return {
       ...context,
       capabilities,
       analysis,
       production,
       checkpointFreshness: freshness,
-      resumeView: {
-        affectedWorkItems: production.affectedWorkItems,
-        checkpoint: context.checkpoint?.resume ?? null,
-        checkpointFreshness: freshness,
-        activeWorkflowId: activeWorkflow?.id ?? null,
-        activeWorkflowRevision: activeWorkflow?.revision ?? null,
-        activeWorkItemId: checkpointItem?.id ?? null,
-        attention: current.map((item) => ({
-          id: item.id,
-          status: item.status,
-          purpose: item.purpose,
-          blockedBy: item.dependsOn.filter((dependencyId) => {
-            const dependency = context.intelligence.activeWorkflow?.items.find(
-              (candidate) => candidate.id === dependencyId
-            );
-            return dependency?.status !== "completed";
-          })
-        })),
-        pendingApprovalIds: context.intelligence.pendingApprovals.map((item) => item.id)
-      }
+      resumeView: buildResumeView(context, production, freshness)
     };
   }
 
   async buildSummary(projectId) {
-    const [project, checkpoint, activeArtifacts, activeWorkflow, capabilities, analysis] = await Promise.all([
-      this.projectStore.readProject(projectId),
-      this.projectStore.readCheckpoint(projectId),
-      this.projectStore.intelligence.readActiveArtifacts(projectId),
-      this.projectStore.intelligence.readActiveWorkflow(projectId),
+    const [context, capabilities, analysis] = await Promise.all([
+      this.projectStore.readContext(projectId),
       this.#capabilities(),
       this.analysisReader.summary(projectId)
     ]);
+    const production = buildProductionContext({ ...context, analysis });
+    const freshness = checkpointFreshness(context, analysis);
     return {
       version: "1.0",
       view: "summary",
-      project,
-      checkpoint,
-      activeArtifacts,
-      activeWorkflow,
+      project: context.project,
+      checkpoint: context.checkpoint,
+      activeArtifacts: context.intelligence.activeArtifacts,
+      activeWorkflow: context.intelligence.activeWorkflow,
+      checkpointFreshness: freshness,
+      resumeView: buildResumeView(context, production, freshness),
+      production: summarizeProduction(production, context.runRecovery),
       capabilities,
       analysis
     };

@@ -192,7 +192,8 @@ Chi tiết contract và cách Agent dùng các lệnh nằm trong
 
 Đợt 2 đã hoàn thành ở phạm vi practical: hợp đồng brief/proposal/direction, pilot `keys-first`,
 mẫu r2 có reuse 6/7 đoạn, exact user approval và workspace observer chỉ đọc cho toàn bộ mạch
-creative. Cổng nghiệm thu đạt 138/138 test, freshness và browser ở 390/768/1440 px.
+creative. Mốc Đợt 2 đạt 138/138; bộ repository hiện tại đạt 160/160, freshness và browser vẫn đạt
+ở 390/768/1440 px.
 
 ```powershell
 npm run creative:acceptance -- --project phase2-brute-force-pilot --report reports/phase2-creative-direction-acceptance.json
@@ -281,3 +282,14 @@ endpoint thay đổi project.
 ## Nguyên liệu dùng chung — Đợt 3, gói đầu
 
 Đã bổ sung graphic.render (thẻ chữ/biểu đồ/sơ đồ bước), audio.prepare (tách/cắt, fade, loudness) và media.acquire (file HTTPS đã chọn, có attribution). Capability `tts.synthesize` có Piper local và ElevenLabs cloud, cùng tạo Result audio có thể nghe/dùng trong video; cloud bắt buộc authorization credit dùng một lần. Xem [asset contract](docs/build/ASSET-CAPABILITIES-SPEC.md) và [hướng dẫn TTS](docs/build/TTS-CAPABILITY.md).
+
+Pilot local `phase3-vd04-asset-pilot` đã đi trọn nguồn → direction → graphic/Piper → sequence r9 →
+render/review, không gọi provider trả phí. Trạng thái và kế hoạch tiếp theo:
+[PADSTUDIO-STATE-AND-NEXT.md](docs/build/PADSTUDIO-STATE-AND-NEXT.md). Báo cáo:
+[phase3-vd04-pilot-acceptance.json](reports/phase3-vd04-pilot-acceptance.json).
+
+```powershell
+npm run tts:acceptance
+npm run assets:acceptance
+npm run creative:acceptance
+```

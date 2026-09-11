@@ -258,8 +258,10 @@ Gói B đã khởi tạo pilot thật và chốt direction `keys-first` + takeaw
 `video.sequence` 7 đoạn, render mẫu r1, review và sửa cục bộ nhịp nối thành r2; renderer reuse
 6/7 đoạn. Người dùng đã duyệt exact r2 dài 47,421 giây; decision bind đúng final Result/review
 và workflow đã hoàn tất. Gói D đã bổ sung observer chỉ đọc cho vòng creative/sample; Gói E đã
-nghiệm thu round-trip, failure/recovery, freshness và browser. Gói đầu Đợt 3 đã bổ sung ba capability nguyên liệu dùng chung theo yêu cầu mở rộng;
-phạm vi và giới hạn được ghi ở cuối tài liệu. Không tự mở dịch vụ trả phí.
+nghiệm thu round-trip, failure/recovery, freshness và browser. Đợt 3 đã hoàn tất một pilot local
+evidence-to-preview có graphic, Piper TTS thật, sequence/render, ASR và kiểm tra mix; không gọi
+dịch vụ trả phí. Trạng thái hiện hành và bước tiếp theo nằm trong
+[PADSTUDIO-STATE-AND-NEXT.md](./PADSTUDIO-STATE-AND-NEXT.md).
 Chi tiết tại [Gói B](./CREATIVE-DIRECTION-PACKAGE-B.md),
 [Gói C](./CREATIVE-DIRECTION-PACKAGE-C.md),
 [Gói D](./CREATIVE-DIRECTION-PACKAGE-D.md) và
@@ -273,4 +275,12 @@ Trong giai đoạn đầu, chat chưa nằm trong web PADStudio. Người dùng 
 
 ## Đợt 3 — gói nguyên liệu dùng chung
 
-Theo yêu cầu mở rộng các khả năng phổ biến, gói đầu đã bổ sung graphic.render, audio.prepare và media.acquire qua Executor hiện có. Gói TTS tiếp theo đã bổ sung Piper local và ElevenLabs qua cùng `tts.synthesize`, Result audio dùng lại được và approval credit dùng một lần. Ảnh AI và search stock chưa triển khai. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md) và [TTS-CAPABILITY.md](./TTS-CAPABILITY.md).
+Theo yêu cầu mở rộng các khả năng phổ biến, gói đầu đã bổ sung `graphic.render`, `audio.prepare`
+và `media.acquire` qua Executor hiện có. Gói TTS bổ sung Piper local và ElevenLabs qua cùng
+`tts.synthesize`, Result audio dùng lại được và approval credit dùng một lần. Pilot
+`phase3-vd04-asset-pilot` đã chứng minh đường local từ nguồn → graphic/Piper → sequence r9 →
+render/review; checkpoint hiện current và không có việc treo. Ảnh AI và search stock chưa triển
+khai. Ưu tiên tiếp theo là Đợt 4 dựa trên ma sát của một workflow người dùng thật, không mở rộng
+provider theo số lượng. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md),
+[TTS-CAPABILITY.md](./TTS-CAPABILITY.md) và
+[báo cáo pilot](../../reports/phase3-vd04-pilot-acceptance.json).

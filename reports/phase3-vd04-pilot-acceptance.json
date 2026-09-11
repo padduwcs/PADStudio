@@ -1,0 +1,57 @@
+{
+  "version": "1.0",
+  "phase": 3,
+  "status": "passed_with_documented_limits",
+  "scope": "local_evidence_to_preview_pilot",
+  "projectId": "phase3-vd04-asset-pilot",
+  "sourceResourceId": "resource-mtx9q1nu-e67eeca7",
+  "evidence": {
+    "briefArtifactId": "artifact-mtxaidzp-34646dde",
+    "proposalArtifactId": "artifact-mtxakwoe-723ffa9b",
+    "directionArtifactId": "artifact-mtxat6v7-1e339382",
+    "graphicResultId": "result-mtxav8a5-f67a641d",
+    "ttsResultId": "result-mtxabte4-e853b8c0",
+    "transcriptResultId": "result-mtxac568-a67247da",
+    "sequenceArtifactId": "artifact-mtxavq3y-a656b65c",
+    "sequenceRevision": 9,
+    "renderResultId": "result-mtxaw6zq-5779e7b0",
+    "reviewId": "review-mtxawual-570c1a4b",
+    "decisionId": "decision-mtxax7ji-128eb8e5"
+  },
+  "output": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "durationSeconds": 12.021333,
+    "sha256": "1dbae39abe1668f1b93bf103e4c03bcfe4472f2991a6da2603cda077bfbee836"
+  },
+  "contentVerification": {
+    "visualFramesReviewed": true,
+    "asrScriptWordsInOrder": 17,
+    "integratedLufs": -17.5,
+    "peakNormalized": 0.5614013671875,
+    "clippingCandidates": 0,
+    "humanListeningReview": false
+  },
+  "projectState": {
+    "checkpointFreshness": "current",
+    "activeWorkflowId": null,
+    "pendingApprovals": 0,
+    "affectedWorkItems": 0,
+    "blockedSegments": 0,
+    "pendingFinalizations": 0
+  },
+  "automatedVerification": {
+    "repositoryTests": { "passed": 160, "failed": 0 },
+    "analysisHarness": { "passed": 20, "failed": 0 },
+    "ttsTests": { "passed": 16, "failed": 0 },
+    "assetAcceptance": "passed",
+    "creativeAcceptance": "passed_with_documented_limits"
+  },
+  "cost": { "paidProviderCalls": 0, "actualCostUsd": 0 },
+  "limits": [
+    "No human listening review was performed; ASR and audio metrics do not establish natural voice quality.",
+    "ElevenLabs was not called because no user credential was configured.",
+    "Agent acceptance is recorded as decidedBy agent under delegated experiment authority, never as user approval."
+  ]
+}

@@ -1,6 +1,6 @@
 # TTS capability — Piper local và ElevenLabs
 
-Trạng thái: đã triển khai hoàn chỉnh sau baseline `7f82f9e`. Hai backend cùng cung cấp
+Trạng thái: đã triển khai và nghiệm thu contract/integration. Hai backend cùng cung cấp
 `tts.synthesize` qua Registry → Executor → Run/Result. Người gọi chọn backend, model và voice
 rõ ràng; hệ thống không tự chọn và không fallback.
 
@@ -171,7 +171,10 @@ preflight `ffprobe`, receipt trước khi đọc response body, phục hồi Res
 lại provider, không lưu key, thư mục output chỉ có file khai báo và Result audio dùng được làm
 source video.
 
-Máy nghiệm thu hiện tại chưa có API key người dùng nên chưa gọi ElevenLabs cloud thật và chưa
-nghe duyệt voice thật. Piper thật cũng chỉ chạy khi runtime/model được cài trên máy. Đây là giới
-hạn kiểm thử môi trường, không phải TODO tích hợp. Sau khi cấu hình, chạy `npm run tts:inspect -- vi`,
-tạo một câu khó/ngắn, nghe Result trong observer, rồi mới duyệt credit cho nội dung dài.
+Máy nghiệm thu hiện tại đã cấu hình Piper local `vi_VN-vais1000-medium` trong runtime bị ignore và
+đã tạo Result thật cho pilot vd04. Lời dẫn cuối được ASR xác nhận đủ 17 từ theo thứ tự; bản mix
+không có clipping candidate. Chưa có API key người dùng nên ElevenLabs cloud thật không được gọi;
+chưa có human listening review nên không tuyên bố chất giọng tự nhiên đã đạt. Chạy lại contract gate
+bằng `npm run tts:acceptance`; xem [report TTS](../../reports/phase3-tts-acceptance.json) và
+[report pilot](../../reports/phase3-vd04-pilot-acceptance.json). Trước sản xuất hàng loạt, vẫn cần
+nghe Result trong observer và chỉ duyệt credit cloud cho exact request khi thật sự cần.

@@ -1,6 +1,6 @@
 # PADStudio — lộ trình 6 đợt
 
-Cập nhật: **2026-09-11**. Hiện tại: **đợt 1 và đợt 2 đã hoàn thành ở phạm vi sử dụng thực dụng trên máy owner; đợt 3 đã có nguyên liệu dùng chung và TTS với Piper local/ElevenLabs có kiểm soát credit; ảnh AI và search stock chưa triển khai**. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt đang triển khai.
+Cập nhật: **2026-09-11**. Hiện tại: **đợt 1, đợt 2 và phạm vi practical-local của đợt 3 đã hoàn thành; bước tiếp theo là chọn một sản phẩm mục tiêu để mở đợt 4 dựa trên nhu cầu dựng đã được chứng minh**. Ảnh AI, search stock và ElevenLabs thật chưa được dùng. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt đang triển khai.
 
 ## 1. Cách dùng lộ trình
 
@@ -71,9 +71,16 @@ Sau mỗi đợt chỉ cần ghi: **đã dùng được gì, còn giới hạn g
 - [Bước 1 — review thực tế](../../eval/source-understanding/PRACTICAL-REVIEW.md), [bước 2 — hợp đồng/vòng đời](SOURCE-UNDERSTANDING-PACKAGE-B.md), [bước 3 — công cụ](SOURCE-UNDERSTANDING-PACKAGE-C.md), [bước 4 — hiểu biết/truy xuất](SOURCE-UNDERSTANDING-PACKAGE-D.md), [bước 5 — workspace observer](SOURCE-UNDERSTANDING-PACKAGE-E.md), [bước 6 — nghiệm thu phân hệ](SOURCE-UNDERSTANDING-PACKAGE-F.md): kết quả và giới hạn đã có.
 - [Báo cáo kiểm chứng bước 3](../../eval/source-understanding/reports/2026-09-09/package-c-verification.json): bằng chứng kiểm tra đã lưu.
 - [Trí tuệ project và workflow](PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md), [sequence và renderer](VIDEO-SEQUENCE-PRODUCTION.md): nền dùng tiếp ở các đợt sau.
+- [Trạng thái hiện tại và bước tiếp theo](PADSTUDIO-STATE-AND-NEXT.md), [báo cáo pilot Đợt 3](../../reports/phase3-vd04-pilot-acceptance.json): điểm bàn giao để bắt đầu Đợt 4.
 
 Lộ trình bổ sung cách tổ chức công việc; không thay thế [thiết kế](PADSTUDIO-DESIGN.md), [định hướng](PADSTUDIO-CURRENT-DIRECTION.md) hoặc tự ghi đè hợp đồng đã triển khai.
 
 ## Đợt 3 — gói nguyên liệu dùng chung
 
-Theo yêu cầu mở rộng các khả năng phổ biến, đợt 3 đã bổ sung graphic.render, audio.prepare, media.acquire và `tts.synthesize` qua Executor hiện có. TTS có Piper local và ElevenLabs cloud với authorization credit bind exact request; cloud thật chưa được gọi do chưa có API key người dùng. Ảnh AI và search stock chưa triển khai. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md) và [TTS-CAPABILITY.md](./TTS-CAPABILITY.md).
+Theo yêu cầu mở rộng các khả năng phổ biến, đợt 3 đã bổ sung `graphic.render`, `audio.prepare`,
+`media.acquire` và `tts.synthesize` qua Executor hiện có. Pilot vd04 đã dùng graphic và Piper
+thật trong sequence/render local, sửa lỗi phát âm/mix, review bằng frame + ASR + audio metrics và
+khép project không còn blocker. ElevenLabs cloud thật chưa được gọi do chưa có API key người dùng;
+ảnh AI và search stock chưa triển khai vì chưa có nhu cầu pilot bắt buộc. Đợt 3 được xem là hoàn
+thành ở phạm vi practical-local này. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md),
+[TTS-CAPABILITY.md](./TTS-CAPABILITY.md) và [báo cáo pilot](../../reports/phase3-vd04-pilot-acceptance.json).

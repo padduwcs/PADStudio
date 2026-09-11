@@ -1,0 +1,83 @@
+{
+  "version": "1.0",
+  "phase": 3,
+  "package": "tts",
+  "status": "passed",
+  "scope": "contract_integration_and_local_readiness",
+  "startedAt": "2026-09-11T18:42:40.050Z",
+  "completedAt": "2026-09-11T18:42:44.049Z",
+  "automatedVerification": {
+    "tests": {
+      "status": "passed",
+      "tests": 16,
+      "passed": 16,
+      "failed": 0,
+      "durationMs": 3162
+    },
+    "registry": {
+      "status": "passed",
+      "capability": "tts.synthesize",
+      "available": true,
+      "durationMs": 834
+    }
+  },
+  "environment": {
+    "tools": {
+      "piper-local": {
+        "version": "1.1.0",
+        "runtime": "local",
+        "approvalRequired": false,
+        "availability": {
+          "status": "available",
+          "model": "vi_VN-vais1000-medium",
+          "language": "vi-VN",
+          "sampleRate": 22050,
+          "numSpeakers": 1,
+          "runtime": "python -m piper"
+        }
+      },
+      "elevenlabs": {
+        "version": "1.3.0",
+        "runtime": "cloud",
+        "approvalRequired": true,
+        "availability": {
+          "status": "unavailable",
+          "credentialConfigured": false,
+          "reason": "Set elevenLabs.apiKey in ignored padstudio.local.json; the key is never read from project inputs."
+        }
+      }
+    }
+  },
+  "acceptanceMatrix": [
+    {
+      "id": "shared-contract",
+      "status": "passed",
+      "evidence": "Piper and ElevenLabs share explicit tts.synthesize without fallback."
+    },
+    {
+      "id": "local-result",
+      "status": "passed",
+      "evidence": "Piper integration produces verified reusable WAV Results in automated tests."
+    },
+    {
+      "id": "paid-authorization",
+      "status": "passed",
+      "evidence": "ElevenLabs is bound to an exact single-use credit authorization."
+    },
+    {
+      "id": "paid-recovery",
+      "status": "passed",
+      "evidence": "Receipt-first recovery is idempotent and never repeats the provider POST."
+    },
+    {
+      "id": "secret-handling",
+      "status": "passed",
+      "evidence": "Credentials are local-only and absent from project records and CLI output."
+    }
+  ],
+  "limits": [
+    "This gate does not submit a paid provider request.",
+    "Automated provider responses are simulated; current provider catalog, quota and voice quality require a configured account.",
+    "A real Piper sample must still be listened to and reviewed in a project before claiming creative voice quality."
+  ]
+}

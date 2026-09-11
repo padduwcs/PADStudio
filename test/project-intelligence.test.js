@@ -600,7 +600,8 @@ test("context assembler joins durable intelligence, resume state, and real capab
       };
     }
   };
-  const context = await new ProjectContextAssembler({ projectStore: store, toolRegistry: registry }).build("demo");
+  const assembler = new ProjectContextAssembler({ projectStore: store, toolRegistry: registry });
+  const context = await assembler.build("demo");
 
   assert.equal(context.resumeView.activeWorkflowId, workflow.id);
   assert.equal(context.resumeView.activeWorkItemId, "direction");
@@ -608,6 +609,11 @@ test("context assembler joins durable intelligence, resume state, and real capab
   assert.equal(context.capabilities.capabilities[0].id, "media.inspect");
   assert.equal(context.intelligence.relevantSkills[0].id, "creative-direction");
   assert.equal(context.checkpointFreshness.status, "current");
+  const summary = await assembler.buildSummary("demo");
+  assert.equal(summary.resumeView.activeWorkflowId, workflow.id);
+  assert.equal(summary.resumeView.activeWorkItemId, "direction");
+  assert.equal(summary.checkpointFreshness.status, "current");
+  assert.deepEqual(summary.production.affectedWorkItems, []);
 });
 
 test("context reports stale checkpoints and refreshes capability availability after its TTL", async (t) => {
@@ -643,6 +649,9 @@ test("context reports stale checkpoints and refreshes capability availability af
   assert.equal(first.checkpointFreshness.status, "stale");
   assert.deepEqual(first.checkpointFreshness.newerActivityKinds, ["artifact"]);
   assert.equal(first.capabilities.capabilities[0].check, 1);
+  const summary = await assembler.buildSummary("demo");
+  assert.equal(summary.checkpointFreshness.status, "stale");
+  assert.deepEqual(summary.resumeView.checkpointFreshness, summary.checkpointFreshness);
 
   clock = 50;
   const cached = await assembler.build("demo");

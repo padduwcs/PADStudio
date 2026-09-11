@@ -4,6 +4,8 @@
 
 Đọc tiếp [`PADSTUDIO-CURRENT-DIRECTION.md`](PADSTUDIO-CURRENT-DIRECTION.md) để biết các định hướng đã được chốt trong quá trình phát triển. Tài liệu này làm rõ trạng thái hiện tại, không thay thế bản thiết kế gốc.
 
+Đọc [`PADSTUDIO-STATE-AND-NEXT.md`](PADSTUDIO-STATE-AND-NEXT.md) để biết code hiện đã dùng được gì, pilot gần nhất, giới hạn còn lại và việc nên làm tiếp.
+
 Đọc tiếp [`PADSTUDIO-BUILD-OUTLINE.md`](PADSTUDIO-BUILD-OUTLINE.md) khi cần dàn ý chi tiết hơn để tự triển khai từng phần của hệ thống.
 
 Khi bắt đầu sửa code, đọc thêm [`DEVELOPMENT-PROTOCOL.md`](DEVELOPMENT-PROTOCOL.md). Tài liệu này hướng dẫn cách thay đổi code an toàn và kiểm tra kết quả.
@@ -37,3 +39,5 @@ Lộ trình phát triển và vị trí hiện tại: [PADSTUDIO-ROADMAP.md](PAD
 
 Capability TTS dùng chung, cài Piper tiếng Việt, cấu hình ElevenLabs và phê duyệt credit:
 [TTS-CAPABILITY.md](TTS-CAPABILITY.md).
+
+Pilot local Đợt 3 và bằng chứng nghiệm thu: [phase3-vd04-pilot-acceptance.json](../../reports/phase3-vd04-pilot-acceptance.json).

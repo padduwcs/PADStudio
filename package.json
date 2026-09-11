@@ -41,7 +41,8 @@
     "project:analyze": "node src/cli/analyze-project.js",
     "analysis:resume": "node src/cli/resume-analysis.js",
     "analysis:cancel": "node src/cli/cancel-analysis.js",
-    "assets:acceptance": "node scripts/asset-capabilities-acceptance.mjs"
+    "assets:acceptance": "node scripts/asset-capabilities-acceptance.mjs",
+    "tts:acceptance": "node scripts/tts-acceptance.mjs"
   },
   "engines": {
     "node": ">=20"
