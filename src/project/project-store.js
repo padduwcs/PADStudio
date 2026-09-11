@@ -136,6 +136,8 @@ function validateRun(run, projectId) {
     run.projectId !== projectId ||
     typeof run.id !== "string" ||
     typeof run.capability !== "string" ||
+    (run.authorizationId !== undefined && run.authorizationId !== null &&
+      (typeof run.authorizationId !== "string" || !/^authorization-[a-z0-9-]+$/.test(run.authorizationId))) ||
     !Array.isArray(run.outputs) ||
     !["in_progress", "completed", "failed"].includes(run.status)
   ) {
@@ -552,10 +554,15 @@ export class ProjectStore {
     inputs = {},
     purpose = null,
     tool = null,
-    estimatedCostUsd = null
+    estimatedCostUsd = null,
+    authorizationId = null
   }) {
     await this.readProject(projectId);
     objectValue(inputs, "Đầu vào run");
+    if (authorizationId !== null &&
+        (typeof authorizationId !== "string" || !/^authorization-[a-z0-9-]+$/.test(authorizationId))) {
+      throw new ProjectStoreError("Authorization id của run không hợp lệ.");
+    }
     if (estimatedCostUsd !== null && (!Number.isFinite(estimatedCostUsd) || estimatedCostUsd < 0)) {
       throw new ProjectStoreError("Chi phí ước lượng của run không hợp lệ.");
     }
@@ -566,6 +573,7 @@ export class ProjectStore {
       capability: requireText(capability, "Capability"),
       purpose: purpose === null ? null : requireText(purpose, "Mục đích run"),
       tool: optionalTool(tool),
+      authorizationId,
       status: "in_progress",
       startedAt: now(),
       finishedAt: null,

@@ -40,12 +40,17 @@ function validateRequest(value) {
       code: "invalid_request"
     });
   }
+  const authorizationId = value.authorizationId === undefined ? null : value.authorizationId;
+  if (authorizationId !== null &&
+      (typeof authorizationId !== "string" || !/^authorization-[a-z0-9-]+$/.test(authorizationId))) {
+    throw new ToolExecutorError("authorizationId is invalid.", { code: "invalid_request" });
+  }
   return {
     capability: value.capability.trim(),
     tool: value.tool.trim(),
     purpose: value.purpose.trim(),
     inputs: value.inputs,
-    authorizationId: value.authorizationId === undefined ? null : value.authorizationId
+    authorizationId
   };
 }
 
@@ -60,10 +65,12 @@ function toolReference(tool) {
 function executionError(error) {
   if (error instanceof ToolExecutorError) return error;
   if (error?.name === "AbortError") {
-    return new ToolExecutorError(error?.message || "Analysis unit đã bị hủy.", {
+    const wrapped = new ToolExecutorError(error?.message || "Analysis unit đã bị hủy.", {
       code: "analysis_cancelled",
       cause: error
     });
+    wrapped.requestSubmitted = Boolean(error?.requestSubmitted);
+    return wrapped;
   }
   const wrapped = new ToolExecutorError(error?.message || "Không thể chạy công cụ.", {
     code: error?.code || "execution_failed",
@@ -151,18 +158,21 @@ export class ToolExecutor {
     const internal = validateInternalOptions(internalValue);
     const tool = this.registry.get(request.tool, request.capability);
     const reference = toolReference(tool);
+    if (!tool.approvalRequired && request.authorizationId) {
+      throw new ToolExecutorError("This tool does not accept credit authorization.", { code: "approval_not_required" });
+    }
     const started = Date.now();
     const run = await this.store.startRun(projectId, {
       capability: request.capability,
       purpose: request.purpose,
       tool: reference,
       inputs: request.inputs,
-      estimatedCostUsd: tool.cost.estimated
+      estimatedCostUsd: tool.cost.estimated,
+      authorizationId: request.authorizationId
     });
     let result = null;
     let outputWorkspace = null;
     let authorization = null;
-    let requestWasSubmitted = false;
 
     try {
       throwIfAborted(internal.signal);
@@ -216,7 +226,6 @@ export class ToolExecutor {
           projectRelativeDirectory: outputWorkspace.projectRelativeDirectory
         }
       });
-      requestWasSubmitted = Boolean(tool.approvalRequired);
       const execution = await tool.execute({
         ...prepared.runtime,
         availability,
@@ -315,7 +324,7 @@ export class ToolExecutor {
       if (authorization?.status === "claimed") {
         try {
           authorization = await settleExecutionAuthorization(this.store, projectId, authorization.id, {
-            status: requestWasSubmitted || failure.requestSubmitted ? "usage_unknown" : "released"
+            status: failure.requestSubmitted ? "usage_unknown" : "released"
           });
         } catch (error) {
           settlementFailure = error;

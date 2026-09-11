@@ -9,10 +9,12 @@ chưa phải toàn bộ hệ thống sinh nội dung.
 | graphic.render | browser-graphic | PNG thẻ chữ, biểu đồ cột có số âm/dương, sơ đồ bước |
 | audio.prepare | ffmpeg-audio-prepare | Tách/cắt audio từ audio/video, gain, fade, loudness hai lượt |
 | media.acquire | https-media | Tải file media từ URL công khai đã được Agent chọn, giữ attribution và hash |
+| tts.synthesize | piper-local / elevenlabs | Tạo Result lời đọc audio local hoặc cloud có approval credit |
 
 Ưu tiên dựa trên tính dùng chung, kết hợp được với tool hiện có và có đường chạy local.
-TTS, ảnh AI và tìm kiếm stock tự động vẫn là ứng viên tiếp theo; chưa tích hợp provider hoặc
-thay đổi gate thực thi trả phí. Không có dịch vụ tính phí được gọi trong nghiệm thu.
+TTS đã được bổ sung ở gói kế tiếp với Piper local và ElevenLabs cloud, dùng chung contract và
+gate authorization credit. Ảnh AI và tìm kiếm stock tự động vẫn chưa triển khai. Không có dịch
+vụ tính phí được gọi trong nghiệm thu do chưa có API key người dùng; xem [TTS-CAPABILITY.md](TTS-CAPABILITY.md).
 
 ## Hợp đồng và ví dụ
 

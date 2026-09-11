@@ -1,6 +1,6 @@
 # PADStudio — lộ trình 6 đợt
 
-Cập nhật: **2026-09-11**. Hiện tại: **đợt 1 và đợt 2 đã hoàn thành ở phạm vi sử dụng thực dụng trên máy owner; đợt 3 đã có gói đầu nguyên liệu dùng chung; TTS/ảnh AI và provider trả phí chưa triển khai**. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt đang triển khai.
+Cập nhật: **2026-09-11**. Hiện tại: **đợt 1 và đợt 2 đã hoàn thành ở phạm vi sử dụng thực dụng trên máy owner; đợt 3 đã có nguyên liệu dùng chung và TTS với Piper local/ElevenLabs có kiểm soát credit; ảnh AI và search stock chưa triển khai**. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt đang triển khai.
 
 ## 1. Cách dùng lộ trình
 
@@ -76,4 +76,4 @@ Lộ trình bổ sung cách tổ chức công việc; không thay thế [thiết
 
 ## Đợt 3 — gói nguyên liệu dùng chung
 
-Theo yêu cầu mở rộng các khả năng phổ biến, gói đầu đã bổ sung graphic.render, audio.prepare và media.acquire qua Executor hiện có. Không gắn với video mẫu; nghiệm thu nhiều project và khung hình. TTS/ảnh AI/provider trả phí và search stock chưa triển khai. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md).
+Theo yêu cầu mở rộng các khả năng phổ biến, đợt 3 đã bổ sung graphic.render, audio.prepare, media.acquire và `tts.synthesize` qua Executor hiện có. TTS có Piper local và ElevenLabs cloud với authorization credit bind exact request; cloud thật chưa được gọi do chưa có API key người dùng. Ảnh AI và search stock chưa triển khai. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md) và [TTS-CAPABILITY.md](./TTS-CAPABILITY.md).

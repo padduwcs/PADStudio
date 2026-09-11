@@ -44,6 +44,24 @@ function usage(value, label) {
   return { unit: "credits", amount: Math.ceil(value.amount), basis: typeof value.basis === "string" ? value.basis : null };
 }
 
+function validateRecord(record, projectId) {
+  const validStatus = ["approved", "claimed", "consumed", "released", "usage_unknown"];
+  if (!record || record.version !== "1.0" || record.projectId !== projectId ||
+      typeof record.id !== "string" || !/^authorization-[a-z0-9-]+$/.test(record.id) ||
+      record.kind !== "credit_use" || !validStatus.includes(record.status) ||
+      typeof record.requestHash !== "string" || !/^[a-f0-9]{64}$/.test(record.requestHash) ||
+      !record.tool || typeof record.tool.name !== "string" || typeof record.tool.version !== "string" ||
+      typeof record.tool.provider !== "string" ||
+      record.approvedBy !== "user" || typeof record.reason !== "string" || !record.reason ||
+      !Number.isSafeInteger(record.maxCredits) || record.maxCredits < 0 ||
+      typeof record.approvedAt !== "string" || Number.isNaN(Date.parse(record.approvedAt))) {
+    throw new ExecutionAuthorizationError("Stored credit authorization is invalid.");
+  }
+  usage(record.estimatedUsage, "Stored estimated usage");
+  if (record.actualUsage !== null && record.actualUsage !== undefined) usage(record.actualUsage, "Stored actual usage");
+  return record;
+}
+
 export async function createExecutionAuthorization(store, projectId, value) {
   await store.readProject(projectId);
   const { requestHash, tool, estimatedUsage, approvedBy, maxCredits, reason } = value;
@@ -54,8 +72,8 @@ export async function createExecutionAuthorization(store, projectId, value) {
     throw new ExecutionAuthorizationError("Credit use must be approved explicitly by the user.");
   }
   const estimate = usage(estimatedUsage, "Estimated usage");
-  if (!Number.isFinite(maxCredits) || maxCredits < estimate.amount) {
-    throw new ExecutionAuthorizationError("Approved credit ceiling is below the current estimate.");
+  if (!Number.isSafeInteger(maxCredits) || maxCredits < estimate.amount) {
+    throw new ExecutionAuthorizationError("Approved credit ceiling must be an integer at or above the current estimate.");
   }
   if (typeof reason !== "string" || !reason.trim()) {
     throw new ExecutionAuthorizationError("Approval reason is required.");
@@ -63,7 +81,7 @@ export async function createExecutionAuthorization(store, projectId, value) {
   const id = "authorization-" + Date.now().toString(36) + "-" + randomUUID().slice(0, 8);
   const record = {
     version: "1.0", id, projectId, kind: "credit_use", status: "approved", requestHash, tool,
-    estimatedUsage: estimate, maxCredits: Math.ceil(maxCredits), approvedBy, reason: reason.trim(),
+    estimatedUsage: estimate, maxCredits, approvedBy, reason: reason.trim(),
     approvedAt: new Date().toISOString(), claimedByRun: null, finishedAt: null,
     actualUsage: null, providerRequestId: null, traceId: null
   };
@@ -79,7 +97,7 @@ async function readRecord(store, projectId, authorizationId) {
   }
   await store.readProject(projectId);
   try {
-    return await readJson(paths(store, projectId, authorizationId).record);
+    return validateRecord(await readJson(paths(store, projectId, authorizationId).record), projectId);
   } catch (error) {
     if (error?.code === "ENOENT") {
       throw new ExecutionAuthorizationError("Credit authorization was not found.", "approval_required");
@@ -135,7 +153,9 @@ export async function settleExecutionAuthorization(store, projectId, authorizati
   const finished = {
     ...record, status: value.status, finishedAt: new Date().toISOString(),
     actualUsage: value.actualUsage === null || value.actualUsage === undefined ? null : usage(value.actualUsage, "Actual usage"),
-    providerRequestId: value.providerRequestId || null, traceId: value.traceId || null
+    providerRequestId: value.providerRequestId || null, traceId: value.traceId || null,
+    exceededApprovedCeiling: value.actualUsage === null || value.actualUsage === undefined ? null :
+      usage(value.actualUsage, "Actual usage").amount > record.maxCredits
   };
   await writeJsonAtomic(target.record, finished);
   await rm(target.claim, { recursive: true, force: true });
@@ -154,7 +174,7 @@ export async function readExecutionAuthorizations(store, projectId) {
   }
   const records = [];
   for (const name of names.filter((name) => name.endsWith(".json"))) {
-    records.push(await readJson(join(target.directory, name)));
+    records.push(validateRecord(await readJson(join(target.directory, name)), projectId));
   }
   return records.sort((left, right) => right.approvedAt.localeCompare(left.approvedAt));
 }

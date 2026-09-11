@@ -1,12 +1,10 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { createDefaultToolRegistry } from "../execution/default-tool-registry.js";
-
-const currentDirectory = dirname(fileURLToPath(import.meta.url));
 
 async function main(args) {
   const language = args[0] || "vi";
-  if (args.length > 1) throw new Error("Usage: npm run tts:inspect -- [language]");
+  if (args.length > 1 || !/^[a-z]{2}$/.test(language)) {
+    throw new Error("Usage: npm run tts:inspect -- [lowercase ISO 639-1 language]");
+  }
   const tool = createDefaultToolRegistry().get("elevenlabs", "tts.synthesize");
   const availability = await tool.checkAvailability();
   if (availability.status !== "available") throw new Error(availability.reason);

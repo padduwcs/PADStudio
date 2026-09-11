@@ -373,8 +373,8 @@ lượng nguồn) thành ảnh PNG:
 
 ### Chèn âm thanh
 
-`audio.overlay` chèn một track âm thanh *có sẵn* (nhạc nền hoặc file giọng đọc,
-chưa phải TTS) vào video; track được tự lặp hoặc cắt cho khớp đúng thời lượng
+`audio.overlay` chèn một track âm thanh *có sẵn* (nhạc nền, file giọng đọc hoặc
+Result từ `tts.synthesize`) vào video; track được tự lặp hoặc cắt cho khớp đúng thời lượng
 video, Agent không cần tính trước:
 
 ```json
@@ -515,4 +515,4 @@ import hay cập nhật checkpoint.
 
 ## Đợt 3 — gói nguyên liệu dùng chung
 
-Theo yêu cầu mở rộng các khả năng phổ biến, gói đầu đã bổ sung graphic.render, audio.prepare và media.acquire qua Executor hiện có. Capability `tts.synthesize` tiếp theo có Piper local và ElevenLabs; ElevenLabs bắt buộc plan/authorization credit đúng request. Xem lệnh, cấu hình bí mật và model tiếng Việt trong [TTS-CAPABILITY.md](docs/build/TTS-CAPABILITY.md). Ảnh AI và search stock chưa triển khai.
+Theo yêu cầu mở rộng các khả năng phổ biến, gói đầu đã bổ sung graphic.render, audio.prepare và media.acquire qua Executor hiện có. Capability `tts.synthesize` đã có Piper local và ElevenLabs; ElevenLabs bắt buộc plan/authorization credit đúng request. Xem lệnh, cấu hình bí mật và model tiếng Việt trong [TTS-CAPABILITY.md](docs/build/TTS-CAPABILITY.md). Ảnh AI và search stock chưa triển khai.

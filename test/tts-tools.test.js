@@ -62,7 +62,9 @@ test("Piper creates a verified, reusable audio Result through Registry and Execu
   await import("node:fs/promises").then(({ mkdir }) => mkdir(modelDirectory));
   await Promise.all([
     writeFile(join(modelDirectory, "vi_VN-vais1000-medium.onnx"), "model"),
-    writeFile(join(modelDirectory, "vi_VN-vais1000-medium.onnx.json"), "{}")
+    writeFile(join(modelDirectory, "vi_VN-vais1000-medium.onnx.json"), JSON.stringify({
+      language: { code: "vi_VN" }, audio: { sample_rate: 44100 }, num_speakers: 1
+    }))
   ]);
   const executeCommand = async (executable, args) => {
     if (args.includes("--output-file")) {
@@ -82,7 +84,7 @@ test("Piper creates a verified, reusable audio Result through Registry and Execu
   const executor = new ToolExecutor({ store, registry: new ToolRegistry([tool]) });
   const response = await executor.execute("tts-demo", {
     capability: "tts.synthesize", tool: "piper-local", purpose: "Vietnamese narration",
-    inputs: { text: "Xin ch?o t? PADStudio." }
+    inputs: { text: "Xin chào từ PADStudio." }
   });
   const context = await store.readContext("tts-demo");
   const run = context.runs.find((entry) => entry.id === response.runId);
@@ -91,7 +93,14 @@ test("Piper creates a verified, reusable audio Result through Registry and Execu
   assert.equal(response.result.files[0].mediaType, "audio");
   assert.equal(context.results.find((entry) => entry.id === response.resultId).files[0].available, true);
   assert.equal(response.result.verification.status, "passed");
+  const outputDirectory = join(store.rootDir, "tts-demo", "outputs", response.runId);
+  assert.deepEqual(await readdir(outputDirectory), ["speech.wav"]);
   await access(join(store.rootDir, "tts-demo", response.result.files[0].path));
+  const media = await store.resolveMediaSource("tts-demo", {
+    kind: "result", id: response.resultId, file: "primary"
+  });
+  assert.equal(media.mediaType, "audio");
+  assert.deepEqual(media.inputResults, [response.resultId]);
 });
 
 test("ElevenLabs inspects Vietnamese choices and consumes one exact credit authorization", async (t) => {
@@ -115,7 +124,7 @@ test("ElevenLabs inspects Vietnamese choices and consumes one exact credit autho
     if (String(url).includes("/v1/text-to-speech/voice_vi")) {
       return new Response(silentWav(), {
         status: 200,
-        headers: { "character-cost": "17", "request-id": "req-1", "x-trace-id": "trace-1" }
+        headers: { "character-cost": "27", "request-id": "req-1", "x-trace-id": "trace-1" }
       });
     }
     return new Response(null, { status: 404 });
@@ -128,7 +137,7 @@ test("ElevenLabs inspects Vietnamese choices and consumes one exact credit autho
   const executor = new ToolExecutor({ store, registry: new ToolRegistry([tool]) });
   const request = {
     capability: "tts.synthesize", tool: "elevenlabs", purpose: "Approved Vietnamese narration",
-    inputs: { text: "Xin ch?o Vi?t Nam", modelId: "eleven_multilingual_v2", voiceId: "voice_vi" }
+    inputs: { text: "Xin chào Việt Nam", modelId: "eleven_multilingual_v2", voiceId: "voice_vi" }
   };
 
   const catalog = await tool.inspect({ language: "vi" });
@@ -151,8 +160,12 @@ test("ElevenLabs inspects Vietnamese choices and consumes one exact credit autho
   const context = await store.readContext("tts-demo");
   const settled = context.authorizations.find((entry) => entry.id === authorization.id);
   assert.equal(settled.status, "consumed");
-  assert.equal(settled.actualUsage.amount, 17);
+  assert.equal(settled.actualUsage.amount, 27);
   assert.equal(settled.claimedByRun, response.runId);
+  assert.equal(settled.exceededApprovedCeiling, true);
+  assert.equal(context.runs.find((entry) => entry.id === response.runId).authorizationId, authorization.id);
+  const postBody = JSON.parse(calls.find((call) => call.url.includes("/v1/text-to-speech/")).body);
+  assert.equal(postBody.language_code, "vi");
   await assert.rejects(
     executor.execute("tts-demo", { ...request, authorizationId: authorization.id }),
     (error) => error.code === "authorization_already_used"
@@ -169,7 +182,7 @@ test("ElevenLabs never submits without approval and preserves uncertain credit s
   const fetchImpl = async (url) => {
     if (String(url).endsWith("/v1/user/subscription")) return Response.json({ status: "active" });
     if (String(url).endsWith("/v1/models")) return Response.json([{ model_id: "eleven_multilingual_v2", can_do_text_to_speech: true }]);
-    if (String(url).includes("/v2/voices?")) return Response.json({ voices: [] });
+    if (String(url).includes("/v2/voices?")) return Response.json({ voices: [{ voice_id: "voice_vi", name: "Vietnamese" }] });
     posts += 1;
     throw new Error("network outcome unknown");
   };
@@ -180,7 +193,7 @@ test("ElevenLabs never submits without approval and preserves uncertain credit s
   const executor = new ToolExecutor({ store, registry: new ToolRegistry([tool]) });
   const request = {
     capability: "tts.synthesize", tool: "elevenlabs", purpose: "Cloud narration",
-    inputs: { text: "M?t c?u", modelId: "eleven_multilingual_v2", voiceId: "voice_vi" }
+    inputs: { text: "Một câu", modelId: "eleven_multilingual_v2", voiceId: "voice_vi" }
   };
   await assert.rejects(executor.execute("tts-demo", request), (error) => error.code === "approval_required");
   assert.equal(posts, 0);
@@ -203,7 +216,7 @@ test("a changed provider estimate cannot exceed the approved credit ceiling", as
       model_id: "eleven_multilingual_v2", can_do_text_to_speech: true,
       model_rates: { character_cost_multiplier: multiplier }
     }]);
-    if (String(url).includes("/v2/voices?")) return Response.json({ voices: [] });
+    if (String(url).includes("/v2/voices?")) return Response.json({ voices: [{ voice_id: "voice_vi", name: "Vietnamese" }] });
     posts += 1;
     return new Response(silentWav());
   };
@@ -227,4 +240,182 @@ test("a changed provider estimate cannot exceed the approved credit ceiling", as
   assert.equal(posts, 0);
   const record = (await store.readContext("tts-demo")).authorizations.find((entry) => entry.id === auth.id);
   assert.equal(record.status, "approved");
+});
+
+
+test("ElevenLabs paginates Vietnamese voices and rejects an explicitly unsupported model", async () => {
+  const voiceRequests = [];
+  const fetchImpl = async (url) => {
+    const value = String(url);
+    if (value.endsWith("/v1/user/subscription")) return Response.json({ status: "active" });
+    if (value.endsWith("/v1/models")) {
+      return Response.json([{
+        model_id: "english_only", can_do_text_to_speech: true,
+        languages: [{ language_id: "en", name: "English" }],
+        maximum_text_length_per_request: 20,
+        can_use_style: false, can_use_speaker_boost: true
+      }]);
+    }
+    if (value.includes("/v2/voices?")) {
+      voiceRequests.push(value);
+      return Response.json(voiceRequests.length === 1 ? {
+        voices: [{ voice_id: "voice_1", name: "One" }],
+        has_more: true, next_page_token: "page-2"
+      } : {
+        voices: [{ voice_id: "voice_2", name: "Two" }],
+        has_more: false
+      });
+    }
+    return new Response(null, { status: 404 });
+  };
+  const tool = createElevenLabsTts({
+    loadConfig: async () => ({ piper: {}, elevenLabs: { apiKey: "test-key" } }),
+    fetchImpl, baseUrl: "https://example.test"
+  });
+  const catalog = await tool.inspect({ language: "vi" });
+  assert.deepEqual(catalog.voices.map((voice) => voice.voiceId), ["voice_1", "voice_2"]);
+  assert.match(voiceRequests[1], /next_page_token=page-2/);
+  assert.equal(catalog.models[0].supportsRequestedLanguage, false);
+  assert.equal(catalog.models[0].canUseStyle, false);
+  await assert.rejects(
+    tool.estimateUsage({ inputs: {
+      text: "Xin chào", modelId: "english_only", voiceId: "voice_2", languageCode: "vi"
+    }}),
+    (error) => error.code === "invalid_input" && /does not advertise support/.test(error.message)
+  );
+});
+
+test("credit ceiling must be an exact integer and a free tool rejects authorization", async (t) => {
+  const { root, store } = await fixture(t);
+  const modelDirectory = join(root, "models");
+  await import("node:fs/promises").then(({ mkdir }) => mkdir(modelDirectory));
+  await Promise.all([
+    writeFile(join(modelDirectory, "vi_VN-vais1000-medium.onnx"), "model"),
+    writeFile(join(modelDirectory, "vi_VN-vais1000-medium.onnx.json"), JSON.stringify({
+      language: { code: "vi_VN" }, audio: { sample_rate: 44100 }, num_speakers: 1
+    }))
+  ]);
+  const paid = createElevenLabsTts({
+    loadConfig: async () => ({ piper: {}, elevenLabs: { apiKey: "test-key" } }),
+    fetchImpl: async (url) => {
+      if (String(url).endsWith("/v1/user/subscription")) return Response.json({});
+      if (String(url).endsWith("/v1/models")) return Response.json([{
+        model_id: "multi", can_do_text_to_speech: true, model_rates: { character_cost_multiplier: 1 }
+      }]);
+      return Response.json({ voices: [{ voice_id: "voice", name: "Vietnamese" }], has_more: false });
+    },
+    baseUrl: "https://example.test"
+  });
+  const paidExecutor = new ToolExecutor({ store, registry: new ToolRegistry([paid]) });
+  const request = {
+    capability: "tts.synthesize", tool: "elevenlabs", purpose: "Integer ceiling",
+    inputs: { text: "abc", modelId: "multi", voiceId: "voice" }
+  };
+  await assert.rejects(
+    paidExecutor.authorize("tts-demo", request, {
+      approvedBy: "user", maxCredits: 3.5, reason: "Must not round up"
+    }),
+    (error) => error.code === "authorization_invalid"
+  );
+
+  const local = createPiperTts({
+    loadConfig: async () => ({
+      piper: { pythonCommand: "python", modelDirectory, defaultModel: "vi_VN-vais1000-medium" }
+    }),
+    executeCommand: async () => ({ stdout: "ok", stderr: "" })
+  });
+  const localExecutor = new ToolExecutor({ store, registry: new ToolRegistry([local]) });
+  await assert.rejects(
+    localExecutor.execute("tts-demo", {
+      capability: "tts.synthesize", tool: "piper-local", purpose: "No credit",
+      inputs: { text: "Xin chào" }, authorizationId: "authorization-fake"
+    }),
+    (error) => error.code === "approval_not_required"
+  );
+});
+
+
+test("a claimed authorization is released when preparation fails before the paid request", async (t) => {
+  const { store } = await fixture(t);
+  let configReads = 0;
+  let posts = 0;
+  const tool = createElevenLabsTts({
+    loadConfig: async () => {
+      configReads += 1;
+      if (configReads === 5) throw new Error("local preparation failed");
+      return { piper: {}, elevenLabs: { apiKey: "test-key" } };
+    },
+    fetchImpl: async (url) => {
+      if (String(url).endsWith("/v1/user/subscription")) return Response.json({});
+      if (String(url).endsWith("/v1/models")) return Response.json([{
+        model_id: "multi", can_do_text_to_speech: true, model_rates: { character_cost_multiplier: 1 }
+      }]);
+      if (String(url).includes("/v2/voices?")) return Response.json({ voices: [{ voice_id: "voice", name: "Vietnamese" }], has_more: false });
+      posts += 1;
+      return new Response(silentWav());
+    },
+    baseUrl: "https://example.test"
+  });
+  const executor = new ToolExecutor({ store, registry: new ToolRegistry([tool]) });
+  const request = {
+    capability: "tts.synthesize", tool: "elevenlabs", purpose: "Pre-request failure",
+    inputs: { text: "abc", modelId: "multi", voiceId: "voice" }
+  };
+  const authorization = await executor.authorize("tts-demo", request, {
+    approvedBy: "user", maxCredits: 3, reason: "One request only"
+  });
+  await assert.rejects(
+    executor.execute("tts-demo", { ...request, authorizationId: authorization.id }),
+    /local preparation failed/
+  );
+  assert.equal(posts, 0);
+  const record = (await store.readContext("tts-demo")).authorizations
+    .find((entry) => entry.id === authorization.id);
+  assert.equal(record.status, "released");
+});
+
+
+test("Piper rejects an out-of-range speaker and output sample-rate drift", async (t) => {
+  const { root, store } = await fixture(t);
+  const modelDirectory = join(root, "models");
+  await import("node:fs/promises").then(({ mkdir }) => mkdir(modelDirectory));
+  await Promise.all([
+    writeFile(join(modelDirectory, "vi_VN-vais1000-medium.onnx"), "model"),
+    writeFile(join(modelDirectory, "vi_VN-vais1000-medium.onnx.json"), JSON.stringify({
+      language: { code: "vi_VN" }, audio: { sample_rate: 22050 }, num_speakers: 1
+    }))
+  ]);
+  let syntheses = 0;
+  const tool = createPiperTts({
+    loadConfig: async () => ({
+      piper: { pythonCommand: "python", modelDirectory, defaultModel: "vi_VN-vais1000-medium" }
+    }),
+    executeCommand: async (_executable, args) => {
+      if (args.includes("--output-file")) {
+        syntheses += 1;
+        await writeFile(args[args.indexOf("--output-file") + 1], silentWav());
+        return { stdout: "", stderr: "" };
+      }
+      if (args.includes("-show_format")) {
+        return { stdout: probeOutput("pcm_s16le"), stderr: "" };
+      }
+      return { stdout: "ok", stderr: "" };
+    }
+  });
+  const executor = new ToolExecutor({ store, registry: new ToolRegistry([tool]) });
+  const base = {
+    capability: "tts.synthesize", tool: "piper-local", purpose: "Validate voice",
+    inputs: { text: "Xin chào" }
+  };
+  await assert.rejects(
+    executor.execute("tts-demo", { ...base, inputs: { ...base.inputs, speakerId: 1 } }),
+    (error) => error.code === "invalid_input" && /speaker range/.test(error.message)
+  );
+  assert.equal(syntheses, 0);
+  await assert.rejects(
+    executor.execute("tts-demo", base),
+    (error) => error.code === "invalid_output"
+  );
+  assert.equal(syntheses, 1);
+  assert.equal((await store.readResults("tts-demo")).length, 0);
 });

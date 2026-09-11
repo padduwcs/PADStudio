@@ -1,30 +1,31 @@
 # TTS capability — Piper local và ElevenLabs
 
 Trạng thái: đã triển khai hoàn chỉnh sau baseline `7f82f9e`. Hai backend cùng cung cấp
-`tts.synthesize` qua Registry → Executor → Run/Result. Không có selector tự động và không
-fallback giữa hai backend.
+`tts.synthesize` qua Registry → Executor → Run/Result. Người gọi chọn backend, model và voice
+rõ ràng; hệ thống không tự chọn và không fallback.
 
 ## Hợp đồng và đầu ra
 
-- `piper-local`: local, không dùng credit, xuất `audio.tts` WAV.
-- `elevenlabs`: cloud, có credit, xuất `audio.tts` MP3 sau authorization dùng một lần.
+- `piper-local`: local, không dùng credit, xuất Result `audio.tts` WAV PCM16.
+- `elevenlabs`: cloud, có credit, xuất Result `audio.tts` MP3 sau authorization dùng một lần.
 
-Cả hai Result có file `primary` với `mediaType: "audio"`. Observer tự hiển thị
-`<audio controls>`; Result có thể làm nguồn cho các audio tool hoặc narration trong
-`video.sequence`. Request không được truyền output path.
+Cả hai Result có file `primary`, `mediaType: "audio"`, nghe được bằng `<audio controls>` trong
+observer và dùng trực tiếp làm source `{ "kind": "result", "id": "...", "file": "primary" }`
+cho `audio.prepare`, `audio.overlay` hoặc narration của `video.sequence`. Text trung gian của
+Piper bị xóa trước khi commit output; thư mục output thành công chỉ giữ file đã khai báo.
 
-Backend đã chọn mà thiếu model, thiếu key, lỗi provider hoặc hết credit thì run thất bại.
-PADStudio không tự đổi backend hay model.
+Backend đã chọn mà thiếu runtime/model/key, bị provider từ chối hay hết credit thì Run thất bại.
+Không tự đổi backend/model và không tự gửi lại request cloud.
 
 ## Cấu hình local và bí mật
 
-Sao chép `padstudio.local.example.json` thành `padstudio.local.json`. File đích đã được
-`.gitignore`; cũng có thể trỏ tới file khác bằng `PADSTUDIO_LOCAL_CONFIG`.
+Sao chép `padstudio.local.example.json` thành `padstudio.local.json`. File đích nằm trong
+`.gitignore`; có thể dùng file khác qua `PADSTUDIO_LOCAL_CONFIG`. Mẫu để key rỗng, vì vậy sao
+chép nguyên mẫu không làm ElevenLabs xuất hiện như đã cấu hình.
 
-Chỉ loader local đọc `elevenLabs.apiKey`. Key không phải input của tool và không được ghi
-vào project, Run, Result, authorization, log hoặc output CLI. Không đặt key trong request,
-checkpoint hay tài liệu được commit. Nên tạo key ElevenLabs với scope tối thiểu và giới hạn
-credit ở phía provider.
+Chỉ loader local đọc `elevenLabs.apiKey`. Key không thuộc input tool và không được ghi vào
+project, Run, Result, authorization, log hay output CLI. Không đặt key trong request/checkpoint
+hoặc tài liệu được commit. Nên tạo key ElevenLabs có scope tối thiểu và giới hạn credit ở provider.
 
 ## Cài Piper và model tiếng Việt
 
@@ -51,25 +52,28 @@ Thư mục phải có cả `vi_VN-vais1000-medium.onnx` và
 }
 ```
 
-`vi_VN-vais1000-medium` là voice một speaker, 22.05 kHz; model card công bố CC BY 4.0.
-Không dùng `vi_VN-vivos-x_low` làm mặc định vì model card ghi CC BY-NC-SA 4.0.
-PADStudio không tự tải hoặc tự đổi model.
+Integration chỉ nhận voice id bắt đầu bằng `vi_VN-`, không nhận path. Metadata phải khai báo
+`language.code: "vi_VN"`, sample rate hợp lệ và số speaker hợp lệ. `speakerId` phải là số
+nguyên nằm trong range; WAV sinh ra phải có đúng một stream PCM16, sample rate đúng metadata và
+duration dương. `vi_VN-vais1000-medium` là voice một speaker, 22.05 kHz. Hãy kiểm tra license
+của từng voice trước khi phân phối; PADStudio không tự tải hoặc tự đổi model.
 
-Ví dụ chạy:
+Ví dụ:
 
-```powershell
-@'
+```json
 {
   "capability": "tts.synthesize",
   "tool": "piper-local",
   "purpose": "Lời đọc tiếng Việt cho đoạn mở",
   "inputs": {
     "text": "Xin chào, đây là PADStudio.",
-    "model": "vi_VN-vais1000-medium"
+    "model": "vi_VN-vais1000-medium",
+    "speakerId": 0
   }
 }
-'@ | npm run tool:run -- <project-id> -
 ```
+
+Chạy bằng `npm run tool:run -- <project-id> <request.json>`.
 
 ## ElevenLabs: kiểm tra kết nối và chọn tiếng Việt
 
@@ -79,10 +83,12 @@ Ví dụ chạy:
 npm run tts:inspect -- vi
 ```
 
-Lệnh gọi thật các API chỉ đọc về subscription, model và voice theo ngôn ngữ. Output không
-chứa key; nó giữ quota, model TTS, ngôn ngữ, giới hạn ký tự, hệ số credit, voice id/name,
-`verifiedLanguages` và `previewUrl`. Agent/người dùng phải chọn rõ `modelId` và
-`voiceId`; có thể nghe preview để đánh giá phát âm tiếng Việt.
+Lệnh gọi thật các API chỉ đọc subscription, toàn bộ các trang voice khớp ngôn ngữ và catalog
+model. Output không chứa key; nó gồm quota, model TTS, ngôn ngữ, giới hạn text/request, khả năng
+style/speaker boost, hệ số credit, voice id/name, `verifiedLanguages` và `previewUrl`.
+`supportsRequestedLanguage` là `true/false` khi provider công bố danh sách, hoặc `null` khi
+catalog không đủ dữ liệu. Model công bố không hỗ trợ ngôn ngữ đã chọn, voice không có trong catalog ngôn ngữ, hoặc style/speaker boost không được model hỗ trợ đều bị từ chối trước request.
+Người dùng nên nghe preview và duyệt cách phát âm tiếng Việt trước khi tạo hàng loạt.
 
 Request mẫu:
 
@@ -93,6 +99,7 @@ Request mẫu:
   "purpose": "Lời đọc tiếng Việt bản đã duyệt",
   "inputs": {
     "text": "Xin chào, đây là PADStudio.",
+    "languageCode": "vi",
     "modelId": "eleven_multilingual_v2",
     "voiceId": "<voice-id>",
     "outputFormat": "mp3_44100_128"
@@ -100,12 +107,16 @@ Request mẫu:
 }
 ```
 
+`languageCode` là mã ISO 639-1 chữ thường, mặc định `vi`, được gửi rõ trong request synthesize.
+Model và voice khả dụng phụ thuộc tài khoản/provider tại thời điểm chạy; dùng output inspect thay
+vì hard-code một voice id.
+
 ## Phê duyệt credit
 
 ElevenLabs bắt buộc ba bước:
 
-1. `npm run tool:plan -- <project-id> -` kiểm tra kết nối/model và ước lượng credit.
-2. `npm run tool:authorize -- <project-id> -` ghi phê duyệt của người dùng.
+1. `npm run tool:plan -- <project-id> <request.json>` kiểm tra model và ước lượng credit.
+2. `npm run tool:authorize -- <project-id> <authorization.json>` ghi phê duyệt của người dùng.
 3. Thêm `authorizationId` vào đúng request rồi gọi `npm run tool:run`.
 
 Input authorize:
@@ -121,18 +132,24 @@ Input authorize:
 }
 ```
 
-Authorization bind SHA-256 với capability, tool, purpose và toàn bộ inputs. Sửa một ký tự
-cũng bị từ chối. Trước khi gửi, Executor ước lượng lại và chặn nếu vượt trần đã duyệt.
-Authorization được claim nguyên tử và chỉ dùng một lần. Thành công ghi `consumed` cùng
-`character-cost`, request id và trace id. Lỗi chắc chắn trước khi gửi giải phóng authorization;
-lỗi sau khi bắt đầu request được ghi `usage_unknown` và không thể tái dùng. Không auto-approve.
+`maxCredits` phải là số nguyên không âm và không thấp hơn estimate. Authorization bind SHA-256
+với capability, tool, purpose và toàn bộ inputs; sửa một ký tự cũng bị từ chối. Executor ước
+lượng lại trước khi gửi và chặn khi vượt trần. Authorization được claim nguyên tử, link trực tiếp
+trong Run và chỉ dùng một lần.
+
+- Thành công: `consumed`, lưu usage từ `character-cost` nếu provider trả về, request/trace id,
+  và cờ `exceededApprovedCeiling` nếu actual lớn hơn trần (không thể hoàn tác request đã tính phí).
+- Lỗi chắc chắn trước POST: `released`; đây vẫn là record terminal, cần phê duyệt mới nếu chạy lại.
+- Lỗi trong/sau POST hoặc không biết provider đã nhận chưa: `usage_unknown`, không tái dùng.
+- Không có auto-approve, auto-retry hoặc fallback.
 
 ## Verification và giới hạn
 
-Test tự động bao phủ Piper giả lập, ElevenLabs API giả lập, catalog tiếng Việt, request binding,
-single-use, trần credit, trạng thái usage không chắc chắn, Result audio và việc key không lọt vào
-project. Piper thật chỉ chạy khi runtime/model đã cài.
+Test tự động bao phủ Piper/ElevenLabs giả lập, UTF-8 tiếng Việt, metadata/speaker/sample rate,
+voice pagination, model-language, giới hạn credit, exact binding/single-use, lỗi trước/sau POST,
+không lưu key, thư mục output chỉ có file khai báo và Result audio dùng được làm source video.
 
-Máy nghiệm thu hiện tại chưa có API key do người dùng cung cấp, vì vậy chưa gọi ElevenLabs cloud
-thật và chưa đánh giá chất lượng voice thật. Đây là trạng thái kiểm thử môi trường, không phải TODO
-tích hợp.
+Máy nghiệm thu hiện tại chưa có API key người dùng nên chưa gọi ElevenLabs cloud thật và chưa
+nghe duyệt voice thật. Piper thật cũng chỉ chạy khi runtime/model được cài trên máy. Đây là giới
+hạn kiểm thử môi trường, không phải TODO tích hợp. Sau khi cấu hình, chạy `npm run tts:inspect -- vi`,
+tạo một câu khó/ngắn, nghe Result trong observer, rồi mới duyệt credit cho nội dung dài.
