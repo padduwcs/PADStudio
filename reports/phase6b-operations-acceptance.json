@@ -1,0 +1,133 @@
+{
+  "version": "1.0",
+  "phase": "6B",
+  "checkedAt": "2026-09-12T17:57:22.471Z",
+  "status": "passed_with_documented_limits",
+  "checks": {
+    "repository": {
+      "status": "passed",
+      "output": "lier is unknown (0.868ms)\n✔ provider receipt persists before a paid audio response body fails (171.937ms)\n✔ image, concat, audio overlay and subtitle tools chain into one finished video (3725.7249ms)\n✔ sequence supports unresolved ideas, validates timing and rejects raw media paths (547.9253ms)\n✔ dependency impact propagates without deleting historical approvals or selecting new work (692.8697ms)\n✔ sequence diff identifies moves, removals and local changes (0.9753ms)\n✔ workflow completion requires the promised output kind and type (208.7379ms)\n✔ local production renders, reuses unchanged segments, preserves reviews and fails without output on invalid sources (3597.0588ms)\n✔ narration is explicit, long audio is rejected, and source-byte changes invalidate segment reuse (1898.5891ms)\n✔ an executor finalization failure preserves sequence media and is recoverable without rendering twice (505.9252ms)\n✔ many frame-aligned short segments preserve the requested total duration (2220.8322ms)\n✔ missing selected folder media is visible on the segment and historical sequence can still be retired (41.8085ms)\n✔ video toolkit chains concat, reformat and thumbnail into a durable pipeline (5374.2667ms)\n✔ real ffmpeg trim creates a durable reusable clip and serves registered bytes (1485.0248ms)\nℹ tests 191\nℹ suites 0\nℹ pass 191\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 16051.6919\n"
+    },
+    "analysis-harness": {
+      "status": "passed",
+      "output": "ng_gold_blocks_audit) ... ok\r\ntest_model_manifest_cannot_self_authorize_modified_model (test_evaluate.CorpusTests.test_model_manifest_cannot_self_authorize_modified_model) ... ok\r\ntest_score_rejects_machine_gold_and_coverage_mismatch (test_evaluate.CorpusTests.test_score_rejects_machine_gold_and_coverage_mismatch) ... ok\r\ntest_source_hash_and_path_escape (test_evaluate.CorpusTests.test_source_hash_and_path_escape) ... ok\r\ntest_unlabelled_text_does_not_count_as_qualified_audio (test_evaluate.CorpusTests.test_unlabelled_text_does_not_count_as_qualified_audio) ... ok\r\ntest_explicit_timing_and_empty_are_not_passes (test_evaluate.MetricsTests.test_explicit_timing_and_empty_are_not_passes) ... ok\r\ntest_known_edit_distance_and_empty_gold (test_evaluate.MetricsTests.test_known_edit_distance_and_empty_gold) ... ok\r\ntest_numeric_punctuation_is_not_erased (test_evaluate.MetricsTests.test_numeric_punctuation_is_not_erased) ... ok\r\ntest_scene_matching_is_one_to_one (test_evaluate.MetricsTests.test_scene_matching_is_one_to_one) ... ok\r\ntest_source_identity_golden_matches_node_contract (test_evaluate.MetricsTests.test_source_identity_golden_matches_node_contract) ... ok\r\ntest_vietnamese_nfc_diacritics_and_digits (test_evaluate.MetricsTests.test_vietnamese_nfc_diacritics_and_digits) ... ok\r\n\r\n----------------------------------------------------------------------\r\nRan 20 tests in 0.222s\r\n\r\nOK\r\n"
+    },
+    "analysis-doctor": {
+      "status": "passed",
+      "output": "h bằng AdaptiveDetector và giữ diagnostic score.\",\n          \"runtime\": \"local-python\",\n          \"executionMode\": \"sync\",\n          \"inputSchema\": {\n            \"type\": \"object\",\n            \"required\": [\n              \"source\",\n              \"analysis\"\n            ],\n            \"additionalProperties\": false\n          },\n          \"outputDescription\": \"source.scenes với shot liên tục, boundary kind/score và coverage đã quét.\",\n          \"sideEffects\": [\n            \"Tạo dataset JSONL trong outputs của project.\"\n          ],\n          \"cost\": {\n            \"currency\": \"USD\",\n            \"estimated\": 0\n          },\n          \"approvalRequired\": false,\n          \"producesFiles\": true,\n          \"availability\": {\n            \"status\": \"available\",\n            \"helperVersion\": \"1.0\",\n            \"protocolVersion\": \"1.0\",\n            \"pythonVersion\": \"3.12.10\",\n            \"profileVersion\": \"source-standard-v1\",\n            \"profileDigest\": \"85242734cc0f509dd2e6f5dedfb9227e744f76fa5f090195be64bba7e3de6af0\",\n            \"libraryVersions\": {\n              \"faster-whisper\": \"1.2.1\",\n              \"ctranslate2\": \"4.8.2\",\n              \"scenedetect\": \"0.7.1\",\n              \"av\": \"18.1.0\"\n            },\n            \"device\": \"cpu\"\n          }\n        }\n      ],\n      \"available\": true\n    }\n  ],\n  \"note\": \"Doctor không tải model và không chạy inference. Profile ASR không tự fallback.\"\n}\n"
+    },
+    "workspace-doctor": {
+      "status": "passed",
+      "output": "2eafa2d41a826f3e13e6cd1cb9bc2a06eb27ae33ee879e96\"\n          },\n          {\n            \"resultId\": \"result-mtynkixa-db2410bc\",\n            \"fileId\": \"provenance\",\n            \"status\": \"verified\",\n            \"sha256\": \"a9ecf0a73b80a51e955962c6732964e1c15200276b4e42a10c8fd1480e395903\"\n          },\n          {\n            \"resultId\": \"result-mtynkixa-db2410bc\",\n            \"fileId\": \"reviews\",\n            \"status\": \"verified\",\n            \"sha256\": \"4abade93eb4fc7e50a7452e10454ee241921cfdd096de5c279b9d801bc89e30d\"\n          },\n          {\n            \"resultId\": \"result-mtynkixa-db2410bc\",\n            \"fileId\": \"approval\",\n            \"status\": \"verified\",\n            \"sha256\": \"a3f7da115f87472f394f4071bc8d67bd46e4f311a2a9514e8bf80dfef4dea006\"\n          },\n          {\n            \"resultId\": \"result-mtynkixa-db2410bc\",\n            \"fileId\": \"checksums\",\n            \"status\": \"verified\",\n            \"sha256\": \"ffc24111f480c03155cddaa11931707dd485981fb85f4395a251bd9720008166\"\n          }\n        ]\n      }\n    }\n  ],\n  \"remediations\": [\n    {\n      \"code\": \"project:phase3-vd04-asset-pilot\",\n      \"message\": \"Đọc health/issue của project phase3-vd04-asset-pilot và xử lý trước khi tiếp tục.\"\n    }\n  ],\n  \"release\": {\n    \"practicalDefault\": \"owner-machine\",\n    \"releaseDefault\": null,\n    \"note\": \"Practical readiness không chứng nhận các release gate/corpus/benchmark chưa đo.\"\n  }\n}\n",
+      "deepIntegrity": {
+        "verified": 48,
+        "uncheckedLegacy": 32,
+        "failed": 0
+      }
+    },
+    "fixture-media": {
+      "status": "passed",
+      "output": ""
+    },
+    "fresh-project-e2e": {
+      "status": "passed",
+      "projectId": "phase6b-fresh-project",
+      "resourceId": "resource-mtyou1fx-d562d1a2",
+      "artifactId": "artifact-mtyou1g7-20aeeb22",
+      "renderRunId": "run-mtyou1ga-c026ced5",
+      "renderResultId": "result-mtyou1zm-00615775",
+      "recoveryPlan": {
+        "total": 1,
+        "recoverable": 1,
+        "blocked": 0
+      },
+      "recovery": {
+        "total": 1,
+        "completed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      "repeatedRecovery": "nothing_to_do",
+      "approvalDecisionId": "decision-mtyou20f-5801472f",
+      "deliveryRunId": "run-mtyou20g-16a6ecea",
+      "deliveryResultId": "result-mtyou26t-6510ed31",
+      "deliverySha256": "47880add67781719cd24cfaa0555fe5163e59ced05ddb3c0142ae59372f943cf",
+      "health": "ready",
+      "deepIntegrity": {
+        "checked": 9,
+        "verified": 9,
+        "unchecked": 0,
+        "failed": 0,
+        "files": [
+          {
+            "resultId": "result-mtyou1zm-00615775",
+            "fileId": "primary",
+            "status": "verified",
+            "sha256": "47880add67781719cd24cfaa0555fe5163e59ced05ddb3c0142ae59372f943cf"
+          },
+          {
+            "resultId": "result-mtyou1zm-00615775",
+            "fileId": "segment-0",
+            "status": "verified",
+            "sha256": "abb32b31e8a854f91720200f5d15ad4f7a5a3f450edab693fd0cc197dbbce416"
+          },
+          {
+            "resultId": "result-mtyou1zm-00615775",
+            "fileId": "frame-0",
+            "status": "verified",
+            "sha256": "9d26598d434767f842a9cab2d95b4b32178cba4e69a5eb6f669775fadbe83da4"
+          },
+          {
+            "resultId": "result-mtyou26t-6510ed31",
+            "fileId": "primary",
+            "status": "verified",
+            "sha256": "47880add67781719cd24cfaa0555fe5163e59ced05ddb3c0142ae59372f943cf"
+          },
+          {
+            "resultId": "result-mtyou26t-6510ed31",
+            "fileId": "manifest",
+            "status": "verified",
+            "sha256": "0e396aeea5888c6296e5413995512dd81d7803614911792052a61612b7240f93"
+          },
+          {
+            "resultId": "result-mtyou26t-6510ed31",
+            "fileId": "provenance",
+            "status": "verified",
+            "sha256": "bfb7fef240aecd51ecd043177c6635bd427a7245f3c7491dc9f591091a773b09"
+          },
+          {
+            "resultId": "result-mtyou26t-6510ed31",
+            "fileId": "reviews",
+            "status": "verified",
+            "sha256": "7eef9e6df6bb87a78f00e4e76b6606e7475fe7afef550499add59c6b9cb1f23c"
+          },
+          {
+            "resultId": "result-mtyou26t-6510ed31",
+            "fileId": "approval",
+            "status": "verified",
+            "sha256": "8e3a7648255b4b1520861d4e77f83b5c60e66658e42baa27fd3ddc01a44f790a"
+          },
+          {
+            "resultId": "result-mtyou26t-6510ed31",
+            "fileId": "checksums",
+            "status": "verified",
+            "sha256": "4ffdd2cb17843ffc26de90c3f1e8d33134fe65d6e3304a78b13aa1a08e99e97b"
+          }
+        ]
+      }
+    },
+    "browser": {
+      "status": "passed",
+      "output": "{\r\n    \"status\":  \"passed\",\r\n    \"timeline\":  true,\r\n    \"seek\":  true,\r\n    \"playerPreserved\":  true,\r\n    \"conditionalPolling\":  true,\r\n    \"lazyActivity\":  true,\r\n    \"feedbackAnchors\":  true,\r\n    \"exactResultSelection\":  true,\r\n    \"exactResultSwitching\":  true,\r\n    \"exactResultComparison\":  true,\r\n    \"health\":  true,\r\n    \"delivery\":  true,\r\n    \"viewports\":  [\r\n                      390,\r\n                      768,\r\n                      1440\r\n                  ]\r\n}\r\n"
+    },
+    "lock-cleanup": {
+      "status": "passed",
+      "remaining": 0
+    }
+  },
+  "limits": [
+    "Practical acceptance covers the current owner machine, not every hardware/codec combination.",
+    "Human listening and broad release corpus/benchmark gates remain explicitly unmeasured.",
+    "Recovery only finalizes already durable evidence; it never recreates media or repeats provider calls."
+  ]
+}

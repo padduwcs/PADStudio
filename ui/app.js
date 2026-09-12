@@ -2,10 +2,12 @@ import { renderProduction, clearProduction } from "./production-view.js";
 import { renderSourceAnalysis, clearSourceAnalysis } from "./source-analysis-view.js";
 import { renderCreativeDirection, clearCreativeDirection } from "./creative-direction-view.js";
 import { renderDelivery, clearDelivery } from "./delivery-view.js";
+import { renderHealth, clearHealth } from "./health-view.js";
 
 const elements = {
   production: document.querySelector("#production-view"),
   delivery: document.querySelector("#delivery-view"),
+  health: document.querySelector("#health-view"),
   creativeDirection: document.querySelector("#creative-direction-view"),
   sourceAnalysis: document.querySelector("#source-analysis-view"),
   title: document.querySelector("#project-title"),
@@ -731,6 +733,9 @@ function renderObserverSection(section, context) {
   } else if (section === "delivery") {
     clearSectionPlaceholder(elements.delivery);
     renderDelivery(elements.delivery, context);
+  } else if (section === "health") {
+    clearSectionPlaceholder(elements.health);
+    renderHealth(elements.health, context);
   } else if (section === "activity") {
     clearSectionPlaceholder(elements.resourceList);
     renderResources(context);
@@ -742,6 +747,7 @@ function renderObserverSection(section, context) {
 function renderEmpty() {
   clearProduction(elements.production);
   clearDelivery(elements.delivery);
+  clearHealth(elements.health);
   clearSourceAnalysis(elements.sourceAnalysis);
   clearCreativeDirection(elements.creativeDirection);
   elements.title.textContent = "Chưa chọn project";
@@ -765,7 +771,7 @@ const sectionEtags = new Map();
 const sectionGenerations = new Map();
 const sectionLoads = new Map();
 const sectionControllers = new Map();
-const loadedSections = new Set(["production", "delivery"]);
+const loadedSections = new Set(["production", "delivery", "health"]);
 
 function resetProjectSections() {
   for (const controller of sectionControllers.values()) controller.abort();
@@ -775,12 +781,14 @@ function resetProjectSections() {
   sectionLoads.clear();
   clearProduction(elements.production);
   clearDelivery(elements.delivery);
+  clearHealth(elements.health);
   clearSourceAnalysis(elements.sourceAnalysis);
   clearCreativeDirection(elements.creativeDirection);
   sectionPlaceholder(elements.sourceAnalysis, "khảo sát tư liệu");
   sectionPlaceholder(elements.creativeDirection, "định hướng sáng tạo");
   sectionPlaceholder(elements.production, "các phiên bản video");
   sectionPlaceholder(elements.delivery, "các bundle giao");
+  sectionPlaceholder(elements.health, "trạng thái vận hành");
   sectionPlaceholder(elements.resourceList, "resources, results và runs");
   elements.resultList.textContent = "Dữ liệu chi tiết sẽ được tải cùng khu vực Resources.";
   elements.runList.textContent = "Dữ liệu chi tiết sẽ được tải cùng khu vực Resources.";
@@ -840,7 +848,7 @@ async function loadSelectedProject(generation) {
     renderedGeneration = null;
     resetProjectSections();
   }
-  const sections = new Set(["summary", "production", "delivery", ...loadedSections]);
+  const sections = new Set(["summary", "production", "delivery", "health", ...loadedSections]);
   await Promise.all([...sections].map((section) => loadSection(section, generation)));
 }
 

@@ -11,6 +11,7 @@ Cập nhật: **2026-09-13**. Đây là bản tóm tắt vận hành hiện hàn
 - Context summary gọn giữ checkpoint freshness, resume state, sequence/render pointer, affected work item, pending finalization và exact pending feedback; pilot hiện 19.008 byte so với full context 424.516 byte.
 - Đợt 5 hoàn tất: observer generation/ETag và lazy section, exact Result selection/comparison, feedback target Result/artifact revision/segment/time, explicit resolution và concurrent-write protection.
 - Đợt 6A hoàn tất: local delivery chỉ xuất exact Result user đã duyệt; có current/freshness/finalization/integrity/media gate, bundle metadata/checksums và khu vực Delivery chỉ đọc.
+- Đợt 6B hoàn tất practical: có system/project doctor, health chỉ đọc, kế hoạch phục hồi mặc định dry-run, apply phục hồi finalization an toàn và runbook vận hành/backup/restore/rollback.
 - Browser smoke dùng profile dưới `.cache/browser-profiles` và dọn đúng process/profile sau khi chạy.
 
 ## Baseline Đợt 3 và pilot hiện hành
@@ -30,13 +31,15 @@ Bundle bàn giao `result-mtynkixa-db2410bc` giữ nguyên SHA-256 video nguồn 
 
 ## Kiểm chứng mới nhất
 
-- `npm run delivery:acceptance`: `passed_with_documented_limits`.
-- Repository: 183/183 pass; source-analysis harness: 20/20 pass.
-- Browser: timeline/seek, player preservation, conditional polling, lazy activity, feedback anchor, exact Result selection/comparison đều pass ở 390/768/1440 px.
+- `npm run operations:acceptance`: `passed_with_documented_limits`.
+- Repository: 191/191 pass; source-analysis harness: 20/20 pass.
+- Browser: timeline/seek, player preservation, conditional polling, lazy activity, feedback anchor, exact Result selection/comparison, Health và Delivery đều pass ở 390/768/1440 px.
+- Deep doctor pilot: health `ready`, 48 file xác minh checksum, 32 file lịch sử chưa có checksum, 0 file lỗi; trạng thái hệ thống là `attention` chứ không chặn vì dữ liệu legacy được báo rõ.
+- E2E project mới: render bị ngắt đúng lúc finalization, mở lại và phục hồi đúng một lần không render trùng; lần phục hồi kế tiếp không còn việc; approval, delivery, reopen và deep verify 9/9 file đều đạt.
 - Agent summary pilot: 19.008 byte; full context: 424.516 byte; giới hạn 32 KiB đạt.
 - Persistence/reopen, target mismatch/out-of-range, explicit resolution, concurrent append/double-resolve và lock cleanup đều pass.
 - Delivery pilot: full decode, exact-byte copy, MP4/H.264/yuv420p 1080×1920 30 fps, AAC 48 kHz stereo, -18,46 LUFS, -3,97 dBTP, tail silence 0,355 giây đều pass.
-- Báo cáo: [phase6a-delivery-acceptance.json](../../reports/phase6a-delivery-acceptance.json).
+- Báo cáo: [phase6b-operations-acceptance.json](../../reports/phase6b-operations-acceptance.json).
 ## Giới hạn còn lại
 
 - Chưa nghe duyệt chất giọng Piper bằng tai người; ASR và số đo audio không thay thế đánh giá tự nhiên/cảm xúc.
@@ -46,7 +49,7 @@ Bundle bàn giao `result-mtynkixa-db2410bc` giữ nguyên SHA-256 video nguồn 
 
 ## Bước tiếp theo
 
-Đợt 6A đã đóng. Bước kế tiếp là **Đợt 6B — vận hành ổn định và bàn giao hệ thống**: rà setup/doctor, phục hồi/chạy lại xuyên suốt, hướng dẫn vận hành và một acceptance từ project mới đến bundle. Vẫn chưa tự mở nền tảng xuất bản, cloud worker hay provider mới.
+**Sáu đợt practical đã hoàn thành.** Bước tiếp theo không mặc định mở thêm phân hệ: dùng PADStudio trên project thật, thu thập ma sát có bằng chứng và chỉ mở đợt mới khi nhu cầu thực tế chứng minh. Việc độc lập còn lại là human listening cho giọng, kiểm chứng provider/tài khoản thật và các release gate/corpus rộng; `releaseDefault` vẫn là `null`.
 ## Cập nhật Đợt 4 — 2026-09-12
 
 Đã triển khai sequence 1.1 và renderer composition: timing lời đọc, automation
@@ -72,3 +75,9 @@ Decision của sequence render nay bắt buộc `feedbackTarget` khớp exact Re
 ## Cập nhật Đợt 6A — 2026-09-13
 
 Capability `video.export-delivery` và tool `local-delivery` đóng gói nguyên byte exact Result đã accepted. Gate từ chối approval cũ bị quyết định mới thay thế, pending feedback cùng sequence, stale dependency/analysis, run chưa finalization, thiếu/sai checksum, profile sai, decode lỗi, loudness/true peak/tail silence ngoài giới hạn. Mọi Result file mới đều có SHA-256; đường tool/UI xác minh checksum đã biết. Observer snapshot retry khi mutation xen giữa assemble và ETag. Project/Result Decision dùng chung mutex. Pilot r10 đã tạo bundle thật và feedback legacy được resolve bằng Decision append-only. Acceptance 183/183 + 20/20 + browser 390/768/1440 đạt; chi tiết ở [đặc tả](PHASE6A-LOCAL-DELIVERY-SPEC.md) và [report](../../reports/phase6a-delivery-acceptance.json).
+
+## Cập nhật Đợt 6B — 2026-09-13
+
+`padstudio:doctor` kiểm tra runtime, quyền đọc/ghi, dung lượng, capability bắt buộc/tùy chọn và health project; `--deep` xác minh từng Result file mà không sửa dữ liệu. `project:recover` mặc định chỉ lập kế hoạch, còn `--apply` chỉ hoàn tất bằng chứng đã bền vững dưới project lock, bỏ qua trường hợp không an toàn và chạy lặp không tạo Result/render trùng. Observer có Health chỉ đọc và Agent summary mang trạng thái sẵn sàng.
+
+Runbook vận hành nằm tại [OPERATIONS-RUNBOOK.md](../OPERATIONS-RUNBOOK.md). Acceptance tạo project mới, tiêm lỗi finalization sau render, reopen/recover, duyệt exact Result, xuất bundle, reopen/deep verify và kiểm tra browser; kết quả 191/191 repository tests, 20/20 analysis tests, 9/9 file fixture và ba viewport đều đạt. Chi tiết tại [đặc tả 6B](PHASE6B-OPERATIONS-SPEC.md) và [report](../../reports/phase6b-operations-acceptance.json). Đợt 6 practical đã đóng với các giới hạn đã ghi rõ.

@@ -17,6 +17,7 @@
     "project:review": "node src/cli/record-project-review.js",
     "project:context": "node src/cli/read-project-context.js",
     "project:run:recover": "node src/cli/recover-run-finalization.js",
+    "project:recover": "node src/cli/recover-project.js",
     "workflow:list": "node src/cli/list-workflow-templates.js",
     "skill:list": "node src/cli/list-skills.js",
     "skill:read": "node src/cli/read-skill.js",
@@ -30,6 +31,7 @@
     "project:sequence": "node src/cli/write-video-sequence.js",
     "analysis:eval": "node scripts/source-eval.mjs",
     "analysis:doctor": "node src/cli/analysis-doctor.js",
+    "padstudio:doctor": "node src/cli/padstudio-doctor.js",
     "analysis:acceptance": "node scripts/source-understanding-acceptance.mjs",
     "creative:acceptance": "node scripts/creative-direction-acceptance.mjs",
     "analysis:test": "node scripts/source-eval.mjs test",
@@ -46,9 +48,11 @@
     "production:pilot": "node scripts/phase4-pilot.mjs",
     "production:acceptance": "node scripts/phase4-acceptance.mjs",
     "observer:phase5a:test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase5a-observer-browser-smoke.ps1",
+    "observer:phase6b:test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase5a-observer-browser-smoke.ps1",
     "observer:acceptance": "node scripts/phase5a-acceptance.mjs",
     "feedback:acceptance": "node scripts/phase5b-acceptance.mjs",
-    "delivery:acceptance": "node scripts/phase6a-acceptance.mjs"
+    "delivery:acceptance": "node scripts/phase6a-acceptance.mjs",
+    "operations:acceptance": "node scripts/phase6b-acceptance.mjs"
   },
   "engines": {
     "node": ">=20"

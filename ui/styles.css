@@ -355,6 +355,46 @@ h3 {
   text-decoration: none;
 }
 
+.health-summary,
+.health-issue {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+  background: rgba(31, 41, 55, 0.35);
+}
+
+.health-summary p,
+.health-issue h4,
+.health-issue p {
+  margin: 0;
+}
+
+.health-ready {
+  border-color: rgba(94, 234, 212, 0.5);
+}
+
+.health-attention {
+  border-color: rgba(251, 191, 36, 0.65);
+}
+
+.health-blocked {
+  border-color: rgba(248, 113, 113, 0.7);
+}
+
+.health-issues {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.75rem;
+}
+
+.health-issue code {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
 .result-verification {
   align-self: start;
   padding: 0.25rem 0.55rem;

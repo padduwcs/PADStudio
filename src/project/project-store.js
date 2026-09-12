@@ -1445,6 +1445,15 @@ export class ProjectStore {
   }
 
   async recoverRunFinalization(projectId, runId) {
+    const normalizedRunId = runReference(runId);
+    return withFileLock({
+      projectDirectory: projectDirectory(this.rootDir, projectId),
+      name: "run-finalization-" + normalizedRunId,
+      action: () => this.#recoverRunFinalizationUnlocked(projectId, normalizedRunId)
+    });
+  }
+
+  async #recoverRunFinalizationUnlocked(projectId, runId) {
     const run = await this.readRun(projectId, runId);
     if (run.status === "completed") return run;
     if (run.status !== "in_progress") {

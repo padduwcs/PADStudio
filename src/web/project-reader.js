@@ -102,6 +102,13 @@ function observerSection(context, section, generation) {
     return { ...base, production: { sequences: context.production.sequences,
       affectedWorkItems: context.production.affectedWorkItems, note: context.production.note } };
   }
+  if (section === "health") {
+    return {
+      ...base,
+      health: context.health,
+      runRecovery: context.runRecovery
+    };
+  }
   if (section === "delivery") {
     const bundles = context.results.filter((result) => result.type === "delivery.bundle");
     const sourceResultIds = new Set(bundles.map((result) => result.data?.sourceResultId).filter(Boolean));

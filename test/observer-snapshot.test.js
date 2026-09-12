@@ -81,7 +81,7 @@ test("observer snapshots are sectioned, conditional and invalidated by durable c
 test("observer detail sections expose only the data needed by their view", async (t) => {
   const { origin } = await fixture(t);
   const sections = {};
-  for (const section of ["source", "creative", "production", "delivery", "activity"]) {
+  for (const section of ["source", "creative", "production", "delivery", "health", "activity"]) {
     const response = await fetch(`${origin}/api/projects/demo/observer/${section}`);
     assert.equal(response.status, 200);
     sections[section] = (await response.json()).context;
@@ -91,6 +91,7 @@ test("observer detail sections expose only the data needed by their view", async
   assert.equal("results" in sections.creative, false);
   assert.equal("resources" in sections.production, false);
   assert.deepEqual(sections.delivery.delivery.bundles, []);
+  assert.equal(sections.health.health.status, "ready");
   assert.ok(Array.isArray(sections.activity.results));
   assert.ok(Array.isArray(sections.activity.runs));
 });

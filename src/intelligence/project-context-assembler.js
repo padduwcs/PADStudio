@@ -1,5 +1,6 @@
 import { buildProductionContext } from "../production/production-context.js";
 import { AnalysisReader } from "../analysis/analysis-reader.js";
+import { buildProjectHealth } from "../operations/project-health.js";
 
 function activity(kind, id, value) {
   if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) return null;
@@ -179,8 +180,11 @@ export class ProjectContextAssembler {
     const production = buildProductionContext({ ...context, analysis });
     const freshness = checkpointFreshness(context, analysis);
     const pendingFeedback = pendingResultFeedback(context.decisions);
+    const health = buildProjectHealth({
+      context, production, checkpointFreshness: freshness, pendingFeedback
+    });
     return {
-      ...context, capabilities, analysis, production, pendingFeedback,
+      ...context, capabilities, analysis, production, pendingFeedback, health,
       checkpointFreshness: freshness,
       resumeView: buildResumeView(context, production, freshness, pendingFeedback)
     };
@@ -193,6 +197,9 @@ export class ProjectContextAssembler {
     const production = buildProductionContext({ ...context, analysis });
     const freshness = checkpointFreshness(context, analysis);
     const pendingFeedback = pendingResultFeedback(context.decisions);
+    const health = buildProjectHealth({
+      context, production, checkpointFreshness: freshness, pendingFeedback
+    });
     return {
       version: "1.0", view: "summary", project: context.project, checkpoint: context.checkpoint,
       activeArtifacts: context.intelligence.activeArtifacts.map(compactArtifact),
@@ -200,6 +207,7 @@ export class ProjectContextAssembler {
       checkpointFreshness: freshness,
       resumeView: buildResumeView(context, production, freshness, pendingFeedback),
       pendingFeedback,
+      health,
       production: summarizeProduction(production, context.runRecovery),
       capabilities: compactCapabilities(capabilities),
       analysis: compactAnalysis(analysis)

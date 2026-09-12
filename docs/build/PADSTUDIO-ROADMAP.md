@@ -1,6 +1,6 @@
 # PADStudio — lộ trình 6 đợt
 
-Cập nhật: **2026-09-13**. Hiện tại: **đợt 1–5 và Đợt 6A đã hoàn thành practical; lượt tiếp theo là Đợt 6B về vận hành ổn định và bàn giao hệ thống**. Ảnh AI, search stock và ElevenLabs thật chưa được dùng. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt đang triển khai.
+Cập nhật: **2026-09-13**. Hiện tại: **cả sáu đợt đã hoàn thành practical trên máy chủ sở hữu**. Bước tiếp theo là dùng trên project thật và chỉ mở phạm vi mới từ ma sát có bằng chứng. Ảnh AI, search stock và ElevenLabs thật chưa được dùng. Đây là bản đồ phát triển, không phải chứng nhận release rộng.
 
 ## 1. Cách dùng lộ trình
 
@@ -71,7 +71,7 @@ Sau mỗi đợt chỉ cần ghi: **đã dùng được gì, còn giới hạn g
 - [Bước 1 — review thực tế](../../eval/source-understanding/PRACTICAL-REVIEW.md), [bước 2 — hợp đồng/vòng đời](SOURCE-UNDERSTANDING-PACKAGE-B.md), [bước 3 — công cụ](SOURCE-UNDERSTANDING-PACKAGE-C.md), [bước 4 — hiểu biết/truy xuất](SOURCE-UNDERSTANDING-PACKAGE-D.md), [bước 5 — workspace observer](SOURCE-UNDERSTANDING-PACKAGE-E.md), [bước 6 — nghiệm thu phân hệ](SOURCE-UNDERSTANDING-PACKAGE-F.md): kết quả và giới hạn đã có.
 - [Báo cáo kiểm chứng bước 3](../../eval/source-understanding/reports/2026-09-09/package-c-verification.json): bằng chứng kiểm tra đã lưu.
 - [Trí tuệ project và workflow](PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md), [sequence và renderer](VIDEO-SEQUENCE-PRODUCTION.md): nền dùng tiếp ở các đợt sau.
-- [Trạng thái hiện tại và bước tiếp theo](PADSTUDIO-STATE-AND-NEXT.md), [đặc tả Đợt 6A](PHASE6A-LOCAL-DELIVERY-SPEC.md), [báo cáo nghiệm thu Đợt 6A](../../reports/phase6a-delivery-acceptance.json): bằng chứng đường bàn giao local và điểm tiếp tục sang Đợt 6B.
+- [Trạng thái hiện tại và bước tiếp theo](PADSTUDIO-STATE-AND-NEXT.md), [đặc tả Đợt 6B](PHASE6B-OPERATIONS-SPEC.md), [runbook](../OPERATIONS-RUNBOOK.md), [báo cáo nghiệm thu Đợt 6B](../../reports/phase6b-operations-acceptance.json): bằng chứng bàn giao local, doctor, recovery và acceptance end-to-end.
 
 Lộ trình bổ sung cách tổ chức công việc; không thay thế [thiết kế](PADSTUDIO-DESIGN.md), [định hướng](PADSTUDIO-CURRENT-DIRECTION.md) hoặc tự ghi đè hợp đồng đã triển khai.
 
@@ -101,3 +101,7 @@ retire và project chỉ còn một sequence hiện hành. Đợt 4 đã đóng;
 ## Cập nhật 2026-09-13 — Đợt 6A
 
 Đường local delivery đã hoàn chỉnh cho profile video pilot: exact accepted/current Result, finalization và freshness gate, SHA-256 mọi Result file mới, full decode/media/audio validation, bundle provenance/review/approval/checksums và Observer Delivery chỉ đọc. Đồng thời đã sửa race snapshot/ETag và mutex Decision. Bundle pilot giữ nguyên byte r10; acceptance đạt 183/183 repository tests, 20/20 analysis tests và browser ba viewport. Xem [đặc tả](PHASE6A-LOCAL-DELIVERY-SPEC.md) và [report](../../reports/phase6a-delivery-acceptance.json). Điểm tiếp tục là Đợt 6B cho setup/doctor/recovery/hướng dẫn và acceptance end-to-end; không tự mở publishing provider.
+
+## Cập nhật 2026-09-13 — Đợt 6B
+
+Đã hoàn chỉnh lớp vận hành practical: doctor nhanh/sâu phân biệt capability bắt buộc và tùy chọn; project health đưa blocker, việc cần chú ý và readiness vào context/Observer; recovery có plan dry-run và apply dưới lock, chỉ finalize bằng chứng bền vững và idempotent; runbook bao phủ setup, backup/restore, xử lý lỗi, upgrade/rollback. Acceptance từ project mới đã chứng minh render → finalization bị ngắt → reopen/recover không render lại → approval → delivery → reopen/deep verify. Kết quả đạt 191/191 repository tests, 20/20 analysis tests, browser ba viewport và không còn lock sót. Đợt 6 practical đã đóng; không suy rộng thành release certification hay tự mở provider/publishing/cloud.

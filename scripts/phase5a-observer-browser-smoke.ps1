@@ -115,8 +115,8 @@ try {
   $result = Evaluate @'
 (async()=>{
  const end=Date.now()+15000;
- while(!document.querySelector('.composition-timeline')&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
- const group=[...document.querySelectorAll('.sequence-group')].find(p=>p.querySelector('strong')?.textContent==='pilot-preview');
+ let group;
+ while(!(group=[...document.querySelectorAll('.sequence-group')].find(p=>p.querySelector('strong')?.textContent==='pilot-preview'))&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
  const panel=group?.querySelector('.sequence-panel');
  if(!panel)throw new Error('Missing current pilot panel');
  const timeline=panel.querySelector('.composition-timeline'), video=panel.querySelector('video'), slider=timeline?.querySelector('input');
@@ -164,6 +164,12 @@ try {
  document.querySelector('#creative-direction-view').closest('.inputs-section').scrollIntoView({block:'center'});
  while(!document.querySelector('.creative-direction')&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
  if(!document.querySelector('.creative-direction'))throw new Error('Creative section did not render from its lazy snapshot');
+ const operationsEnd=Date.now()+5000;
+ while((!document.querySelector('#health-view .health-summary')||!document.querySelector('#delivery-view .delivery-card'))&&Date.now()<operationsEnd)await new Promise(r=>setTimeout(r,100));
+ const health=document.querySelector('#health-view .health-summary');
+ if(!health||!health.classList.contains('health-ready'))throw new Error('Ready project health is not visible: '+(document.querySelector('#health-view')?.textContent||'<empty>'));
+ const delivery=document.querySelector('#delivery-view .delivery-card');
+ if(!delivery||delivery.querySelectorAll('.delivery-files a').length<6)throw new Error('Verified delivery bundle links are not visible');
  const paths=performance.getEntriesByType('resource').map(entry=>new URL(entry.name).pathname);
  const projectPath='/api/projects/'+encodeURIComponent(new URL(location.href).searchParams.get('project'));
  if(paths.includes(projectPath))throw new Error('Observer loaded the legacy full project context');
@@ -186,7 +192,7 @@ try {
    [IO.Directory]::CreateDirectory($captureDirectory) | Out-Null
    [IO.File]::WriteAllBytes((Join-Path $captureDirectory "observer-$width.png"), [Convert]::FromBase64String($capture.data))
  }
- [PSCustomObject]@{status="passed";timeline=$true;seek=$true;playerPreserved=$true;conditionalPolling=$true;lazyActivity=$true;feedbackAnchors=$true;exactResultSelection=$true;exactResultSwitching=$true;exactResultComparison=$true;viewports=@(390,768,1440)} | ConvertTo-Json
+ [PSCustomObject]@{status="passed";timeline=$true;seek=$true;playerPreserved=$true;conditionalPolling=$true;lazyActivity=$true;feedbackAnchors=$true;exactResultSelection=$true;exactResultSwitching=$true;exactResultComparison=$true;health=$true;delivery=$true;viewports=@(390,768,1440)} | ConvertTo-Json
 } finally {
   if ($script:CdpSocket -and $script:CdpSocket.State -eq [Net.WebSockets.WebSocketState]::Open) {
     try { Send-Cdp "Browser.close" | Out-Null } catch {}
