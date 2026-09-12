@@ -121,7 +121,7 @@ Các quy tắc này áp dụng cho loại artifact mới `video.sequence`. Artif
 
 Khi ghi tiếp cùng `key`, phải gửi `expectedRevision` bằng phiên bản mới nhất đã lưu, kể cả bản nháp, cùng `data.changeReason` không rỗng. Dùng phiên bản cũ sẽ bị báo xung đột. Cơ chế này phát hiện dữ liệu sửa đã lỗi thời trong mô hình một bên ghi hiện có; chưa cung cấp giao dịch giữa nhiều tiến trình hoặc cộng tác chỉnh sửa đồng thời.
 
-Bản nháp không thay thế bản hiện hành. Bản `retired` chấm dứt lựa chọn hiện hành.
+Trong mỗi project chỉ được có một `video.sequence` hiện hành, kể cả khi các sequence dùng key khác nhau. Ghi `status: active` cho key khác sẽ bị từ chối cho tới khi sequence hiện hành được `retired`. Bản `draft` mới nhất của một key được biểu diễn rõ là `candidate`: không thay thế current nhưng có thể render để so sánh. Các revision draft cũ hơn và bản `retired` là lịch sử.
 
 Tham chiếu ở artifact áp dụng cho toàn video; tham chiếu và nguồn media trong đoạn chỉ thuộc đoạn đó. Kho dữ liệu kiểm tra cả hai phạm vi, ngữ cảnh suy ra các quan hệ phụ thuộc. Khi sửa, cần gửi tập tham chiếu hiện muốn dùng để tránh giữ nhầm nguồn đã bỏ.
 
@@ -162,13 +162,13 @@ Renderer thực hiện:
 
 Không tự đổi sang renderer khác. Lời dẫn dài hơn đoạn bị từ chối; ngắn hơn thì được bù phần còn lại bằng im lặng. Khoảng lấy hình không hợp lệ gây lỗi trước khi đăng ký kết quả lâu dài.
 
-Mặc định không dựng phiên bản lịch sử hoặc phiên bản có phụ thuộc đã thay đổi. `allowHistorical: true` cho phép chủ động dựng trường hợp này và đánh dấu kết quả tương ứng.
+Mặc định không dựng phiên bản lịch sử hoặc phiên bản có phụ thuộc đã thay đổi. Candidate mới nhất được dựng mà không cần giả làm lịch sử; Result ghi `sequenceRole: candidate`. `allowHistorical: true` chỉ dành cho lịch sử hoặc trường hợp chủ động chấp nhận phụ thuộc cũ, và Result đánh dấu `historical: true`.
 
 Kết quả thành công đăng ký video chính, file từng đoạn và ảnh đại diện trong `outputs/run-id`. File trung gian được dọn; nếu thất bại, đầu ra chưa chốt được hoàn tác. Cơ chế phục hồi `finalization_pending` hiện có giữ file và hoàn tất ghi nhận lần chạy mà không dựng lại.
 
 ## 7. Đánh giá và quan sát
 
-Kiểm tra kỹ thuật xác nhận file, luồng H.264/AAC, kích thước, FPS/số khung hình, âm thanh stereo 48 kHz, thời lượng và sự ổn định của nguồn.
+Kiểm tra kỹ thuật xác nhận file, luồng H.264/AAC, kích thước, FPS/số khung hình, âm thanh stereo 48 kHz, thời lượng và sự ổn định của nguồn. Renderer 1.2 còn lưu các khoảng digital silence dài ít nhất 0,25 giây, khoảng im lặng lớn nhất và đuôi im lặng; đây là evidence/cảnh báo, không tự kết luận im lặng là sai chủ ý.
 
 Các mục `creativeReview`, `speechContentReview`, `subtitleVisualReview`, `audioMixReview` được ghi rõ là `not_performed` — chưa đánh giá. Ảnh đại diện là bằng chứng để xem, không chứng minh chất lượng sáng tạo đã đạt.
 

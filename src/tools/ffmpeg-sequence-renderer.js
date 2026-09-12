@@ -10,7 +10,35 @@ import { buildProductionContext } from "../production/production-context.js";
 import { createFfmpegSubtitleBurner } from "./ffmpeg-subtitle-burner.js";
 
 const execFileAsync = promisify(execFile);
-const VERSION = "1.1.0";
+const VERSION = "1.2.0";
+
+export function parseSilenceDetection(stderr, durationSeconds) {
+  const events = [...String(stderr ?? "").matchAll(/silence_(start|end):\s*(-?[0-9]+(?:\.[0-9]+)?)/g)]
+    .map((match) => ({ type: match[1], seconds: Number(match[2]) }))
+    .filter((event) => Number.isFinite(event.seconds));
+  const intervals = [];
+  let start = null;
+  for (const event of events) {
+    if (event.type === "start") start = Math.max(0, event.seconds);
+    if (event.type === "end" && start !== null) {
+      const end = Math.min(durationSeconds, Math.max(start, event.seconds));
+      intervals.push({ startSeconds: start, endSeconds: end, durationSeconds: end - start });
+      start = null;
+    }
+  }
+  if (start !== null && Number.isFinite(durationSeconds) && durationSeconds > start) {
+    intervals.push({ startSeconds: start, endSeconds: durationSeconds, durationSeconds: durationSeconds - start });
+  }
+  const rounded = intervals.map((interval) => Object.fromEntries(
+    Object.entries(interval).map(([key, value]) => [key, Math.round(value * 1000) / 1000])
+  ));
+  const tail = rounded.at(-1);
+  return {
+    silenceIntervals: rounded,
+    maxSilenceSeconds: rounded.length ? Math.max(...rounded.map((interval) => interval.durationSeconds)) : 0,
+    tailSilenceSeconds: tail && Math.abs(tail.endSeconds - durationSeconds) <= 0.05 ? tail.durationSeconds : 0,
+  };
+}
 
 async function digest(path) {
   const hash = createHash("sha256");
@@ -103,7 +131,9 @@ export function createFfmpegSequenceRenderer({
       const sequence = normalizeSequence(artifact.data);
       const production = buildProductionContext(context);
       const state = production.sequences.find((s) => s.artifactId === artifact.id);
-      if ((!state.active || state.reasons.length) && !inputs.allowHistorical) fail("Sequence or its dependencies are not current. Review/rebase them, or explicitly set allowHistorical.", "stale_sequence");
+      const ownRevisionReason = (reason) => reason.kind === "artifact" && reason.id === artifact.id && reason.reason === "not_active_revision";
+      const dependencyReasons = state.reasons.filter((reason) => !ownRevisionReason(reason));
+      if ((state.role === "history" || dependencyReasons.length) && !inputs.allowHistorical) fail("Sequence history or its dependencies are not current. Review/rebase them, or explicitly set allowHistorical.", "stale_sequence");
       const missing = state.segments.filter((s) => s.blockers.length);
       if (missing.length) fail("Sequence has unresolved media: " + missing.map((s) => s.id + " (" + s.blockers.join(", ") + ")").join("; "), "unresolved_media");
       let reuse = null;
@@ -163,7 +193,8 @@ export function createFfmpegSequenceRenderer({
         runtime: { artifact, sequence, segments, music, directory: outputWorkspace.temporaryDirectory },
         trace: {
           inputResources: [...inputResources], inputResults: [...inputResults], inputArtifacts: [artifact.id],
-          directory: outputWorkspace.projectRelativeDirectory, historical: !state.active || state.reasons.length > 0,
+          directory: outputWorkspace.projectRelativeDirectory, sequenceRole: state.role,
+          historical: state.role === "history" || dependencyReasons.length > 0,
         },
       };
     },
@@ -270,7 +301,9 @@ export function createFfmpegSequenceRenderer({
         if (!block) fail("Audio measurement missing.", "invalid_output");
         const m = JSON.parse(block);
         const finite = (v) => Number.isFinite(Number(v)) ? Number(v) : null;
-        audioMeasurement = { integratedLufs: finite(m.input_i), truePeakDbtp: finite(m.input_tp), loudnessRange: finite(m.input_lra), targetLufs: sequence.audio.loudnessTargetLufs, note: "Measured technical levels; human listening still required." };
+        const silence = await command(ffmpegCommand, ["-hide_banner", "-i", finalPath, "-vn", "-af", "silencedetect=noise=-50dB:d=0.25", "-f", "null", "-"]);
+        audioMeasurement = { integratedLufs: finite(m.input_i), truePeakDbtp: finite(m.input_tp), loudnessRange: finite(m.input_lra), targetLufs: sequence.audio.loudnessTargetLufs,
+          ...parseSilenceDetection(silence.stderr, checked.durationSeconds), note: "Measured technical levels and digital silence; human listening still required." };
       }
       files.unshift({ id: "primary", role: "primary", name: "preview.mp4", mediaType: "video", sizeBytes: checked.sizeBytes });
       return { files, manifest, durationSeconds: checked.durationSeconds, sha256: checked.sha256, actualCostUsd: 0,
@@ -285,7 +318,7 @@ export function createFfmpegSequenceRenderer({
         inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults, inputArtifacts: prepared.trace.inputArtifacts,
         files: execution.files.map((file) => ({ ...file, path: prepared.trace.directory + "/" + file.name })),
         data: { sequence: { artifactId: artifact.id, key: artifact.key, revision: artifact.revision },
-          historical: prepared.trace.historical, segments: execution.manifest, durationSeconds: execution.durationSeconds, sha256: execution.sha256,
+          sequenceRole: prepared.trace.sequenceRole, historical: prepared.trace.historical, segments: execution.manifest, durationSeconds: execution.durationSeconds, sha256: execution.sha256,
           video: prepared.runtime.sequence.format, hasAudio: true },
         verification: execution.verification,
       };

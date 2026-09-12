@@ -116,8 +116,8 @@ try {
 (async()=>{
  const end=Date.now()+15000;
  while(!document.querySelector('.composition-timeline')&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
- const panel=[...document.querySelectorAll('.sequence-group')].find(p=>p.querySelector('strong')?.textContent==='phase4-piper-revision')?.querySelector('.sequence-panel');
- if(!panel)throw new Error('Missing phase4 panel');
+ const panel=[...document.querySelectorAll('.sequence-group')].find(p=>p.querySelector('strong')?.textContent==='pilot-preview')?.querySelector('.sequence-panel');
+ if(!panel)throw new Error('Missing current pilot panel');
  const timeline=panel.querySelector('.composition-timeline'), video=panel.querySelector('video'), slider=timeline?.querySelector('input');
  if(!timeline||!video||!slider||timeline.querySelectorAll('.timeline-bar').length<3)throw new Error('Missing timeline/media');
  while(video.readyState<1&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
@@ -126,7 +126,7 @@ try {
  if(Math.abs(video.currentTime-2)>0.2)throw new Error('Timeline seek failed');
  const imageBars=timeline.querySelector('.timeline-row').querySelectorAll('button');
  imageBars[1].click();await new Promise(r=>setTimeout(r,300));
- if(Math.abs(video.currentTime-4)>0.2)throw new Error('Segment seek failed');
+ if(Math.abs(video.currentTime-8)>0.2)throw new Error('Segment seek failed');
  video.dataset.phase4='preserved';await new Promise(r=>setTimeout(r,3500));
  if(!document.querySelector('video[data-phase4="preserved"]'))throw new Error('Polling replaced player');
  if(timeline.querySelector('[draggable="true"]'))throw new Error('Timeline must be read-only');
@@ -137,7 +137,7 @@ try {
  foreach($width in @(390,768,1440)) {
    Send-Cdp "Emulation.setDeviceMetricsOverride" @{width=$width;height=900;deviceScaleFactor=1;mobile=$false} | Out-Null
    if (Evaluate 'document.documentElement.scrollWidth > document.documentElement.clientWidth') {throw "Overflow at $width"}
-   Evaluate "[...document.querySelectorAll('.sequence-group')].find(p=>p.querySelector('strong')?.textContent==='phase4-piper-revision')?.querySelector('.composition-timeline')?.scrollIntoView({block:'center'})" | Out-Null
+   Evaluate "[...document.querySelectorAll('.sequence-group')].find(p=>p.querySelector('strong')?.textContent==='pilot-preview')?.querySelector('.composition-timeline')?.scrollIntoView({block:'center'})" | Out-Null
    $capture = Send-Cdp "Page.captureScreenshot" @{format="png"}
    $captureDirectory = Join-Path $workspace ".cache/phase4-acceptance"
    [IO.Directory]::CreateDirectory($captureDirectory) | Out-Null

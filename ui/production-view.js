@@ -57,7 +57,7 @@ function timelinePanel(sequence, video) {
 function revisionPanel(context, sequence, baseline = null) {
   const changes = baseline ? compareRevisions(baseline, sequence) : sequence.changes;
   const panel = node("article", undefined, "sequence-panel");
-  const stateLabel = sequence.active ? "hiện hành" : sequence.status === "draft" ? "bản nháp" : sequence.status === "retired" ? "đã ngừng dùng" : "lịch sử";
+  const stateLabel = sequence.role === "current" ? "hiện hành" : sequence.role === "candidate" ? "candidate" : "lịch sử";
   panel.append(node("h4", sequence.name + " · r" + sequence.revision + " · " + stateLabel));
   panel.append(node("p", sequence.changeReason));
   panel.append(node("p", baseline ? "Thay đổi so với r" + baseline.revision : "Thay đổi so với revision trước", "input-meta"));
@@ -128,7 +128,10 @@ export function renderProduction(container, context) {
     container.append(node("p", "Chưa có cấu trúc video. Agent có thể bắt đầu từ ý tưởng hoặc tư liệu trong chat.", "empty-note"));
     return;
   }
-  const keys = [...new Set(sequences.map((s) => s.key))];
+  const keys = [...new Set(sequences.map((s) => s.key))].sort((left, right) =>
+    Number(sequences.some((sequence) => sequence.key === right && sequence.role === "current")) -
+    Number(sequences.some((sequence) => sequence.key === left && sequence.role === "current"))
+  );
   for (const key of keys) {
     const revisions = sequences.filter((s) => s.key === key).sort((a, b) => a.revision - b.revision);
     const saved = choices.get(context.project.id + ":" + key) ?? {};
@@ -140,7 +143,7 @@ export function renderProduction(container, context) {
     compare.setAttribute("aria-label", "Phiên bản so sánh: " + key);
     compare.append(new Option("Không so sánh", ""));
     for (const revision of revisions) {
-      const label = "r" + revision.revision + (revision.active ? " · hiện hành" : revision.status === "draft" ? " · bản nháp" : revision.status === "retired" ? " · đã ngừng dùng" : " · lịch sử");
+      const label = "r" + revision.revision + (revision.role === "current" ? " · hiện hành" : revision.role === "candidate" ? " · candidate" : " · lịch sử");
       selected.append(new Option(label, revision.artifactId));
       compare.append(new Option(label, revision.artifactId));
     }

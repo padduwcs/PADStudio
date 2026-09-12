@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { normalizeSequence, sequenceReferences } from "../src/production/video-sequence.js";
 import { sequenceDuration, compositionTimeline } from "../src/production/sequence-composition.js";
 import { createStyledAss } from "../src/tools/sequence-compositor.js";
+import { parseSilenceDetection } from "../src/tools/ffmpeg-sequence-renderer.js";
 import { ProjectStore } from "../src/project/project-store.js";
 import { ProjectContextAssembler } from "../src/intelligence/project-context-assembler.js";
 import { importProjectInput } from "../src/resources/project-importer.js";
@@ -45,6 +46,22 @@ test("styled captions escape commands, wrap Vietnamese and reject overflow", () 
   assert.match(ass, /\\move/);
   n.segments[0].captions[0].text = "x".repeat(200);
   assert.throws(() => createStyledAss(n.segments[0].captions, n.format), /too wide/);
+});
+test("silence detection reports closed and trailing intervals", () => {
+  const parsed = parseSilenceDetection([
+    "[silencedetect] silence_start: -0.02",
+    "[silencedetect] silence_end: 0.3 | silence_duration: 0.32",
+    "[silencedetect] silence_start: 1.25",
+    "[silencedetect] silence_end: 1.75 | silence_duration: 0.5",
+    "[silencedetect] silence_start: 3.924687",
+  ].join("\n"), 8);
+  assert.deepEqual(parsed.silenceIntervals, [
+    { startSeconds: 0, endSeconds: 0.3, durationSeconds: 0.3 },
+    { startSeconds: 1.25, endSeconds: 1.75, durationSeconds: 0.5 },
+    { startSeconds: 3.925, endSeconds: 8, durationSeconds: 4.075 },
+  ]);
+  assert.equal(parsed.maxSilenceSeconds, 4.075);
+  assert.equal(parsed.tailSilenceSeconds, 4.075);
 });
 async function sampleRgb(path, seconds, x, y) {
   const { stdout } = await exec("ffmpeg", ["-v", "error", "-ss", String(seconds), "-i", path, "-vf", `crop=2:2:${x}:${y},scale=1:1`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1"], { encoding: "buffer" });
@@ -114,8 +131,10 @@ test("real composition renders timed audio, overlays, styled text, transitions, 
   mixed.segments.push({ id: "c", title: "C", intent: "Mixed joins", durationSeconds: 1.2, visual: { source: red, motion: "zoomOut" }, transition: { type: "fadeBlack", durationSeconds: 0.2 } });
   mixed.segments.push({ id: "d", title: "D", intent: "Final frame", durationSeconds: 1, visual: { source: red, motion: "panLeft", fit: "crop" } });
   mixed.music.push({ id: "second-bed", source: bed, loop: true, volume: 0.05, ducking: true, startSeconds: 0.3 });
-  const mixedArtifact = await store.recordArtifact("demo", { key: "mixed", type: "video.sequence", name: "Mixed joins", summary: "Test several transitions and music tracks", status: "active", data: mixed });
+  const mixedArtifact = await store.recordArtifact("demo", { key: "mixed", type: "video.sequence", name: "Mixed joins", summary: "Test several transitions and music tracks", status: "draft", data: mixed });
   const mixedResult = (await render(mixedArtifact.id)).result;
+  assert.equal(mixedResult.data.sequenceRole, "candidate");
+  assert.equal(mixedResult.data.historical, false);
   assert.ok(Math.abs(mixedResult.data.durationSeconds - 5.2) < 0.1);
   const mixedSegment = await store.resolveResultFile("demo", mixedResult.id, "segment-0");
   const slideStart = await sampleRgb(mixedSegment.filePath, 0.52, 60, 20);

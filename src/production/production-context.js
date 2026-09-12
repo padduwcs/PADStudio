@@ -6,6 +6,11 @@ export function buildProductionContext(context) {
   const results = new Map(context.results.map((r) => [r.id, r]));
   const resources = new Map(context.resources.map((r) => [r.id, r]));
   const active = new Map(context.intelligence.activeArtifacts.map((a) => [a.key, a]));
+  const latestSequenceRevision = new Map();
+  for (const artifact of context.artifacts.filter((a) => a.type === SEQUENCE_TYPE)) {
+    const latest = latestSequenceRevision.get(artifact.key);
+    if (!latest || artifact.revision > latest.revision) latestSequenceRevision.set(artifact.key, artifact);
+  }
   const analysisSources = new Map((context.analysis?.sources ?? []).map((source) => [source.sourceKey, source]));
   const memo = new Map();
   function mediaReasons(source) {
@@ -67,9 +72,12 @@ export function buildProductionContext(context) {
   const sequences = context.artifacts.filter((a) => a.type === SEQUENCE_TYPE).map((a) => {
     const previous = artifacts.get(a.supersedes);
     const renders = context.results.filter((r) => r.type === "video.sequence-render" && r.data.sequence?.artifactId === a.id);
+    const isCurrent = active.get(a.key)?.id === a.id;
+    const role = isCurrent ? "current" :
+      a.status === "draft" && latestSequenceRevision.get(a.key)?.id === a.id ? "candidate" : "history";
     return {
       artifactId: a.id, key: a.key, revision: a.revision, name: a.name, status: a.status,
-      active: active.get(a.key)?.id === a.id, changeReason: a.data.changeReason, format: a.data.format,
+      active: isCurrent, role, changeReason: a.data.changeReason, format: a.data.format,
       references: a.references,
       durationSeconds: sequenceDuration(a.data), timeline: compositionTimeline(a.data), music: a.data.music ?? [], audio: a.data.audio ?? null,
       segments: a.data.segments.map((s) => ({ ...s,

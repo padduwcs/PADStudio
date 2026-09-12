@@ -64,7 +64,7 @@ thay thế human listening/creative approval.
 - audio.loudnessTargetLufs tùy chọn -30 đến -10. Dùng loudnorm dynamic ở bản
   mix cuối; đo lại integrated LUFS/true peak và giữ số đo. Không hứa LUFS đạt
   chính xác cho mọi nguồn; nguồn im lặng có thể không đo được (null).
-- Renderer 1.1.0 chỉ reuse Result cùng phiên bản renderer. Result cũ vẫn xem
+- Renderer 1.2.0 chỉ reuse Result cùng phiên bản renderer. Result cũ vẫn xem
   được, muốn dùng cache mới cần render lại lần đầu. Music-only change tái dùng
   segment khi source/spec/hash còn khớp; bản mix cuối luôn được tạo mới.
 - Font là font local, không tải mạng. Không chứng nhận typography giống hệt
@@ -89,15 +89,18 @@ thay thế human listening/creative approval.
 
 ## Chạy kiểm chứng và xem mẫu
 
-- `npm run production:pilot`: tạo revision mới từ pilot Đợt 3 local, giữ baseline;
-  ghi phản hồi đã có, tạo graphic typography mới và preview 8 giây; chờ user review.
+- `npm run production:pilot`: retire nhánh thử sai `phase4-piper-revision`, tạo revision mới
+  trên đúng chain `pilot-preview`, giữ baseline; render 12 giây đúng creative direction.
+  Tiếng nguồn chỉ mở sau lời Piper ở đoạn đầu; concept card có lời Piper riêng, ngắt dòng
+  chủ động và footer `Đợt 4`. Toàn bộ dùng local, chờ user review.
 - `npm run production:acceptance`: repository tests, Python harness, browser
-  timeline/seek/player/3 viewport; fail nếu pilot thiếu. Report tại
+  timeline/seek/player/3 viewport; fail nếu sai current chain, có hơn một current sequence,
+  lệch 12 giây, đuôi im lặng quá 0,75 giây, sai graphic hoặc dùng provider ngoài local. Report tại
   `reports/phase4-production-acceptance.json`, log dưới `.cache/phase4-acceptance`.
 - `test/sequence-composition.test.js`: delayed narration, volume automation,
   overlay pixel timing, styled captions, transition pixels/duration, music xuyên
   đoạn, mix-only reuse, local change, recovery và missing overlay.
 - Các test sequence 1.0, rollback/path safety và paid recovery tiếp tục chạy.
 
-Đây là bàn giao kỹ thuật. Review chất giọng, font và nhịp của bản mẫu mới chưa
-được người dùng chấp thuận; không ghi practical creative approval tự động.
+Đây là bàn giao kỹ thuật. Người dùng đã duyệt exact Result `result-mty1pb0w-d6598cd6`
+ngày 2026-09-12; approval không áp dụng cho revision hoặc Result khác.

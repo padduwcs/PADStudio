@@ -280,8 +280,8 @@ và `media.acquire` qua Executor hiện có. Gói TTS bổ sung Piper local và 
 `tts.synthesize`, Result audio dùng lại được và approval credit dùng một lần. Pilot
 `phase3-vd04-asset-pilot` đã chứng minh đường local từ nguồn → graphic/Piper → sequence r9 →
 render/review; checkpoint hiện current và không có việc treo. Ảnh AI và search stock chưa triển
-khai. Ưu tiên tiếp theo là Đợt 4 dựa trên ma sát của một workflow người dùng thật, không mở rộng
-provider theo số lượng. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md),
+khai. Đợt 4 đã tiếp tục từ ma sát của pilot này; không mở rộng provider theo số lượng.
+Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md),
 [TTS-CAPABILITY.md](./TTS-CAPABILITY.md) và
 [báo cáo pilot](../../reports/phase3-vd04-pilot-acceptance.json).
 
@@ -291,5 +291,7 @@ Theo phạm vi người dùng đã duyệt, sequence 1.1 bổ sung timing/audio,
 layer hình, animation preset, transition và music. Web có timeline quan sát/seek,
 không có kéo thả mutation. Phiên bản 1.0 được giữ; schema 1.1 không phụ thuộc
 filter FFmpeg. Phần được triển khai và giới hạn được ghi trong
-[PHASE4-PRODUCTION-SPEC.md](PHASE4-PRODUCTION-SPEC.md). Pilot sửa từ phản hồi thực
-đang chờ human review; technical acceptance không thay thế user approval.
+[PHASE4-PRODUCTION-SPEC.md](PHASE4-PRODUCTION-SPEC.md). Pilot `pilot-preview` r10 / Result
+`result-mty1pb0w-d6598cd6` đã được người dùng duyệt ngày 2026-09-12; approval chỉ áp dụng
+cho exact Result này. Đợt 4 đã đóng. Ưu tiên tiếp theo là Đợt 5A: giảm polling/payload
+observer và làm phản hồi/so sánh gắn chính xác với Result/revision, không mở provider mới.

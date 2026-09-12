@@ -1,19 +1,34 @@
 {
-  "status": "technical_pass_human_review_pending",
+  "status": "accepted",
   "projectId": "phase3-vd04-asset-pilot",
+  "creativeDirectionArtifactId": "artifact-mtxat6v7-1e339382",
   "baselineResultId": "result-mtxaw6zq-5779e7b0",
-  "artifactId": "artifact-mtxwm5m6-97aa0286",
-  "resultId": "result-mtxwm791-d9384eff",
-  "preview": "D:\\Current_Projects\\PADStudio\\.padstudio\\projects\\phase3-vd04-asset-pilot\\outputs\\run-mtxwm5m7-84491792\\preview.mp4",
-  "graphic": "D:\\Current_Projects\\PADStudio\\.padstudio\\projects\\phase3-vd04-asset-pilot\\outputs\\run-mtxwm599-c041ec44\\graphic.png",
-  "durationSeconds": 8,
+  "sequenceKey": "pilot-preview",
+  "sequenceRevision": 10,
+  "artifactId": "artifact-mty1p801-e9e45c4c",
+  "resultId": "result-mty1pb0w-d6598cd6",
+  "preview": "D:\\Current_Projects\\PADStudio\\.padstudio\\projects\\phase3-vd04-asset-pilot\\outputs\\run-mty1p802-769bb759\\preview.mp4",
+  "graphicResultId": "result-mty1p6dr-2a40d512",
+  "narrationResultId": "result-mty1p7yc-e71122ff",
+  "durationSeconds": 12,
+  "sequenceRole": "current",
+  "currentSequenceCount": 1,
   "audioMeasurement": {
-    "integratedLufs": -17.57,
-    "truePeakDbtp": -4.88,
-    "loudnessRange": 6.5,
-    "targetLufs": null,
-    "note": "Measured technical levels; human listening still required."
+    "integratedLufs": -18.46,
+    "truePeakDbtp": -3.97,
+    "loudnessRange": 3,
+    "targetLufs": -18,
+    "silenceIntervals": [
+      {
+        "startSeconds": 11.645,
+        "endSeconds": 12,
+        "durationSeconds": 0.355
+      }
+    ],
+    "maxSilenceSeconds": 0.355,
+    "tailSilenceSeconds": 0.355,
+    "note": "Measured technical levels and digital silence; human listening still required."
   },
   "paidProviderCalls": 0,
-  "userApproval": false
+  "userApproval": true
 }

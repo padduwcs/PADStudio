@@ -119,6 +119,39 @@ test("artifacts are immutable revisions with traceable active state", async (t) 
   );
 });
 
+test("video sequences have one current revision while draft alternatives are explicit candidates", async (t) => {
+  const { store } = await fixture(t);
+  const data = (changeReason) => ({
+    version: "1.0", changeReason, format: { width: 320, height: 180, fps: 25 },
+    segments: [{ id: "opening", title: "Opening", intent: "Test state", durationSeconds: 1, visual: null }],
+  });
+  const current = await store.recordArtifact("demo", {
+    key: "film", type: "video.sequence", name: "Film", summary: "Current cut", status: "active", data: data("Initial cut"),
+  });
+  const candidate = await store.recordArtifact("demo", {
+    key: "alternative", type: "video.sequence", name: "Alternative", summary: "Candidate cut", status: "draft", data: data("Candidate cut"),
+  });
+  await assert.rejects(store.recordArtifact("demo", {
+    key: "alternative", type: "video.sequence", name: "Alternative", summary: "Invalid second current", status: "active",
+    expectedRevision: candidate.revision, data: data("Try to activate a second current cut"),
+  }), /already current/);
+  let context = await new ProjectContextAssembler({ projectStore: store }).build("demo");
+  assert.equal(context.production.sequences.find((sequence) => sequence.artifactId === current.id).role, "current");
+  assert.equal(context.production.sequences.find((sequence) => sequence.artifactId === candidate.id).role, "candidate");
+
+  await store.recordArtifact("demo", {
+    key: "film", type: "video.sequence", name: "Film", summary: "Retired cut", status: "retired",
+    expectedRevision: current.revision, data: data("Replaced by the selected alternative"),
+  });
+  const selected = await store.recordArtifact("demo", {
+    key: "alternative", type: "video.sequence", name: "Alternative", summary: "Selected cut", status: "active",
+    expectedRevision: candidate.revision, data: data("Selected as current"),
+  });
+  context = await new ProjectContextAssembler({ projectStore: store }).build("demo");
+  assert.deepEqual(context.production.sequences.filter((sequence) => sequence.role === "current").map((sequence) => sequence.artifactId), [selected.id]);
+  assert.equal(context.production.sequences.find((sequence) => sequence.artifactId === current.id).role, "history");
+});
+
 test("adaptive workflow preserves revisions and rejects cycles or premature progress", async (t) => {
   const { store } = await fixture(t);
   const brief = await supportingBrief(store);

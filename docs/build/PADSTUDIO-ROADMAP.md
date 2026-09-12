@@ -1,6 +1,6 @@
 # PADStudio — lộ trình 6 đợt
 
-Cập nhật: **2026-09-11**. Hiện tại: **đợt 1, đợt 2 và phạm vi practical-local của đợt 3 đã hoàn thành; bước tiếp theo là chọn một sản phẩm mục tiêu để mở đợt 4 dựa trên nhu cầu dựng đã được chứng minh**. Ảnh AI, search stock và ElevenLabs thật chưa được dùng. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt đang triển khai.
+Cập nhật: **2026-09-12**. Hiện tại: **đợt 1–4 đã hoàn thành trong phạm vi đã chốt; exact pilot Đợt 4 đã được người dùng duyệt. Lượt tiếp theo là Đợt 5A về observer hiệu quả và phản hồi gắn phiên bản**. Ảnh AI, search stock và ElevenLabs thật chưa được dùng. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt đang triển khai.
 
 ## 1. Cách dùng lộ trình
 
@@ -71,7 +71,7 @@ Sau mỗi đợt chỉ cần ghi: **đã dùng được gì, còn giới hạn g
 - [Bước 1 — review thực tế](../../eval/source-understanding/PRACTICAL-REVIEW.md), [bước 2 — hợp đồng/vòng đời](SOURCE-UNDERSTANDING-PACKAGE-B.md), [bước 3 — công cụ](SOURCE-UNDERSTANDING-PACKAGE-C.md), [bước 4 — hiểu biết/truy xuất](SOURCE-UNDERSTANDING-PACKAGE-D.md), [bước 5 — workspace observer](SOURCE-UNDERSTANDING-PACKAGE-E.md), [bước 6 — nghiệm thu phân hệ](SOURCE-UNDERSTANDING-PACKAGE-F.md): kết quả và giới hạn đã có.
 - [Báo cáo kiểm chứng bước 3](../../eval/source-understanding/reports/2026-09-09/package-c-verification.json): bằng chứng kiểm tra đã lưu.
 - [Trí tuệ project và workflow](PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md), [sequence và renderer](VIDEO-SEQUENCE-PRODUCTION.md): nền dùng tiếp ở các đợt sau.
-- [Trạng thái hiện tại và bước tiếp theo](PADSTUDIO-STATE-AND-NEXT.md), [báo cáo pilot Đợt 3](../../reports/phase3-vd04-pilot-acceptance.json): điểm bàn giao để bắt đầu Đợt 4.
+- [Trạng thái hiện tại và bước tiếp theo](PADSTUDIO-STATE-AND-NEXT.md), [báo cáo nghiệm thu Đợt 4](../../reports/phase4-production-acceptance.json): điểm bàn giao để bắt đầu Đợt 5A.
 
 Lộ trình bổ sung cách tổ chức công việc; không thay thế [thiết kế](PADSTUDIO-DESIGN.md), [định hướng](PADSTUDIO-CURRENT-DIRECTION.md) hoặc tự ghi đè hợp đồng đã triển khai.
 
@@ -90,5 +90,6 @@ thành ở phạm vi practical-local này. Chi tiết trong [ASSET-CAPABILITIES-
 Phạm vi composition được duyệt đã có implementation và bộ acceptance riêng:
 [đặc tả](PHASE4-PRODUCTION-SPEC.md). Nghiệm thu kỹ thuật và trạng thái pilot nằm
 trong reports/phase4-production-acceptance.json và reports/phase4-pilot.json.
-Bản sửa đang chờ người dùng review; chưa đóng creative acceptance hoặc chuyển
-sang đợt tiếp theo tự động.
+Bản sửa `pilot-preview` r10 dài 12 giây đã được người dùng duyệt; nhánh thử sai đã
+retire và project chỉ còn một sequence hiện hành. Đợt 4 đã đóng; điểm tiếp tục là
+Đợt 5A, không tự mở provider hoặc capability sản xuất mới.

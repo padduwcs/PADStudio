@@ -1,16 +1,28 @@
 {
   "version": "1.0",
   "phase": 4,
-  "checkedAt": "2026-09-12T06:25:59.691Z",
+  "checkedAt": "2026-09-12T10:59:04.489Z",
   "status": "passed_with_documented_limits",
   "checks": {
     "repository": {
       "status": "passed",
-      "output": "res the promised output kind and type (288.7545ms)\n✔ local production renders, reuses unchanged segments, preserves reviews and fails without output on invalid sources (4123.1324ms)\n✔ narration is explicit, long audio is rejected, and source-byte changes invalidate segment reuse (2210.008ms)\n✔ an executor finalization failure preserves sequence media and is recoverable without rendering twice (468.0029ms)\n✔ many frame-aligned short segments preserve the requested total duration (2412.5782ms)\n✔ missing selected folder media is visible on the segment and historical sequence can still be retired (40.9819ms)\n✔ video toolkit chains concat, reformat and thumbnail into a durable pipeline (5773.3984ms)\n✔ real ffmpeg trim creates a durable reusable clip and serves registered bytes (1581.4529ms)\nℹ tests 163\nℹ suites 0\nℹ pass 163\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 16117.9734\n"
+      "output": "res the promised output kind and type (56.5113ms)\n✔ local production renders, reuses unchanged segments, preserves reviews and fails without output on invalid sources (4155.9951ms)\n✔ narration is explicit, long audio is rejected, and source-byte changes invalidate segment reuse (2280.0341ms)\n✔ an executor finalization failure preserves sequence media and is recoverable without rendering twice (476.5099ms)\n✔ many frame-aligned short segments preserve the requested total duration (2422.7686ms)\n✔ missing selected folder media is visible on the segment and historical sequence can still be retired (41.6639ms)\n✔ video toolkit chains concat, reformat and thumbnail into a durable pipeline (5748.8481ms)\n✔ real ffmpeg trim creates a durable reusable clip and serves registered bytes (1714.9692ms)\nℹ tests 165\nℹ suites 0\nℹ pass 165\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 15907.9575\n"
     },
     "analysis-harness": {
       "status": "passed",
-      "output": "usTests.test_unlabelled_text_does_not_count_as_qualified_audio) ... ok\r\ntest_explicit_timing_and_empty_are_not_passes (test_evaluate.MetricsTests.test_explicit_timing_and_empty_are_not_passes) ... ok\r\ntest_known_edit_distance_and_empty_gold (test_evaluate.MetricsTests.test_known_edit_distance_and_empty_gold) ... ok\r\ntest_numeric_punctuation_is_not_erased (test_evaluate.MetricsTests.test_numeric_punctuation_is_not_erased) ... ok\r\ntest_scene_matching_is_one_to_one (test_evaluate.MetricsTests.test_scene_matching_is_one_to_one) ... ok\r\ntest_source_identity_golden_matches_node_contract (test_evaluate.MetricsTests.test_source_identity_golden_matches_node_contract) ... ok\r\ntest_vietnamese_nfc_diacritics_and_digits (test_evaluate.MetricsTests.test_vietnamese_nfc_diacritics_and_digits) ... ok\r\n\r\n----------------------------------------------------------------------\r\nRan 20 tests in 0.232s\r\n\r\nOK\r\n"
+      "output": "usTests.test_unlabelled_text_does_not_count_as_qualified_audio) ... ok\r\ntest_explicit_timing_and_empty_are_not_passes (test_evaluate.MetricsTests.test_explicit_timing_and_empty_are_not_passes) ... ok\r\ntest_known_edit_distance_and_empty_gold (test_evaluate.MetricsTests.test_known_edit_distance_and_empty_gold) ... ok\r\ntest_numeric_punctuation_is_not_erased (test_evaluate.MetricsTests.test_numeric_punctuation_is_not_erased) ... ok\r\ntest_scene_matching_is_one_to_one (test_evaluate.MetricsTests.test_scene_matching_is_one_to_one) ... ok\r\ntest_source_identity_golden_matches_node_contract (test_evaluate.MetricsTests.test_source_identity_golden_matches_node_contract) ... ok\r\ntest_vietnamese_nfc_diacritics_and_digits (test_evaluate.MetricsTests.test_vietnamese_nfc_diacritics_and_digits) ... ok\r\n\r\n----------------------------------------------------------------------\r\nRan 20 tests in 0.277s\r\n\r\nOK\r\n"
+    },
+    "pilot-contract": {
+      "status": "passed",
+      "sequence": "pilot-preview r10",
+      "durationSeconds": 12,
+      "currentSequenceCount": 1,
+      "tailSilenceSeconds": 0.355,
+      "providers": [
+        "Local browser",
+        "Piper",
+        "FFmpeg"
+      ]
     },
     "browser": {
       "status": "passed",
@@ -18,14 +30,22 @@
     }
   },
   "limits": [
-    "Human listening and aesthetic approval remain pending.",
+    "User approval applies only to the exact recorded Result.",
     "Animation is preset-based; no general keyframe editor.",
     "Local fonts can differ between machines.",
     "Synthetic media tests do not certify arbitrary long or complex productions."
   ],
   "pilot": {
     "projectId": "phase3-vd04-asset-pilot",
-    "resultId": "result-mtxwm791-d9384eff",
-    "userApproval": false
+    "artifactId": "artifact-mty1p801-e9e45c4c",
+    "resultId": "result-mty1pb0w-d6598cd6",
+    "sequenceKey": "pilot-preview",
+    "sequenceRevision": 10,
+    "durationSeconds": 12,
+    "tailSilenceSeconds": 0.355,
+    "currentSequenceCount": 1,
+    "paidProviderCalls": 0,
+    "userApproval": true,
+    "decisionId": "decision-mty9rm88-79542c18"
   }
 }

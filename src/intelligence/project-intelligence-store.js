@@ -173,6 +173,16 @@ export class ProjectIntelligenceStore {
     if (previous && previous.type !== type) {
       throw new IntelligenceValidationError(`Artifact ${key} cannot change type from ${previous.type} to ${type}.`);
     }
+    if (type === SEQUENCE_TYPE && status === "active") {
+      const otherCurrent = (await this.readActiveArtifacts(projectId)).find((artifact) =>
+        artifact.type === SEQUENCE_TYPE && artifact.key !== key
+      );
+      if (otherCurrent) {
+        throw new IntelligenceValidationError(
+          `Video sequence ${otherCurrent.key} is already current; retire it or save ${key} as a draft candidate before activating another sequence.`
+        );
+      }
+    }
     const artifact = {
       version: VERSION,
       id: recordId("artifact"),
