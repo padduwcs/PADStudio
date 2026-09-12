@@ -1,6 +1,6 @@
 # PADStudio — lộ trình 6 đợt
 
-Cập nhật: **2026-09-12**. Hiện tại: **đợt 1–5 đã hoàn thành practical; lượt tiếp theo là Đợt 6A để chốt contract kiểm tra và xuất bản bàn giao**. Ảnh AI, search stock và ElevenLabs thật chưa được dùng. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt đang triển khai.
+Cập nhật: **2026-09-13**. Hiện tại: **đợt 1–5 và Đợt 6A đã hoàn thành practical; lượt tiếp theo là Đợt 6B về vận hành ổn định và bàn giao hệ thống**. Ảnh AI, search stock và ElevenLabs thật chưa được dùng. Đây là bản đồ phát triển; đặc tả kỹ thuật chỉ viết cho đợt đang triển khai.
 
 ## 1. Cách dùng lộ trình
 
@@ -71,7 +71,7 @@ Sau mỗi đợt chỉ cần ghi: **đã dùng được gì, còn giới hạn g
 - [Bước 1 — review thực tế](../../eval/source-understanding/PRACTICAL-REVIEW.md), [bước 2 — hợp đồng/vòng đời](SOURCE-UNDERSTANDING-PACKAGE-B.md), [bước 3 — công cụ](SOURCE-UNDERSTANDING-PACKAGE-C.md), [bước 4 — hiểu biết/truy xuất](SOURCE-UNDERSTANDING-PACKAGE-D.md), [bước 5 — workspace observer](SOURCE-UNDERSTANDING-PACKAGE-E.md), [bước 6 — nghiệm thu phân hệ](SOURCE-UNDERSTANDING-PACKAGE-F.md): kết quả và giới hạn đã có.
 - [Báo cáo kiểm chứng bước 3](../../eval/source-understanding/reports/2026-09-09/package-c-verification.json): bằng chứng kiểm tra đã lưu.
 - [Trí tuệ project và workflow](PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md), [sequence và renderer](VIDEO-SEQUENCE-PRODUCTION.md): nền dùng tiếp ở các đợt sau.
-- [Trạng thái hiện tại và bước tiếp theo](PADSTUDIO-STATE-AND-NEXT.md), [đặc tả Đợt 5B](PHASE5B-EXACT-FEEDBACK-SPEC.md), [báo cáo nghiệm thu Đợt 5B](../../reports/phase5b-feedback-acceptance.json): bằng chứng đóng Đợt 5 và điểm bàn giao sang Đợt 6A.
+- [Trạng thái hiện tại và bước tiếp theo](PADSTUDIO-STATE-AND-NEXT.md), [đặc tả Đợt 6A](PHASE6A-LOCAL-DELIVERY-SPEC.md), [báo cáo nghiệm thu Đợt 6A](../../reports/phase6a-delivery-acceptance.json): bằng chứng đường bàn giao local và điểm tiếp tục sang Đợt 6B.
 
 Lộ trình bổ sung cách tổ chức công việc; không thay thế [thiết kế](PADSTUDIO-DESIGN.md), [định hướng](PADSTUDIO-CURRENT-DIRECTION.md) hoặc tự ghi đè hợp đồng đã triển khai.
 
@@ -96,4 +96,8 @@ retire và project chỉ còn một sequence hiện hành. Đợt 4 đã đóng;
 
 ## Cập nhật 2026-09-12 — Đợt 5
 
-Đợt 5A đã hoàn thiện observer conditional theo generation/ETag, payload tải lười, timeline/seek, bảo toàn player và mốc feedback exact revision. Đợt 5B đã khép vòng còn lại: chọn/so sánh exact render Result, Decision có `feedbackTarget` Result/artifact revision/segment/time được validate và lưu bền vững, explicit resolution, pending feedback cho Agent, summary pilot 19.008 byte và sửa race lock Windows. Acceptance đạt 177/177 repository tests, 20/20 analysis tests và browser 390/768/1440. Bằng chứng ở [đặc tả 5A](PHASE5A-OBSERVER-SPEC.md), [đặc tả 5B](PHASE5B-EXACT-FEEDBACK-SPEC.md) và [report 5B](../../reports/phase5b-feedback-acceptance.json). Đợt 5 đã đóng; bước kế tiếp là chốt phạm vi Đợt 6A, không tự mở provider hay nền tảng xuất bản mới.
+Đợt 5A đã hoàn thiện observer conditional theo generation/ETag, payload tải lười, timeline/seek, bảo toàn player và mốc feedback exact revision. Đợt 5B đã khép vòng còn lại: chọn/so sánh exact render Result, Decision có `feedbackTarget` Result/artifact revision/segment/time được validate và lưu bền vững, explicit resolution, pending feedback cho Agent, summary pilot 19.008 byte và sửa race lock Windows. Acceptance đạt 177/177 repository tests, 20/20 analysis tests và browser 390/768/1440. Bằng chứng ở [đặc tả 5A](PHASE5A-OBSERVER-SPEC.md), [đặc tả 5B](PHASE5B-EXACT-FEEDBACK-SPEC.md) và [report 5B](../../reports/phase5b-feedback-acceptance.json). Đợt 5 đã đóng.
+
+## Cập nhật 2026-09-13 — Đợt 6A
+
+Đường local delivery đã hoàn chỉnh cho profile video pilot: exact accepted/current Result, finalization và freshness gate, SHA-256 mọi Result file mới, full decode/media/audio validation, bundle provenance/review/approval/checksums và Observer Delivery chỉ đọc. Đồng thời đã sửa race snapshot/ETag và mutex Decision. Bundle pilot giữ nguyên byte r10; acceptance đạt 183/183 repository tests, 20/20 analysis tests và browser ba viewport. Xem [đặc tả](PHASE6A-LOCAL-DELIVERY-SPEC.md) và [report](../../reports/phase6a-delivery-acceptance.json). Điểm tiếp tục là Đợt 6B cho setup/doctor/recovery/hướng dẫn và acceptance end-to-end; không tự mở publishing provider.

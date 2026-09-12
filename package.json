@@ -47,7 +47,8 @@
     "production:acceptance": "node scripts/phase4-acceptance.mjs",
     "observer:phase5a:test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase5a-observer-browser-smoke.ps1",
     "observer:acceptance": "node scripts/phase5a-acceptance.mjs",
-    "feedback:acceptance": "node scripts/phase5b-acceptance.mjs"
+    "feedback:acceptance": "node scripts/phase5b-acceptance.mjs",
+    "delivery:acceptance": "node scripts/phase6a-acceptance.mjs"
   },
   "engines": {
     "node": ">=20"

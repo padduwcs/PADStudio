@@ -1,0 +1,97 @@
+{
+  "version": "1.0",
+  "phase": "6A",
+  "checkedAt": "2026-09-12T17:30:56.521Z",
+  "status": "passed_with_documented_limits",
+  "checks": {
+    "repository": {
+      "status": "passed",
+      "output": "\n✔ sequence supports unresolved ideas, validates timing and rejects raw media paths (481.7739ms)\n✔ dependency impact propagates without deleting historical approvals or selecting new work (674.4266ms)\n✔ sequence diff identifies moves, removals and local changes (0.6553ms)\n✔ workflow completion requires the promised output kind and type (577.6921ms)\n✔ local production renders, reuses unchanged segments, preserves reviews and fails without output on invalid sources (3714.1947ms)\n✔ narration is explicit, long audio is rejected, and source-byte changes invalidate segment reuse (1936.8537ms)\n✔ an executor finalization failure preserves sequence media and is recoverable without rendering twice (519.1501ms)\n✔ many frame-aligned short segments preserve the requested total duration (2228.2266ms)\n✔ missing selected folder media is visible on the segment and historical sequence can still be retired (39.2236ms)\n✔ video toolkit chains concat, reformat and thumbnail into a durable pipeline (5642.0777ms)\n✔ real ffmpeg trim creates a durable reusable clip and serves registered bytes (1753.222ms)\nℹ tests 183\nℹ suites 0\nℹ pass 183\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 16525.6825\n"
+    },
+    "analysis-harness": {
+      "status": "passed",
+      "output": "achine_gold_and_coverage_mismatch (test_evaluate.CorpusTests.test_score_rejects_machine_gold_and_coverage_mismatch) ... ok\r\ntest_source_hash_and_path_escape (test_evaluate.CorpusTests.test_source_hash_and_path_escape) ... ok\r\ntest_unlabelled_text_does_not_count_as_qualified_audio (test_evaluate.CorpusTests.test_unlabelled_text_does_not_count_as_qualified_audio) ... ok\r\ntest_explicit_timing_and_empty_are_not_passes (test_evaluate.MetricsTests.test_explicit_timing_and_empty_are_not_passes) ... ok\r\ntest_known_edit_distance_and_empty_gold (test_evaluate.MetricsTests.test_known_edit_distance_and_empty_gold) ... ok\r\ntest_numeric_punctuation_is_not_erased (test_evaluate.MetricsTests.test_numeric_punctuation_is_not_erased) ... ok\r\ntest_scene_matching_is_one_to_one (test_evaluate.MetricsTests.test_scene_matching_is_one_to_one) ... ok\r\ntest_source_identity_golden_matches_node_contract (test_evaluate.MetricsTests.test_source_identity_golden_matches_node_contract) ... ok\r\ntest_vietnamese_nfc_diacritics_and_digits (test_evaluate.MetricsTests.test_vietnamese_nfc_diacritics_and_digits) ... ok\r\n\r\n----------------------------------------------------------------------\r\nRan 20 tests in 0.231s\r\n\r\nOK\r\n"
+    },
+    "delivery": {
+      "status": "passed",
+      "projectId": "phase3-vd04-asset-pilot",
+      "sourceResultId": "result-mty1pb0w-d6598cd6",
+      "resultId": "result-mtynkixa-db2410bc",
+      "runId": "run-mtynkij8-bfcefd1a",
+      "profileId": "local-portrait-h264-v1",
+      "files": [
+        {
+          "id": "primary",
+          "name": "output.mp4",
+          "sizeBytes": 485602,
+          "sha256": "d5b069354e83a3c1bfcad329f85adafa9005e7735e58cb0fceeae73518165a14"
+        },
+        {
+          "id": "manifest",
+          "name": "manifest.json",
+          "sizeBytes": 1173,
+          "sha256": "f7e8d7db3bcda1682eafa2d41a826f3e13e6cd1cb9bc2a06eb27ae33ee879e96"
+        },
+        {
+          "id": "provenance",
+          "name": "provenance.json",
+          "sizeBytes": 823,
+          "sha256": "a9ecf0a73b80a51e955962c6732964e1c15200276b4e42a10c8fd1480e395903"
+        },
+        {
+          "id": "reviews",
+          "name": "reviews.json",
+          "sizeBytes": 1677,
+          "sha256": "4abade93eb4fc7e50a7452e10454ee241921cfdd096de5c279b9d801bc89e30d"
+        },
+        {
+          "id": "approval",
+          "name": "approval.json",
+          "sizeBytes": 494,
+          "sha256": "a3f7da115f87472f394f4071bc8d67bd46e4f311a2a9514e8bf80dfef4dea006"
+        },
+        {
+          "id": "checksums",
+          "name": "checksums.sha256",
+          "sizeBytes": 440,
+          "sha256": "ffc24111f480c03155cddaa11931707dd485981fb85f4395a251bd9720008166"
+        }
+      ],
+      "media": {
+        "container": "mp4",
+        "videoCodec": "h264",
+        "pixelFormat": "yuv420p",
+        "width": 1080,
+        "height": 1920,
+        "fps": 30,
+        "audioCodec": "aac",
+        "sampleRate": 48000,
+        "channels": 2,
+        "durationSeconds": 12,
+        "integratedLufs": -18.46,
+        "truePeakDbtp": -3.97,
+        "loudnessRange": 3,
+        "tailSilenceSeconds": 0.355
+      }
+    },
+    "observer": {
+      "status": "passed",
+      "view": "observer-delivery",
+      "generation": "36d39c5f7e9d296dd0bf3915fdc6940cd5f26c021affddaa785ae954f137beba",
+      "bundleCount": 1
+    },
+    "browser": {
+      "status": "passed",
+      "output": "{\r\n    \"status\":  \"passed\",\r\n    \"timeline\":  true,\r\n    \"seek\":  true,\r\n    \"playerPreserved\":  true,\r\n    \"conditionalPolling\":  true,\r\n    \"lazyActivity\":  true,\r\n    \"feedbackAnchors\":  true,\r\n    \"exactResultSelection\":  true,\r\n    \"exactResultSwitching\":  true,\r\n    \"exactResultComparison\":  true,\r\n    \"viewports\":  [\r\n                      390,\r\n                      768,\r\n                      1440\r\n                  ]\r\n}\r\n"
+    },
+    "lock-cleanup": {
+      "status": "passed",
+      "remaining": 0
+    }
+  },
+  "limits": [
+    "Delivery is local only; no uploader, publishing platform or cloud worker is included.",
+    "The first profile is intentionally pinned to portrait MP4/H.264/AAC 1080x1920 at 30 fps.",
+    "Technical decode/loudness checks do not replace human review; export requires an exact stored user acceptance."
+  ]
+}

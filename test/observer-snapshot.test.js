@@ -81,7 +81,7 @@ test("observer snapshots are sectioned, conditional and invalidated by durable c
 test("observer detail sections expose only the data needed by their view", async (t) => {
   const { origin } = await fixture(t);
   const sections = {};
-  for (const section of ["source", "creative", "production", "activity"]) {
+  for (const section of ["source", "creative", "production", "delivery", "activity"]) {
     const response = await fetch(`${origin}/api/projects/demo/observer/${section}`);
     assert.equal(response.status, 200);
     sections[section] = (await response.json()).context;
@@ -90,6 +90,35 @@ test("observer detail sections expose only the data needed by their view", async
   assert.deepEqual(Object.keys(sections.source).sort(), ["analysis", "generation", "intelligence", "project", "resources", "results", "version", "view"]);
   assert.equal("results" in sections.creative, false);
   assert.equal("resources" in sections.production, false);
+  assert.deepEqual(sections.delivery.delivery.bundles, []);
   assert.ok(Array.isArray(sections.activity.results));
   assert.ok(Array.isArray(sections.activity.runs));
+});
+
+test("observer retries when the project changes while a snapshot is assembled", async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), "padstudio-observer-race-test-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const rootDir = join(workspace, "projects");
+  const store = new ProjectStore(rootDir);
+  await store.createProject({ projectId: "demo", title: "Race" });
+  await store.writeCheckpoint("demo", {
+    goal: "Before", selectedResources: [], pending: [], next: "Before"
+  });
+  const reader = new ProjectReader(rootDir);
+  const original = reader.readProject.bind(reader);
+  let mutateOnce = true;
+  reader.readProject = async (projectId) => {
+    const context = await original(projectId);
+    if (mutateOnce) {
+      mutateOnce = false;
+      await store.writeCheckpoint("demo", {
+        goal: "After", selectedResources: [], pending: [], next: "After"
+      });
+    }
+    return context;
+  };
+  const before = await reader.generation("demo");
+  const snapshot = await reader.readObserverSection("demo", "summary", before);
+  assert.equal(snapshot.checkpoint.goal, "After");
+  assert.notEqual(snapshot.generation, before);
 });

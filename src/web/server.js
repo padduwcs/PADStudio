@@ -25,6 +25,7 @@ const staticFiles = {
   "/app.js": { file: "app.js", type: "text/javascript; charset=utf-8" },
   "/source-analysis-view.js": { file: "source-analysis-view.js", type: "text/javascript; charset=utf-8" },
   "/production-view.js": { file: "production-view.js", type: "text/javascript; charset=utf-8" },
+  "/delivery-view.js": { file: "delivery-view.js", type: "text/javascript; charset=utf-8" },
   "/creative-direction-view.js": { file: "creative-direction-view.js", type: "text/javascript; charset=utf-8" },
   "/styles.css": { file: "styles.css", type: "text/css; charset=utf-8" }
 };
@@ -134,7 +135,7 @@ export function createPadStudioServer({ reader }) {
         return sendJson(response, 200, { projects }, { ETag: etag, "Cache-Control": "no-cache" });
       }
 
-      const observerMatch = /^\/api\/projects\/([^/]+)\/observer\/(summary|source|creative|production|activity)$/.exec(url.pathname);
+      const observerMatch = /^\/api\/projects\/([^/]+)\/observer\/(summary|source|creative|production|delivery|activity)$/.exec(url.pathname);
       if (request.method === "GET" && observerMatch) {
         const projectId = decodeURIComponent(observerMatch[1]);
         const section = observerMatch[2];
@@ -142,7 +143,8 @@ export function createPadStudioServer({ reader }) {
         const etag = quotedEtag(`${generation}-${section}`);
         if (etagMatches(request.headers["if-none-match"], etag)) return sendNotModified(response, etag);
         const context = await reader.readObserverSection(projectId, section, generation);
-        return sendJson(response, 200, { context }, { ETag: etag, "Cache-Control": "no-cache" });
+        const stableEtag = quotedEtag(`${context.generation}-${section}`);
+        return sendJson(response, 200, { context }, { ETag: stableEtag, "Cache-Control": "no-cache" });
       }
 
       const analysisQueryMatch = /^\/api\/projects\/([^/]+)\/analysis\/query$/.exec(url.pathname);
@@ -177,10 +179,10 @@ export function createPadStudioServer({ reader }) {
         const generation = await reader.generation(projectId);
         const etag = quotedEtag(`${generation}-${view}`);
         if (etagMatches(request.headers["if-none-match"], etag)) return sendNotModified(response, etag);
-        const context = view === "summary"
-          ? await reader.readProjectSummary(projectId)
-          : await reader.readProject(projectId);
-        return sendJson(response, 200, { context }, { ETag: etag, "Cache-Control": "no-cache" });
+        const snapshot = await reader.readProjectSnapshot(projectId, view, generation);
+        const stableEtag = quotedEtag(`${snapshot.generation}-${view}`);
+        return sendJson(response, 200, { context: snapshot.context },
+          { ETag: stableEtag, "Cache-Control": "no-cache" });
       }
 
       const inputMatch = /^\/project-inputs\/([^/]+)\/(.+)$/.exec(url.pathname);

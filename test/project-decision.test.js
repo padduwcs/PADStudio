@@ -111,3 +111,26 @@ test("projects created before decisions existed open with an empty decision list
   await rm(join(rootDir, "demo", "decisions"), { recursive: true });
   assert.deepEqual((await store.readContext("demo")).decisions, []);
 });
+
+test("concurrent project decisions share the decision lock and monotonic ordering", async (t) => {
+  const { store } = await fixture(t);
+  await Promise.all(Array.from({ length: 8 }, (_, index) =>
+    store.recordProjectDecision("demo", {
+      target: { kind: "project", id: "demo" },
+      category: "fixture",
+      subject: "Concurrent " + index,
+      outcome: "approved",
+      options: [],
+      selected: null,
+      reason: "Exercise the shared decision lock.",
+      decidedBy: "user"
+    })
+  ));
+  const decisions = (await store.readDecisions("demo")).filter((decision) => decision.kind === "project_decision");
+  assert.equal(decisions.length, 8);
+  assert.equal(new Set(decisions.map((decision) => decision.createdAt)).size, 8);
+  assert.deepEqual(
+    decisions.map((decision) => decision.createdAt),
+    [...decisions].map((decision) => decision.createdAt).sort()
+  );
+});

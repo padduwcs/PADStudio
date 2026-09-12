@@ -157,18 +157,18 @@ async function resultWithAvailability(projectRoot, result) {
   const runOutputRoot = join(projectRoot, "outputs", result.createdByRun);
   return {
     ...result,
-    files: await Promise.all(result.files.map(async (file) => ({
-      ...file,
-      available:
-        (() => {
-          try {
-            return isPathInside(runOutputRoot, resolveProjectPath(projectRoot, file.path));
-          } catch {
-            return false;
-          }
-        })() &&
-        await storedPathAvailable(projectRoot, file.path, "file", runOutputRoot)
-    })))
+    files: await Promise.all(result.files.map(async (file) => {
+      let available = false;
+      try {
+        const candidatePath = resolveProjectPath(projectRoot, file.path);
+        available = isPathInside(runOutputRoot, candidatePath) &&
+          await storedPathAvailable(projectRoot, file.path, "file", runOutputRoot);
+        if (available) available = (await lstat(candidatePath)).size === file.sizeBytes;
+      } catch {
+        available = false;
+      }
+      return { ...file, available };
+    }))
   };
 }
 
@@ -909,6 +909,9 @@ export class ProjectStore {
       if (info.isSymbolicLink() || !info.isFile() || !isPathInside(resolvedRunOutputRoot, resolvedFile)) {
         throw new ProjectStoreError("File của result không an toàn hoặc không còn tồn tại.");
       }
+      if (info.size !== file.sizeBytes) {
+        throw new ProjectStoreError("Kích thước file của result không khớp với bản ghi.");
+      }
       return { ...file, filePath: resolvedFile, size: info.size, resultId: result.id };
     } catch (error) {
       if (error?.code === "ENOENT") {
@@ -916,6 +919,34 @@ export class ProjectStore {
       }
       throw error;
     }
+  }
+
+  async verifyResultFile(projectId, resultId, fileId, { requireChecksum = true } = {}) {
+    const [result, resolved] = await Promise.all([
+      this.readResult(projectId, resultId),
+      this.resolveResultFile(projectId, resultId, fileId)
+    ]);
+    const file = result.files.find((candidate) => candidate.id === resolved.id);
+    const fallbackChecksum = resolved.id === "primary" && typeof result.data?.sha256 === "string"
+      ? result.data.sha256
+      : null;
+    const expectedSha256 = file?.sha256 ?? fallbackChecksum;
+    if (!expectedSha256) {
+      if (requireChecksum) {
+        throw new ProjectStoreError("Result file không có SHA-256 để xác minh byte chính xác.");
+      }
+      return { ...resolved, integrity: "unchecked", sha256: null, checksumSource: null };
+    }
+    const actualSha256 = await sha256File(resolved.filePath);
+    if (actualSha256 !== expectedSha256) {
+      throw new ProjectStoreError("SHA-256 file của result không khớp với bản ghi.");
+    }
+    return {
+      ...resolved,
+      integrity: "verified",
+      sha256: actualSha256,
+      checksumSource: file?.sha256 ? "file" : "result_data"
+    };
   }
 
   async resolveMediaSource(projectId, source) {
@@ -935,7 +966,9 @@ export class ProjectStore {
       };
     }
     if (source.kind === "result") {
-      const file = await this.resolveResultFile(projectId, source.id, source.file ?? "primary");
+      const file = await this.verifyResultFile(
+        projectId, source.id, source.file ?? "primary", { requireChecksum: false }
+      );
       return {
         filePath: file.filePath,
         mediaType: file.mediaType,
@@ -1047,13 +1080,11 @@ export class ProjectStore {
       if (info.size !== file.sizeBytes) {
         throw new ProjectStoreError("Kích thước file kết quả không khớp với file đã ghi.");
       }
-      if (isAnalysisResultType(normalizedType) || file.sha256 !== undefined) {
-        const checksum = await sha256File(resolvedFile);
-        if (file.sha256 !== undefined && file.sha256 !== checksum) {
-          throw new ProjectStoreError("SHA-256 file kết quả không khớp với file đã ghi.");
-        }
-        file.sha256 = checksum;
+      const checksum = await sha256File(resolvedFile);
+      if (file.sha256 !== undefined && file.sha256 !== checksum) {
+        throw new ProjectStoreError("SHA-256 file kết quả không khớp với file đã ghi.");
       }
+      file.sha256 = checksum;
     }
     const result = {
       version: PROJECT_VERSION,
@@ -1258,6 +1289,14 @@ export class ProjectStore {
     });
   }
   async recordProjectDecision(projectId, value) {
+    return withFileLock({
+      projectDirectory: projectDirectory(this.rootDir, projectId),
+      name: "decisions",
+      action: () => this.#recordProjectDecisionUnlocked(projectId, value)
+    });
+  }
+
+  async #recordProjectDecisionUnlocked(projectId, value) {
     objectValue(value, "Project decision");
     const allowedFields = new Set([
       "target", "category", "subject", "outcome", "options", "selected",

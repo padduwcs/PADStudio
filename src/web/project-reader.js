@@ -102,6 +102,19 @@ function observerSection(context, section, generation) {
     return { ...base, production: { sequences: context.production.sequences,
       affectedWorkItems: context.production.affectedWorkItems, note: context.production.note } };
   }
+  if (section === "delivery") {
+    const bundles = context.results.filter((result) => result.type === "delivery.bundle");
+    const sourceResultIds = new Set(bundles.map((result) => result.data?.sourceResultId).filter(Boolean));
+    return {
+      ...base,
+      delivery: {
+        bundles,
+        sourceResults: context.results.filter((result) => sourceResultIds.has(result.id)),
+        approvalDecisions: context.decisions.filter((decision) =>
+          sourceResultIds.has(decision.resultId) && decision.outcome === "accepted")
+      }
+    };
+  }
   if (section === "activity") {
     return { ...base, resources: context.resources, results: context.results, decisions: context.decisions,
       runs: context.runs, artifacts: context.artifacts, reviews: context.reviews,
@@ -141,19 +154,43 @@ export class ProjectReader {
   }
 
   async readObserverSection(projectId, section, generation = null) {
-    const currentGeneration = generation ?? await this.generation(projectId);
-    const existing = this.observerCache.get(projectId);
-    let promise;
-    if (existing?.generation === currentGeneration) {
-      promise = existing.promise;
-    } else {
-      promise = this.readProject(projectId);
-      this.observerCache.set(projectId, { generation: currentGeneration, promise });
-      promise.catch(() => {
-        if (this.observerCache.get(projectId)?.promise === promise) this.observerCache.delete(projectId);
-      });
+    let currentGeneration = generation ?? await this.generation(projectId);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const existing = this.observerCache.get(projectId);
+      let promise;
+      if (existing?.generation === currentGeneration) {
+        promise = existing.promise;
+      } else {
+        promise = this.readProject(projectId);
+        this.observerCache.set(projectId, { generation: currentGeneration, promise });
+        promise.catch(() => {
+          if (this.observerCache.get(projectId)?.promise === promise) this.observerCache.delete(projectId);
+        });
+      }
+      const context = await promise;
+      const afterGeneration = await this.generation(projectId);
+      if (afterGeneration === currentGeneration) {
+        return observerSection(context, section, currentGeneration);
+      }
+      if (this.observerCache.get(projectId)?.promise === promise) this.observerCache.delete(projectId);
+      currentGeneration = afterGeneration;
     }
-    return observerSection(await promise, section, currentGeneration);
+    throw new ProjectStoreError("Project thay đổi liên tục; chưa thể tạo observer snapshot nhất quán.");
+  }
+
+  async readProjectSnapshot(projectId, view = "full", generation = null) {
+    let beforeGeneration = generation ?? await this.generation(projectId);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const context = view === "summary"
+        ? await this.readProjectSummary(projectId)
+        : await this.readProject(projectId);
+      const afterGeneration = await this.generation(projectId);
+      if (afterGeneration === beforeGeneration) {
+        return { generation: afterGeneration, context };
+      }
+      beforeGeneration = afterGeneration;
+    }
+    throw new ProjectStoreError("Project thay đổi liên tục; chưa thể tạo snapshot nhất quán.");
   }
 
   async readOverview(projectId) {
@@ -238,7 +275,9 @@ export class ProjectReader {
 
   async readResultFile(projectId, resultId, fileId) {
     try {
-      const file = await this.store.resolveResultFile(projectId, resultId, fileId);
+      const file = await this.store.verifyResultFile(
+        projectId, resultId, fileId, { requireChecksum: false }
+      );
       return {
         filePath: file.filePath,
         name: file.name,

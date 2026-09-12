@@ -321,6 +321,40 @@ h3 {
   border-color: rgba(94, 234, 212, 0.28);
 }
 
+.delivery-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid rgba(94, 234, 212, 0.35);
+  border-radius: 0.75rem;
+  background: rgba(31, 41, 55, 0.35);
+}
+
+.delivery-card > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.delivery-card h4,
+.delivery-card p {
+  margin: 0;
+}
+
+.delivery-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.delivery-files a {
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+
 .result-verification {
   align-self: start;
   padding: 0.25rem 0.55rem;

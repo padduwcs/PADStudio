@@ -20,6 +20,7 @@ import { createBrowserGraphicRenderer } from "../tools/browser-graphic-renderer.
 import { createUrlMediaAcquirer } from "../tools/url-media-acquirer.js";
 import { createPiperTts } from "../tools/piper-tts.js";
 import { createElevenLabsTts } from "../tools/elevenlabs-tts.js";
+import { createLocalDeliveryExporter } from "../tools/local-delivery-exporter.js";
 
 export function createDefaultToolRegistry(options = {}) {
   return new ToolRegistry([
@@ -42,6 +43,7 @@ export function createDefaultToolRegistry(options = {}) {
     createBrowserGraphicRenderer(options.graphicRender),
     createUrlMediaAcquirer(options.mediaAcquire),
     createPiperTts(options.piperTts),
-    createElevenLabsTts(options.elevenLabsTts)
+    createElevenLabsTts(options.elevenLabsTts),
+    createLocalDeliveryExporter(options.localDelivery)
   ]);
 }
