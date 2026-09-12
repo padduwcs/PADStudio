@@ -286,6 +286,7 @@ test("a source-backed direction reopens at the explicit approval boundary", asyn
   });
   const awaitingApproval = await store.writeWorkflow("demo", {
     id: workflow.id, name: workflow.name, purpose: workflow.purpose, status: "active",
+    expectedRevision: workflow.revision,
     changeReason: "Review passed; wait for explicit user approval.",
     items: [{ ...item, status: "awaiting_approval" }], metadata: workflow.metadata,
   });

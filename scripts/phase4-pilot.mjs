@@ -83,6 +83,10 @@ if (!context.decisions.some((decision) => decision.resultId === baseline.id && d
     resultId: baseline.id,
     outcome: "changes_requested",
     note: "Piper chồng với tiếng gốc nhỏ ở khoảng đầu; phần sau hụt âm lượng; typography còn thô.",
+    feedbackTarget: {
+      artifactId: baseline.data.sequence.artifactId,
+      revision: baseline.data.sequence.revision
+    },
   });
 }
 

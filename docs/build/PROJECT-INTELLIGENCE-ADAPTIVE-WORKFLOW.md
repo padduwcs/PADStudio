@@ -27,7 +27,7 @@ cần làm, có cần đổi kế hoạch hay không và vì sao.
 | Thành phần | Giữ gì | Quy tắc chính |
 | --- | --- | --- |
 | Artifact | Brief, hiểu tư liệu, hướng sáng tạo hoặc tri thức có cấu trúc | Cùng một key tạo revision mới; không ghi đè revision cũ |
-| Workflow | Kế hoạch hiện hành gồm các work item và dependency | Đồ thị không chu trình; mọi lần sửa có changeReason và revision |
+| Workflow | Kế hoạch hiện hành gồm các work item và dependency | Đồ thị không chu trình; mọi lần sửa có `changeReason` và `expectedRevision` khớp revision mới nhất |
 | Review | Đánh giá một artifact, result hoặc work item | Tách creative, technical, combined; failure phải có hành động đề xuất |
 | Decision | Phản hồi result hoặc lựa chọn/approval cấp project | Ghi nối tiếp; giữ phương án, lựa chọn, lý do, người quyết định và confidence |
 | Checkpoint | Điểm tiếp tục gọn | Có thể trỏ workflow, work item, artifact, decision; không thay thế record gốc |
@@ -56,7 +56,7 @@ PADStudio từ chối:
 - hoàn tất workflow khi còn work item chưa kết thúc;
 - mở lại work item completed/cancelled, hoặc đổi ý nghĩa/output đã bước vào review/approval;
 - skill hoặc reference không tồn tại;
-- sửa workflow mà không ghi lý do.
+- sửa workflow mà không ghi lý do, thiếu `expectedRevision` hoặc dùng revision đã stale.
 
 Workflow template chỉ là điểm khởi đầu. Agent có thể bỏ template, sửa, thêm nhánh
 hoặc tạo workflow riêng. Hai template ban đầu là quick-media-task và

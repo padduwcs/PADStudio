@@ -1,0 +1,44 @@
+{
+  "version": "1.0",
+  "phase": "5A",
+  "checkedAt": "2026-09-12T16:10:13.706Z",
+  "status": "passed_with_documented_limits",
+  "checks": {
+    "repository": {
+      "status": "passed",
+      "output": "es the promised output kind and type (382.0082ms)\n✔ local production renders, reuses unchanged segments, preserves reviews and fails without output on invalid sources (3722.0179ms)\n✔ narration is explicit, long audio is rejected, and source-byte changes invalidate segment reuse (2032.7429ms)\n✔ an executor finalization failure preserves sequence media and is recoverable without rendering twice (458.3113ms)\n✔ many frame-aligned short segments preserve the requested total duration (2268.3741ms)\n✔ missing selected folder media is visible on the segment and historical sequence can still be retired (44.2861ms)\n✔ video toolkit chains concat, reformat and thumbnail into a durable pipeline (5353.5568ms)\n✔ real ffmpeg trim creates a durable reusable clip and serves registered bytes (1492.4874ms)\nℹ tests 177\nℹ suites 0\nℹ pass 177\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 16184.3858\n"
+    },
+    "analysis-harness": {
+      "status": "passed",
+      "output": "usTests.test_unlabelled_text_does_not_count_as_qualified_audio) ... ok\r\ntest_explicit_timing_and_empty_are_not_passes (test_evaluate.MetricsTests.test_explicit_timing_and_empty_are_not_passes) ... ok\r\ntest_known_edit_distance_and_empty_gold (test_evaluate.MetricsTests.test_known_edit_distance_and_empty_gold) ... ok\r\ntest_numeric_punctuation_is_not_erased (test_evaluate.MetricsTests.test_numeric_punctuation_is_not_erased) ... ok\r\ntest_scene_matching_is_one_to_one (test_evaluate.MetricsTests.test_scene_matching_is_one_to_one) ... ok\r\ntest_source_identity_golden_matches_node_contract (test_evaluate.MetricsTests.test_source_identity_golden_matches_node_contract) ... ok\r\ntest_vietnamese_nfc_diacritics_and_digits (test_evaluate.MetricsTests.test_vietnamese_nfc_diacritics_and_digits) ... ok\r\n\r\n----------------------------------------------------------------------\r\nRan 20 tests in 0.230s\r\n\r\nOK\r\n"
+    },
+    "snapshot-budget": {
+      "status": "passed",
+      "bytes": {
+        "projectList": 696,
+        "summary": 6105,
+        "production": 75130,
+        "legacyFull": 424528
+      },
+      "unchangedResponses": {
+        "projectList": 304,
+        "summary": 304,
+        "production": 304
+      }
+    },
+    "browser": {
+      "status": "passed",
+      "output": "{\r\n    \"status\":  \"passed\",\r\n    \"timeline\":  true,\r\n    \"seek\":  true,\r\n    \"playerPreserved\":  true,\r\n    \"conditionalPolling\":  true,\r\n    \"lazyActivity\":  true,\r\n    \"feedbackAnchors\":  true,\r\n    \"exactResultSelection\":  true,\r\n    \"exactResultComparison\":  true,\r\n    \"viewports\":  [\r\n                      390,\r\n                      768,\r\n                      1440\r\n                  ]\r\n}\r\n"
+    }
+  },
+  "limits": [
+    "The web workspace remains read-only; feedback is copied into the Agent chat.",
+    "Generation detection scans durable project metadata; it is polling, not push notification.",
+    "Detail sections are loaded on demand but share one server-side context snapshot per generation."
+  ],
+  "pilot": {
+    "projectId": "phase3-vd04-asset-pilot",
+    "artifactId": "artifact-mty1p801-e9e45c4c",
+    "resultId": "result-mty1pb0w-d6598cd6"
+  }
+}

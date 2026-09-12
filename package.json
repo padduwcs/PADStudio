@@ -44,7 +44,10 @@
     "assets:acceptance": "node scripts/asset-capabilities-acceptance.mjs",
     "tts:acceptance": "node scripts/tts-acceptance.mjs",
     "production:pilot": "node scripts/phase4-pilot.mjs",
-    "production:acceptance": "node scripts/phase4-acceptance.mjs"
+    "production:acceptance": "node scripts/phase4-acceptance.mjs",
+    "observer:phase5a:test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase5a-observer-browser-smoke.ps1",
+    "observer:acceptance": "node scripts/phase5a-acceptance.mjs",
+    "feedback:acceptance": "node scripts/phase5b-acceptance.mjs"
   },
   "engines": {
     "node": ">=20"

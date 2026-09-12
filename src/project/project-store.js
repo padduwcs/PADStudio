@@ -10,6 +10,8 @@ import {
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { readJson, writeJsonAtomic, writeTextAtomic } from "./atomic-files.js";
+import { withFileLock } from "./file-lock.js";
+import { compositionTimeline, sequenceDuration } from "../production/sequence-composition.js";
 import {
   isPathInside,
   projectDirectory,
@@ -339,6 +341,31 @@ function validateDecision(decision, projectId) {
     }
     return { ...decision, binding };
   }
+  const feedbackTarget = decision?.feedbackTarget;
+  const feedbackTargetKeys = feedbackTarget && typeof feedbackTarget === "object" && !Array.isArray(feedbackTarget)
+    ? Object.keys(feedbackTarget)
+    : [];
+  const timeRange = feedbackTarget?.timeRange;
+  const validTimeRange = timeRange === undefined || (
+    timeRange && typeof timeRange === "object" && !Array.isArray(timeRange) &&
+    Object.keys(timeRange).length === 2 &&
+    Object.keys(timeRange).every((key) => ["startSeconds", "endSeconds"].includes(key)) &&
+    Number.isFinite(timeRange.startSeconds) && Number.isFinite(timeRange.endSeconds) &&
+    timeRange.startSeconds >= 0 && timeRange.endSeconds > timeRange.startSeconds
+  );
+  const validFeedbackTarget = feedbackTarget === undefined || feedbackTarget === null || (
+    feedbackTargetKeys.every((key) => ["artifactId", "revision", "segmentId", "timeRange"].includes(key)) &&
+    typeof feedbackTarget.artifactId === "string" && Boolean(feedbackTarget.artifactId.trim()) &&
+    Number.isInteger(feedbackTarget.revision) && feedbackTarget.revision > 0 &&
+    (feedbackTarget.segmentId === undefined || (typeof feedbackTarget.segmentId === "string" && Boolean(feedbackTarget.segmentId.trim()))) &&
+    validTimeRange
+  );
+  const resolvesDecisionIds = decision?.resolvesDecisionIds;
+  const validResolutions = resolvesDecisionIds === undefined || (
+    Array.isArray(resolvesDecisionIds) &&
+    resolvesDecisionIds.every((id) => typeof id === "string" && /^decision-[a-z0-9-]+$/i.test(id)) &&
+    new Set(resolvesDecisionIds).size === resolvesDecisionIds.length
+  );
   if (
     !decision ||
     decision.version !== PROJECT_VERSION ||
@@ -347,6 +374,8 @@ function validateDecision(decision, projectId) {
     typeof decision.resultId !== "string" ||
     !["accepted", "changes_requested", "rejected"].includes(decision.outcome) ||
     !(decision.note === null || typeof decision.note === "string") ||
+    !validFeedbackTarget ||
+    !validResolutions ||
     decision.decidedBy !== "user" ||
     typeof decision.createdAt !== "string" ||
     !Number.isFinite(Date.parse(decision.createdAt))
@@ -1090,51 +1119,144 @@ export class ProjectStore {
     return Promise.all(validated.map((result) => resultWithAvailability(projectRoot, result)));
   }
 
+  async #normalizeFeedbackTarget(projectId, result, value) {
+    if (value === null || value === undefined) return null;
+    const target = objectValue(value, "Feedback target");
+    const unknown = Object.keys(target).filter(
+      (key) => !["artifactId", "revision", "segmentId", "timeRange"].includes(key)
+    );
+    if (unknown.length) {
+      throw new ProjectStoreError("Feedback target contains unsupported fields: " + unknown.join(", "));
+    }
+    if (result.type !== "video.sequence-render") {
+      throw new ProjectStoreError("Structured feedback target is only supported for a video sequence render.");
+    }
+    const artifactId = requireText(target.artifactId, "Feedback artifact id");
+    if (!Number.isInteger(target.revision) || target.revision < 1) {
+      throw new ProjectStoreError("Feedback artifact revision must be a positive integer.");
+    }
+    const artifact = (await this.readArtifacts(projectId)).find((candidate) => candidate.id === artifactId);
+    if (!artifact || artifact.type !== "video.sequence") {
+      throw new ProjectStoreError("Feedback targets an unknown video sequence artifact: " + artifactId);
+    }
+    if (result.data?.sequence?.artifactId !== artifact.id || artifact.revision !== target.revision) {
+      throw new ProjectStoreError("Feedback target does not match the exact Result artifact revision.");
+    }
+    const segmentId = target.segmentId === undefined
+      ? null
+      : requireText(target.segmentId, "Feedback segment id");
+    const segment = segmentId
+      ? artifact.data.segments.find((candidate) => candidate.id === segmentId)
+      : null;
+    if (segmentId && (!segment || !(result.data?.segments ?? []).some((candidate) => candidate.id === segmentId))) {
+      throw new ProjectStoreError("Feedback targets a segment that is not present in the exact Result.");
+    }
+    let timeRange = null;
+    if (target.timeRange !== undefined) {
+      const range = objectValue(target.timeRange, "Feedback time range");
+      const unknownRange = Object.keys(range).filter(
+        (key) => !["startSeconds", "endSeconds"].includes(key)
+      );
+      if (unknownRange.length || Object.keys(range).length !== 2) {
+        throw new ProjectStoreError("Feedback time range must contain only startSeconds and endSeconds.");
+      }
+      const { startSeconds, endSeconds } = range;
+      const duration = sequenceDuration(artifact.data);
+      if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) ||
+          startSeconds < 0 || endSeconds <= startSeconds || endSeconds > duration + 1e-6) {
+        throw new ProjectStoreError("Feedback time range is outside the exact Result duration.");
+      }
+      if (segment) {
+        const segmentRange = compositionTimeline(artifact.data)
+          .find((candidate) => candidate.segmentId === segmentId);
+        if (!segmentRange || startSeconds < segmentRange.startSeconds - 1e-6 ||
+            endSeconds > segmentRange.endSeconds + 1e-6) {
+          throw new ProjectStoreError("Feedback time range is outside the selected segment.");
+        }
+      }
+      timeRange = { startSeconds, endSeconds };
+    }
+    return {
+      artifactId,
+      revision: target.revision,
+      ...(segmentId ? { segmentId } : {}),
+      ...(timeRange ? { timeRange } : {})
+    };
+  }
+
   async recordDecision(projectId, value) {
     if (value?.target) return this.recordProjectDecision(projectId, value);
     objectValue(value, "Nội dung quyết định");
-    const allowedFields = new Set(["resultId", "outcome", "note"]);
+    const allowedFields = new Set(["resultId", "outcome", "note", "feedbackTarget", "resolvesDecisionIds"]);
     const unknownFields = Object.keys(value).filter((key) => !allowedFields.has(key));
     if (unknownFields.length) {
       throw new ProjectStoreError(
         "Quyết định chứa field không được hỗ trợ: " + unknownFields.join(", ")
       );
     }
-    const resultId = resultReference(value.resultId);
-    await this.readResult(projectId, resultId);
-    const outcome = requireText(value.outcome, "Kết quả quyết định");
-    if (!["accepted", "changes_requested", "rejected"].includes(outcome)) {
-      throw new ProjectStoreError("Kết quả quyết định không được hỗ trợ: " + outcome);
-    }
-    const note = value.note === null || value.note === undefined
-      ? null
-      : requireText(value.note, "Phản hồi quyết định");
-    if (outcome === "changes_requested" && note === null) {
-      throw new ProjectStoreError("Quyết định yêu cầu sửa phải có phản hồi.");
-    }
-    const existingDecisions = await this.readDecisions(projectId);
-    const latestTimestamp = existingDecisions.reduce(
-      (latest, decision) => Math.max(latest, Date.parse(decision.createdAt)),
-      0
-    );
-    const decision = {
-      version: PROJECT_VERSION,
-      id: recordId("decision"),
-      projectId,
-      resultId,
-      outcome,
-      note,
-      decidedBy: "user",
-      createdAt: new Date(Math.max(Date.now(), latestTimestamp + 1)).toISOString()
-    };
-    validateDecision(decision, projectId);
-    await writeJsonAtomic(
-      join(projectDirectory(this.rootDir, projectId), "decisions", decision.id + ".json"),
-      decision
-    );
-    return decision;
+    return withFileLock({
+      projectDirectory: projectDirectory(this.rootDir, projectId),
+      name: "decisions",
+      action: async () => {
+        const resultId = resultReference(value.resultId);
+        const result = await this.readResult(projectId, resultId);
+        const outcome = requireText(value.outcome, "Kết quả quyết định");
+        if (!["accepted", "changes_requested", "rejected"].includes(outcome)) {
+          throw new ProjectStoreError("Kết quả quyết định không được hỗ trợ: " + outcome);
+        }
+        const note = value.note === null || value.note === undefined
+          ? null
+          : requireText(value.note, "Phản hồi quyết định");
+        if (outcome === "changes_requested" && note === null) {
+          throw new ProjectStoreError("Quyết định yêu cầu sửa phải có phản hồi.");
+        }
+        const feedbackTarget = await this.#normalizeFeedbackTarget(projectId, result, value.feedbackTarget);
+        if (result.type === "video.sequence-render" && feedbackTarget === null) {
+          throw new ProjectStoreError("A video sequence Result decision requires an exact feedbackTarget.");
+        }
+        const resolvesDecisionIds = stringList(value.resolvesDecisionIds, "Decision IDs được giải quyết");
+        if (new Set(resolvesDecisionIds).size !== resolvesDecisionIds.length) {
+          throw new ProjectStoreError("Decision IDs được giải quyết phải là duy nhất.");
+        }
+        if (resolvesDecisionIds.length && outcome !== "accepted") {
+          throw new ProjectStoreError("Chỉ decision accepted mới được giải quyết phản hồi đang chờ.");
+        }
+        const existingDecisions = await this.readDecisions(projectId);
+        const resolved = new Set(existingDecisions.flatMap((decision) => decision.resolvesDecisionIds ?? []));
+        for (const decisionId of resolvesDecisionIds) {
+          const pending = existingDecisions.find((decision) => decision.id === decisionId);
+          if (!pending || pending.kind === "project_decision" || pending.outcome !== "changes_requested") {
+            throw new ProjectStoreError("Decision cần giải quyết không phải phản hồi changes_requested hợp lệ: " + decisionId);
+          }
+          if (resolved.has(decisionId)) {
+            throw new ProjectStoreError("Phản hồi đã được giải quyết: " + decisionId);
+          }
+        }
+        const latestTimestamp = existingDecisions.reduce(
+          (latest, decision) => Math.max(latest, Date.parse(decision.createdAt)),
+          0
+        );
+        const decision = {
+          version: PROJECT_VERSION,
+          id: recordId("decision"),
+          projectId,
+          resultId,
+          outcome,
+          note,
+          feedbackTarget,
+          resolvesDecisionIds,
+          decidedBy: "user",
+          createdAt: new Date(Math.max(Date.now(), latestTimestamp + 1)).toISOString()
+        };
+        validateDecision(decision, projectId);
+        await writeJsonAtomic(
+          join(projectDirectory(this.rootDir, projectId), "decisions", decision.id + ".json"),
+          decision
+        );
+        return decision;
+      }
+    });
   }
-
   async recordProjectDecision(projectId, value) {
     objectValue(value, "Project decision");
     const allowedFields = new Set([

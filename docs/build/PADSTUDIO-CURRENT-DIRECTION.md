@@ -293,5 +293,17 @@ không có kéo thả mutation. Phiên bản 1.0 được giữ; schema 1.1 khô
 filter FFmpeg. Phần được triển khai và giới hạn được ghi trong
 [PHASE4-PRODUCTION-SPEC.md](PHASE4-PRODUCTION-SPEC.md). Pilot `pilot-preview` r10 / Result
 `result-mty1pb0w-d6598cd6` đã được người dùng duyệt ngày 2026-09-12; approval chỉ áp dụng
-cho exact Result này. Đợt 4 đã đóng. Ưu tiên tiếp theo là Đợt 5A: giảm polling/payload
-observer và làm phản hồi/so sánh gắn chính xác với Result/revision, không mở provider mới.
+cho exact Result này. Đợt 4 đã đóng; phạm vi tiếp theo được chốt là Đợt 5A về polling/payload
+observer và phản hồi/so sánh gắn chính xác với Result/revision, không mở provider mới.
+
+## Đợt 5A — observer hiệu quả và phản hồi exact revision, 2026-09-12
+
+Workspace chỉ đọc nay dùng generation/ETag và section summary/source/creative/production/activity; project không đổi nhận 304 rỗng, detail chỉ tải khi tiến gần viewport và polling không thay player. Mỗi render/segment có mốc sao chép gắn project, Result, artifact, revision và time range để phản hồi qua Agent host không lệch phiên bản. Artifact/workflow/review mutation được khóa local; workflow update bắt buộc compare-and-swap bằng `expectedRevision`. Đợt 5A đã hoàn thành practical theo [đặc tả](PHASE5A-OBSERVER-SPEC.md), nhưng chưa đóng toàn bộ Đợt 5. Ưu tiên tiếp theo là Đợt 5B: compact Agent summary, chọn/so sánh exact render Result và lưu feedback segment/time có cấu trúc; không tự mở provider mới hoặc chuyển sớm sang Đợt 6A.
+
+## Đợt 5B — exact Result feedback và Agent resume, 2026-09-12
+
+Vòng phản hồi của Đợt 5 đã khép kín trên Decision hiện hữu. Decision mới cho `video.sequence-render` bắt buộc bind đúng Result và `feedbackTarget` gồm artifact/revision, có thể chỉ rõ segment/time range; store fail-closed khi target lệch và resolution chỉ xảy ra qua `resolvesDecisionIds`. Concurrent decision append/double-resolve dùng project-local lock; primitive lock xử lý contention `EEXIST/EACCES/EPERM` trên Windows.
+
+Full context và summary đưa pending feedback trở lại Agent; summary rút gọn artifact, workflow, capability và analysis pointer nhưng giữ đường đọc detail khi cần. Production observer chọn và so sánh exact render Result thay vì ngầm lấy render cuối, đồng thời đặt feedback đúng Result/segment. Web vẫn chỉ đọc và chat Agent host vẫn là kênh điều khiển.
+
+Acceptance đạt 177/177 repository tests, 20/20 analysis tests và browser 390/768/1440; summary pilot 19.008 byte so với full context 424.516 byte, không còn lock sót. Chi tiết tại [đặc tả 5B](PHASE5B-EXACT-FEEDBACK-SPEC.md) và [report](../../reports/phase5b-feedback-acceptance.json). Đợt 5 đã đóng. Ưu tiên kế tiếp là chốt contract Đợt 6A cho kiểm tra và xuất bản bàn giao của exact Result đã duyệt; chưa mở provider hoặc nền tảng xuất bản mới.

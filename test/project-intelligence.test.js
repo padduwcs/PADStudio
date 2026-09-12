@@ -175,6 +175,7 @@ test("adaptive workflow preserves revisions and rejects cycles or premature prog
   await assert.rejects(
     store.writeWorkflow("demo", {
       id: workflow.id,
+      expectedRevision: workflow.revision,
       name: workflow.name,
       purpose: workflow.purpose,
       status: "active",
@@ -186,6 +187,7 @@ test("adaptive workflow preserves revisions and rejects cycles or premature prog
 
   const awaiting = await store.writeWorkflow("demo", {
     id: workflow.id,
+    expectedRevision: workflow.revision,
     name: workflow.name,
     purpose: workflow.purpose,
     status: "active",
@@ -201,6 +203,7 @@ test("adaptive workflow preserves revisions and rejects cycles or premature prog
   await assert.rejects(
     store.writeWorkflow("demo", {
       id: workflow.id,
+      expectedRevision: awaiting.revision,
       name: workflow.name,
       purpose: workflow.purpose,
       status: "active",
@@ -316,6 +319,7 @@ test("review and user approval are hard gates while decisions retain rationale",
   });
   const awaitingApproval = await store.writeWorkflow("demo", {
     id: workflow.id,
+    expectedRevision: workflow.revision,
     name: workflow.name,
     purpose: workflow.purpose,
     status: "active",
@@ -357,6 +361,7 @@ test("review and user approval are hard gates while decisions retain rationale",
   });
   const completedRequest = {
     id: workflow.id,
+    expectedRevision: awaitingApproval.revision,
     name: workflow.name,
     purpose: workflow.purpose,
     status: "completed",
@@ -451,6 +456,7 @@ test("review and approval are bound to the current work item outputs", async (t)
   });
   const awaitingReview = await store.writeWorkflow("demo", {
     id: workflow.id,
+    expectedRevision: workflow.revision,
     name: workflow.name,
     purpose: workflow.purpose,
     status: "active",
@@ -483,6 +489,7 @@ test("review and approval are bound to the current work item outputs", async (t)
   await assert.rejects(
     store.writeWorkflow("demo", {
       id: workflow.id,
+      expectedRevision: awaitingReview.revision,
       name: workflow.name,
       purpose: workflow.purpose,
       status: "active",
@@ -500,6 +507,7 @@ test("review and approval are bound to the current work item outputs", async (t)
   await assert.rejects(
     store.writeWorkflow("demo", {
       id: workflow.id,
+      expectedRevision: awaitingReview.revision,
       name: workflow.name,
       purpose: workflow.purpose,
       status: "active",
@@ -571,6 +579,7 @@ test("workflow lifecycle stays singular, terminal, and safe to resume", async (t
   );
   const completed = await store.writeWorkflow("demo", {
     id: first.id,
+    expectedRevision: first.revision,
     name: first.name,
     purpose: first.purpose,
     status: "completed",
@@ -590,6 +599,7 @@ test("workflow lifecycle stays singular, terminal, and safe to resume", async (t
   await assert.rejects(
     store.writeWorkflow("demo", {
       id: first.id,
+      expectedRevision: completed.revision,
       name: first.name,
       purpose: first.purpose,
       status: "active",

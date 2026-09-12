@@ -16,6 +16,7 @@ import {
 import { ProjectContextAssembler } from "../intelligence/project-context-assembler.js";
 import { createDefaultToolRegistry } from "../execution/default-tool-registry.js";
 import { AnalysisReader } from "../analysis/analysis-reader.js";
+import { projectGeneration } from "./project-generation.js";
 
 export class ProjectNotFoundError extends Error {
   constructor(projectId) {
@@ -55,6 +56,60 @@ async function safeInputDirectory(projectDirectoryPath, rootDir, projectId) {
   }
 }
 
+function compactArtifact(artifact) {
+  const { id, key, revision, type, name, summary, status, createdAt } = artifact;
+  return { id, key, revision, type, name, summary, status, createdAt };
+}
+
+function compactReview(review) {
+  const { id, target, round, perspective, verdict, summary, reviewer, createdAt } = review;
+  return { id, target, round, perspective, verdict, summary, reviewer, createdAt };
+}
+
+function observerSection(context, section, generation) {
+  const base = { version: "1.0", view: `observer-${section}`, generation, project: context.project };
+  if (section === "summary") {
+    return { ...base, checkpoint: context.checkpoint, checkpointFreshness: context.checkpointFreshness,
+      resumeView: context.resumeView,
+      intelligence: {
+        activeWorkflow: context.intelligence.activeWorkflow,
+        activeArtifacts: context.intelligence.activeArtifacts.map(compactArtifact),
+        latestReviews: context.intelligence.latestReviews.map(compactReview),
+        currentWorkItems: context.intelligence.currentWorkItems,
+        pendingApprovals: context.intelligence.pendingApprovals,
+        relevantSkills: context.intelligence.relevantSkills,
+      },
+      counts: { resources: context.resources.length, results: context.results.length,
+        runs: context.runs.length, artifacts: context.artifacts.length },
+    };
+  }
+  if (section === "source") {
+    return { ...base, resources: context.resources, results: context.results, analysis: context.analysis,
+      intelligence: { activeArtifacts: context.intelligence.activeArtifacts.filter((artifact) =>
+        artifact.type.startsWith("source.")) } };
+  }
+  if (section === "creative") {
+    return { ...base,
+      artifacts: context.artifacts.filter((artifact) =>
+        ["project.brief", "creative.proposal", "creative.direction"].includes(artifact.type)),
+      reviews: context.reviews, decisions: context.decisions, projectDecisions: context.projectDecisions,
+      intelligence: { activeArtifacts: context.intelligence.activeArtifacts.map(compactArtifact),
+        pendingApprovals: context.intelligence.pendingApprovals },
+      production: { sequences: context.production.sequences, artifactStates: context.production.artifactStates },
+    };
+  }
+  if (section === "production") {
+    return { ...base, production: { sequences: context.production.sequences,
+      affectedWorkItems: context.production.affectedWorkItems, note: context.production.note } };
+  }
+  if (section === "activity") {
+    return { ...base, resources: context.resources, results: context.results, decisions: context.decisions,
+      runs: context.runs, artifacts: context.artifacts, reviews: context.reviews,
+      runRecovery: context.runRecovery };
+  }
+  throw new ProjectNotFoundError(`observer section ${section}`);
+}
+
 export class ProjectReader {
   constructor(rootDir) {
     this.rootDir = rootDir;
@@ -65,10 +120,40 @@ export class ProjectReader {
       toolRegistry: createDefaultToolRegistry(),
       analysisReader: this.analysisReader
     });
+    this.observerCache = new Map();
   }
 
   async list() {
     return this.store.listProjects();
+  }
+
+  async listObserverProjects() {
+    const projects = await this.store.listProjects();
+    return Promise.all(projects.map(async (project) => ({
+      ...project,
+      generation: await projectGeneration(this.rootDir, project.id),
+    })));
+  }
+
+  async generation(projectId) {
+    await this.store.readProject(projectId);
+    return projectGeneration(this.rootDir, projectId);
+  }
+
+  async readObserverSection(projectId, section, generation = null) {
+    const currentGeneration = generation ?? await this.generation(projectId);
+    const existing = this.observerCache.get(projectId);
+    let promise;
+    if (existing?.generation === currentGeneration) {
+      promise = existing.promise;
+    } else {
+      promise = this.readProject(projectId);
+      this.observerCache.set(projectId, { generation: currentGeneration, promise });
+      promise.catch(() => {
+        if (this.observerCache.get(projectId)?.promise === promise) this.observerCache.delete(projectId);
+      });
+    }
+    return observerSection(await promise, section, currentGeneration);
   }
 
   async readOverview(projectId) {

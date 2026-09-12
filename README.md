@@ -164,11 +164,13 @@ Prototype hiện có 19 capability thật:
 - `audio.transcribe` / `faster-whisper-transcribe`: raw transcript/word timestamp theo chunk.
 - `source.preview` / `ffmpeg-source-preview`: proxy browser-safe có mapping về source time.
 
-Ghi decision sau khi người dùng phản hồi rõ về một result:
+Ghi Decision sau khi người dùng phản hồi rõ về một Result:
 
 ```powershell
 $decision | npm run project:decide -- coffee-video -
 ```
+
+Với `video.sequence-render`, Decision mới bắt buộc bind exact `resultId` cùng `feedbackTarget.artifactId` và `feedbackTarget.revision`; có thể thêm `segmentId`/`timeRange`. Result được chấp nhận chỉ đóng feedback cũ khi liệt kê tường minh `resolvesDecisionIds`. Xem [đặc tả Đợt 5B](docs/build/PHASE5B-EXACT-FEEDBACK-SPEC.md).
 
 Project intelligence và adaptive workflow:
 
@@ -265,6 +267,18 @@ Có thể mở thẳng project bằng `http://127.0.0.1:7603/?project=<project-i
 
 ```powershell
 npm run observer:browser-test -- -ProjectId <project-id>
+```
+
+Để nghiệm thu snapshot/ETag, lazy loading, bảo toàn player, mốc phản hồi và race protection của Đợt 5A:
+
+```powershell
+npm run observer:acceptance
+```
+
+Để nghiệm thu toàn bộ vòng feedback exact Result, pending/resolution, Agent summary và browser comparison của Đợt 5B:
+
+```powershell
+npm run feedback:acceptance
 ```
 
 ## Kiểm tra

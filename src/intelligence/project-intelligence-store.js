@@ -4,6 +4,7 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { readJson, writeJsonAtomic } from "../project/atomic-files.js";
 import { projectDirectory } from "../project/project-paths.js";
+import { withFileLock } from "../project/file-lock.js";
 import {
   IntelligenceValidationError,
   assertOnlyFields,
@@ -108,102 +109,108 @@ export class ProjectIntelligenceStore {
       "artifact"
     );
     const key = requireId(value.key, "artifact.key");
-    const type = requireId(value.type, "artifact.type");
-    const name = requireText(value.name, "artifact.name");
-    const summary = requireText(value.summary, "artifact.summary");
-    const status = value.status ?? "active";
-    if (!["draft", "active", "retired"].includes(status)) {
-      throw new IntelligenceValidationError(`artifact.status is not supported: ${status}.`);
-    }
-    if (!isPlainObject(value.data)) throw new IntelligenceValidationError("artifact.data must be an object.");
-    const sourceData = normalizeSourceArtifactData(type, value.data);
-    const creativeData = normalizeCreativeArtifactData(type, value.data, {
-      allowLegacy: status === "retired",
-    });
-    const data = type === SEQUENCE_TYPE
-      ? normalizeSequence(value.data)
-      : sourceData ?? creativeData ?? structuredClone(value.data);
-    const references = normalizeReferences(value.references);
-    if (type === SEQUENCE_TYPE) {
-      // Keep local dependencies inside their segment, not in the global reference list.
-      // Otherwise revising one segment would invalidate the cache of every other segment.
-      await this.#assertReferences(projectId, sequenceReferences(data));
-      if (status !== "retired") {
-        for (const segment of data.segments) {
-          for (const source of segmentMediaSources(segment)) {
-            await this.projectStore.resolveMediaSource(projectId, source);
+    return withFileLock({
+      projectDirectory: projectDirectory(this.rootDir, projectId),
+      name: "artifacts",
+      action: async () => {
+        const type = requireId(value.type, "artifact.type");
+        const name = requireText(value.name, "artifact.name");
+        const summary = requireText(value.summary, "artifact.summary");
+        const status = value.status ?? "active";
+        if (!["draft", "active", "retired"].includes(status)) {
+          throw new IntelligenceValidationError(`artifact.status is not supported: ${status}.`);
+        }
+        if (!isPlainObject(value.data)) throw new IntelligenceValidationError("artifact.data must be an object.");
+        const sourceData = normalizeSourceArtifactData(type, value.data);
+        const creativeData = normalizeCreativeArtifactData(type, value.data, {
+          allowLegacy: status === "retired",
+        });
+        const data = type === SEQUENCE_TYPE
+          ? normalizeSequence(value.data)
+          : sourceData ?? creativeData ?? structuredClone(value.data);
+        const references = normalizeReferences(value.references);
+        if (type === SEQUENCE_TYPE) {
+          // Keep local dependencies inside their segment, not in the global reference list.
+          // Otherwise revising one segment would invalidate the cache of every other segment.
+          await this.#assertReferences(projectId, sequenceReferences(data));
+          if (status !== "retired") {
+            for (const segment of data.segments) {
+              for (const source of segmentMediaSources(segment)) {
+                await this.projectStore.resolveMediaSource(projectId, source);
+              }
+            }
           }
         }
-      }
-    }
-    if (type === SEQUENCE_TYPE && status !== "retired") {
-      for (const track of data.music ?? []) await this.projectStore.resolveMediaSource(projectId, track.source);
-    }
-    if (SOURCE_ARTIFACT_TYPES.has(type)) {
-      await validateSourceArtifactAgainstProject({
-        projectStore: this.projectStore,
-        projectId,
-        type,
-        data,
-        references,
-        status
-      });
-    }
-    await this.#assertReferences(projectId, references);
-    if (CREATIVE_ARTIFACT_TYPES.has(type) && !(status === "retired" && value.data.version === undefined)) {
-      await validateCreativeArtifactReferences({
-        type,
-        data,
-        references,
-        artifacts: await this.readArtifacts(projectId),
-      });
-    }
-    const previous = (await this.readArtifacts(projectId))
-      .filter((artifact) => artifact.key === key)
-      .sort((a, b) => a.revision - b.revision)
-      .at(-1);
-    if (
-      (previous && (type === SEQUENCE_TYPE || SOURCE_ARTIFACT_TYPES.has(type) || CREATIVE_ARTIFACT_TYPES.has(type))) ||
-      value.expectedRevision !== undefined
-    ) {
-      if (!Number.isInteger(value.expectedRevision) || value.expectedRevision !== (previous?.revision ?? 0)) {
-        throw new IntelligenceValidationError("Artifact revision conflict: reread the latest revision before writing.");
-      }
-    }
-    if (previous && previous.type !== type) {
-      throw new IntelligenceValidationError(`Artifact ${key} cannot change type from ${previous.type} to ${type}.`);
-    }
-    if (type === SEQUENCE_TYPE && status === "active") {
-      const otherCurrent = (await this.readActiveArtifacts(projectId)).find((artifact) =>
-        artifact.type === SEQUENCE_TYPE && artifact.key !== key
-      );
-      if (otherCurrent) {
-        throw new IntelligenceValidationError(
-          `Video sequence ${otherCurrent.key} is already current; retire it or save ${key} as a draft candidate before activating another sequence.`
-        );
-      }
-    }
-    const artifact = {
-      version: VERSION,
-      id: recordId("artifact"),
-      projectId,
-      key,
-      revision: (previous?.revision ?? 0) + 1,
-      supersedes: previous?.id ?? null,
-      type,
-      name,
-      summary,
-      status,
-      data,
-      references,
-      createdBy: value.createdBy ?? "agent",
-      createdAt: timestamp(),
-    };
-    if (!["agent", "user", "system"].includes(artifact.createdBy)) {
-      throw new IntelligenceValidationError(`artifact.createdBy is not supported: ${artifact.createdBy}.`);
-    }
-    await writeJsonAtomic(join(projectDirectory(this.rootDir, projectId), "artifacts", `${artifact.id}.json`), artifact);
-    return artifact;
+        if (type === SEQUENCE_TYPE && status !== "retired") {
+          for (const track of data.music ?? []) await this.projectStore.resolveMediaSource(projectId, track.source);
+        }
+        if (SOURCE_ARTIFACT_TYPES.has(type)) {
+          await validateSourceArtifactAgainstProject({
+            projectStore: this.projectStore,
+            projectId,
+            type,
+            data,
+            references,
+            status
+          });
+        }
+        await this.#assertReferences(projectId, references);
+        if (CREATIVE_ARTIFACT_TYPES.has(type) && !(status === "retired" && value.data.version === undefined)) {
+          await validateCreativeArtifactReferences({
+            type,
+            data,
+            references,
+            artifacts: await this.readArtifacts(projectId),
+          });
+        }
+        const previous = (await this.readArtifacts(projectId))
+          .filter((artifact) => artifact.key === key)
+          .sort((a, b) => a.revision - b.revision)
+          .at(-1);
+        if (
+          (previous && (type === SEQUENCE_TYPE || SOURCE_ARTIFACT_TYPES.has(type) || CREATIVE_ARTIFACT_TYPES.has(type))) ||
+          value.expectedRevision !== undefined
+        ) {
+          if (!Number.isInteger(value.expectedRevision) || value.expectedRevision !== (previous?.revision ?? 0)) {
+            throw new IntelligenceValidationError("Artifact revision conflict: reread the latest revision before writing.");
+          }
+        }
+        if (previous && previous.type !== type) {
+          throw new IntelligenceValidationError(`Artifact ${key} cannot change type from ${previous.type} to ${type}.`);
+        }
+        if (type === SEQUENCE_TYPE && status === "active") {
+          const otherCurrent = (await this.readActiveArtifacts(projectId)).find((artifact) =>
+            artifact.type === SEQUENCE_TYPE && artifact.key !== key
+          );
+          if (otherCurrent) {
+            throw new IntelligenceValidationError(
+              `Video sequence ${otherCurrent.key} is already current; retire it or save ${key} as a draft candidate before activating another sequence.`
+            );
+          }
+        }
+        const artifact = {
+          version: VERSION,
+          id: recordId("artifact"),
+          projectId,
+          key,
+          revision: (previous?.revision ?? 0) + 1,
+          supersedes: previous?.id ?? null,
+          type,
+          name,
+          summary,
+          status,
+          data,
+          references,
+          createdBy: value.createdBy ?? "agent",
+          createdAt: timestamp(),
+        };
+        if (!["agent", "user", "system"].includes(artifact.createdBy)) {
+          throw new IntelligenceValidationError(`artifact.createdBy is not supported: ${artifact.createdBy}.`);
+        }
+        await writeJsonAtomic(join(projectDirectory(this.rootDir, projectId), "artifacts", `${artifact.id}.json`), artifact);
+        return artifact;
+      },
+    });
   }
 
   async readArtifacts(projectId) {
@@ -230,64 +237,76 @@ export class ProjectIntelligenceStore {
     requireObject(value, "workflow");
     assertOnlyFields(
       value,
-      ["id", "name", "purpose", "status", "changeReason", "items", "metadata"],
+      ["id", "name", "purpose", "status", "changeReason", "items", "metadata", "expectedRevision"],
       "workflow"
     );
-    const all = await this.readWorkflows(projectId);
-    const workflowId = value.id ? requireId(value.id, "workflow.id") : recordId("workflow");
-    const previous = all
-      .filter((workflow) => workflow.id === workflowId)
-      .sort((a, b) => a.revision - b.revision)
-      .at(-1);
-    if (value.id && !previous) throw new IntelligenceValidationError(`Unknown workflow: ${workflowId}.`);
-    const status = value.status ?? "active";
-    if (!["active", "completed", "abandoned"].includes(status)) {
-      throw new IntelligenceValidationError(`workflow.status is not supported: ${status}.`);
-    }
-    const items = normalizeWorkItems(value.items);
-    await this.#assertWorkflowSkills(projectId, items);
-    await this.#assertReferences(projectId, items.flatMap((item) => [...item.inputReferences, ...item.outputReferences]));
-    this.#assertWorkflowEvolution(previous, items);
-    await this.#assertWorkflowState(projectId, workflowId, items);
-    if (status === "completed" && items.some((item) => !["completed", "cancelled"].includes(item.status))) {
-      throw new IntelligenceValidationError("A completed workflow cannot contain unfinished work items.");
-    }
-    if (status === "active") {
-      const latestById = new Map();
-      for (const workflow of all) {
-        const latest = latestById.get(workflow.id);
-        if (!latest || workflow.revision > latest.revision) latestById.set(workflow.id, workflow);
-      }
-      const other = [...latestById.values()].find((workflow) =>
-        workflow.id !== workflowId && workflow.status === "active"
-      );
-      if (other) {
-        throw new IntelligenceValidationError(
-          `Workflow ${other.id} is already active; complete or abandon it before activating another workflow.`
+    return withFileLock({
+      projectDirectory: projectDirectory(this.rootDir, projectId),
+      name: "workflows",
+      action: async () => {
+        const all = await this.readWorkflows(projectId);
+        const workflowId = value.id ? requireId(value.id, "workflow.id") : recordId("workflow");
+        const previous = all
+          .filter((workflow) => workflow.id === workflowId)
+          .sort((a, b) => a.revision - b.revision)
+          .at(-1);
+        if (value.id && !previous) throw new IntelligenceValidationError(`Unknown workflow: ${workflowId}.`);
+        if (previous && (!Number.isInteger(value.expectedRevision) || value.expectedRevision !== previous.revision)) {
+          throw new IntelligenceValidationError("Workflow revision conflict: reread the latest revision before writing.");
+        }
+        if (!previous && value.expectedRevision !== undefined && value.expectedRevision !== 0) {
+          throw new IntelligenceValidationError("Workflow revision conflict: a new workflow expects revision 0.");
+        }
+        const status = value.status ?? "active";
+        if (!["active", "completed", "abandoned"].includes(status)) {
+          throw new IntelligenceValidationError(`workflow.status is not supported: ${status}.`);
+        }
+        const items = normalizeWorkItems(value.items);
+        await this.#assertWorkflowSkills(projectId, items);
+        await this.#assertReferences(projectId, items.flatMap((item) => [...item.inputReferences, ...item.outputReferences]));
+        this.#assertWorkflowEvolution(previous, items);
+        await this.#assertWorkflowState(projectId, workflowId, items);
+        if (status === "completed" && items.some((item) => !["completed", "cancelled"].includes(item.status))) {
+          throw new IntelligenceValidationError("A completed workflow cannot contain unfinished work items.");
+        }
+        if (status === "active") {
+          const latestById = new Map();
+          for (const workflow of all) {
+            const latest = latestById.get(workflow.id);
+            if (!latest || workflow.revision > latest.revision) latestById.set(workflow.id, workflow);
+          }
+          const other = [...latestById.values()].find((workflow) =>
+            workflow.id !== workflowId && workflow.status === "active"
+          );
+          if (other) {
+            throw new IntelligenceValidationError(
+              `Workflow ${other.id} is already active; complete or abandon it before activating another workflow.`
+            );
+          }
+        }
+        const workflow = {
+          version: VERSION,
+          id: workflowId,
+          revision: (previous?.revision ?? 0) + 1,
+          projectId,
+          name: requireText(value.name, "workflow.name"),
+          purpose: requireText(value.purpose, "workflow.purpose"),
+          status,
+          changeReason: previous
+            ? requireText(value.changeReason, "workflow.changeReason")
+            : requireText(value.changeReason ?? "Initial workflow.", "workflow.changeReason"),
+          supersedes: previous ? { workflowId, revision: previous.revision } : null,
+          items,
+          metadata: value.metadata === undefined ? {} : structuredClone(requireObject(value.metadata, "workflow.metadata")),
+          createdAt: timestamp(),
+        };
+        await writeJsonAtomic(
+          join(projectDirectory(this.rootDir, projectId), "workflows", `${workflow.id}-r${workflow.revision}.json`),
+          workflow,
         );
-      }
-    }
-    const workflow = {
-      version: VERSION,
-      id: workflowId,
-      revision: (previous?.revision ?? 0) + 1,
-      projectId,
-      name: requireText(value.name, "workflow.name"),
-      purpose: requireText(value.purpose, "workflow.purpose"),
-      status,
-      changeReason: previous
-        ? requireText(value.changeReason, "workflow.changeReason")
-        : requireText(value.changeReason ?? "Initial workflow.", "workflow.changeReason"),
-      supersedes: previous ? { workflowId, revision: previous.revision } : null,
-      items,
-      metadata: value.metadata === undefined ? {} : structuredClone(requireObject(value.metadata, "workflow.metadata")),
-      createdAt: timestamp(),
-    };
-    await writeJsonAtomic(
-      join(projectDirectory(this.rootDir, projectId), "workflows", `${workflow.id}-r${workflow.revision}.json`),
-      workflow,
-    );
-    return workflow;
+        return workflow;
+      },
+    });
   }
 
   async readWorkflows(projectId) {
@@ -320,73 +339,79 @@ export class ProjectIntelligenceStore {
       "review"
     );
     const target = this.#normalizeReviewTarget(value.target);
-    const targetState = await this.#assertReviewTarget(projectId, target);
-    const perspective = value.perspective ?? "combined";
-    if (!["creative", "technical", "combined"].includes(perspective)) {
-      throw new IntelligenceValidationError(`review.perspective is not supported: ${perspective}.`);
-    }
-    const verdict = requireText(value.verdict, "review.verdict");
-    if (!["passed", "passed_with_notes", "revise", "blocked"].includes(verdict)) {
-      throw new IntelligenceValidationError(`review.verdict is not supported: ${verdict}.`);
-    }
-    const criteria = normalizeReviewCriteria(value.criteria);
-    assertReviewVerdict(verdict, criteria);
-    let binding = null;
-    if (target.kind === "work_item") {
-      const { workflow, item } = targetState;
-      if (workflow.status !== "active" || item.status !== "awaiting_review") {
-        throw new IntelligenceValidationError(
-          `Work item ${item.id} must be awaiting_review before it can be reviewed.`
-        );
-      }
-      if (item.outputReferences.length === 0) {
-        throw new IntelligenceValidationError(
-          `Work item ${item.id} requires an output reference before review.`
-        );
-      }
-      if (perspective !== item.review.perspective) {
-        throw new IntelligenceValidationError(
-          `Review perspective must be ${item.review.perspective} for work item ${item.id}.`
-        );
-      }
-      const reviewedCriteria = new Set(
-        criteria.map((criterion) => normalizedCriterion(criterion.criterion))
-      );
-      const missingCriteria = item.review.criteria.filter(
-        (criterion) => !reviewedCriteria.has(normalizedCriterion(criterion))
-      );
-      if (missingCriteria.length) {
-        throw new IntelligenceValidationError(
-          `Review does not cover required criteria: ${missingCriteria.join(", ")}.`
-        );
-      }
-      binding = {
-        workflowRevision: workflow.revision,
-        outputReferences: structuredClone(item.outputReferences),
-        requiredCriteria: [...item.review.criteria],
-        perspective,
-      };
-    }
-    const previous = (await this.readReviews(projectId)).filter((review) => targetKey(review.target) === targetKey(target));
-    const review = {
-      version: VERSION,
-      id: recordId("review"),
-      projectId,
-      target,
-      round: Math.max(0, ...previous.map((review) => review.round)) + 1,
-      perspective,
-      verdict,
-      summary: requireText(value.summary, "review.summary"),
-      criteria,
-      reviewer: value.reviewer ?? "agent",
-      ...(binding ? { binding } : {}),
-      createdAt: timestamp(),
-    };
-    if (!["agent", "user", "system"].includes(review.reviewer)) {
-      throw new IntelligenceValidationError(`review.reviewer is not supported: ${review.reviewer}.`);
-    }
-    await writeJsonAtomic(join(projectDirectory(this.rootDir, projectId), "reviews", `${review.id}.json`), review);
-    return review;
+    return withFileLock({
+      projectDirectory: projectDirectory(this.rootDir, projectId),
+      name: "reviews",
+      action: async () => {
+        const targetState = await this.#assertReviewTarget(projectId, target);
+        const perspective = value.perspective ?? "combined";
+        if (!["creative", "technical", "combined"].includes(perspective)) {
+          throw new IntelligenceValidationError(`review.perspective is not supported: ${perspective}.`);
+        }
+        const verdict = requireText(value.verdict, "review.verdict");
+        if (!["passed", "passed_with_notes", "revise", "blocked"].includes(verdict)) {
+          throw new IntelligenceValidationError(`review.verdict is not supported: ${verdict}.`);
+        }
+        const criteria = normalizeReviewCriteria(value.criteria);
+        assertReviewVerdict(verdict, criteria);
+        let binding = null;
+        if (target.kind === "work_item") {
+          const { workflow, item } = targetState;
+          if (workflow.status !== "active" || item.status !== "awaiting_review") {
+            throw new IntelligenceValidationError(
+              `Work item ${item.id} must be awaiting_review before it can be reviewed.`
+            );
+          }
+          if (item.outputReferences.length === 0) {
+            throw new IntelligenceValidationError(
+              `Work item ${item.id} requires an output reference before review.`
+            );
+          }
+          if (perspective !== item.review.perspective) {
+            throw new IntelligenceValidationError(
+              `Review perspective must be ${item.review.perspective} for work item ${item.id}.`
+            );
+          }
+          const reviewedCriteria = new Set(
+            criteria.map((criterion) => normalizedCriterion(criterion.criterion))
+          );
+          const missingCriteria = item.review.criteria.filter(
+            (criterion) => !reviewedCriteria.has(normalizedCriterion(criterion))
+          );
+          if (missingCriteria.length) {
+            throw new IntelligenceValidationError(
+              `Review does not cover required criteria: ${missingCriteria.join(", ")}.`
+            );
+          }
+          binding = {
+            workflowRevision: workflow.revision,
+            outputReferences: structuredClone(item.outputReferences),
+            requiredCriteria: [...item.review.criteria],
+            perspective,
+          };
+        }
+        const previous = (await this.readReviews(projectId)).filter((review) => targetKey(review.target) === targetKey(target));
+        const review = {
+          version: VERSION,
+          id: recordId("review"),
+          projectId,
+          target,
+          round: Math.max(0, ...previous.map((review) => review.round)) + 1,
+          perspective,
+          verdict,
+          summary: requireText(value.summary, "review.summary"),
+          criteria,
+          reviewer: value.reviewer ?? "agent",
+          ...(binding ? { binding } : {}),
+          createdAt: timestamp(),
+        };
+        if (!["agent", "user", "system"].includes(review.reviewer)) {
+          throw new IntelligenceValidationError(`review.reviewer is not supported: ${review.reviewer}.`);
+        }
+        await writeJsonAtomic(join(projectDirectory(this.rootDir, projectId), "reviews", `${review.id}.json`), review);
+        return review;
+      },
+    });
   }
 
   async readReviews(projectId) {

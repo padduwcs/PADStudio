@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -12,6 +13,7 @@ import {
 import { ProjectPathError } from "../project/project-paths.js";
 import { AnalysisReaderError } from "../analysis/analysis-reader.js";
 import { AnalysisValidationError } from "../analysis/contracts.js";
+import { etagMatches, quotedEtag } from "./project-generation.js";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const applicationRoot = join(currentDirectory, "..", "..");
@@ -46,9 +48,14 @@ const previewContentTypes = {
   ".flac": "audio/flac"
 };
 
-function sendJson(response, status, value) {
-  response.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+function sendJson(response, status, value, headers = {}) {
+  response.writeHead(status, { "Content-Type": "application/json; charset=utf-8", ...headers });
   response.end(JSON.stringify(value));
+}
+
+function sendNotModified(response, etag) {
+  response.writeHead(304, { ETag: etag, "Cache-Control": "no-cache" });
+  response.end();
 }
 
 function contentType(filePath) {
@@ -120,7 +127,22 @@ export function createPadStudioServer({ reader }) {
       const url = new URL(request.url, "http://127.0.0.1");
 
       if (request.method === "GET" && url.pathname === "/api/projects") {
-        return sendJson(response, 200, { projects: await reader.list() });
+        const projects = await reader.listObserverProjects();
+        const digest = createHash("sha256").update(JSON.stringify(projects)).digest("hex");
+        const etag = quotedEtag(`projects-${digest}`);
+        if (etagMatches(request.headers["if-none-match"], etag)) return sendNotModified(response, etag);
+        return sendJson(response, 200, { projects }, { ETag: etag, "Cache-Control": "no-cache" });
+      }
+
+      const observerMatch = /^\/api\/projects\/([^/]+)\/observer\/(summary|source|creative|production|activity)$/.exec(url.pathname);
+      if (request.method === "GET" && observerMatch) {
+        const projectId = decodeURIComponent(observerMatch[1]);
+        const section = observerMatch[2];
+        const generation = await reader.generation(projectId);
+        const etag = quotedEtag(`${generation}-${section}`);
+        if (etagMatches(request.headers["if-none-match"], etag)) return sendNotModified(response, etag);
+        const context = await reader.readObserverSection(projectId, section, generation);
+        return sendJson(response, 200, { context }, { ETag: etag, "Cache-Control": "no-cache" });
       }
 
       const analysisQueryMatch = /^\/api\/projects\/([^/]+)\/analysis\/query$/.exec(url.pathname);
@@ -151,10 +173,14 @@ export function createPadStudioServer({ reader }) {
       const projectMatch = /^\/api\/projects\/([^/]+)$/.exec(url.pathname);
       if (request.method === "GET" && projectMatch) {
         const projectId = decodeURIComponent(projectMatch[1]);
-        const context = url.searchParams.get("view") === "summary"
+        const view = url.searchParams.get("view") === "summary" ? "summary" : "full";
+        const generation = await reader.generation(projectId);
+        const etag = quotedEtag(`${generation}-${view}`);
+        if (etagMatches(request.headers["if-none-match"], etag)) return sendNotModified(response, etag);
+        const context = view === "summary"
           ? await reader.readProjectSummary(projectId)
           : await reader.readProject(projectId);
-        return sendJson(response, 200, { context });
+        return sendJson(response, 200, { context }, { ETag: etag, "Cache-Control": "no-cache" });
       }
 
       const inputMatch = /^\/project-inputs\/([^/]+)\/(.+)$/.exec(url.pathname);

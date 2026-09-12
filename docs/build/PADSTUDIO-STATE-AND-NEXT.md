@@ -8,7 +8,8 @@ Cập nhật: **2026-09-12**. Đây là bản tóm tắt vận hành hiện hàn
 - Đợt 1 practical: probe, scene, frame/contact sheet, audio analysis, ASR, preview, source assessment/search/freshness và observer chỉ đọc.
 - Đợt 2 practical: brief → proposal → direction → sequence/render → review/approval, sửa cục bộ và reuse segment.
 - Đợt 3 practical local: `graphic.render`, `audio.prepare`, `media.acquire`, Piper/ElevenLabs qua `tts.synthesize`; ElevenLabs có exact single-use credit authorization.
-- Context summary gọn nay giữ checkpoint freshness, resume state, sequence/blocker, affected work item và pending finalization.
+- Context summary gọn giữ checkpoint freshness, resume state, sequence/render pointer, affected work item, pending finalization và exact pending feedback; pilot hiện 19.008 byte so với full context 424.516 byte.
+- Đợt 5 hoàn tất: observer generation/ETag và lazy section, exact Result selection/comparison, feedback target Result/artifact revision/segment/time, explicit resolution và concurrent-write protection.
 - Browser smoke dùng profile dưới `.cache/browser-profiles` và dọn đúng process/profile sau khi chạy.
 
 ## Baseline Đợt 3 và pilot hiện hành
@@ -28,13 +29,12 @@ Project hiện có checkpoint `current`, không workflow active, không approval
 
 ## Kiểm chứng mới nhất
 
-- `npm test`: 165/165 pass.
-- `npm run analysis:test`: 20/20 pass.
-- `npm run production:acceptance`: pass có giới hạn đã công bố; pilot contract và browser timeline/seek/player ở viewport 390/768/1440 đều đạt.
-- `npm run tts:acceptance`: 16/16 test TTS pass; Piper available, ElevenLabs unavailable vì chưa có credential.
-- `npm run assets:acceptance`: pass, gồm image/audio/attribution/player và viewport 390/768/1440.
-- `npm run creative:acceptance`: pass với giới hạn đã công bố; repository 160/160 và browser pass.
-
+- `npm run feedback:acceptance`: `passed_with_documented_limits`.
+- Repository: 177/177 pass; source-analysis harness: 20/20 pass.
+- Browser: timeline/seek, player preservation, conditional polling, lazy activity, feedback anchor, exact Result selection/comparison đều pass ở 390/768/1440 px.
+- Agent summary pilot: 19.008 byte; full context: 424.516 byte; giới hạn 32 KiB đạt.
+- Persistence/reopen, target mismatch/out-of-range, explicit resolution, concurrent append/double-resolve và lock cleanup đều pass.
+- Báo cáo: [phase5b-feedback-acceptance.json](../../reports/phase5b-feedback-acceptance.json).
 ## Giới hạn còn lại
 
 - Chưa nghe duyệt chất giọng Piper bằng tai người; ASR và số đo audio không thay thế đánh giá tự nhiên/cảm xúc.
@@ -44,8 +44,7 @@ Project hiện có checkpoint `current`, không workflow active, không approval
 
 ## Bước tiếp theo
 
-Triển khai **Đợt 5A — observer hiệu quả và phản hồi gắn phiên bản**: thêm generation/ETag để project không đổi không tải lại full context; tách summary nhẹ khỏi dữ liệu chi tiết và lazy-load phần nặng; gắn thao tác so sánh/phản hồi vào exact Result/revision; đặt regression budget cho payload, polling và bảo toàn player. Không hồi sinh nhánh `phase4-piper-revision` và không mở provider mới.
-
+Đợt 5 đã đóng. Bước kế tiếp là **Đợt 6A — chốt contract kiểm tra và xuất bản bàn giao** cho loại video mục tiêu hiện có trước khi viết code: chọn exact Result đã duyệt, định nghĩa export profile tối thiểu, kiểm tra hình/âm thanh/phụ đề/provenance, fail-closed khi bản được chọn stale hoặc thiếu file, và đường phục hồi/chạy lại. Chưa tự mở nền tảng xuất bản, cloud worker hay provider mới.
 ## Cập nhật Đợt 4 — 2026-09-12
 
 Đã triển khai sequence 1.1 và renderer composition: timing lời đọc, automation
@@ -57,5 +56,13 @@ im lặng 4,075 giây. Bản cũ và nhánh thử sai vẫn còn dưới dạng 
 đã ghi vào project; approval của người dùng chỉ gắn exact Result r10. Đợt 4 đã đóng.
 Trạng thái kiểm tra cuối nằm ở
 [report](../../reports/phase4-production-acceptance.json) và
-[pilot](../../reports/phase4-pilot.json). Ưu tiên tiếp theo là review đúng bản này
-và sửa finding cụ thể; chưa tự chuyển sang Đợt 5 hoặc mở provider mới.
+[pilot](../../reports/phase4-pilot.json). Tại thời điểm đóng Đợt 4, điểm bàn giao là review đúng bản này
+và chỉ chuyển đợt sau khi người phụ trách yêu cầu; điều đó nay đã diễn ra với Đợt 5A.
+
+## Cập nhật Đợt 5A — 2026-09-12
+
+Observer đã chuyển sang snapshot theo generation/ETag, tách summary và detail tải lười, giữ player khi polling không đổi và thêm mốc phản hồi exact Result/artifact/revision/segment/time. Mutation artifact/workflow/review đã được tuần tự hóa; sửa workflow bắt buộc `expectedRevision`. Acceptance đạt 171/171 repository tests, 20/20 analysis tests và browser 390/768/1440; summary pilot 6.028 byte so với full context cũ 424.020 byte. Chi tiết tại [đặc tả](PHASE5A-OBSERVER-SPEC.md) và [report](../../reports/phase5a-observer-acceptance.json). Đợt 5A đã đạt acceptance riêng nhưng chưa đóng toàn bộ Đợt 5. Điểm tiếp tục là Đợt 5B; chỉ sau khi vòng feedback exact target và Agent summary được nghiệm thu mới đánh giá chuyển Đợt 6A.
+
+## Cập nhật Đợt 5B — 2026-09-12
+
+Decision của sequence render nay bắt buộc `feedbackTarget` khớp exact Result/artifact revision; segment/time range được kiểm tra biên và resolution dùng `resolvesDecisionIds` append-only. Full/summary context đưa feedback chưa giải quyết trở lại Agent. Production observer chọn và so sánh từng Result, kể cả nhiều Result của cùng revision, và đặt feedback đúng panel/segment. File lock đã xử lý thêm contention `EPERM/EACCES` trên Windows, loại race hiếm từng làm test 5A chập chờn. Acceptance 177/177 + 20/20 + browser ba viewport đã đạt; Đợt 5 được đóng. Một feedback legacy của pilot vẫn được bảo toàn dưới dạng chưa resolve vì hệ thống không suy đoán/backfill quyết định lịch sử.

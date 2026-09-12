@@ -97,6 +97,7 @@ export function buildProductionContext(context) {
         verification: r.verification,
         decisions: context.decisions.filter((d) => d.resultId === r.id),
         reviews: context.reviews.filter((review) => review.target.kind === "result" && review.target.id === r.id),
+        segments: r.data.segments ?? [],
         reusedSegmentIds: (r.data.segments ?? []).filter((s) => s.reusedFrom).map((s) => s.id),
       })),
     };

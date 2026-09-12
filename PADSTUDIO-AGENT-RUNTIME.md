@@ -141,8 +141,8 @@ $artifact | npm run project:artifact -- <project-id> -
 Ghi workflow riêng bằng `project:workflow`. Mỗi item phải có `id`, `title`,
 `purpose`, `status`, `dependsOn`, `skillIds`, `inputReferences`,
 `expectedOutputs`, `outputReferences`, `review` và `approval`. Khi sửa,
-gửi lại snapshot đầy đủ với cùng workflow `id` và `changeReason`; PADStudio tự
-tạo revision kế tiếp.
+gửi lại snapshot đầy đủ với cùng workflow `id`, `expectedRevision` vừa đọc và `changeReason`;
+PADStudio tạo revision kế tiếp. Writer stale phải đọc lại thay vì ghi đè.
 
 ```powershell
 $workflow | npm run project:workflow -- <project-id> -
@@ -455,9 +455,9 @@ kiểu chuyển động, không tự chỉnh tay mức độ. Clip quá ngắn �
 đổi tỷ lệ khung hình, ghép nối hay thêm âm thanh, dùng tiếp `video.reformat`,
 `video.concat` hoặc `audio.overlay` trên kết quả này.
 
-## Ghi quyết định về kết quả
+## Ghi quyết định và phản hồi về kết quả
 
-Chỉ ghi decision khi người dùng đã phản hồi rõ về một result. Chuẩn bị JSON:
+Chỉ ghi Decision khi người dùng đã phản hồi rõ về một Result. Với Result thường:
 
 ```json
 {
@@ -467,18 +467,44 @@ Chỉ ghi decision khi người dùng đã phản hồi rõ về một result. C
 }
 ```
 
-Sau đó truyền trực tiếp qua standard input:
+Với `video.sequence-render`, luôn chuyển mốc người dùng sao chép trong observer thành `feedbackTarget` chính xác:
+
+```json
+{
+  "resultId": "result-...",
+  "outcome": "changes_requested",
+  "note": "Rút ngắn nhịp mở đầu.",
+  "feedbackTarget": {
+    "artifactId": "artifact-...",
+    "revision": 10,
+    "segmentId": "opening",
+    "timeRange": { "startSeconds": 0.25, "endSeconds": 1.5 }
+  }
+}
+```
+
+`segmentId` và `timeRange` là tùy chọn nếu phản hồi áp dụng cho toàn Result, nhưng `artifactId` và `revision` là bắt buộc đối với sequence render. Store sẽ từ chối target không khớp exact Result, segment không tồn tại hoặc range ngoài biên; không tự đổi target sang revision hiện hành.
+
+Khi một Result thay thế đã được người dùng chấp nhận và thực sự xử lý feedback đang chờ, ghi resolution tường minh:
+
+```json
+{
+  "resultId": "result-new",
+  "outcome": "accepted",
+  "note": "Bản mới đã xử lý yêu cầu rút ngắn.",
+  "feedbackTarget": { "artifactId": "artifact-...", "revision": 10 },
+  "resolvesDecisionIds": ["decision-old-feedback"]
+}
+```
+
+Sau đó truyền JSON trực tiếp qua standard input:
 
 ```powershell
 $OutputEncoding = New-Object System.Text.UTF8Encoding($false)
-$decision = '{"resultId":"result-...","outcome":"changes_requested","note":"Giữ bản này nhưng thay câu kết"}'
 $decision | npm run project:decide -- <project-id> -
 ```
 
-`outcome` là `accepted`, `changes_requested` hoặc `rejected`. Khi yêu cầu sửa,
-`note` là bắt buộc. Decision mới được ghi nối tiếp lịch sử; không sửa hay xóa result
-và không ngầm loại result khác. Nếu quyết định làm thay đổi trạng thái tổng thể của
-project, Agent cập nhật checkpoint bằng một hành động riêng.
+`outcome` là `accepted`, `changes_requested` hoặc `rejected`. Khi yêu cầu sửa, `note` là bắt buộc. Chỉ Decision `accepted` được resolve feedback; mỗi feedback chỉ được resolve một lần. Decision được ghi nối tiếp lịch sử, không sửa/xóa Result và không ngầm loại Result khác. Sau khi ghi, đọc lại `project:context --view summary` để xác nhận `pendingFeedback` và cập nhật checkpoint riêng nếu trạng thái tổng thể đã đổi.
 
 ## Ghi checkpoint
 

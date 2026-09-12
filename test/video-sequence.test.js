@@ -1,4 +1,4 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -135,7 +135,10 @@ test("local production renders, reuses unchanged segments, preserves reviews and
   assert.deepEqual(r1.inputArtifacts, [first.id]);
   assert.equal(r1.verification.details.creativeReview, "not_performed");
   assert.ok(r1.data.segments.every((s) => s.reusedFrom === null));
-  await store.recordDecision("demo", { resultId: r1.id, outcome: "accepted", note: "User accepted this exact version." });
+  await store.recordDecision("demo", {
+    resultId: r1.id, outcome: "accepted", note: "User accepted this exact version.",
+    feedbackTarget: { artifactId: first.id, revision: first.revision }
+  });
   const changedDirection = await store.recordArtifact("demo", {
     key: "b-direction", type: "creative.direction", name: "B direction", summary: "Second version",
     data: directionData(brief.id, "Make the explanation precise."), references: [{ kind: "artifact", id: brief.id }],

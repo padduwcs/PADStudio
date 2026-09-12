@@ -22,8 +22,6 @@ const elements = {
 let selectedProjectId = new URLSearchParams(window.location.search).get("project");
 let selectedItemPath = null;
 let renderedPreviewKey = null;
-let contextRequest = null;
-let contextRequestVersion = 0;
 let renderedResultsKey = null;
 
 function renderProjectList(projects) {
@@ -46,10 +44,8 @@ function renderProjectList(projects) {
         window.history.replaceState(null, "", location);
         selectedItemPath = null;
         renderedPreviewKey = null;
-        contextRequest?.abort();
-        clearSourceAnalysis(elements.sourceAnalysis);
-        clearCreativeDirection(elements.creativeDirection);
-        loadProjects().catch((error) => {
+        renderProjectList([...projectsById.values()]);
+        loadSelectedProject(project.generation).catch((error) => {
           if (error.name !== "AbortError") showError(error);
         });
       });
@@ -703,65 +699,186 @@ function renderRuns(context) {
   }));
 }
 
-function renderContext(context) {
-  renderProduction(elements.production, context);
-  renderCreativeDirection(elements.creativeDirection, context);
-  renderSourceAnalysis(elements.sourceAnalysis, context);
+function renderSummary(context) {
   elements.title.textContent = context.project.title;
   elements.projectId.textContent = context.project.id;
   renderCheckpoint(context);
   renderWorkflow(context);
   renderIntelligence(context);
-  renderResources(context);
-  renderResults(context);
-  renderRuns(context);
+}
+
+function sectionPlaceholder(element, label) {
+  element.textContent = `Đang chờ tải ${label} khi cần xem.`;
+  element.classList.add("observer-placeholder");
+}
+
+function clearSectionPlaceholder(element) {
+  element.classList.remove("observer-placeholder");
+}
+
+function renderObserverSection(section, context) {
+  if (section === "source") {
+    clearSectionPlaceholder(elements.sourceAnalysis);
+    renderSourceAnalysis(elements.sourceAnalysis, context);
+  } else if (section === "creative") {
+    clearSectionPlaceholder(elements.creativeDirection);
+    renderCreativeDirection(elements.creativeDirection, context);
+  } else if (section === "production") {
+    clearSectionPlaceholder(elements.production);
+    renderProduction(elements.production, context);
+  } else if (section === "activity") {
+    clearSectionPlaceholder(elements.resourceList);
+    renderResources(context);
+    renderResults(context);
+    renderRuns(context);
+  }
 }
 
 function renderEmpty() {
   clearProduction(elements.production);
   clearSourceAnalysis(elements.sourceAnalysis);
+  clearCreativeDirection(elements.creativeDirection);
   elements.title.textContent = "Chưa chọn project";
   elements.projectId.textContent = "";
   elements.checkpoint.textContent = "Chưa có project nào để quan sát.";
   elements.workflow.textContent = "No active workflow yet.";
   elements.artifactList.textContent = "No active understanding artifact yet.";
   elements.reviewList.replaceChildren();
-  clearCreativeDirection(elements.creativeDirection);
   elements.resourceList.textContent = "Chưa có tư liệu.";
   elements.resultList.textContent = "Chưa có kết quả nào.";
   elements.runList.textContent = "Chưa có lần chạy nào.";
   renderPreview("", null);
 }
 
-async function loadContext() {
+let projectsEtag = null;
+let projectsById = new Map();
+let renderedProjectId = null;
+let renderedGeneration = null;
+let listRequestRunning = false;
+const sectionEtags = new Map();
+const sectionGenerations = new Map();
+const sectionLoads = new Map();
+const sectionControllers = new Map();
+const loadedSections = new Set(["production"]);
+
+function resetProjectSections() {
+  for (const controller of sectionControllers.values()) controller.abort();
+  sectionControllers.clear();
+  sectionEtags.clear();
+  sectionGenerations.clear();
+  sectionLoads.clear();
+  clearProduction(elements.production);
+  clearSourceAnalysis(elements.sourceAnalysis);
+  clearCreativeDirection(elements.creativeDirection);
+  sectionPlaceholder(elements.sourceAnalysis, "khảo sát tư liệu");
+  sectionPlaceholder(elements.creativeDirection, "định hướng sáng tạo");
+  sectionPlaceholder(elements.production, "các phiên bản video");
+  sectionPlaceholder(elements.resourceList, "resources, results và runs");
+  elements.resultList.textContent = "Dữ liệu chi tiết sẽ được tải cùng khu vực Resources.";
+  elements.runList.textContent = "Dữ liệu chi tiết sẽ được tải cùng khu vực Resources.";
+}
+
+async function loadSection(section, requestedGeneration = null) {
+  if (!selectedProjectId) return;
+  const projectId = selectedProjectId;
+  const key = `${projectId}:${section}`;
+  const generation = requestedGeneration ?? projectsById.get(projectId)?.generation ?? null;
+  if (generation && sectionGenerations.get(key) === generation) {
+    loadedSections.add(section);
+    return;
+  }
+  const loadKey = `${key}:${generation ?? "current"}`;
+  if (sectionLoads.has(loadKey)) return sectionLoads.get(loadKey);
+
+  sectionControllers.get(section)?.abort();
+  const controller = new AbortController();
+  sectionControllers.set(section, controller);
+  const promise = (async () => {
+    const headers = {};
+    if (sectionEtags.has(key)) headers["If-None-Match"] = sectionEtags.get(key);
+    const response = await fetch(`/api/projects/${encodeURIComponent(projectId)}/observer/${section}`, {
+      headers,
+      signal: controller.signal
+    });
+    if (response.status === 304) {
+      if (generation) sectionGenerations.set(key, generation);
+      loadedSections.add(section);
+      return;
+    }
+    const body = await response.json();
+    if (selectedProjectId !== projectId) return;
+    if (!response.ok) throw new Error(body.error || `Không thể đọc khu vực ${section}.`);
+    sectionEtags.set(key, response.headers.get("etag"));
+    sectionGenerations.set(key, body.context.generation);
+    loadedSections.add(section);
+    renderedGeneration = body.context.generation;
+    if (section === "summary") renderSummary(body.context);
+    else renderObserverSection(section, body.context);
+  })();
+  sectionLoads.set(loadKey, promise);
+  try {
+    return await promise;
+  } finally {
+    if (sectionLoads.get(loadKey) === promise) sectionLoads.delete(loadKey);
+  }
+}
+async function loadSelectedProject(generation) {
   if (!selectedProjectId) return renderEmpty();
-  const requestedProjectId = selectedProjectId;
-  const version = ++contextRequestVersion;
-  contextRequest?.abort();
-  contextRequest = new AbortController();
-  const response = await fetch(`/api/projects/${encodeURIComponent(requestedProjectId)}`, {
-    signal: contextRequest.signal
-  });
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error || "Không thể đọc project.");
-  if (version !== contextRequestVersion || requestedProjectId !== selectedProjectId) return;
-  renderContext(body.context);
+  const changedProject = renderedProjectId !== selectedProjectId;
+  const changedGeneration = renderedGeneration !== generation;
+  if (!changedProject && !changedGeneration) return;
+  if (changedProject) {
+    renderedProjectId = selectedProjectId;
+    renderedGeneration = null;
+    resetProjectSections();
+  }
+  const sections = new Set(["summary", "production", ...loadedSections]);
+  await Promise.all([...sections].map((section) => loadSection(section, generation)));
 }
 
 async function loadProjects() {
-  const response = await fetch("/api/projects");
-  const body = await response.json();
-  if (!response.ok) throw new Error(body.error || "Không thể đọc danh sách project.");
-  if (!body.projects.some((project) => project.id === selectedProjectId)) {
-    selectedProjectId = body.projects[0]?.id ?? null;
-    selectedItemPath = null;
-    renderedPreviewKey = null;
+  if (listRequestRunning) return;
+  listRequestRunning = true;
+  try {
+    const headers = {};
+    if (projectsEtag) headers["If-None-Match"] = projectsEtag;
+    const response = await fetch("/api/projects", { headers });
+    if (response.status === 304) return;
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.error || "Không thể đọc danh sách project.");
+    projectsEtag = response.headers.get("etag");
+    projectsById = new Map(body.projects.map((project) => [project.id, project]));
+    if (!projectsById.has(selectedProjectId)) {
+      selectedProjectId = body.projects[0]?.id ?? null;
+      selectedItemPath = null;
+      renderedPreviewKey = null;
+    }
+    renderProjectList(body.projects);
+    if (!selectedProjectId) return renderEmpty();
+    await loadSelectedProject(projectsById.get(selectedProjectId).generation);
+  } finally {
+    listRequestRunning = false;
   }
-  renderProjectList(body.projects);
-  await loadContext();
 }
 
-loadProjects().catch((error) => {
-  if (error.name !== "AbortError") showError(error);
-});
-window.setInterval(() => loadProjects().catch(() => {}), 2_000);
+const lazySections = [
+  ["source", elements.sourceAnalysis.closest(".inputs-section")],
+  ["creative", elements.creativeDirection.closest(".inputs-section")],
+  ["activity", elements.resourceList.closest(".inputs-section")],
+];
+const lazyObserver = new IntersectionObserver((entries) => {
+  for (const entry of entries) {
+    if (!entry.isIntersecting || !selectedProjectId) continue;
+    const generation = projectsById.get(selectedProjectId)?.generation;
+    if (!generation) continue;
+    const match = lazySections.find(([, target]) => target === entry.target);
+    if (!match) continue;
+    loadSection(match[0], generation).catch((error) => {
+      if (error.name !== "AbortError") showError(error);
+    });
+  }
+}, { rootMargin: "300px 0px" });
+loadProjects().then(() => {
+  for (const [, target] of lazySections) lazyObserver.observe(target);
+  window.setInterval(() => loadProjects().catch(() => {}), 2_000);
+}).catch(showError);
