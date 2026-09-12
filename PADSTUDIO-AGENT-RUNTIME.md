@@ -518,3 +518,9 @@ import hay cập nhật checkpoint.
 ## Đợt 3 — gói nguyên liệu dùng chung
 
 Theo yêu cầu mở rộng các khả năng phổ biến, gói đầu đã bổ sung graphic.render, audio.prepare và media.acquire qua Executor hiện có. Capability `tts.synthesize` đã có Piper local và ElevenLabs; ElevenLabs bắt buộc plan/authorization credit đúng request. Xem lệnh, cấu hình bí mật và model tiếng Việt trong [TTS-CAPABILITY.md](docs/build/TTS-CAPABILITY.md). Ảnh AI và search stock chưa triển khai.
+
+## Đợt 4 — composition
+
+Sequence 1.1 bổ sung timing, audio, typography, overlays, animation preset,
+transition, music và timeline chỉ đọc. Sequence 1.0 tiếp tục được hỗ trợ.
+Contract và nghiệm thu: [Đợt 4](docs/build/PHASE4-PRODUCTION-SPEC.md).

@@ -1,3 +1,4 @@
+import { segmentMediaSources } from "../production/sequence-composition.js";
 import { randomUUID } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
@@ -129,11 +130,14 @@ export class ProjectIntelligenceStore {
       await this.#assertReferences(projectId, sequenceReferences(data));
       if (status !== "retired") {
         for (const segment of data.segments) {
-          for (const source of [segment.visual?.source, segment.narration?.source].filter(Boolean)) {
+          for (const source of segmentMediaSources(segment)) {
             await this.projectStore.resolveMediaSource(projectId, source);
           }
         }
       }
+    }
+    if (type === SEQUENCE_TYPE && status !== "retired") {
+      for (const track of data.music ?? []) await this.projectStore.resolveMediaSource(projectId, track.source);
     }
     if (SOURCE_ARTIFACT_TYPES.has(type)) {
       await validateSourceArtifactAgainstProject({

@@ -1,3 +1,4 @@
+import { renderComposedSegment, finishComposition } from "./sequence-compositor.js";
 ﻿import { execFile } from "node:child_process";
 import { createReadStream } from "node:fs";
 import { copyFile, lstat, unlink, writeFile } from "node:fs/promises";
@@ -9,7 +10,7 @@ import { buildProductionContext } from "../production/production-context.js";
 import { createFfmpegSubtitleBurner } from "./ffmpeg-subtitle-burner.js";
 
 const execFileAsync = promisify(execFile);
-const VERSION = "1.0.0";
+const VERSION = "1.1.0";
 
 async function digest(path) {
   const hash = createHash("sha256");
@@ -125,12 +126,20 @@ export function createFfmpegSequenceRenderer({
           for (const id of media.inputResources) inputResources.add(id);
           for (const id of media.inputResults) inputResults.add(id);
         }
+        const overlays = [];
+        for (const spec of segment.overlays ?? []) {
+          const media = await store.resolveMediaSource(projectId, spec.source);
+          if (!["image", "video"].includes(media.mediaType)) fail("Overlay requires image/video.");
+          overlays.push({ spec, media, hash: await digest(media.filePath) });
+          for (const id of media.inputResources) inputResources.add(id);
+          for (const id of media.inputResults) inputResults.add(id);
+        }
         const visualHash = await digest(visual.filePath);
         const narrationHash = narration ? await digest(narration.filePath) : null;
         // Cached bytes are only reused after source/spec and output hashes match.
         const key = createHash("sha256").update(JSON.stringify({
           spec: segmentFingerprint(segment, sequence.format), visualHash, narrationHash,
-          references: artifact.references,
+          references: artifact.references, overlayHashes: overlays.map((o) => o.hash),
         })).digest("hex");
         const cached = reuse?.data.segments?.find((s) => s.id === segment.id && s.key === key);
         let cachedMedia = null;
@@ -140,17 +149,25 @@ export function createFfmpegSequenceRenderer({
             if (await digest(media.filePath) === cached.sha256) cachedMedia = { path: media.filePath, resultId: reuse.id, fileId: cached.fileId, sha256: cached.sha256, executableVersion: reuse.verification.details?.executableVersion };
           } catch { /* A missing cache is recomputed from registered original sources. */ }
         }
-        segments.push({ segment, visual, narration, key, visualHash, narrationHash, cachedMedia, index });
+        segments.push({ segment, visual, narration, key, visualHash, narrationHash, cachedMedia, index, overlays });
+      }
+      const music = [];
+      for (const spec of sequence.music ?? []) {
+        const media = await store.resolveMediaSource(projectId, spec.source);
+        if (!["audio", "video"].includes(media.mediaType)) fail("Music requires audio/video.");
+        music.push({ spec, media, hash: await digest(media.filePath) });
+        for (const id of media.inputResources) inputResources.add(id);
+        for (const id of media.inputResults) inputResults.add(id);
       }
       return {
-        runtime: { artifact, sequence, segments, directory: outputWorkspace.temporaryDirectory },
+        runtime: { artifact, sequence, segments, music, directory: outputWorkspace.temporaryDirectory },
         trace: {
           inputResources: [...inputResources], inputResults: [...inputResults], inputArtifacts: [artifact.id],
           directory: outputWorkspace.projectRelativeDirectory, historical: !state.active || state.reasons.length > 0,
         },
       };
     },
-    async execute({ artifact, sequence, segments, directory, availability }) {
+    async execute({ artifact, sequence, segments, music, directory, availability }) {
       const { width, height, fps } = sequence.format;
       const files = [];
       const manifest = [];
@@ -166,6 +183,8 @@ export function createFfmpegSequenceRenderer({
           // The output is re-probed below even after a matching content hash.
           await copyFile(entry.cachedMedia.path, outputPath);
           reusedFrom = { resultId: entry.cachedMedia.resultId, fileId: entry.cachedMedia.fileId };
+        } else if (sequence.version === "1.1") {
+          await renderComposedSegment({ entry, sequence, directory, outputPath, command, probe, ffmpegCommand });
         } else {
           const vp = await probe(visual.filePath);
           if (!vp.video) fail("Visual source has no video stream.");
@@ -215,6 +234,7 @@ export function createFfmpegSequenceRenderer({
         // Detect source modification during a render; never commit a mislabeled dependency.
         if (await digest(visual.filePath) !== entry.visualHash ||
           (narration && await digest(narration.filePath) !== entry.narrationHash)) fail("Source changed during rendering.", "source_changed");
+        for (const overlay of entry.overlays) if (await digest(overlay.media.filePath) !== overlay.hash) fail("Overlay changed during rendering.", "source_changed");
         files.push({ id: "segment-" + index, role: "segment", name: fileName, mediaType: "video", sizeBytes: checked.sizeBytes });
         // Review one representative frame per segment. These are evidence, not an aesthetic verdict.
         const frameName = "frame-" + index + ".png";
@@ -223,21 +243,39 @@ export function createFfmpegSequenceRenderer({
         if (!frameInfo.isFile() || !frameInfo.size) fail("Review frame was not produced.", "invalid_output");
         files.push({ id: "frame-" + index, role: "review-frame", name: frameName, mediaType: "image", sizeBytes: frameInfo.size });
         manifest.push({ id: segment.id, key, fileId: "segment-" + index, frameFileId: "frame-" + index, startSeconds, durationSeconds: segment.durationSeconds,
-          sha256: checked.sha256, sourceHashes: { visual: entry.visualHash, narration: entry.narrationHash }, reusedFrom });
-        startSeconds += segment.durationSeconds;
+          sha256: checked.sha256, sourceHashes: { visual: entry.visualHash, narration: entry.narrationHash, overlays: entry.overlays.map((o) => o.hash) }, reusedFrom });
+        startSeconds += segment.durationSeconds - (segment.transition?.durationSeconds ?? 0);
       }
-      const listPath = join(directory, "segments.txt");
-      await writeFile(listPath, manifest.map((s) => "file '" + files.find((f) => f.id === s.fileId).name + "'").join("\n"), "utf8");
       const finalPath = join(directory, "preview.mp4");
-      // Relative generated names only; no request-controlled ffconcat paths.
-      await command(ffmpegCommand, ["-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "1", "-i", listPath,
-        "-c", "copy", "-movflags", "+faststart", "-y", finalPath], { cwd: directory });
-      await unlink(listPath);
+      if (sequence.version === "1.1") {
+        startSeconds = await finishComposition({ sequence, segments, music, directory, finalPath, command, probe, ffmpegCommand });
+      } else {
+        const listPath = join(directory, "segments.txt");
+        await writeFile(listPath, manifest.map((s) => "file '" + files.find((f) => f.id === s.fileId).name + "'").join("\n"), "utf8");
+        await command(ffmpegCommand, ["-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "1", "-i", listPath,
+          "-c", "copy", "-movflags", "+faststart", "-y", finalPath], { cwd: directory });
+        await unlink(listPath);
+      }
+      for (const track of music) if (await digest(track.media.filePath) !== track.hash) fail("Music changed during rendering.", "source_changed");
+      for (const entry of segments) {
+        for (const [media, expected] of [[entry.visual, entry.visualHash], [entry.narration, entry.narrationHash], ...entry.overlays.map((o) => [o.media, o.hash])]) {
+          if (media && await digest(media.filePath) !== expected) fail("Source changed before finalization.", "source_changed");
+        }
+      }
       const checked = await validateVideo(finalPath, startSeconds, sequence.format);
+      let audioMeasurement = null;
+      if (sequence.version === "1.1") {
+        const measurement = await command(ffmpegCommand, ["-hide_banner", "-i", finalPath, "-vn", "-af", "loudnorm=I=-18:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"]);
+        const block = measurement.stderr?.match(/\{[^{}]*"input_i"[^{}]*\}/s)?.[0];
+        if (!block) fail("Audio measurement missing.", "invalid_output");
+        const m = JSON.parse(block);
+        const finite = (v) => Number.isFinite(Number(v)) ? Number(v) : null;
+        audioMeasurement = { integratedLufs: finite(m.input_i), truePeakDbtp: finite(m.input_tp), loudnessRange: finite(m.input_lra), targetLufs: sequence.audio.loudnessTargetLufs, note: "Measured technical levels; human listening still required." };
+      }
       files.unshift({ id: "primary", role: "primary", name: "preview.mp4", mediaType: "video", sizeBytes: checked.sizeBytes });
       return { files, manifest, durationSeconds: checked.durationSeconds, sha256: checked.sha256, actualCostUsd: 0,
         verification: { status: "passed", checks: ["registered_sources_resolved", "source_hashes_stable", "segment_streams_and_duration", "preview_streams_and_duration", "review_frames_present"],
-          details: { executableVersion: availability.executableVersion, creativeReview: "not_performed", speechContentReview: "not_performed",
+          details: { executableVersion: availability.executableVersion, audioMeasurement, creativeReview: "not_performed", speechContentReview: "not_performed",
             subtitleVisualReview: "not_performed", audioMixReview: "not_performed", needsReview: ["Watch full preview including cuts and captions", "Listen to narration and source mix", "Compare against segment intent and brief"] } } };
     },
     createResult({ prepared, execution }) {

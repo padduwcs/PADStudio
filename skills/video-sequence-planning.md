@@ -6,7 +6,7 @@ product artifact, not a workflow or a required pipeline. Keep tiny media tasks s
 1. Read the active brief, direction and production context. Inspect actual source media.
 2. Give each segment a stable ID, a purpose and frame-aligned duration. Keep unrelated
    segments separate so that local revisions can be compared and reused.
-3. Write video.sequence version 1.0 via project:sequence. See
+3. Write video.sequence version 1.0 for existing simple projects or 1.1 for composition via project:sequence. See
    docs/build/VIDEO-SEQUENCE-PRODUCTION.md for the complete contract.
 4. Attach brief/direction references only where they are relevant: segment.references for
    local evidence; artifact.references for global evidence. Keep local references in their
@@ -29,9 +29,13 @@ product artifact, not a workflow or a required pipeline. Keep tiny media tasks s
 10. Ask for user feedback in chat. Record a decision for the exact render result only.
     A new artifact revision or render never inherits an older approval.
 
-The first adapter uses local FFmpeg: ordered image/video segments, fit-with-padding,
-source audio plus one optional narration track per segment, plain timed captions, cuts.
-It pads shorter narration with silence and refuses to cut off longer narration. It does
-not offer generated speech, transitions, music buses, arbitrary compositions or paid calls.
-An existing composed clip can be used as a segment source. Keep source media and authored
-intent independent of the renderer. Do not hand-edit stored result/run JSON.
+The local adapter supports ordered segments and version 1.1 composition. See
+`docs/build/PHASE4-PRODUCTION-SPEC.md` for timings, styles, overlays, transitions and music.
+Source startSeconds is a source offset; narration.offsetSeconds is placement in the segment.
+Explicit narration.durationSeconds trims audio deliberately; absent duration keeps the entire
+remaining source and rejects overflow. Do not overlap two spoken voices unless requested.
+Music is mixed after segment rendering; a music-only change can reuse segment video.
+Transition overlap shortens the final sequence and shifts subsequent segments and music alignment.
+Review the observer timeline and full preview. It is read-only and does not update the project.
+Graphic typography and caption typography use explicit supported local font families. Never
+claim font portability or artistic approval from technical layout checks alone.

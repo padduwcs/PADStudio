@@ -284,3 +284,12 @@ khai. Ưu tiên tiếp theo là Đợt 4 dựa trên ma sát của một workflo
 provider theo số lượng. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md),
 [TTS-CAPABILITY.md](./TTS-CAPABILITY.md) và
 [báo cáo pilot](../../reports/phase3-vd04-pilot-acceptance.json).
+
+## Đợt 4 — composition, 2026-09-12
+
+Theo phạm vi người dùng đã duyệt, sequence 1.1 bổ sung timing/audio, typography,
+layer hình, animation preset, transition và music. Web có timeline quan sát/seek,
+không có kéo thả mutation. Phiên bản 1.0 được giữ; schema 1.1 không phụ thuộc
+filter FFmpeg. Phần được triển khai và giới hạn được ghi trong
+[PHASE4-PRODUCTION-SPEC.md](PHASE4-PRODUCTION-SPEC.md). Pilot sửa từ phản hồi thực
+đang chờ human review; technical acceptance không thay thế user approval.

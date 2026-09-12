@@ -1,0 +1,19 @@
+{
+  "status": "technical_pass_human_review_pending",
+  "projectId": "phase3-vd04-asset-pilot",
+  "baselineResultId": "result-mtxaw6zq-5779e7b0",
+  "artifactId": "artifact-mtxwm5m6-97aa0286",
+  "resultId": "result-mtxwm791-d9384eff",
+  "preview": "D:\\Current_Projects\\PADStudio\\.padstudio\\projects\\phase3-vd04-asset-pilot\\outputs\\run-mtxwm5m7-84491792\\preview.mp4",
+  "graphic": "D:\\Current_Projects\\PADStudio\\.padstudio\\projects\\phase3-vd04-asset-pilot\\outputs\\run-mtxwm599-c041ec44\\graphic.png",
+  "durationSeconds": 8,
+  "audioMeasurement": {
+    "integratedLufs": -17.57,
+    "truePeakDbtp": -4.88,
+    "loudnessRange": 6.5,
+    "targetLufs": null,
+    "note": "Measured technical levels; human listening still required."
+  },
+  "paidProviderCalls": 0,
+  "userApproval": false
+}

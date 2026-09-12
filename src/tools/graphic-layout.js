@@ -1,7 +1,7 @@
 import { object, number, text, fail } from "./asset-tool-common.js";
 
 export function normalizeGraphic(inputs) {
-  object(inputs, ["kind", "title", "body", "items", "steps", "width", "height", "theme", "accent", "footer", "artifactIds"]);
+  object(inputs, ["kind", "title", "body", "items", "steps", "width", "height", "theme", "accent", "footer", "artifactIds", "typography"]);
   if (!["card", "bar-chart", "steps"].includes(inputs.kind)) fail("kind must be card, bar-chart or steps.");
   const width = number(inputs.width, "width", 320, 3840, 1280);
   const height = number(inputs.height, "height", 320, 3840, 720);
@@ -28,6 +28,14 @@ export function normalizeGraphic(inputs) {
     if (!Array.isArray(inputs.steps) || inputs.steps.length < 2 || inputs.steps.length > 6) fail("Steps graphic requires 2–6 labels.");
     result.steps = inputs.steps.map((item) => text(item, "step", 240));
   }
+  if (inputs.typography !== undefined) {
+    object(inputs.typography, ["font", "titleWeight", "lineSpacing"], "typography");
+    const font = inputs.typography.font ?? "Segoe UI";
+    if (!["Segoe UI", "Arial", "Tahoma", "Verdana"].includes(font)) fail("Unsupported typography font.");
+    const titleWeight = inputs.typography.titleWeight ?? 600;
+    if (![400, 500, 600, 700].includes(titleWeight)) fail("Unsupported title weight.");
+    result.typography = { font, titleWeight, lineSpacing: number(inputs.typography.lineSpacing, "lineSpacing", 1, 2, 1.4) };
+  }
   const artifactIds = inputs.artifactIds ?? [];
   if (!Array.isArray(artifactIds) || artifactIds.length > 20 || artifactIds.some((id) => typeof id !== "string" || !/^artifact-[a-z0-9-]+$/i.test(id)) ||
       new Set(artifactIds).size !== artifactIds.length) fail("artifactIds must be up to 20 unique registered IDs.");
@@ -51,7 +59,7 @@ export function paintGraphic(spec) {
   ctx.textBaseline = "top";
   function drawText(text, x, y, width, height, maximum, minimum, color, weight = 400) {
     for (let size = Math.round(maximum); size >= Math.ceil(minimum); size--) {
-      ctx.font = weight + " " + size + 'px "Segoe UI", Arial, sans-serif';
+      ctx.font = weight + " " + size + 'px "' + (spec.typography?.font ?? "Segoe UI") + '", Arial, sans-serif';
       const lines = [];
       for (const paragraph of text.split("\n")) {
         let line = "";
@@ -65,7 +73,7 @@ export function paintGraphic(spec) {
         if (line === null) { lines.length = 0; break; }
         lines.push(line);
       }
-      const lineHeight = size * 1.32;
+      const lineHeight = size * (spec.typography?.lineSpacing ?? 1.32);
       if (!lines.length || lines.length * lineHeight > height) continue;
       ctx.fillStyle = color;
       lines.forEach((line, i) => ctx.fillText(line, x, y + i * lineHeight));
@@ -74,7 +82,7 @@ export function paintGraphic(spec) {
     }
     throw new Error("Text does not fit at readable size; shorten text or enlarge the graphic.");
   }
-  drawText(spec.title, margin, margin, w - margin * 2, h * 0.19, 52 * scale, 28 * scale, foreground, 700);
+  drawText(spec.title, margin, margin, w - margin * 2, h * 0.19, 52 * scale, 28 * scale, foreground, spec.typography?.titleWeight ?? 700);
   const top = margin + h * 0.22;
   const footerHeight = spec.footer ? Math.max(48 * scale, h * 0.065) : 0;
   const bottom = h - margin - footerHeight;
@@ -119,7 +127,7 @@ export function paintGraphic(spec) {
     });
   }
   if (spec.footer) drawText(spec.footer, margin, bottom + 12 * scale, areaWidth, footerHeight - 12 * scale, 21 * scale, 15 * scale, muted);
-  return { status: "passed", width: w, height: h, blocks, fontFamily: "Segoe UI, Arial, sans-serif" };
+  return { status: "passed", width: w, height: h, blocks, fontFamily: (spec.typography?.font ?? "Segoe UI") + ", Arial, sans-serif" };
 }
 
 export function graphicHtml(spec) {

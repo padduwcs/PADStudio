@@ -15,7 +15,7 @@ export async function findGraphicBrowser(configured = process.env.PADSTUDIO_BROW
 
 export function createBrowserGraphicRenderer({ browserPath, executeCommand = command } = {}) {
   return {
-    name: "browser-graphic", version: "1.0.0", provider: "Local browser", capability: "graphic.render",
+    name: "browser-graphic", version: "1.1.0", provider: "Local browser", capability: "graphic.render",
     description: "Tạo PNG từ thẻ chữ, biểu đồ cột hoặc sơ đồ bước; giữ văn bản/số liệu và từ chối khi không đủ chỗ.",
     runtime: "local-browser", executionMode: "sync", producesFiles: true, approvalRequired: false,
     sideEffects: ["Tạo PNG trong output project, chạy browser headless với profile tạm riêng."], cost: { currency: "USD", estimated: 0 },
@@ -29,6 +29,7 @@ export function createBrowserGraphicRenderer({ browserPath, executeCommand = com
       width: { type: "integer", minimum: 320, maximum: 3840, multipleOf: 2, default: 1280 },
       height: { type: "integer", minimum: 320, maximum: 3840, multipleOf: 2, default: 720 },
       theme: { enum: ["dark", "light"], default: "dark" }, accent: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
+      typography: { type: "object", additionalProperties: false, properties: { font: { enum: ["Segoe UI", "Arial", "Tahoma", "Verdana"] }, titleWeight: { enum: [400,500,600,700] }, lineSpacing: { type: "number", minimum: 1, maximum: 2 } } },
       footer: { type: "string", maxLength: 240 }, artifactIds: { type: "array", maxItems: 20, uniqueItems: true, items: { type: "string" } }
     } },
     async checkAvailability() {

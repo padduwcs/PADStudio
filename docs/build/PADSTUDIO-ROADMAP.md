@@ -84,3 +84,11 @@ khép project không còn blocker. ElevenLabs cloud thật chưa được gọi 
 ảnh AI và search stock chưa triển khai vì chưa có nhu cầu pilot bắt buộc. Đợt 3 được xem là hoàn
 thành ở phạm vi practical-local này. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md),
 [TTS-CAPABILITY.md](./TTS-CAPABILITY.md) và [báo cáo pilot](../../reports/phase3-vd04-pilot-acceptance.json).
+
+## Cập nhật 2026-09-12 — Đợt 4
+
+Phạm vi composition được duyệt đã có implementation và bộ acceptance riêng:
+[đặc tả](PHASE4-PRODUCTION-SPEC.md). Nghiệm thu kỹ thuật và trạng thái pilot nằm
+trong reports/phase4-production-acceptance.json và reports/phase4-pilot.json.
+Bản sửa đang chờ người dùng review; chưa đóng creative acceptance hoặc chuyển
+sang đợt tiếp theo tự động.

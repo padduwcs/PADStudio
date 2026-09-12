@@ -48,3 +48,15 @@ Chuyển sang **Đợt 4 — dựng hình và âm thanh**, nhưng bắt đầu b
 3. Ghi ma sát thực tế về timing, text/subtitle, bố cục, chuyển cảnh, audio ducking/mix và sửa cục bộ.
 4. Chỉ triển khai capability dựng còn thiếu đã được pilot chứng minh.
 5. Nghiệm thu bằng exact Result, review có bằng chứng, recovery/freshness và browser observer.
+
+## Cập nhật Đợt 4 — 2026-09-12
+
+Đã triển khai sequence 1.1 và renderer composition: timing lời đọc, automation
+âm thanh, music/ducking/loudness, caption style, overlay, animation preset,
+transition và timeline quan sát. Chi tiết trong [đặc tả](PHASE4-PRODUCTION-SPEC.md).
+Bản sửa Piper giữ hình nguồn 4 giây và graphic 4 giây, tắt tiếng gốc; bản cũ còn
+nguyên. Phản hồi user đã ghi vào project. Bản mới chờ người dùng nghe/xem, không
+kế thừa approval. Trạng thái kiểm tra cuối nằm ở
+[report](../../reports/phase4-production-acceptance.json) và
+[pilot](../../reports/phase4-pilot.json). Ưu tiên tiếp theo là review đúng bản này
+và sửa finding cụ thể; chưa tự chuyển sang Đợt 5 hoặc mở provider mới.

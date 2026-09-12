@@ -15,6 +15,7 @@ function compareRevisions(before, after) {
   const formatChanged = JSON.stringify(before.format) !== JSON.stringify(after.format);
   return {
     globalReferencesChanged: JSON.stringify(before.references) !== JSON.stringify(after.references),
+    mixChanged: JSON.stringify([before.music, before.audio]) !== JSON.stringify([after.music, after.audio]),
     segments: after.segments.map((segment, index) => {
       const oldIndex = before.segments.findIndex((s) => s.id === segment.id);
       const old = before.segments[oldIndex];
@@ -25,6 +26,34 @@ function compareRevisions(before, after) {
     removed: before.segments.filter((s) => !after.segments.some((current) => current.id === s.id)).map((s) => s.id),
   };
 }
+function timelinePanel(sequence, video) {
+  const box = node("section", undefined, "composition-timeline");
+  box.setAttribute("aria-label", "Timeline quan sát");
+  box.append(node("h5", "Timeline · chỉ quan sát"));
+  box.append(node("p", "Chọn một khoảng để xem. Yêu cầu chỉnh sửa trong chat.", "input-meta"));
+  const duration = sequence.durationSeconds;
+  const seek = node("input"); seek.type = "range"; seek.min = "0"; seek.max = String(duration); seek.step = String(1 / sequence.format.fps); seek.value = "0";
+  seek.setAttribute("aria-label", "Vị trí xem video"); seek.disabled = !video;
+  const time = node("output", "0.00 / " + duration.toFixed(2) + " s");
+  seek.addEventListener("input", () => { if (video) video.currentTime = Number(seek.value); time.textContent = Number(seek.value).toFixed(2) + " / " + duration.toFixed(2) + " s"; });
+  if (video) video.addEventListener("timeupdate", () => { seek.value = String(video.currentTime); time.textContent = video.currentTime.toFixed(2) + " / " + duration.toFixed(2) + " s"; });
+  box.append(seek, time);
+  const rows = sequence.timeline ?? [];
+  for (const track of [...new Set(rows.map((r) => r.track))]) {
+    const row = node("div", undefined, "timeline-row"); row.append(node("span", track, "timeline-label"));
+    const lane = node("div", undefined, "timeline-lane");
+    for (const item of rows.filter((r) => r.track === track)) {
+      const label = item.label + " · " + item.startSeconds.toFixed(2) + "–" + item.endSeconds.toFixed(2) + "s" + (item.estimatedEnd ? " (giới hạn dự kiến; chưa đo lời đọc)" : "");
+      const bar = node("button", item.label, "timeline-bar"); bar.type = "button"; bar.title = label; bar.setAttribute("aria-label", label); bar.disabled = !video;
+      bar.style.left = (100 * item.startSeconds / duration) + "%";
+      bar.style.width = (100 * (item.endSeconds - item.startSeconds) / duration) + "%";
+      bar.addEventListener("click", () => { if (video) { video.currentTime = item.startSeconds; seek.value = String(item.startSeconds); } });
+      lane.append(bar);
+    }
+    row.append(lane); box.append(row);
+  }
+  return box;
+}
 function revisionPanel(context, sequence, baseline = null) {
   const changes = baseline ? compareRevisions(baseline, sequence) : sequence.changes;
   const panel = node("article", undefined, "sequence-panel");
@@ -32,15 +61,18 @@ function revisionPanel(context, sequence, baseline = null) {
   panel.append(node("h4", sequence.name + " · r" + sequence.revision + " · " + stateLabel));
   panel.append(node("p", sequence.changeReason));
   panel.append(node("p", baseline ? "Thay đổi so với r" + baseline.revision : "Thay đổi so với revision trước", "input-meta"));
+  if (changes.mixChanged) panel.append(node("p", "Nhạc hoặc cấu hình mix đã thay đổi; cần nghe lại bản dựng cuối.", "sequence-warning"));
   if (changes.globalReferencesChanged) panel.append(node("p", "Bối cảnh chung của video đã thay đổi; cần xem lại toàn bản dựng.", "sequence-warning"));
   panel.append(node("p", sequence.durationSeconds + " giây · " + sequence.format.width + "×" + sequence.format.height, "input-meta"));
   const dependencies = sequence.reasons.filter((reason) => !(reason.kind === "artifact" && reason.id === sequence.artifactId && reason.reason === "not_active_revision"));
   if (dependencies.length) panel.append(node("p", "Có " + dependencies.length + " phụ thuộc cần xem lại. Phiên bản cũ vẫn được giữ; trao đổi với Agent trước khi dùng tiếp.", "sequence-warning"));
   const render = sequence.renders.at(-1);
+  let previewVideo = null;
   if (render) {
     const primary = render.files.find((f) => f.id === "primary");
     if (primary?.available) {
       const video = node("video", undefined, "result-video");
+      previewVideo = video;
       video.controls = true;
       video.preload = "metadata";
       video.src = fileUrl(context.project.id, render.resultId, primary.id);
@@ -51,6 +83,7 @@ function revisionPanel(context, sequence, baseline = null) {
     panel.append(node("p", label + " cho bản dựng này. Kiểm tra kỹ thuật không thay thế việc xem/nghe.", "input-meta"));
     for (const review of render.reviews) panel.append(node("p", review.perspective + " · " + review.verdict + " — " + review.summary));
   } else panel.append(node("p", "Chưa có bản dựng cho phiên bản này.", "empty-note"));
+  panel.append(timelinePanel(sequence, previewVideo));
   const strip = node("div", undefined, "sequence-strip");
   for (const segment of sequence.segments) {
     const card = node("article", undefined, "sequence-segment");

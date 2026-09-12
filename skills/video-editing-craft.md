@@ -17,3 +17,14 @@ Choosing how to assemble clips, layer added audio, or burn captions — not just
 ## Standard
 
 Judge by watching and listening at natural playback speed, not by checking numbers alone. Ducking that leaves music inaudible, or loud enough to fight the speech, both fail regardless of the configured level.
+
+## Sequence 1.1
+
+Treat narration, original speech and music as separate roles. Mute original speech over
+replacement narration unless the user intentionally wants both. Use source volumeRanges
+for exact intervals and fades for boundaries. Place narration with offsetSeconds; inspect
+silence after it ends instead of leaving quiet original speech unintentionally exposed.
+Use music ducking against the foreground mix and measure final loudness, then listen.
+Use a consistent caption style and simple entrance/exit animation only when it helps reading.
+Do not animate charts or screenshots by default. Transitions overlap adjacent segments;
+check the shortened timeline before aligning music or deciding caption durations.

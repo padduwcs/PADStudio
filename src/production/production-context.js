@@ -1,4 +1,5 @@
-﻿import { SEQUENCE_TYPE, compareSequences, sequenceReferences } from "./video-sequence.js";
+import { SEQUENCE_TYPE, compareSequences, sequenceReferences } from "./video-sequence.js";
+import { segmentMediaSources, sequenceDuration, compositionTimeline } from "./sequence-composition.js";
 
 export function buildProductionContext(context) {
   const artifacts = new Map(context.artifacts.map((a) => [a.id, a]));
@@ -22,7 +23,7 @@ export function buildProductionContext(context) {
     }
     return [];
   }
-  const mediaDependencies = (segment) => [segment.visual?.source, segment.narration?.source].filter(Boolean);
+  const mediaDependencies = segmentMediaSources;
   function reasons(ref, trail = new Set()) {
     const key = ref.kind + ":" + ref.id;
     if (memo.has(key)) return memo.get(key);
@@ -40,6 +41,7 @@ export function buildProductionContext(context) {
       }
       const dependencies = [...a.references, ...(a.type === SEQUENCE_TYPE ? sequenceReferences(a.data) : [])];
       found.push(...dependencies.flatMap((r) => reasons(r, nextTrail)));
+      if (a.type === SEQUENCE_TYPE) found.push(...(a.data.music ?? []).flatMap((m) => mediaReasons(m.source)));
       if (a.type === SEQUENCE_TYPE) found.push(...a.data.segments.flatMap((s) => mediaDependencies(s).flatMap(mediaReasons)));
     } else if (ref.kind === "result") {
       const r = results.get(ref.id);
@@ -69,11 +71,12 @@ export function buildProductionContext(context) {
       artifactId: a.id, key: a.key, revision: a.revision, name: a.name, status: a.status,
       active: active.get(a.key)?.id === a.id, changeReason: a.data.changeReason, format: a.data.format,
       references: a.references,
-      durationSeconds: a.data.segments.reduce((sum, s) => sum + s.durationSeconds, 0),
+      durationSeconds: sequenceDuration(a.data), timeline: compositionTimeline(a.data), music: a.data.music ?? [], audio: a.data.audio ?? null,
       segments: a.data.segments.map((s) => ({ ...s,
         reasons: [...[...a.references, ...sequenceReferences({ segments: [s] })].flatMap((ref) => reasons(ref)),
           ...mediaDependencies(s).flatMap(mediaReasons)],
         blockers: [
+        ...((s.overlays ?? []).some((o) => mediaReasons(o.source).length) ? ["missing_overlay_media"] : []),
         ...(!s.visual ? ["missing_visual"] : mediaReasons(s.visual.source).length ? ["missing_visual_media"] : []),
         ...(s.narration && (!s.narration.source || mediaReasons(s.narration.source).length) ? ["missing_narration_audio"] : []),
       ] })),

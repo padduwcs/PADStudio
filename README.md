@@ -293,3 +293,9 @@ npm run tts:acceptance
 npm run assets:acceptance
 npm run creative:acceptance
 ```
+
+## Đợt 4 — composition
+
+Sequence 1.1 bổ sung timing, audio, typography, overlays, animation preset,
+transition, music và timeline chỉ đọc. Sequence 1.0 tiếp tục được hỗ trợ.
+Contract và nghiệm thu: [Đợt 4](docs/build/PHASE4-PRODUCTION-SPEC.md).

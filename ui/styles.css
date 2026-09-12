@@ -1450,3 +1450,15 @@ h3 {
 }
 
 .result-audio { width: 100%; margin-block: 0.75rem; }
+
+/* Read-only composition timeline; empty spaces remain visible. */
+.composition-timeline { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border, #334155); border-radius: 12px; min-width: 0; }
+.composition-timeline input[type=range] { width: 100%; }
+.composition-timeline output { display: block; font-variant-numeric: tabular-nums; margin-bottom: .6rem; }
+.timeline-row { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: .5rem; margin: .4rem 0; align-items: center; }
+.timeline-label { font-size: .75rem; overflow-wrap: anywhere; }
+.timeline-lane { position: relative; height: 34px; background: #182233; border-radius: 4px; overflow: hidden; }
+.timeline-bar { position: absolute; top: 2px; height: 30px; min-width: 0; padding: 2px 5px; border: 1px solid #84b9dd; background: #285376; color: #fff; border-radius: 4px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; font-size: .7rem; }
+.timeline-bar:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+.timeline-bar:disabled { cursor: default; opacity: .65; }
+@media(max-width: 500px) { .composition-timeline { padding: .5rem; } .timeline-row { grid-template-columns: 65px minmax(0, 1fr); } }
