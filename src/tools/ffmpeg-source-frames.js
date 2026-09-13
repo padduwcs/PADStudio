@@ -22,6 +22,14 @@ import {
   writeJsonLines
 } from "./source-analysis-common.js";
 
+export function sampledCoverageIntervals(rows, range) {
+  return rows.map((row) => {
+    const startSeconds = Math.max(range.startSeconds, Math.min(range.endSeconds, row.actualTime));
+    const endSeconds = Math.min(range.endSeconds, startSeconds + 0.001);
+    return { startSeconds, endSeconds };
+  }).filter((interval) => interval.endSeconds > interval.startSeconds);
+}
+
 const GLYPHS = {
   "0":["111","101","101","101","111"], "1":["010","110","010","010","111"],
   "2":["111","001","111","100","111"], "3":["111","001","111","001","111"],
@@ -356,7 +364,7 @@ export function createFfmpegSourceFrames({ ffmpegCommand = process.env.PADSTUDIO
 
     createResult({ prepared, execution }) {
       const runtime = prepared.runtime;
-      const intervals = runtime.image ? [] : execution.rows.map((row) => ({ startSeconds: row.actualTime, endSeconds: Math.min(runtime.range.endSeconds, row.actualTime + 0.001) })).filter((range) => range.endSeconds > range.startSeconds);
+      const intervals = runtime.image ? [] : sampledCoverageIntervals(execution.rows, runtime.range);
       const omittedPreview = execution.omissions.slice(0, 100);
       const omissionsTruncated = execution.omissions.length > omittedPreview.length;
       return { type: "source.frames", name: `Khung hình: ${prepared.trace.sourceName}`, inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults, files: execution.files, data: { coverage: runtime.image ? { mode: "full_image" } : { ...runtime.range, mode: "sampled", intervals }, outcome: "produced", counts: { frames: execution.rows.length, contactSheets: execution.pages.length, omittedShots: execution.omissions.length }, datasets: [{ kind: "frames", fileId: "frames" }, ...(execution.omissions.length ? [{ kind: "frame-omissions", fileId: "omissions" }] : [])], warnings: execution.omissions.length ? [{ code: "frame_budget_omitted_shots", message: "Frame budget không phủ mọi shot; xem dataset omissions để biết đầy đủ range chưa lấy mẫu.", count: execution.omissions.length, datasetFileId: "omissions" }] : [], contentReview: "not_performed", details: { contactSheets: execution.pages, omittedShotIds: omittedPreview.map((entry) => entry.shotId), unsampledRanges: omittedPreview.map(({ startSeconds, endSeconds }) => ({ startSeconds, endSeconds })), omissionsTruncated } }, verification: execution.verification };

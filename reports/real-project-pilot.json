@@ -48,13 +48,41 @@
     }
   },
   "exactOutputQualityEvidence": {
-    "analysisJobId": "analysis-mtzsruf1-f91a63d6",
+    "qualityResultId": "result-mtzwel2w-3dd8a50a",
+    "analysisJobId": "analysis-mtzwekcd-43d08765",
     "audioResultId": "result-mtzsrv1z-d2c7c1c1",
-    "transcriptResultId": "result-mtzsrz64-c05c25a0"
+    "transcriptResultId": "result-mtzsrz64-c05c25a0",
+    "framesResultId": "result-mtzw186q-357137fc",
+    "gate": {
+      "status": "passed_with_notes",
+      "deliveryEligible": true,
+      "failedCheckIds": []
+    },
+    "metrics": {
+      "durationSeconds": 9.821,
+      "frames": 3,
+      "contactSheets": 1,
+      "clippingCandidates": 0,
+      "integratedLufs": -16.7,
+      "transcript": {
+        "segments": 1,
+        "words": 29,
+        "firstWordStartSeconds": 0.24,
+        "lastWordEndSeconds": 9.36,
+        "finalWord": {
+          "text": " lệ.",
+          "startSeconds": 9.18,
+          "endSeconds": 9.36,
+          "score": 0.99951171875
+        }
+      },
+      "speechLeadSeconds": 0.24,
+      "speechTailSeconds": 0.461
+    }
   },
   "userApproval": true,
   "approvalDecisionId": "decision-mtzswrzy-57d409a2",
   "deliveryCreated": true,
-  "deliveryResultId": "result-mtzswyx2-5fe1c724",
+  "deliveryResultId": "result-mtzwelfe-ebf48d25",
   "next": "Pilot complete."
 }

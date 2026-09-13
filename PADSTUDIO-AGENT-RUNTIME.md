@@ -506,6 +506,26 @@ $decision | npm run project:decide -- <project-id> -
 
 `outcome` là `accepted`, `changes_requested` hoặc `rejected`. Khi yêu cầu sửa, `note` là bắt buộc. Chỉ Decision `accepted` được resolve feedback; mỗi feedback chỉ được resolve một lần. Decision được ghi nối tiếp lịch sử, không sửa/xóa Result và không ngầm loại Result khác. Sau khi ghi, đọc lại `project:context --view summary` để xác nhận `pendingFeedback` và cập nhật checkpoint riêng nếu trạng thái tổng thể đã đổi.
 
+## Kiểm tra exact output trước delivery
+
+Sau khi có `video.sequence-render` cuối cùng, tạo QA bằng JSON qua standard input:
+
+```powershell
+$qa = @{
+  resultId = "result-..."
+  profileId = "spoken-video-v1"
+  language = "vi"
+  reuse = "verified"
+} | ConvertTo-Json
+$qa | npm run quality:inspect -- <project-id> -
+```
+
+Dùng `nonverbal-video-v1` khi sản phẩm không kỳ vọng lời nói. Chỉ tiếp tục
+`video.export-delivery` khi Result `video.output-quality` của đúng render có
+`gate.deliveryEligible: true`. Không tự sửa report, không dùng QA của render khác và
+không mô tả contact sheet/ASR là human viewing/listening. Delivery sẽ tự từ chối khi
+thiếu QA, QA fail, evidence hỏng hoặc checksum exact render đã đổi.
+
 ## Ghi checkpoint
 
 Agent chắt lọc bối cảnh có ý nghĩa vào một file JSON tạm, ví dụ:

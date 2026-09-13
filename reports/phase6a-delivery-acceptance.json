@@ -1,23 +1,23 @@
 {
   "version": "1.0",
   "phase": "6A",
-  "checkedAt": "2026-09-13T12:48:17.377Z",
+  "checkedAt": "2026-09-13T14:21:19.104Z",
   "status": "passed_with_documented_limits",
   "checks": {
     "repository": {
       "status": "passed",
-      "output": "s without output on invalid sources (3592.3662ms)\n✔ narration is explicit, long audio is rejected, and source-byte changes invalidate segment reuse (2283.7044ms)\n✔ an executor finalization failure preserves sequence media and is recoverable without rendering twice (472.6968ms)\n✔ many frame-aligned short segments preserve the requested total duration (2250.6074ms)\n✔ missing selected folder media is visible on the segment and historical sequence can still be retired (43.268ms)\n✔ video toolkit chains concat, reformat and thumbnail into a durable pipeline (5186.4894ms)\n✔ real ffmpeg trim creates a durable reusable clip and serves registered bytes (1494.2683ms)\n✔ contrast calculation uses WCAG relative luminance (1.0823ms)\n✔ caption wrapping counts user-perceived graphemes without splitting emoji (1.4471ms)\n✔ sequence visual quality distinguishes actionable heuristics from hard invisibility (2.3252ms)\n✔ unknown video pixels produce a warning, while protected captions remain clean (0.4255ms)\n✔ graphic normalization reports low accent contrast without rejecting a valid layout (0.5075ms)\nℹ tests 226\nℹ suites 0\nℹ pass 226\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 17331.0642\n"
+      "output": "ithout output on invalid sources (3346.6589ms)\n✔ narration is explicit, long audio is rejected, and source-byte changes invalidate segment reuse (2123.1817ms)\n✔ an executor finalization failure preserves sequence media and is recoverable without rendering twice (471.9337ms)\n✔ many frame-aligned short segments preserve the requested total duration (2238.6435ms)\n✔ missing selected folder media is visible on the segment and historical sequence can still be retired (51.5185ms)\n✔ video toolkit chains concat, reformat and thumbnail into a durable pipeline (5165.3857ms)\n✔ real ffmpeg trim creates a durable reusable clip and serves registered bytes (1718.0774ms)\n✔ contrast calculation uses WCAG relative luminance (0.8772ms)\n✔ caption wrapping counts user-perceived graphemes without splitting emoji (1.7593ms)\n✔ sequence visual quality distinguishes actionable heuristics from hard invisibility (14.7135ms)\n✔ unknown video pixels produce a warning, while protected captions remain clean (21.0057ms)\n✔ graphic normalization reports low accent contrast without rejecting a valid layout (4.4171ms)\nℹ tests 235\nℹ suites 0\nℹ pass 235\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 16806.6755\n"
     },
     "analysis-harness": {
       "status": "passed",
-      "output": "achine_gold_and_coverage_mismatch (test_evaluate.CorpusTests.test_score_rejects_machine_gold_and_coverage_mismatch) ... ok\r\ntest_source_hash_and_path_escape (test_evaluate.CorpusTests.test_source_hash_and_path_escape) ... ok\r\ntest_unlabelled_text_does_not_count_as_qualified_audio (test_evaluate.CorpusTests.test_unlabelled_text_does_not_count_as_qualified_audio) ... ok\r\ntest_explicit_timing_and_empty_are_not_passes (test_evaluate.MetricsTests.test_explicit_timing_and_empty_are_not_passes) ... ok\r\ntest_known_edit_distance_and_empty_gold (test_evaluate.MetricsTests.test_known_edit_distance_and_empty_gold) ... ok\r\ntest_numeric_punctuation_is_not_erased (test_evaluate.MetricsTests.test_numeric_punctuation_is_not_erased) ... ok\r\ntest_scene_matching_is_one_to_one (test_evaluate.MetricsTests.test_scene_matching_is_one_to_one) ... ok\r\ntest_source_identity_golden_matches_node_contract (test_evaluate.MetricsTests.test_source_identity_golden_matches_node_contract) ... ok\r\ntest_vietnamese_nfc_diacritics_and_digits (test_evaluate.MetricsTests.test_vietnamese_nfc_diacritics_and_digits) ... ok\r\n\r\n----------------------------------------------------------------------\r\nRan 20 tests in 0.257s\r\n\r\nOK\r\n"
+      "output": "achine_gold_and_coverage_mismatch (test_evaluate.CorpusTests.test_score_rejects_machine_gold_and_coverage_mismatch) ... ok\r\ntest_source_hash_and_path_escape (test_evaluate.CorpusTests.test_source_hash_and_path_escape) ... ok\r\ntest_unlabelled_text_does_not_count_as_qualified_audio (test_evaluate.CorpusTests.test_unlabelled_text_does_not_count_as_qualified_audio) ... ok\r\ntest_explicit_timing_and_empty_are_not_passes (test_evaluate.MetricsTests.test_explicit_timing_and_empty_are_not_passes) ... ok\r\ntest_known_edit_distance_and_empty_gold (test_evaluate.MetricsTests.test_known_edit_distance_and_empty_gold) ... ok\r\ntest_numeric_punctuation_is_not_erased (test_evaluate.MetricsTests.test_numeric_punctuation_is_not_erased) ... ok\r\ntest_scene_matching_is_one_to_one (test_evaluate.MetricsTests.test_scene_matching_is_one_to_one) ... ok\r\ntest_source_identity_golden_matches_node_contract (test_evaluate.MetricsTests.test_source_identity_golden_matches_node_contract) ... ok\r\ntest_vietnamese_nfc_diacritics_and_digits (test_evaluate.MetricsTests.test_vietnamese_nfc_diacritics_and_digits) ... ok\r\n\r\n----------------------------------------------------------------------\r\nRan 20 tests in 0.236s\r\n\r\nOK\r\n"
     },
     "delivery": {
       "status": "passed",
       "projectId": "phase6a-fresh-project",
-      "sourceResultId": "result-mtzt8hoa-e6dc52c1",
-      "resultId": "result-mtzt8hxh-414a626c",
-      "runId": "run-mtzt8hom-6267e9c3",
+      "sourceResultId": "result-mtzwk47y-ee50d5f0",
+      "resultId": "result-mtzwk757-29ec139e",
+      "runId": "run-mtzwk6vm-ab498fb7",
       "profileId": "local-portrait-h264-v1",
       "files": [
         {
@@ -29,32 +29,38 @@
         {
           "id": "manifest",
           "name": "manifest.json",
-          "sizeBytes": 1803,
-          "sha256": "0df8773ea99c83ad48b2f8d0ddc44e57a8a27e190f180e23e4d1ba310629e223"
+          "sizeBytes": 1887,
+          "sha256": "d01c1a6d6b8aa7e39a3ff8c4ad854e953897651572ec3e257c5487c559238ef0"
         },
         {
           "id": "provenance",
           "name": "provenance.json",
           "sizeBytes": 720,
-          "sha256": "7540851c3b151d0c773189302201d4a99eeb56aca79a813b308db8bd8d9c8f09"
+          "sha256": "18b29a9e2586c09901e2ee3d138ede575ade4f923e07742f4cea4a71a5049abc"
         },
         {
           "id": "reviews",
           "name": "reviews.json",
           "sizeBytes": 68,
-          "sha256": "ea63e769eb40f6b8da03049addab0a90c16a6b5cd23eda1b89b75d084f66e782"
+          "sha256": "f82253a97bbf0d9501c238ab19705c8213d8ed0d06454afa64db4b7f755b22da"
         },
         {
           "id": "approval",
           "name": "approval.json",
           "sizeBytes": 410,
-          "sha256": "6fa325e2d6c8e08969a35685dfb32091bf118405ea8b721f621a9a42c9f97f3f"
+          "sha256": "4b47f51f229f7814d62983197dfa448a295a0fb8605df1156b130f982ea4e373"
+        },
+        {
+          "id": "quality",
+          "name": "quality.json",
+          "sizeBytes": 2026,
+          "sha256": "5c166f74e052c50c5115cf857d2213e03d9f06a9b41d29b534f635ecb05e6060"
         },
         {
           "id": "checksums",
           "name": "checksums.sha256",
-          "sizeBytes": 440,
-          "sha256": "a558888470fc4a037bab533e46bd1fd50bb6ac0d71d9c700de0ee999e2dfddb6"
+          "sizeBytes": 528,
+          "sha256": "9947c08b569e8be3cb3a491bde38f72407e0f25d16cede68dff1d8b5f92aa36b"
         }
       ],
       "media": {
@@ -77,7 +83,7 @@
     "observer": {
       "status": "passed",
       "view": "observer-delivery",
-      "generation": "68dc663a1ec10a5ca0bb0ab813c94a6d9cd62f17b7a9bc537c92ae4d5e901458",
+      "generation": "e69ae5f9aa5768392ea05b33b28d1a13284c9033e4545482ee7367082e517cf3",
       "bundleCount": 1
     },
     "browser": {

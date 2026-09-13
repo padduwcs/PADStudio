@@ -4,6 +4,7 @@ import { createDefaultToolRegistry } from "../../src/execution/default-tool-regi
 import { ToolExecutor } from "../../src/execution/tool-executor.js";
 import { planProjectRecovery, recoverProject } from "../../src/operations/project-recovery.js";
 import { ProjectStore } from "../../src/project/project-store.js";
+import { OutputQualityService } from "../../src/quality/output-quality-service.js";
 import { importProjectInput } from "../../src/resources/project-importer.js";
 
 const exec = promisify(execFile);
@@ -94,6 +95,13 @@ export async function createAcceptanceDeliveryFixture({
   }
   const reopened = new ProjectStore(rootDir);
   const currentResult = await reopened.readResult(projectId, currentRenderExecution.resultId);
+  const quality = await new OutputQualityService({ rootDir, store: reopened, registry }).inspect(projectId, {
+    resultId: currentResult.id,
+    profileId: "nonverbal-video-v1"
+  });
+  if (quality.result.data.gate.deliveryEligible !== true) {
+    throw new Error("Deterministic acceptance fixture did not pass automated output QA.");
+  }
   const approval = await reopened.recordDecision(projectId, {
     resultId: currentResult.id, outcome: "accepted",
     note: "Synthetic acceptance for a deterministic technical fixture; not a human quality attestation.",
@@ -106,7 +114,7 @@ export async function createAcceptanceDeliveryFixture({
   });
   return {
     projectId, store: reopened, registry, imported, firstArtifact, currentArtifact,
-    historicalResult: firstRender.result, currentResult, approval, delivery: delivery.result,
+    historicalResult: firstRender.result, currentResult, quality: quality.result, approval, delivery: delivery.result,
     deliveryRunId: delivery.runId, recoveryPlan, recovery, repeatedRecovery
   };
 }

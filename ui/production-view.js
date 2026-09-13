@@ -63,6 +63,59 @@ function feedbackPanel(render, segmentId = null) {
   return box;
 }
 
+function outputQualityPanel(context, render) {
+  const reports = render?.qualityReports ?? [];
+  const quality = reports.at(-1);
+  const box = node("section", undefined, "output-quality");
+  box.append(node("h5", "Automated output QA"));
+  if (!quality) {
+    box.append(node("p", "Chưa có QA trên chính exact Result này; chưa đủ điều kiện xuất delivery.", "sequence-warning"));
+    return box;
+  }
+  const eligible = quality.data?.gate?.deliveryEligible === true;
+  box.dataset.deliveryEligible = String(eligible);
+  box.dataset.qualityResultId = quality.resultId;
+  box.classList.add(eligible ? "is-passed" : "is-failed");
+  box.append(
+    node("p", `${eligible ? "Đủ gate delivery" : "Không đạt gate delivery"} · ${quality.resultId}`, eligible ? "result-verification" : "sequence-warning"),
+    node("p", `Profile ${quality.data?.profile?.id ?? "không rõ"} · ${new Date(quality.createdAt).toLocaleString("vi-VN")}`, "input-meta")
+  );
+  const checks = node("ul", undefined, "quality-checks");
+  for (const item of quality.data?.checks ?? []) {
+    checks.append(node("li", `${item.status === "passed" ? "Đạt" : "Lỗi"}: ${item.id} — ${item.evidence}`));
+  }
+  box.append(checks);
+  const metrics = quality.data?.metrics;
+  if (metrics) box.append(node("p", [
+    `${metrics.durationSeconds}s`, `${metrics.frames} frame`, `${metrics.contactSheets} contact sheet`,
+    `${metrics.clippingCandidates} clipping`,
+    metrics.speechLeadSeconds === undefined ? null : `lead ${metrics.speechLeadSeconds}s`,
+    metrics.speechTailSeconds === undefined ? null : `tail ${metrics.speechTailSeconds}s`
+  ].filter(Boolean).join(" · "), "input-meta"));
+  const reportFile = quality.files.find((file) => file.id === "report");
+  if (reportFile?.available) {
+    const link = node("a", "Mở quality report");
+    link.href = fileUrl(context.project.id, quality.resultId, reportFile.id);
+    link.target = "_blank";
+    link.dataset.qualityReport = quality.resultId;
+    box.append(link);
+  }
+  if (quality.contactSheets.length) {
+    const strip = node("div", undefined, "quality-contact-sheets");
+    for (const file of quality.contactSheets) {
+      if (!file.available) continue;
+      const image = node("img");
+      image.loading = "lazy";
+      image.alt = "Contact sheet QA của exact Result";
+      image.src = fileUrl(context.project.id, file.resultId, file.id);
+      strip.append(image);
+    }
+    box.append(strip);
+  }
+  box.append(node("p", quality.data?.humanReview?.note ?? "QA máy không thay thế review của con người.", "input-meta"));
+  return box;
+}
+
 function compareRevisions(before, after) {
   const plain = ({ blockers, reasons, ...segment }) => segment;
   const formatChanged = JSON.stringify(before.format) !== JSON.stringify(after.format);
@@ -158,6 +211,7 @@ function revisionPanel(context, sequence, baseline = null, render = null) {
     panel.append(feedbackAnchor(context, sequence, render));
   } else panel.append(node("p", "Chưa có bản dựng cho phiên bản này.", "empty-note"));
   panel.append(timelinePanel(sequence, previewVideo));
+  if (render) panel.append(outputQualityPanel(context, render));
   const strip = node("div", undefined, "sequence-strip");
   for (const segment of sequence.segments) {
     const card = node("article", undefined, "sequence-segment");

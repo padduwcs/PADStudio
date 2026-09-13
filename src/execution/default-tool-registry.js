@@ -21,6 +21,7 @@ import { createUrlMediaAcquirer } from "../tools/url-media-acquirer.js";
 import { createPiperTts } from "../tools/piper-tts.js";
 import { createElevenLabsTts } from "../tools/elevenlabs-tts.js";
 import { createLocalDeliveryExporter } from "../tools/local-delivery-exporter.js";
+import { createLocalOutputQuality } from "../tools/local-output-quality.js";
 
 export function createDefaultToolRegistry(options = {}) {
   return new ToolRegistry([
@@ -44,6 +45,7 @@ export function createDefaultToolRegistry(options = {}) {
     createUrlMediaAcquirer(options.mediaAcquire),
     createPiperTts(options.piperTts),
     createElevenLabsTts(options.elevenLabsTts),
+    createLocalOutputQuality(options.outputQuality),
     createLocalDeliveryExporter(options.localDelivery)
   ]);
 }

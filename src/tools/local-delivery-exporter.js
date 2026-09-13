@@ -101,6 +101,14 @@ function exactApproval(context, result) {
   return latest?.outcome === "accepted" ? latest : null;
 }
 
+function exactOutputQuality(context, result) {
+  return context.results.filter((candidate) =>
+    candidate.type === "video.output-quality" &&
+    candidate.data?.sourceResultId === result.id &&
+    candidate.inputResults.includes(result.id)
+  ).at(-1) ?? null;
+}
+
 function sequenceKeyForDecision(context, decision) {
   return context.results.find((result) => result.id === decision.resultId)?.data?.sequence?.key ?? null;
 }
@@ -203,6 +211,21 @@ export function createLocalDeliveryExporter({
       if (result.verification?.status !== "passed") {
         fail("Result nguồn chưa vượt qua kiểm tra kỹ thuật.", "source_not_verified");
       }
+      const sourceFile = await store.verifyResultFile(projectId, result.id, "primary");
+      const quality = exactOutputQuality(context, result);
+      if (!quality) fail("Result nguồn chưa có automated output QA.", "output_quality_required");
+      if (quality.verification?.status !== "passed" || quality.data?.gate?.deliveryEligible !== true) {
+        fail("Automated output QA mới nhất chưa cho phép delivery.", "output_quality_failed");
+      }
+      if (quality.data?.sourceSha256 !== sourceFile.sha256) {
+        fail("Automated output QA không còn khớp byte của exact Result.", "output_quality_stale");
+      }
+      const qualityReport = await store.verifyResultFile(projectId, quality.id, "report");
+      for (const evidenceId of quality.inputResults.filter((id) => id !== result.id)) {
+        const evidence = context.results.find((candidate) => candidate.id === evidenceId);
+        if (!evidence) fail("Thiếu Result bằng chứng của automated QA.", "output_quality_stale");
+        for (const file of evidence.files) await store.verifyResultFile(projectId, evidence.id, file.id);
+      }
       const approval = exactApproval(context, result);
       if (!approval) fail("Result nguồn chưa được người dùng accepted.", "approval_required");
       const run = context.runs.find((candidate) => candidate.id === result.createdByRun);
@@ -227,7 +250,6 @@ export function createLocalDeliveryExporter({
           "pending_feedback"
         );
       }
-      const sourceFile = await store.verifyResultFile(projectId, result.id, "primary");
       return {
         runtime: {
           sourcePath: sourceFile.filePath,
@@ -266,12 +288,25 @@ export function createLocalDeliveryExporter({
               sourceResultId: result.id,
               reviews: context.reviews.filter((review) =>
                 review.target?.kind === "result" && review.target.id === result.id)
+            },
+            quality: {
+              resultId: quality.id,
+              sourceResultId: quality.data.sourceResultId,
+              profile: quality.data.profile,
+              gate: quality.data.gate,
+              checks: quality.data.checks,
+              metrics: quality.data.metrics,
+              evidence: quality.data.evidence,
+              humanReview: quality.data.humanReview,
+              reportSha256: qualityReport.sha256
             }
           }
         },
         trace: {
           result,
           approval,
+          quality,
+          qualityReport,
           reviews: context.reviews.filter((review) =>
             review.target?.kind === "result" && review.target.id === result.id),
           sourceFile: {
@@ -389,6 +424,7 @@ export function createLocalDeliveryExporter({
         profile,
         sourceResultId: bundle.provenance.sourceResultId,
         approvalDecisionId: bundle.approval.decisionId,
+        outputQualityResultId: bundle.quality.resultId,
         media,
         files: [
           "video/output.mp4",
@@ -396,6 +432,7 @@ export function createLocalDeliveryExporter({
           "metadata/provenance.json",
           "metadata/reviews.json",
           "metadata/approval.json",
+          "metadata/quality.json",
           "metadata/checksums.sha256"
         ]
       };
@@ -403,7 +440,8 @@ export function createLocalDeliveryExporter({
         ["manifest", "manifest.json", manifest],
         ["provenance", "provenance.json", bundle.provenance],
         ["reviews", "reviews.json", bundle.reviews],
-        ["approval", "approval.json", bundle.approval]
+        ["approval", "approval.json", bundle.approval],
+        ["quality", "quality.json", bundle.quality]
       ];
       const written = [];
       for (const [id, name, value] of metadata) {
@@ -445,6 +483,7 @@ export function createLocalDeliveryExporter({
           status: "passed",
           checks: [
             "exact_result_accepted",
+            "exact_output_quality_passed",
             "current_dependencies",
             "source_sha256_verified",
             "full_decode_passed",
@@ -470,7 +509,7 @@ export function createLocalDeliveryExporter({
         type: "delivery.bundle",
         name: "Delivery bundle: " + execution.sourceResultName,
         inputResources: trace.result.inputResources,
-        inputResults: [trace.result.id],
+        inputResults: [trace.result.id, trace.quality.id],
         inputArtifacts: trace.result.inputArtifacts,
         files: execution.files.map(({ id, role, relativePath, name, mediaType, sizeBytes }) => ({
           id, role, path: trace.finalDirectory + "/" + relativePath, name, mediaType, sizeBytes
@@ -478,6 +517,7 @@ export function createLocalDeliveryExporter({
         data: {
           sourceResultId: trace.result.id,
           approvalDecisionId: trace.approval.id,
+          outputQualityResultId: trace.quality.id,
           profileId: execution.profile.id,
           generatedAt: execution.generatedAt,
           sourceSha256: trace.sourceFile.sha256,

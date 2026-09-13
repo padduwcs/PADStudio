@@ -41,6 +41,7 @@ export function renderDelivery(container, context) {
       [
         "Nguồn: " + bundle.data?.sourceResultId,
         "Duyệt: " + bundle.data?.approvalDecisionId,
+        "QA: " + (bundle.data?.outputQualityResultId ?? "thiếu"),
         "Profile: " + bundle.data?.profileId
       ].join(" · "),
       "input-meta"

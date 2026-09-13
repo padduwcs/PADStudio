@@ -1,0 +1,76 @@
+{
+  "version": "1.0",
+  "generatedAt": "2026-09-13T14:21:00.000Z",
+  "status": "passed_with_documented_limits",
+  "scope": "Exact-render automated output QA and fail-closed local delivery",
+  "checks": {
+    "repository": {
+      "status": "passed",
+      "tests": 235,
+      "failed": 0
+    },
+    "analysisHarness": {
+      "status": "passed",
+      "tests": 20,
+      "failed": 0
+    },
+    "operationsAcceptance": {
+      "status": "passed_with_documented_limits",
+      "browserViewports": [390, 768, 1440],
+      "freshProjectDeepIntegrity": {
+        "verified": 18,
+        "failed": 0
+      }
+    },
+    "realPilotPassingRevision": {
+      "status": "passed",
+      "toolVersion": "1.1.0",
+      "sourceResultId": "result-mtzsqygo-18e21678",
+      "qualityResultId": "result-mtzwel2w-3dd8a50a",
+      "deliveryResultId": "result-mtzwelfe-ebf48d25",
+      "sourceSha256": "9e519a1a06bf1cc22c9f26105b00b3b9098bef5561baee39e7b2e10b61b3ea5f",
+      "failedCheckIds": [],
+      "sourceEndMarginSeconds": 0.42,
+      "speechTailSeconds": 0.461,
+      "bundleIncludes": "metadata/quality.json"
+    },
+    "realPilotRejectedRevision": {
+      "status": "failed_as_expected",
+      "sourceResultId": "result-mtzrmwks-16f4b02a",
+      "qualityResultId": "result-mtzwewlx-f301cb72",
+      "failedCheckIds": [
+        "speech-lead",
+        "speech-tail",
+        "source-word-boundaries"
+      ],
+      "cutEndSeconds": 329.5,
+      "crossedWordEndSeconds": 329.58,
+      "speechTailSeconds": 0.061,
+      "deliveryEligible": false
+    },
+    "realPilotDeepIntegrity": {
+      "status": "passed",
+      "verified": 69,
+      "failed": 0,
+      "projectHealthAfterCheckpoint": "ready"
+    }
+  },
+  "deliveryPolicy": {
+    "exactQualityResultRequired": true,
+    "sourceChecksumBound": true,
+    "qualityEvidenceReverified": true,
+    "failedOrStaleQualityBlocked": true
+  },
+  "documentedLimits": {
+    "humanVisualReview": "not_performed",
+    "humanAuditoryReview": "not_performed",
+    "creativeApprovalReplacement": false,
+    "note": "Machine QA, contact sheets and ASR do not replace full human viewing/listening or creative review."
+  },
+  "references": [
+    "reports/phase6a-delivery-acceptance.json",
+    "reports/phase6b-operations-acceptance.json",
+    "reports/real-project-pilot.json",
+    "docs/build/PHASE7-OUTPUT-QA-SPEC.md"
+  ]
+}

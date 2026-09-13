@@ -7,6 +7,7 @@ import { ToolExecutor } from "../src/execution/tool-executor.js";
 import { inspectPadStudio } from "../src/operations/system-doctor.js";
 import { planProjectRecovery, recoverProject } from "../src/operations/project-recovery.js";
 import { ProjectStore } from "../src/project/project-store.js";
+import { OutputQualityService } from "../src/quality/output-quality-service.js";
 import { importProjectInput } from "../src/resources/project-importer.js";
 import { ProjectReader } from "../src/web/project-reader.js";
 import { createPadStudioServer } from "../src/web/server.js";
@@ -133,6 +134,13 @@ try {
   if ((await reopened.readResults(projectId)).filter((result) =>
     result.type === "video.sequence-render").length !== 1) {
     throw new Error("Recovery rerendered or duplicated the exact Result.");
+  }
+  const quality = await new OutputQualityService({ rootDir, store: reopened, registry }).inspect(projectId, {
+    resultId: renderResult.id,
+    profileId: "nonverbal-video-v1"
+  });
+  if (quality.result.data.gate.deliveryEligible !== true) {
+    throw new Error("Fresh project automated output QA did not pass.");
   }
   const approval = await reopened.recordDecision(projectId, {
     resultId: renderResult.id,

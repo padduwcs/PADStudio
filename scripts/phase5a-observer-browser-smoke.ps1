@@ -249,7 +249,9 @@ try {
  const health=document.querySelector('#health-view .health-summary');
  if(!health||!health.classList.contains('health-ready'))throw new Error('Ready project health is not visible: '+(document.querySelector('#health-view')?.textContent||'<empty>'));
  const delivery=document.querySelector('#delivery-view .delivery-card');
- if(!delivery||delivery.querySelectorAll('.delivery-files a').length<6)throw new Error('Verified delivery bundle links are not visible');
+ if(!delivery||delivery.querySelectorAll('.delivery-files a').length<7||!delivery.textContent.includes('QA: result-'))throw new Error('Verified delivery bundle and exact QA links are not visible');
+ const quality=group.querySelector('.sequence-panel .output-quality[data-delivery-eligible="true"]');
+ if(!quality||!quality.dataset.qualityResultId||!quality.querySelector('[data-quality-report]'))throw new Error('Exact automated output QA is not visible');
  const paths=performance.getEntriesByType('resource').map(entry=>new URL(entry.name).pathname);
  const projectPath='/api/projects/'+encodeURIComponent(new URL(location.href).searchParams.get('project'));
  if(paths.includes(projectPath))throw new Error('Observer loaded the legacy full project context');

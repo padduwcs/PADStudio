@@ -4,6 +4,7 @@ import { createDefaultToolRegistry } from "../src/execution/default-tool-registr
 import { ToolExecutor } from "../src/execution/tool-executor.js";
 import { ProjectContextAssembler } from "../src/intelligence/project-context-assembler.js";
 import { ProjectStore } from "../src/project/project-store.js";
+import { OutputQualityService } from "../src/quality/output-quality-service.js";
 
 const rootDir = resolve(".padstudio/projects");
 const projectId = "real-pilot-longest-substring";
@@ -103,8 +104,19 @@ if (!context.reviews.some((review) => review.target?.kind === "result" && review
 }
 context = await new ProjectContextAssembler({ projectStore: store }).build(projectId);
 const acceptance = context.decisions.filter((decision) => decision.resultId === result.id).at(-1);
+const qualityExecution = await new OutputQualityService({ rootDir, store, registry: createDefaultToolRegistry() }).inspect(projectId, {
+  resultId: result.id,
+  profileId: "spoken-video-v1",
+  language: "vi"
+});
+const quality = qualityExecution.result;
+if (quality.data.gate.deliveryEligible !== true) {
+  throw new Error(`Exact Result failed automated output QA: ${quality.data.gate.failedCheckIds.join(", ")}.`);
+}
+context = await new ProjectContextAssembler({ projectStore: store }).build(projectId);
 let delivery = context.results.filter((item) =>
-  item.type === "delivery.bundle" && item.data?.sourceResultId === result.id).at(-1);
+  item.type === "delivery.bundle" && item.data?.sourceResultId === result.id &&
+  item.data?.outputQualityResultId === quality.id).at(-1);
 if (acceptance?.outcome === "accepted" && !delivery) delivery = (await executor.execute(projectId, {
   capability: "video.export-delivery", tool: "local-delivery",
   purpose: "Export the exact real-pilot Result accepted under explicit owner delegation.",
@@ -131,9 +143,13 @@ const report = {
   preview: resolve(rootDir, projectId, result.files.find((file) => file.id === "primary").path),
   durationSeconds: result.data.durationSeconds, verification: result.verification,
   exactOutputQualityEvidence: {
-    analysisJobId: "analysis-mtzsruf1-f91a63d6",
-    audioResultId: "result-mtzsrv1z-d2c7c1c1",
-    transcriptResultId: "result-mtzsrz64-c05c25a0"
+    qualityResultId: quality.id,
+    analysisJobId: quality.data.analysisJobId,
+    audioResultId: quality.data.evidence.audioResultId,
+    transcriptResultId: quality.data.evidence.transcriptResultId,
+    framesResultId: quality.data.evidence.framesResultId,
+    gate: quality.data.gate,
+    metrics: quality.data.metrics
   },
   userApproval: acceptance?.outcome === "accepted",
   approvalDecisionId: acceptance?.outcome === "accepted" ? acceptance.id : null,

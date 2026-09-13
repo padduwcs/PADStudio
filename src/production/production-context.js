@@ -95,6 +95,22 @@ export function buildProductionContext(context) {
       renders: renders.map((r) => ({
         resultId: r.id, createdAt: r.createdAt, files: r.files,
         verification: r.verification,
+        qualityReports: context.results.filter((candidate) =>
+          candidate.type === "video.output-quality" && candidate.data?.sourceResultId === r.id
+        ).map((quality) => {
+          const frames = results.get(quality.data?.evidence?.framesResultId);
+          const contactIds = new Set(quality.data?.evidence?.contactSheetFileIds ?? []);
+          return {
+            resultId: quality.id,
+            createdAt: quality.createdAt,
+            files: quality.files,
+            verification: quality.verification,
+            data: quality.data,
+            contactSheets: (frames?.files ?? []).filter((file) => contactIds.has(file.id)).map((file) => ({
+              resultId: frames.id, ...file
+            }))
+          };
+        }),
         decisions: context.decisions.filter((d) => d.resultId === r.id),
         reviews: context.reviews.filter((review) => review.target.kind === "result" && review.target.id === r.id),
         segments: r.data.segments ?? [],

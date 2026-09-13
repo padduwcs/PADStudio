@@ -309,6 +309,16 @@ npm run feedback:acceptance
 npm test
 ```
 
+Kiểm tra exact render trước khi xuất delivery:
+
+```powershell
+$qa = '{"resultId":"result-...","profileId":"spoken-video-v1","language":"vi","reuse":"verified"}'
+$qa | npm run quality:inspect -- <project-id> -
+```
+
+Lệnh trả exit code 2 khi report được tạo hợp lệ nhưng gate chất lượng không đạt.
+Local delivery chỉ nhận exact render có QA đạt và cùng checksum.
+
 Test bao phủ persistence, import thành công/thất bại, path safety, context khi
 mở lại, danh mục công cụ, Bộ thực thi, ffprobe/ffmpeg thật, output rollback,
 analysis lifecycle/adapter/reader, evidence validation, search/freshness,

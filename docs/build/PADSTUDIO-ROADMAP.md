@@ -113,3 +113,12 @@ Importer nay khóa đoạn cấp tên/chuyển file/ghi Resource nên hai import
 Phase 6A/6B acceptance tự sinh media và project trong thư mục tạm, tạo hai revision/Result để kiểm tra exact selection/comparison, delivery, recovery, doctor và browser; không còn hard-code `phase3-vd04-asset-pilot`, r10/r9 hoặc mốc 8 giây. Repository đạt 226/226 test và analysis harness 20/20.
 
 Project `real-pilot-longest-substring` dùng `vid15_Longest_Substring_Without_Repeating_Characters.mp4` đã hoàn thành toàn tuyến đến delivery. Tự duyệt phát hiện r1 hụt âm cuối và sửa thành r2 320,2–330,0 giây; hình, exact-output ASR và audio metrics đạt, còn giới hạn không phát audio trực tiếp được ghi trong combined review. Theo ủy quyền rõ của người dùng, exact Result r2 được accepted và xuất bundle giữ nguyên byte; deep doctor `ready`, 39/39 file được xác minh, không còn pending feedback/finalization.
+
+## Cập nhật 2026-09-13 — Lượt 4 automated output QA
+
+Đã thêm cổng QA bền vững cho exact render và nối nó thành điều kiện bắt buộc của
+local delivery. Cổng kiểm tra full decode, frame/contact sheet, audio/clipping và các
+biên lời nói; với sequence lấy hình/tiếng từ nguồn, nó còn đối chiếu điểm in/out với
+word timestamp của transcript nguồn. Pilot thật chứng minh bản r1 bị chặn vì cắt xuyên
+từ cuối, còn r2 vượt QA và tạo bundle mới chứa `quality.json`. Observer vẫn chỉ đọc;
+human viewing/listening không bị suy diễn từ ASR hoặc contact sheet.

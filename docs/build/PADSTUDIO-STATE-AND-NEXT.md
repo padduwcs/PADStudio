@@ -54,6 +54,34 @@ Bundle bàn giao `result-mtynkixa-db2410bc` giữ nguyên SHA-256 video nguồn 
 
 Project thật `real-pilot-longest-substring` đã đi qua import → probe/scenes/frames/audio/ASR/preview → brief/direction/sequence → render → review/acceptance → delivery. Lần tự duyệt phát hiện r1 cắt hụt âm cuối nên đã tạo r2 ở 320,2–330,0 giây. Exact Result hiện hành `result-mtzsqygo-18e21678` dài 9,821333 giây; exact-output ASR giữ trọn câu đến 9,36 giây, không có clipping candidate và hình đã được kiểm tra bằng contact sheet cùng lấy mẫu tiêu đề 4 fps. Theo ủy quyền rõ của người dùng, Decision `decision-mtzswrzy-57d409a2` chấp nhận đúng artifact r2; delivery `result-mtzswyx2-5fe1c724` giữ nguyên SHA-256 `9e519a1a06bf1cc22c9f26105b00b3b9098bef5561baee39e7b2e10b61b3ea5f`. Deep doctor `ready`, xác minh 39/39 file và không còn việc vận hành chờ. Bằng chứng ở [real-project-pilot.json](../../reports/real-project-pilot.json).
 
+## Cập nhật Lượt 4 — automated output QA
+
+Lượt 4 đã hoàn tất cổng QA cho exact render. Capability `video.inspect-output` tạo
+Result `video.output-quality` có checksum nguồn, evidence probe/frame/contact
+sheet/audio/ASR, full decode, clipping, speech lead/tail, final-word confidence và
+kiểm tra điểm cắt so với word timestamp của transcript nguồn. Delivery nay fail-closed
+khi thiếu QA, QA fail, evidence hỏng hoặc byte render thay đổi; bundle có thêm
+`metadata/quality.json`. Observer hiển thị toàn bộ check nhưng ghi trung thực human
+visual/auditory review là `not_performed`.
+
+Repository đạt 235/235 test, source-analysis harness đạt 20/20 và
+`npm run operations:acceptance` đạt `passed_with_documented_limits`, gồm browser
+390/768/1440 và deep integrity 18/18 file cho fixture mới. Trên pilot thật, r1
+`result-mtzrmwks-16f4b02a` bị chặn đúng bởi QA `result-mtzwewlx-f301cb72` vì
+speech lead/tail và điểm 329,5 giây cắt xuyên từ kết thúc ở 329,58; r2
+`result-mtzsqygo-18e21678` vượt QA `result-mtzwel2w-3dd8a50a`, có source end
+margin 0,42 giây và speech tail 0,461 giây. Bundle hiện hành có QA là
+`result-mtzwelfe-ebf48d25`; bundle cũ vẫn được giữ
+như lịch sử và không còn là đường xuất hiện hành.
+Deep doctor sau cùng xác minh 69/69 file, không có file lỗi; checkpoint đã fresh và
+project trở lại `ready`.
+
+Bằng chứng tổng hợp: [phase7-output-qa-acceptance.json](../../reports/phase7-output-qa-acceptance.json).
+
+Giới hạn còn lại không đổi: machine QA không thay thế việc một người thực sự xem toàn
+bộ video, nghe độ tự nhiên/cảm xúc của giọng và duyệt sáng tạo. Đây là lớp kiểm chứng
+độc lập, không được tự động đánh dấu đạt.
+
 Bước tiếp theo không còn là hoàn tất pilot này mà là chọn cải tiến sản phẩm dựa trên ma sát quan sát được. Giới hạn đã ghi rõ: môi trường Agent không phát audio trực tiếp nên review âm thanh dùng full decode, ASR mức từ và số đo kỹ thuật; human audition về độ tự nhiên/cảm xúc vẫn là một lớp kiểm chứng độc lập. Các việc độc lập khác là kiểm chứng provider/tài khoản thật và các release gate/corpus rộng; `releaseDefault` vẫn là `null`.
 ## Cập nhật Đợt 4 — 2026-09-12
 

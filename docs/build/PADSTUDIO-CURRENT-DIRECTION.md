@@ -325,3 +325,18 @@ Acceptance tạo project mới và đi trọn import → sequence → render b�
 Project integrity và Doctor đã được làm chặt: `legacy_unchecked` tách khỏi corruption, checksum nằm trong Result data/sequence segment được tận dụng, same-size tampering bị phát hiện và remediation không còn biến project khỏe thành blocked. Graphic/sequence áp dụng visual-quality contract cho contrast, safe area, typography, caption pacing và Unicode wrapping; browser acceptance có visual baseline, accessibility smoke và ba viewport 390/768/1440. Production policy catalog cung cấp 3 output profile và 5 style playbook theo `optional-explicit`; không tự chọn playbook, không thêm provider coupling hay workflow cố định.
 
 Bộ 16 broad-release gate đã thành checklist thực thi fail-closed. Acceptance fixture chỉ chứng minh evaluator từ chối evidence thiếu/sai, không chứng minh chất lượng release; corpus holdout và human viewing/listening thực vẫn `not_measured`. Hoàn tất mọi gate cũng không tự phát hành: `releaseDefault` giữ `null` và cần quyết định tường minh riêng của người phụ trách.
+
+## Lượt 4 hardening — automated output QA, 2026-09-13
+
+Mỗi exact `video.sequence-render` nay có thể được kiểm tra bằng capability
+`video.inspect-output` và lưu một Result `video.output-quality` bất biến. Hai profile
+`spoken-video-v1` và `nonverbal-video-v1` tái sử dụng evidence probe/frame/contact
+sheet/audio/ASR đã được xác minh, full-decode đúng byte render, kiểm tra clipping và,
+với video có lời, khoảng đệm đầu/cuối, confidence từ cuối cùng cùng biên từ của
+transcript nguồn. Delivery fail-closed nếu thiếu QA, QA fail hoặc checksum render đã
+khác; bundle mang theo `metadata/quality.json`.
+
+Observer chỉ đọc hiển thị gate, check, metrics, contact sheet và giới hạn review.
+Machine QA không được ghi thành human viewing/listening: hai trạng thái này luôn được
+ghi rõ `not_performed` nếu chưa có người thực hiện. Contract và giới hạn nằm ở
+[PHASE7-OUTPUT-QA-SPEC.md](PHASE7-OUTPUT-QA-SPEC.md).

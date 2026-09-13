@@ -10,8 +10,18 @@ import { sha256File } from "../src/analysis/source-identity.js";
 import { ProjectStore } from "../src/project/project-store.js";
 import { importProjectInput } from "../src/resources/project-importer.js";
 import { assertSelfContainedMediaPath, probeSource, runProcess, selectStream } from "../src/tools/source-analysis-common.js";
+import { sampledCoverageIntervals } from "../src/tools/ffmpeg-source-frames.js";
 
 const execFileAsync = promisify(execFile);
+
+test("sampled frame coverage clamps negative container PTS to the requested media range", () => {
+  assert.deepEqual(sampledCoverageIntervals([
+    { actualTime: -0.021333 }, { actualTime: 1.5 }, { actualTime: 2 }
+  ], { startSeconds: 0, endSeconds: 2 }), [
+    { startSeconds: 0, endSeconds: 0.001 },
+    { startSeconds: 1.5, endSeconds: 1.501 }
+  ]);
+});
 
 async function workspace(t) {
   const directory = await mkdtemp(join(tmpdir(), "padstudio-source-tools-"));
