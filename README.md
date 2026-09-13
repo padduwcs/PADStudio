@@ -120,7 +120,18 @@ Xem capability và công cụ hiện có:
 
 ```powershell
 npm run tool:list
+npm run tool:list -- --capability tts.synthesize
+npm run tool:list -- --tool elevenlabs
+npm run tool:list -- --view full
 ```
+
+Mặc định lệnh trả về bản tóm tắt phục vụ việc chọn công cụ: availability, provider, chi phí,
+approval, side effect và loại output. Dùng `--view full` khi cần contract đầy đủ gồm input schema;
+`--capability` và `--tool` chỉ nhận tên khớp chính xác, không tự fallback sang lựa chọn khác.
+
+Catalog production ở `production-catalogs/` cung cấp 3 output profile generic và 5 style playbook.
+Việc dùng policy luôn **optional-explicit**: delivery vẫn cần `profileId` cụ thể; bỏ `playbookId`
+thì không playbook nào được chọn, và PADStudio không suy ra profile/playbook từ tỷ lệ khung hình hay provider.
 
 Chạy một công cụ bằng request JSON từ standard input hoặc từ file:
 
@@ -137,7 +148,7 @@ không chạy lại tool hoặc provider trả phí:
 npm run project:run:recover -- coffee-video run-...
 ```
 
-Prototype hiện có 19 capability thật:
+Prototype hiện có 20 capability thật:
 
 - `media.inspect` / `ffprobe`: đọc metadata audio/video, không tạo file.
 - `video.trim` / `ffmpeg-trim`: cắt chính xác video bằng re-encode và tạo `video.clip`.
@@ -244,6 +255,17 @@ npm run analysis:acceptance -- --browser-project <project-id> --report <report-p
 Project browser acceptance cần có preview/transcript, nhiều Result set và đủ transcript để phân
 trang. Không truyền project sẽ trả trạng thái `incomplete`. Kết quả và các gate release còn
 `not_measured`: [gói F](docs/build/SOURCE-UNDERSTANDING-PACKAGE-F.md).
+
+Kiểm tra 16 broad-release gate fail-closed và chạy acceptance của chính evaluator bằng:
+
+```powershell
+npm run release:gates
+npm run release:gates -- --evidence path/to/release-evidence.json
+npm run release:acceptance
+```
+
+Không có evidence, `release:gates` chủ ý thoát mã 2 với `not_measured`. Fixture acceptance chỉ
+kiểm chứng cơ chế evaluator; không chứng nhận release và không thay đổi `releaseDefault: null`.
 
 ## Cấu trúc video và sửa từng phần
 

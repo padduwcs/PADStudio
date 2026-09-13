@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 import { normalizeSequence, SEQUENCE_TYPE, segmentFingerprint } from "../production/video-sequence.js";
 import { buildProductionContext } from "../production/production-context.js";
+import { assessSequenceVisualQuality } from "../production/visual-quality.js";
 import { createFfmpegSubtitleBurner } from "./ffmpeg-subtitle-burner.js";
 
 const execFileAsync = promisify(execFile);
@@ -190,7 +191,7 @@ export function createFfmpegSequenceRenderer({
         for (const id of media.inputResults) inputResults.add(id);
       }
       return {
-        runtime: { artifact, sequence, segments, music, directory: outputWorkspace.temporaryDirectory },
+        runtime: { artifact, sequence, segments, music, qualityFindings: assessSequenceVisualQuality(sequence), directory: outputWorkspace.temporaryDirectory },
         trace: {
           inputResources: [...inputResources], inputResults: [...inputResults], inputArtifacts: [artifact.id],
           directory: outputWorkspace.projectRelativeDirectory, sequenceRole: state.role,
@@ -198,7 +199,7 @@ export function createFfmpegSequenceRenderer({
         },
       };
     },
-    async execute({ artifact, sequence, segments, music, directory, availability }) {
+    async execute({ artifact, sequence, segments, music, qualityFindings, directory, availability }) {
       const { width, height, fps } = sequence.format;
       const files = [];
       const manifest = [];
@@ -307,8 +308,9 @@ export function createFfmpegSequenceRenderer({
       }
       files.unshift({ id: "primary", role: "primary", name: "preview.mp4", mediaType: "video", sizeBytes: checked.sizeBytes });
       return { files, manifest, durationSeconds: checked.durationSeconds, sha256: checked.sha256, actualCostUsd: 0,
-        verification: { status: "passed", checks: ["registered_sources_resolved", "source_hashes_stable", "segment_streams_and_duration", "preview_streams_and_duration", "review_frames_present"],
-          details: { executableVersion: availability.executableVersion, audioMeasurement, creativeReview: "not_performed", speechContentReview: "not_performed",
+        verification: { status: "passed", checks: ["registered_sources_resolved", "source_hashes_stable", "segment_streams_and_duration", "preview_streams_and_duration", "review_frames_present", "visual_quality_contract"],
+          details: { executableVersion: availability.executableVersion, audioMeasurement,
+            visualQuality: { status: qualityFindings.length ? "warnings" : "passed", findings: qualityFindings }, creativeReview: "not_performed", speechContentReview: "not_performed",
             subtitleVisualReview: "not_performed", audioMixReview: "not_performed", needsReview: ["Watch full preview including cuts and captions", "Listen to narration and source mix", "Compare against segment intent and brief"] } } };
     },
     createResult({ prepared, execution }) {

@@ -1,12 +1,11 @@
 import { createDefaultToolRegistry } from "../execution/default-tool-registry.js";
+import { createToolDiscoveryView, parseToolListArgs } from "../execution/tool-discovery.js";
 
 async function main(args) {
-  if (args.length !== 0) {
-    throw new Error("Cách dùng: npm run tool:list");
-  }
+  const options = parseToolListArgs(args);
   const registry = createDefaultToolRegistry();
-  const capabilities = await registry.describeCapabilities();
-  process.stdout.write(JSON.stringify(capabilities, null, 2) + "\n");
+  const description = await registry.describeCapabilities();
+  process.stdout.write(JSON.stringify(createToolDiscoveryView(description, options), null, 2) + "\n");
 }
 
 main(process.argv.slice(2)).catch((error) => {

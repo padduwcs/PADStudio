@@ -81,3 +81,9 @@ Capability `video.export-delivery` và tool `local-delivery` đóng gói nguyên
 `padstudio:doctor` kiểm tra runtime, quyền đọc/ghi, dung lượng, capability bắt buộc/tùy chọn và health project; `--deep` xác minh từng Result file mà không sửa dữ liệu. `project:recover` mặc định chỉ lập kế hoạch, còn `--apply` chỉ hoàn tất bằng chứng đã bền vững dưới project lock, bỏ qua trường hợp không an toàn và chạy lặp không tạo Result/render trùng. Observer có Health chỉ đọc và Agent summary mang trạng thái sẵn sàng.
 
 Runbook vận hành nằm tại [OPERATIONS-RUNBOOK.md](../OPERATIONS-RUNBOOK.md). Acceptance tạo project mới, tiêm lỗi finalization sau render, reopen/recover, duyệt exact Result, xuất bundle, reopen/deep verify và kiểm tra browser; kết quả 191/191 repository tests, 20/20 analysis tests, 9/9 file fixture và ba viewport đều đạt. Chi tiết tại [đặc tả 6B](PHASE6B-OPERATIONS-SPEC.md) và [report](../../reports/phase6b-operations-acceptance.json). Đợt 6 practical đã đóng với các giới hạn đã ghi rõ.
+
+## Cập nhật hardening — 2026-09-13
+
+Integrity/Doctor nay phân biệt file `legacy_unchecked` với corruption thật, dùng checksum legacy của primary và từng sequence segment khi có, phát hiện cả thay đổi giữ nguyên kích thước và chỉ đưa remediation đúng nguyên nhân. Visual-quality contract kiểm tra contrast, safe area, cỡ chữ, số dòng, tốc độ đọc và wrap theo Unicode cho graphic/sequence; observer có baseline regression, accessibility smoke và kiểm tra nhãn timeline ở 390/768/1440 px. Catalog production có 3 output profile và 5 style playbook, chỉ chọn tường minh và không tạo pipeline/default mới.
+
+Broad-release checklist nay có 16 gate fail-closed cùng CLI/acceptance. Khi thiếu evidence, toàn bộ vẫn `not_measured`; fixture chỉ kiểm tra evaluator, human viewing/listening và corpus holdout vẫn chưa được đo. `releaseDefault` tiếp tục là `null` và chỉ người phụ trách mới có thể đưa ra quyết định release riêng.

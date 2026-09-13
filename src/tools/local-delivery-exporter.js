@@ -6,27 +6,12 @@ import { sha256File } from "../analysis/source-identity.js";
 import { AnalysisReader } from "../analysis/analysis-reader.js";
 import { pendingResultFeedback } from "../intelligence/project-context-assembler.js";
 import { buildProductionContext } from "../production/production-context.js";
+import { defaultProductionPolicyCatalog, OUTPUT_PROFILES } from "../production/production-policy-catalog.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 
-export const LOCAL_DELIVERY_PROFILES = Object.freeze({
-  "local-portrait-h264-v1": Object.freeze({
-    id: "local-portrait-h264-v1",
-    container: "mp4",
-    videoCodec: "h264",
-    pixelFormat: "yuv420p",
-    width: 1080,
-    height: 1920,
-    fps: 30,
-    audioCodec: "aac",
-    sampleRate: 48000,
-    channels: 2,
-    integratedLufs: { minimum: -24, maximum: -14 },
-    maximumTruePeakDbtp: -1,
-    maximumTailSilenceSeconds: 0.75
-  })
-});
+export const LOCAL_DELIVERY_PROFILES = OUTPUT_PROFILES;
 
 export class LocalDeliveryToolError extends Error {
   constructor(message, code = "delivery_failed") {
@@ -137,6 +122,7 @@ export function createLocalDeliveryExporter({
   }),
   timeoutMs = 180_000,
   now = () => new Date().toISOString(),
+  policyCatalog = defaultProductionPolicyCatalog,
   analysisSummary = (store, projectId) =>
     new AnalysisReader({ rootDir: store.rootDir, projectStore: store }).summary(projectId)
 } = {}) {
@@ -171,7 +157,7 @@ export function createLocalDeliveryExporter({
       required: ["resultId", "profileId"],
       properties: {
         resultId: { type: "string" },
-        profileId: { enum: Object.keys(LOCAL_DELIVERY_PROFILES) }
+        profileId: { enum: policyCatalog.listOutputProfiles().map((profile) => profile.id) }
       },
       additionalProperties: false
     },
@@ -187,7 +173,7 @@ export function createLocalDeliveryExporter({
           status: "available",
           executableVersion: String(ffmpeg.stdout).split(/\r?\n/)[0],
           ffprobeVersion: String(ffprobe.stdout).split(/\r?\n/)[0],
-          profiles: Object.keys(LOCAL_DELIVERY_PROFILES)
+          profiles: policyCatalog.listOutputProfiles().map((profile) => profile.id)
         };
       } catch (error) {
         return { status: "unavailable", reason: error.message };
@@ -200,8 +186,12 @@ export function createLocalDeliveryExporter({
           typeof inputs.resultId !== "string" || typeof inputs.profileId !== "string") {
         fail("Delivery chỉ nhận resultId và profileId.", "invalid_input");
       }
-      const profile = LOCAL_DELIVERY_PROFILES[inputs.profileId];
-      if (!profile) fail("Delivery profile không được hỗ trợ: " + inputs.profileId, "invalid_profile");
+      let profile;
+      try {
+        profile = policyCatalog.readOutputProfile(inputs.profileId);
+      } catch {
+        fail("Delivery profile không được hỗ trợ: " + inputs.profileId, "invalid_profile");
+      }
       if (!outputWorkspace?.temporaryDirectory || !outputWorkspace?.projectRelativeDirectory) {
         fail("PADStudio chưa cấp output workspace cho delivery.", "invalid_output_workspace");
       }

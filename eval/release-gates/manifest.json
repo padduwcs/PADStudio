@@ -1,0 +1,117 @@
+{
+  "version": "1.0",
+  "scope": "broad_release_evidence",
+  "releaseDefault": null,
+  "knownCorpora": [
+    {
+      "id": "owner_vertical_development_2026",
+      "classification": "development",
+      "description": "25 owner-supplied portrait H.264/AAC programming videos already used for development evaluation.",
+      "holdoutEligible": false
+    }
+  ],
+  "rules": [
+    "Missing, duplicate, malformed, or failed evidence blocks the broad-release evidence set.",
+    "A development corpus can exercise matching media slots but can never satisfy the independent holdout gate.",
+    "Fixture evidence verifies this evaluator only and can never certify a release.",
+    "Completing every gate still requires an explicit owner release decision; this manifest never changes releaseDefault."
+  ],
+  "gates": [
+    {
+      "id": "independent_gold_holdout",
+      "category": "corpus",
+      "evidenceType": "independent_holdout",
+      "description": "A rights-cleared, version-locked corpus not used to tune the implementation."
+    },
+    {
+      "id": "asr_cer_and_timing_thresholds",
+      "category": "quality",
+      "evidenceType": "quality_measurement",
+      "description": "Gold-transcript ASR accuracy and subtitle timing thresholds are measured and pass."
+    },
+    {
+      "id": "scene_precision_recall",
+      "category": "quality",
+      "evidenceType": "quality_measurement",
+      "description": "Human-labelled scene-boundary precision and recall are measured and pass."
+    },
+    {
+      "id": "landscape_source",
+      "category": "media_diversity",
+      "evidenceType": "corpus_measurement",
+      "description": "Landscape video is exercised end-to-end."
+    },
+    {
+      "id": "vfr_source",
+      "category": "media_diversity",
+      "evidenceType": "corpus_measurement",
+      "description": "Variable-frame-rate video is exercised end-to-end."
+    },
+    {
+      "id": "four_k_source",
+      "category": "media_diversity",
+      "evidenceType": "corpus_measurement",
+      "description": "A 4K source is exercised end-to-end."
+    },
+    {
+      "id": "audio_only_source",
+      "category": "media_diversity",
+      "evidenceType": "corpus_measurement",
+      "description": "An audio-only source is exercised end-to-end."
+    },
+    {
+      "id": "image_only_source",
+      "category": "media_diversity",
+      "evidenceType": "corpus_measurement",
+      "description": "A still-image source is exercised end-to-end."
+    },
+    {
+      "id": "multitrack_source",
+      "category": "media_diversity",
+      "evidenceType": "corpus_measurement",
+      "description": "Ambiguous or multi-track media is exercised with explicit stream selection."
+    },
+    {
+      "id": "two_hour_source",
+      "category": "media_diversity",
+      "evidenceType": "corpus_measurement",
+      "description": "A source at least two hours long is exercised end-to-end."
+    },
+    {
+      "id": "nonzero_stream_offset_source",
+      "category": "media_diversity",
+      "evidenceType": "corpus_measurement",
+      "description": "Media with a non-zero stream start offset is exercised end-to-end."
+    },
+    {
+      "id": "corrupt_source_failure",
+      "category": "media_diversity",
+      "evidenceType": "corpus_measurement",
+      "description": "Corrupt or incomplete media fails explicitly without committing a false Result."
+    },
+    {
+      "id": "hundred_file_ten_hour_query_benchmark",
+      "category": "scale",
+      "evidenceType": "quality_measurement",
+      "description": "The 100-file/10-hour query and memory benchmark is measured and passes."
+    },
+    {
+      "id": "human_viewing_review",
+      "category": "human_review",
+      "evidenceType": "human_attestation",
+      "description": "A human watched the exact representative Result and recorded an outcome."
+    },
+    {
+      "id": "human_listening_review",
+      "category": "human_review",
+      "evidenceType": "human_attestation",
+      "description": "A human listened to the exact representative Result and recorded an outcome."
+    },
+    {
+      "id": "representative_delivery_promise_review",
+      "category": "delivery",
+      "evidenceType": "delivery_review",
+      "description": "A representative exact Result is checked against its approved delivery promise without silent downgrade."
+    }
+  ]
+}

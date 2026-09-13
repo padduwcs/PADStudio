@@ -1,0 +1,286 @@
+{
+  "version": "1.0",
+  "scope": "test_fixture",
+  "corpora": [
+    {
+      "id": "fixture-holdout",
+      "classification": "holdout",
+      "knownDevelopment": false,
+      "lockedBeforeEvaluation": true,
+      "rightsConfirmed": true,
+      "manifestSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "characteristics": {
+        "audioMinutes": 90,
+        "clipCount": 36,
+        "cleanVietnameseMinutes": 20,
+        "hardVietnameseMinutes": 20,
+        "noSpeechMinutes": 10,
+        "timingBoundaryCount": 300,
+        "sceneClipCount": 12,
+        "hardCutCount": 100,
+        "splitBySpeakerAndSource": true,
+        "humanVerifiedGold": true
+      }
+    },
+    {
+      "id": "fixture-media",
+      "classification": "development",
+      "knownDevelopment": false,
+      "lockedBeforeEvaluation": false,
+      "rightsConfirmed": true,
+      "manifestSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ],
+  "measurements": [
+    {
+      "gateId": "independent_gold_holdout",
+      "outcome": "passed",
+      "corpusId": "fixture-holdout",
+      "measuredAt": "2026-09-13T00:00:00.000Z",
+      "method": "Fixture holdout contract check",
+      "evidenceRefs": [
+        "fixture://holdout-manifest"
+      ]
+    },
+    {
+      "gateId": "asr_cer_and_timing_thresholds",
+      "outcome": "passed",
+      "measuredAt": "2026-09-13T00:00:00.000Z",
+      "method": "Fixture ASR metric check",
+      "evidenceRefs": [
+        "fixture://asr-report"
+      ],
+      "metrics": {
+        "cleanCer": 0.01,
+        "cleanTokenError": 0.02,
+        "hardCer": 0.05,
+        "hardTokenError": 0.1,
+        "cleanCriticalContentAccuracy": 0.95,
+        "timingBoundaryP95Seconds": 0.1
+      }
+    },
+    {
+      "gateId": "scene_precision_recall",
+      "outcome": "passed",
+      "measuredAt": "2026-09-13T00:00:00.000Z",
+      "method": "Fixture scene metric check",
+      "evidenceRefs": [
+        "fixture://scene-report"
+      ],
+      "metrics": {
+        "precision": 0.99,
+        "recall": 0.99,
+        "toleranceSeconds": 0.2
+      }
+    },
+    {
+      "gateId": "landscape_source",
+      "outcome": "passed",
+      "corpusId": "fixture-media",
+      "measuredAt": "2026-09-13T00:00:00.000Z",
+      "method": "Fixture end-to-end slot",
+      "evidenceRefs": [
+        "fixture://landscape"
+      ],
+      "metrics": {
+        "width": 1920,
+        "height": 1080,
+        "endToEndCompleted": 1
+      }
+    },
+    {
+      "gateId": "vfr_source",
+      "outcome": "passed",
+      "corpusId": "fixture-media",
+      "measuredAt": "2026-09-13T00:00:00.000Z",
+      "method": "Fixture end-to-end slot",
+      "evidenceRefs": [
+        "fixture://vfr"
+      ],
+      "metrics": {
+        "averageFrameRate": 29.7,
+        "nominalFrameRate": 30,
+        "endToEndCompleted": 1
+      }
+    },
+    {
+      "gateId": "four_k_source",
+      "outcome": "passed",
+      "corpusId": "fixture-media",
+      "measuredAt": "2026-09-13T00:00:00.000Z",
+      "method": "Fixture end-to-end slot",
+      "evidenceRefs": [
+        "fixture://4k"
+      ],
+      "metrics": {
+        "width": 3840,
+        "height": 2160,
+        "endToEndCompleted": 1
+      }
+    },
+    {
+      "gateId": "audio_only_source",
+      "outcome": "passed",
+      "corpusId": "fixture-media",
+      "measuredAt": "2026-09-13T00:00:00.000Z",
+      "method": "Fixture end-to-end slot",
+      "evidenceRefs": [
+        "fixture://audio"
+      ],
+      "metrics": {
+        "audioTracks": 1,
+        "videoTracks": 0,
+        "endToEndCompleted": 1
+      }
+    },
+    {
+      "gateId": "image_only_source",
+      "outcome": "passed",
+      "corpusId": "fixture-media",
+      "measuredAt": "2026-09-13T00:00:00.000Z",
+      "method": "Fixture end-to-end slot",
+      "evidenceRefs": [
+        "fixture://image"
+      ],
+      "metrics": {
+        "imageCount": 1,
+        "videoTracks": 0,
+        "endToEndCompleted": 1
+      }
+    },
+    {
+      "gateId": "multitrack_source",
+      "outcome": "passed",
+      "corpusId": "fixture-media",
+      "measuredAt": "2026-09-13T00:00:00.000Z",
+      "method": "Fixture end-to-end slot",
+      "evidenceRefs": [
+        "fixture://multitrack"
+      ],
+      "metrics": {
+        "audioTracks": 2,
+        "videoTracks": 1,
+        "explicitSelections": 1,
+        "endToEndCompleted": 1
+      }
+    },
+    {
+      "gateId": "two_hour_source",
+      "outcome": "passed",
+      "corpusId": "fixture-media",
+      "measuredAt": "2026-09-13T00:00:00.000Z",
+      "method": "Fixture end-to-end slot",
+      "evidenceRefs": [
+        "fixture://long"
+      ],
+      "metrics": {
+        "durationSeconds": 7200,
+        "endToEndCompleted": 1
+      }
+    },
+    {
+      "gateId": "nonzero_stream_offset_source",
+      "outcome": "passed",
+      "corpusId": "fixture-media",
+      "measuredAt": "2026-09-13T00:00:00.000Z",
+      "method": "Fixture end-to-end slot",
+      "evidenceRefs": [
+        "fixture://offset"
+      ],
+      "metrics": {
+        "absoluteStreamOffsetSeconds": 0.125,
+        "endToEndCompleted": 1
+      }
+    },
+    {
+      "gateId": "corrupt_source_failure",
+      "outcome": "passed",
+      "corpusId": "fixture-media",
+      "measuredAt": "2026-09-13T00:00:00.000Z",
+      "method": "Fixture explicit-failure slot",
+      "evidenceRefs": [
+        "fixture://corrupt"
+      ],
+      "metrics": {
+        "explicitFailures": 1,
+        "committedResults": 0,
+        "failureWasExplicit": 1
+      }
+    },
+    {
+      "gateId": "hundred_file_ten_hour_query_benchmark",
+      "outcome": "passed",
+      "measuredAt": "2026-09-13T00:00:00.000Z",
+      "method": "Fixture scale metric check",
+      "evidenceRefs": [
+        "fixture://benchmark"
+      ],
+      "metrics": {
+        "files": 100,
+        "transcriptHours": 10,
+        "warmQueryP95Ms": 100,
+        "summaryP95Ms": 200,
+        "peakMemoryBytes": 1048576
+      }
+    },
+    {
+      "gateId": "human_viewing_review",
+      "outcome": "passed",
+      "measuredAt": "2026-09-13T00:00:00.000Z",
+      "method": "Fixture human viewing attestation",
+      "evidenceRefs": [
+        "fixture://viewing"
+      ],
+      "reviewer": {
+        "kind": "human",
+        "id": "fixture-reviewer"
+      },
+      "resultId": "result-fixture",
+      "artifactId": "artifact-fixture",
+      "artifactRevision": 1,
+      "attestation": {
+        "action": "viewed",
+        "completedEntireResult": true
+      }
+    },
+    {
+      "gateId": "human_listening_review",
+      "outcome": "passed",
+      "measuredAt": "2026-09-13T00:00:00.000Z",
+      "method": "Fixture human listening attestation",
+      "evidenceRefs": [
+        "fixture://listening"
+      ],
+      "reviewer": {
+        "kind": "human",
+        "id": "fixture-reviewer"
+      },
+      "resultId": "result-fixture",
+      "artifactId": "artifact-fixture",
+      "artifactRevision": 1,
+      "attestation": {
+        "action": "listened",
+        "completedEntireResult": true
+      }
+    },
+    {
+      "gateId": "representative_delivery_promise_review",
+      "outcome": "passed",
+      "measuredAt": "2026-09-13T00:00:00.000Z",
+      "method": "Fixture delivery-promise review",
+      "evidenceRefs": [
+        "fixture://delivery-review"
+      ],
+      "resultId": "result-fixture",
+      "profileId": "profile-fixture",
+      "promiseArtifactId": "artifact-promise",
+      "promiseRevision": 1,
+      "checks": {
+        "technical": "passed",
+        "visual": "passed",
+        "audio": "passed",
+        "promisePreservation": "passed"
+      }
+    }
+  ]
+}

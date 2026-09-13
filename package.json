@@ -52,7 +52,9 @@
     "observer:acceptance": "node scripts/phase5a-acceptance.mjs",
     "feedback:acceptance": "node scripts/phase5b-acceptance.mjs",
     "delivery:acceptance": "node scripts/phase6a-acceptance.mjs",
-    "operations:acceptance": "node scripts/phase6b-acceptance.mjs"
+    "operations:acceptance": "node scripts/phase6b-acceptance.mjs",
+    "release:gates": "node src/cli/release-gates.js",
+    "release:acceptance": "node scripts/release-gates-acceptance.mjs"
   },
   "engines": {
     "node": ">=20"

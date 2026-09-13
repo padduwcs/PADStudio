@@ -1,0 +1,81 @@
+{
+  "version": "1.0",
+  "selectionMode": "optional-explicit",
+  "playbooks": [
+    {
+      "id": "educational-code", "version": "1.0", "name": "Educational / code",
+      "description": "Clear technical explanation with restrained motion and legible code or diagrams.",
+      "bestFor": ["programming lessons", "technical explainers", "step-by-step tutorials"],
+      "profileHints": ["local-landscape-h264-v1", "local-portrait-h264-v1"],
+      "guidance": {
+        "visualPrinciples": ["Use hierarchy and whitespace before decoration.", "Keep code, labels, and narration focused on the same idea."],
+        "typography": ["Use a neutral sans-serif for explanation and a distinct monospace face for code.", "Keep body text readable at delivery size and captions to two lines."],
+        "composition": ["Show the result or problem before implementation detail.", "Keep important code and diagrams inside the selected profile title-safe area."],
+        "motion": ["Use motion to reveal causality or state changes.", "Avoid movement that competes with code reading."],
+        "audio": ["Favor intelligibility and deliberate pacing over urgency.", "Duck music whenever narration carries technical detail."],
+        "reviewCriteria": ["Technical text remains readable at delivery size.", "Visual emphasis matches the narrated concept.", "Pacing leaves enough time to inspect evidence."],
+        "antiPatterns": ["Decorative terminal noise.", "Multiple competing accent colors.", "Fast pans across code that viewers must read."]
+      }
+    },
+    {
+      "id": "talking-head", "version": "1.0", "name": "Talking head",
+      "description": "Footage-led speaker presentation supported by captions and sparse explanatory layers.",
+      "bestFor": ["interviews", "presenter-led lessons", "expert commentary"],
+      "profileHints": ["local-landscape-h264-v1", "local-portrait-h264-v1"],
+      "guidance": {
+        "visualPrinciples": ["Preserve eye contact and natural expression.", "Use support graphics only when they clarify the speaker's point."],
+        "typography": ["Use a robust sans-serif for captions and lower thirds.", "Keep lower thirds distinct from captions and remove them after identification."],
+        "composition": ["Reserve stable negative space for captions or callouts.", "Keep faces clear of crop boundaries and UI risk areas."],
+        "motion": ["Prefer motivated punch-ins, cutaways, and restrained transitions.", "Do not manufacture constant movement when the performance carries the scene."],
+        "audio": ["Speech is the primary mix reference.", "Remove distracting noise without making the voice sound processed."],
+        "reviewCriteria": ["The speaker remains the visual and auditory focus.", "Captions, lower thirds, and callouts do not compete for the same area.", "Cuts preserve sentence meaning and natural cadence."],
+        "antiPatterns": ["Persistent lower thirds.", "Captions covering the speaker's mouth.", "Arbitrary jump cuts that damage cadence."]
+      }
+    },
+    {
+      "id": "short-form", "version": "1.0", "name": "Short-form social",
+      "description": "Fast, mobile-first communication with an immediate hook and protected vertical safe area.",
+      "bestFor": ["short lessons", "vertical social clips", "single-idea promos"],
+      "profileHints": ["local-portrait-h264-v1"],
+      "guidance": {
+        "visualPrinciples": ["Create visual interest in the opening moment.", "Make the message understandable with sound off."],
+        "typography": ["Use bold sans-serif captions with no more than two lines.", "Keep essential text inside a centered 900 by 1400 area at 1080 by 1920 unless an exact platform profile supersedes it."],
+        "composition": ["Keep critical content away from bottom and side UI regions.", "Treat every visual change as support for the single core idea."],
+        "motion": ["Use purposeful changes in framing or support visuals every few seconds.", "Keep text motion brief, then hold it still long enough to read."],
+        "audio": ["Start speech or meaningful sound promptly when the concept calls for it.", "Keep narration dominant over music and effects."],
+        "reviewCriteria": ["The hook is clear in the first two seconds.", "The cut works without audio through captions or visuals.", "Important content stays in the intended mobile-safe region."],
+        "antiPatterns": ["Blank logo intros.", "Text in platform control regions.", "Speed used to compensate for an unclear idea."]
+      }
+    },
+    {
+      "id": "product-demo", "version": "1.0", "name": "Product / demo",
+      "description": "Outcome-led product explanation with readable interface detail and evidence-backed claims.",
+      "bestFor": ["software demos", "feature launches", "product walkthroughs"],
+      "profileHints": ["local-landscape-h264-v1", "local-square-h264-v1"],
+      "guidance": {
+        "visualPrinciples": ["Show the product performing the promised task.", "Use annotations to direct attention, not decorate the interface."],
+        "typography": ["Match support typography to the product without imitating unreadable UI text.", "Use short callouts with strong contrast."],
+        "composition": ["Frame interface details at a readable scale.", "Use one primary focus per shot while preserving needed context."],
+        "motion": ["Let cursor, highlight, or camera motion identify the next action.", "Avoid simultaneous zoom, cursor motion, and text animation."],
+        "audio": ["Time narration to completed product actions.", "Use effects sparingly to confirm meaningful state changes."],
+        "reviewCriteria": ["The demonstrated workflow can be followed without guessing.", "UI labels and evidence are readable at delivery size.", "Narration does not get ahead of visible action."],
+        "antiPatterns": ["Unverifiable superlatives.", "Tiny full-screen UI captures.", "Callouts covering the demonstrated control."]
+      }
+    },
+    {
+      "id": "minimal-editorial", "version": "1.0", "name": "Minimal editorial",
+      "description": "Calm, high-trust visual language built from strong hierarchy, whitespace, and restrained motion.",
+      "bestFor": ["expert explainers", "investor updates", "high-trust narratives"],
+      "profileHints": ["local-landscape-h264-v1", "local-square-h264-v1", "local-portrait-h264-v1"],
+      "guidance": {
+        "visualPrinciples": ["Use a small palette with one restrained accent.", "Let composition, evidence, and whitespace carry authority."],
+        "typography": ["Use no more than two font families.", "Reserve decorative or serif faces for large editorial text, never captions."],
+        "composition": ["Alternate a small set of coherent layouts instead of repeating one card.", "Give each frame one dominant idea."],
+        "motion": ["Favor fades, mask reveals, and restrained transforms.", "Hold evidence frames long enough to inspect."],
+        "audio": ["Prefer a clean, warm voice and subtle music bed.", "Use silence intentionally, not as an accidental tail."],
+        "reviewCriteria": ["Hierarchy remains clear without decorative effects.", "Repeated layouts feel coherent rather than mechanical.", "Motion intensity fits the calm editorial intent."],
+        "antiPatterns": ["Decorative gradients without purpose.", "Dense dashboard-like frames.", "Every scene using the same centered card."]
+      }
+    }
+  ]
+}

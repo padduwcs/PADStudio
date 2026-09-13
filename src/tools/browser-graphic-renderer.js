@@ -38,14 +38,14 @@ export function createBrowserGraphicRenderer({ browserPath, executeCommand = com
         : { status: "unavailable", reason: "Install Chrome/Edge/Chromium or set PADSTUDIO_BROWSER_PATH." };
     },
     async prepare({ store, projectId, inputs, outputWorkspace, signal }) {
-      const { spec, artifactIds } = normalizeGraphic(inputs);
+      const { spec, artifactIds, qualityFindings } = normalizeGraphic(inputs);
       const known = new Set((await store.readArtifacts(projectId)).map((item) => item.id));
       if (artifactIds.some((id) => !known.has(id))) fail("Graphic references an unknown artifact.");
       const output = workspace(outputWorkspace);
-      return { runtime: { spec, directory: output.temporaryDirectory, signal },
+      return { runtime: { spec, qualityFindings, directory: output.temporaryDirectory, signal },
         trace: { directory: output.projectRelativeDirectory, artifactIds } };
     },
-    async execute({ spec, directory, signal, availability }) {
+    async execute({ spec, qualityFindings, directory, signal, availability }) {
       const page = join(directory, "graphic.html"), png = join(directory, "graphic.png"), profile = join(directory, "browser-profile");
       await writeFile(page, graphicHtml(spec), "utf8");
       let layout;
@@ -68,8 +68,9 @@ export function createBrowserGraphicRenderer({ browserPath, executeCommand = com
       const header = await readFile(png);
       if (!header.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])) ||
           header.length < 24 || header.readUInt32BE(16) !== spec.width || header.readUInt32BE(20) !== spec.height) fail("Graphic PNG dimensions are incorrect.", "invalid_output");
-      return { file, layout, actualCostUsd: 0, verification: { status: "passed", checks: ["canvas_rendered", "text_fits_bounds", "png_dimensions", "output_sha256"],
-        details: { layout, creativeReview: "not_performed", fontPortability: "System font selection may differ across machines." } } };
+      return { file, layout, actualCostUsd: 0, verification: { status: "passed", checks: ["canvas_rendered", "text_fits_bounds", "visual_quality_contract", "png_dimensions", "output_sha256"],
+        details: { layout, visualQuality: { status: qualityFindings.length ? "warnings" : "passed", findings: qualityFindings },
+          creativeReview: "not_performed", fontPortability: "System font selection may differ across machines." } } };
     },
     createResult({ prepared, execution }) {
       return { type: "image.graphic", name: prepared.runtime.spec.title, inputResources: [], inputResults: [],

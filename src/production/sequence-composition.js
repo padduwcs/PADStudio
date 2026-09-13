@@ -1,4 +1,5 @@
 import { assertOnlyFields, requireObject, requireText, IntelligenceValidationError } from "../intelligence/contracts.js";
+import { contrastRatio } from "./visual-quality.js";
 
 const fail = (message) => { throw new IntelligenceValidationError(message); };
 const n = (value, label, min, max) => {
@@ -23,13 +24,17 @@ export function normalizeTextStyle(value = {}) {
   object(value, ["font", "fontSize", "bold", "color", "background", "outline", "position", "margin", "lineSpacing"], "text style");
   const color = (v) => { if (!/^#[0-9a-f]{6}$/i.test(v)) fail("Style color must be #RRGGBB."); return v; };
   if (value.bold !== undefined && typeof value.bold !== "boolean") fail("style.bold must be boolean.");
-  return { font: choice(value.font ?? "Arial", ["Arial", "Segoe UI", "Tahoma", "Verdana"], "font"),
+  const normalized = { font: choice(value.font ?? "Arial", ["Arial", "Segoe UI", "Tahoma", "Verdana"], "font"),
     fontSize: n(value.fontSize ?? 48, "fontSize", 12, 240), bold: value.bold ?? false,
     color: color(value.color ?? "#FFFFFF"), background: value.background == null ? null : color(value.background),
     outline: n(value.outline ?? 2, "outline", 0, 10),
     position: choice(value.position ?? "bottom", ["top", "center", "bottom"], "text position"),
     margin: n(value.margin ?? 0.06, "safe margin", 0.02, 0.25),
     lineSpacing: n(value.lineSpacing ?? 1.2, "lineSpacing", 1, 2) };
+  if (normalized.background && contrastRatio(normalized.color, normalized.background) === 1) {
+    fail("Caption text is invisible: text and background colors are identical.");
+  }
+  return normalized;
 }
 export function normalizeSegmentComposition(raw, segment, reference, defaultStyle) {
   const d = segment.durationSeconds;

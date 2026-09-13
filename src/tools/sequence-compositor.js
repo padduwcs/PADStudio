@@ -1,6 +1,7 @@
 import { writeFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { sequenceDuration } from "../production/sequence-composition.js";
+import { wrapCaptionLines } from "../production/visual-quality.js";
 
 const number = (v) => Number(v).toFixed(6);
 const fit = (w, h, mode) => mode === "crop"
@@ -11,27 +12,13 @@ const clock = (seconds) => {
   return `${Math.floor(cs / 360000)}:${String(Math.floor(cs / 6000) % 60).padStart(2, "0")}:${String(Math.floor(cs / 100) % 60).padStart(2, "0")}.${String(cs % 100).padStart(2, "0")}`;
 };
 const assColor = (hex) => `&H00${hex.slice(5, 7)}${hex.slice(3, 5)}${hex.slice(1, 3)}`;
-function wrapped(text, style, width) {
-  const max = Math.max(1, Math.floor(width * (1 - 2 * style.margin) / (style.fontSize)));
-  const lines = [];
-  for (const paragraph of text.split(/\r?\n/)) {
-    let line = "";
-    for (const word of paragraph.split(/\s+/)) {
-      if (word.length > max) throw new Error("Caption contains a word too wide for the safe area.");
-      if (line && line.length + word.length + 1 > max) { lines.push(line); line = ""; }
-      line += (line ? " " : "") + word;
-    }
-    lines.push(line);
-  }
-  return lines;
-}
 export function createStyledAss(captions, format) {
   let text = `[Script Info]\nScriptType: v4.00+\nPlayResX: ${format.width}\nPlayResY: ${format.height}\nWrapStyle: 2\nScaledBorderAndShadow: yes\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n`;
   const events = [];
   captions.forEach((cue, index) => {
     const s = cue.style, margin = Math.round(format.width * s.margin);
     text += `Style: s${index},${s.font},${s.fontSize},${assColor(s.color)},&H00FFFFFF,${s.background ? assColor(s.background) : "&H00000000"},${s.background ? assColor(s.background) : "&H80000000"},${s.bold ? -1 : 0},0,0,0,100,100,0,0,${s.background ? 3 : 1},${s.outline},0,5,${margin},${margin},0,1\n`;
-    const lines = wrapped(cue.text, s, format.width);
+    const lines = wrapCaptionLines(cue.text, s, format.width);
     const block = lines.length * s.fontSize * s.lineSpacing;
     if (block > format.height * (1 - 2 * s.margin)) throw new Error("Caption exceeds vertical safe area.");
     const first = s.position === "top" ? format.height * s.margin + s.fontSize / 2 : s.position === "center" ? (format.height - block) / 2 + s.fontSize / 2 : format.height * (1 - s.margin) - block + s.fontSize / 2;

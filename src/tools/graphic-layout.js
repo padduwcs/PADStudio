@@ -1,4 +1,5 @@
 import { object, number, text, fail } from "./asset-tool-common.js";
+import { assessGraphicVisualQuality } from "../production/visual-quality.js";
 
 export function normalizeGraphic(inputs) {
   object(inputs, ["kind", "title", "body", "items", "steps", "width", "height", "theme", "accent", "footer", "artifactIds", "typography"]);
@@ -39,7 +40,7 @@ export function normalizeGraphic(inputs) {
   const artifactIds = inputs.artifactIds ?? [];
   if (!Array.isArray(artifactIds) || artifactIds.length > 20 || artifactIds.some((id) => typeof id !== "string" || !/^artifact-[a-z0-9-]+$/i.test(id)) ||
       new Set(artifactIds).size !== artifactIds.length) fail("artifactIds must be up to 20 unique registered IDs.");
-  return { spec: result, artifactIds };
+  return { spec: result, artifactIds, qualityFindings: assessGraphicVisualQuality(result) };
 }
 
 // Runs in an isolated local browser page. It draws only normalized data on canvas:

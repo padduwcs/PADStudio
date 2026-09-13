@@ -76,6 +76,19 @@ function optionalTool(value) {
   };
 }
 
+function resultDataChecksum(result, fileId) {
+  if (fileId === "primary" && typeof result.data?.sha256 === "string") {
+    return { sha256: result.data.sha256, source: "result_data" };
+  }
+  if (result.type === "video.sequence-render" && Array.isArray(result.data?.segments)) {
+    const segment = result.data.segments.find((entry) => entry?.fileId === fileId);
+    if (typeof segment?.sha256 === "string") {
+      return { sha256: segment.sha256, source: "result_data_segment" };
+    }
+  }
+  return null;
+}
+
 async function directoryInfo(path) {
   try {
     return await lstat(path);
@@ -927,15 +940,13 @@ export class ProjectStore {
       this.resolveResultFile(projectId, resultId, fileId)
     ]);
     const file = result.files.find((candidate) => candidate.id === resolved.id);
-    const fallbackChecksum = resolved.id === "primary" && typeof result.data?.sha256 === "string"
-      ? result.data.sha256
-      : null;
-    const expectedSha256 = file?.sha256 ?? fallbackChecksum;
+    const fallbackChecksum = resultDataChecksum(result, resolved.id);
+    const expectedSha256 = file?.sha256 ?? fallbackChecksum?.sha256;
     if (!expectedSha256) {
       if (requireChecksum) {
         throw new ProjectStoreError("Result file không có SHA-256 để xác minh byte chính xác.");
       }
-      return { ...resolved, integrity: "unchecked", sha256: null, checksumSource: null };
+      return { ...resolved, integrity: "legacy_unchecked", sha256: null, checksumSource: null };
     }
     const actualSha256 = await sha256File(resolved.filePath);
     if (actualSha256 !== expectedSha256) {
@@ -945,7 +956,7 @@ export class ProjectStore {
       ...resolved,
       integrity: "verified",
       sha256: actualSha256,
-      checksumSource: file?.sha256 ? "file" : "result_data"
+      checksumSource: file?.sha256 ? "file" : fallbackChecksum.source
     };
   }
 

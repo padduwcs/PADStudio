@@ -32,7 +32,8 @@ async function deepIntegrity(store, projectId, context) {
           resultId: result.id,
           fileId: file.id,
           status: verified.integrity,
-          sha256: verified.sha256
+          sha256: verified.sha256,
+          checksumSource: verified.checksumSource
         });
       } catch (error) {
         files.push({
@@ -47,7 +48,9 @@ async function deepIntegrity(store, projectId, context) {
   return {
     checked: files.length,
     verified: files.filter((file) => file.status === "verified").length,
-    unchecked: files.filter((file) => file.status === "unchecked").length,
+    legacyUnchecked: files.filter((file) => file.status === "legacy_unchecked").length,
+    // Compatibility alias retained for existing operational reports.
+    unchecked: files.filter((file) => file.status === "legacy_unchecked").length,
     failed: files.filter((file) => file.status === "failed").length,
     files
   };
@@ -140,9 +143,11 @@ export async function inspectPadStudio({
       try {
         const context = await new ProjectContextAssembler({ projectStore: store }).build(project.id);
         const integrity = deep ? await deepIntegrity(store, project.id, context) : null;
-        const status = integrity?.failed
+        const status = integrity?.failed || context.health.status === "blocked"
           ? "blocked"
-          : integrity?.unchecked ? "attention" : context.health.status;
+          : integrity?.legacyUnchecked || context.health.status === "attention"
+            ? "attention"
+            : "ready";
         projects.push({
           id: project.id,
           title: project.title,
@@ -150,10 +155,22 @@ export async function inspectPadStudio({
           health: context.health,
           integrity
         });
-        if (status !== "ready") {
+        if (integrity?.failed) {
           remediations.push(remediation(
-            "project:" + project.id,
-            "Đọc health/issue của project " + project.id + " và xử lý trước khi tiếp tục."
+            "project_integrity:" + project.id,
+            "Project " + project.id + " có Result file thiếu, sai kích thước hoặc sai checksum; không sửa lịch sử, hãy khôi phục đúng bytes từ backup hoặc tạo Result mới từ nguồn đã đăng ký."
+          ));
+        }
+        if (integrity?.legacyUnchecked) {
+          remediations.push(remediation(
+            "project_legacy_integrity:" + project.id,
+            "Project " + project.id + " có file Result legacy không lưu checksum; path/kích thước đã kiểm tra nhưng không thể chứng minh exact bytes. Chỉ tạo Result mới nếu tác vụ tiếp theo yêu cầu xác minh checksum."
+          ));
+        }
+        if (context.health.status !== "ready") {
+          remediations.push(remediation(
+            "project_health:" + project.id,
+            "Đọc từng health issue của project " + project.id + " và áp dụng remediation tương ứng; giữ nguyên record lịch sử."
           ));
         }
       } catch (error) {
@@ -169,8 +186,9 @@ export async function inspectPadStudio({
     }
   }
 
-  const systemBlocked = !runtime.nodeReady || !storage.ready || missingRequired.length > 0;
-  const projectAttention = projects.some((project) => project.status !== "ready") ||
+  const projectBlocked = projects.some((project) => project.status === "blocked");
+  const systemBlocked = !runtime.nodeReady || !storage.ready || missingRequired.length > 0 || projectBlocked;
+  const projectAttention = projects.some((project) => project.status === "attention") ||
     Boolean(projectId && !projects.length);
   return {
     version: "1.0",

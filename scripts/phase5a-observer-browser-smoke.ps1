@@ -2,7 +2,9 @@ param(
   [string]$Url = "http://127.0.0.1:7603",
   [string]$ProjectId = "",
   [string]$Browser = "",
-  [switch]$Creative
+  [switch]$Creative,
+  [string]$VisualBaseline = "scripts/browser-baselines/observer-timeline.json",
+  [switch]$UpdateVisualBaseline
 )
 
 $ErrorActionPreference = "Stop"
@@ -76,6 +78,73 @@ function Send-Cdp {
 function Evaluate {
   param([string]$Expression)
   return Invoke-BrowserSmokeEvaluation -Expression $Expression
+}
+
+function Get-VisualSignature {
+  param(
+    [Parameter(Mandatory = $true)][string]$Path,
+    [int]$Columns = 24,
+    [int]$Rows = 16
+  )
+
+  Add-Type -AssemblyName System.Drawing
+  $bitmap = [Drawing.Bitmap]::new($Path)
+  try {
+    $cells = @()
+    for ($row = 0; $row -lt $Rows; $row += 1) {
+      $top = [Math]::Floor($row * $bitmap.Height / $Rows)
+      $bottom = [Math]::Max($top + 1, [Math]::Floor(($row + 1) * $bitmap.Height / $Rows))
+      for ($column = 0; $column -lt $Columns; $column += 1) {
+        $left = [Math]::Floor($column * $bitmap.Width / $Columns)
+        $right = [Math]::Max($left + 1, [Math]::Floor(($column + 1) * $bitmap.Width / $Columns))
+        [long]$red = 0; [long]$green = 0; [long]$blue = 0; [long]$count = 0
+        for ($y = $top; $y -lt $bottom; $y += 2) {
+          for ($x = $left; $x -lt $right; $x += 2) {
+            $pixel = $bitmap.GetPixel($x, $y)
+            $red += $pixel.R; $green += $pixel.G; $blue += $pixel.B; $count += 1
+          }
+        }
+        $cells += ,@([Math]::Round($red / $count), [Math]::Round($green / $count), [Math]::Round($blue / $count))
+      }
+    }
+    return [ordered]@{ width = $bitmap.Width; height = $bitmap.Height; columns = $Columns; rows = $Rows; cells = $cells }
+  } finally { $bitmap.Dispose() }
+}
+
+function Compare-VisualSignature {
+  param(
+    [Parameter(Mandatory = $true)]$Expected,
+    [Parameter(Mandatory = $true)]$Actual,
+    [double]$CellDelta = 10,
+    [double]$ChangedRatioThreshold = 0.03,
+    [double]$MeanDeltaThreshold = 2.0
+  )
+
+  if ($Expected.width -ne $Actual.width -or $Expected.height -ne $Actual.height) {
+    return [ordered]@{ passed = $false; reason = "size $($Actual.width)x$($Actual.height) != $($Expected.width)x$($Expected.height)" }
+  }
+  if ($Expected.columns -ne $Actual.columns -or $Expected.rows -ne $Actual.rows -or $Expected.cells.Count -ne $Actual.cells.Count) {
+    return [ordered]@{ passed = $false; reason = "signature grid mismatch" }
+  }
+
+  [double]$total = 0; [int]$changed = 0
+  for ($index = 0; $index -lt $Actual.cells.Count; $index += 1) {
+    $expectedCell = $Expected.cells[$index]
+    $actualCell = $Actual.cells[$index]
+    $delta = ([Math]::Abs($expectedCell[0] - $actualCell[0]) + [Math]::Abs($expectedCell[1] - $actualCell[1]) + [Math]::Abs($expectedCell[2] - $actualCell[2])) / 3
+    $total += $delta
+    if ($delta -gt $CellDelta) { $changed += 1 }
+  }
+  $changedRatio = $changed / $Actual.cells.Count
+  $meanDelta = $total / $Actual.cells.Count
+  return [ordered]@{
+    passed = $changedRatio -le $ChangedRatioThreshold -and $meanDelta -le $MeanDeltaThreshold
+    changedRatio = [Math]::Round($changedRatio, 6)
+    changedRatioThreshold = $ChangedRatioThreshold
+    meanDelta = [Math]::Round($meanDelta, 4)
+    meanDeltaThreshold = $MeanDeltaThreshold
+    cellDelta = $CellDelta
+  }
 }
 
 try {
@@ -183,16 +252,50 @@ try {
  return true;
 })()
 '@
+ $visualSignatures = [ordered]@{}
+ $visualComparisons = [ordered]@{}
  foreach($width in @(390,768,1440)) {
    Send-Cdp "Emulation.setDeviceMetricsOverride" @{width=$width;height=900;deviceScaleFactor=1;mobile=$false} | Out-Null
    if (Evaluate 'document.documentElement.scrollWidth > document.documentElement.clientWidth') {throw "Overflow at $width"}
-   Evaluate "[...document.querySelectorAll('.sequence-group')].find(p=>p.querySelector('strong')?.textContent==='pilot-preview')?.querySelector('.composition-timeline')?.scrollIntoView({block:'center'})" | Out-Null
-   $capture = Send-Cdp "Page.captureScreenshot" @{format="png"}
+   $viewportCheck = Evaluate @'
+(()=>{
+ const timeline=[...document.querySelectorAll('.sequence-group')].find(p=>p.querySelector('strong')?.textContent==='pilot-preview')?.querySelector('.composition-timeline');
+ if(!timeline)throw new Error('Missing timeline for viewport acceptance');
+ timeline.scrollIntoView({block:'center'});
+ const clipped=[...timeline.querySelectorAll('.timeline-label')].filter(label=>label.scrollWidth>label.clientWidth+1||label.scrollHeight>label.clientHeight+1).map(label=>label.textContent);
+ if(clipped.length)throw new Error('Clipped timeline labels: '+clipped.join(', '));
+ const duplicateIds=[...document.querySelectorAll('[id]')].map(node=>node.id).filter((id,index,ids)=>id&&ids.indexOf(id)!==index);
+ const brokenLabelledBy=[...document.querySelectorAll('[aria-labelledby]')].filter(node=>node.getAttribute('aria-labelledby').split(/\s+/).some(id=>!document.getElementById(id))).length;
+ const unnamed=[...document.querySelectorAll('a[href],button:not([disabled]),input:not([type="hidden"]),select:not([disabled]),textarea,summary,[tabindex]')].filter(node=>{const labelled=node.getAttribute('aria-labelledby')?.split(/\s+/).map(id=>document.getElementById(id)?.textContent||'').join(' ').trim();return !(node.getAttribute('aria-label')||labelled||node.textContent.trim()||node.getAttribute('title'));}).length;
+ const imagesWithoutAlt=[...document.images].filter(image=>!image.hasAttribute('alt')).length;
+ if(document.documentElement.lang!=='vi'||document.querySelectorAll('main').length!==1||document.querySelectorAll('h1').length!==1||duplicateIds.length||brokenLabelledBy||unnamed||imagesWithoutAlt)throw new Error(JSON.stringify({lang:document.documentElement.lang,mains:document.querySelectorAll('main').length,h1:document.querySelectorAll('h1').length,duplicateIds,brokenLabelledBy,unnamed,imagesWithoutAlt}));
+ timeline.querySelector('input[type="range"]').value='0';
+ timeline.querySelector('output').textContent='0.00 / '+Number(timeline.querySelector('input[type="range"]').max).toFixed(2)+' s';
+ const rect=timeline.getBoundingClientRect();
+ return {x:rect.left+scrollX,y:rect.top+scrollY,width:rect.width,height:rect.height};
+})()
+'@
+   $capture = Send-Cdp "Page.captureScreenshot" @{format="png";fromSurface=$true;captureBeyondViewport=$true;clip=@{x=$viewportCheck.x;y=$viewportCheck.y;width=$viewportCheck.width;height=$viewportCheck.height;scale=1}}
    $captureDirectory = Join-Path $workspace ".cache/phase5a-acceptance"
    [IO.Directory]::CreateDirectory($captureDirectory) | Out-Null
-   [IO.File]::WriteAllBytes((Join-Path $captureDirectory "observer-$width.png"), [Convert]::FromBase64String($capture.data))
+   $capturePath = Join-Path $captureDirectory "observer-timeline-$width.png"
+   [IO.File]::WriteAllBytes($capturePath, [Convert]::FromBase64String($capture.data))
+   $visualSignatures[[string]$width] = Get-VisualSignature -Path $capturePath
  }
- [PSCustomObject]@{status="passed";timeline=$true;seek=$true;playerPreserved=$true;conditionalPolling=$true;lazyActivity=$true;feedbackAnchors=$true;exactResultSelection=$true;exactResultSwitching=$true;exactResultComparison=$true;health=$true;delivery=$true;viewports=@(390,768,1440)} | ConvertTo-Json
+ $baselinePath = [IO.Path]::GetFullPath((Join-Path $workspace $VisualBaseline))
+ if ($UpdateVisualBaseline) {
+   [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($baselinePath)) | Out-Null
+   [IO.File]::WriteAllText($baselinePath, (($visualSignatures | ConvertTo-Json -Depth 20 -Compress) + "`n"), [Text.UTF8Encoding]::new($false))
+ } else {
+   if (-not (Test-Path -LiteralPath $baselinePath)) { throw "Thiếu visual baseline: $baselinePath. Chạy lại với -UpdateVisualBaseline sau khi review ảnh capture." }
+   $baseline = Get-Content -Raw -Encoding UTF8 $baselinePath | ConvertFrom-Json
+   foreach ($width in @(390,768,1440)) {
+     $comparison = Compare-VisualSignature -Expected $baseline.([string]$width) -Actual $visualSignatures[[string]$width]
+     $visualComparisons[[string]$width] = $comparison
+     if (-not $comparison.passed) { throw "Visual regression at $width px: $($comparison | ConvertTo-Json -Compress)" }
+   }
+ }
+ [PSCustomObject]@{status="passed";timeline=$true;seek=$true;playerPreserved=$true;conditionalPolling=$true;lazyActivity=$true;feedbackAnchors=$true;exactResultSelection=$true;exactResultSwitching=$true;exactResultComparison=$true;health=$true;delivery=$true;accessibilitySmoke=$true;timelineLabelsUnclipped=$true;visualRegression=if($UpdateVisualBaseline){"baseline_updated"}else{"passed"};visualComparisons=$visualComparisons;viewports=@(390,768,1440)} | ConvertTo-Json -Depth 10
 } finally {
   if ($script:CdpSocket -and $script:CdpSocket.State -eq [Net.WebSockets.WebSocketState]::Open) {
     try { Send-Cdp "Browser.close" | Out-Null } catch {}

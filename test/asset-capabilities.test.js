@@ -139,6 +139,8 @@ test("graphics work across three projects and orientations, then become sequence
     await store.createProject({ projectId, title: projectId });
     const first = await executor.execute(projectId, graphic(inputs));
     assert.equal(first.result.files[0].mediaType, "image");
+    assert.ok(["passed", "warnings"].includes(first.result.verification.details.visualQuality.status));
+    assert.ok(Array.isArray(first.result.verification.details.visualQuality.findings));
     assert.ok(first.result.verification.details.layout.blocks.some((block) => block.text === inputs.title));
     const next = await executor.execute(projectId, graphic({ ...inputs, width: inputs.height, height: inputs.width, title: inputs.title + " — bản 2" }));
     assert.notEqual(first.result.files[0].sha256, next.result.files[0].sha256);
@@ -149,6 +151,8 @@ test("graphics work across three projects and orientations, then become sequence
         segments: [{ id: "opening", title: "Opening", intent: "Explain clearly", durationSeconds: 1, visual: { source: ref(first.resultId), startSeconds: 0 }, narration: null, captions: [], references: [] }] } });
     const video = await executor.execute(projectId, { capability: "video.render-sequence", tool: "ffmpeg-sequence", purpose: "Use graphic in sequence", inputs: { artifactId: film.id } });
     assert.ok(video.result.inputResults.includes(first.resultId));
+    assert.ok(["passed", "warnings"].includes(video.result.verification.details.visualQuality.status));
+    assert.ok(Array.isArray(video.result.verification.details.visualQuality.findings));
     assert.equal((await new ProjectStore(rootDir).readResult(projectId, first.resultId)).files[0].available, true);
   }
   const before = (await store.readResults("marketing")).length;
