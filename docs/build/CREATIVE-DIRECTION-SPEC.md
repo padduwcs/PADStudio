@@ -70,7 +70,21 @@ Mỗi option có `id`, `name`, `premise`, `hook`, `narrativeApproach`, `audience
 
 ### `creative.direction`
 
-Gồm `version`, `basis`, `selectionReason`, `principles`, `avoidances`, `reviewCriteria`, `sample`.
+Gồm `version`, `basis`, `selectionReason`, `principles`, `avoidances`, `reviewCriteria`, `sample`
+và optional `deliveryPromise`.
+
+`deliveryPromise` khóa lời hứa đầu ra mà direction phải giữ, nhưng không ép project vào một
+pipeline cố định. Nó gồm:
+
+- `summary`: mô tả ngắn đầu ra đã hứa;
+- `requirements`: 1–30 tiêu chí có ID, nội dung, loại bằng chứng
+  (`technical`, `visual`, `auditory`, `content`, `user_use`) và cờ `blocking`;
+- `allowedFallbacks` và `prohibitedFallbacks`: ranh giới hạ cấp đã được nói rõ.
+
+Project cũ không có trường này vẫn đọc và giao hàng theo contract cũ. Khi direction có
+`deliveryPromise`, local delivery yêu cầu latest Agent review nhắm đúng exact render Result;
+mọi requirement `blocking` phải có criterion cùng ID và trạng thái `passed`. Automated QA,
+Agent review và user acceptance vẫn là ba lớp riêng, không giả làm bằng chứng của nhau.
 `basis` có đúng một trong hai dạng:
 
 ```json

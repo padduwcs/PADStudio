@@ -9,6 +9,11 @@ import {
 } from "../src/operations/system-doctor.js";
 import { ProjectStore } from "../src/project/project-store.js";
 
+test("delivery export readiness includes its exact-output inspection dependency", () => {
+  assert.ok(PRACTICAL_REQUIRED_CAPABILITIES.includes("video.export-delivery"));
+  assert.ok(PRACTICAL_REQUIRED_CAPABILITIES.includes("video.inspect-output"));
+});
+
 function registryWithout(missing = null) {
   return {
     describeCapabilities: async () => ({

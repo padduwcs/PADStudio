@@ -75,6 +75,15 @@ function directionData(proposalArtifactId, optionId = "keys-first") {
       durationSeconds: 45,
       successCriteria: ["The sample states one accurate takeaway", "The source voice remains clear"],
     },
+    deliveryPromise: {
+      summary: "A source-led portrait lesson that remains clear on a phone.",
+      requirements: [
+        { id: "source-led", criterion: "Registered source video remains the primary visual medium", evidence: ["technical", "visual"], blocking: true },
+        { id: "voice-clear", criterion: "The source voice remains intelligible", evidence: ["technical", "auditory"], blocking: true },
+      ],
+      allowedFallbacks: ["Use restrained text cards to bridge missing source context"],
+      prohibitedFallbacks: ["Replace the lesson with an unrelated still-image slideshow"],
+    },
   };
 }
 
@@ -116,6 +125,16 @@ test("creative artifact contracts reject ambiguous or incomplete content", () =>
       ...directionData("artifact proposal with spaces"),
     }),
     /proposalArtifactId has an invalid identifier format/,
+  );
+  assert.throws(
+    () => normalizeCreativeArtifactData("creative.direction", {
+      ...directionData("artifact-proposal"),
+      deliveryPromise: {
+        ...directionData("artifact-proposal").deliveryPromise,
+        requirements: [{ id: "bad", criterion: "Cannot be heard by a frame check", evidence: ["frame_guess"], blocking: true }],
+      },
+    }),
+    /evidence is not supported/,
   );
 });
 

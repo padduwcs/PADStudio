@@ -148,6 +148,23 @@ function directionCard(model) {
   lists.append(list("Nguyên tắc phải giữ", direction.data.principles),
     list("Điều cần tránh", direction.data.avoidances, "is-warning"),
     list("Tiêu chí review", direction.data.reviewCriteria));
+  if (direction.data.deliveryPromise) {
+    const promise = direction.data.deliveryPromise;
+    const promiseBlock = node("section", undefined, "creative-delivery-promise");
+    promiseBlock.append(node("h5", "L\u1eddi h\u1ee9a \u0111\u1ea7u ra"), node("p", promise.summary));
+    const requirements = node("ul");
+    for (const requirement of promise.requirements) {
+      requirements.append(node("li",
+        (requirement.blocking ? "B\u1eaft bu\u1ed9c: " : "Khuy\u1ebfn ngh\u1ecb: ") +
+        requirement.criterion + " \u00b7 " + requirement.evidence.join(" + ")));
+    }
+    promiseBlock.append(requirements,
+      node("p", "Fallback \u0111\u01b0\u1ee3c ph\u00e9p: " +
+        (promise.allowedFallbacks.join(" \u00b7 ") || "kh\u00f4ng c\u00f3"), "input-meta"),
+      node("p", "Kh\u00f4ng \u0111\u01b0\u1ee3c h\u1ea1 c\u1ea5p th\u00e0nh: " +
+        (promise.prohibitedFallbacks.join(" \u00b7 ") || "kh\u00f4ng quy \u0111\u1ecbnh"), "input-meta"));
+    card.append(promiseBlock);
+  }
   const approval = latest(direction.approvals);
   const status = node("div", undefined, `creative-approval${approval ? " is-approved" : ""}`);
   status.append(node("strong", approvalLabel(approval)),

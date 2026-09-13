@@ -13,6 +13,7 @@ export const PRACTICAL_REQUIRED_CAPABILITIES = Object.freeze([
   "audio.transcribe",
   "source.preview",
   "video.render-sequence",
+  "video.inspect-output",
   "video.export-delivery"
 ]);
 

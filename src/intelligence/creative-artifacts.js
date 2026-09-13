@@ -144,9 +144,57 @@ function normalizeDirectionBasis(value) {
   throw new IntelligenceValidationError(`creative.direction.data.basis.kind is not supported: ${kind}.`);
 }
 
+const ACCEPTANCE_EVIDENCE = new Set(["technical", "visual", "auditory", "content", "user_use"]);
+
+function normalizeDeliveryPromise(value) {
+  if (value === undefined || value === null) return null;
+  const label = "creative.direction.data.deliveryPromise";
+  const promise = requireObject(value, label);
+  assertOnlyFields(promise, ["summary", "requirements", "allowedFallbacks", "prohibitedFallbacks"], label);
+  if (!Array.isArray(promise.requirements) || promise.requirements.length === 0 || promise.requirements.length > 30) {
+    throw new IntelligenceValidationError(label + ".requirements must contain between 1 and 30 items.");
+  }
+  const requirements = promise.requirements.map((value, index) => {
+    const requirementLabel = label + ".requirements[" + index + "]";
+    const requirement = requireObject(value, requirementLabel);
+    assertOnlyFields(requirement, ["id", "criterion", "evidence", "blocking"], requirementLabel);
+    if (!Array.isArray(requirement.evidence) || requirement.evidence.length === 0) {
+      throw new IntelligenceValidationError(requirementLabel + ".evidence must not be empty.");
+    }
+    const evidence = requirement.evidence.map((entry, evidenceIndex) => {
+      const mode = requireText(entry, requirementLabel + ".evidence[" + evidenceIndex + "]");
+      if (!ACCEPTANCE_EVIDENCE.has(mode)) {
+        throw new IntelligenceValidationError(requirementLabel + ".evidence is not supported: " + mode + ".");
+      }
+      return mode;
+    });
+    if (new Set(evidence).size !== evidence.length) {
+      throw new IntelligenceValidationError(requirementLabel + ".evidence must not contain duplicates.");
+    }
+    if (typeof requirement.blocking !== "boolean") {
+      throw new IntelligenceValidationError(requirementLabel + ".blocking must be a boolean.");
+    }
+    return {
+      id: requireId(requirement.id, requirementLabel + ".id"),
+      criterion: boundedText(requirement.criterion, requirementLabel + ".criterion", 1_000),
+      evidence,
+      blocking: requirement.blocking,
+    };
+  });
+  if (new Set(requirements.map((requirement) => requirement.id)).size !== requirements.length) {
+    throw new IntelligenceValidationError(label + ".requirements must have unique IDs.");
+  }
+  return {
+    summary: boundedText(promise.summary, label + ".summary", 2_000),
+    requirements,
+    allowedFallbacks: textList(promise.allowedFallbacks ?? [], label + ".allowedFallbacks", { maximumItems: 20 }),
+    prohibitedFallbacks: textList(promise.prohibitedFallbacks ?? [], label + ".prohibitedFallbacks", { maximumItems: 20 }),
+  };
+}
+
 function normalizeDirection(value) {
   const direction = requireObject(value, "creative.direction.data");
-  assertOnlyFields(direction, ["version", "basis", "selectionReason", "principles", "avoidances", "reviewCriteria", "sample"], "creative.direction.data");
+  assertOnlyFields(direction, ["version", "basis", "selectionReason", "principles", "avoidances", "reviewCriteria", "sample", "deliveryPromise"], "creative.direction.data");
   requireVersion(direction, "creative.direction.data");
   return {
     version: CONTRACT_VERSION,
@@ -156,6 +204,7 @@ function normalizeDirection(value) {
     avoidances: textList(direction.avoidances, "creative.direction.data.avoidances", { maximumItems: 30 }),
     reviewCriteria: textList(direction.reviewCriteria, "creative.direction.data.reviewCriteria", { required: true, maximumItems: 30 }),
     sample: normalizeSample(direction.sample, "creative.direction.data.sample"),
+    deliveryPromise: normalizeDeliveryPromise(direction.deliveryPromise),
   };
 }
 

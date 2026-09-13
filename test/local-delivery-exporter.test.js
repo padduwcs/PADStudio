@@ -14,7 +14,8 @@ async function fixture(t) {
   const hash = await sha256File(sourcePath);
   const artifact = {
     id: "artifact-current", key: "film", revision: 1, type: "video.sequence",
-    name: "Film", summary: "Current", status: "active", references: [],
+    name: "Film", summary: "Current", status: "active",
+    references: [{ kind: "artifact", id: "direction-current" }],
     data: {
       version: "1.0", changeReason: "Initial",
       format: { width: 1080, height: 1920, fps: 30 },
@@ -23,6 +24,19 @@ async function fixture(t) {
         durationSeconds: 1, references: [], captions: [],
         visual: { source: { kind: "resource", id: "resource-source" } }
       }]
+    }
+  };
+  const direction = {
+    id: "direction-current", key: "direction", revision: 1, type: "creative.direction",
+    name: "Direction", summary: "Promise", status: "active", references: [],
+    data: {
+      deliveryPromise: {
+        summary: "A source-led portrait video.",
+        requirements: [
+          { id: "source-led", criterion: "Source footage remains primary", evidence: ["technical", "visual"], blocking: true }
+        ],
+        allowedFallbacks: [], prohibitedFallbacks: ["Generic slideshow"]
+      }
     }
   };
   const result = {
@@ -58,13 +72,23 @@ async function fixture(t) {
       items: [{ available: true }]
     }],
     results: [result, quality],
-    artifacts: [artifact],
+    artifacts: [direction, artifact],
     decisions: [approval],
-    reviews: [],
+    reviews: [{
+      id: "review-final", target: { kind: "result", id: result.id }, round: 1,
+      perspective: "combined", verdict: "passed",
+      summary: "Exact result keeps the source-led promise.", reviewer: "agent",
+      criteria: [{
+        id: "source-led", criterion: "Source footage remains primary", status: "passed",
+        evidence: "Technical report and visual contact sheets confirm source footage remains primary.",
+        proposedAction: null
+      }],
+      createdAt: "2026-09-13T00:00:45.000Z"
+    }],
     runs: [{
       id: "run-render", status: "completed", pendingResult: null, outputs: [result.id]
     }],
-    intelligence: { activeArtifacts: [artifact] }
+    intelligence: { activeArtifacts: [direction, artifact] }
   };
   const store = {
     readContext: async () => context,
@@ -140,6 +164,27 @@ test("local delivery fails closed without exact automated output QA", async (t) 
     store, projectId: "demo", inputs: { resultId: result.id, profileId: "local-portrait-h264-v1" },
     outputWorkspace: { temporaryDirectory: join(directory, "no-qa.tmp"), projectRelativeDirectory: "outputs/run-no-qa" }
   }), (error) => error.code === "output_quality_required");
+});
+
+test("local delivery fails closed without Agent review of the exact promised Result", async (t) => {
+  const { directory, store, context, result } = await fixture(t);
+  context.reviews = [];
+  const tool = createLocalDeliveryExporter({ executeCommand: fakeMediaCommand, analysisSummary: async () => ({ sources: [] }) });
+  await assert.rejects(tool.prepare({
+    store, projectId: "demo", inputs: { resultId: result.id, profileId: "local-portrait-h264-v1" },
+    outputWorkspace: { temporaryDirectory: join(directory, "no-review.tmp"), projectRelativeDirectory: "outputs/run-no-review" }
+  }), (error) => error.code === "final_review_required");
+});
+
+test("local delivery requires every blocking delivery promise to pass", async (t) => {
+  const { directory, store, context, result } = await fixture(t);
+  context.reviews[0].criteria[0].status = "warning";
+  context.reviews[0].verdict = "passed_with_notes";
+  const tool = createLocalDeliveryExporter({ executeCommand: fakeMediaCommand, analysisSummary: async () => ({ sources: [] }) });
+  await assert.rejects(tool.prepare({
+    store, projectId: "demo", inputs: { resultId: result.id, profileId: "local-portrait-h264-v1" },
+    outputWorkspace: { temporaryDirectory: join(directory, "unverified.tmp"), projectRelativeDirectory: "outputs/run-unverified" }
+  }), (error) => error.code === "delivery_promise_unverified");
 });
 
 test("local delivery fails closed when exact automated output QA failed", async (t) => {

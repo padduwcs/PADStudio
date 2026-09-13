@@ -33,6 +33,11 @@ function creativeContext() {
     basis: { kind: "proposal", proposalArtifactId: proposal.id, optionId: "keys" },
     selectionReason: "User selected keys", principles: ["Use keys"], avoidances: ["No CTA"],
     reviewCriteria: ["Clear on mobile"],
+    deliveryPromise: {
+      summary: "A source-led mobile lesson",
+      requirements: [{ id: "mobile", criterion: "Readable on a phone", evidence: ["visual"], blocking: true }],
+      allowedFallbacks: [], prohibitedFallbacks: ["Generic slideshow"]
+    },
     sample: { purpose: "Test the bridge", durationSeconds: 45, successCriteria: ["Clear concept"] }
   }, { key: "direction", revision: 2, supersedes: oldDirection.id,
     references: [{ kind: "artifact", id: proposal.id }], createdAt: "2026-01-02T00:00:00.000Z" });
@@ -86,6 +91,7 @@ test("creative observer maps brief, proposal, direction, sample and exact approv
   assert.equal(model.render.resultId, "render-r2");
   assert.equal(model.approval.id, "decision-render");
   assert.equal(model.renderReview.id, "review-r2");
+  assert.equal(model.direction.data.deliveryPromise.requirements[0].id, "mobile");
   assert.deepEqual(model.trace, ["brief-1", "proposal-1", "direction-2", "sequence-2", "render-r2"]);
 });
 

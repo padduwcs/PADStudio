@@ -337,6 +337,19 @@ transcript nguồn. Delivery fail-closed nếu thiếu QA, QA fail hoặc checks
 khác; bundle mang theo `metadata/quality.json`.
 
 Observer chỉ đọc hiển thị gate, check, metrics, contact sheet và giới hạn review.
+
+## Hardening promise-driven final review — 2026-09-13
+
+PADStudio đã học có chọn lọc nguyên tắc delivery promise của OpenMontage mà không sao chép
+pipeline enum hay ngưỡng motion cứng. `creative.direction` có optional `deliveryPromise`
+machine-readable: lời hứa, tiêu chí cần bằng chứng, fallback được phép và hạ cấp bị cấm.
+Với project dùng contract này, local delivery fail-closed nếu chưa có Agent review đạt trên
+đúng render Result hoặc một tiêu chí `blocking` chưa `passed`. Review vẫn dùng store hiện có,
+Result bất biến và bundle lưu dấu vết promise; user acceptance vẫn là gate cuối độc lập.
+
+Doctor nay xem `video.inspect-output` là dependency practical bắt buộc của
+`video.export-delivery`, loại bỏ trạng thái báo ready nhưng delivery chắc chắn thất bại.
+Project legacy không có promise tiếp tục tương thích.
 Machine QA không được ghi thành human viewing/listening: hai trạng thái này luôn được
 ghi rõ `not_performed` nếu chưa có người thực hiện. Contract và giới hạn nằm ở
 [PHASE7-OUTPUT-QA-SPEC.md](PHASE7-OUTPUT-QA-SPEC.md).

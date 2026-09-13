@@ -109,6 +109,12 @@ function exactOutputQuality(context, result) {
   ).at(-1) ?? null;
 }
 
+function exactResultReview(context, result) {
+  return context.reviews.filter((review) =>
+    review.target?.kind === "result" && review.target.id === result.id
+  ).at(-1) ?? null;
+}
+
 function sequenceKeyForDecision(context, decision) {
   return context.results.find((result) => result.id === decision.resultId)?.data?.sequence?.key ?? null;
 }
@@ -242,6 +248,28 @@ export function createLocalDeliveryExporter({
           !resultState || resultState.reasons.length) {
         fail("Result nguồn hoặc dependency không còn là bản current.", "stale_result");
       }
+      const direction = sequence.references
+        .filter((reference) => reference.kind === "artifact")
+        .map((reference) => context.artifacts.find((artifact) => artifact.id === reference.id))
+        .find((artifact) => artifact?.type === "creative.direction");
+      const deliveryPromise = direction?.data?.deliveryPromise ?? null;
+      const finalReview = exactResultReview(context, result);
+      if (deliveryPromise) {
+        if (!finalReview || finalReview.reviewer !== "agent" ||
+            !["passed", "passed_with_notes"].includes(finalReview.verdict)) {
+          fail("The exact Result requires a passing Agent final review.", "final_review_required");
+        }
+        const checks = new Map(finalReview.criteria.map((criterion) => [criterion.id, criterion]));
+        const unverified = deliveryPromise.requirements.filter((requirement) =>
+          requirement.blocking && checks.get(requirement.id)?.status !== "passed");
+        if (unverified.length) {
+          fail(
+            "Final review has not proven blocking delivery promises: " +
+              unverified.map((requirement) => requirement.id).join(", "),
+            "delivery_promise_unverified"
+          );
+        }
+      }
       const pendingForSequence = pendingResultFeedback(context.decisions).filter((decision) =>
         sequenceKeyForDecision(context, decision) === result.data.sequence.key);
       if (pendingForSequence.length) {
@@ -285,6 +313,11 @@ export function createLocalDeliveryExporter({
               sequence: result.data.sequence
             },
             reviews: {
+              deliveryPromise: deliveryPromise ? {
+                directionArtifactId: direction.id,
+                summary: deliveryPromise.summary,
+                requirements: deliveryPromise.requirements
+              } : null,
               sourceResultId: result.id,
               reviews: context.reviews.filter((review) =>
                 review.target?.kind === "result" && review.target.id === result.id)

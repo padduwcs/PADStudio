@@ -92,16 +92,19 @@ try {
   $process = Start-Process -FilePath $Browser -ArgumentList $arguments -WindowStyle Hidden -PassThru
   $endpoint = "http://127.0.0.1:$port/json"
   $targets = $null
+  $target = $null
   $deadline = [DateTime]::UtcNow.AddSeconds(15)
   while ([DateTime]::UtcNow -lt $deadline) {
     try {
       $targets = Invoke-RestMethod -Uri $endpoint -TimeoutSec 1
-      if ($targets) { break }
+      $target = $targets |
+        Where-Object { $_.type -eq "page" -and $_.url -eq $Url } |
+        Select-Object -First 1
+      if ($target) { break }
     } catch {
       Start-Sleep -Milliseconds 100
     }
   }
-  $target = $targets | Where-Object { $_.type -eq "page" } | Select-Object -First 1
   if (-not $target) { throw "Browser không mở được page target." }
 
   $script:CdpSocket = [Net.WebSockets.ClientWebSocket]::new()
@@ -113,6 +116,7 @@ try {
 
   $initialJson = Evaluate @'
 (async () => {
+  document.querySelector("#source-analysis-view")?.scrollIntoView();
   const deadline = Date.now() + 15000;
   while (!document.querySelector(".source-workspace") && Date.now() < deadline) {
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -120,6 +124,9 @@ try {
   const player = document.querySelector(".source-player");
   if (player) player.dataset.browserMarker = "preserve-me";
   return JSON.stringify({
+    href: location.href,
+    readyState: document.readyState,
+    checkpoint: document.querySelector("#checkpoint")?.textContent,
     workspace: !!document.querySelector(".source-workspace"),
     sources: document.querySelectorAll(".source-browser-button").length,
     player: !!player,
@@ -135,6 +142,7 @@ try {
 
   $creativeJson = Evaluate @'
 (async () => {
+  document.querySelector("#creative-direction-view")?.scrollIntoView();
   const deadline = Date.now() + 15000;
   while (!document.querySelector(".creative-workspace") && Date.now() < deadline) {
     await new Promise(resolve => setTimeout(resolve, 100));

@@ -24,6 +24,11 @@ Cho Agent kiểm tra chính exact `video.sequence-render` trước khi xin duy�
 - Result QA có `verification.status = passed` khi báo cáo được tạo đúng và toàn vẹn. Kết luận dùng `data.gate.deliveryEligible`; một báo cáo hợp lệ vẫn có thể kết luận output không đạt.
 - Human visual/auditory review luôn là `not_performed` trong Result kỹ thuật.
 - `local-delivery` chỉ xuất khi có exact QA Result mới nhất với `deliveryEligible = true`; bundle mang theo `quality.json` và tham chiếu QA Result.
+- Nếu creative direction khai báo `deliveryPromise`, delivery còn yêu cầu một Agent review
+  đạt trên đúng render Result. Từng promise `blocking` phải được review bằng criterion cùng ID
+  và trạng thái `passed`; bundle giữ cả promise lẫn review để kiểm tra lại.
+- User acceptance của exact Result vẫn là gate độc lập. Agent review không được ghi thành human
+  viewing/listening và không thay quyền chấp nhận đầu ra của người dùng.
 
 ## Cố ý chưa làm
 
