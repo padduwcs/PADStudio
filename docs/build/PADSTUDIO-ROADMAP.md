@@ -105,3 +105,11 @@ retire và project chỉ còn một sequence hiện hành. Đợt 4 đã đóng;
 ## Cập nhật 2026-09-13 — Đợt 6B
 
 Đã hoàn chỉnh lớp vận hành practical: doctor nhanh/sâu phân biệt capability bắt buộc và tùy chọn; project health đưa blocker, việc cần chú ý và readiness vào context/Observer; recovery có plan dry-run và apply dưới lock, chỉ finalize bằng chứng bền vững và idempotent; runbook bao phủ setup, backup/restore, xử lý lỗi, upgrade/rollback. Acceptance từ project mới đã chứng minh render → finalization bị ngắt → reopen/recover không render lại → approval → delivery → reopen/deep verify. Kết quả đạt 191/191 repository tests, 20/20 analysis tests, browser ba viewport và không còn lock sót. Đợt 6 practical đã đóng; không suy rộng thành release certification hay tự mở provider/publishing/cloud.
+
+## Cập nhật 2026-09-13 — hardening và project thật
+
+Importer nay khóa đoạn cấp tên/chuyển file/ghi Resource nên hai import trùng tên không thể xóa file của nhau; `ensureProject` chịu được hai yêu cầu tạo cùng project. Mutation lock có owner token, heartbeat, kiểm tra process còn sống, takeover intent và chỉ đúng owner mới được release. Regression/stress test bao phủ owner chạy lâu, owner cũ không xóa lock kế nhiệm, tám contender giành stale lock vẫn chỉ có một owner và import đồng thời giữ đủ hai file/resource/run.
+
+Phase 6A/6B acceptance tự sinh media và project trong thư mục tạm, tạo hai revision/Result để kiểm tra exact selection/comparison, delivery, recovery, doctor và browser; không còn hard-code `phase3-vd04-asset-pilot`, r10/r9 hoặc mốc 8 giây. Repository đạt 226/226 test và analysis harness 20/20.
+
+Project `real-pilot-longest-substring` dùng `vid15_Longest_Substring_Without_Repeating_Characters.mp4` đã hoàn thành toàn tuyến đến delivery. Tự duyệt phát hiện r1 hụt âm cuối và sửa thành r2 320,2–330,0 giây; hình, exact-output ASR và audio metrics đạt, còn giới hạn không phát audio trực tiếp được ghi trong combined review. Theo ủy quyền rõ của người dùng, exact Result r2 được accepted và xuất bundle giữ nguyên byte; deep doctor `ready`, 39/39 file được xác minh, không còn pending feedback/finalization.

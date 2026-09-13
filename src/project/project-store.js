@@ -560,7 +560,15 @@ export class ProjectStore {
       .filter(Boolean)
       .map((part) => part[0].toUpperCase() + part.slice(1))
       .join(" ");
-    return this.createProject({ projectId, title: title || projectId });
+    try {
+      return await this.createProject({ projectId, title: title || projectId });
+    } catch (createError) {
+      try {
+        return await this.readProject(projectId);
+      } catch {
+        throw createError;
+      }
+    }
   }
 
   async readProject(projectId) {

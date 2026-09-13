@@ -32,13 +32,14 @@ Bundle bàn giao `result-mtynkixa-db2410bc` giữ nguyên SHA-256 video nguồn 
 ## Kiểm chứng mới nhất
 
 - `npm run operations:acceptance`: `passed_with_documented_limits`.
-- Repository: 191/191 pass; source-analysis harness: 20/20 pass.
+- Repository: 226/226 pass; source-analysis harness: 20/20 pass.
 - Browser: timeline/seek, player preservation, conditional polling, lazy activity, feedback anchor, exact Result selection/comparison, Health và Delivery đều pass ở 390/768/1440 px.
 - Deep doctor pilot: health `ready`, 48 file xác minh checksum, 32 file lịch sử chưa có checksum, 0 file lỗi; trạng thái hệ thống là `attention` chứ không chặn vì dữ liệu legacy được báo rõ.
 - E2E project mới: render bị ngắt đúng lúc finalization, mở lại và phục hồi đúng một lần không render trùng; lần phục hồi kế tiếp không còn việc; approval, delivery, reopen và deep verify 9/9 file đều đạt.
 - Agent summary pilot: 19.008 byte; full context: 424.516 byte; giới hạn 32 KiB đạt.
 - Persistence/reopen, target mismatch/out-of-range, explicit resolution, concurrent append/double-resolve và lock cleanup đều pass.
 - Delivery pilot: full decode, exact-byte copy, MP4/H.264/yuv420p 1080×1920 30 fps, AAC 48 kHz stereo, -18,46 LUFS, -3,97 dBTP, tail silence 0,355 giây đều pass.
+- Pilot thật Longest Substring: deep doctor `ready`, 39/39 file xác minh, 0 pending feedback/finalization; delivery r2 giữ exact SHA-256 của Result và đạt đủ 8 gate xuất bản local.
 - Báo cáo: [phase6b-operations-acceptance.json](../../reports/phase6b-operations-acceptance.json).
 ## Giới hạn còn lại
 
@@ -49,7 +50,11 @@ Bundle bàn giao `result-mtynkixa-db2410bc` giữ nguyên SHA-256 video nguồn 
 
 ## Bước tiếp theo
 
-**Sáu đợt practical đã hoàn thành.** Bước tiếp theo không mặc định mở thêm phân hệ: dùng PADStudio trên project thật, thu thập ma sát có bằng chứng và chỉ mở đợt mới khi nhu cầu thực tế chứng minh. Việc độc lập còn lại là human listening cho giọng, kiểm chứng provider/tài khoản thật và các release gate/corpus rộng; `releaseDefault` vẫn là `null`.
+**Sáu đợt practical đã hoàn thành.** Đợt hardening tiếp theo đã sửa import đồng thời, lease/owner-token và stale-takeover nhiều contender của mutation lock, đồng thời làm Phase 6A/6B acceptance tự tạo fixture thay vì phụ thuộc project ignored trên máy owner. Repository hiện có 226 test.
+
+Project thật `real-pilot-longest-substring` đã đi qua import → probe/scenes/frames/audio/ASR/preview → brief/direction/sequence → render → review/acceptance → delivery. Lần tự duyệt phát hiện r1 cắt hụt âm cuối nên đã tạo r2 ở 320,2–330,0 giây. Exact Result hiện hành `result-mtzsqygo-18e21678` dài 9,821333 giây; exact-output ASR giữ trọn câu đến 9,36 giây, không có clipping candidate và hình đã được kiểm tra bằng contact sheet cùng lấy mẫu tiêu đề 4 fps. Theo ủy quyền rõ của người dùng, Decision `decision-mtzswrzy-57d409a2` chấp nhận đúng artifact r2; delivery `result-mtzswyx2-5fe1c724` giữ nguyên SHA-256 `9e519a1a06bf1cc22c9f26105b00b3b9098bef5561baee39e7b2e10b61b3ea5f`. Deep doctor `ready`, xác minh 39/39 file và không còn việc vận hành chờ. Bằng chứng ở [real-project-pilot.json](../../reports/real-project-pilot.json).
+
+Bước tiếp theo không còn là hoàn tất pilot này mà là chọn cải tiến sản phẩm dựa trên ma sát quan sát được. Giới hạn đã ghi rõ: môi trường Agent không phát audio trực tiếp nên review âm thanh dùng full decode, ASR mức từ và số đo kỹ thuật; human audition về độ tự nhiên/cảm xúc vẫn là một lớp kiểm chứng độc lập. Các việc độc lập khác là kiểm chứng provider/tài khoản thật và các release gate/corpus rộng; `releaseDefault` vẫn là `null`.
 ## Cập nhật Đợt 4 — 2026-09-12
 
 Đã triển khai sequence 1.1 và renderer composition: timing lời đọc, automation

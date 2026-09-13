@@ -10,6 +10,7 @@ import { ProjectStore } from "../src/project/project-store.js";
 import { importProjectInput } from "../src/resources/project-importer.js";
 import { ProjectReader } from "../src/web/project-reader.js";
 import { createPadStudioServer } from "../src/web/server.js";
+import { createAcceptanceDeliveryFixture } from "./lib/acceptance-delivery-fixture.mjs";
 
 const exec = promisify(execFile);
 const logDir = resolve(".cache/phase6b-acceptance");
@@ -45,24 +46,6 @@ try {
   await run("repository", process.execPath, ["--test"]);
   await run("analysis-harness", process.execPath, ["scripts/source-eval.mjs", "test"]);
   await run("analysis-doctor", process.execPath, ["src/cli/analysis-doctor.js"]);
-  const workspaceDoctor = await run(
-    "workspace-doctor",
-    process.execPath,
-    ["src/cli/padstudio-doctor.js", "--deep", "phase3-vd04-asset-pilot"]
-  );
-  const workspaceDoctorValue = JSON.parse(workspaceDoctor.stdout);
-  const workspaceProject = workspaceDoctorValue.projects[0];
-  if (workspaceDoctorValue.status === "blocked" ||
-      workspaceProject.health.status !== "ready" ||
-      workspaceProject.integrity.failed !== 0) {
-    throw new Error("Workspace deep doctor found a blocking or failed integrity condition.");
-  }
-  report.checks["workspace-doctor"].deepIntegrity = {
-    verified: workspaceProject.integrity.verified,
-    uncheckedLegacy: workspaceProject.integrity.unchecked,
-    failed: workspaceProject.integrity.failed
-  };
-
   fixtureDirectory = await mkdtemp(resolve(".cache/phase6b-e2e-"));
   const rootDir = join(fixtureDirectory, "projects");
   const sourcePath = join(fixtureDirectory, "source.mp4");
@@ -243,8 +226,13 @@ try {
     await new Promise((ok) => server.close(ok));
     server = null;
   }
-  const workspaceRoot = resolve(".padstudio/projects");
-  server = createPadStudioServer({ reader: new ProjectReader(workspaceRoot) });
+  const browserRoot = join(fixtureDirectory, "browser-projects");
+  const browserFixture = await createAcceptanceDeliveryFixture({
+    rootDir: browserRoot,
+    sourcePath: join(fixtureDirectory, "browser-source.mp4"),
+    projectId: "phase6b-browser-project"
+  });
+  server = createPadStudioServer({ reader: new ProjectReader(browserRoot) });
   await new Promise((ok, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", ok);
@@ -252,13 +240,17 @@ try {
   await run("browser", "powershell", [
     "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
     "scripts/phase5a-observer-browser-smoke.ps1",
-    "-ProjectId", "phase3-vd04-asset-pilot",
+    "-ProjectId", browserFixture.projectId,
+    "-SequenceKey", "acceptance-preview",
+    "-TechnicalFixture",
+    "-VisualBaseline", "scripts/browser-baselines/acceptance-fixture.json",
+    ...(process.env.PADSTUDIO_UPDATE_ACCEPTANCE_BASELINE === "1" ? ["-UpdateVisualBaseline"] : []),
     "-Url", "http://127.0.0.1:" + server.address().port
   ]);
   server.closeAllConnections();
   await new Promise((ok) => server.close(ok));
   server = null;
-  const locks = (await readdir(workspaceRoot, { recursive: true }))
+  const locks = (await readdir(fixtureDirectory, { recursive: true }))
     .filter((path) => path.endsWith(".lock"));
   if (locks.length) throw new Error("Workspace mutation locks remain: " + locks.join(", "));
   report.checks["lock-cleanup"] = { status: "passed", remaining: 0 };

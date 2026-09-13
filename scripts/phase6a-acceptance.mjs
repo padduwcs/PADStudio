@@ -1,18 +1,15 @@
 import { execFile } from "node:child_process";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { createDefaultToolRegistry } from "../src/execution/default-tool-registry.js";
 import { ToolExecutor } from "../src/execution/tool-executor.js";
-import { pendingResultFeedback } from "../src/intelligence/project-context-assembler.js";
 import { ProjectStore } from "../src/project/project-store.js";
 import { ProjectReader } from "../src/web/project-reader.js";
 import { createPadStudioServer } from "../src/web/server.js";
+import { createAcceptanceDeliveryFixture } from "./lib/acceptance-delivery-fixture.mjs";
 
 const exec = promisify(execFile);
-const rootDir = resolve(".padstudio/projects");
-const projectId = "phase3-vd04-asset-pilot";
-const sourceResultId = "result-mty1pb0w-d6598cd6";
 const profileId = "local-portrait-h264-v1";
 const logDir = resolve(".cache/phase6a-acceptance");
 const report = {
@@ -38,16 +35,22 @@ async function run(name, command, args) {
 }
 
 let server;
+let fixtureDirectory;
 try {
   await run("repository", process.execPath, ["--test"]);
   await run("analysis-harness", process.execPath, ["scripts/source-eval.mjs", "test"]);
 
+  fixtureDirectory = await mkdtemp(resolve(".cache/phase6a-e2e-"));
+  const rootDir = join(fixtureDirectory, "projects");
+  const fixture = await createAcceptanceDeliveryFixture({
+    rootDir,
+    sourcePath: join(fixtureDirectory, "source.mp4"),
+    projectId: "phase6a-fresh-project"
+  });
+  const { projectId } = fixture;
+  const sourceResultId = fixture.currentResult.id;
   const store = new ProjectStore(rootDir);
   const before = await store.readContext(projectId);
-  if (pendingResultFeedback(before.decisions).some((decision) =>
-    before.results.find((result) => result.id === decision.resultId)?.data?.sequence?.key === "pilot-preview")) {
-    throw new Error("Pilot sequence still has unresolved feedback.");
-  }
   let bundle = before.results.filter((result) =>
     result.type === "delivery.bundle" &&
     result.data?.sourceResultId === sourceResultId &&
@@ -118,6 +121,10 @@ try {
     "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
     "scripts/phase5a-observer-browser-smoke.ps1",
     "-ProjectId", projectId,
+    "-SequenceKey", "acceptance-preview",
+    "-TechnicalFixture",
+    "-VisualBaseline", "scripts/browser-baselines/acceptance-fixture.json",
+    ...(process.env.PADSTUDIO_UPDATE_ACCEPTANCE_BASELINE === "1" ? ["-UpdateVisualBaseline"] : []),
     "-Url", origin
   ]);
 
@@ -134,6 +141,7 @@ try {
     server.closeAllConnections();
     await new Promise((ok) => server.close(ok));
   }
+  if (fixtureDirectory) await rm(fixtureDirectory, { recursive: true, force: true });
   await mkdir("reports", { recursive: true });
   await writeFile("reports/phase6a-delivery-acceptance.json", JSON.stringify(report, null, 2) + "\n");
   console.log(report.status);

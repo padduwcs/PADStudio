@@ -59,13 +59,38 @@ test("import preserves sources and records grouped resources and completed runs"
     [["clip.mp4", "video"], ["notes.txt", "other"]]
   );
   assert.deepEqual(
-    (await readdir(join(projectRoot, "coffee-video"))).sort(),
+    (await readdir(join(projectRoot, "coffee-video"))).filter((name) => name !== ".locks").sort(),
     ["analysis", "artifacts", "authorizations", "decisions", "inputs", "outputs", "project.json", "resources", "results", "reviews", "runs", "skills", "workflows"]
   );
   assert.equal(
     (await readdir(join(projectRoot, "coffee-video"))).some((name) => name.startsWith(".import-")),
     false
   );
+});
+
+test("concurrent imports reserve distinct destinations without losing either resource", async (t) => {
+  const { projectRoot, sourceRoot } = await temporaryWorkspace(t);
+  const left = join(sourceRoot, "left");
+  const right = join(sourceRoot, "right");
+  await Promise.all([mkdir(left, { recursive: true }), mkdir(right, { recursive: true })]);
+  await Promise.all([
+    writeFile(join(left, "same.txt"), "left source", "utf8"),
+    writeFile(join(right, "same.txt"), "right source", "utf8")
+  ]);
+
+  const imported = await Promise.all([
+    importProjectInput({ rootDir: projectRoot, projectId: "concurrent", sourcePath: join(left, "same.txt") }),
+    importProjectInput({ rootDir: projectRoot, projectId: "concurrent", sourcePath: join(right, "same.txt") })
+  ]);
+  assert.deepEqual(imported.map((item) => item.inputPath).sort(), ["same (2).txt", "same.txt"]);
+
+  const context = await new ProjectStore(projectRoot).readContext("concurrent");
+  assert.equal(context.resources.length, 2);
+  assert.equal(context.runs.length, 2);
+  assert.ok(context.runs.every((run) => run.status === "completed"));
+  const contents = await Promise.all(context.resources.map((resource) =>
+    readFile(join(projectRoot, "concurrent", resource.path), "utf8")));
+  assert.deepEqual(contents.sort(), ["left source", "right source"]);
 });
 
 test("a failed import records the error without creating a resource", async (t) => {

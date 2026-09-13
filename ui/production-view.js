@@ -110,6 +110,7 @@ function timelinePanel(sequence, video) {
       const label = item.label + " · " + item.startSeconds.toFixed(2) + "–" + item.endSeconds.toFixed(2) + "s" + (item.estimatedEnd ? " (giới hạn dự kiến; chưa đo lời đọc)" : "");
       const bar = node("button", item.label, "timeline-bar");
       bar.type = "button"; bar.title = label; bar.setAttribute("aria-label", label); bar.disabled = !video;
+      bar.dataset.startSeconds = String(item.startSeconds);
       bar.style.left = (100 * item.startSeconds / duration) + "%";
       bar.style.width = (100 * (item.endSeconds - item.startSeconds) / duration) + "%";
       bar.addEventListener("click", () => {

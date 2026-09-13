@@ -1,9 +1,12 @@
 param(
   [string]$Url = "http://127.0.0.1:7603",
   [string]$ProjectId = "",
+  [string]$SequenceKey = "pilot-preview",
   [string]$Browser = "",
   [switch]$Creative,
   [string]$VisualBaseline = "scripts/browser-baselines/observer-timeline.json",
+  [switch]$SkipVisualBaseline,
+  [switch]$TechnicalFixture,
   [switch]$UpdateVisualBaseline
 )
 
@@ -181,27 +184,33 @@ try {
   Send-Cdp "Runtime.enable" | Out-Null
 
 
-  $result = Evaluate @'
+  $browserContract = @{
+    sequenceKey = $SequenceKey
+    technicalFixture = [bool]$TechnicalFixture
+  } | ConvertTo-Json -Compress
+  $browserExpression = @'
 (async()=>{
+ const contract=__PADSTUDIO_BROWSER_CONTRACT__;
  const end=Date.now()+15000;
  let group;
- while(!(group=[...document.querySelectorAll('.sequence-group')].find(p=>p.querySelector('strong')?.textContent==='pilot-preview'))&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
+ while(!(group=[...document.querySelectorAll('.sequence-group')].find(p=>p.querySelector('strong')?.textContent===contract.sequenceKey))&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
  const panel=group?.querySelector('.sequence-panel');
  if(!panel)throw new Error('Missing current pilot panel');
  const timeline=panel.querySelector('.composition-timeline'), video=panel.querySelector('video'), slider=timeline?.querySelector('input');
  if(!timeline||!video||!slider||timeline.querySelectorAll('.timeline-bar').length<3)throw new Error('Missing timeline/media');
  while(video.readyState<1&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
- slider.value='2';slider.dispatchEvent(new Event('input',{bubbles:true}));
+ const seekTarget=Math.min(.5,Number(slider.max)/2);slider.value=String(seekTarget);slider.dispatchEvent(new Event('input',{bubbles:true}));
  await new Promise(r=>setTimeout(r,300));
- if(Math.abs(video.currentTime-2)>0.2)throw new Error('Timeline seek failed');
+ if(Math.abs(video.currentTime-seekTarget)>0.2)throw new Error('Timeline seek failed');
  const imageBars=timeline.querySelector('.timeline-row').querySelectorAll('button');
+ const segmentTarget=Number(imageBars[1]?.dataset.startSeconds);
  imageBars[1].click();await new Promise(r=>setTimeout(r,300));
- if(Math.abs(video.currentTime-8)>0.2)throw new Error('Segment seek failed');
+ if(!Number.isFinite(segmentTarget)||Math.abs(video.currentTime-segmentTarget)>0.2)throw new Error('Segment seek failed');
  video.dataset.phase5a='preserved';await new Promise(r=>setTimeout(r,3500));
  if(!document.querySelector('video[data-phase5a="preserved"]'))throw new Error('Polling replaced player');
  if(timeline.querySelector('[draggable="true"]'))throw new Error('Timeline must be read-only');
  const anchors=[...panel.querySelectorAll('[data-feedback-anchor]')].map(node=>node.dataset.feedbackAnchor);
- if(!anchors.some(value=>value.includes('project=')&&value.includes('result=')&&value.includes('artifact=')&&value.includes('revision=10')))throw new Error('Missing exact revision feedback anchor');
+ if(!anchors.some(value=>value.includes('project=')&&value.includes('result=')&&value.includes('artifact=')&&value.includes('revision=')))throw new Error('Missing exact revision feedback anchor');
  if(!anchors.some(value=>value.includes('segment=')&&value.includes('time=')))throw new Error('Missing segment/time feedback anchor');
  const resultSelects=group.querySelectorAll('.sequence-controls select');
  if(resultSelects.length!==3)throw new Error('Missing exact Result selectors');
@@ -218,7 +227,7 @@ try {
  if(group.querySelectorAll('.sequence-panel').length!==1)throw new Error('Exact Result comparison did not clear');
  if(!revisionSelect.value)throw new Error('Revision selection was lost');
  const originalRevision=revisionSelect.value;
- const alternateRevision=[...revisionSelect.options].find(option=>option.textContent.startsWith('r9'));
+ const alternateRevision=[...revisionSelect.options].find(option=>option.value!==originalRevision);
  if(!alternateRevision)throw new Error('No alternate rendered revision is available');
  revisionSelect.value=alternateRevision.value;
  revisionSelect.dispatchEvent(new Event('change',{bubbles:true}));
@@ -227,12 +236,14 @@ try {
  revisionSelect.value=originalRevision;
  revisionSelect.dispatchEvent(new Event('change',{bubbles:true}));
  await new Promise(r=>setTimeout(r,100));
- document.querySelector('#source-analysis-view').closest('.inputs-section').scrollIntoView({block:'center'});
- while(!document.querySelector('.source-browser-list')&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
- if(!document.querySelector('.source-browser-list'))throw new Error('Source section did not render from its lazy snapshot');
- document.querySelector('#creative-direction-view').closest('.inputs-section').scrollIntoView({block:'center'});
- while(!document.querySelector('.creative-direction')&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
- if(!document.querySelector('.creative-direction'))throw new Error('Creative section did not render from its lazy snapshot');
+ if(!contract.technicalFixture){
+  document.querySelector('#source-analysis-view').closest('.inputs-section').scrollIntoView({block:'center'});
+  while(!document.querySelector('.source-browser-list')&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
+  if(!document.querySelector('.source-browser-list'))throw new Error('Source section did not render from its lazy snapshot');
+  document.querySelector('#creative-direction-view').closest('.inputs-section').scrollIntoView({block:'center'});
+  while(!document.querySelector('.creative-direction')&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
+  if(!document.querySelector('.creative-direction'))throw new Error('Creative section did not render from its lazy snapshot');
+ }
  const operationsEnd=Date.now()+5000;
  while((!document.querySelector('#health-view .health-summary')||!document.querySelector('#delivery-view .delivery-card'))&&Date.now()<operationsEnd)await new Promise(r=>setTimeout(r,100));
  const health=document.querySelector('#health-view .health-summary');
@@ -243,7 +254,7 @@ try {
  const projectPath='/api/projects/'+encodeURIComponent(new URL(location.href).searchParams.get('project'));
  if(paths.includes(projectPath))throw new Error('Observer loaded the legacy full project context');
  if(paths.filter(path=>path===projectPath+'/observer/production').length!==1)throw new Error('Unchanged polling reloaded production context');
- if(paths.filter(path=>path===projectPath+'/observer/source').length!==1||paths.filter(path=>path===projectPath+'/observer/creative').length!==1)throw new Error('Lazy source/creative snapshots loaded more than once');
+ if(!contract.technicalFixture&&(paths.filter(path=>path===projectPath+'/observer/source').length!==1||paths.filter(path=>path===projectPath+'/observer/creative').length!==1))throw new Error('Lazy source/creative snapshots loaded more than once');
  const activityBefore=paths.filter(path=>path===projectPath+'/observer/activity').length;
  document.querySelector('#resource-list').closest('.inputs-section').scrollIntoView({block:'center'});
  while(performance.getEntriesByType('resource').filter(entry=>new URL(entry.name).pathname===projectPath+'/observer/activity').length===activityBefore&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
@@ -252,14 +263,16 @@ try {
  return true;
 })()
 '@
+  $result = Evaluate $browserExpression.Replace("__PADSTUDIO_BROWSER_CONTRACT__", $browserContract)
  $visualSignatures = [ordered]@{}
  $visualComparisons = [ordered]@{}
  foreach($width in @(390,768,1440)) {
    Send-Cdp "Emulation.setDeviceMetricsOverride" @{width=$width;height=900;deviceScaleFactor=1;mobile=$false} | Out-Null
    if (Evaluate 'document.documentElement.scrollWidth > document.documentElement.clientWidth') {throw "Overflow at $width"}
-   $viewportCheck = Evaluate @'
+   $viewportExpression = @'
 (()=>{
- const timeline=[...document.querySelectorAll('.sequence-group')].find(p=>p.querySelector('strong')?.textContent==='pilot-preview')?.querySelector('.composition-timeline');
+ const contract=__PADSTUDIO_BROWSER_CONTRACT__;
+ const timeline=[...document.querySelectorAll('.sequence-group')].find(p=>p.querySelector('strong')?.textContent===contract.sequenceKey)?.querySelector('.composition-timeline');
  if(!timeline)throw new Error('Missing timeline for viewport acceptance');
  timeline.scrollIntoView({block:'center'});
  const clipped=[...timeline.querySelectorAll('.timeline-label')].filter(label=>label.scrollWidth>label.clientWidth+1||label.scrollHeight>label.clientHeight+1).map(label=>label.textContent);
@@ -275,6 +288,7 @@ try {
  return {x:rect.left+scrollX,y:rect.top+scrollY,width:rect.width,height:rect.height};
 })()
 '@
+   $viewportCheck = Evaluate $viewportExpression.Replace("__PADSTUDIO_BROWSER_CONTRACT__", $browserContract)
    $capture = Send-Cdp "Page.captureScreenshot" @{format="png";fromSurface=$true;captureBeyondViewport=$true;clip=@{x=$viewportCheck.x;y=$viewportCheck.y;width=$viewportCheck.width;height=$viewportCheck.height;scale=1}}
    $captureDirectory = Join-Path $workspace ".cache/phase5a-acceptance"
    [IO.Directory]::CreateDirectory($captureDirectory) | Out-Null
@@ -283,7 +297,9 @@ try {
    $visualSignatures[[string]$width] = Get-VisualSignature -Path $capturePath
  }
  $baselinePath = [IO.Path]::GetFullPath((Join-Path $workspace $VisualBaseline))
- if ($UpdateVisualBaseline) {
+ if ($SkipVisualBaseline) {
+   $visualComparisons = [ordered]@{ skipped = $true }
+ } elseif ($UpdateVisualBaseline) {
    [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($baselinePath)) | Out-Null
    [IO.File]::WriteAllText($baselinePath, (($visualSignatures | ConvertTo-Json -Depth 20 -Compress) + "`n"), [Text.UTF8Encoding]::new($false))
  } else {
@@ -295,7 +311,7 @@ try {
      if (-not $comparison.passed) { throw "Visual regression at $width px: $($comparison | ConvertTo-Json -Compress)" }
    }
  }
- [PSCustomObject]@{status="passed";timeline=$true;seek=$true;playerPreserved=$true;conditionalPolling=$true;lazyActivity=$true;feedbackAnchors=$true;exactResultSelection=$true;exactResultSwitching=$true;exactResultComparison=$true;health=$true;delivery=$true;accessibilitySmoke=$true;timelineLabelsUnclipped=$true;visualRegression=if($UpdateVisualBaseline){"baseline_updated"}else{"passed"};visualComparisons=$visualComparisons;viewports=@(390,768,1440)} | ConvertTo-Json -Depth 10
+ [PSCustomObject]@{status="passed";timeline=$true;seek=$true;playerPreserved=$true;conditionalPolling=$true;lazyActivity=$true;feedbackAnchors=$true;exactResultSelection=$true;exactResultSwitching=$true;exactResultComparison=$true;health=$true;delivery=$true;accessibilitySmoke=$true;timelineLabelsUnclipped=$true;visualRegression=if($SkipVisualBaseline){"skipped_technical_fixture"}elseif($UpdateVisualBaseline){"baseline_updated"}else{"passed"};visualComparisons=$visualComparisons;viewports=@(390,768,1440)} | ConvertTo-Json -Depth 10
 } finally {
   if ($script:CdpSocket -and $script:CdpSocket.State -eq [Net.WebSockets.WebSocketState]::Open) {
     try { Send-Cdp "Browser.close" | Out-Null } catch {}

@@ -1,12 +1,12 @@
 {
   "version": "1.0",
   "phase": "6B",
-  "checkedAt": "2026-09-12T17:57:22.471Z",
+  "checkedAt": "2026-09-13T12:48:56.149Z",
   "status": "passed_with_documented_limits",
   "checks": {
     "repository": {
       "status": "passed",
-      "output": "lier is unknown (0.868ms)\n✔ provider receipt persists before a paid audio response body fails (171.937ms)\n✔ image, concat, audio overlay and subtitle tools chain into one finished video (3725.7249ms)\n✔ sequence supports unresolved ideas, validates timing and rejects raw media paths (547.9253ms)\n✔ dependency impact propagates without deleting historical approvals or selecting new work (692.8697ms)\n✔ sequence diff identifies moves, removals and local changes (0.9753ms)\n✔ workflow completion requires the promised output kind and type (208.7379ms)\n✔ local production renders, reuses unchanged segments, preserves reviews and fails without output on invalid sources (3597.0588ms)\n✔ narration is explicit, long audio is rejected, and source-byte changes invalidate segment reuse (1898.5891ms)\n✔ an executor finalization failure preserves sequence media and is recoverable without rendering twice (505.9252ms)\n✔ many frame-aligned short segments preserve the requested total duration (2220.8322ms)\n✔ missing selected folder media is visible on the segment and historical sequence can still be retired (41.8085ms)\n✔ video toolkit chains concat, reformat and thumbnail into a durable pipeline (5374.2667ms)\n✔ real ffmpeg trim creates a durable reusable clip and serves registered bytes (1485.0248ms)\nℹ tests 191\nℹ suites 0\nℹ pass 191\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 16051.6919\n"
+      "output": "es, removals and local changes (0.5239ms)\n✔ workflow completion requires the promised output kind and type (130.2704ms)\n✔ local production renders, reuses unchanged segments, preserves reviews and fails without output on invalid sources (3575.0702ms)\n✔ narration is explicit, long audio is rejected, and source-byte changes invalidate segment reuse (2199.455ms)\n✔ an executor finalization failure preserves sequence media and is recoverable without rendering twice (458.1544ms)\n✔ many frame-aligned short segments preserve the requested total duration (2221.985ms)\n✔ missing selected folder media is visible on the segment and historical sequence can still be retired (44.6375ms)\n✔ video toolkit chains concat, reformat and thumbnail into a durable pipeline (5391.3791ms)\n✔ real ffmpeg trim creates a durable reusable clip and serves registered bytes (1517.9207ms)\n✔ contrast calculation uses WCAG relative luminance (0.7822ms)\n✔ caption wrapping counts user-perceived graphemes without splitting emoji (1.7971ms)\n✔ sequence visual quality distinguishes actionable heuristics from hard invisibility (3.5263ms)\n✔ unknown video pixels produce a warning, while protected captions remain clean (0.4399ms)\n✔ graphic normalization reports low accent contrast without rejecting a valid layout (0.5367ms)\nℹ tests 226\nℹ suites 0\nℹ pass 226\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 16992.6953\n"
     },
     "analysis-harness": {
       "status": "passed",
@@ -16,15 +16,6 @@
       "status": "passed",
       "output": "h bằng AdaptiveDetector và giữ diagnostic score.\",\n          \"runtime\": \"local-python\",\n          \"executionMode\": \"sync\",\n          \"inputSchema\": {\n            \"type\": \"object\",\n            \"required\": [\n              \"source\",\n              \"analysis\"\n            ],\n            \"additionalProperties\": false\n          },\n          \"outputDescription\": \"source.scenes với shot liên tục, boundary kind/score và coverage đã quét.\",\n          \"sideEffects\": [\n            \"Tạo dataset JSONL trong outputs của project.\"\n          ],\n          \"cost\": {\n            \"currency\": \"USD\",\n            \"estimated\": 0\n          },\n          \"approvalRequired\": false,\n          \"producesFiles\": true,\n          \"availability\": {\n            \"status\": \"available\",\n            \"helperVersion\": \"1.0\",\n            \"protocolVersion\": \"1.0\",\n            \"pythonVersion\": \"3.12.10\",\n            \"profileVersion\": \"source-standard-v1\",\n            \"profileDigest\": \"85242734cc0f509dd2e6f5dedfb9227e744f76fa5f090195be64bba7e3de6af0\",\n            \"libraryVersions\": {\n              \"faster-whisper\": \"1.2.1\",\n              \"ctranslate2\": \"4.8.2\",\n              \"scenedetect\": \"0.7.1\",\n              \"av\": \"18.1.0\"\n            },\n            \"device\": \"cpu\"\n          }\n        }\n      ],\n      \"available\": true\n    }\n  ],\n  \"note\": \"Doctor không tải model và không chạy inference. Profile ASR không tự fallback.\"\n}\n"
     },
-    "workspace-doctor": {
-      "status": "passed",
-      "output": "2eafa2d41a826f3e13e6cd1cb9bc2a06eb27ae33ee879e96\"\n          },\n          {\n            \"resultId\": \"result-mtynkixa-db2410bc\",\n            \"fileId\": \"provenance\",\n            \"status\": \"verified\",\n            \"sha256\": \"a9ecf0a73b80a51e955962c6732964e1c15200276b4e42a10c8fd1480e395903\"\n          },\n          {\n            \"resultId\": \"result-mtynkixa-db2410bc\",\n            \"fileId\": \"reviews\",\n            \"status\": \"verified\",\n            \"sha256\": \"4abade93eb4fc7e50a7452e10454ee241921cfdd096de5c279b9d801bc89e30d\"\n          },\n          {\n            \"resultId\": \"result-mtynkixa-db2410bc\",\n            \"fileId\": \"approval\",\n            \"status\": \"verified\",\n            \"sha256\": \"a3f7da115f87472f394f4071bc8d67bd46e4f311a2a9514e8bf80dfef4dea006\"\n          },\n          {\n            \"resultId\": \"result-mtynkixa-db2410bc\",\n            \"fileId\": \"checksums\",\n            \"status\": \"verified\",\n            \"sha256\": \"ffc24111f480c03155cddaa11931707dd485981fb85f4395a251bd9720008166\"\n          }\n        ]\n      }\n    }\n  ],\n  \"remediations\": [\n    {\n      \"code\": \"project:phase3-vd04-asset-pilot\",\n      \"message\": \"Đọc health/issue của project phase3-vd04-asset-pilot và xử lý trước khi tiếp tục.\"\n    }\n  ],\n  \"release\": {\n    \"practicalDefault\": \"owner-machine\",\n    \"releaseDefault\": null,\n    \"note\": \"Practical readiness không chứng nhận các release gate/corpus/benchmark chưa đo.\"\n  }\n}\n",
-      "deepIntegrity": {
-        "verified": 48,
-        "uncheckedLegacy": 32,
-        "failed": 0
-      }
-    },
     "fixture-media": {
       "status": "passed",
       "output": ""
@@ -32,10 +23,10 @@
     "fresh-project-e2e": {
       "status": "passed",
       "projectId": "phase6b-fresh-project",
-      "resourceId": "resource-mtyou1fx-d562d1a2",
-      "artifactId": "artifact-mtyou1g7-20aeeb22",
-      "renderRunId": "run-mtyou1ga-c026ced5",
-      "renderResultId": "result-mtyou1zm-00615775",
+      "resourceId": "resource-mtzt98ri-a20c55d8",
+      "artifactId": "artifact-mtzt98rs-0a1d565f",
+      "renderRunId": "run-mtzt98rw-5225a867",
+      "renderResultId": "result-mtzt99bj-57923eee",
       "recoveryPlan": {
         "total": 1,
         "recoverable": 1,
@@ -48,77 +39,87 @@
         "skipped": 0
       },
       "repeatedRecovery": "nothing_to_do",
-      "approvalDecisionId": "decision-mtyou20f-5801472f",
-      "deliveryRunId": "run-mtyou20g-16a6ecea",
-      "deliveryResultId": "result-mtyou26t-6510ed31",
+      "approvalDecisionId": "decision-mtzt99ce-4a2be40d",
+      "deliveryRunId": "run-mtzt99cg-40de1e27",
+      "deliveryResultId": "result-mtzt99iy-382a7437",
       "deliverySha256": "47880add67781719cd24cfaa0555fe5163e59ced05ddb3c0142ae59372f943cf",
       "health": "ready",
       "deepIntegrity": {
         "checked": 9,
         "verified": 9,
+        "legacyUnchecked": 0,
         "unchecked": 0,
         "failed": 0,
         "files": [
           {
-            "resultId": "result-mtyou1zm-00615775",
+            "resultId": "result-mtzt99bj-57923eee",
             "fileId": "primary",
             "status": "verified",
-            "sha256": "47880add67781719cd24cfaa0555fe5163e59ced05ddb3c0142ae59372f943cf"
+            "sha256": "47880add67781719cd24cfaa0555fe5163e59ced05ddb3c0142ae59372f943cf",
+            "checksumSource": "file"
           },
           {
-            "resultId": "result-mtyou1zm-00615775",
+            "resultId": "result-mtzt99bj-57923eee",
             "fileId": "segment-0",
             "status": "verified",
-            "sha256": "abb32b31e8a854f91720200f5d15ad4f7a5a3f450edab693fd0cc197dbbce416"
+            "sha256": "abb32b31e8a854f91720200f5d15ad4f7a5a3f450edab693fd0cc197dbbce416",
+            "checksumSource": "file"
           },
           {
-            "resultId": "result-mtyou1zm-00615775",
+            "resultId": "result-mtzt99bj-57923eee",
             "fileId": "frame-0",
             "status": "verified",
-            "sha256": "9d26598d434767f842a9cab2d95b4b32178cba4e69a5eb6f669775fadbe83da4"
+            "sha256": "9d26598d434767f842a9cab2d95b4b32178cba4e69a5eb6f669775fadbe83da4",
+            "checksumSource": "file"
           },
           {
-            "resultId": "result-mtyou26t-6510ed31",
+            "resultId": "result-mtzt99iy-382a7437",
             "fileId": "primary",
             "status": "verified",
-            "sha256": "47880add67781719cd24cfaa0555fe5163e59ced05ddb3c0142ae59372f943cf"
+            "sha256": "47880add67781719cd24cfaa0555fe5163e59ced05ddb3c0142ae59372f943cf",
+            "checksumSource": "file"
           },
           {
-            "resultId": "result-mtyou26t-6510ed31",
+            "resultId": "result-mtzt99iy-382a7437",
             "fileId": "manifest",
             "status": "verified",
-            "sha256": "0e396aeea5888c6296e5413995512dd81d7803614911792052a61612b7240f93"
+            "sha256": "4ff2d4b07122366030d5daba6c4a8d11d139615453518e8343bae6046edcf00a",
+            "checksumSource": "file"
           },
           {
-            "resultId": "result-mtyou26t-6510ed31",
+            "resultId": "result-mtzt99iy-382a7437",
             "fileId": "provenance",
             "status": "verified",
-            "sha256": "bfb7fef240aecd51ecd043177c6635bd427a7245f3c7491dc9f591091a773b09"
+            "sha256": "37353194756e1a0e763c0e19973c31947c3cb932e76fe3cc235a5b979b1dade5",
+            "checksumSource": "file"
           },
           {
-            "resultId": "result-mtyou26t-6510ed31",
+            "resultId": "result-mtzt99iy-382a7437",
             "fileId": "reviews",
             "status": "verified",
-            "sha256": "7eef9e6df6bb87a78f00e4e76b6606e7475fe7afef550499add59c6b9cb1f23c"
+            "sha256": "47fe1aeeb443a9efeca5057fa7878dabe1708b44c04cdf152c7a8046b39f8c7a",
+            "checksumSource": "file"
           },
           {
-            "resultId": "result-mtyou26t-6510ed31",
+            "resultId": "result-mtzt99iy-382a7437",
             "fileId": "approval",
             "status": "verified",
-            "sha256": "8e3a7648255b4b1520861d4e77f83b5c60e66658e42baa27fd3ddc01a44f790a"
+            "sha256": "4142e26f0b8bc7a6c105bcc5a27cf8094523b5248270ced9d046f833ebe9bec0",
+            "checksumSource": "file"
           },
           {
-            "resultId": "result-mtyou26t-6510ed31",
+            "resultId": "result-mtzt99iy-382a7437",
             "fileId": "checksums",
             "status": "verified",
-            "sha256": "4ffdd2cb17843ffc26de90c3f1e8d33134fe65d6e3304a78b13aa1a08e99e97b"
+            "sha256": "48695dbd8a37f91ca2cf3fe745c24681df34c1d7dda48674664d8f31ed601946",
+            "checksumSource": "file"
           }
         ]
       }
     },
     "browser": {
       "status": "passed",
-      "output": "{\r\n    \"status\":  \"passed\",\r\n    \"timeline\":  true,\r\n    \"seek\":  true,\r\n    \"playerPreserved\":  true,\r\n    \"conditionalPolling\":  true,\r\n    \"lazyActivity\":  true,\r\n    \"feedbackAnchors\":  true,\r\n    \"exactResultSelection\":  true,\r\n    \"exactResultSwitching\":  true,\r\n    \"exactResultComparison\":  true,\r\n    \"health\":  true,\r\n    \"delivery\":  true,\r\n    \"viewports\":  [\r\n                      390,\r\n                      768,\r\n                      1440\r\n                  ]\r\n}\r\n"
+      "output": "                              \"changedRatioThreshold\":  0.03,\r\n                                          \"meanDelta\":  0,\r\n                                          \"meanDeltaThreshold\":  2,\r\n                                          \"cellDelta\":  10\r\n                                      },\r\n                              \"768\":  {\r\n                                          \"passed\":  true,\r\n                                          \"changedRatio\":  0,\r\n                                          \"changedRatioThreshold\":  0.03,\r\n                                          \"meanDelta\":  0,\r\n                                          \"meanDeltaThreshold\":  2,\r\n                                          \"cellDelta\":  10\r\n                                      },\r\n                              \"1440\":  {\r\n                                           \"passed\":  true,\r\n                                           \"changedRatio\":  0,\r\n                                           \"changedRatioThreshold\":  0.03,\r\n                                           \"meanDelta\":  0,\r\n                                           \"meanDeltaThreshold\":  2,\r\n                                           \"cellDelta\":  10\r\n                                       }\r\n                          },\r\n    \"viewports\":  [\r\n                      390,\r\n                      768,\r\n                      1440\r\n                  ]\r\n}\r\n"
     },
     "lock-cleanup": {
       "status": "passed",

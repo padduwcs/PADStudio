@@ -1,0 +1,60 @@
+{
+  "version": "1.0",
+  "status": "accepted_and_delivered",
+  "projectId": "real-pilot-longest-substring",
+  "sourceResourceId": "resource-mtzrgeq9-9da868b6",
+  "analysisJobId": "analysis-mtzrgpxu-3348b84c",
+  "evidenceResultIds": {
+    "source.metadata": "result-mtzrgqj6-42312507",
+    "source.scenes": "result-mtzrhlsj-996e05c8",
+    "source.frames": "result-mtzrhr1l-4aa6d6f7",
+    "source.audio-analysis": "result-mtzrhrwd-f6546fc9",
+    "source.transcript": "result-mtzrie26-c2f1ce33",
+    "source.preview": "result-mtzrislg-6c26369f"
+  },
+  "briefArtifactId": "artifact-mtzrli3u-0d6a5591",
+  "directionArtifactId": "artifact-mtzrmvro-e8f37f03",
+  "sequenceArtifactId": "artifact-mtzsqxmp-9ce55272",
+  "sequenceRevision": 2,
+  "resultId": "result-mtzsqygo-18e21678",
+  "preview": "D:\\Current_Projects\\PADStudio\\.padstudio\\projects\\real-pilot-longest-substring\\outputs\\run-mtzsqxn7-80b04f68\\preview.mp4",
+  "durationSeconds": 9.821333,
+  "verification": {
+    "status": "passed",
+    "checks": [
+      "registered_sources_resolved",
+      "source_hashes_stable",
+      "segment_streams_and_duration",
+      "preview_streams_and_duration",
+      "review_frames_present",
+      "visual_quality_contract"
+    ],
+    "details": {
+      "executableVersion": "ffmpeg version 8.1.2-full_build-www.gyan.dev Copyright (c) 2000-2026 the FFmpeg developers",
+      "audioMeasurement": null,
+      "visualQuality": {
+        "status": "passed",
+        "findings": []
+      },
+      "creativeReview": "not_performed",
+      "speechContentReview": "not_performed",
+      "subtitleVisualReview": "not_performed",
+      "audioMixReview": "not_performed",
+      "needsReview": [
+        "Watch full preview including cuts and captions",
+        "Listen to narration and source mix",
+        "Compare against segment intent and brief"
+      ]
+    }
+  },
+  "exactOutputQualityEvidence": {
+    "analysisJobId": "analysis-mtzsruf1-f91a63d6",
+    "audioResultId": "result-mtzsrv1z-d2c7c1c1",
+    "transcriptResultId": "result-mtzsrz64-c05c25a0"
+  },
+  "userApproval": true,
+  "approvalDecisionId": "decision-mtzswrzy-57d409a2",
+  "deliveryCreated": true,
+  "deliveryResultId": "result-mtzswyx2-5fe1c724",
+  "next": "Pilot complete."
+}

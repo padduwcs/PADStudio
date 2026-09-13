@@ -3,6 +3,7 @@ import { basename, extname, join, parse, resolve } from "node:path";
 import { indexResourceFiles } from "./media-files.js";
 import { isPathInside, inputsDirectory, projectDirectory } from "../project/project-paths.js";
 import { ProjectStore } from "../project/project-store.js";
+import { withFileLock } from "../project/file-lock.js";
 
 export class ProjectImportError extends Error {
   constructor(message) {
@@ -102,16 +103,28 @@ export async function importProjectInput({ rootDir, projectId, sourcePath }) {
       errorOnExist: true
     });
 
-    destination = await destinationPath(inputRoot, sourceName);
-    await rename(stagedInput, destination);
-    const items = await indexResourceFiles(destination, projectRoot, kind);
-    resource = await store.addInputResource(projectId, {
-      runId: run.id,
-      kind,
-      name: basename(destination),
-      path: destination,
-      sourceName,
-      items
+    await withFileLock({
+      projectDirectory: projectRoot,
+      name: "inputs",
+      action: async () => {
+        destination = await destinationPath(inputRoot, sourceName);
+        await rename(stagedInput, destination);
+        try {
+          const items = await indexResourceFiles(destination, projectRoot, kind);
+          resource = await store.addInputResource(projectId, {
+            runId: run.id,
+            kind,
+            name: basename(destination),
+            path: destination,
+            sourceName,
+            items
+          });
+        } catch (error) {
+          await rm(destination, { recursive: true, force: true }).catch(() => {});
+          destination = null;
+          throw error;
+        }
+      }
     });
     await store.finishRun(projectId, run.id, {
       status: "completed",
@@ -126,9 +139,6 @@ export async function importProjectInput({ rootDir, projectId, sourcePath }) {
       inputPath: basename(destination)
     };
   } catch (error) {
-    if (destination && !resource) {
-      await rm(destination, { recursive: true, force: true }).catch(() => {});
-    }
     try {
       const currentRun = await store.readRun(projectId, run.id);
       if (currentRun.status === "in_progress") {
