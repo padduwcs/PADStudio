@@ -14,7 +14,7 @@ npm start
 
 Observer chạy tại `http://127.0.0.1:7603/?project=demo`.
 
-Các nhóm khả năng chính gồm phân tích source, transcript/scene/frame/audio, creative artifact và workflow, tìm/nhập/chuẩn bị asset, graphic, TTS local/cloud, trim/concat/reformat/subtitle/audio overlay, image-to-video, sequence composition, exact-output QA và delivery có checksum. Xem tool thực tế trên máy bằng:
+Các nhóm khả năng chính gồm phân tích source, transcript/scene/frame/audio, creative artifact và workflow, tìm/nhập/chuẩn bị asset, graphic, TTS local/cloud, hoạt họa project-native bằng Manim/Remotion/HyperFrames, trim/concat/reformat/subtitle/audio overlay, image-to-video, sequence composition, exact-output QA và delivery có checksum. Xem tool thực tế trên máy bằng:
 
 ```powershell
 npm run tool:list

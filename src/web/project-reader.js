@@ -102,6 +102,9 @@ function observerSection(context, section, generation) {
     return { ...base, production: { sequences: context.production.sequences,
       affectedWorkItems: context.production.affectedWorkItems, note: context.production.note } };
   }
+  if (section === "animation") {
+    return { ...base, animation: context.animation };
+  }
   if (section === "health") {
     return {
       ...base,

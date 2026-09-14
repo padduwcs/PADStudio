@@ -2,7 +2,8 @@ param(
   [string]$Url = "http://127.0.0.1:7603",
   [string]$ProjectId = "",
   [string]$Browser = "",
-  [switch]$Creative
+  [switch]$Creative,
+  [switch]$StructureOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,6 +25,7 @@ if (-not $Browser -or -not (Test-Path -LiteralPath $Browser)) {
 if ($ProjectId) {
   $Url = $Url.TrimEnd("/") + "/?project=" + [Uri]::EscapeDataString($ProjectId)
 }
+$expectedTargetUri = [Uri]$Url
 
 $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
 $listener.Start()
@@ -98,7 +100,22 @@ try {
     try {
       $targets = Invoke-RestMethod -Uri $endpoint -TimeoutSec 1
       $target = $targets |
-        Where-Object { $_.type -eq "page" -and $_.url -eq $Url } |
+        Where-Object {
+          if ($_.type -ne "page") { return $false }
+          try {
+            $candidateUri = [Uri]$_.url
+            $sameDocument =
+              $candidateUri.Scheme -eq $expectedTargetUri.Scheme -and
+              $candidateUri.Host -eq $expectedTargetUri.Host -and
+              $candidateUri.Port -eq $expectedTargetUri.Port -and
+              $candidateUri.AbsolutePath.TrimEnd("/") -eq $expectedTargetUri.AbsolutePath.TrimEnd("/")
+            if (-not $sameDocument) { return $false }
+            if ($ProjectId) { return $candidateUri.Query -eq $expectedTargetUri.Query }
+            return $true
+          } catch {
+            return $false
+          }
+        } |
         Select-Object -First 1
       if ($target) { break }
     } catch {
@@ -131,13 +148,51 @@ try {
     sources: document.querySelectorAll(".source-browser-button").length,
     player: !!player,
     timeline: !!document.querySelector(".source-timeline"),
-    evidence: !!document.querySelector(".source-evidence-panel")
+    evidence: !!document.querySelector(".source-evidence-panel"),
+    animationView: !!document.querySelector("#animation-view"),
+    animationHeading: !!document.querySelector("#animation-heading"),
+    animationRendered: !!document.querySelector("#animation-view .empty-note, #animation-view [data-animation-artifact]")
   });
 })()
 '@
   $initial = $initialJson | ConvertFrom-Json
-  if (-not $initial.workspace -or $initial.sources -lt 1 -or -not $initial.player -or -not $initial.timeline -or -not $initial.evidence) {
+  if (
+    -not $initial.workspace -or $initial.sources -lt 1 -or
+    -not $initial.timeline -or -not $initial.evidence -or
+    -not $initial.animationView -or -not $initial.animationHeading
+  ) {
     throw ("Workspace chưa render đầy đủ: " + $initialJson)
+  }
+
+  if ($StructureOnly) {
+    if (-not $initial.animationRendered) {
+      throw ("Animation observer did not finish rendering: " + $initialJson)
+    }
+    foreach ($width in @(390, 768, 1440)) {
+      Send-Cdp "Emulation.setDeviceMetricsOverride" @{
+        width = $width
+        height = 900
+        deviceScaleFactor = 1
+        mobile = $false
+      } | Out-Null
+      $sizesJson = Evaluate 'JSON.stringify({scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth})'
+      $sizes = $sizesJson | ConvertFrom-Json
+      if ($sizes.scrollWidth -gt $sizes.clientWidth) {
+        throw "Observer has horizontal overflow at viewport $width px: $sizesJson"
+      }
+    }
+    [PSCustomObject]@{
+      status = "passed"
+      mode = "structure-only"
+      browser = $Browser
+      url = $Url
+      animation = "rendered"
+      viewports = @(390, 768, 1440)
+    } | ConvertTo-Json -Depth 5
+    return
+  }
+  if (-not $initial.player) {
+    throw ("Workspace source player is not available for the full interaction smoke test: " + $initialJson)
   }
 
   $creativeJson = Evaluate @'

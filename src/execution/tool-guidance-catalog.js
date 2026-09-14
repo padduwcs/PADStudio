@@ -1,6 +1,7 @@
 const DEFAULT_PROFILE = Object.freeze({ quality: 3, control: 4, reliability: 4, costEfficiency: 5, latency: 4, privacy: 5 });
 
 function group(capability) {
+  if (capability.startsWith("animation.")) return ["Project-native, revisioned code animation.", "Generated code still requires exact user trust before host execution.", "code-animation"];
   if (capability.startsWith("source.") || ["audio.transcribe", "audio.analyze", "video.detect-scenes"].includes(capability)) return ["Evidence-backed source understanding.", "Machine evidence requires review.", "source-understanding"];
   if (["audio.prepare", "graphic.render", "media.acquire", "media.search-stock", "tts.synthesize"].includes(capability)) return ["Traceable reusable project assets.", "Does not approve creative quality or usage rights.", "asset-preparation"];
   if (["video.render-sequence", "video.export-delivery"].includes(capability)) return ["Exact revision rendering and delivery.", "Does not approve on behalf of the Agent or user.", "video-sequence-planning"];
@@ -12,6 +13,9 @@ function setup(tool) {
   if (tool.name === "elevenlabs") return { kind: "provider_account", instructions: "Configure elevenLabs.apiKey in padstudio.local.json.", configKeys: ["elevenLabs.apiKey"] };
   if (tool.name === "piper-local") return { kind: "local_model", instructions: "Install the pinned Piper model and configure its directory when needed.", configKeys: ["piper.modelDirectory", "piper.defaultModel"] };
   if (tool.name === "wikimedia-stock") return { kind: "network", instructions: "Requires HTTPS access to Wikimedia Commons; no API key.", configKeys: [] };
+  if (tool.name === "manim-ce") return { kind: "local_runtime", instructions: "Install and pin Manim Community plus FFmpeg, or configure PADSTUDIO_MANIM_PATH.", configKeys: ["PADSTUDIO_MANIM_PATH"] };
+  if (tool.name === "remotion-local") return { kind: "local_runtime", instructions: "Install a pinned Remotion CLI/runtime in .runtime-tools/code-animation-node or configure PADSTUDIO_REMOTION_PATH. PADStudio uses an existing Chrome/Edge installation (or PADSTUDIO_CHROME_PATH) and never invokes npx or permits implicit browser installation.", configKeys: ["PADSTUDIO_REMOTION_PATH", "PADSTUDIO_CHROME_PATH"] };
+  if (tool.name === "hyperframes-local") return { kind: "local_runtime", instructions: "Install a pinned HyperFrames CLI in .runtime-tools/code-animation-node or configure PADSTUDIO_HYPERFRAMES_PATH. PADStudio uses an existing Chrome/Edge installation (or PADSTUDIO_CHROME_PATH) and never invokes npx to auto-install it.", configKeys: ["PADSTUDIO_HYPERFRAMES_PATH", "PADSTUDIO_CHROME_PATH"] };
   return { kind: "tool_reported", instructions: "Use live tool availability and setup hints.", configKeys: [] };
 }
 
@@ -22,7 +26,8 @@ export function applyToolGuidance(tool) {
     : tool.name === "piper-local"
       ? { quality: 3, control: 3, reliability: 5, costEfficiency: 5, latency: 5, privacy: 5 }
       : DEFAULT_PROFILE;
-  const skillIds = tool.name === "wikimedia-stock" ? ["stock-sourcing", "asset-preparation"]
+  const skillIds = tool.capability.startsWith("animation.") ? ["code-animation"]
+    : tool.name === "wikimedia-stock" ? ["stock-sourcing", "asset-preparation"]
     : tool.name === "external-generated-media" ? ["asset-preparation", "tool-selection"]
     : tool.name === "local-output-quality" ? ["result-review", "human-release-review"]
     : [info[2]];

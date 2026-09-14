@@ -195,6 +195,27 @@ Contract đầy đủ:
 
 ## Cấu trúc video và bản dựng có phiên bản
 
+### Hoạt họa project-native bằng code
+
+Đọc `npm run skill:read -- code-animation <project-id>`. Luồng contract là:
+
+1. `animation.source / code-animation-source` tạo hoặc revise source package bất biến;
+2. `animation.validate / code-animation-validator` kiểm tra đúng package mà không chạy code;
+3. `npm run project:animation -- <project-id> <json-file|->` lưu `animation.composition`;
+4. người dùng duyệt chạy code bằng `project:decide`, target exact source Result, category
+   `animation_code_execution`, outcome `approved`, `decidedBy: user`;
+5. `animation.render` với exact tool `manim-ce`, `remotion-local` hoặc `hyperframes-local`,
+   truyền `artifactId`, `artifactRevision`, `validationResultId`.
+
+Đọc manifest/source đã lưu bằng
+`npm run animation:read -- <project-id> <source-result-id> [relative-file|--all]`; lệnh chỉ trả
+nội dung đã đăng ký theo Result ID, không trả raw path.
+
+Không truyền raw path. Không tự cài dependency hoặc fallback runtime. Source dependency chỉ là
+declaration provenance; kiểm tra availability/setup bằng `tool:list -- --capability animation.render`.
+Render Result có poster/report/checksum và dùng được ngay trong `video.sequence`. Chi tiết contract,
+giới hạn sandbox và ví dụ approval: [CODE-ANIMATION-SPEC.md](docs/build/CODE-ANIMATION-SPEC.md).
+
 Đọc skill `video-sequence-planning` khi cần tổ chức và sửa một video.
 Lưu sequence qua `npm run project:sequence -- <project-id> <json-file|->`.
 Mỗi lần sửa cần `expectedRevision` vừa đọc và `data.changeReason`.

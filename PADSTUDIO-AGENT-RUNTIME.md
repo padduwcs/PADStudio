@@ -67,6 +67,14 @@ Archive di chuyển nguyên project và ghi manifest; không xóa lịch sử. K
 
 ## Dựng, review và delivery
 
+Khi project cần hoạt họa bằng code, đọc skill `code-animation`. Tạo/revise source bằng
+`animation.source`, chạy `animation.validate`, rồi lưu `animation.composition` bằng
+`project:animation`. Render chỉ được chạy sau khi người dùng thực sự chấp thuận việc thực thi
+đúng source Result qua ProjectDecision category `animation_code_execution`. Static validation
+không phải sandbox; host hiện không cưỡng chế cách ly mạng. Không tự cài runtime, không gọi `npx`
+để tải package và không đổi Manim/Remotion/HyperFrames ngầm. `animation.render` là Result video
+có thể dùng trực tiếp làm source của `video.sequence`.
+
 1. Tạo hoặc cập nhật `video.sequence` với revision và `changeReason`.
 2. Render exact artifact bằng `video.render-sequence`; chỉ reuse Result khi contract/hash khớp.
 3. Chạy `video.inspect-output` trên exact render.

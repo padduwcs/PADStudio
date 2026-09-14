@@ -25,6 +25,7 @@ const staticFiles = {
   "/app.js": { file: "app.js", type: "text/javascript; charset=utf-8" },
   "/source-analysis-view.js": { file: "source-analysis-view.js", type: "text/javascript; charset=utf-8" },
   "/production-view.js": { file: "production-view.js", type: "text/javascript; charset=utf-8" },
+  "/animation-view.js": { file: "animation-view.js", type: "text/javascript; charset=utf-8" },
   "/delivery-view.js": { file: "delivery-view.js", type: "text/javascript; charset=utf-8" },
   "/health-view.js": { file: "health-view.js", type: "text/javascript; charset=utf-8" },
   "/creative-direction-view.js": { file: "creative-direction-view.js", type: "text/javascript; charset=utf-8" },
@@ -136,7 +137,7 @@ export function createPadStudioServer({ reader }) {
         return sendJson(response, 200, { projects }, { ETag: etag, "Cache-Control": "no-cache" });
       }
 
-      const observerMatch = /^\/api\/projects\/([^/]+)\/observer\/(summary|source|creative|production|delivery|health|activity)$/.exec(url.pathname);
+      const observerMatch = /^\/api\/projects\/([^/]+)\/observer\/(summary|source|creative|animation|production|delivery|health|activity)$/.exec(url.pathname);
       if (request.method === "GET" && observerMatch) {
         const projectId = decodeURIComponent(observerMatch[1]);
         const section = observerMatch[2];

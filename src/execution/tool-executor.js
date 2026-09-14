@@ -247,7 +247,7 @@ export class ToolExecutor {
         } : undefined
       });
       throwIfAborted(internal.signal);
-      resultValue = tool.createResult({ prepared, execution });
+      resultValue = await tool.createResult({ prepared, execution });
       if (internal.decorateResult) {
         resultValue = await internal.decorateResult({
           projectId,

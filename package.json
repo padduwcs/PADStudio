@@ -34,6 +34,8 @@
     "test": "node --test",
     "observer:browser-test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/source-observer-browser-smoke.ps1",
     "project:sequence": "node src/cli/write-video-sequence.js",
+    "project:animation": "node src/cli/write-animation-composition.js",
+    "animation:read": "node src/cli/read-animation-source.js",
     "analysis:eval": "node scripts/source-eval.mjs",
     "analysis:doctor": "node src/cli/analysis-doctor.js",
     "padstudio:doctor": "node src/cli/padstudio-doctor.js",

@@ -82,6 +82,16 @@
       "instructions": "video-sequence-planning.md"
     },
     {
+      "id": "code-animation",
+      "version": "1.0",
+      "name": "Code animation",
+      "description": "Author, revise, validate and render project-native Manim, Remotion and HyperFrames compositions.",
+      "appliesTo": ["ideate", "plan", "execute", "review"],
+      "artifactTypes": ["animation.composition"],
+      "reviewCriteria": ["runtime serves the visual idea", "source and render bind to exact revisions", "motion is legible and intentional", "host execution has exact user approval"],
+      "instructions": "code-animation.md"
+    },
+    {
       "id": "asset-preparation",
       "version": "1.0",
       "name": "Asset preparation",

@@ -96,6 +96,19 @@ giữ kết quả hiểu và sáng tạo; workflow giữ kế hoạch hiện hà
 
 ## Hệ thống công cụ và Bộ thực thi
 
+### Mở rộng hoạt họa bằng code — 2026-09-14
+
+PADStudio có nhánh tùy chọn project-native cho Manim Community, Remotion và HyperFrames. Source
+được lưu thành Result bất biến; ý định/runtime/format/asset/style thành artifact
+`animation.composition` có revision; validation và render đều bind exact source checksum. Render đi
+qua Executor và trở thành Result video dùng trực tiếp trong sequence, không tạo pipeline bắt buộc.
+
+Đã học có chọn lọc từ OpenMontage về craft theo runtime, frame accuracy và HyperFrames
+check-before-render. Không lấy raw output path, workspace mutable, auto-`npx`, static denylist như
+sandbox, runtime fallback hoặc `final.mp4` semantics. Host execution cần user approval trên đúng
+source Result. Hiện chỉ lọc environment và cô lập workspace; network isolation cấp OS chưa được
+cưỡng chế và phải luôn được báo trung thực. Contract: [CODE-ANIMATION-SPEC.md](CODE-ANIMATION-SPEC.md).
+
 PADStudio cung cấp một đường chung để Agent dùng chương trình trên máy, mô hình local và dịch vụ bên ngoài. Agent chọn việc và công cụ; Bộ thực thi chỉ kiểm soát cách yêu cầu đó được chạy và ghi lại.
 
 ```mermaid

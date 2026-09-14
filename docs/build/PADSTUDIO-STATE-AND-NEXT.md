@@ -57,6 +57,20 @@ Bundle bàn giao `result-mtynkixa-db2410bc` giữ nguyên SHA-256 video nguồn 
 
 ## Bước tiếp theo
 
+### Mở rộng code animation — 2026-09-14
+
+Đã triển khai source package bất biến, artifact `animation.composition`, static validation, exact
+user code-execution approval, ba adapter Manim/Remotion/HyperFrames, render QA/poster/report, skill,
+CLI, summary/resume context và observer chỉ đọc. `animation.render` tương thích trực tiếp với nguồn
+Result của `video.sequence`; workflow vẫn tùy biến theo project.
+
+Kiểm thử adapter dùng runtime giả lập xác định để chứng minh lifecycle mà không tải/cài package trong
+ordinary render. Môi trường Windows hiện đã cài runtime cô lập và smoke-render thật thành công với
+Manim CE 0.21.0, Remotion 4.0.524 và HyperFrames 0.8.38; cả ba output mẫu đều được ffprobe xác nhận
+320x180, 24 fps, đúng một giây. Giới hạn an toàn còn lại là network isolation cấp OS chưa được cưỡng
+chế; contract yêu cầu approval exact source và báo rõ `not_enforced_by_host`. Chi tiết:
+[CODE-ANIMATION-SPEC.md](CODE-ANIMATION-SPEC.md).
+
 **V1 theo mô hình Agent ngoài đã hoàn thành về implementation.** Việc còn lại là user acceptance trên project thật và, nếu muốn tuyên bố broad release, cung cấp account/provider cùng corpus holdout và phép đo thật. Đây là kiểm chứng bên ngoài có chủ ý, không phải backlog code bị chia nhỏ.
 
 Project thật `real-pilot-longest-substring` đã đi qua import → probe/scenes/frames/audio/ASR/preview → brief/direction/sequence → render → review/acceptance → delivery. Lần tự duyệt phát hiện r1 cắt hụt âm cuối nên đã tạo r2 ở 320,2–330,0 giây. Exact Result hiện hành `result-mtzsqygo-18e21678` dài 9,821333 giây; exact-output ASR giữ trọn câu đến 9,36 giây, không có clipping candidate và hình đã được kiểm tra bằng contact sheet cùng lấy mẫu tiêu đề 4 fps. Theo ủy quyền rõ của người dùng, Decision `decision-mtzswrzy-57d409a2` chấp nhận đúng artifact r2; delivery `result-mtzswyx2-5fe1c724` giữ nguyên SHA-256 `9e519a1a06bf1cc22c9f26105b00b3b9098bef5561baee39e7b2e10b61b3ea5f`. Deep doctor `ready`, xác minh 39/39 file và không còn việc vận hành chờ. Bằng chứng ở [real-project-pilot.json](../../reports/real-project-pilot.json).

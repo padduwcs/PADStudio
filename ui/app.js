@@ -3,9 +3,11 @@ import { renderSourceAnalysis, clearSourceAnalysis } from "./source-analysis-vie
 import { renderCreativeDirection, clearCreativeDirection } from "./creative-direction-view.js";
 import { renderDelivery, clearDelivery } from "./delivery-view.js";
 import { renderHealth, clearHealth } from "./health-view.js";
+import { renderAnimation, clearAnimation } from "./animation-view.js";
 
 const elements = {
   production: document.querySelector("#production-view"),
+  animation: document.querySelector("#animation-view"),
   delivery: document.querySelector("#delivery-view"),
   health: document.querySelector("#health-view"),
   creativeDirection: document.querySelector("#creative-direction-view"),
@@ -731,6 +733,9 @@ function renderObserverSection(section, context) {
   } else if (section === "production") {
     clearSectionPlaceholder(elements.production);
     renderProduction(elements.production, context);
+  } else if (section === "animation") {
+    clearSectionPlaceholder(elements.animation);
+    renderAnimation(elements.animation, context);
   } else if (section === "delivery") {
     clearSectionPlaceholder(elements.delivery);
     renderDelivery(elements.delivery, context);
@@ -751,6 +756,7 @@ function renderEmpty() {
   clearHealth(elements.health);
   clearSourceAnalysis(elements.sourceAnalysis);
   clearCreativeDirection(elements.creativeDirection);
+  clearAnimation(elements.animation);
   elements.title.textContent = "Chưa chọn project";
   elements.projectId.textContent = "";
   elements.checkpoint.textContent = "Chưa có project nào để quan sát.";
@@ -785,8 +791,10 @@ function resetProjectSections() {
   clearHealth(elements.health);
   clearSourceAnalysis(elements.sourceAnalysis);
   clearCreativeDirection(elements.creativeDirection);
+  clearAnimation(elements.animation);
   sectionPlaceholder(elements.sourceAnalysis, "khảo sát tư liệu");
   sectionPlaceholder(elements.creativeDirection, "định hướng sáng tạo");
+  sectionPlaceholder(elements.animation, "hoạt họa bằng code");
   sectionPlaceholder(elements.production, "các phiên bản video");
   sectionPlaceholder(elements.delivery, "các bundle giao");
   sectionPlaceholder(elements.health, "trạng thái vận hành");
@@ -849,7 +857,7 @@ async function loadSelectedProject(generation) {
     renderedGeneration = null;
     resetProjectSections();
   }
-  const sections = new Set(["summary", "production", "delivery", "health", ...loadedSections]);
+  const sections = new Set(["summary", "animation", "production", "delivery", "health", ...loadedSections]);
   await Promise.all([...sections].map((section) => loadSection(section, generation)));
 }
 

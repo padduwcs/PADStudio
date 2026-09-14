@@ -1,6 +1,7 @@
 import { buildProductionContext } from "../production/production-context.js";
 import { AnalysisReader } from "../analysis/analysis-reader.js";
 import { buildProjectHealth } from "../operations/project-health.js";
+import { buildAnimationContext } from "../animation/animation-context.js";
 
 function activity(kind, id, value) {
   if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) return null;
@@ -162,6 +163,7 @@ export function compactResumeContext(summary) {
       status: artifact.status
     })),
     production: compactResumeProduction(summary.production),
+    animation: summary.animation,
     pendingFeedback: summary.pendingFeedback.map((feedback) => ({
       id: feedback.id,
       resultId: feedback.resultId,
@@ -282,13 +284,14 @@ export class ProjectContextAssembler {
       this.projectStore.readContext(projectId), this.#capabilities(), this.analysisReader.summary(projectId)
     ]);
     const production = buildProductionContext({ ...context, analysis });
+    const animation = buildAnimationContext(context);
     const freshness = checkpointFreshness(context, analysis);
     const pendingFeedback = pendingResultFeedback(context.decisions);
     const health = buildProjectHealth({
       context, production, checkpointFreshness: freshness, pendingFeedback
     });
     return {
-      ...context, capabilities, analysis, production, pendingFeedback, health,
+      ...context, capabilities, analysis, production, animation, pendingFeedback, health,
       checkpointFreshness: freshness,
       resumeView: buildResumeView(context, production, freshness, pendingFeedback)
     };
@@ -299,6 +302,7 @@ export class ProjectContextAssembler {
       this.projectStore.readContext(projectId), this.#capabilities(), this.analysisReader.summary(projectId)
     ]);
     const production = buildProductionContext({ ...context, analysis });
+    const animation = buildAnimationContext(context);
     const freshness = checkpointFreshness(context, analysis);
     const pendingFeedback = pendingResultFeedback(context.decisions);
     const health = buildProjectHealth({
@@ -314,6 +318,14 @@ export class ProjectContextAssembler {
       health,
       budget: context.budget,
       production: summarizeProduction(production, context.runRecovery),
+      animation: { version: animation.version, note: animation.note,
+        activeCompositions: animation.activeCompositions.map((composition) => ({
+          artifactId: composition.artifactId, key: composition.key, revision: composition.revision,
+          name: composition.name, runtime: composition.runtime, sourceResultId: composition.sourceResultId,
+          durationSeconds: composition.durationSeconds, format: composition.format,
+          validated: Boolean(composition.validation), executionApproval: composition.executionApproval,
+          latestRenderId: composition.renders.at(-1)?.resultId ?? null,
+        })) },
       capabilities: compactCapabilities(capabilities),
       analysis: compactAnalysis(analysis)
     };

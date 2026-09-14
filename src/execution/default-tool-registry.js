@@ -24,6 +24,13 @@ import { createLocalDeliveryExporter } from "../tools/local-delivery-exporter.js
 import { createLocalOutputQuality } from "../tools/local-output-quality.js";
 import { createWikimediaStockSearch } from "../tools/wikimedia-stock-search.js";
 import { createExternalGeneratedMedia } from "../tools/external-generated-media.js";
+import { createCodeAnimationSource } from "../tools/code-animation-source.js";
+import { createCodeAnimationValidator } from "../tools/code-animation-validator.js";
+import {
+  createHyperframesAnimationRenderer,
+  createManimAnimationRenderer,
+  createRemotionAnimationRenderer,
+} from "../tools/code-animation-renderer.js";
 import { applyToolGuidance } from "./tool-guidance-catalog.js";
 
 export function createDefaultToolRegistry(options = {}) {
@@ -51,6 +58,11 @@ export function createDefaultToolRegistry(options = {}) {
     createLocalOutputQuality(options.outputQuality),
     createWikimediaStockSearch(options.wikimediaStock),
     createExternalGeneratedMedia(options.externalGeneratedMedia),
+    createCodeAnimationSource(options.animationSource),
+    createCodeAnimationValidator(options.animationValidation),
+    createManimAnimationRenderer(options.manimAnimation),
+    createRemotionAnimationRenderer(options.remotionAnimation),
+    createHyperframesAnimationRenderer(options.hyperframesAnimation),
     createLocalDeliveryExporter(options.localDelivery)
   ].map(applyToolGuidance));
 }

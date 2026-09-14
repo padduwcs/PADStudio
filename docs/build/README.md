@@ -13,6 +13,8 @@ Chỉ coding Agent cần đọc theo thứ tự:
 
 Trạng thái hoàn tất V1: [`PADSTUDIO-V1-COMPLETION.md`](PADSTUDIO-V1-COMPLETION.md).
 
+Mở rộng hiện hành cho hoạt họa bằng code: [`CODE-ANIMATION-SPEC.md`](CODE-ANIMATION-SPEC.md).
+
 ## Tài liệu chỉ đọc khi liên quan
 
 Các file `*-SPEC.md`, `PHASE*.md`, `*-PACKAGE-*.md`, roadmap và state report ghi quyết định hoặc bằng chứng của từng lát cắt. Chúng không phải danh sách việc mặc định và có thể mô tả mốc lịch sử. Chỉ mở file gắn trực tiếp với phần code đang thay đổi.
