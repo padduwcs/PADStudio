@@ -10,6 +10,7 @@ test("visual defect parser keeps exact black and freeze windows", () => {
   const parsed = parseVisualDefects("black_start:1.2 black_end:3.7 black_duration:2.5\nfreeze_start: 4\nfreeze_duration: 5.5\nfreeze_end: 9.5");
   assert.deepEqual(parsed.black, [{ startSeconds: 1.2, endSeconds: 3.7, durationSeconds: 2.5 }]);
   assert.deepEqual(parsed.freeze, [{ startSeconds: 4, endSeconds: 9.5, durationSeconds: 5.5 }]);
+  assert.deepEqual(parseVisualDefects("freeze_start: 7", 10).freeze, [{ startSeconds: 7, endSeconds: 10, durationSeconds: 3 }]);
 });
 
 test("inspection planner covers segment, caption, overlay and transition windows", () => {

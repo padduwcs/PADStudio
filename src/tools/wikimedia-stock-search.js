@@ -22,14 +22,26 @@ function text(metadata, key) {
   return typeof value === "string" ? value.replace(/<[^>]*>/g, "").trim() || null : null;
 }
 
-function candidate(page) {
+function httpsUrl(value) {
+  if (typeof value !== "string") return null;
+  try { const url = new URL(value); return url.protocol === "https:" ? url.href : null; }
+  catch { return null; }
+}
+
+function expectedMime(mime, mediaType) {
+  return typeof mime === "string" && mime.startsWith(mediaType + "/");
+}
+
+function candidate(page, requestedMediaType) {
+  if (!page || typeof page !== "object" || Array.isArray(page)) return null;
   const info = page.imageinfo?.[0], metadata = info?.extmetadata ?? {};
-  if (!info?.url?.startsWith("https://") || !page.title) return null;
+  const assetUrl = httpsUrl(info?.url);
+  if (!assetUrl || !Number.isInteger(page.pageid) || page.pageid <= 0 || typeof page.title !== "string" || !page.title || !expectedMime(info.mime, requestedMediaType)) return null;
   return { id: String(page.pageid), title: page.title.replace(/^File:/, ""), mediaType: info.mime ?? null,
-    assetUrl: info.url, thumbnailUrl: info.thumburl ?? null,
+    assetUrl, thumbnailUrl: httpsUrl(info.thumburl),
     sourcePage: `https://commons.wikimedia.org/?curid=${page.pageid}`,
     creator: text(metadata, "Artist"), license: text(metadata, "LicenseShortName"),
-    licenseUrl: text(metadata, "LicenseUrl"), attribution: text(metadata, "Credit"),
+    licenseUrl: httpsUrl(text(metadata, "LicenseUrl")), attribution: text(metadata, "Credit"),
     width: info.width ?? null, height: info.height ?? null };
 }
 
@@ -41,7 +53,7 @@ export function createWikimediaStockSearch({ fetchImpl = globalThis.fetch, now =
     cost: { currency: "USD", estimated: 0 }, sideEffects: ["Makes a read-only HTTPS request; does not import any asset."],
     inputSchema: { type: "object", required: ["query"], properties: { query: { type: "string" }, mediaType: { enum: Object.keys(MEDIA_FILTER) }, limit: { type: "integer" } }, additionalProperties: false },
     outputDescription: "A durable list of source-page, asset URL, creator, and license candidates for explicit selection.",
-    async checkAvailability() { return typeof fetchImpl === "function" ? { status: "available", setupHints: ["No API key required."] } : { status: "unavailable", reason: "Fetch API unavailable." }; },
+    async checkAvailability() { return typeof fetchImpl === "function" ? { status: "available", setupHints: ["No API key required; provider reachability is checked when a search runs."] } : { status: "unavailable", reason: "Fetch API unavailable." }; },
     async prepare({ inputs }) { const request = normalize(inputs); return { runtime: request, trace: request }; },
     async execute(request) {
       const url = new URL(ENDPOINT);
@@ -51,10 +63,16 @@ export function createWikimediaStockSearch({ fetchImpl = globalThis.fetch, now =
       let response;
       try { response = await fetchImpl(url, { headers: { "User-Agent": "PADStudio/0.1 stock-search" }, signal: request.signal }); }
       catch (error) { throw new WikimediaStockError(error?.message || "Wikimedia request failed.", "network_failed"); }
+      if (!response || typeof response !== "object") throw new WikimediaStockError("Wikimedia returned no valid response.", "provider_failed");
       if (!response.ok) throw new WikimediaStockError(`Wikimedia returned HTTP ${response.status}.`, "provider_failed");
-      const payload = await response.json();
+      let payload;
+      try { payload = await response.json(); }
+      catch { throw new WikimediaStockError("Wikimedia returned invalid JSON.", "provider_failed"); }
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new WikimediaStockError("Wikimedia returned an invalid response.", "provider_failed");
       if (payload.error) throw new WikimediaStockError(payload.error.info || "Wikimedia API error.", "provider_failed");
-      const candidates = (payload.query?.pages ?? []).map(candidate).filter(Boolean).slice(0, request.limit);
+      const pages = payload.query?.pages ?? [];
+      if (!Array.isArray(pages)) throw new WikimediaStockError("Wikimedia response pages are invalid.", "provider_failed");
+      const candidates = pages.map((page) => candidate(page, request.mediaType)).filter(Boolean).slice(0, request.limit);
       return { searchedAt: now(), query: request.query, mediaType: request.mediaType, candidates, actualCostUsd: 0,
         verification: { status: "passed", checks: ["provider_response_valid", "candidate_urls_https", "rights_metadata_preserved"] } };
     },

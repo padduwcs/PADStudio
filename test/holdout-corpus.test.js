@@ -27,3 +27,13 @@ test("holdout locker rejects unconfirmed rights and missing human gold", async (
   input.rights = { confirmed: true, basis: "owner", verifiedBy: "owner" };
   await assert.rejects(lockHoldoutCorpus(input, { baseDirectory: root }), /gold file/);
 });
+
+test("holdout locker rejects ambiguous fields, invalid counts and timestamps", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "padstudio-holdout-contract-")); t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, "clip.mp4"), "media"); await writeFile(join(root, "gold.json"), "{}");
+  const input = { id: "holdout", description: "x", rights: { confirmed: true, basis: "owner", verifiedBy: "owner" }, characteristics,
+    entries: [{ id: "clip", kind: "video", path: "clip.mp4", goldFiles: ["gold.json"] }] };
+  await assert.rejects(lockHoldoutCorpus({ ...input, extra: true }, { baseDirectory: root }), /unsupported fields/);
+  await assert.rejects(lockHoldoutCorpus({ ...input, characteristics: { ...characteristics, clipCount: 1.5 } }, { baseDirectory: root }), /must be an integer/);
+  await assert.rejects(lockHoldoutCorpus(input, { baseDirectory: root, now: () => "not-a-date" }), /canonical ISO timestamp/);
+});

@@ -7,10 +7,22 @@ export class ProjectBudgetError extends Error {
   constructor(message, code = "budget_invalid") { super(message); this.name = "ProjectBudgetError"; this.code = code; }
 }
 
-function normalize(value) {
+function canonicalIso(value) {
+  const milliseconds = typeof value === "string" ? Date.parse(value) : NaN;
+  return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString() === value;
+}
+
+function normalize(value, { stored = false } = {}) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new ProjectBudgetError("Budget policy must be an object.");
-  const unknown = Object.keys(value).filter((key) => !["version", "mode", "totalUsd", "reserveUsd", "singleActionApprovalUsd", "updatedAt"].includes(key));
+  const fields = stored
+    ? ["version", "mode", "totalUsd", "reserveUsd", "singleActionApprovalUsd", "updatedAt"]
+    : ["mode", "totalUsd", "reserveUsd", "singleActionApprovalUsd"];
+  const unknown = Object.keys(value).filter((key) => !fields.includes(key));
   if (unknown.length) throw new ProjectBudgetError(`Unsupported budget fields: ${unknown.join(", ")}.`);
+  if (stored && value.version !== "1.0") throw new ProjectBudgetError("Stored budget version must be 1.0.");
+  if (stored && !canonicalIso(value.updatedAt)) {
+    throw new ProjectBudgetError("Stored budget updatedAt must be a canonical ISO timestamp.");
+  }
   const mode = value.mode ?? "observe";
   if (!["observe", "cap"].includes(mode)) throw new ProjectBudgetError("Budget mode must be observe or cap.");
   for (const key of ["totalUsd", "reserveUsd", "singleActionApprovalUsd"]) if (!Number.isFinite(value[key]) || value[key] < 0) throw new ProjectBudgetError(`${key} must be a non-negative number.`);
@@ -28,7 +40,7 @@ export async function configureProjectBudget(store, projectId, value) {
 
 export async function readProjectBudget(store, projectId) {
   await store.readProject(projectId);
-  try { return normalize(await readJson(pathFor(store, projectId))); }
+  try { return normalize(await readJson(pathFor(store, projectId)), { stored: true }); }
   catch (error) { if (error?.code === "ENOENT") return null; throw error; }
 }
 

@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { ProjectStore } from "../src/project/project-store.js";
-import { configureProjectBudget, projectBudgetSnapshot, startBudgetedRun } from "../src/execution/project-budget.js";
+import { configureProjectBudget, projectBudgetSnapshot, readProjectBudget, startBudgetedRun } from "../src/execution/project-budget.js";
 
 test("project budget atomically reserves in-progress Runs and reconciles completed spend", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "padstudio-budget-"));
@@ -27,4 +27,13 @@ test("observe budget records overspend without blocking", async (t) => {
   await configureProjectBudget(store, "demo", { mode: "observe", totalUsd: 1, reserveUsd: 0, singleActionApprovalUsd: 10 });
   const run = await startBudgetedRun(store, "demo", { capability: "x", purpose: "x", tool: null, inputs: {}, estimatedCostUsd: 2 });
   assert.equal(run.status, "in_progress"); assert.equal((await projectBudgetSnapshot(store, "demo")).usableUsd, 0);
+});
+
+test("project budget rejects unsupported configuration and corrupt stored metadata", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "padstudio-budget-contract-")); t.after(() => rm(root, { recursive: true, force: true }));
+  const store = new ProjectStore(root); await store.createProject({ projectId: "demo", title: "Demo" });
+  const value = { mode: "cap", totalUsd: 10, reserveUsd: 1, singleActionApprovalUsd: 2 };
+  await assert.rejects(configureProjectBudget(store, "demo", { ...value, version: "1.0" }), /Unsupported budget fields/);
+  await writeFile(join(root, "demo", "budget.json"), JSON.stringify({ ...value, version: "2.0", updatedAt: "not-a-date" }));
+  await assert.rejects(readProjectBudget(store, "demo"), /version must be 1.0/);
 });

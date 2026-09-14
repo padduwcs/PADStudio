@@ -1,10 +1,17 @@
 import { releaseMeasurementsFromHumanReview } from "../intelligence/human-attestation.js";
 
+export function selectLatestHumanAttestation(reviews, { resultId = null } = {}) {
+  return (reviews ?? []).filter((review) => releaseMeasurementsFromHumanReview(review).length > 0 && (!resultId || review.target?.id === resultId))
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0] ?? null;
+}
+
 export function assembleReleaseEvidence({ baseEvidence, holdoutBundle, reviews, resultId = null, verifiedResult }) {
   if (!baseEvidence || !Array.isArray(baseEvidence.corpora) || !Array.isArray(baseEvidence.measurements)) throw new Error("Base release evidence must contain corpora and measurements arrays.");
   if (!holdoutBundle?.corpus || !holdoutBundle?.measurement) throw new Error("A locked holdout bundle is required.");
-  const candidates = (reviews ?? []).filter((review) => releaseMeasurementsFromHumanReview(review).length > 0 && (!resultId || review.target?.id === resultId));
-  const review = candidates.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0];
+  if (holdoutBundle.measurement.gateId !== "independent_gold_holdout" || holdoutBundle.measurement.corpusId !== holdoutBundle.corpus.id) {
+    throw new Error("Locked holdout measurement must identify the same corpus and independent_gold_holdout gate.");
+  }
+  const review = selectLatestHumanAttestation(reviews, { resultId });
   if (!review) throw new Error("No matching full human attestation was found.");
   if (!verifiedResult || verifiedResult.id !== review.target.id || verifiedResult.sha256 !== review.exactResult.sha256) {
     throw new Error("Human attestation must be reverified against the exact current Result bytes.");

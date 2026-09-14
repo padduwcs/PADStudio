@@ -30,3 +30,10 @@ test("recommendation ranks available and preferred tools but stays advisory", ()
   assert.equal(result.choices[0].tool, "local");
   assert.equal(result.choices[1].preferred, true);
 });
+
+test("recommendation rejects malformed preferences instead of silently changing them", () => {
+  const description = { capabilities: [{ id: "demo", tools: [] }] };
+  assert.throws(() => rankToolChoices(description, { capability: "demo", priorities: { quality: -1 } }), /non-negative/);
+  assert.throws(() => rankToolChoices(description, { capability: "demo", priorities: [] }), /must be an object/);
+  assert.throws(() => rankToolChoices(description, { capability: "demo", extra: true }), /Unsupported recommendation fields/);
+});

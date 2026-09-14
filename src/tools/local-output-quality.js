@@ -36,7 +36,7 @@ function rounded(value) {
   return value === null ? null : Math.round(value * 1000) / 1000;
 }
 
-export function parseVisualDefects(stderr) {
+export function parseVisualDefects(stderr, durationSeconds = null) {
   const text = String(stderr ?? ""), black = [], freeze = [];
   for (const match of text.matchAll(/black_start:([\d.]+)\s+black_end:([\d.]+)\s+black_duration:([\d.]+)/g)) {
     black.push({ startSeconds: Number(match[1]), endSeconds: Number(match[2]), durationSeconds: Number(match[3]) });
@@ -44,7 +44,10 @@ export function parseVisualDefects(stderr) {
   const starts = [...text.matchAll(/freeze_start:\s*([\d.]+)/g)].map((match) => Number(match[1]));
   const ends = [...text.matchAll(/freeze_end:\s*([\d.]+)/g)].map((match) => Number(match[1]));
   const durations = [...text.matchAll(/freeze_duration:\s*([\d.]+)/g)].map((match) => Number(match[1]));
-  for (let index = 0; index < starts.length; index++) freeze.push({ startSeconds: starts[index], endSeconds: ends[index] ?? null, durationSeconds: durations[index] ?? (ends[index] === undefined ? null : ends[index] - starts[index]) });
+  for (let index = 0; index < starts.length; index++) {
+    const endSeconds = ends[index] ?? (Number.isFinite(durationSeconds) && durationSeconds >= starts[index] ? durationSeconds : null);
+    freeze.push({ startSeconds: starts[index], endSeconds, durationSeconds: durations[index] ?? (endSeconds === null ? null : endSeconds - starts[index]) });
+  }
   return { black, freeze };
 }
 
@@ -273,7 +276,7 @@ export function createLocalOutputQuality({
       try {
         const visualResponse = await executeCommand(ffmpegCommand, ["-hide_banner", "-nostdin", "-i", sourcePath,
           "-vf", "blackdetect=d=0.5:pix_th=0.10,freezedetect=n=-60dB:d=2", "-an", "-f", "null", "-"], { timeout: timeoutMs, signal });
-        visualDefects = parseVisualDefects(visualResponse.stderr);
+        visualDefects = parseVisualDefects(visualResponse.stderr, durationSeconds);
       } catch (error) {
         fail(error?.killed ? "Visual defect scan vượt thời gian." : "Không thể quét black/freeze frame.", "visual_scan_failed");
       }
@@ -298,8 +301,8 @@ export function createLocalOutputQuality({
           peakNormalized: evidence.audio.data.details?.peakNormalized ?? null
         }),
         check("black-frame-windows", severeBlack.length ? "failed" : visualDefects.black.length ? "warning" : "passed", "Black windows are measured from exact decoded pixels; short windows may be intentional transitions.", { windows: visualDefects.black, severeWindows: severeBlack.length }),
-        check("freeze-windows", severeFreeze.length ? "warning" : "passed", "Frozen windows are reported for review because intentional still-image segments can look identical.", { windows: visualDefects.freeze, severeWindows: severeFreeze.length })
-        ,check("timeline-window-samples", uncoveredPoints.length ? "failed" : "passed", "Exact frames must cover planned segment, caption, overlay, and transition windows.", { requested: inspectionPoints.length, covered: inspectionPoints.length - uncoveredPoints.length, uncoveredPoints })
+        check("freeze-windows", severeFreeze.length ? "warning" : "passed", "Frozen windows are reported for review because intentional still-image segments can look identical.", { windows: visualDefects.freeze, severeWindows: severeFreeze.length }),
+        check("timeline-window-samples", uncoveredPoints.length ? "failed" : "passed", "Exact frames must cover planned segment, caption, overlay, and transition windows.", { requested: inspectionPoints.length, covered: inspectionPoints.length - uncoveredPoints.length, uncoveredPoints })
       ];
       if (profile.speechExpected) {
         const failedSourceCuts = sourceCuts.filter((item) => item.status === "failed");

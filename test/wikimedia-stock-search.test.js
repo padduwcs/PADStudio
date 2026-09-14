@@ -23,3 +23,21 @@ test("Wikimedia search rejects loose inputs and insecure asset URLs", async () =
   const prepared = await tool.prepare({ inputs: { query: "safe" } });
   assert.equal((await tool.execute(prepared.runtime)).candidates.length, 0);
 });
+
+test("Wikimedia search drops mismatched media and unsafe optional URLs", async () => {
+  const tool = createWikimediaStockSearch({ fetchImpl: async () => ({ ok: true, json: async () => ({ query: { pages: [
+    { pageid: 1, title: "File:audio.ogg", imageinfo: [{ url: "https://upload.wikimedia.org/audio.ogg", mime: "audio/ogg" }] },
+    { pageid: 2, title: "File:image.jpg", imageinfo: [{ url: "https://upload.wikimedia.org/image.jpg", thumburl: "http://example.test/thumb.jpg", mime: "image/jpeg", extmetadata: { LicenseUrl: { value: "javascript:bad" } } }] }
+  ] } }) }) });
+  const prepared = await tool.prepare({ inputs: { query: "safe", mediaType: "image" } });
+  const result = await tool.execute(prepared.runtime);
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].thumbnailUrl, null);
+  assert.equal(result.candidates[0].licenseUrl, null);
+});
+
+test("Wikimedia search fails closed on malformed provider JSON", async () => {
+  const tool = createWikimediaStockSearch({ fetchImpl: async () => ({ ok: true, json: async () => { throw new SyntaxError("bad"); } }) });
+  const prepared = await tool.prepare({ inputs: { query: "safe" } });
+  await assert.rejects(tool.execute(prepared.runtime), (error) => error.code === "provider_failed");
+});

@@ -17,10 +17,11 @@ PADStudio V1 uses an external Agent host for chat and control. The local web app
 - Human viewing/listening attestation is stored against the exact render SHA-256 and sequence revision and is shown in the observer.
 - Holdout manifests stream-hash media and human gold files, enforce rights and path boundaries, and produce a canonical checksum. Release evidence assembly re-verifies exact render bytes before using a human attestation.
 - The asset browser acceptance now deliberately activates lazy Result loading and runs generated-media registration through Registry/Executor.
+- Final hardening rejects corrupt budget metadata and malformed recommendation/holdout/provider inputs, binds release holdout measurements to their exact corpus, selects only complete human attestations in the release CLI, and closes freeze windows that continue to the end of a render.
 
 ## Verification
 
-- Repository tests: **254/254 passed**.
+- Repository tests: **261/261 passed**.
 - Source-analysis harness: **20/20 passed** through production/operations acceptance.
 - Asset acceptance: **passed** with audio/image previews, attribution, preserved player state and 390/768/1440 px viewports.
 - Production acceptance: **passed_with_documented_limits**.
