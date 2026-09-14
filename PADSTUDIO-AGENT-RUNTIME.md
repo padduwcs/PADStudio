@@ -38,6 +38,16 @@ npm run project:archive -- restore <project-id> --confirm-stopped
 
 Archive di chuyển nguyên project và ghi manifest; không xóa lịch sử. Không archive project đang được một Agent khác sử dụng.
 
+## Ranh giới file và trạng thái final
+
+- Mọi input, asset tạo ngoài, render và output có giá trị tiếp tục phải được import hoặc tạo qua contract để trở thành Resource/Result/Artifact/Delivery của đúng project. Không dùng raw path hay file rời làm nguồn sự thật.
+- Không tự sao chép preview/render vào root repo, Desktop hoặc thư mục tùy ý để thay cho delivery. `preview.mp4` và mọi `video.sequence-render` vẫn là preview, kể cả khi được đổi tên thành `final.mp4`.
+- `final` là trạng thái có bằng chứng, không phải tên file. Chỉ mô tả video là final/đã bàn giao khi exact render đã được người dùng chấp nhận, QA của chính render đó đạt và `video.export-delivery` đã tạo một Delivery Result.
+- Không suy diễn approval từ việc người dùng yêu cầu xem thử, không phản hồi hoặc chỉ nhận xét một phần. Không tự ghi Decision/attestation nếu người dùng chưa thực sự quyết định hoặc xem/nghe đủ.
+- Nếu thiếu approval, QA, review, provenance hoặc finalization, báo rõ đây là preview hay đang bị chặn và thực hiện đúng bước còn thiếu; không bypass bằng FFmpeg, lệnh copy hoặc công cụ ngoài Executor.
+- Chỉ tạo bản sao ngoài project sau khi đã có official Delivery và người dùng yêu cầu rõ vị trí. Bản sao đó chỉ để tiện sử dụng; Delivery Result cùng checksum trong project vẫn là bản chuẩn, và checkpoint phải ghi Delivery Result cùng vị trí bản sao.
+- Trước khi báo hoàn tất, đọc lại `project:resume`: không được còn pending feedback/finalization liên quan, `health.counts.deliveries` phải có delivery vừa tạo, và câu trả lời phải nêu exact Delivery Result thay vì chỉ đưa raw path.
+
 ## Đọc theo nhu cầu
 
 - Đọc đúng các skill trong `work.relevantSkillIds` bằng `npm run skill:read -- <skill-id> <project-id>`.
@@ -48,6 +58,7 @@ Archive di chuyển nguyên project và ghi manifest; không xóa lịch sử. K
 ## Thực thi và lưu dấu vết
 
 - Import file/folder bằng `project:import`; URL/asset web đã chọn dùng tool phù hợp để giữ nguồn và quyền sử dụng.
+- Media do Agent/provider ngoài tạo phải được đăng ký bằng capability phù hợp trước khi đưa vào sequence; không dựng trực tiếp từ file sinh ra chưa được quản lý.
 - Request chạy phải nêu exact `capability`, `tool`, `purpose` và inputs. Không fallback ngầm.
 - Tool trả phí cần budget và authorization chính xác trước khi gọi provider.
 - Ý tưởng, brief, direction, sequence và workflow quan trọng phải được lưu thành artifact/workflow; không chỉ nằm trong chat.
@@ -62,6 +73,8 @@ Archive di chuyển nguyên project và ghi manifest; không xóa lịch sử. K
 4. Agent review đúng Result; người dùng xem trong observer và phản hồi trong chat.
 5. Chỉ ghi Decision/attestation thay người dùng khi người dùng thực sự đã quyết định hoặc xem/nghe đầy đủ.
 6. `video.export-delivery` chỉ dùng exact Result đã duyệt và có QA hợp lệ.
+
+Render verification chỉ chứng minh file dựng được tạo đúng contract; nó không thay thế exact-output QA, review của Agent hay việc người dùng xem/nghe. Khi lời thoại, subtitle hoặc hình ảnh được sửa, tạo revision/render mới rồi lặp lại QA và approval trên đúng Result mới.
 
 Nguồn thiếu, evidence stale, QA fail hoặc finalization dang dở phải được báo rõ; không tự bỏ qua. Dùng lệnh recovery hiện có để hoàn tất output đã bảo toàn mà không chạy lại provider.
 

@@ -25,6 +25,8 @@ Tài liệu lệnh/contract đầy đủ chỉ tra cứu khi cần: [`PADSTUDIO-
 
 Project hoàn thành có thể được đưa khỏi danh sách active mà không xóa dữ liệu bằng `npm run project:archive -- archive ... --confirm-stopped`; xem bootstrap runtime trước khi dùng.
 
+Một render/preview không phải file final. Bản bàn giao chính thức chỉ được tạo từ exact Result đã được người dùng duyệt và qua QA bằng `video.export-delivery`; không lấy file sao chép thủ công ngoài project làm nguồn sự thật.
+
 ## Phát triển PADStudio
 
 Coding Agent làm theo router trong [`AGENTS.md`](AGENTS.md). Điểm vào tài liệu phát triển là [`docs/build/README.md`](docs/build/README.md); không dùng tài liệu Phase/Package lịch sử làm trạng thái hiện hành.

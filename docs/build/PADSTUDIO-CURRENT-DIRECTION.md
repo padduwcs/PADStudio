@@ -385,3 +385,12 @@ nhất, feedback, health, budget và analysis cô đọng; không nhúng lịch 
 full transcript hay mọi render cũ. Project pilot hoàn tất có thể chuyển nguyên vẹn sang archive có
 manifest và restore; archive không đổi contract dữ liệu bên trong project và không xuất hiện trong
 danh sách active của observer.
+
+## Gia cố ranh giới preview/final — 2026-09-14
+
+Một lượt dùng thật cho thấy Agent có thể sao chép byte của preview ra root repo và gọi file đó là
+`final` dù project chưa có Delivery Result. Đây là hành vi ngoài contract, không phải một loại
+delivery mới. Bootstrap runtime nay bắt buộc giữ mọi input/output có ý nghĩa trong đúng project,
+coi `final` là trạng thái có exact user acceptance + QA + `video.export-delivery`, và cấm dùng đổi
+tên/copy/FFmpeg ngoài Executor để bypass gate. Bản sao ngoài project chỉ được tạo sau official
+Delivery khi người dùng yêu cầu rõ; Delivery Result/checksum vẫn là nguồn sự thật.

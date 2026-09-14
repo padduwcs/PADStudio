@@ -22,7 +22,7 @@ PADStudio V1 uses an external Agent host for chat and control. The local web app
 
 ## Verification
 
-- Repository tests: **264/264 passed**.
+- Repository tests: **265/265 passed**.
 - Source-analysis harness: **20/20 passed** through production/operations acceptance.
 - Asset acceptance: **passed** with audio/image previews, attribution, preserved player state and 390/768/1440 px viewports.
 - Production acceptance: **passed_with_documented_limits**.

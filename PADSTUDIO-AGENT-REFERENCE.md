@@ -537,6 +537,16 @@ $decision | npm run project:decide -- <project-id> -
 
 ## Kiểm tra exact output trước delivery
 
+Một render hoặc `preview.mp4` không phải bản final chỉ vì đã dựng xong, verification
+đạt, được đổi tên hoặc được sao chép ra ngoài project. Không dùng `copy`, FFmpeg hay
+raw filesystem path để né các gate. `final` chỉ là exact render đã có user Decision
+`accepted`, QA hợp lệ và một `delivery.bundle` do `video.export-delivery` tạo ra.
+
+Mọi file tạo ngoài phải được đăng ký vào đúng project trước khi dùng. Chỉ sao chép
+official Delivery ra vị trí ngoài project khi người dùng yêu cầu rõ; bản sao đó không
+thay Delivery Result/checksum làm nguồn sự thật và phải được ghi lại trong checkpoint.
+Nếu chưa đủ gate, gọi đúng là preview hoặc blocked và nói rõ bước còn thiếu.
+
 Sau khi có `video.sequence-render` cuối cùng, tạo QA bằng JSON qua standard input:
 
 ```powershell

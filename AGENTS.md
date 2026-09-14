@@ -10,8 +10,9 @@ Trước tiên xác định yêu cầu thuộc **vận hành project video** hay
 2. Xác định đúng một `project-id`. Với project đã tồn tại, bắt đầu bằng `npm run project:resume -- <project-id>`.
 3. Chỉ đọc skill nằm trong `work.relevantSkillIds`, hoặc skill gắn với tool/công việc sắp làm.
 4. Chỉ mở context/dataset chi tiết khi trường trong resume chỉ ra cần thiết.
+5. Mọi asset và output có giá trị phải đi qua Resource/Result/Artifact/Delivery của đúng project. Không tự sao chép preview/render ra ngoài project hoặc gọi một file là `final` để thay cho delivery hợp lệ.
 
-Trong chế độ này, không đọc `docs/build/`, `reports/`, `test/`, lịch sử Git, `PADSTUDIO-REFERENCE.md`, `PADSTUDIO-AGENT-REFERENCE.md` hoặc thư mục của project khác, trừ khi một lỗi cụ thể buộc phải điều tra. Không quét toàn bộ `.padstudio/projects`; luôn truyền project ID tường minh. Web chỉ quan sát; thay đổi project qua CLI/tool contract.
+Trong chế độ này, không đọc `docs/build/`, `reports/`, `test/`, lịch sử Git, `PADSTUDIO-REFERENCE.md`, `PADSTUDIO-AGENT-REFERENCE.md` hoặc thư mục của project khác, trừ khi một lỗi cụ thể buộc phải điều tra. Không quét toàn bộ `.padstudio/projects`; luôn truyền project ID tường minh. Web chỉ quan sát; thay đổi project qua CLI/tool contract. Trạng thái `final` chỉ có sau exact user acceptance, QA hợp lệ và `video.export-delivery` tạo Delivery Result; tên file hoặc bản sao thủ công không tạo ra trạng thái đó.
 
 Nếu phát hiện lỗi sản phẩm cần sửa code, báo rõ và chuyển sang chế độ phát triển trước khi đọc tài liệu build.
 
