@@ -207,7 +207,10 @@ function revisionPanel(context, sequence, baseline = null, render = null) {
     panel.append(node("p", label + " cho exact Result này. Kiểm tra kỹ thuật không thay thế việc xem/nghe.", "input-meta"));
     const feedback = feedbackPanel(render);
     if (feedback) panel.append(feedback);
-    for (const review of render.reviews) panel.append(node("p", review.perspective + " · " + review.verdict + " — " + review.summary));
+    for (const review of render.reviews) {
+      const coverage = review.attestation ? " · đã xem hết · " + (review.attestation.listenedFull === true ? "đã nghe hết" : "audio không áp dụng") : "";
+      panel.append(node("p", review.perspective + " · " + review.verdict + coverage + " — " + review.summary));
+    }
     panel.append(feedbackAnchor(context, sequence, render));
   } else panel.append(node("p", "Chưa có bản dựng cho phiên bản này.", "empty-note"));
   panel.append(timelinePanel(sequence, previewVideo));

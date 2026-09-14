@@ -56,7 +56,7 @@ Bằng chứng và cách chạy lại nằm tại [SOURCE-UNDERSTANDING-PACKAGE-
 - **Đợt 5:** hoàn thiện trải nghiệm quan sát xuyên project; giao diện tư liệu của đợt 1 và preview cần ở các đợt trước vẫn phải làm ngay khi cần. Phản hồi/phê duyệt tiếp tục qua chat.
 - **Đợt 6:** kiểm tra toàn hệ thống và bàn giao; từng đợt trước vẫn tự chịu trách nhiệm về dữ liệu, lỗi và khả năng phục hồi của mình.
 
-Chat tích hợp vào cùng ứng dụng vẫn là hướng sản phẩm, nhưng thời điểm phụ thuộc cách tích hợp Agent host phù hợp. Chưa gắn việc tự xây chat client vào một đợt hoặc lấy nó làm điều kiện chặn sử dụng hiện tại.
+Chat tích hợp không còn là hướng sản phẩm hiện hành. Người dùng chat trong Agent host bên ngoài; PADStudio cung cấp CLI/contract và observer local chỉ đọc. Chỉ mở lại phạm vi này bằng một quyết định thiết kế mới của người phụ trách.
 
 Sau mỗi đợt chỉ cần ghi: **đã dùng được gì, còn giới hạn gì, nhu cầu nào đã chứng minh cho đợt sau**. Khi chưa đến đợt tiếp theo, giữ mô tả ở mức bảng tổng thể; không viết sẵn schema/API hay danh sách task dài.
 
@@ -81,7 +81,8 @@ Theo yêu cầu mở rộng các khả năng phổ biến, đợt 3 đã bổ su
 `media.acquire` và `tts.synthesize` qua Executor hiện có. Pilot vd04 đã dùng graphic và Piper
 thật trong sequence/render local, sửa lỗi phát âm/mix, review bằng frame + ASR + audio metrics và
 khép project không còn blocker. ElevenLabs cloud thật chưa được gọi do chưa có API key người dùng;
-ảnh AI và search stock chưa triển khai vì chưa có nhu cầu pilot bắt buộc. Đợt 3 được xem là hoàn
+ở thời điểm đóng đợt 3, ảnh AI và search stock chưa triển khai vì chưa có nhu cầu pilot bắt buộc.
+V1 sau đó đã bổ sung Wikimedia stock search và đường đăng ký asset sinh ngoài có provenance. Đợt 3 được xem là hoàn
 thành ở phạm vi practical-local này. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md),
 [TTS-CAPABILITY.md](./TTS-CAPABILITY.md) và [báo cáo pilot](../../reports/phase3-vd04-pilot-acceptance.json).
 

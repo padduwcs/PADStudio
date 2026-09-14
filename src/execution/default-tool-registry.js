@@ -22,6 +22,9 @@ import { createPiperTts } from "../tools/piper-tts.js";
 import { createElevenLabsTts } from "../tools/elevenlabs-tts.js";
 import { createLocalDeliveryExporter } from "../tools/local-delivery-exporter.js";
 import { createLocalOutputQuality } from "../tools/local-output-quality.js";
+import { createWikimediaStockSearch } from "../tools/wikimedia-stock-search.js";
+import { createExternalGeneratedMedia } from "../tools/external-generated-media.js";
+import { applyToolGuidance } from "./tool-guidance-catalog.js";
 
 export function createDefaultToolRegistry(options = {}) {
   return new ToolRegistry([
@@ -46,6 +49,8 @@ export function createDefaultToolRegistry(options = {}) {
     createPiperTts(options.piperTts),
     createElevenLabsTts(options.elevenLabsTts),
     createLocalOutputQuality(options.outputQuality),
+    createWikimediaStockSearch(options.wikimediaStock),
+    createExternalGeneratedMedia(options.externalGeneratedMedia),
     createLocalDeliveryExporter(options.localDelivery)
-  ]);
+  ].map(applyToolGuidance));
 }

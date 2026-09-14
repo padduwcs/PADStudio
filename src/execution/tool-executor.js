@@ -5,6 +5,7 @@ import {
   recordExecutionAuthorizationReceipt,
   settleExecutionAuthorization
 } from "./execution-authorizations.js";
+import { projectBudgetSnapshot, startBudgetedRun } from "./project-budget.js";
 
 export class ToolExecutorError extends Error {
   constructor(message, { code = "execution_failed", cause } = {}) {
@@ -132,8 +133,11 @@ export class ToolExecutor {
       throw new ToolExecutorError(availability?.reason || "Tool is unavailable.", { code: "tool_unavailable" });
     }
     const estimatedUsage = tool.approvalRequired ? await tool.estimateUsage({ inputs: request.inputs }) : null;
+    const budget = await projectBudgetSnapshot(this.store, projectId);
+    const budgetApprovalRequired = tool.cost.estimated !== null && tool.cost.estimated > (budget.policy?.singleActionApprovalUsd ?? Infinity);
     return { projectId, requestHash: executionRequestHash(request), tool: toolReference(tool),
-      approvalRequired: tool.approvalRequired, estimatedUsage };
+      approvalRequired: tool.approvalRequired, providerApprovalRequired: tool.approvalRequired,
+      budgetApprovalRequired, estimatedUsage, estimatedCostUsd: tool.cost.estimated, budget };
   }
 
   async authorize(projectId, requestValue, approval) {
@@ -163,14 +167,14 @@ export class ToolExecutor {
       throw new ToolExecutorError("This tool does not accept credit authorization.", { code: "approval_not_required" });
     }
     const started = Date.now();
-    const run = await this.store.startRun(projectId, {
+    const run = await startBudgetedRun(this.store, projectId, {
       capability: request.capability,
       purpose: request.purpose,
       tool: reference,
       inputs: request.inputs,
       estimatedCostUsd: tool.cost.estimated,
       authorizationId: request.authorizationId
-    });
+    }, { approved: Boolean(request.authorizationId) });
     let result = null;
     let outputWorkspace = null;
     let authorization = null;

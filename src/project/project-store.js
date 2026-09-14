@@ -7,6 +7,7 @@ import {
   readExecutionAuthorizations,
   settleExecutionAuthorization
 } from "../execution/execution-authorizations.js";
+import { readProjectBudget } from "../execution/project-budget.js";
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { readJson, writeJsonAtomic, writeTextAtomic } from "./atomic-files.js";
@@ -1660,7 +1661,7 @@ export class ProjectStore {
   }
 
   async readContext(projectId) {
-    const [project, checkpoint, resources, results, decisions, runs, authorizations, overview] = await Promise.all([
+    const [project, checkpoint, resources, results, decisions, runs, authorizations, overview, budgetPolicy] = await Promise.all([
       this.readProject(projectId),
       this.readCheckpoint(projectId),
       this.readResources(projectId),
@@ -1668,7 +1669,8 @@ export class ProjectStore {
       this.readDecisions(projectId),
       this.readRuns(projectId),
       readExecutionAuthorizations(this, projectId),
-      this.readOverview(projectId)
+      this.readOverview(projectId),
+      readProjectBudget(this, projectId)
     ]);
     const intelligence = await this.intelligence.readIntelligence(projectId);
     const projectRoot = projectDirectory(this.rootDir, projectId);
@@ -1695,6 +1697,11 @@ export class ProjectStore {
         };
       }));
     const runRecovery = { pendingFinalizations };
+    const spentUsd = runs.filter((run) => run.status === "completed").reduce((sum, run) => sum + (run.cost?.actual ?? run.cost?.estimated ?? 0), 0);
+    const reservedUsd = runs.filter((run) => run.status === "in_progress").reduce((sum, run) => sum + (run.cost?.estimated ?? 0), 0);
+    const budget = { policy: budgetPolicy, spentUsd, reservedUsd,
+      remainingUsd: budgetPolicy ? Math.max(0, budgetPolicy.totalUsd - spentUsd - reservedUsd) : null,
+      usableUsd: budgetPolicy ? Math.max(0, budgetPolicy.totalUsd - budgetPolicy.reserveUsd - spentUsd - reservedUsd) : null };
     return {
       project,
       checkpoint,
@@ -1705,6 +1712,7 @@ export class ProjectStore {
       authorizations,
       overview,
       runRecovery,
+      budget,
       ...intelligence,
       intelligence: {
         activeArtifacts: intelligence.activeArtifacts,

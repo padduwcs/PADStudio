@@ -1,6 +1,6 @@
 # PADStudio — trạng thái hiện tại và bước tiếp theo
 
-Cập nhật: **2026-09-13**. Đây là bản tóm tắt vận hành hiện hành; khi số liệu cũ trong tài liệu gói khác nhau, ưu tiên code, report nghiệm thu mới nhất và tài liệu này.
+Cập nhật: **2026-09-14**. Đây là bản tóm tắt vận hành hiện hành; khi số liệu cũ trong tài liệu gói khác nhau, ưu tiên code, report nghiệm thu mới nhất và tài liệu này.
 
 ## Đã có và dùng được
 
@@ -13,6 +13,10 @@ Cập nhật: **2026-09-13**. Đây là bản tóm tắt vận hành hiện hàn
 - Đợt 6A hoàn tất: local delivery chỉ xuất exact Result user đã duyệt; có current/freshness/finalization/integrity/media gate, bundle metadata/checksums và khu vực Delivery chỉ đọc.
 - Đợt 6B hoàn tất practical: có system/project doctor, health chỉ đọc, kế hoạch phục hồi mặc định dry-run, apply phục hồi finalization an toàn và runbook vận hành/backup/restore/rollback.
 - Browser smoke dùng profile dưới `.cache/browser-profiles` và dọn đúng process/profile sau khi chạy.
+- Kiến trúc V1 đã chốt: chat chỉ ở Agent host bên ngoài; PADStudio cung cấp CLI/contract và observer local chỉ đọc, không còn mục tiêu chat tích hợp.
+- Tool discovery có hướng dẫn, alternatives và recommendation advisory; project có budget observe/cap, reservation và approval threshold.
+- Asset có stock search Wikimedia và đăng ký media do Agent/provider ngoài tạo với provenance; exact-output QA có timeline samples cùng black/freeze scan.
+- Human attestation, holdout locker và release-evidence assembler đã biến các giới hạn release thành contract có thể chạy, không tự đánh dấu đạt khi thiếu người/corpus thật.
 
 ## Baseline Đợt 3 và pilot hiện hành
 
@@ -31,6 +35,9 @@ Bundle bàn giao `result-mtynkixa-db2410bc` giữ nguyên SHA-256 video nguồn 
 
 ## Kiểm chứng mới nhất
 
+- V1 repository: 254/254 test; source-analysis harness: 20/20.
+- Asset, production, operations và release-evaluator acceptance đều đạt; browser kiểm tra 390/768/1440 px.
+- Báo cáo bàn giao hiện hành: [PADSTUDIO-V1-COMPLETION.md](PADSTUDIO-V1-COMPLETION.md) và [padstudio-v1-completion.json](../../reports/padstudio-v1-completion.json).
 - `npm run operations:acceptance`: `passed_with_documented_limits`.
 - Repository: 226/226 pass; source-analysis harness: 20/20 pass.
 - Browser: timeline/seek, player preservation, conditional polling, lazy activity, feedback anchor, exact Result selection/comparison, Health và Delivery đều pass ở 390/768/1440 px.
@@ -43,14 +50,14 @@ Bundle bàn giao `result-mtynkixa-db2410bc` giữ nguyên SHA-256 video nguồn 
 - Báo cáo: [phase6b-operations-acceptance.json](../../reports/phase6b-operations-acceptance.json).
 ## Giới hạn còn lại
 
-- Chưa nghe duyệt chất giọng Piper bằng tai người; ASR và số đo audio không thay thế đánh giá tự nhiên/cảm xúc.
-- Chưa gọi ElevenLabs thật, chưa kiểm chứng catalog/quota/voice của tài khoản thật.
-- Ảnh AI và tìm kiếm stock tự động chưa triển khai; chỉ thêm khi project thật chứng minh nhu cầu.
-- Các gate release rộng của Đợt 1 vẫn `not_measured`; `releaseDefault` vẫn là `null`.
+- Không có code nào được phép tự khẳng định đã xem/nghe: người dùng sẽ thực hiện human attestation trong lần dùng thử cuối.
+- ElevenLabs và mọi provider ngoài chỉ được chứng minh khi có account/quota thật; asset sinh ngoài đã có đường đăng ký provenance nhưng PADStudio không giả lập provider.
+- Wikimedia cung cấp search candidate, không tự xác nhận quyền sử dụng hay chất lượng sáng tạo của asset đã chọn.
+- Broad-release corpus/benchmark vẫn `not_measured` cho tới khi có bộ holdout độc lập đủ ngưỡng; `releaseDefault` vẫn là `null`.
 
 ## Bước tiếp theo
 
-**Sáu đợt practical đã hoàn thành.** Đợt hardening tiếp theo đã sửa import đồng thời, lease/owner-token và stale-takeover nhiều contender của mutation lock, đồng thời làm Phase 6A/6B acceptance tự tạo fixture thay vì phụ thuộc project ignored trên máy owner. Repository hiện có 226 test.
+**V1 theo mô hình Agent ngoài đã hoàn thành về implementation.** Việc còn lại là user acceptance trên project thật và, nếu muốn tuyên bố broad release, cung cấp account/provider cùng corpus holdout và phép đo thật. Đây là kiểm chứng bên ngoài có chủ ý, không phải backlog code bị chia nhỏ.
 
 Project thật `real-pilot-longest-substring` đã đi qua import → probe/scenes/frames/audio/ASR/preview → brief/direction/sequence → render → review/acceptance → delivery. Lần tự duyệt phát hiện r1 cắt hụt âm cuối nên đã tạo r2 ở 320,2–330,0 giây. Exact Result hiện hành `result-mtzsqygo-18e21678` dài 9,821333 giây; exact-output ASR giữ trọn câu đến 9,36 giây, không có clipping candidate và hình đã được kiểm tra bằng contact sheet cùng lấy mẫu tiêu đề 4 fps. Theo ủy quyền rõ của người dùng, Decision `decision-mtzswrzy-57d409a2` chấp nhận đúng artifact r2; delivery `result-mtzswyx2-5fe1c724` giữ nguyên SHA-256 `9e519a1a06bf1cc22c9f26105b00b3b9098bef5561baee39e7b2e10b61b3ea5f`. Deep doctor `ready`, xác minh 39/39 file và không còn việc vận hành chờ. Bằng chứng ở [real-project-pilot.json](../../reports/real-project-pilot.json).
 

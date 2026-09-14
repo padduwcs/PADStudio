@@ -30,6 +30,7 @@ import {
   normalizeCreativeArtifactData,
   validateCreativeArtifactReferences,
 } from "./creative-artifacts.js";
+import { normalizeHumanAttestation } from "./human-attestation.js";
 
 const VERSION = "1.0";
 
@@ -335,7 +336,7 @@ export class ProjectIntelligenceStore {
     requireObject(value, "review");
     assertOnlyFields(
       value,
-      ["target", "perspective", "verdict", "summary", "criteria", "reviewer"],
+      ["target", "perspective", "verdict", "summary", "criteria", "reviewer", "attestation"],
       "review"
     );
     const target = this.#normalizeReviewTarget(value.target);
@@ -345,7 +346,7 @@ export class ProjectIntelligenceStore {
       action: async () => {
         const targetState = await this.#assertReviewTarget(projectId, target);
         const perspective = value.perspective ?? "combined";
-        if (!["creative", "technical", "combined"].includes(perspective)) {
+        if (!["creative", "technical", "combined", "human"].includes(perspective)) {
           throw new IntelligenceValidationError(`review.perspective is not supported: ${perspective}.`);
         }
         const verdict = requireText(value.verdict, "review.verdict");
@@ -354,6 +355,15 @@ export class ProjectIntelligenceStore {
         }
         const criteria = normalizeReviewCriteria(value.criteria);
         assertReviewVerdict(verdict, criteria);
+        const reviewer = value.reviewer ?? "agent";
+        const attestation = value.attestation === undefined ? null : normalizeHumanAttestation(value.attestation);
+        if (perspective === "human" && (target.kind !== "result" || reviewer !== "user" || !attestation)) {
+          throw new IntelligenceValidationError("Human review requires a user attestation on an exact Result.");
+        }
+        if (perspective !== "human" && attestation) throw new IntelligenceValidationError("Attestation is only valid for a human review.");
+        if (attestation && (targetState.result.type !== "video.sequence-render" || typeof targetState.result.data?.sequence?.artifactId !== "string" || !Number.isInteger(targetState.result.data?.sequence?.revision))) {
+          throw new IntelligenceValidationError("Human attestation requires an exact video.sequence-render with artifact revision.");
+        }
         let binding = null;
         if (target.kind === "work_item") {
           const { workflow, item } = targetState;
@@ -401,7 +411,12 @@ export class ProjectIntelligenceStore {
           verdict,
           summary: requireText(value.summary, "review.summary"),
           criteria,
-          reviewer: value.reviewer ?? "agent",
+          reviewer,
+          ...(attestation ? { attestation, exactResult: {
+            sha256: (await this.projectStore.verifyResultFile(projectId, target.id, "primary")).sha256,
+            artifactId: targetState.result.data?.sequence?.artifactId ?? null,
+            artifactRevision: targetState.result.data?.sequence?.revision ?? null
+          } } : {}),
           ...(binding ? { binding } : {}),
           createdAt: timestamp(),
         };
@@ -529,7 +544,7 @@ export class ProjectIntelligenceStore {
     requireObject(value, "stored review");
     assertOnlyFields(
       value,
-      ["version", "id", "projectId", "target", "round", "perspective", "verdict", "summary", "criteria", "reviewer", "binding", "createdAt"],
+      ["version", "id", "projectId", "target", "round", "perspective", "verdict", "summary", "criteria", "reviewer", "binding", "attestation", "exactResult", "createdAt"],
       "stored review"
     );
     if (value.projectId !== projectId || value.version !== VERSION || !Number.isInteger(value.round) || value.round < 1) {
@@ -541,13 +556,22 @@ export class ProjectIntelligenceStore {
     requireText(value.summary, "review.summary");
     assertTimestamp(value.createdAt, "review.createdAt");
     if (
-      !["creative", "technical", "combined"].includes(value.perspective) ||
+      !["creative", "technical", "combined", "human"].includes(value.perspective) ||
       !["passed", "passed_with_notes", "revise", "blocked"].includes(value.verdict) ||
       !["agent", "user", "system"].includes(value.reviewer)
     ) {
       throw new IntelligenceValidationError("Stored review payload is invalid.");
     }
     assertReviewVerdict(value.verdict, criteria);
+    if (value.perspective === "human") {
+      normalizeHumanAttestation(value.attestation);
+      if (value.reviewer !== "user" || value.target.kind !== "result" || !/^[a-f0-9]{64}$/.test(value.exactResult?.sha256) ||
+          typeof value.exactResult?.artifactId !== "string" || !Number.isInteger(value.exactResult?.artifactRevision)) {
+        throw new IntelligenceValidationError("Stored human review is not bound to an exact render revision.");
+      }
+    } else if (value.attestation !== undefined || value.exactResult !== undefined) {
+      throw new IntelligenceValidationError("Stored non-human review cannot contain attestation data.");
+    }
     if (value.binding !== undefined) {
       this.#validateReviewBinding(value.binding);
     }
@@ -822,8 +846,7 @@ export class ProjectIntelligenceStore {
       return null;
     }
     if (target.kind === "result") {
-      await this.projectStore.readResult(projectId, target.id);
-      return null;
+      return { result: await this.projectStore.readResult(projectId, target.id) };
     }
     const workflow = (await this.readWorkflows(projectId)).filter((item) => item.id === target.workflowId).at(-1);
     const item = workflow?.items.find((candidate) => candidate.id === target.workItemId);

@@ -236,6 +236,7 @@
         "id": "fixture-reviewer"
       },
       "resultId": "result-fixture",
+      "resultSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "artifactId": "artifact-fixture",
       "artifactRevision": 1,
       "attestation": {
@@ -256,6 +257,7 @@
         "id": "fixture-reviewer"
       },
       "resultId": "result-fixture",
+      "resultSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "artifactId": "artifact-fixture",
       "artifactRevision": 1,
       "attestation": {

@@ -273,7 +273,8 @@ function renderIntelligence(context) {
     const list = document.createElement("ul");
     list.replaceChildren(...reviews.map((review) => {
       const item = document.createElement("li");
-      item.textContent = `${review.perspective} · ${review.verdict} — ${review.summary}`;
+      const coverage = review.attestation ? ` · watched full · ${review.attestation.listenedFull === true ? "listened full" : "audio n/a"}` : "";
+      item.textContent = `${review.perspective} · ${review.verdict}${coverage} — ${review.summary}`;
       return item;
     }));
     block.append(heading, list);

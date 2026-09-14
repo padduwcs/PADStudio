@@ -208,6 +208,7 @@ export class ProjectContextAssembler {
       resumeView: buildResumeView(context, production, freshness, pendingFeedback),
       pendingFeedback,
       health,
+      budget: context.budget,
       production: summarizeProduction(production, context.runRecovery),
       capabilities: compactCapabilities(capabilities),
       analysis: compactAnalysis(analysis)

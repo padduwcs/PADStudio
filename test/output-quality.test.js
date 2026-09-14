@@ -3,7 +3,23 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createLocalOutputQuality, sourceCutBoundaryCheck } from "../src/tools/local-output-quality.js";
+import { createLocalOutputQuality, parseVisualDefects, sourceCutBoundaryCheck } from "../src/tools/local-output-quality.js";
+import { sequenceInspectionPoints } from "../src/quality/output-quality-service.js";
+
+test("visual defect parser keeps exact black and freeze windows", () => {
+  const parsed = parseVisualDefects("black_start:1.2 black_end:3.7 black_duration:2.5\nfreeze_start: 4\nfreeze_duration: 5.5\nfreeze_end: 9.5");
+  assert.deepEqual(parsed.black, [{ startSeconds: 1.2, endSeconds: 3.7, durationSeconds: 2.5 }]);
+  assert.deepEqual(parsed.freeze, [{ startSeconds: 4, endSeconds: 9.5, durationSeconds: 5.5 }]);
+});
+
+test("inspection planner covers segment, caption, overlay and transition windows", () => {
+  const points = sequenceInspectionPoints({ data: { segments: [
+    { id: "a", title: "A", durationSeconds: 4, captions: [{ text: "Caption", startSeconds: 1, endSeconds: 2 }], overlays: [{ id: "logo", startSeconds: 2, endSeconds: 3 }], transition: { type: "crossfade", durationSeconds: 1 } },
+    { id: "b", title: "B", durationSeconds: 3, captions: [], overlays: [], transition: { type: "cut", durationSeconds: 0 } }
+  ] } });
+  assert.ok(["Hình", "Chữ", "Lớp phủ logo", "Chuyển cảnh"].every((track) => points.some((point) => point.track === track)));
+  assert.ok(points.every((point) => point.seconds >= 0 && point.seconds < 6.001));
+});
 
 test("source transcript boundary check catches a cut through the final word", () => {
   const rows = [{ words: [
@@ -23,7 +39,7 @@ async function fixture(t, { lastWordEnd = 9.6, finalScore = 0.9, clipping = 0, f
   const genericPath = join(directory, "evidence.jsonl");
   await Promise.all([
     writeFile(sourcePath, "video"),
-    writeFile(genericPath, "{}\n"),
+    writeFile(genericPath, [{ requestedTime: 0, actualTime: 0 }, { requestedTime: 5, actualTime: 5 }, { requestedTime: 9.999, actualTime: 9.999 }].map((row) => JSON.stringify(row)).join("\n") + "\n"),
     writeFile(transcriptPath, JSON.stringify({
       text: "A complete sentence", startSeconds: 0.2, endSeconds: lastWordEnd,
       words: [
@@ -81,13 +97,14 @@ async function fixture(t, { lastWordEnd = 9.6, finalScore = 0.9, clipping = 0, f
   return { directory, output, source, analysisJobId, evidence, store };
 }
 
-async function assess(state) {
-  const tool = createLocalOutputQuality({ executeCommand: async () => ({ stdout: "ffmpeg version fixture\n", stderr: "" }) });
+async function assess(state, visualStderr = "") {
+  const tool = createLocalOutputQuality({ executeCommand: async (_command, args) => ({ stdout: "ffmpeg version fixture\n", stderr: args.includes("blackdetect=d=0.5:pix_th=0.10,freezedetect=n=-60dB:d=2") ? visualStderr : "" }) });
   const prepared = await tool.prepare({
     store: state.store, projectId: "demo",
     inputs: {
       resultId: state.source.id, analysisJobId: state.analysisJobId, profileId: "spoken-video-v1",
-      evidenceResultIds: { probe: "result-probe", frames: "result-frames", audio: "result-audio", transcript: "result-transcript" }
+      evidenceResultIds: { probe: "result-probe", frames: "result-frames", audio: "result-audio", transcript: "result-transcript" },
+      inspectionPoints: [{ seconds: 0, track: "Hình", label: "One", position: "start" }, { seconds: 5, track: "Hình", label: "One", position: "middle" }, { seconds: 9.999, track: "Hình", label: "One", position: "end" }]
     },
     outputWorkspace: { temporaryDirectory: state.output, projectRelativeDirectory: "outputs/run-quality" }
   });
@@ -118,13 +135,20 @@ test("output QA records a valid failed report for unsafe speech tail, low confid
   assert.equal(assessed.result.verification.status, "passed");
 });
 
+test("output QA blocks a severe black window and reports freeze as advisory", async (t) => {
+  const assessed = await assess(await fixture(t), "black_start:1 black_end:4 black_duration:3\nfreeze_start: 4\nfreeze_duration: 5.5\nfreeze_end: 9.5");
+  assert.equal(assessed.execution.report.checks.find((item) => item.id === "black-frame-windows").status, "failed");
+  assert.equal(assessed.execution.report.checks.find((item) => item.id === "freeze-windows").status, "warning");
+  assert.equal(assessed.execution.report.gate.deliveryEligible, false);
+});
+
 test("output QA rejects evidence belonging to another exact render", async (t) => {
   const state = await fixture(t);
   state.evidence[1].data.source.id = "result-other";
   const tool = createLocalOutputQuality({ executeCommand: async () => ({ stdout: "ffmpeg version fixture\n", stderr: "" }) });
   await assert.rejects(tool.prepare({
     store: state.store, projectId: "demo",
-    inputs: { resultId: state.source.id, analysisJobId: state.analysisJobId, profileId: "spoken-video-v1", evidenceResultIds: { probe: "result-probe", frames: "result-frames", audio: "result-audio", transcript: "result-transcript" } },
+    inputs: { resultId: state.source.id, analysisJobId: state.analysisJobId, profileId: "spoken-video-v1", evidenceResultIds: { probe: "result-probe", frames: "result-frames", audio: "result-audio", transcript: "result-transcript" }, inspectionPoints: [{ seconds: 0, track: "Hình", label: "One", position: "start" }] },
     outputWorkspace: { temporaryDirectory: state.output, projectRelativeDirectory: "outputs/run-quality" }
   }), (error) => error.code === "invalid_evidence");
 });

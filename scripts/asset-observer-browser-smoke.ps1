@@ -114,12 +114,13 @@ try {
 
   $result = Evaluate @'
 (async()=>{
+ document.querySelector("#result-list")?.scrollIntoView({block:"center"});
  const end=Date.now()+15000;
  while((!document.querySelector(".result-audio")||!document.querySelector(".result-image"))&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
  const a=document.querySelector(".result-audio");
  const imgs=[...document.querySelectorAll(".result-image")];
  while((a?.readyState<1||imgs.some(i=>!i.complete))&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
- if(!a||a.readyState<1||!imgs.length||imgs.some(i=>!i.naturalWidth))throw new Error("Media preview failed");
+ if(!a||a.readyState<1||!imgs.length||imgs.some(i=>!i.naturalWidth))throw new Error("Media preview failed: url="+location.href+", selected="+document.querySelector(".project-button.is-active .input-meta")?.textContent+", audio="+(a?.readyState??"missing")+", images="+imgs.length+", widths="+imgs.map(i=>i.naturalWidth).join(",")+", body="+document.body.innerText.slice(0,300));
  if(!document.querySelector("#result-list").textContent.includes("Giấy phép đã khai báo"))throw new Error("Missing attribution");
  a.dataset.check="keep"; await new Promise(r=>setTimeout(r,3500));
  if(document.querySelector(".result-audio")?.dataset.check!=="keep")throw new Error("Player replaced");

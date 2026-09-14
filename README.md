@@ -15,6 +15,8 @@ Prototype hiện tại kiểm tra các phần của một vòng project có th�
 Chat vẫn nằm trong Agent host mà người dùng đang dùng. Các endpoint local chỉ
 phục vụ observer trong trình duyệt; chúng không phải cầu nối điều khiển Agent.
 
+Trạng thái bàn giao V1: [PADSTUDIO-V1-COMPLETION.md](docs/build/PADSTUDIO-V1-COMPLETION.md).
+
 ## Cấu trúc project
 
 ```text
@@ -123,11 +125,21 @@ npm run tool:list
 npm run tool:list -- --capability tts.synthesize
 npm run tool:list -- --tool elevenlabs
 npm run tool:list -- --view full
+$recommendation = @{ capability = "tts.synthesize"; priorities = @{ quality = 5; reliability = 5 } } | ConvertTo-Json -Compress
+$recommendation | npm run tool:recommend -- -
 ```
 
 Mặc định lệnh trả về bản tóm tắt phục vụ việc chọn công cụ: availability, provider, chi phí,
 approval, side effect và loại output. Dùng `--view full` khi cần contract đầy đủ gồm input schema;
 `--capability` và `--tool` chỉ nhận tên khớp chính xác, không tự fallback sang lựa chọn khác.
+Recommendation chỉ xếp hạng các lựa chọn đang dùng được; request chạy vẫn phải nêu exact tool.
+
+Cấu hình hoặc xem ngân sách USD cấp project:
+
+```powershell
+npm run project:budget -- coffee-video show
+npm run project:budget -- coffee-video set '{"mode":"cap","totalUsd":25,"reserveUsd":2,"singleActionApprovalUsd":3}'
+```
 
 Catalog production ở `production-catalogs/` cung cấp 3 output profile generic và 5 style playbook.
 Việc dùng policy luôn **optional-explicit**: delivery vẫn cần `profileId` cụ thể; bỏ `playbookId`
@@ -148,7 +160,7 @@ không chạy lại tool hoặc provider trả phí:
 npm run project:run:recover -- coffee-video run-...
 ```
 
-Prototype hiện có 20 capability thật:
+Prototype hiện có 23 capability thật:
 
 - `media.inspect` / `ffprobe`: đọc metadata audio/video, không tạo file.
 - `video.trim` / `ffmpeg-trim`: cắt chính xác video bằng re-encode và tạo `video.clip`.
@@ -174,6 +186,14 @@ Prototype hiện có 20 capability thật:
 - `audio.analyze` / `ffmpeg-audio-analysis`: waveform, khoảng lặng, loudness và clipping candidate.
 - `audio.transcribe` / `faster-whisper-transcribe`: raw transcript/word timestamp theo chunk.
 - `source.preview` / `ffmpeg-source-preview`: proxy browser-safe có mapping về source time.
+- `audio.prepare` / `ffmpeg-audio-prepare`: tách/cắt, fade và chuẩn hóa loudness cho audio tái sử dụng.
+- `graphic.render` / `browser-graphic`: tạo thẻ chữ, biểu đồ và sơ đồ bước có layout được kiểm tra.
+- `media.acquire` / `https-media`: tải exact HTTPS asset đã chọn với attribution và checksum.
+- `media.search-stock` / `wikimedia-stock`: tìm image/video/audio candidate, giữ creator, license và source page; chưa tự nhập asset.
+- `media.register-generated` / `external-generated-media`: đăng ký exact asset do Agent/provider ngoài tạo với provider, model, prompt, rights và cost provenance.
+- `tts.synthesize` / `piper-local`, `elevenlabs`: cùng contract giọng đọc, lựa chọn provider tường minh và không fallback ngầm.
+- `video.inspect-output` / `local-output-quality`: full decode, evidence, timeline samples, black/freeze, audio và ASR gate trên exact render.
+- `video.export-delivery` / `local-delivery`: xuất nguyên byte Result đã duyệt khi mọi gate exact-output đều đạt.
 
 Ghi Decision sau khi người dùng phản hồi rõ về một Result:
 
@@ -266,6 +286,17 @@ npm run release:acceptance
 
 Không có evidence, `release:gates` chủ ý thoát mã 2 với `not_measured`. Fixture acceptance chỉ
 kiểm chứng cơ chế evaluator; không chứng nhận release và không thay đổi `releaseDefault: null`.
+
+Khóa corpus holdout, ghi review xem/nghe đầy đủ và ráp evidence thật:
+
+```powershell
+npm run release:holdout:lock -- holdout-source.json D:\Corpora\padstudio
+npm run project:attest -- coffee-video human-attestation.json
+npm run release:evidence:assemble -- coffee-video benchmark-evidence.json locked-holdout.json result-...
+```
+
+Các lệnh này fail-closed: chúng không tự tạo gold label, không tự nhận đã xem/nghe và không
+biến fixture thành release candidate.
 
 ## Cấu trúc video và sửa từng phần
 

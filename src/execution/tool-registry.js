@@ -53,6 +53,23 @@ function validateTool(tool) {
   if (tool.approvalRequired && typeof tool.estimateUsage !== "function") {
     throw new ToolRegistryError("Paid tools must declare estimateUsage: " + tool.name);
   }
+  if (tool.cost.estimated > 0 && !tool.approvalRequired) {
+    throw new ToolRegistryError("Tools with estimated USD cost must require exact approval: " + tool.name);
+  }
+  for (const field of ["bestFor", "limitations", "skillIds"]) {
+    if (tool[field] !== undefined && (!Array.isArray(tool[field]) || tool[field].some((item) => typeof item !== "string" || !item.trim()))) {
+      throw new ToolRegistryError(`${field} của công cụ ${tool.name} không hợp lệ.`);
+    }
+  }
+  if (tool.setup !== undefined && (!tool.setup || typeof tool.setup !== "object" || Array.isArray(tool.setup) || typeof tool.setup.kind !== "string" || typeof tool.setup.instructions !== "string" || !Array.isArray(tool.setup.configKeys))) {
+    throw new ToolRegistryError(`setup của công cụ ${tool.name} không hợp lệ.`);
+  }
+  if (tool.selectionProfile !== undefined) {
+    const dimensions = ["quality", "control", "reliability", "costEfficiency", "latency", "privacy"];
+    if (!tool.selectionProfile || dimensions.some((key) => !Number.isFinite(tool.selectionProfile[key]) || tool.selectionProfile[key] < 1 || tool.selectionProfile[key] > 5)) {
+      throw new ToolRegistryError(`selectionProfile của công cụ ${tool.name} không hợp lệ.`);
+    }
+  }
   return tool;
 }
 
@@ -71,6 +88,10 @@ function publicToolInfo(tool, availability) {
     cost: { ...tool.cost },
     approvalRequired: Boolean(tool.approvalRequired),
     producesFiles: Boolean(tool.producesFiles),
+    bestFor: [...(tool.bestFor ?? [])], limitations: [...(tool.limitations ?? [])],
+    skillIds: [...(tool.skillIds ?? [])], setup: tool.setup ? structuredClone(tool.setup) : null,
+    usage: tool.usage ? structuredClone(tool.usage) : null,
+    selectionProfile: tool.selectionProfile ? structuredClone(tool.selectionProfile) : null,
     availability
   };
 }
@@ -129,6 +150,10 @@ export class ToolRegistry {
       const capability = grouped.get(tool.capability) ?? { id: tool.capability, tools: [] };
       capability.tools.push(tool);
       grouped.set(tool.capability, capability);
+    }
+    for (const entry of grouped.values()) {
+      const names = entry.tools.map((tool) => tool.name);
+      for (const tool of entry.tools) tool.alternatives = names.filter((name) => name !== tool.name);
     }
     return {
       capabilities: [...grouped.values()]

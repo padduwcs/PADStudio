@@ -36,6 +36,18 @@ function rounded(value) {
   return value === null ? null : Math.round(value * 1000) / 1000;
 }
 
+export function parseVisualDefects(stderr) {
+  const text = String(stderr ?? ""), black = [], freeze = [];
+  for (const match of text.matchAll(/black_start:([\d.]+)\s+black_end:([\d.]+)\s+black_duration:([\d.]+)/g)) {
+    black.push({ startSeconds: Number(match[1]), endSeconds: Number(match[2]), durationSeconds: Number(match[3]) });
+  }
+  const starts = [...text.matchAll(/freeze_start:\s*([\d.]+)/g)].map((match) => Number(match[1]));
+  const ends = [...text.matchAll(/freeze_end:\s*([\d.]+)/g)].map((match) => Number(match[1]));
+  const durations = [...text.matchAll(/freeze_duration:\s*([\d.]+)/g)].map((match) => Number(match[1]));
+  for (let index = 0; index < starts.length; index++) freeze.push({ startSeconds: starts[index], endSeconds: ends[index] ?? null, durationSeconds: durations[index] ?? (ends[index] === undefined ? null : ends[index] - starts[index]) });
+  return { black, freeze };
+}
+
 async function transcriptRows(path) {
   const rows = [];
   const lines = createInterface({ input: createReadStream(path, { encoding: "utf8" }), crlfDelay: Infinity });
@@ -141,7 +153,7 @@ export function createLocalOutputQuality({
 } = {}) {
   return {
     name: "local-output-quality",
-    version: "1.1.0",
+    version: "1.2.0",
     provider: "PADStudio",
     capability: "video.inspect-output",
     description: "Tổng hợp full decode, hình, audio và ASR của exact render thành bằng chứng QA fail-closed.",
@@ -153,11 +165,11 @@ export function createLocalOutputQuality({
     sideEffects: ["Tạo một Result QA và report JSON; không sửa video, review hoặc Decision."],
     inputSchema: {
       type: "object",
-      required: ["resultId", "analysisJobId", "profileId", "evidenceResultIds"],
+      required: ["resultId", "analysisJobId", "profileId", "evidenceResultIds", "inspectionPoints"],
       properties: {
         resultId: { type: "string" }, analysisJobId: { type: "string" },
         profileId: { enum: listOutputQualityProfiles().map((profile) => profile.id) },
-        evidenceResultIds: { type: "object" }
+        evidenceResultIds: { type: "object" }, inspectionPoints: { type: "array" }
       },
       additionalProperties: false
     },
@@ -173,11 +185,14 @@ export function createLocalOutputQuality({
     },
 
     async prepare({ store, projectId, inputs, outputWorkspace }) {
-      exactObject(inputs, ["resultId", "analysisJobId", "profileId", "evidenceResultIds"], "Output QA inputs");
+      exactObject(inputs, ["resultId", "analysisJobId", "profileId", "evidenceResultIds", "inspectionPoints"], "Output QA inputs");
       if (![inputs.resultId, inputs.analysisJobId, inputs.profileId].every((value) => typeof value === "string" && value.trim())) {
         fail("Output QA thiếu resultId, analysisJobId hoặc profileId.", "invalid_input");
       }
       const profile = readOutputQualityProfile(inputs.profileId);
+      if (!Array.isArray(inputs.inspectionPoints) || inputs.inspectionPoints.length < 1 || inputs.inspectionPoints.length > 24 || inputs.inspectionPoints.some((item) => !item || !Number.isFinite(item.seconds) || typeof item.track !== "string" || typeof item.label !== "string" || !["start", "middle", "end"].includes(item.position))) {
+        fail("inspectionPoints không hợp lệ.", "invalid_input");
+      }
       const evidenceIds = exactObject(
         inputs.evidenceResultIds,
         ["probe", "frames", "audio", "transcript"],
@@ -211,6 +226,7 @@ export function createLocalOutputQuality({
       }
       const sourceFile = await store.verifyResultFile(projectId, sourceResult.id, "primary");
       const frameDataset = await store.verifyResultFile(projectId, evidence.frames.id, "frames");
+      const frameRows = await transcriptRows(frameDataset.filePath);
       const contactSheetFiles = evidence.frames.data?.details?.contactSheets?.map((page) => page.fileId) ?? [];
       for (const fileId of contactSheetFiles) await store.verifyResultFile(projectId, evidence.frames.id, fileId);
       const audioDataset = await store.verifyResultFile(projectId, evidence.audio.id, "audio");
@@ -227,6 +243,8 @@ export function createLocalOutputQuality({
           evidence,
           transcriptPath: transcriptDataset?.filePath ?? null,
           sourceCuts,
+          inspectionPoints: inputs.inspectionPoints,
+          frameRows,
           reportPath: join(outputWorkspace.temporaryDirectory, "quality-report.json"),
           generatedAt: now()
         },
@@ -243,7 +261,7 @@ export function createLocalOutputQuality({
       };
     },
 
-    async execute({ sourcePath, sourceSha256, sourceResult, analysisJobId, profile, evidence, transcriptPath, sourceCuts, reportPath, generatedAt, availability, signal }) {
+    async execute({ sourcePath, sourceSha256, sourceResult, analysisJobId, profile, evidence, transcriptPath, sourceCuts, inspectionPoints, frameRows, reportPath, generatedAt, availability, signal }) {
       try {
         await executeCommand(ffmpegCommand, ["-hide_banner", "-v", "error", "-nostdin", "-i", sourcePath, "-map", "0:v:0", "-map", "0:a:0?", "-f", "null", "-"], { timeout: timeoutMs, signal });
       } catch (error) {
@@ -251,6 +269,17 @@ export function createLocalOutputQuality({
       }
       const durationSeconds = finite(evidence.probe.data?.details?.format?.durationSeconds) ?? finite(sourceResult.data?.durationSeconds);
       if (durationSeconds === null || durationSeconds <= 0) fail("QA không xác định được thời lượng render.", "invalid_evidence");
+      let visualDefects;
+      try {
+        const visualResponse = await executeCommand(ffmpegCommand, ["-hide_banner", "-nostdin", "-i", sourcePath,
+          "-vf", "blackdetect=d=0.5:pix_th=0.10,freezedetect=n=-60dB:d=2", "-an", "-f", "null", "-"], { timeout: timeoutMs, signal });
+        visualDefects = parseVisualDefects(visualResponse.stderr);
+      } catch (error) {
+        fail(error?.killed ? "Visual defect scan vượt thời gian." : "Không thể quét black/freeze frame.", "visual_scan_failed");
+      }
+      const severeBlack = visualDefects.black.filter((item) => item.durationSeconds >= Math.min(2, durationSeconds * 0.2));
+      const severeFreeze = visualDefects.freeze.filter((item) => item.durationSeconds !== null && item.durationSeconds >= Math.max(5, durationSeconds * 0.5));
+      const uncoveredPoints = inspectionPoints.filter((point) => !frameRows.some((row) => Math.abs((finite(row.actualTime) ?? finite(row.requestedTime) ?? -999) - point.seconds) <= 0.25));
       const transcript = profile.speechExpected ? transcriptMetrics(await transcriptRows(transcriptPath)) : null;
       const leadSeconds = transcript?.firstWordStartSeconds === null || transcript?.firstWordStartSeconds === undefined
         ? null : transcript.firstWordStartSeconds;
@@ -267,7 +296,10 @@ export function createLocalOutputQuality({
         check("clipping", evidence.audio.data.counts.clippingCandidates === 0 ? "passed" : "failed", "No clipping candidate is allowed.", {
           clippingCandidates: evidence.audio.data.counts.clippingCandidates,
           peakNormalized: evidence.audio.data.details?.peakNormalized ?? null
-        })
+        }),
+        check("black-frame-windows", severeBlack.length ? "failed" : visualDefects.black.length ? "warning" : "passed", "Black windows are measured from exact decoded pixels; short windows may be intentional transitions.", { windows: visualDefects.black, severeWindows: severeBlack.length }),
+        check("freeze-windows", severeFreeze.length ? "warning" : "passed", "Frozen windows are reported for review because intentional still-image segments can look identical.", { windows: visualDefects.freeze, severeWindows: severeFreeze.length })
+        ,check("timeline-window-samples", uncoveredPoints.length ? "failed" : "passed", "Exact frames must cover planned segment, caption, overlay, and transition windows.", { requested: inspectionPoints.length, covered: inspectionPoints.length - uncoveredPoints.length, uncoveredPoints })
       ];
       if (profile.speechExpected) {
         const failedSourceCuts = sourceCuts.filter((item) => item.status === "failed");
@@ -297,6 +329,8 @@ export function createLocalOutputQuality({
           contactSheets: evidence.frames.data.counts.contactSheets,
           clippingCandidates: evidence.audio.data.counts.clippingCandidates,
           integratedLufs: evidence.audio.data.details?.integratedLufs ?? null,
+          visualDefects,
+          timelineInspection: { points: inspectionPoints, uncoveredPoints },
           ...(transcript ? { transcript, speechLeadSeconds: rounded(leadSeconds), speechTailSeconds: rounded(tailSeconds) } : {})
         },
         sourceCuts,

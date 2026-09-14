@@ -86,7 +86,13 @@ function summarizeTool(tool) {
     producesFiles: tool.producesFiles,
     sideEffects: tool.sideEffects,
     cost: tool.cost,
-    approvalRequired: tool.approvalRequired
+    approvalRequired: tool.approvalRequired,
+    bestFor: tool.bestFor,
+    limitations: tool.limitations,
+    skillIds: tool.skillIds,
+    setup: tool.setup,
+    usage: tool.usage,
+    alternatives: tool.alternatives
   };
 }
 

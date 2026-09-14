@@ -62,15 +62,15 @@ function compactArtifact(artifact) {
 }
 
 function compactReview(review) {
-  const { id, target, round, perspective, verdict, summary, reviewer, createdAt } = review;
-  return { id, target, round, perspective, verdict, summary, reviewer, createdAt };
+  const { id, target, round, perspective, verdict, summary, reviewer, attestation, exactResult, createdAt } = review;
+  return { id, target, round, perspective, verdict, summary, reviewer, attestation, exactResult, createdAt };
 }
 
 function observerSection(context, section, generation) {
   const base = { version: "1.0", view: `observer-${section}`, generation, project: context.project };
   if (section === "summary") {
     return { ...base, checkpoint: context.checkpoint, checkpointFreshness: context.checkpointFreshness,
-      resumeView: context.resumeView,
+      resumeView: context.resumeView, budget: context.budget,
       intelligence: {
         activeWorkflow: context.intelligence.activeWorkflow,
         activeArtifacts: context.intelligence.activeArtifacts.map(compactArtifact),

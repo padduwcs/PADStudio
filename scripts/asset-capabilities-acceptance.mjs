@@ -14,6 +14,7 @@ let png;
 const executor=new ToolExecutor({store,registry:createDefaultToolRegistry({mediaAcquire:{download:async(url,path)=>{await copyFile(png,path);return {finalUrl:url,redirects:[],contentType:'image/png'};}}})});
 const g=await executor.execute(id,{capability:'graphic.render',tool:'browser-graphic',purpose:'Kiểm tra đồ họa',inputs:{kind:'card',title:'Nội dung rõ ràng',body:'Một kết quả dùng được ở nhiều project.',width:1280,height:720}});
 png=(await store.resolveResultFile(id,g.resultId,'primary')).filePath;
+await executor.execute(id,{capability:'media.register-generated',tool:'external-generated-media',purpose:'Kiểm tra provenance asset sinh ngoài',inputs:{source:{kind:'result',id:g.resultId,file:'primary'},mediaType:'image',name:'Key visual từ Agent ngoài',generation:{provider:'Acceptance fixture',model:'fixture-v1',prompt:'A traceable generated key visual',seed:42,rightsBasis:'Repository-owned acceptance fixture',externalCostUsd:0}}});
 await executor.execute(id,{capability:'media.acquire',tool:'https-media',purpose:'Fixture acquisition',inputs:{url:'https://example.test/fixture.png',mediaType:'image',name:'Nguồn fixture',attribution:{creator:'Local test',license:'Test fixture'}}});
 const wav=resolve('.cache/asset-browser.wav');
 await command('ffmpeg',['-v','error','-f','lavfi','-i','sine=frequency=440:duration=3','-y',wav]);

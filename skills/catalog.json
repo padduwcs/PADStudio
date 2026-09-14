@@ -98,6 +98,41 @@
         "preview is reviewed before selection"
       ],
       "instructions": "asset-preparation.md"
+    },
+    {
+      "id": "tool-selection", "version": "1.0", "name": "Tool selection",
+      "description": "Compare available tools without hiding provider, quality, cost, latency or fallback tradeoffs.",
+      "appliesTo": ["plan", "execute"], "artifactTypes": [],
+      "reviewCriteria": ["only live available choices are recommended", "provider and cost are visible", "fallback remains an explicit decision"],
+      "instructions": "tool-selection.md"
+    },
+    {
+      "id": "taste-direction", "version": "1.0", "name": "Taste direction",
+      "description": "Translate references and audience intent into a concrete visual and motion language.",
+      "appliesTo": ["ideate", "plan", "review"], "artifactTypes": ["creative.direction"],
+      "reviewCriteria": ["visual hierarchy is intentional", "variation serves the story", "anti-patterns are explicit"],
+      "instructions": "taste-direction.md"
+    },
+    {
+      "id": "music-direction", "version": "1.0", "name": "Music direction",
+      "description": "Decide music, silence and sound treatment before assets or timing become expensive.",
+      "appliesTo": ["ideate", "plan", "review"], "artifactTypes": ["creative.direction", "video.sequence"],
+      "reviewCriteria": ["music choice serves narrative function", "licensing and provenance are visible", "mix intent is testable"],
+      "instructions": "music-direction.md"
+    },
+    {
+      "id": "stock-sourcing", "version": "1.0", "name": "Stock sourcing",
+      "description": "Search, verify and select stock material with source-page and rights evidence.",
+      "appliesTo": ["plan", "execute", "review"], "artifactTypes": [],
+      "reviewCriteria": ["source page and license are checked", "asset serves a named shot need", "selected bytes are imported and hashed"],
+      "instructions": "stock-sourcing.md"
+    },
+    {
+      "id": "human-release-review", "version": "1.0", "name": "Human release review",
+      "description": "Run full viewing and listening review against an exact render before release evidence is accepted.",
+      "appliesTo": ["review", "verify"], "artifactTypes": ["review.findings"],
+      "reviewCriteria": ["the exact render is watched in full", "audio is listened to in full when applicable", "findings and device context are durable"],
+      "instructions": "human-release-review.md"
     }
   ]
 }

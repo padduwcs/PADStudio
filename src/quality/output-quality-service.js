@@ -3,6 +3,7 @@ import { createDefaultToolRegistry } from "../execution/default-tool-registry.js
 import { ToolExecutor } from "../execution/tool-executor.js";
 import { ProjectStore } from "../project/project-store.js";
 import { readOutputQualityProfile } from "./output-quality-profiles.js";
+import { compositionTimeline } from "../production/sequence-composition.js";
 
 export class OutputQualityServiceError extends Error {
   constructor(message, code = "output_quality_failed") {
@@ -47,10 +48,22 @@ function evidenceIds(job, speechExpected) {
 
 function sameEvidence(result, profileId, ids) {
   if (result.type !== "video.output-quality" || result.tool?.name !== "local-output-quality" ||
-      result.tool?.version !== "1.1.0" || result.data?.profile?.id !== profileId) return false;
+      result.tool?.version !== "1.2.0" || result.data?.profile?.id !== profileId) return false;
   const evidence = result.data.evidence ?? {};
   return evidence.probeResultId === ids.probe && evidence.framesResultId === ids.frames &&
     evidence.audioResultId === ids.audio && (evidence.transcriptResultId ?? null) === (ids.transcript ?? null);
+}
+
+export function sequenceInspectionPoints(artifact, limit = 24) {
+  const rows = compositionTimeline(artifact.data).filter((row) => row.track === "Hình" || row.track === "Chữ" || row.track.startsWith("Lớp phủ") || row.track === "Chuyển cảnh");
+  const duration = Number(artifact.data.segments.reduce((sum, segment) => sum + segment.durationSeconds - (segment.transition?.durationSeconds ?? 0), 0).toFixed(6));
+  const points = [];
+  for (const row of rows) for (const [position, time] of [["start", row.startSeconds], ["middle", (row.startSeconds + row.endSeconds) / 2], ["end", row.endSeconds]]) {
+    const seconds = Math.max(0, Math.min(duration - 0.001, time));
+    const key = seconds.toFixed(3); if (!points.some((item) => item.seconds.toFixed(3) === key)) points.push({ seconds, track: row.track, label: row.label, position });
+  }
+  if (points.length <= limit) return points;
+  return Array.from({ length: limit }, (_, index) => points[Math.round(index * (points.length - 1) / (limit - 1))]);
 }
 
 export class OutputQualityService {
@@ -68,6 +81,9 @@ export class OutputQualityService {
     if (source.type !== "video.sequence-render") {
       throw new OutputQualityServiceError("Output QA chỉ nhận video.sequence-render.", "invalid_source_result");
     }
+    const artifact = (await this.store.readArtifacts(projectId)).find((item) => item.id === source.data?.sequence?.artifactId);
+    if (!artifact || artifact.revision !== source.data?.sequence?.revision) throw new OutputQualityServiceError("Không tìm thấy exact sequence artifact của render.", "invalid_source_result");
+    const inspectionPoints = sequenceInspectionPoints(artifact);
     const operations = ["frames", "audio", ...(request.profile.speechExpected ? ["transcript"] : [])];
     const analysis = await this.analysisService.createAndRun(projectId, {
       version: "1.0",
@@ -82,7 +98,7 @@ export class OutputQualityService {
       },
       language: request.language,
       reuse: request.reuse,
-      ranges: {}, tracks: {}, options: { frames: { contactSheet: true } }
+      ranges: {}, tracks: {}, options: { frames: { contactSheet: true, timestamps: inspectionPoints.map((item) => item.seconds), budget: inspectionPoints.length } }
     });
     if (analysis.state !== "completed") {
       const detail = analysis.job.units.map((unit) =>
@@ -109,7 +125,8 @@ export class OutputQualityService {
         resultId: source.id,
         analysisJobId: analysis.analysisJobId,
         profileId: request.profile.id,
-        evidenceResultIds: ids
+        evidenceResultIds: ids,
+        inspectionPoints
       }
     });
     return { ...execution, reused: false, analysis };

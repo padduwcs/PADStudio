@@ -526,7 +526,7 @@ test("skill and workflow template catalogs expose method, standards, and optiona
   const skills = await createDefaultSkillCatalog().listPublic();
   assert.deepEqual(
     skills.map((skill) => skill.id),
-    ["adaptive-planning", "asset-preparation", "creative-direction", "project-intake", "result-review", "source-understanding", "video-editing-craft", "video-sequence-planning"]
+    ["adaptive-planning", "asset-preparation", "creative-direction", "human-release-review", "music-direction", "project-intake", "result-review", "source-understanding", "stock-sourcing", "taste-direction", "tool-selection", "video-editing-craft", "video-sequence-planning"]
   );
   const reviewSkill = await createDefaultSkillCatalog().read("result-review");
   assert.match(reviewSkill.instructionsText, /technical integrity and creative effectiveness separately/i);

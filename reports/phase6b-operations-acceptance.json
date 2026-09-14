@@ -1,12 +1,12 @@
 {
   "version": "1.0",
   "phase": "6B",
-  "checkedAt": "2026-09-13T16:58:41.828Z",
+  "checkedAt": "2026-09-14T03:33:20.882Z",
   "status": "passed_with_documented_limits",
   "checks": {
     "repository": {
       "status": "passed",
-      "output": "s, removals and local changes (0.6691ms)\n✔ workflow completion requires the promised output kind and type (159.0014ms)\n✔ local production renders, reuses unchanged segments, preserves reviews and fails without output on invalid sources (3653.4856ms)\n✔ narration is explicit, long audio is rejected, and source-byte changes invalidate segment reuse (2130.1504ms)\n✔ an executor finalization failure preserves sequence media and is recoverable without rendering twice (504.4062ms)\n✔ many frame-aligned short segments preserve the requested total duration (2233.1192ms)\n✔ missing selected folder media is visible on the segment and historical sequence can still be retired (47.5363ms)\n✔ video toolkit chains concat, reformat and thumbnail into a durable pipeline (5030.5766ms)\n✔ real ffmpeg trim creates a durable reusable clip and serves registered bytes (1443.6437ms)\n✔ contrast calculation uses WCAG relative luminance (1.2207ms)\n✔ caption wrapping counts user-perceived graphemes without splitting emoji (1.615ms)\n✔ sequence visual quality distinguishes actionable heuristics from hard invisibility (4.1427ms)\n✔ unknown video pixels produce a warning, while protected captions remain clean (0.8929ms)\n✔ graphic normalization reports low accent contrast without rejecting a valid layout (3.7073ms)\nℹ tests 238\nℹ suites 0\nℹ pass 238\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 17311.6082\n"
+      "output": "segments, preserves reviews and fails without output on invalid sources (3495.3413ms)\n✔ narration is explicit, long audio is rejected, and source-byte changes invalidate segment reuse (2085.233ms)\n✔ an executor finalization failure preserves sequence media and is recoverable without rendering twice (518.0252ms)\n✔ many frame-aligned short segments preserve the requested total duration (2292.9749ms)\n✔ missing selected folder media is visible on the segment and historical sequence can still be retired (47.985ms)\n✔ video toolkit chains concat, reformat and thumbnail into a durable pipeline (5111.586ms)\n✔ real ffmpeg trim creates a durable reusable clip and serves registered bytes (1400.8873ms)\n✔ contrast calculation uses WCAG relative luminance (2.4901ms)\n✔ caption wrapping counts user-perceived graphemes without splitting emoji (3.0654ms)\n✔ sequence visual quality distinguishes actionable heuristics from hard invisibility (4.0233ms)\n✔ unknown video pixels produce a warning, while protected captions remain clean (0.6546ms)\n✔ graphic normalization reports low accent contrast without rejecting a valid layout (0.6085ms)\n✔ Wikimedia search preserves source and rights metadata without importing media (1.6199ms)\n✔ Wikimedia search rejects loose inputs and insecure asset URLs (1.4143ms)\nℹ tests 254\nℹ suites 0\nℹ pass 254\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 18304.0381\n"
     },
     "analysis-harness": {
       "status": "passed",
@@ -14,7 +14,7 @@
     },
     "analysis-doctor": {
       "status": "passed",
-      "output": "h bằng AdaptiveDetector và giữ diagnostic score.\",\n          \"runtime\": \"local-python\",\n          \"executionMode\": \"sync\",\n          \"inputSchema\": {\n            \"type\": \"object\",\n            \"required\": [\n              \"source\",\n              \"analysis\"\n            ],\n            \"additionalProperties\": false\n          },\n          \"outputDescription\": \"source.scenes với shot liên tục, boundary kind/score và coverage đã quét.\",\n          \"sideEffects\": [\n            \"Tạo dataset JSONL trong outputs của project.\"\n          ],\n          \"cost\": {\n            \"currency\": \"USD\",\n            \"estimated\": 0\n          },\n          \"approvalRequired\": false,\n          \"producesFiles\": true,\n          \"availability\": {\n            \"status\": \"available\",\n            \"helperVersion\": \"1.0\",\n            \"protocolVersion\": \"1.0\",\n            \"pythonVersion\": \"3.12.10\",\n            \"profileVersion\": \"source-standard-v1\",\n            \"profileDigest\": \"85242734cc0f509dd2e6f5dedfb9227e744f76fa5f090195be64bba7e3de6af0\",\n            \"libraryVersions\": {\n              \"faster-whisper\": \"1.2.1\",\n              \"ctranslate2\": \"4.8.2\",\n              \"scenedetect\": \"0.7.1\",\n              \"av\": \"18.1.0\"\n            },\n            \"device\": \"cpu\"\n          }\n        }\n      ],\n      \"available\": true\n    }\n  ],\n  \"note\": \"Doctor không tải model và không chạy inference. Profile ASR không tự fallback.\"\n}\n"
+      "output": " understanding.\"\n          ],\n          \"limitations\": [\n            \"Machine evidence requires review.\"\n          ],\n          \"skillIds\": [\n            \"source-understanding\"\n          ],\n          \"setup\": {\n            \"kind\": \"tool_reported\",\n            \"instructions\": \"Use live tool availability and setup hints.\",\n            \"configKeys\": []\n          },\n          \"usage\": {\n            \"unit\": \"run\",\n            \"estimate\": 0\n          },\n          \"selectionProfile\": {\n            \"quality\": 3,\n            \"control\": 4,\n            \"reliability\": 4,\n            \"costEfficiency\": 5,\n            \"latency\": 4,\n            \"privacy\": 5\n          },\n          \"availability\": {\n            \"status\": \"available\",\n            \"helperVersion\": \"1.0\",\n            \"protocolVersion\": \"1.0\",\n            \"pythonVersion\": \"3.12.10\",\n            \"profileVersion\": \"source-standard-v1\",\n            \"profileDigest\": \"85242734cc0f509dd2e6f5dedfb9227e744f76fa5f090195be64bba7e3de6af0\",\n            \"libraryVersions\": {\n              \"faster-whisper\": \"1.2.1\",\n              \"ctranslate2\": \"4.8.2\",\n              \"scenedetect\": \"0.7.1\",\n              \"av\": \"18.1.0\"\n            },\n            \"device\": \"cpu\"\n          },\n          \"alternatives\": []\n        }\n      ],\n      \"available\": true\n    }\n  ],\n  \"note\": \"Doctor không tải model và không chạy inference. Profile ASR không tự fallback.\"\n}\n"
     },
     "fixture-media": {
       "status": "passed",
@@ -23,10 +23,10 @@
     "fresh-project-e2e": {
       "status": "passed",
       "projectId": "phase6b-fresh-project",
-      "resourceId": "resource-mu026g29-251a6695",
-      "artifactId": "artifact-mu026g2j-76c7cf0a",
-      "renderRunId": "run-mu026g2m-47343309",
-      "renderResultId": "result-mu026gmd-30a20d89",
+      "resourceId": "resource-mu0oumu2-bc3b193e",
+      "artifactId": "artifact-mu0oumud-9ec8e220",
+      "renderRunId": "run-mu0oumuj-06ca418e",
+      "renderResultId": "result-mu0ounep-143a4e5b",
       "recoveryPlan": {
         "total": 1,
         "recoverable": 1,
@@ -39,142 +39,156 @@
         "skipped": 0
       },
       "repeatedRecovery": "nothing_to_do",
-      "approvalDecisionId": "decision-mu026ig1-92f7de70",
-      "deliveryRunId": "run-mu026ig3-568f4a49",
-      "deliveryResultId": "result-mu026in7-6583d403",
+      "approvalDecisionId": "decision-mu0oupnb-38af4be4",
+      "deliveryRunId": "run-mu0oupnh-83ae18b5",
+      "deliveryResultId": "result-mu0oupux-389ab809",
       "deliverySha256": "47880add67781719cd24cfaa0555fe5163e59ced05ddb3c0142ae59372f943cf",
       "health": "ready",
       "deepIntegrity": {
-        "checked": 18,
-        "verified": 18,
+        "checked": 20,
+        "verified": 20,
         "legacyUnchecked": 0,
         "unchecked": 0,
         "failed": 0,
         "files": [
           {
-            "resultId": "result-mu026gmd-30a20d89",
+            "resultId": "result-mu0ounep-143a4e5b",
             "fileId": "primary",
             "status": "verified",
             "sha256": "47880add67781719cd24cfaa0555fe5163e59ced05ddb3c0142ae59372f943cf",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026gmd-30a20d89",
+            "resultId": "result-mu0ounep-143a4e5b",
             "fileId": "segment-0",
             "status": "verified",
             "sha256": "abb32b31e8a854f91720200f5d15ad4f7a5a3f450edab693fd0cc197dbbce416",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026gmd-30a20d89",
+            "resultId": "result-mu0ounep-143a4e5b",
             "fileId": "frame-0",
             "status": "verified",
             "sha256": "9d26598d434767f842a9cab2d95b4b32178cba4e69a5eb6f669775fadbe83da4",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026hjj-ed1dfd1f",
+            "resultId": "result-mu0ouocl-358ca1ba",
             "fileId": "scenes",
             "status": "verified",
             "sha256": "002d6ac6101d50627f3a5f819a8c1b3191f2835ab49b9188e90a67efbf87c7cc",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026i5o-8ed2a5b1",
+            "resultId": "result-mu0oupau-6b390acd",
             "fileId": "frame-0001",
             "status": "verified",
             "sha256": "54884b8af8d6a8d8870da49ac103825a34b21c0732ccefae26038d9d239788d9",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026i5o-8ed2a5b1",
+            "resultId": "result-mu0oupau-6b390acd",
             "fileId": "frame-0002",
+            "status": "verified",
+            "sha256": "f897e9bb29187a3855eb9442d2f14b8eeb919f8317f46b7c1af4bc631dab8cc7",
+            "checksumSource": "file"
+          },
+          {
+            "resultId": "result-mu0oupau-6b390acd",
+            "fileId": "frame-0003",
             "status": "verified",
             "sha256": "9d26598d434767f842a9cab2d95b4b32178cba4e69a5eb6f669775fadbe83da4",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026i5o-8ed2a5b1",
-            "fileId": "frame-0003",
+            "resultId": "result-mu0oupau-6b390acd",
+            "fileId": "frame-0004",
+            "status": "verified",
+            "sha256": "35c06cf3553da8a7beadbbfbe96f6aaab3188d39dbf4a5828caa46eee9e61da0",
+            "checksumSource": "file"
+          },
+          {
+            "resultId": "result-mu0oupau-6b390acd",
+            "fileId": "frame-0005",
             "status": "verified",
             "sha256": "e60864764551e89bf2dc152dfbf9d7441accc23252cd5ac7ea3240c0a3a1d859",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026i5o-8ed2a5b1",
+            "resultId": "result-mu0oupau-6b390acd",
             "fileId": "contact-001",
             "status": "verified",
-            "sha256": "a353c1901d377b8a4978330e2b3261c7451a1f5c605b2ab6a7e0934b81c058c4",
+            "sha256": "3a8d9ddd1fe874ae2b8745d62fbf1928c58a37e5f4b06bfc231cc10cb13d458c",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026i5o-8ed2a5b1",
+            "resultId": "result-mu0oupau-6b390acd",
             "fileId": "frames",
             "status": "verified",
-            "sha256": "1f50966f7ed5e7c61d176793dee959eb306db73705a5b5e669d2c7776a030f88",
+            "sha256": "771e1737df6a8580d526edc15d2130f31036cf8bb2e65d3b6b96ff475e2c24c3",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026ibf-3373cf36",
+            "resultId": "result-mu0oupgk-de27f716",
             "fileId": "audio",
             "status": "verified",
             "sha256": "043f0e9927de47b8ac506bc36caf97a492e20b7de669776a1529d8f40ddf1948",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026ifv-51f0bbf7",
+            "resultId": "result-mu0oupn6-995030e7",
             "fileId": "report",
             "status": "verified",
-            "sha256": "0fdf21f2b69fec86f07d0c706aec4007ac050d1e1f51f33ab5b1484b3cab66b5",
+            "sha256": "6757860124b3510f61b11dabf9abd2377b805a69f507f3fd6f4e520be33e4f76",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026in7-6583d403",
+            "resultId": "result-mu0oupux-389ab809",
             "fileId": "primary",
             "status": "verified",
             "sha256": "47880add67781719cd24cfaa0555fe5163e59ced05ddb3c0142ae59372f943cf",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026in7-6583d403",
+            "resultId": "result-mu0oupux-389ab809",
             "fileId": "manifest",
             "status": "verified",
-            "sha256": "46324dcc4547253c73c51783b9d905c8b822804913bcb52f28e917349bb737a0",
+            "sha256": "a3351c2c031fbf4c5c8f1516e20bb92d0d00e607bdf832d73604bfac260e7bae",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026in7-6583d403",
+            "resultId": "result-mu0oupux-389ab809",
             "fileId": "provenance",
             "status": "verified",
-            "sha256": "386e77f5f988a3593ec2dc819bd4968e679c2d6df8c4f00969f95145391e035e",
+            "sha256": "c480e0a412106169f7ab910ddd3e6dc7c51ce70e57465a1b937bbb9d1a9829b3",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026in7-6583d403",
+            "resultId": "result-mu0oupux-389ab809",
             "fileId": "reviews",
             "status": "verified",
-            "sha256": "b38efdf0a0eab78a48ad5bca583e4c5a5d64820b949caf4008eadfa41e9b48c6",
+            "sha256": "6301a2f183bcdef24ae416cbdee3365bf89d09c85d18b5d3ffed1a9c721f449d",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026in7-6583d403",
+            "resultId": "result-mu0oupux-389ab809",
             "fileId": "approval",
             "status": "verified",
-            "sha256": "237d89786ea100ad1426895449dde8803a217ebfcfdbf84da249e3270d2bcf8c",
+            "sha256": "5e5bdd030a6fba6a503348b9a353a51a6b40156ddff1ecb1ca8c5fa076689a6f",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026in7-6583d403",
+            "resultId": "result-mu0oupux-389ab809",
             "fileId": "quality",
             "status": "verified",
-            "sha256": "87145c60a0afb35614dd8f595a507cc6e8a7505f1a360c9ce3750d9fe9fc4f4b",
+            "sha256": "8811bdc3a5ec347bbbe4059ad35d777b6601d6cec945b176417db084360c0e39",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu026in7-6583d403",
+            "resultId": "result-mu0oupux-389ab809",
             "fileId": "checksums",
             "status": "verified",
-            "sha256": "84c1ce2355e2ecbc267ad67e72ae09fb860cb3c19c759e5807c27ed5f7f46e55",
+            "sha256": "a4796c448be615370f1a50a6c4ce1ef0271aa06367f59b517e53cfde04bdbb5b",
             "checksumSource": "file"
           }
         ]

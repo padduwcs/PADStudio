@@ -115,6 +115,7 @@ function humanIssues(gate, measurement) {
     issues.push(issue("missing_human_reviewer", "Human review requires reviewer.kind=human and a reviewer id."));
   }
   if (!text(measurement.resultId)) issues.push(issue("missing_exact_result", "Human review must identify the exact Result."));
+  if (!sha256(measurement.resultSha256)) issues.push(issue("missing_exact_checksum", "Human review must bind the exact Result SHA-256."));
   if (!text(measurement.artifactId) || !Number.isInteger(measurement.artifactRevision) || measurement.artifactRevision < 1) {
     issues.push(issue("missing_exact_revision", "Human review must identify the exact artifact revision."));
   }

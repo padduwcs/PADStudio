@@ -2,18 +2,18 @@
 
 Tài liệu này ghi các định hướng đã chốt để làm rõ [`PADSTUDIO-DESIGN.md`](./PADSTUDIO-DESIGN.md); không thay thế bản thiết kế gốc.
 
-## Một UI, một project
+## Agent bên ngoài, một project, observer chỉ đọc
 
-PADStudio là nơi người dùng và Agent cùng làm video, không ép mọi project theo một pipeline cố định. UI là một ứng dụng duy nhất, chia làm hai vùng cùng làm việc với **một project**:
+PADStudio là nơi Agent và người dùng cùng làm video mà không ép mọi project theo một pipeline cố định. Kiến trúc sản phẩm đã chốt không xây chat tích hợp:
 
-- **Chat:** người dùng làm việc trực tiếp với Agent thật — nêu mục tiêu, gửi tư liệu, nhận đề xuất, phản hồi và xác nhận. Đây là chat thật, không phải mô phỏng; người dùng làm việc trực tiếp với Agent ngay trong UI.
-- **Web:** người dùng quan sát project, trạng thái, tư liệu, kết quả và preview.
+- **Agent host bên ngoài:** là nơi người dùng chat với Agent thật, đưa mục tiêu, tư liệu, phản hồi và phê duyệt. Agent dùng CLI/contract của PADStudio để đọc và cập nhật project.
+- **Web observer:** là cửa sổ local chỉ đọc để quan sát project, trạng thái, tư liệu, kết quả, bằng chứng và preview.
 
-Hai vùng cùng đọc từ kho project, là nguồn sự thật chung. Web không giữ trạng thái project riêng cần đồng bộ với chat.
+Hai bề mặt cùng dùng kho project làm nguồn sự thật. Observer không giữ trạng thái project riêng và PADStudio không xây chat client, đăng nhập hay connector để bắt chước Agent host.
 
-## Chat điều khiển, web quan sát
+## Agent host bên ngoài điều khiển, web quan sát
 
-Chat là kênh duy nhất để điều khiển công việc trong project. Người dùng đưa yêu cầu, thay đổi hướng và phê duyệt qua chat. Agent hiểu phản hồi, chọn việc sáng tạo cần làm tiếp và cập nhật project.
+Chat trong Agent host bên ngoài là kênh duy nhất để điều khiển công việc trong project. Người dùng đưa yêu cầu, thay đổi hướng và phê duyệt tại đó. Agent hiểu phản hồi, chọn việc sáng tạo cần làm tiếp và cập nhật project qua CLI/contract.
 
 Web chỉ phục vụ xem và điều hướng: mở project khác, xem trạng thái, phát preview hoặc đổi cách xem. Nó không gửi lệnh và không tự thay đổi lựa chọn, quyết định, kết quả hay checkpoint. Khi Agent cần người dùng quyết định, web hiển thị rõ điều đang chờ và bằng chứng cần xem; người dùng phản hồi trong chat.
 
@@ -35,7 +35,7 @@ kế hoạch, kết quả và quyết định đó tồn tại bền vững ngo�
 ```mermaid
 flowchart TB
     U[Người dùng<br/>Mục tiêu, tư liệu, phản hồi và phê duyệt]
-    W[Không gian làm việc chung<br/>Chat, quan sát và so sánh kết quả]
+    W[Hai bề mặt chung project<br/>Agent host ngoài và observer chỉ đọc]
     A[Agent<br/>Hiểu project, sáng tạo và chọn việc tiếp theo]
     I[Trí tuệ project<br/>Brief, hiểu tư liệu, hướng sáng tạo và tiêu chí review]
     F[Workflow thích nghi<br/>Kế hoạch hiện hành có thể thay đổi]
@@ -229,7 +229,7 @@ Renderer đầu tiên là `video.render-sequence` / `ffmpeg-sequence`, local và
 không tính phí. Bản dựng gắn với revision chính xác, giữ các đoạn và khung hình
 để review; có thể dùng lại đoạn khớp spec và hash. Context báo phụ thuộc đổi
 phiên bản; observer cho xem và so sánh. Không tự sửa kế hoạch hay kế thừa approval.
-Đây chưa phải timeline nhiều lớp, dịch vụ tạo nội dung hay chat tích hợp.
+Gói ban đầu này chưa bao phủ timeline nhiều lớp hoặc dịch vụ tạo nội dung; chat thuộc Agent host bên ngoài.
 
 Chi tiết: [VIDEO-SEQUENCE-PRODUCTION.md](./VIDEO-SEQUENCE-PRODUCTION.md).
 
@@ -267,11 +267,11 @@ Chi tiết tại [Gói B](./CREATIVE-DIRECTION-PACKAGE-B.md),
 [Gói D](./CREATIVE-DIRECTION-PACKAGE-D.md) và
 [Gói E](./CREATIVE-DIRECTION-PACKAGE-E.md).
 
-## Triển khai tạm thời
+## Kiến trúc giao diện đã chốt
 
-Trong giai đoạn đầu, chat chưa nằm trong web PADStudio. Người dùng mở project bằng Agent họ đang dùng và chat trong chính cửa sổ Agent đó; Agent đọc và cập nhật project. Web PADStudio là cửa sổ local chỉ quan sát project.
+Người dùng mở project bằng Agent host họ đang dùng và chat trong chính cửa sổ Agent đó; Agent đọc và cập nhật project qua CLI/contract. Web PADStudio là cửa sổ local chỉ quan sát project.
 
-Đây là cách làm tạm thời để không tạo chat client, cơ chế đăng nhập hay connector riêng chỉ nhằm bắt chước Agent host. Mục tiêu UI một ứng dụng chia chat và web vẫn được giữ; chỉ triển khai khi có cách tích hợp phù hợp với Agent host.
+Đây là kiến trúc chính thức, không phải giải pháp tạm thời. Chat tích hợp, cơ chế đăng nhập và connector riêng không thuộc roadmap hiện hành. Chỉ xem xét lại khi người phụ trách thay đổi ranh giới sản phẩm bằng một quyết định mới.
 
 ## Đợt 3 — gói nguyên liệu dùng chung
 
@@ -279,8 +279,8 @@ Theo yêu cầu mở rộng các khả năng phổ biến, gói đầu đã bổ
 và `media.acquire` qua Executor hiện có. Gói TTS bổ sung Piper local và ElevenLabs qua cùng
 `tts.synthesize`, Result audio dùng lại được và approval credit dùng một lần. Pilot
 `phase3-vd04-asset-pilot` đã chứng minh đường local từ nguồn → graphic/Piper → sequence r9 →
-render/review; checkpoint hiện current và không có việc treo. Ảnh AI và search stock chưa triển
-khai. Đợt 4 đã tiếp tục từ ma sát của pilot này; không mở rộng provider theo số lượng.
+render/review; checkpoint hiện current và không có việc treo. Stock search có đường Wikimedia
+và asset do Agent/provider ngoài tạo có thể được đăng ký cùng provenance; không mở rộng provider theo số lượng.
 Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md),
 [TTS-CAPABILITY.md](./TTS-CAPABILITY.md) và
 [báo cáo pilot](../../reports/phase3-vd04-pilot-acceptance.json).
@@ -353,3 +353,22 @@ Project legacy không có promise tiếp tục tương thích.
 Machine QA không được ghi thành human viewing/listening: hai trạng thái này luôn được
 ghi rõ `not_performed` nếu chưa có người thực hiện. Contract và giới hạn nằm ở
 [PHASE7-OUTPUT-QA-SPEC.md](PHASE7-OUTPUT-QA-SPEC.md).
+
+## Hoàn thiện V1 theo mô hình Agent ngoài — 2026-09-14
+
+V1 giữ Agent host bên ngoài và observer chỉ đọc. Tool catalog nay công bố best-for,
+limitation, setup, skill, usage và profile lựa chọn; tool:recommend xếp hạng advisory
+nhưng execution vẫn phải chọn exact tool, không fallback ngầm. Project có budget
+observe/cap với reserve cho Run đang chạy và ngưỡng cần authorization.
+
+Asset layer có Wikimedia stock search giữ creator/license/source page, cùng
+media.register-generated để đưa exact file do Agent/provider ngoài tạo vào Result
+có provider/model/prompt/rights/cost provenance. Năm production skill mới bao phủ chọn
+tool, taste, music, stock và full human release review.
+
+Exact-output QA lấy mẫu các cửa sổ segment/caption/overlay/transition, full decode và
+quét black/freeze windows. Human attestation bắt buộc xem trọn bản render, nghe trọn
+khi có audio và bind SHA-256 + artifact revision. Holdout locker khóa file/gold/rights
+vào manifest checksum; evidence assembler nối holdout cùng human review bền vững vào
+release evaluator. Các cơ chế này hoàn thiện đường đo và kiểm chứng, nhưng không tự
+bịa corpus, kết quả benchmark, provider account hay phê duyệt của người dùng.

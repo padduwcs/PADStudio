@@ -10,7 +10,7 @@ PADStudio đã có thể lưu cấu trúc video theo phiên bản, dựng đúng
 | Mới có ý tưởng | Mục đích từng đoạn, lời dẫn, phần còn thiếu tư liệu | Ngữ cảnh chỉ rõ chỗ thiếu; chưa đủ nguồn thì không dựng |
 | Sửa bản đã duyệt | Phiên bản mới, giữ bản dựng và quyết định cũ | Dựng lại đoạn thay đổi, dùng lại đoạn khớp; bản mới cần đánh giá riêng |
 
-Đây là một phần dựng video local đã hoàn thành. Tự hiểu tư liệu, bố cục nhiều lớp, dịch vụ tạo nội dung trả phí và chat tích hợp vẫn là các khả năng riêng chưa được triển khai trong phần này.
+Đây là một phần dựng video local đã hoàn thành. Tự hiểu tư liệu, bố cục nhiều lớp và dịch vụ tạo nội dung trả phí là các khả năng riêng; chat nằm ở Agent host bên ngoài theo kiến trúc đã chốt, không phải capability cần triển khai trong PADStudio.
 
 ## 2. Mô hình hoạt động
 

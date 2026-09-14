@@ -1,7 +1,8 @@
-# PADStudio — quy ước tạm thời cho Agent host
+# PADStudio — quy ước cho Agent host bên ngoài
 
-Trong prototype này, chat nằm trong Agent host mà người dùng đang dùng. Web
-PADStudio chỉ quan sát project local; nó không gửi lệnh cho Agent.
+Chat nằm trong Agent host mà người dùng đang dùng. Đây là kiến trúc V1 đã chốt,
+không phải giải pháp tạm thời. Web PADStudio chỉ quan sát project local; nó không
+gửi lệnh cho Agent.
 
 ## Bắt đầu hoặc tiếp tục project
 
@@ -214,7 +215,21 @@ Xem các capability và công cụ thực sự dùng được trên máy:
 
 ```powershell
 npm run tool:list
+$recommendation = @{ capability = "tts.synthesize"; priorities = @{ quality = 5; privacy = 3 } } | ConvertTo-Json -Compress
+$recommendation | npm run tool:recommend -- -
 ```
+
+Đọc best-for, limitation, setup, cost, alternatives và skill trước khi chọn.
+Recommendation chỉ advisory; request chạy luôn nêu exact capability/tool và không
+được fallback ngầm. Với project có chi phí, xem hoặc đặt budget:
+
+```powershell
+npm run project:budget -- <project-id> show
+npm run project:budget -- <project-id> set <budget-json|file|->
+```
+
+Mode cap giữ reserve cho Run đang chạy và chặn vượt trần; action qua ngưỡng vẫn cần
+authorization chính xác. Mode observe chỉ đo, không giả làm cap.
 
 Để chạy một công cụ, chuẩn bị request JSON:
 
@@ -262,6 +277,18 @@ npm run project:run:recover -- <project-id> <run-id>
 
 Nếu context báo `checkpointFreshness.status: "stale"`, Agent phải đọc các hoạt động
 mới hơn và ghi checkpoint mới trước khi dựa vào trường `next` cũ.
+
+### Stock và asset do provider ngoài tạo
+
+Dùng `media.search-stock` / `wikimedia-stock` để tìm candidate. Search Result không
+phải asset đã chọn: Agent phải kiểm tra source page/license/creator, rồi dùng
+`media.acquire` để nhập exact HTTPS bytes với attribution.
+
+Khi Agent host hoặc provider ngoài đã tạo ảnh/audio/video, import file vào project
+trước, sau đó dùng `media.register-generated` / `external-generated-media`. Request
+phải nêu source đã quản lý, mediaType, provider, model, prompt, rightsBasis và các
+trường có thật như seed/requestId/externalCostUsd. Registration không gọi provider và
+không biến rightsReview/contentReview thành passed.
 
 ### Cắt video
 
@@ -526,6 +553,18 @@ Dùng `nonverbal-video-v1` khi sản phẩm không kỳ vọng lời nói. Chỉ
 không mô tả contact sheet/ASR là human viewing/listening. Delivery sẽ tự từ chối khi
 thiếu QA, QA fail, evidence hỏng hoặc checksum exact render đã đổi.
 
+Sau khi người dùng thực sự xem toàn bộ và nghe toàn bộ khi có audio, ghi attestation:
+
+```powershell
+npm run project:attest -- <project-id> <human-attestation-json|file|->
+```
+
+JSON phải có resultId, watchedFull=true, listenedFull=true hoặc not_applicable,
+device, context và findings. Store tự bind exact render SHA-256 cùng artifact revision;
+không tái dùng attestation cho Result mới. Holdout/release evidence dùng
+`release:holdout:lock`, `release:evidence:assemble` rồi `release:gates`; không
+được thay benchmark hoặc human evidence bằng fixture.
+
 ## Ghi checkpoint
 
 Agent chắt lọc bối cảnh có ý nghĩa vào một file JSON tạm, ví dụ:
@@ -563,7 +602,11 @@ import hay cập nhật checkpoint.
 
 ## Đợt 3 — gói nguyên liệu dùng chung
 
-Theo yêu cầu mở rộng các khả năng phổ biến, gói đầu đã bổ sung graphic.render, audio.prepare và media.acquire qua Executor hiện có. Capability `tts.synthesize` đã có Piper local và ElevenLabs; ElevenLabs bắt buộc plan/authorization credit đúng request. Xem lệnh, cấu hình bí mật và model tiếng Việt trong [TTS-CAPABILITY.md](docs/build/TTS-CAPABILITY.md). Ảnh AI và search stock chưa triển khai.
+Theo yêu cầu mở rộng các khả năng phổ biến, asset layer có graphic.render,
+audio.prepare, media.acquire, media.search-stock, media.register-generated và
+tts.synthesize qua Executor hiện có. Piper local và ElevenLabs dùng cùng capability;
+ElevenLabs bắt buộc plan/authorization credit đúng request. Xem lệnh, cấu hình bí mật
+và model tiếng Việt trong [TTS-CAPABILITY.md](docs/build/TTS-CAPABILITY.md).
 
 ## Đợt 4 — composition
 
