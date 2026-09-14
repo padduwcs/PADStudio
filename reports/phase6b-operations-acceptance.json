@@ -1,16 +1,16 @@
 {
   "version": "1.0",
   "phase": "6B",
-  "checkedAt": "2026-09-14T03:48:58.420Z",
+  "checkedAt": "2026-09-14T07:39:04.290Z",
   "status": "passed_with_documented_limits",
   "checks": {
     "repository": {
       "status": "passed",
-      "output": " changes invalidate segment reuse (2315.4288ms)\n✔ an executor finalization failure preserves sequence media and is recoverable without rendering twice (485.9077ms)\n✔ many frame-aligned short segments preserve the requested total duration (2314.8776ms)\n✔ missing selected folder media is visible on the segment and historical sequence can still be retired (47.3242ms)\n✔ video toolkit chains concat, reformat and thumbnail into a durable pipeline (5264.6614ms)\n✔ real ffmpeg trim creates a durable reusable clip and serves registered bytes (1577.1127ms)\n✔ contrast calculation uses WCAG relative luminance (1.7056ms)\n✔ caption wrapping counts user-perceived graphemes without splitting emoji (2.8112ms)\n✔ sequence visual quality distinguishes actionable heuristics from hard invisibility (4.4996ms)\n✔ unknown video pixels produce a warning, while protected captions remain clean (0.625ms)\n✔ graphic normalization reports low accent contrast without rejecting a valid layout (7.5804ms)\n✔ Wikimedia search preserves source and rights metadata without importing media (2.0331ms)\n✔ Wikimedia search rejects loose inputs and insecure asset URLs (2.8283ms)\n✔ Wikimedia search drops mismatched media and unsafe optional URLs (2.7548ms)\n✔ Wikimedia search fails closed on malformed provider JSON (0.6092ms)\nℹ tests 261\nℹ suites 0\nℹ pass 261\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 18215.7146\n"
+      "output": "e changes invalidate segment reuse (2415.9004ms)\n✔ an executor finalization failure preserves sequence media and is recoverable without rendering twice (453.811ms)\n✔ many frame-aligned short segments preserve the requested total duration (2244.2551ms)\n✔ missing selected folder media is visible on the segment and historical sequence can still be retired (45.5426ms)\n✔ video toolkit chains concat, reformat and thumbnail into a durable pipeline (5221.3783ms)\n✔ real ffmpeg trim creates a durable reusable clip and serves registered bytes (1484.9762ms)\n✔ contrast calculation uses WCAG relative luminance (1.1512ms)\n✔ caption wrapping counts user-perceived graphemes without splitting emoji (1.8034ms)\n✔ sequence visual quality distinguishes actionable heuristics from hard invisibility (5.5105ms)\n✔ unknown video pixels produce a warning, while protected captions remain clean (0.5745ms)\n✔ graphic normalization reports low accent contrast without rejecting a valid layout (0.9147ms)\n✔ Wikimedia search preserves source and rights metadata without importing media (4.0159ms)\n✔ Wikimedia search rejects loose inputs and insecure asset URLs (1.7368ms)\n✔ Wikimedia search drops mismatched media and unsafe optional URLs (1.5434ms)\n✔ Wikimedia search fails closed on malformed provider JSON (1.7064ms)\nℹ tests 264\nℹ suites 0\nℹ pass 264\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 17548.162\n"
     },
     "analysis-harness": {
       "status": "passed",
-      "output": "ng_gold_blocks_audit) ... ok\r\ntest_model_manifest_cannot_self_authorize_modified_model (test_evaluate.CorpusTests.test_model_manifest_cannot_self_authorize_modified_model) ... ok\r\ntest_score_rejects_machine_gold_and_coverage_mismatch (test_evaluate.CorpusTests.test_score_rejects_machine_gold_and_coverage_mismatch) ... ok\r\ntest_source_hash_and_path_escape (test_evaluate.CorpusTests.test_source_hash_and_path_escape) ... ok\r\ntest_unlabelled_text_does_not_count_as_qualified_audio (test_evaluate.CorpusTests.test_unlabelled_text_does_not_count_as_qualified_audio) ... ok\r\ntest_explicit_timing_and_empty_are_not_passes (test_evaluate.MetricsTests.test_explicit_timing_and_empty_are_not_passes) ... ok\r\ntest_known_edit_distance_and_empty_gold (test_evaluate.MetricsTests.test_known_edit_distance_and_empty_gold) ... ok\r\ntest_numeric_punctuation_is_not_erased (test_evaluate.MetricsTests.test_numeric_punctuation_is_not_erased) ... ok\r\ntest_scene_matching_is_one_to_one (test_evaluate.MetricsTests.test_scene_matching_is_one_to_one) ... ok\r\ntest_source_identity_golden_matches_node_contract (test_evaluate.MetricsTests.test_source_identity_golden_matches_node_contract) ... ok\r\ntest_vietnamese_nfc_diacritics_and_digits (test_evaluate.MetricsTests.test_vietnamese_nfc_diacritics_and_digits) ... ok\r\n\r\n----------------------------------------------------------------------\r\nRan 20 tests in 0.242s\r\n\r\nOK\r\n"
+      "output": "ng_gold_blocks_audit) ... ok\r\ntest_model_manifest_cannot_self_authorize_modified_model (test_evaluate.CorpusTests.test_model_manifest_cannot_self_authorize_modified_model) ... ok\r\ntest_score_rejects_machine_gold_and_coverage_mismatch (test_evaluate.CorpusTests.test_score_rejects_machine_gold_and_coverage_mismatch) ... ok\r\ntest_source_hash_and_path_escape (test_evaluate.CorpusTests.test_source_hash_and_path_escape) ... ok\r\ntest_unlabelled_text_does_not_count_as_qualified_audio (test_evaluate.CorpusTests.test_unlabelled_text_does_not_count_as_qualified_audio) ... ok\r\ntest_explicit_timing_and_empty_are_not_passes (test_evaluate.MetricsTests.test_explicit_timing_and_empty_are_not_passes) ... ok\r\ntest_known_edit_distance_and_empty_gold (test_evaluate.MetricsTests.test_known_edit_distance_and_empty_gold) ... ok\r\ntest_numeric_punctuation_is_not_erased (test_evaluate.MetricsTests.test_numeric_punctuation_is_not_erased) ... ok\r\ntest_scene_matching_is_one_to_one (test_evaluate.MetricsTests.test_scene_matching_is_one_to_one) ... ok\r\ntest_source_identity_golden_matches_node_contract (test_evaluate.MetricsTests.test_source_identity_golden_matches_node_contract) ... ok\r\ntest_vietnamese_nfc_diacritics_and_digits (test_evaluate.MetricsTests.test_vietnamese_nfc_diacritics_and_digits) ... ok\r\n\r\n----------------------------------------------------------------------\r\nRan 20 tests in 0.235s\r\n\r\nOK\r\n"
     },
     "analysis-doctor": {
       "status": "passed",
@@ -23,10 +23,10 @@
     "fresh-project-e2e": {
       "status": "passed",
       "projectId": "phase6b-fresh-project",
-      "resourceId": "resource-mu0peq5n-1c9701fd",
-      "artifactId": "artifact-mu0peq5x-82eea364",
-      "renderRunId": "run-mu0peq62-9564a98e",
-      "renderResultId": "result-mu0peqpv-d3d6b566",
+      "resourceId": "resource-mu0xmmak-c278ee49",
+      "artifactId": "artifact-mu0xmmau-b850e99d",
+      "renderRunId": "run-mu0xmmaz-9f0f9689",
+      "renderResultId": "result-mu0xmmuf-afe14d82",
       "recoveryPlan": {
         "total": 1,
         "recoverable": 1,
@@ -39,9 +39,9 @@
         "skipped": 0
       },
       "repeatedRecovery": "nothing_to_do",
-      "approvalDecisionId": "decision-mu0pesz6-9ef3e99a",
-      "deliveryRunId": "run-mu0peszc-9c9d69dd",
-      "deliveryResultId": "result-mu0pet6v-cb984c3c",
+      "approvalDecisionId": "decision-mu0xmozw-38434269",
+      "deliveryRunId": "run-mu0xmp02-cf266da4",
+      "deliveryResultId": "result-mu0xmp7c-e1eb9db7",
       "deliverySha256": "47880add67781719cd24cfaa0555fe5163e59ced05ddb3c0142ae59372f943cf",
       "health": "ready",
       "deepIntegrity": {
@@ -52,143 +52,143 @@
         "failed": 0,
         "files": [
           {
-            "resultId": "result-mu0peqpv-d3d6b566",
+            "resultId": "result-mu0xmmuf-afe14d82",
             "fileId": "primary",
             "status": "verified",
             "sha256": "47880add67781719cd24cfaa0555fe5163e59ced05ddb3c0142ae59372f943cf",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0peqpv-d3d6b566",
+            "resultId": "result-mu0xmmuf-afe14d82",
             "fileId": "segment-0",
             "status": "verified",
             "sha256": "abb32b31e8a854f91720200f5d15ad4f7a5a3f450edab693fd0cc197dbbce416",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0peqpv-d3d6b566",
+            "resultId": "result-mu0xmmuf-afe14d82",
             "fileId": "frame-0",
             "status": "verified",
             "sha256": "9d26598d434767f842a9cab2d95b4b32178cba4e69a5eb6f669775fadbe83da4",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pernq-49c6c68a",
+            "resultId": "result-mu0xmnqq-b94cabaa",
             "fileId": "scenes",
             "status": "verified",
             "sha256": "002d6ac6101d50627f3a5f819a8c1b3191f2835ab49b9188e90a67efbf87c7cc",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pesmi-5a70c53f",
+            "resultId": "result-mu0xmons-40a04513",
             "fileId": "frame-0001",
             "status": "verified",
             "sha256": "54884b8af8d6a8d8870da49ac103825a34b21c0732ccefae26038d9d239788d9",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pesmi-5a70c53f",
+            "resultId": "result-mu0xmons-40a04513",
             "fileId": "frame-0002",
             "status": "verified",
             "sha256": "f897e9bb29187a3855eb9442d2f14b8eeb919f8317f46b7c1af4bc631dab8cc7",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pesmi-5a70c53f",
+            "resultId": "result-mu0xmons-40a04513",
             "fileId": "frame-0003",
             "status": "verified",
             "sha256": "9d26598d434767f842a9cab2d95b4b32178cba4e69a5eb6f669775fadbe83da4",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pesmi-5a70c53f",
+            "resultId": "result-mu0xmons-40a04513",
             "fileId": "frame-0004",
             "status": "verified",
             "sha256": "35c06cf3553da8a7beadbbfbe96f6aaab3188d39dbf4a5828caa46eee9e61da0",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pesmi-5a70c53f",
+            "resultId": "result-mu0xmons-40a04513",
             "fileId": "frame-0005",
             "status": "verified",
             "sha256": "e60864764551e89bf2dc152dfbf9d7441accc23252cd5ac7ea3240c0a3a1d859",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pesmi-5a70c53f",
+            "resultId": "result-mu0xmons-40a04513",
             "fileId": "contact-001",
             "status": "verified",
             "sha256": "3a8d9ddd1fe874ae2b8745d62fbf1928c58a37e5f4b06bfc231cc10cb13d458c",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pesmi-5a70c53f",
+            "resultId": "result-mu0xmons-40a04513",
             "fileId": "frames",
             "status": "verified",
             "sha256": "771e1737df6a8580d526edc15d2130f31036cf8bb2e65d3b6b96ff475e2c24c3",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pess9-4a367c57",
+            "resultId": "result-mu0xmotf-7ba23a3a",
             "fileId": "audio",
             "status": "verified",
             "sha256": "043f0e9927de47b8ac506bc36caf97a492e20b7de669776a1529d8f40ddf1948",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pesz1-650ecf92",
+            "resultId": "result-mu0xmozr-96e062e7",
             "fileId": "report",
             "status": "verified",
-            "sha256": "5b2707a64edf3993ae1b6fb0c43910a51a03f7880eb40a258e89a116c53d432b",
+            "sha256": "6369cce91770a60795966581f377dd4c6a08f479b99dbadb479eaaff1ed52347",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pet6v-cb984c3c",
+            "resultId": "result-mu0xmp7c-e1eb9db7",
             "fileId": "primary",
             "status": "verified",
             "sha256": "47880add67781719cd24cfaa0555fe5163e59ced05ddb3c0142ae59372f943cf",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pet6v-cb984c3c",
+            "resultId": "result-mu0xmp7c-e1eb9db7",
             "fileId": "manifest",
             "status": "verified",
-            "sha256": "cd96c0d518fba99e33d0d9ec8d11dd36fadbeb0d353c2e55955e4dbfe132d2a9",
+            "sha256": "0f80df8ed2ee110ef1b181b4b50909827495213f4416e9c0022a6bc331834cb9",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pet6v-cb984c3c",
+            "resultId": "result-mu0xmp7c-e1eb9db7",
             "fileId": "provenance",
             "status": "verified",
-            "sha256": "c98a2768c6d74c1345c0619efa27817d9c5e7d7b8b1a5e7ee0c1a0f76a0d6484",
+            "sha256": "9d65333754900cffd0dd5f067711f141a8418f4625e4a6d5767bf0a12fd3d121",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pet6v-cb984c3c",
+            "resultId": "result-mu0xmp7c-e1eb9db7",
             "fileId": "reviews",
             "status": "verified",
-            "sha256": "4262c2a962bb5354c064c1fc7e5b1bd1b7ac0fc43ddb35940a6596841316d0d5",
+            "sha256": "b6383c7a5d5d55b832749ee23cf3503cbea842657ca74faa8a2e6c6de42a9e13",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pet6v-cb984c3c",
+            "resultId": "result-mu0xmp7c-e1eb9db7",
             "fileId": "approval",
             "status": "verified",
-            "sha256": "da695f68f03290f046230e1b27b00765cc364e5123456575a6e7fa40c931164d",
+            "sha256": "6bc8373c65de82175410a584339bcbcd30e569ed41125fb5020b24ee6e55d919",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pet6v-cb984c3c",
+            "resultId": "result-mu0xmp7c-e1eb9db7",
             "fileId": "quality",
             "status": "verified",
-            "sha256": "86348eacec7bf1f34bb8b057487e5eaa90a6468111d254b69b8644c2e700453b",
+            "sha256": "6a42afc0a93dd8e2482456fd9ba066f509c4b20138bd98646d57be763efa57b6",
             "checksumSource": "file"
           },
           {
-            "resultId": "result-mu0pet6v-cb984c3c",
+            "resultId": "result-mu0xmp7c-e1eb9db7",
             "fileId": "checksums",
             "status": "verified",
-            "sha256": "7f96ab3f494eb128da8d25e5a1bc968307e39a253132e61c68fc0dca5c03d03d",
+            "sha256": "2593328e27231160ad9c192c3e75e13f60a8d72eda158ba3bf3d651ff73f9a52",
             "checksumSource": "file"
           }
         ]

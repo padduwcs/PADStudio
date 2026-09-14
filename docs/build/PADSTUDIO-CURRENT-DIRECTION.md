@@ -372,3 +372,16 @@ khi có audio và bind SHA-256 + artifact revision. Holdout locker khóa file/go
 vào manifest checksum; evidence assembler nối holdout cùng human review bền vững vào
 release evaluator. Các cơ chế này hoàn thiện đường đo và kiểm chứng, nhưng không tự
 bịa corpus, kết quả benchmark, provider account hay phê duyệt của người dùng.
+
+## Context hygiene cho Agent vận hành — 2026-09-14
+
+Root `AGENTS.md` phân tuyến rõ hai chế độ. Agent đang làm video chỉ đọc bootstrap runtime ngắn,
+bắt đầu bằng `project:resume -- <project-id>`, đọc skill/dataset theo nhu cầu và không quét
+`docs/build`, report, test, Git hay project khác. Coding Agent mới đi qua design/current direction/
+build outline/protocol và chỉ mở spec Phase/Package liên quan.
+
+`project:resume` giữ checkpoint, công việc, artifact active tại điểm tiếp tục, sequence/render mới
+nhất, feedback, health, budget và analysis cô đọng; không nhúng lịch sử Run/Result, schema tool,
+full transcript hay mọi render cũ. Project pilot hoàn tất có thể chuyển nguyên vẹn sang archive có
+manifest và restore; archive không đổi contract dữ liệu bên trong project và không xuất hiện trong
+danh sách active của observer.

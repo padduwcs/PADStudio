@@ -46,10 +46,23 @@ Khi backup nhất quán:
 
 1. dừng PADStudio và bảo đảm không còn tool/analysis đang chạy;
 2. chạy doctor, xử lý hoặc ghi nhận pending finalization;
-3. sao chép nguyên thư mục `.padstudio/projects` sang volume backup;
+3. sao chép nguyên thư mục `.padstudio` sang volume backup để giữ cả project active và archive;
 4. giữ nguyên cấu trúc file và kiểm checksum của công cụ backup.
 
 Restore vào một thư mục trống, không trộn từng phần của hai snapshot. Sau restore chạy doctor `--deep` trước khi tiếp tục. Không sửa JSON lịch sử bằng tay để “khớp” file.
+
+## 4.1 Archive project đã hoàn thành
+
+Archive chỉ dùng khi PADStudio và các Agent khác đã dừng, project không còn Run đang chạy:
+
+    npm run project:archive -- archive <project-id> "Lý do archive" --confirm-stopped
+    npm run project:archive -- list
+
+Project được di chuyển nguyên vẹn từ `.padstudio/projects` sang `.padstudio/archive/projects` và có `archive.json`; observer/Agent runtime mặc định không còn liệt kê nó. Khôi phục mà không trộn dữ liệu:
+
+    npm run project:archive -- restore <project-id> --confirm-stopped
+
+Lệnh từ chối ghi đè project active/archive cùng ID và từ chối archive khi còn Run `in_progress`.
 
 ## 5. Bàn giao video
 

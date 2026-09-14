@@ -198,7 +198,7 @@ Sau khi một video thật được user approve, thêm export bundle local theo
 
 1. PADStudio, [Thiết kế](../docs/build/PADSTUDIO-DESIGN.md), [Định hướng hiện tại](../docs/build/PADSTUDIO-CURRENT-DIRECTION.md), truy cập 12/09/2026.
 2. PADStudio, [Roadmap](../docs/build/PADSTUDIO-ROADMAP.md), [Trạng thái và bước tiếp theo](../docs/build/PADSTUDIO-STATE-AND-NEXT.md), truy cập 12/09/2026.
-3. PADStudio, [README](../README.md), [Agent runtime](../PADSTUDIO-AGENT-RUNTIME.md), [tool registry](../src/execution/default-tool-registry.js), checkout `beb2af8`.
+3. PADStudio, [README tại thời điểm audit](../PADSTUDIO-REFERENCE.md), [Agent runtime tại thời điểm audit](../PADSTUDIO-AGENT-REFERENCE.md), [tool registry](../src/execution/default-tool-registry.js), checkout `beb2af8`.
 4. PADStudio, [phase4 pilot script](../scripts/phase4-pilot.mjs), Result `result-mtxwm791-d9384eff` và runtime project `phase3-vd04-asset-pilot`, local access 12/09/2026.
 5. PADStudio, [phase4 pilot report](phase4-pilot.json); đo FFmpeg `silencedetect=noise=-50dB:d=0.25` trên exact preview, 12/09/2026.
 6. PADStudio, [phase4 acceptance](phase4-production-acceptance.json), [acceptance runner](../scripts/phase4-acceptance.mjs).

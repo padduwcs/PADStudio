@@ -1,43 +1,20 @@
-# Tài liệu xây dựng PADStudio
+# Tài liệu phát triển PADStudio
 
-Đọc [`PADSTUDIO-DESIGN.md`](PADSTUDIO-DESIGN.md) trước. Đây là tài liệu chính để hiểu PADStudio là gì, một dự án vận hành ra sao và các phần nào cần được xây.
+Thư mục này dành cho **phát triển codebase**, không phải bootstrap cho Agent đang làm video.
 
-Đọc tiếp [`PADSTUDIO-CURRENT-DIRECTION.md`](PADSTUDIO-CURRENT-DIRECTION.md) để biết các định hướng đã được chốt trong quá trình phát triển. Tài liệu này làm rõ trạng thái hiện tại, không thay thế bản thiết kế gốc.
+## Tài liệu hiện hành bắt buộc
 
-Đọc [`PADSTUDIO-STATE-AND-NEXT.md`](PADSTUDIO-STATE-AND-NEXT.md) để biết code hiện đã dùng được gì, pilot gần nhất, giới hạn còn lại và việc nên làm tiếp.
+Chỉ coding Agent cần đọc theo thứ tự:
 
-Đọc tiếp [`PADSTUDIO-BUILD-OUTLINE.md`](PADSTUDIO-BUILD-OUTLINE.md) khi cần dàn ý chi tiết hơn để tự triển khai từng phần của hệ thống.
+1. [`PADSTUDIO-DESIGN.md`](PADSTUDIO-DESIGN.md) — mục tiêu và ranh giới sản phẩm.
+2. [`PADSTUDIO-CURRENT-DIRECTION.md`](PADSTUDIO-CURRENT-DIRECTION.md) — quyết định hiện hành đã chốt.
+3. Phần liên quan trong [`PADSTUDIO-BUILD-OUTLINE.md`](PADSTUDIO-BUILD-OUTLINE.md) — bản đồ triển khai.
+4. [`DEVELOPMENT-PROTOCOL.md`](DEVELOPMENT-PROTOCOL.md) — quy tắc thay đổi, xác minh và bàn giao.
 
-Khi bắt đầu sửa code, đọc thêm [`DEVELOPMENT-PROTOCOL.md`](DEVELOPMENT-PROTOCOL.md). Tài liệu này hướng dẫn cách thay đổi code an toàn và kiểm tra kết quả.
+Trạng thái hoàn tất V1: [`PADSTUDIO-V1-COMPLETION.md`](PADSTUDIO-V1-COMPLETION.md).
 
-Bản thiết kế chỉ giữ mục tiêu và cách các phần phối hợp. Cấu trúc dữ liệu, API, thư mục, công nghệ hay nhà cung cấp dịch vụ sẽ được chọn khi bắt đầu xây một phần cụ thể.
+## Tài liệu chỉ đọc khi liên quan
 
-Phần cấu trúc video, bản dựng có phiên bản và vòng sửa cục bộ:
-[VIDEO-SEQUENCE-PRODUCTION.md](VIDEO-SEQUENCE-PRODUCTION.md).
+Các file `*-SPEC.md`, `PHASE*.md`, `*-PACKAGE-*.md`, roadmap và state report ghi quyết định hoặc bằng chứng của từng lát cắt. Chúng không phải danh sách việc mặc định và có thể mô tả mốc lịch sử. Chỉ mở file gắn trực tiếp với phần code đang thay đổi.
 
-Đặc tả đề xuất cho đợt 1, hoàn thiện phân hệ phân tích và hiểu tư liệu theo chiều ngang:
-[SOURCE-UNDERSTANDING-SPEC.md](SOURCE-UNDERSTANDING-SPEC.md). Tài liệu xác định phạm vi, hợp đồng, cách triển khai và nghiệm thu; không mô tả tính năng đã hoàn thành.
-
-Đặc tả đã hoàn thành practical cho đợt 2 — định hướng sáng tạo và duyệt mẫu:
-[CREATIVE-DIRECTION-SPEC.md](CREATIVE-DIRECTION-SPEC.md). Các gói A–E đã hoàn tất từ hợp đồng, pilot, dựng mẫu đến observer và nghiệm thu.
-
-Trạng thái pilot Đợt 2:
-[Gói B — khởi tạo pilot và duyệt hướng](CREATIVE-DIRECTION-PACKAGE-B.md);
-[Gói C — dựng, sửa cục bộ và duyệt mẫu](CREATIVE-DIRECTION-PACKAGE-C.md);
-[Gói D — observer creative chỉ đọc](CREATIVE-DIRECTION-PACKAGE-D.md);
-[Gói E — nghiệm thu Đợt 2](CREATIVE-DIRECTION-PACKAGE-E.md).
-
-Trạng thái triển khai Source Understanding:
-[gói B — hợp đồng và vòng đời](SOURCE-UNDERSTANDING-PACKAGE-B.md);
-[gói C — sáu adapter production](SOURCE-UNDERSTANDING-PACKAGE-C.md);
-[gói D — hiểu biết và truy xuất](SOURCE-UNDERSTANDING-PACKAGE-D.md);
-[gói E — workspace observer](SOURCE-UNDERSTANDING-PACKAGE-E.md);
-[gói F — nghiệm thu phân hệ](SOURCE-UNDERSTANDING-PACKAGE-F.md).
-
-Lộ trình phát triển và vị trí hiện tại: [PADSTUDIO-ROADMAP.md](PADSTUDIO-ROADMAP.md). Phân biệt 6 đợt phát triển với các bước bên trong đợt 1; chỉ chi tiết hóa đợt đang làm.
-
-
-Capability TTS dùng chung, cài Piper tiếng Việt, cấu hình ElevenLabs và phê duyệt credit:
-[TTS-CAPABILITY.md](TTS-CAPABILITY.md).
-
-Pilot local Đợt 3 và bằng chứng nghiệm thu: [phase3-vd04-pilot-acceptance.json](../../reports/phase3-vd04-pilot-acceptance.json).
+Index lịch sử trước đây được giữ tại [`HISTORICAL-DOCUMENTS.md`](HISTORICAL-DOCUMENTS.md). Agent vận hành project video không đọc thư mục này; dùng [`../../PADSTUDIO-AGENT-RUNTIME.md`](../../PADSTUDIO-AGENT-RUNTIME.md).

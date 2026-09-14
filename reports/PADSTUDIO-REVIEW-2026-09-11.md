@@ -151,7 +151,7 @@ Bước triển khai gần nhất nên là **chốt bài toán nguyên liệu v�
 
 [2] PADStudio, [Lộ trình 6 đợt](../docs/build/PADSTUDIO-ROADMAP.md), cập nhật 11/09/2026.
 
-[3] PADStudio, [README](../README.md), [Agent runtime](../PADSTUDIO-AGENT-RUNTIME.md), [package.json](../package.json).
+[3] PADStudio, [README tại thời điểm review](../PADSTUDIO-REFERENCE.md), [Agent runtime tại thời điểm review](../PADSTUDIO-AGENT-REFERENCE.md), [package.json](../package.json).
 
 [4] PADStudio, [Project intelligence contract](../docs/build/PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md), [Project store](../src/project/project-store.js), [Intelligence store](../src/intelligence/project-intelligence-store.js).
 

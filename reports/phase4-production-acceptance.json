@@ -1,16 +1,16 @@
 {
   "version": "1.0",
   "phase": 4,
-  "checkedAt": "2026-09-14T03:48:33.413Z",
+  "checkedAt": "2026-09-14T08:04:08.055Z",
   "status": "passed_with_documented_limits",
   "checks": {
     "repository": {
       "status": "passed",
-      "output": "sable clip and serves registered bytes (1743.2264ms)\n✔ contrast calculation uses WCAG relative luminance (2.5254ms)\n✔ caption wrapping counts user-perceived graphemes without splitting emoji (1.8318ms)\n✔ sequence visual quality distinguishes actionable heuristics from hard invisibility (9.1237ms)\n✔ unknown video pixels produce a warning, while protected captions remain clean (0.5955ms)\n✔ graphic normalization reports low accent contrast without rejecting a valid layout (0.565ms)\n✔ Wikimedia search preserves source and rights metadata without importing media (1.428ms)\n✔ Wikimedia search rejects loose inputs and insecure asset URLs (1.3849ms)\n✔ Wikimedia search drops mismatched media and unsafe optional URLs (1.8252ms)\n✔ Wikimedia search fails closed on malformed provider JSON (0.8682ms)\nℹ tests 261\nℹ suites 0\nℹ pass 261\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 18388.3416\n"
+      "output": "able clip and serves registered bytes (1559.565ms)\n✔ contrast calculation uses WCAG relative luminance (1.5196ms)\n✔ caption wrapping counts user-perceived graphemes without splitting emoji (4.5966ms)\n✔ sequence visual quality distinguishes actionable heuristics from hard invisibility (13.3328ms)\n✔ unknown video pixels produce a warning, while protected captions remain clean (2.237ms)\n✔ graphic normalization reports low accent contrast without rejecting a valid layout (1.1232ms)\n✔ Wikimedia search preserves source and rights metadata without importing media (1.9983ms)\n✔ Wikimedia search rejects loose inputs and insecure asset URLs (1.5226ms)\n✔ Wikimedia search drops mismatched media and unsafe optional URLs (1.4898ms)\n✔ Wikimedia search fails closed on malformed provider JSON (0.2908ms)\nℹ tests 264\nℹ suites 0\nℹ pass 264\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 17093.2004\n"
     },
     "analysis-harness": {
       "status": "passed",
-      "output": "usTests.test_unlabelled_text_does_not_count_as_qualified_audio) ... ok\r\ntest_explicit_timing_and_empty_are_not_passes (test_evaluate.MetricsTests.test_explicit_timing_and_empty_are_not_passes) ... ok\r\ntest_known_edit_distance_and_empty_gold (test_evaluate.MetricsTests.test_known_edit_distance_and_empty_gold) ... ok\r\ntest_numeric_punctuation_is_not_erased (test_evaluate.MetricsTests.test_numeric_punctuation_is_not_erased) ... ok\r\ntest_scene_matching_is_one_to_one (test_evaluate.MetricsTests.test_scene_matching_is_one_to_one) ... ok\r\ntest_source_identity_golden_matches_node_contract (test_evaluate.MetricsTests.test_source_identity_golden_matches_node_contract) ... ok\r\ntest_vietnamese_nfc_diacritics_and_digits (test_evaluate.MetricsTests.test_vietnamese_nfc_diacritics_and_digits) ... ok\r\n\r\n----------------------------------------------------------------------\r\nRan 20 tests in 0.246s\r\n\r\nOK\r\n"
+      "output": "usTests.test_unlabelled_text_does_not_count_as_qualified_audio) ... ok\r\ntest_explicit_timing_and_empty_are_not_passes (test_evaluate.MetricsTests.test_explicit_timing_and_empty_are_not_passes) ... ok\r\ntest_known_edit_distance_and_empty_gold (test_evaluate.MetricsTests.test_known_edit_distance_and_empty_gold) ... ok\r\ntest_numeric_punctuation_is_not_erased (test_evaluate.MetricsTests.test_numeric_punctuation_is_not_erased) ... ok\r\ntest_scene_matching_is_one_to_one (test_evaluate.MetricsTests.test_scene_matching_is_one_to_one) ... ok\r\ntest_source_identity_golden_matches_node_contract (test_evaluate.MetricsTests.test_source_identity_golden_matches_node_contract) ... ok\r\ntest_vietnamese_nfc_diacritics_and_digits (test_evaluate.MetricsTests.test_vietnamese_nfc_diacritics_and_digits) ... ok\r\n\r\n----------------------------------------------------------------------\r\nRan 20 tests in 0.247s\r\n\r\nOK\r\n"
     },
     "pilot-contract": {
       "status": "passed",
@@ -39,6 +39,7 @@
     "projectId": "phase3-vd04-asset-pilot",
     "artifactId": "artifact-mty1p801-e9e45c4c",
     "resultId": "result-mty1pb0w-d6598cd6",
+    "fixtureStore": "archive",
     "sequenceKey": "pilot-preview",
     "sequenceRevision": 10,
     "durationSeconds": 12,

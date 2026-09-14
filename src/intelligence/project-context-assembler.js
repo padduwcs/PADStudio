@@ -64,6 +64,7 @@ function buildResumeView(context, production, freshness, pendingFeedback) {
     activeWorkItemId: checkpointItem?.id ?? null,
     attention: current.map((item) => ({
       id: item.id, status: item.status, purpose: item.purpose,
+      skillIds: item.skillIds,
       blockedBy: item.dependsOn.filter((dependencyId) => {
         const dependency = activeWorkflow?.items.find((candidate) => candidate.id === dependencyId);
         return dependency?.status !== "completed";
@@ -72,6 +73,109 @@ function buildResumeView(context, production, freshness, pendingFeedback) {
     pendingApprovalIds: context.intelligence.pendingApprovals.map((item) => item.id),
     pendingFeedbackIds: pendingFeedback.map((item) => item.id),
     pendingFeedbackCount: pendingFeedback.length
+  };
+}
+
+function compactCheckpoint(checkpoint) {
+  if (!checkpoint) return null;
+  return {
+    updatedAt: checkpoint.updatedAt,
+    goal: checkpoint.goal,
+    constraints: checkpoint.constraints,
+    selectedResources: checkpoint.selectedResources,
+    pending: checkpoint.pending,
+    next: checkpoint.next,
+    activeWorkflowId: checkpoint.activeWorkflowId ?? null,
+    activeWorkItemId: checkpoint.activeWorkItemId ?? null,
+    activeArtifacts: checkpoint.activeArtifacts ?? [],
+    pendingDecisions: checkpoint.pendingDecisions ?? []
+  };
+}
+
+function compactResumeProduction(production) {
+  return {
+    activeSequences: production.activeSequences.map((sequence) => ({
+      artifactId: sequence.artifactId,
+      key: sequence.key,
+      revision: sequence.revision,
+      name: sequence.name,
+      status: sequence.status,
+      durationSeconds: sequence.durationSeconds,
+      reasons: sequence.reasons,
+      blockedSegments: sequence.blockedSegments,
+      latestRender: sequence.renders.at(-1) ?? null
+    })),
+    affectedWorkItems: production.affectedWorkItems,
+    pendingFinalizations: production.pendingFinalizations
+  };
+}
+
+function compactResumeAnalysis(analysis) {
+  return {
+    counts: analysis.counts,
+    jobStates: analysis.jobStates,
+    sources: analysis.sources.map((source) => ({
+      sourceKey: source.sourceKey,
+      source: source.source,
+      freshness: source.freshness,
+      operationResultIds: Object.fromEntries(Object.entries(source.operations ?? {}).map(([name, operation]) => [name, operation.id])),
+      warningCodes: [...new Set(Object.values(source.operations ?? {}).flatMap((operation) => operation.warningCodes ?? []))]
+    }))
+  };
+}
+
+export function compactResumeContext(summary) {
+  const capabilities = summary.capabilities?.capabilities ?? [];
+  const unavailable = capabilities.filter((capability) => !capability.available).map((capability) => capability.id);
+  const attention = summary.resumeView?.attention ?? [];
+  const checkpointArtifactIds = new Set(summary.checkpoint?.activeArtifacts ?? []);
+  const activeArtifacts = checkpointArtifactIds.size
+    ? summary.activeArtifacts.filter((artifact) => checkpointArtifactIds.has(artifact.id))
+    : summary.activeArtifacts;
+  return {
+    version: "1.0",
+    view: "resume",
+    project: summary.project,
+    checkpoint: compactCheckpoint(summary.checkpoint),
+    checkpointFreshness: summary.checkpointFreshness,
+    health: summary.health,
+    work: {
+      activeWorkflow: summary.activeWorkflow ? {
+        id: summary.activeWorkflow.id,
+        revision: summary.activeWorkflow.revision,
+        name: summary.activeWorkflow.name,
+        purpose: summary.activeWorkflow.purpose,
+        status: summary.activeWorkflow.status
+      } : null,
+      activeWorkItemId: summary.resumeView?.activeWorkItemId ?? null,
+      attention,
+      pendingApprovalIds: summary.resumeView?.pendingApprovalIds ?? [],
+      relevantSkillIds: [...new Set(attention.flatMap((item) => item.skillIds ?? []))]
+    },
+    activeArtifacts: activeArtifacts.map((artifact) => ({
+      id: artifact.id,
+      key: artifact.key,
+      revision: artifact.revision,
+      type: artifact.type,
+      name: artifact.name,
+      summary: artifact.summary,
+      status: artifact.status
+    })),
+    production: compactResumeProduction(summary.production),
+    pendingFeedback: summary.pendingFeedback.map((feedback) => ({
+      id: feedback.id,
+      resultId: feedback.resultId,
+      note: feedback.note,
+      feedbackTarget: feedback.feedbackTarget,
+      createdAt: feedback.createdAt
+    })),
+    budget: summary.budget,
+    analysis: compactResumeAnalysis(summary.analysis),
+    capabilityStatus: {
+      total: capabilities.length,
+      available: capabilities.length - unavailable.length,
+      unavailable
+    }
   };
 }
 
@@ -213,6 +317,10 @@ export class ProjectContextAssembler {
       capabilities: compactCapabilities(capabilities),
       analysis: compactAnalysis(analysis)
     };
+  }
+
+  async buildResume(projectId) {
+    return compactResumeContext(await this.buildSummary(projectId));
   }
 
   async #capabilities() {
