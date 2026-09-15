@@ -6,6 +6,7 @@ import { planProjectRecovery, recoverProject } from "../../src/operations/projec
 import { ProjectStore } from "../../src/project/project-store.js";
 import { OutputQualityService } from "../../src/quality/output-quality-service.js";
 import { importProjectInput } from "../../src/resources/project-importer.js";
+import { recordSyntheticHumanAcceptanceFixture } from "./acceptance-human-confirmation-fixture.mjs";
 
 const exec = promisify(execFile);
 
@@ -102,10 +103,12 @@ export async function createAcceptanceDeliveryFixture({
   if (quality.result.data.gate.deliveryEligible !== true) {
     throw new Error("Deterministic acceptance fixture did not pass automated output QA.");
   }
-  const approval = await reopened.recordDecision(projectId, {
-    resultId: currentResult.id, outcome: "accepted",
-    note: "Synthetic acceptance for a deterministic technical fixture; not a human quality attestation.",
-    feedbackTarget: { artifactId: currentArtifact.id, revision: currentArtifact.revision }
+  const { review, approval } = await recordSyntheticHumanAcceptanceFixture({
+    store: reopened,
+    projectId,
+    result: currentResult,
+    artifact: currentArtifact,
+    note: "Synthetic acceptance for a deterministic technical fixture; not a human quality attestation."
   });
   const delivery = await new ToolExecutor({ store: reopened, registry }).execute(projectId, {
     capability: "video.export-delivery", tool: "local-delivery",
@@ -114,7 +117,7 @@ export async function createAcceptanceDeliveryFixture({
   });
   return {
     projectId, store: reopened, registry, imported, firstArtifact, currentArtifact,
-    historicalResult: firstRender.result, currentResult, quality: quality.result, approval, delivery: delivery.result,
+    historicalResult: firstRender.result, currentResult, quality: quality.result, review, approval, delivery: delivery.result,
     deliveryRunId: delivery.runId, recoveryPlan, recovery, repeatedRecovery
   };
 }

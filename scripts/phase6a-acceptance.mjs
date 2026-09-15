@@ -21,7 +21,7 @@ const report = {
   limits: [
     "Delivery is local only; no uploader, publishing platform or cloud worker is included.",
     "The first profile is intentionally pinned to portrait MP4/H.264/AAC 1080x1920 at 30 fps.",
-    "Technical decode/loudness checks do not replace human review; export requires an exact stored user acceptance."
+    "Synthetic confirmation receipts exercise contract mechanics only; they do not replace real human review."
   ]
 };
 await mkdir(logDir, { recursive: true });

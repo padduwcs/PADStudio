@@ -12,6 +12,7 @@ import { importProjectInput } from "../src/resources/project-importer.js";
 import { ProjectReader } from "../src/web/project-reader.js";
 import { createPadStudioServer } from "../src/web/server.js";
 import { createAcceptanceDeliveryFixture } from "./lib/acceptance-delivery-fixture.mjs";
+import { recordSyntheticHumanAcceptanceFixture } from "./lib/acceptance-human-confirmation-fixture.mjs";
 
 const exec = promisify(execFile);
 const logDir = resolve(".cache/phase6b-acceptance");
@@ -23,7 +24,7 @@ const report = {
   checks: {},
   limits: [
     "Practical acceptance covers the current owner machine, not every hardware/codec combination.",
-    "Human listening and broad release corpus/benchmark gates remain explicitly unmeasured.",
+    "Synthetic confirmation receipts exercise contract mechanics only; real human listening remains explicitly unmeasured.",
     "Recovery only finalizes already durable evidence; it never recreates media or repeats provider calls."
   ]
 };
@@ -142,11 +143,12 @@ try {
   if (quality.result.data.gate.deliveryEligible !== true) {
     throw new Error("Fresh project automated output QA did not pass.");
   }
-  const approval = await reopened.recordDecision(projectId, {
-    resultId: renderResult.id,
-    outcome: "accepted",
-    note: "Synthetic owner-machine acceptance for the Phase 6B operational fixture.",
-    feedbackTarget: { artifactId: artifact.id, revision: artifact.revision }
+  const { approval } = await recordSyntheticHumanAcceptanceFixture({
+    store: reopened,
+    projectId,
+    result: renderResult,
+    artifact,
+    note: "Synthetic owner-machine acceptance for the Phase 6B operational fixture."
   });
   const delivery = await new ToolExecutor({
     store: reopened,

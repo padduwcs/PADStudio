@@ -23,6 +23,9 @@ test("human attestation binds full review to exact render bytes and revision", a
   { humanConfirmation: createHumanConfirmation("review_video", result.id) });
   assert.match(review.exactResult.sha256, /^[a-f0-9]{64}$/); assert.equal(review.exactResult.artifactRevision, 1);
   assert.deepEqual(releaseMeasurementsFromHumanReview(review).map((item) => item.gateId), ["human_viewing_review", "human_listening_review"]);
+  const reopenedReview = (await new ProjectStore(root).readReviews("demo")).at(-1);
+  assert.equal(reopenedReview.id, review.id);
+  assert.equal(reopenedReview.attestation.version, "1.0");
   await assert.rejects(store.recordReview("demo", { target: { kind: "result", id: result.id }, perspective: "human", reviewer: "user", verdict: "passed", summary: "Agent-authored claim",
     criteria: [{ id: "full-review", criterion: "Full human review", status: "passed", evidence: "Opaque JSON" }],
     attestation: { watchedFull: true, listenedFull: true, device: "Unknown", context: "Agent payload", findings: [] } }),

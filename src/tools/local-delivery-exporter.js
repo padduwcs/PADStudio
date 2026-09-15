@@ -204,7 +204,7 @@ export function createLocalDeliveryExporter({
       }
     },
 
-    async prepare({ store, projectId, inputs, outputWorkspace }) {
+    async prepare({ store, projectId, inputs, runId, outputWorkspace }) {
       if (!inputs || typeof inputs !== "object" || Array.isArray(inputs) ||
           Object.keys(inputs).some((key) => !["resultId", "profileId"].includes(key)) ||
           typeof inputs.resultId !== "string" || typeof inputs.profileId !== "string") {
@@ -220,7 +220,8 @@ export function createLocalDeliveryExporter({
         fail("PADStudio chưa cấp output workspace cho delivery.", "invalid_output_workspace");
       }
       const context = await store.readContext(projectId);
-      const unfinishedRuns = context.runRecovery?.pendingFinalizations ?? [];
+      const unfinishedRuns = (context.runRecovery?.pendingFinalizations ?? [])
+        .filter((entry) => entry.runId !== runId);
       if (unfinishedRuns.length) {
         fail(
           `Project has unfinished Runs: ${unfinishedRuns.map((entry) => entry.runId).join(", ")}. ` +

@@ -591,7 +591,11 @@ export class ProjectIntelligenceStore {
     }
     assertReviewVerdict(value.verdict, criteria);
     if (value.perspective === "human") {
-      normalizeHumanAttestation(value.attestation);
+      const { version: attestationVersion, ...storedAttestation } = value.attestation ?? {};
+      if (attestationVersion !== VERSION) {
+        throw new IntelligenceValidationError("Stored human attestation version is invalid.");
+      }
+      normalizeHumanAttestation(storedAttestation);
       if (value.reviewer !== "user" || value.target.kind !== "result" || !/^[a-f0-9]{64}$/.test(value.exactResult?.sha256) ||
           typeof value.exactResult?.artifactId !== "string" || !Number.isInteger(value.exactResult?.artifactRevision)) {
         throw new IntelligenceValidationError("Stored human review is not bound to an exact render revision.");
