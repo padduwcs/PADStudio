@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { sha256File } from "../analysis/source-identity.js";
 import { AnalysisReader } from "../analysis/analysis-reader.js";
 import { pendingResultFeedback } from "../intelligence/project-context-assembler.js";
+import { validHumanConfirmation } from "../project/human-confirmation.js";
 import { buildProductionContext } from "../production/production-context.js";
 import { defaultProductionPolicyCatalog, OUTPUT_PROFILES } from "../production/production-policy-catalog.js";
 
@@ -98,7 +99,8 @@ function exactApproval(context, result) {
       decision.kind !== "project_decision" &&
       decision.resultId === result.id)
     .at(-1) ?? null;
-  return latest?.outcome === "accepted" ? latest : null;
+  return latest?.outcome === "accepted" &&
+    validHumanConfirmation(latest.confirmation, "accept_video", result.id) ? latest : null;
 }
 
 function exactOutputQuality(context, result) {
@@ -111,7 +113,15 @@ function exactOutputQuality(context, result) {
 
 function exactResultReview(context, result) {
   return context.reviews.filter((review) =>
-    review.target?.kind === "result" && review.target.id === result.id
+    review.target?.kind === "result" && review.target.id === result.id && review.reviewer === "agent"
+  ).at(-1) ?? null;
+}
+
+function exactHumanReview(context, result) {
+  return context.reviews.filter((review) =>
+    review.target?.kind === "result" && review.target.id === result.id &&
+    review.perspective === "human" && review.reviewer === "user" &&
+    validHumanConfirmation(review.confirmation, "review_video", result.id)
   ).at(-1) ?? null;
 }
 
@@ -210,6 +220,14 @@ export function createLocalDeliveryExporter({
         fail("PADStudio chưa cấp output workspace cho delivery.", "invalid_output_workspace");
       }
       const context = await store.readContext(projectId);
+      const unfinishedRuns = context.runRecovery?.pendingFinalizations ?? [];
+      if (unfinishedRuns.length) {
+        fail(
+          `Project has unfinished Runs: ${unfinishedRuns.map((entry) => entry.runId).join(", ")}. ` +
+          "Recover or safely abandon them before delivery.",
+          "project_health_blocked"
+        );
+      }
       const result = context.results.find((candidate) => candidate.id === inputs.resultId);
       if (!result || result.type !== "video.sequence-render") {
         fail("Delivery cần đúng một Result video.sequence-render đã lưu.", "invalid_source_result");
@@ -234,6 +252,13 @@ export function createLocalDeliveryExporter({
       }
       const approval = exactApproval(context, result);
       if (!approval) fail("Result nguồn chưa được người dùng accepted.", "approval_required");
+      const humanReview = exactHumanReview(context, result);
+      if (!humanReview || !["passed", "passed_with_notes"].includes(humanReview.verdict)) {
+        fail(
+          "Delivery requires direct interactive human confirmation after watching and listening to the exact Result in full.",
+          "human_review_required"
+        );
+      }
       const run = context.runs.find((candidate) => candidate.id === result.createdByRun);
       if (!run || run.status !== "completed" || run.pendingResult ||
           !run.outputs.includes(result.id)) {

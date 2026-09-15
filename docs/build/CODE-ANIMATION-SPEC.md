@@ -75,23 +75,21 @@ during materialization.
 ## Trust and execution boundary
 
 Generated code is not safe merely because it passed a regex or AST check. Validation therefore says
-`static_source_only` and `not_a_sandbox`. Rendering requires the latest user ProjectDecision targeting
-the exact source Result:
+`static_source_only` and `not_a_sandbox`. Rendering requires the latest confirmed user
+ProjectDecision targeting the exact source Result. Positive execution approval cannot be imported
+through `project:decide`, JSON, stdin or a non-interactive process. The human must run:
 
-```json
-{
-  "target": { "kind": "result", "id": "result-source" },
-  "category": "animation_code_execution",
-  "subject": "Execute exact animation source",
-  "outcome": "approved",
-  "options": [],
-  "selected": null,
-  "reason": "I reviewed this immutable package.",
-  "decidedBy": "user",
-  "userVisible": true,
-  "confidence": "high"
-}
+```powershell
+npm run project:approve-code -- <project-id> <source-result-id>
 ```
+
+The command displays the exact Result, runtime, passing validation, complete package checksum and
+source-file checksums, then requires a target-bound phrase from an interactive TTY. The Agent must
+end its turn at this gate and must not type or pipe the answer. This is a deliberate per-gate pause,
+adapted from OpenMontage's useful approval discipline without adopting its fixed production pipeline.
+The receipt records channel, action, target and timestamp. It prevents ordinary Agent-authored
+payloads from impersonating a user; it is not a cryptographic identity boundary against a process
+with unrestricted access to the repository and host.
 
 Each render copies verified source and declared assets into a temporary Run workspace and passes an
 allowlisted environment. It does not expose provider secrets. The current host process does not
@@ -131,6 +129,6 @@ files. Summary/resume expose active compositions compactly. The read-only observ
 section with revision/runtime/status and playable registered render Results. It performs no mutation.
 
 Automated tests cover immutable revision provenance, traversal rejection, blocked host/network APIs,
-exact validation binding, exact user execution approval, render evidence, unavailable-runtime honesty,
+exact validation binding, interactive-confirmation enforcement, render evidence, unavailable-runtime honesty,
 observer projection, and direct `video.sequence` consumption. Real runtime smoke tests must be run only
 in a prepared, pinned environment and must never trigger installs during an ordinary render.

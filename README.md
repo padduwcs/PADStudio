@@ -27,6 +27,10 @@ Project hoàn thành có thể được đưa khỏi danh sách active mà khôn
 
 Một render/preview không phải file final. Bản bàn giao chính thức chỉ được tạo từ exact Result đã được người dùng duyệt và qua QA bằng `video.export-delivery`; không lấy file sao chép thủ công ngoài project làm nguồn sự thật.
 
+Hai gate tin cậy dùng terminal tương tác trực tiếp: `npm run project:approve-code -- ...` cho
+exact animation source và `npm run project:accept -- ...` cho exact render. JSON, pipe hoặc Agent
+không thể tạo xác nhận dương tính thay người dùng.
+
 ## Phát triển PADStudio
 
 Coding Agent làm theo router trong [`AGENTS.md`](AGENTS.md). Điểm vào tài liệu phát triển là [`docs/build/README.md`](docs/build/README.md); không dùng tài liệu Phase/Package lịch sử làm trạng thái hiện hành.

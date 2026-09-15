@@ -12,6 +12,7 @@ import { lstat, mkdir, readdir, readFile, realpath, rename, rm } from "node:fs/p
 import { join } from "node:path";
 import { readJson, writeJsonAtomic, writeTextAtomic } from "./atomic-files.js";
 import { withFileLock } from "./file-lock.js";
+import { createHumanConfirmation, requireHumanConfirmation, validHumanConfirmation } from "./human-confirmation.js";
 import { compositionTimeline, sequenceDuration } from "../production/sequence-composition.js";
 import {
   isPathInside,
@@ -327,6 +328,8 @@ function validateDecision(decision, projectId) {
         ) &&
         (binding.reviewId === null || (typeof binding.reviewId === "string" && Boolean(binding.reviewId.trim())))
       );
+    const validConfirmation = decision.confirmation === undefined ||
+      validHumanConfirmation(decision.confirmation, "execute_animation_code", decision.target?.id);
     if (
       decision.version !== PROJECT_VERSION ||
       decision.projectId !== projectId ||
@@ -339,6 +342,7 @@ function validateDecision(decision, projectId) {
       !["approved", "changes_requested", "rejected", "recorded"].includes(decision.outcome) ||
       !validOptions ||
       !validBinding ||
+      !validConfirmation ||
       !(decision.selected === null || typeof decision.selected === "string") ||
       typeof decision.reason !== "string" ||
       !decision.reason.trim() ||
@@ -380,6 +384,8 @@ function validateDecision(decision, projectId) {
     resolvesDecisionIds.every((id) => typeof id === "string" && /^decision-[a-z0-9-]+$/i.test(id)) &&
     new Set(resolvesDecisionIds).size === resolvesDecisionIds.length
   );
+  const validConfirmation = decision?.confirmation === undefined ||
+    validHumanConfirmation(decision.confirmation, "accept_video", decision?.resultId);
   if (
     !decision ||
     decision.version !== PROJECT_VERSION ||
@@ -390,6 +396,7 @@ function validateDecision(decision, projectId) {
     !(decision.note === null || typeof decision.note === "string") ||
     !validFeedbackTarget ||
     !validResolutions ||
+    !validConfirmation ||
     decision.decidedBy !== "user" ||
     typeof decision.createdAt !== "string" ||
     !Number.isFinite(Date.parse(decision.createdAt))
@@ -1235,8 +1242,8 @@ export class ProjectStore {
     };
   }
 
-  async recordDecision(projectId, value) {
-    if (value?.target) return this.recordProjectDecision(projectId, value);
+  async recordDecision(projectId, value, { humanConfirmation = null } = {}) {
+    if (value?.target) return this.recordProjectDecision(projectId, value, { humanConfirmation });
     objectValue(value, "Nội dung quyết định");
     const allowedFields = new Set(["resultId", "outcome", "note", "feedbackTarget", "resolvesDecisionIds"]);
     const unknownFields = Object.keys(value).filter((key) => !allowedFields.has(key));
@@ -1265,6 +1272,9 @@ export class ProjectStore {
         if (result.type === "video.sequence-render" && feedbackTarget === null) {
           throw new ProjectStoreError("A video sequence Result decision requires an exact feedbackTarget.");
         }
+        const confirmation = result.type === "video.sequence-render" && outcome === "accepted"
+          ? requireHumanConfirmation(humanConfirmation, "accept_video", result.id)
+          : null;
         const resolvesDecisionIds = stringList(value.resolvesDecisionIds, "Decision IDs được giải quyết");
         if (new Set(resolvesDecisionIds).size !== resolvesDecisionIds.length) {
           throw new ProjectStoreError("Decision IDs được giải quyết phải là duy nhất.");
@@ -1297,6 +1307,7 @@ export class ProjectStore {
           feedbackTarget,
           resolvesDecisionIds,
           decidedBy: "user",
+          ...(confirmation ? { confirmation: createHumanConfirmation("accept_video", result.id) } : {}),
           createdAt: new Date(Math.max(Date.now(), latestTimestamp + 1)).toISOString()
         };
         validateDecision(decision, projectId);
@@ -1308,15 +1319,15 @@ export class ProjectStore {
       }
     });
   }
-  async recordProjectDecision(projectId, value) {
+  async recordProjectDecision(projectId, value, { humanConfirmation = null } = {}) {
     return withFileLock({
       projectDirectory: projectDirectory(this.rootDir, projectId),
       name: "decisions",
-      action: () => this.#recordProjectDecisionUnlocked(projectId, value)
+      action: () => this.#recordProjectDecisionUnlocked(projectId, value, { humanConfirmation })
     });
   }
 
-  async #recordProjectDecisionUnlocked(projectId, value) {
+  async #recordProjectDecisionUnlocked(projectId, value, { humanConfirmation = null } = {}) {
     objectValue(value, "Project decision");
     const allowedFields = new Set([
       "target", "category", "subject", "outcome", "options", "selected",
@@ -1382,6 +1393,11 @@ export class ProjectStore {
       throw new ProjectStoreError("A recorded choice requires at least two options and a selection.");
     }
     const decidedBy = value.decidedBy ?? "agent";
+    const requiresExecutionConfirmation = normalizedTarget.kind === "result" &&
+      value.category === "animation_code_execution" && outcome === "approved" && decidedBy === "user";
+    const confirmation = requiresExecutionConfirmation
+      ? requireHumanConfirmation(humanConfirmation, "execute_animation_code", normalizedTarget.id)
+      : null;
     if (normalizedTarget.kind === "work_item" && outcome === "approved" && decidedBy !== "user") {
       throw new ProjectStoreError("A work item approval must be decided by the user.");
     }
@@ -1410,6 +1426,7 @@ export class ProjectStore {
       selected,
       reason: requireText(value.reason, "Decision reason"),
       decidedBy,
+      ...(confirmation ? { confirmation: createHumanConfirmation("execute_animation_code", normalizedTarget.id) } : {}),
       userVisible: value.userVisible ?? true,
       confidence: value.confidence ?? null,
       ...(binding ? { binding } : {}),
@@ -1741,8 +1758,36 @@ export class ProjectStore {
     return this.intelligence.readWorkflows(projectId);
   }
 
-  async recordReview(projectId, value) {
-    return this.intelligence.recordReview(projectId, value);
+  async recordReview(projectId, value, options = {}) {
+    return this.intelligence.recordReview(projectId, value, options);
+  }
+
+  async abandonRun(projectId, runId, { reason, confirmStopped = false } = {}) {
+    const normalizedRunId = runReference(runId);
+    if (confirmStopped !== true) {
+      throw new ProjectStoreError("Abandoning a Run requires explicit confirmation that its process has stopped.");
+    }
+    const normalizedReason = requireText(reason, "Run abandonment reason");
+    return withFileLock({
+      projectDirectory: projectDirectory(this.rootDir, projectId),
+      name: "run-abandon-" + normalizedRunId,
+      action: async () => {
+        const run = await this.readRun(projectId, normalizedRunId);
+        if (run.status !== "in_progress") throw new ProjectStoreError(`Run is already finished: ${normalizedRunId}`);
+        if (run.authorizationId) {
+          throw new ProjectStoreError("A Run with an execution authorization cannot be abandoned; inspect its provider receipt first.");
+        }
+        if (run.pendingResult || (await this.readResults(projectId)).some((result) => result.createdByRun === normalizedRunId)) {
+          throw new ProjectStoreError("A Run with staged or durable output must use finalization recovery, not abandonment.");
+        }
+        return this.finishRun(projectId, normalizedRunId, {
+          status: "failed",
+          outputs: [],
+          error: `Abandoned after operator confirmed the process stopped: ${normalizedReason}`,
+          actualCostUsd: 0
+        });
+      }
+    });
   }
 
   async readReviews(projectId) {

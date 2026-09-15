@@ -202,8 +202,8 @@ Contract đầy đủ:
 1. `animation.source / code-animation-source` tạo hoặc revise source package bất biến;
 2. `animation.validate / code-animation-validator` kiểm tra đúng package mà không chạy code;
 3. `npm run project:animation -- <project-id> <json-file|->` lưu `animation.composition`;
-4. người dùng duyệt chạy code bằng `project:decide`, target exact source Result, category
-   `animation_code_execution`, outcome `approved`, `decidedBy: user`;
+4. Agent dừng lượt; người dùng tự chạy
+   `npm run project:approve-code -- <project-id> <source-result-id>` trong terminal tương tác;
 5. `animation.render` với exact tool `manim-ce`, `remotion-local` hoặc `hyperframes-local`,
    truyền `artifactId`, `artifactRevision`, `validationResultId`.
 
@@ -535,26 +535,18 @@ Với `video.sequence-render`, luôn chuyển mốc người dùng sao chép tro
 
 `segmentId` và `timeRange` là tùy chọn nếu phản hồi áp dụng cho toàn Result, nhưng `artifactId` và `revision` là bắt buộc đối với sequence render. Store sẽ từ chối target không khớp exact Result, segment không tồn tại hoặc range ngoài biên; không tự đổi target sang revision hiện hành.
 
-Khi một Result thay thế đã được người dùng chấp nhận và thực sự xử lý feedback đang chờ, ghi resolution tường minh:
-
-```json
-{
-  "resultId": "result-new",
-  "outcome": "accepted",
-  "note": "Bản mới đã xử lý yêu cầu rút ngắn.",
-  "feedbackTarget": { "artifactId": "artifact-...", "revision": 10 },
-  "resolvesDecisionIds": ["decision-old-feedback"]
-}
-```
-
-Sau đó truyền JSON trực tiếp qua standard input:
+Khi Result thay thế đã thực sự xử lý feedback đang chờ, Agent nêu các Decision ID cần resolve.
+Người dùng xác nhận exact render và resolution trong cùng lệnh tương tác:
 
 ```powershell
-$OutputEncoding = New-Object System.Text.UTF8Encoding($false)
-$decision | npm run project:decide -- <project-id> -
+npm run project:accept -- <project-id> <render-result-id> --resolves decision-old-feedback
 ```
 
-`outcome` là `accepted`, `changes_requested` hoặc `rejected`. Khi yêu cầu sửa, `note` là bắt buộc. Chỉ Decision `accepted` được resolve feedback; mỗi feedback chỉ được resolve một lần. Decision được ghi nối tiếp lịch sử, không sửa/xóa Result và không ngầm loại Result khác. Sau khi ghi, đọc lại `project:resume` để xác nhận `pendingFeedback` và cập nhật checkpoint riêng nếu trạng thái tổng thể đã đổi.
+`project:decide` chỉ nhận `changes_requested`, `rejected` và các quyết định không đặc quyền qua
+JSON. Nó từ chối video `accepted` và source-code execution `approved` do Agent soạn. Mỗi feedback
+chỉ được resolve một lần. Decision được ghi nối tiếp lịch sử, không sửa/xóa Result và không ngầm
+loại Result khác. Sau khi ghi, đọc lại `project:resume` để xác nhận `pendingFeedback` và cập nhật
+checkpoint riêng nếu trạng thái tổng thể đã đổi.
 
 ## Kiểm tra exact output trước delivery
 
@@ -586,15 +578,16 @@ Dùng `nonverbal-video-v1` khi sản phẩm không kỳ vọng lời nói. Chỉ
 không mô tả contact sheet/ASR là human viewing/listening. Delivery sẽ tự từ chối khi
 thiếu QA, QA fail, evidence hỏng hoặc checksum exact render đã đổi.
 
-Sau khi người dùng thực sự xem toàn bộ và nghe toàn bộ khi có audio, ghi attestation:
+Sau khi QA đạt, Agent kết thúc lượt và yêu cầu người dùng tự chạy:
 
 ```powershell
-npm run project:attest -- <project-id> <human-attestation-json|file|->
+npm run project:accept -- <project-id> <render-result-id>
 ```
 
-JSON phải có resultId, watchedFull=true, listenedFull=true hoặc not_applicable,
-device, context và findings. Store tự bind exact render SHA-256 cùng artifact revision;
-không tái dùng attestation cho Result mới. Holdout/release evidence dùng
+Lệnh tương tác hiển thị exact Result, artifact revision, thời lượng, SHA-256 và QA, rồi mới ghi
+confirmed human review cùng confirmed acceptance. Agent không được chạy lệnh, nhập câu xác nhận,
+pipe stdin hay soạn payload thay người dùng. `project:attest` dạng JSON đã ngừng nhận attestation.
+Không tái dùng xác nhận cho Result mới. Holdout/release evidence dùng
 `release:holdout:lock`, `release:evidence:assemble` rồi `release:gates`; không
 được thay benchmark hoặc human evidence bằng fixture.
 

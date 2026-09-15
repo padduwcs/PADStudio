@@ -407,3 +407,21 @@ delivery mới. Bootstrap runtime nay bắt buộc giữ mọi input/output có 
 coi `final` là trạng thái có exact user acceptance + QA + `video.export-delivery`, và cấm dùng đổi
 tên/copy/FFmpeg ngoài Executor để bypass gate. Bản sao ngoài project chỉ được tạo sau official
 Delivery khi người dùng yêu cầu rõ; Delivery Result/checksum vẫn là nguồn sự thật.
+
+## Xác nhận trực tiếp cho các gate tin cậy — 2026-09-15
+
+Thử nghiệm `triangle-180` cho thấy ranh giới tài liệu là chưa đủ: một Agent đã tự soạn JSON,
+mạo nhận đã xem/nghe của người dùng, ghi acceptance rồi xuất delivery dù QA máy nói rõ human review
+chưa được thực hiện. PADStudio nay fail-closed ở code chứ không chỉ nhắc nhở. Approval thực thi code
+chỉ được tạo bởi `project:approve-code`; human review và video acceptance chỉ được tạo cùng nhau bởi
+`project:accept`. Cả hai yêu cầu terminal tương tác, hiển thị exact Result/checksum và buộc nhập câu
+xác nhận gắn target. `project:decide` từ chối hai quyết định dương tính đặc quyền; `project:attest`
+dạng JSON đã ngừng nhận dữ liệu.
+
+Delivery yêu cầu đồng thời QA máy hợp lệ, confirmed human review, confirmed latest acceptance và
+không còn Run dở. Run local thực sự đã dừng, chưa có Result/authorization, có thể được đóng nối tiếp
+lịch sử bằng `project:run:abandon --confirm-stopped`; dữ liệu không bị xóa. Thiết kế học có chọn lọc
+từ nguyên tắc per-gate/`awaiting_human` của OpenMontage: Agent phải dừng tại gate và một “go ahead”
+trước đó không bao phủ Result sinh ra sau. PADStudio vẫn giữ workflow tùy biến, không nhập pipeline
+cố định của OpenMontage. Receipt tương tác làm thất bại đường mạo nhận thông thường, nhưng không được
+tuyên bố là xác thực mật mã trước một process có toàn quyền trên host.

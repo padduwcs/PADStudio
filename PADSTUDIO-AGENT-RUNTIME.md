@@ -37,6 +37,10 @@ npm run project:archive -- restore <project-id> --confirm-stopped
 ```
 
 Archive di chuyển nguyên project và ghi manifest; không xóa lịch sử. Không archive project đang được một Agent khác sử dụng.
+Run local bị ngắt chỉ được đánh dấu thất bại bằng
+`npm run project:run:abandon -- <project-id> <run-id> "<lý do>" --confirm-stopped`
+sau khi người vận hành đã xác nhận process thực sự dừng. Nếu Run đã có output bền vững hoặc
+authorization thì phải dùng recovery, không abandon.
 
 ## Ranh giới file và trạng thái final
 
@@ -69,8 +73,10 @@ Archive di chuyển nguyên project và ghi manifest; không xóa lịch sử. K
 
 Khi project cần hoạt họa bằng code, đọc skill `code-animation`. Tạo/revise source bằng
 `animation.source`, chạy `animation.validate`, rồi lưu `animation.composition` bằng
-`project:animation`. Render chỉ được chạy sau khi người dùng thực sự chấp thuận việc thực thi
-đúng source Result qua ProjectDecision category `animation_code_execution`. Static validation
+`project:animation`. Render chỉ được chạy sau khi người dùng tự chạy lệnh tương tác
+`npm run project:approve-code -- <project-id> <source-result-id>` và chấp thuận việc thực thi
+đúng source Result. Agent phải kết thúc lượt tại gate này; không chạy lệnh, gõ câu xác nhận,
+pipe stdin hoặc soạn JSON approval thay người dùng. Static validation
 không phải sandbox; host hiện không cưỡng chế cách ly mạng. Không tự cài runtime, không gọi `npx`
 để tải package và không đổi Manim/Remotion/HyperFrames ngầm. `animation.render` là Result video
 có thể dùng trực tiếp làm source của `video.sequence`.
@@ -79,8 +85,15 @@ có thể dùng trực tiếp làm source của `video.sequence`.
 2. Render exact artifact bằng `video.render-sequence`; chỉ reuse Result khi contract/hash khớp.
 3. Chạy `video.inspect-output` trên exact render.
 4. Agent review đúng Result; người dùng xem trong observer và phản hồi trong chat.
-5. Chỉ ghi Decision/attestation thay người dùng khi người dùng thực sự đã quyết định hoặc xem/nghe đầy đủ.
-6. `video.export-delivery` chỉ dùng exact Result đã duyệt và có QA hợp lệ.
+5. Sau QA hợp lệ, Agent dừng và yêu cầu người dùng tự chạy
+   `npm run project:accept -- <project-id> <render-result-id>` trong terminal tương tác. Lệnh hiển thị
+   exact Result, revision, thời lượng, checksum và yêu cầu người dùng xác nhận đã xem/nghe trọn vẹn.
+   Agent không được chạy lệnh, gõ câu xác nhận hoặc tạo attestation/acceptance bằng JSON.
+6. `video.export-delivery` chỉ dùng exact Result có confirmed human review, confirmed acceptance và QA hợp lệ.
+
+`project:decide` vẫn dùng cho feedback, rejection và quyết định không thuộc hai gate tin cậy trên.
+`project:attest` dạng JSON đã ngừng nhận human attestation. Một yêu cầu kiểu “cứ làm đi” ở trước đó
+không tự động phê duyệt source/render xuất hiện về sau; mỗi gate gắn với đúng immutable Result.
 
 Render verification chỉ chứng minh file dựng được tạo đúng contract; nó không thay thế exact-output QA, review của Agent hay việc người dùng xem/nghe. Khi lời thoại, subtitle hoặc hình ảnh được sửa, tạo revision/render mới rồi lặp lại QA và approval trên đúng Result mới.
 

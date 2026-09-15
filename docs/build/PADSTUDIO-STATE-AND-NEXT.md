@@ -1,6 +1,6 @@
 # PADStudio — trạng thái hiện tại và bước tiếp theo
 
-Cập nhật: **2026-09-14**. Đây là bản tóm tắt vận hành hiện hành; khi số liệu cũ trong tài liệu gói khác nhau, ưu tiên code, report nghiệm thu mới nhất và tài liệu này.
+Cập nhật: **2026-09-15**. Đây là bản tóm tắt vận hành hiện hành; khi số liệu cũ trong tài liệu gói khác nhau, ưu tiên code, report nghiệm thu mới nhất và tài liệu này.
 
 ## Đã có và dùng được
 
@@ -17,6 +17,9 @@ Cập nhật: **2026-09-14**. Đây là bản tóm tắt vận hành hiện hàn
 - Tool discovery có hướng dẫn, alternatives và recommendation advisory; project có budget observe/cap, reservation và approval threshold.
 - Asset có stock search Wikimedia và đăng ký media do Agent/provider ngoài tạo với provenance; exact-output QA có timeline samples cùng black/freeze scan.
 - Human attestation, holdout locker và release-evidence assembler đã biến các giới hạn release thành contract có thể chạy, không tự đánh dấu đạt khi thiếu người/corpus thật.
+- Approval chạy code và acceptance video nay chỉ được tạo qua terminal tương tác, gắn exact Result;
+  JSON/pipe của Agent bị từ chối. Delivery bắt buộc có cả QA máy, confirmed human review,
+  confirmed latest acceptance và không còn Run dở.
 
 ## Baseline Đợt 3 và pilot hiện hành
 
@@ -35,7 +38,7 @@ Bundle bàn giao `result-mtynkixa-db2410bc` giữ nguyên SHA-256 video nguồn 
 
 ## Kiểm chứng mới nhất
 
-- V1 repository: 254/254 test; source-analysis harness: 20/20.
+- V1 repository: 274/274 test; source-analysis harness: 20/20.
 - Asset, production, operations và release-evaluator acceptance đều đạt; browser kiểm tra 390/768/1440 px.
 - Báo cáo bàn giao hiện hành: [PADSTUDIO-V1-COMPLETION.md](PADSTUDIO-V1-COMPLETION.md) và [padstudio-v1-completion.json](../../reports/padstudio-v1-completion.json).
 - `npm run operations:acceptance`: `passed_with_documented_limits`.

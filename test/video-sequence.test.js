@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
 import { ProjectStore } from "../src/project/project-store.js";
+import { createHumanConfirmation } from "../src/project/human-confirmation.js";
 import { ProjectContextAssembler } from "../src/intelligence/project-context-assembler.js";
 import { importProjectInput } from "../src/resources/project-importer.js";
 import { ToolExecutor } from "../src/execution/tool-executor.js";
@@ -138,7 +139,7 @@ test("local production renders, reuses unchanged segments, preserves reviews and
   await store.recordDecision("demo", {
     resultId: r1.id, outcome: "accepted", note: "User accepted this exact version.",
     feedbackTarget: { artifactId: first.id, revision: first.revision }
-  });
+  }, { humanConfirmation: createHumanConfirmation("accept_video", r1.id) });
   const changedDirection = await store.recordArtifact("demo", {
     key: "b-direction", type: "creative.direction", name: "B direction", summary: "Second version",
     data: directionData(brief.id, "Make the explanation precise."), references: [{ kind: "artifact", id: brief.id }],

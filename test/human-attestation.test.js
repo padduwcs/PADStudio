@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { ProjectStore } from "../src/project/project-store.js";
 import { releaseMeasurementsFromHumanReview } from "../src/intelligence/human-attestation.js";
+import { createHumanConfirmation } from "../src/project/human-confirmation.js";
 
 test("human attestation binds full review to exact render bytes and revision", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "padstudio-attest-")); t.after(() => rm(root, { recursive: true, force: true }));
@@ -18,10 +19,16 @@ test("human attestation binds full review to exact render bytes and revision", a
     data: { sequence: { artifactId: artifact.id, revision: artifact.revision } }, verification: { status: "passed", checks: ["fixture"] } });
   const review = await store.recordReview("demo", { target: { kind: "result", id: result.id }, perspective: "human", reviewer: "user", verdict: "passed", summary: "Watched and listened in full.",
     criteria: [{ id: "full-review", criterion: "Full human review", status: "passed", evidence: "Desktop headphones" }],
-    attestation: { watchedFull: true, listenedFull: true, device: "Desktop headphones", context: "Quiet room", findings: [] } });
+    attestation: { watchedFull: true, listenedFull: true, device: "Desktop headphones", context: "Quiet room", findings: [] } },
+  { humanConfirmation: createHumanConfirmation("review_video", result.id) });
   assert.match(review.exactResult.sha256, /^[a-f0-9]{64}$/); assert.equal(review.exactResult.artifactRevision, 1);
   assert.deepEqual(releaseMeasurementsFromHumanReview(review).map((item) => item.gateId), ["human_viewing_review", "human_listening_review"]);
+  await assert.rejects(store.recordReview("demo", { target: { kind: "result", id: result.id }, perspective: "human", reviewer: "user", verdict: "passed", summary: "Agent-authored claim",
+    criteria: [{ id: "full-review", criterion: "Full human review", status: "passed", evidence: "Opaque JSON" }],
+    attestation: { watchedFull: true, listenedFull: true, device: "Unknown", context: "Agent payload", findings: [] } }),
+  /direct interactive human confirmation/);
   await assert.rejects(store.recordReview("demo", { target: { kind: "result", id: result.id }, perspective: "human", reviewer: "user", verdict: "passed", summary: "Invalid",
     criteria: [{ id: "full-review", criterion: "Full human review", status: "passed", evidence: "Claim" }],
-    attestation: { watchedFull: false, listenedFull: true, device: "Desktop", context: "Quiet room", findings: [] } }), /watchedFull/);
+    attestation: { watchedFull: false, listenedFull: true, device: "Desktop", context: "Quiet room", findings: [] } },
+  { humanConfirmation: createHumanConfirmation("review_video", result.id) }), /watchedFull/);
 });

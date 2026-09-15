@@ -31,6 +31,7 @@ import {
   validateCreativeArtifactReferences,
 } from "./creative-artifacts.js";
 import { normalizeHumanAttestation } from "./human-attestation.js";
+import { createHumanConfirmation, requireHumanConfirmation, validHumanConfirmation } from "../project/human-confirmation.js";
 import {
   ANIMATION_COMPOSITION_TYPE,
   normalizeAnimationComposition,
@@ -352,7 +353,7 @@ export class ProjectIntelligenceStore {
     return active[0] ?? null;
   }
 
-  async recordReview(projectId, value) {
+  async recordReview(projectId, value, { humanConfirmation = null } = {}) {
     await this.projectStore.readProject(projectId);
     requireObject(value, "review");
     assertOnlyFields(
@@ -382,6 +383,9 @@ export class ProjectIntelligenceStore {
           throw new IntelligenceValidationError("Human review requires a user attestation on an exact Result.");
         }
         if (perspective !== "human" && attestation) throw new IntelligenceValidationError("Attestation is only valid for a human review.");
+        const confirmation = perspective === "human"
+          ? requireHumanConfirmation(humanConfirmation, "review_video", target.id)
+          : null;
         if (attestation && (targetState.result.type !== "video.sequence-render" || typeof targetState.result.data?.sequence?.artifactId !== "string" || !Number.isInteger(targetState.result.data?.sequence?.revision))) {
           throw new IntelligenceValidationError("Human attestation requires an exact video.sequence-render with artifact revision.");
         }
@@ -433,6 +437,7 @@ export class ProjectIntelligenceStore {
           summary: requireText(value.summary, "review.summary"),
           criteria,
           reviewer,
+          ...(confirmation ? { confirmation: createHumanConfirmation("review_video", target.id) } : {}),
           ...(attestation ? { attestation, exactResult: {
             sha256: (await this.projectStore.verifyResultFile(projectId, target.id, "primary")).sha256,
             artifactId: targetState.result.data?.sequence?.artifactId ?? null,
@@ -566,7 +571,7 @@ export class ProjectIntelligenceStore {
     requireObject(value, "stored review");
     assertOnlyFields(
       value,
-      ["version", "id", "projectId", "target", "round", "perspective", "verdict", "summary", "criteria", "reviewer", "binding", "attestation", "exactResult", "createdAt"],
+      ["version", "id", "projectId", "target", "round", "perspective", "verdict", "summary", "criteria", "reviewer", "binding", "attestation", "exactResult", "confirmation", "createdAt"],
       "stored review"
     );
     if (value.projectId !== projectId || value.version !== VERSION || !Number.isInteger(value.round) || value.round < 1) {
@@ -590,6 +595,9 @@ export class ProjectIntelligenceStore {
       if (value.reviewer !== "user" || value.target.kind !== "result" || !/^[a-f0-9]{64}$/.test(value.exactResult?.sha256) ||
           typeof value.exactResult?.artifactId !== "string" || !Number.isInteger(value.exactResult?.artifactRevision)) {
         throw new IntelligenceValidationError("Stored human review is not bound to an exact render revision.");
+      }
+      if (value.confirmation !== undefined && !validHumanConfirmation(value.confirmation, "review_video", value.target.id)) {
+        throw new IntelligenceValidationError("Stored human review confirmation is invalid.");
       }
     } else if (value.attestation !== undefined || value.exactResult !== undefined) {
       throw new IntelligenceValidationError("Stored non-human review cannot contain attestation data.");

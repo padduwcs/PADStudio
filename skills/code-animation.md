@@ -14,8 +14,11 @@ Code animation is an optional production branch, not a required pipeline stage.
    frame-aligned duration, output format, local asset mappings, style principles and
    concrete review criteria. Preserve stable artifact IDs across revisions.
 4. Treat generated source as untrusted until reviewed. Run `animation.validate` first.
-   This is static lint, not a sandbox. Before render, obtain a user ProjectDecision on the
-   exact source Result with category `animation_code_execution` and outcome `approved`.
+   This is static lint, not a sandbox. Before render, stop and ask the user to run
+   `npm run project:approve-code -- <project-id> <source-result-id>` themselves in an
+   interactive terminal. Never type the confirmation for them, pipe input, prepare an approval
+   JSON, or continue in the same Agent turn. Only that command can create the confirmed user
+   ProjectDecision for the exact source Result.
 5. Render with the matching adapter. Draft/history requires explicit `allowHistorical: true`.
    PADStudio never installs dependencies, calls `npx`,
    or falls back to another runtime automatically. If unavailable, surface setup guidance.

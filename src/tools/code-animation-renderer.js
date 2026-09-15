@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { normalizeAnimationComposition } from "../animation/animation-composition.js";
 import { loadSourcePackage } from "../animation/source-package.js";
+import { validHumanConfirmation } from "../project/human-confirmation.js";
 import { fail, fileEvidence, object, probe, text, workspace } from "./asset-tool-common.js";
 
 const execFileAsync = promisify(execFile);
@@ -114,7 +115,8 @@ async function findNamedFile(directory, name) {
 function latestExecutionApproval(decisions, sourceResultId) {
   return decisions.filter((decision) => decision.kind === "project_decision" &&
     decision.target?.kind === "result" && decision.target.id === sourceResultId &&
-    decision.category === "animation_code_execution" && decision.decidedBy === "user").at(-1) ?? null;
+    decision.category === "animation_code_execution" && decision.decidedBy === "user" &&
+    validHumanConfirmation(decision.confirmation, "execute_animation_code", sourceResultId)).at(-1) ?? null;
 }
 
 function renderArguments(runtime, composition, paths) {
@@ -246,7 +248,12 @@ export function createCodeAnimationRenderer(runtime, {
       if (video.width !== composition.format.width || video.height !== composition.format.height ||
           !Number.isFinite(video.durationSeconds) || Math.abs(video.durationSeconds - composition.durationSeconds) > tolerance ||
           !Number.isFinite(video.frameRate) || Math.abs(video.frameRate - composition.format.fps) > 0.05) {
-        fail("Rendered animation does not match the composition resolution, frame rate or duration.", "invalid_output");
+        fail(
+          `Rendered animation does not match the composition resolution, frame rate or duration. ` +
+          `Expected duration: ${composition.durationSeconds}, actual duration: ${video.durationSeconds}, ` +
+          `expected fps: ${composition.format.fps}, actual fps: ${video.frameRate}`,
+          "invalid_output"
+        );
       }
       const posterPath = join(dirname(outputPath), "poster.jpg");
       try {

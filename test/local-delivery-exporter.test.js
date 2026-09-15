@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { sha256File } from "../src/analysis/source-identity.js";
 import { createLocalDeliveryExporter } from "../src/tools/local-delivery-exporter.js";
+import { createHumanConfirmation } from "../src/project/human-confirmation.js";
 
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), "padstudio-delivery-tool-"));
@@ -54,7 +55,8 @@ async function fixture(t) {
   const approval = {
     id: "decision-approved", resultId: result.id, outcome: "accepted", decidedBy: "user",
     note: "Approved", createdAt: "2026-09-13T00:01:00.000Z",
-    feedbackTarget: { artifactId: artifact.id, revision: 1 }, resolvesDecisionIds: []
+    feedbackTarget: { artifactId: artifact.id, revision: 1 }, resolvesDecisionIds: [],
+    confirmation: createHumanConfirmation("accept_video", result.id)
   };
   const quality = {
     id: "result-quality", projectId: "demo", type: "video.output-quality",
@@ -84,6 +86,11 @@ async function fixture(t) {
         proposedAction: null
       }],
       createdAt: "2026-09-13T00:00:45.000Z"
+    }, {
+      id: "review-human", target: { kind: "result", id: result.id }, round: 2,
+      perspective: "human", verdict: "passed", summary: "Watched and listened in full.", reviewer: "user",
+      confirmation: createHumanConfirmation("review_video", result.id),
+      createdAt: "2026-09-13T00:00:50.000Z"
     }],
     runs: [{
       id: "run-render", status: "completed", pendingResult: null, outputs: [result.id]
@@ -166,9 +173,36 @@ test("local delivery fails closed without exact automated output QA", async (t) 
   }), (error) => error.code === "output_quality_required");
 });
 
+test("local delivery rejects Agent-authored acceptance and human-review claims", async (t) => {
+  const { directory, store, context, result } = await fixture(t);
+  delete context.decisions[0].confirmation;
+  const tool = createLocalDeliveryExporter({ executeCommand: fakeMediaCommand, analysisSummary: async () => ({ sources: [] }) });
+  await assert.rejects(tool.prepare({
+    store, projectId: "demo", inputs: { resultId: result.id, profileId: "local-portrait-h264-v1" },
+    outputWorkspace: { temporaryDirectory: join(directory, "unconfirmed.tmp"), projectRelativeDirectory: "outputs/run-unconfirmed" }
+  }), (error) => error.code === "approval_required");
+
+  context.decisions[0].confirmation = createHumanConfirmation("accept_video", result.id);
+  delete context.reviews.find((review) => review.reviewer === "user").confirmation;
+  await assert.rejects(tool.prepare({
+    store, projectId: "demo", inputs: { resultId: result.id, profileId: "local-portrait-h264-v1" },
+    outputWorkspace: { temporaryDirectory: join(directory, "unattested.tmp"), projectRelativeDirectory: "outputs/run-unattested" }
+  }), (error) => error.code === "human_review_required");
+});
+
+test("local delivery refuses a project with unfinished Runs", async (t) => {
+  const { directory, store, context, result } = await fixture(t);
+  context.runRecovery = { pendingFinalizations: [{ runId: "run-stale", recoverable: false, resultIds: [] }] };
+  const tool = createLocalDeliveryExporter({ executeCommand: fakeMediaCommand, analysisSummary: async () => ({ sources: [] }) });
+  await assert.rejects(tool.prepare({
+    store, projectId: "demo", inputs: { resultId: result.id, profileId: "local-portrait-h264-v1" },
+    outputWorkspace: { temporaryDirectory: join(directory, "blocked-project.tmp"), projectRelativeDirectory: "outputs/run-blocked-project" }
+  }), (error) => error.code === "project_health_blocked");
+});
+
 test("local delivery fails closed without Agent review of the exact promised Result", async (t) => {
   const { directory, store, context, result } = await fixture(t);
-  context.reviews = [];
+  context.reviews = context.reviews.filter((review) => review.reviewer !== "agent");
   const tool = createLocalDeliveryExporter({ executeCommand: fakeMediaCommand, analysisSummary: async () => ({ sources: [] }) });
   await assert.rejects(tool.prepare({
     store, projectId: "demo", inputs: { resultId: result.id, profileId: "local-portrait-h264-v1" },

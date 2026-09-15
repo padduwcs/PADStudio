@@ -13,10 +13,19 @@ async function main(args) {
       "Cách dùng: <decision-json> | npm run project:decide -- <project-id> - hoặc <file-json>"
     );
   }
-  const decision = await new ProjectStore(projectRoot).recordDecision(
-    projectId,
-    await readJsonInput(decisionSource)
-  );
+  const store = new ProjectStore(projectRoot);
+  const value = await readJsonInput(decisionSource);
+  if (value?.target && value.category === "animation_code_execution" &&
+      value.outcome === "approved" && value.decidedBy === "user") {
+    throw new Error("Code execution approval cannot be imported from Agent-authored JSON. Run project:approve-code directly in an interactive terminal.");
+  }
+  if (!value?.target && value.outcome === "accepted") {
+    const result = await store.readResult(projectId, value.resultId);
+    if (result.type === "video.sequence-render") {
+      throw new Error("Final video acceptance cannot be imported from Agent-authored JSON. Run project:accept directly after watching the exact video in full.");
+    }
+  }
+  const decision = await store.recordDecision(projectId, value);
   process.stdout.write(JSON.stringify(decision, null, 2) + "\n");
 }
 

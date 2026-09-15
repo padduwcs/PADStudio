@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { ProjectStore, ProjectStoreError } from "../src/project/project-store.js";
+import { createHumanConfirmation } from "../src/project/human-confirmation.js";
 import { ProjectContextAssembler } from "../src/intelligence/project-context-assembler.js";
 
 const tool = { name: "test-renderer", version: "1.0.0", provider: "test" };
@@ -94,7 +95,7 @@ test("accepted replacement resolves pending feedback exactly once", async (t) =>
     resultId: second.id, outcome: "accepted", note: "The replacement addresses the request.",
     feedbackTarget: { artifactId: artifact.id, revision: artifact.revision },
     resolvesDecisionIds: [feedback.id]
-  })));
+  }, { humanConfirmation: createHumanConfirmation("accept_video", second.id) })));
   assert.equal(attempts.filter((item) => item.status === "fulfilled").length, 1);
   assert.equal(attempts.filter((item) => item.status === "rejected").length, 1);
   assert.ok(attempts.find((item) => item.status === "rejected").reason instanceof ProjectStoreError);

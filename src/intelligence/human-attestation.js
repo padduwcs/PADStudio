@@ -1,4 +1,5 @@
 import { assertOnlyFields, normalizeStringList, requireObject, requireText } from "./contracts.js";
+import { validHumanConfirmation } from "../project/human-confirmation.js";
 
 export function normalizeHumanAttestation(value) {
   requireObject(value, "review.attestation");
@@ -12,7 +13,8 @@ export function normalizeHumanAttestation(value) {
 }
 
 export function releaseMeasurementsFromHumanReview(review) {
-  if (review?.perspective !== "human" || review?.reviewer !== "user" || !review.attestation || !review.exactResult) return [];
+  if (review?.perspective !== "human" || review?.reviewer !== "user" || !review.attestation || !review.exactResult ||
+      !validHumanConfirmation(review.confirmation, "review_video", review.target?.id)) return [];
   const base = { outcome: ["passed", "passed_with_notes"].includes(review.verdict) ? "passed" : "failed",
     measuredAt: review.createdAt, method: "Full human review recorded in PADStudio Review Store.", evidenceRefs: [review.id],
     reviewer: { kind: "human", id: "project-user" }, resultId: review.target.id,

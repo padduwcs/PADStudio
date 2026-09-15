@@ -7,6 +7,7 @@ import { ToolExecutor } from "../src/execution/tool-executor.js";
 import { ToolRegistry } from "../src/execution/tool-registry.js";
 import { ProjectContextAssembler } from "../src/intelligence/project-context-assembler.js";
 import { ProjectStore } from "../src/project/project-store.js";
+import { createHumanConfirmation } from "../src/project/human-confirmation.js";
 import { createCodeAnimationRenderer } from "../src/tools/code-animation-renderer.js";
 import { createCodeAnimationSource } from "../src/tools/code-animation-source.js";
 import { createCodeAnimationValidator } from "../src/tools/code-animation-validator.js";
@@ -119,9 +120,14 @@ test("exact approval gates render; observer exposes it and sequence can consume 
     artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: exact.validation.id,
   });
   await assert.rejects(executor.execute("demo", renderRequest), /Exact user approval/);
+  await assert.rejects(store.recordDecision("demo", { target: { kind: "result", id: exact.source.id }, category: "animation_code_execution",
+    subject: "Agent-authored approval", outcome: "approved", options: [], selected: null,
+    reason: "A JSON payload must not impersonate the user.", decidedBy: "user", userVisible: true, confidence: "high" }),
+  /direct interactive human confirmation/);
   const approval = await store.recordDecision("demo", { target: { kind: "result", id: exact.source.id }, category: "animation_code_execution",
     subject: "Execute exact animation source", outcome: "approved", options: [], selected: null,
-    reason: "Reviewed this immutable source package for local execution.", decidedBy: "user", userVisible: true, confidence: "high" });
+    reason: "Reviewed this immutable source package for local execution.", decidedBy: "user", userVisible: true, confidence: "high" },
+  { humanConfirmation: createHumanConfirmation("execute_animation_code", exact.source.id) });
   const rendered = (await executor.execute("demo", renderRequest)).result;
   assert.equal(rendered.type, "animation.render");
   assert.equal(rendered.data.approvalDecisionId, approval.id);

@@ -1,3 +1,5 @@
+import { validHumanConfirmation } from "../project/human-confirmation.js";
+
 export function buildAnimationContext(context) {
   const artifacts = context.artifacts.filter((artifact) => artifact.type === "animation.composition");
   const latestByKey = new Map();
@@ -12,7 +14,8 @@ export function buildAnimationContext(context) {
     const sourceResultId = artifact.data.sourceResultId;
     const approval = context.decisions.filter((decision) => decision.kind === "project_decision" &&
       decision.category === "animation_code_execution" && decision.target?.kind === "result" &&
-      decision.target.id === sourceResultId && decision.decidedBy === "user").at(-1) ?? null;
+      decision.target.id === sourceResultId && decision.decidedBy === "user" &&
+      validHumanConfirmation(decision.confirmation, "execute_animation_code", sourceResultId)).at(-1) ?? null;
     const exactValidations = validations.filter((result) => result.data?.sourceResultId === sourceResultId);
     const exactRenders = renders.filter((result) => result.data?.composition?.id === artifact.id && result.data?.composition?.revision === artifact.revision);
     return {
