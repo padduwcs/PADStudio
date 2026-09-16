@@ -427,3 +427,17 @@ từ nguyên tắc per-gate/`awaiting_human` của OpenMontage: Agent phải d�
 trước đó không bao phủ Result sinh ra sau. PADStudio vẫn giữ workflow tùy biến, không nhập pipeline
 cố định của OpenMontage. Receipt tương tác làm thất bại đường mạo nhận thông thường, nhưng không được
 tuyên bố là xác thực mật mã trước một process có toàn quyền trên host.
+
+## Hardening vòng code-animation thật — 2026-09-17
+
+Từ pilot `gradient-descent-vn-3min`, PADStudio giữ nguyên exact-source approval nhưng loại hai lần hỏi
+tránh được: static validation nay chặn `staticFile()`, raw `assets/...` URL và import tương đối không
+thể materialize trước khi xin duyệt; lệnh duyệt cùng exact source có tính idempotent. Thay đổi byte
+source vẫn phải có approval mới vì đó là trust target khác.
+
+Output QA không còn suy ra mức phủ của video dài từ ba điểm start/middle/end. Planner kết hợp ranh giới
+ngữ nghĩa với nhịp toàn timeline, tối đa 120 frame và khoảng năm giây cho video ba phút. Spoken QA có
+thể nhận kịch bản cùng thuật ngữ quan trọng để fail-closed khi ASR lệch đáng kể hoặc không nhận ra từ
+cần thiết. Skill review riêng cho code animation yêu cầu timestamp, sửa đề xuất, semantic motion,
+distinctness và slideshow/template risk. Đây là heuristic thích ứng học có chọn lọc từ OpenMontage,
+không phải stage cố định hay quyền tự phê duyệt sáng tạo.

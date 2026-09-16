@@ -230,6 +230,28 @@ test("static validation fails closed on host and network APIs", async (t) => {
   })), /host_or_network_module/);
 });
 
+test("Remotion validation catches asset packaging mistakes before approval", async (t) => {
+  const { executor } = await fixture(t);
+  for (const sample of [
+    { name: "Static file", content: "import {staticFile} from 'remotion'; export const Demo=()=>staticFile('voice.wav'); // Composition", rule: "unsupported_static_asset_reference" },
+    { name: "Raw asset URL", content: "export const Demo=()=> <Audio src={'assets/narration.wav'}/>; // Composition", rule: "unsupported_unbundled_asset_reference" },
+    { name: "Missing import", content: "import voice from './missing.wav'; export const Demo=()=>voice; // Composition", rule: "unresolved_local_import" },
+  ]) {
+    const created = await executor.execute("demo", request("animation.source", "code-animation-source", "Create invalid asset reference", {
+      operation: "create", runtime: "remotion", name: sample.name, entryFile: "src/index.tsx", entrySymbol: "Demo",
+      changeSummary: "Validation fixture", files: [{ path: "src/index.tsx", content: sample.content }],
+    }));
+    await assert.rejects(executor.execute("demo", request("animation.validate", "code-animation-validator", "Validate asset references", {
+      sourceResultId: created.result.id,
+    })), new RegExp(sample.rule));
+  }
+
+  const managed = await sourceAndValidation(executor,
+    "import voice from '../assets/narration.wav'; import props from '../data/props.json'; export const Demo=()=>props && voice; // Composition");
+  assert.equal(managed.validation.data.status, "passed");
+  assert.ok(managed.validation.verification.checks.includes("managed_asset_references_checked"));
+});
+
 test("Manim and HyperFrames keep distinct entry contracts", async (t) => {
   const { executor } = await fixture(t);
   for (const sample of [

@@ -4,6 +4,7 @@ const PROFILES = Object.freeze({
     speechExpected: true,
     minimumFrames: 3,
     minimumContactSheets: 1,
+    maximumVisualSampleGapSeconds: 5,
     minimumSpeechLeadSeconds: 0.12,
     minimumSpeechTailSeconds: 0.3,
     minimumFinalWordScore: 0.5
@@ -12,7 +13,8 @@ const PROFILES = Object.freeze({
     id: "nonverbal-video-v1",
     speechExpected: false,
     minimumFrames: 3,
-    minimumContactSheets: 1
+    minimumContactSheets: 1,
+    maximumVisualSampleGapSeconds: 5
   })
 });
 

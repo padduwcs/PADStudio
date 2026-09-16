@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createLocalOutputQuality, parseVisualDefects, sourceCutBoundaryCheck } from "../src/tools/local-output-quality.js";
+import { createLocalOutputQuality, parseVisualDefects, sourceCutBoundaryCheck, speechAlignment } from "../src/tools/local-output-quality.js";
 import { sequenceInspectionPoints } from "../src/quality/output-quality-service.js";
 
 test("visual defect parser keeps exact black and freeze windows", () => {
@@ -20,6 +20,25 @@ test("inspection planner covers segment, caption, overlay and transition windows
   ] } });
   assert.ok(["Hình", "Chữ", "Lớp phủ logo", "Chuyển cảnh"].every((track) => points.some((point) => point.track === track)));
   assert.ok(points.every((point) => point.seconds >= 0 && point.seconds < 6.001));
+});
+
+test("inspection planner samples a three-minute single segment across the full timeline", () => {
+  const points = sequenceInspectionPoints({ data: { segments: [
+    { id: "long", title: "Long", durationSeconds: 180, captions: [], overlays: [], transition: { type: "cut", durationSeconds: 0 } }
+  ] } });
+  const times = points.map((point) => point.seconds).sort((left, right) => left - right);
+  const gaps = [times[0], ...times.slice(1).map((time, index) => time - times[index]), 180 - times.at(-1)];
+  assert.ok(points.length >= 37);
+  assert.ok(Math.max(...gaps) <= 5.01);
+});
+
+test("speech alignment detects mistranscribed technical terms", () => {
+  const expected = { text: "Gradient descent giảm loss bằng mini-batch.", terms: ["gradient descent", "loss", "mini-batch"], minimumSimilarity: 0.75, minimumTermSimilarity: 0.7 };
+  const correct = speechAlignment(expected, "Gradient descent giảm loss bằng mini batch");
+  assert.ok(correct.similarity >= 0.75);
+  assert.ok(correct.terms.every((term) => term.passed));
+  const wrong = speechAlignment(expected, "Cây yên giảm xa số bằng mình đẩy");
+  assert.ok(wrong.terms.some((term) => !term.passed));
 });
 
 test("source transcript boundary check catches a cut through the final word", () => {
@@ -98,14 +117,15 @@ async function fixture(t, { lastWordEnd = 9.6, finalScore = 0.9, clipping = 0, f
   return { directory, output, source, analysisJobId, evidence, store };
 }
 
-async function assess(state, visualStderr = "") {
+async function assess(state, visualStderr = "", expectedSpeech = null) {
   const tool = createLocalOutputQuality({ executeCommand: async (_command, args) => ({ stdout: "ffmpeg version fixture\n", stderr: args.includes("blackdetect=d=0.5:pix_th=0.10,freezedetect=n=-60dB:d=2") ? visualStderr : "" }) });
   const prepared = await tool.prepare({
     store: state.store, projectId: "demo",
     inputs: {
       resultId: state.source.id, analysisJobId: state.analysisJobId, profileId: "spoken-video-v1",
       evidenceResultIds: { probe: "result-probe", frames: "result-frames", audio: "result-audio", transcript: "result-transcript" },
-      inspectionPoints: [{ seconds: 0, track: "Hình", label: "One", position: "start" }, { seconds: 5, track: "Hình", label: "One", position: "middle" }, { seconds: 9.999, track: "Hình", label: "One", position: "end" }]
+      inspectionPoints: [{ seconds: 0, track: "Hình", label: "One", position: "start" }, { seconds: 5, track: "Hình", label: "One", position: "middle" }, { seconds: 9.999, track: "Hình", label: "One", position: "end" }],
+      expectedSpeech
     },
     outputWorkspace: { temporaryDirectory: state.output, projectRelativeDirectory: "outputs/run-quality" }
   });
@@ -134,6 +154,15 @@ test("output QA records a valid failed report for unsafe speech tail, low confid
   assert.equal(assessed.execution.report.gate.deliveryEligible, false);
   assert.deepEqual(assessed.execution.report.gate.failedCheckIds.sort(), ["clipping", "final-word-confidence", "speech-tail"]);
   assert.equal(assessed.result.verification.status, "passed");
+});
+
+test("output QA blocks delivery when expected speech or required terms do not match ASR", async (t) => {
+  const expected = { text: "Gradient descent reduces loss", terms: ["gradient descent", "loss"], minimumSimilarity: 0.75, minimumTermSimilarity: 0.7 };
+  const assessed = await assess(await fixture(t), "", expected);
+  assert.equal(assessed.execution.report.gate.deliveryEligible, false);
+  assert.ok(assessed.execution.report.gate.failedCheckIds.includes("speech-script-alignment"));
+  assert.ok(assessed.execution.report.gate.failedCheckIds.includes("pronunciation-terms"));
+  assert.match(assessed.execution.report.expectedSpeech.fingerprint, /^[a-f0-9]{64}$/);
 });
 
 test("output QA blocks a severe black window and reports freeze as advisory", async (t) => {

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { extname } from "node:path";
+import { extname, posix } from "node:path";
 import { loadSourcePackage } from "../animation/source-package.js";
 import { fail, object, text } from "./asset-tool-common.js";
 
@@ -13,6 +13,8 @@ const RULES = Object.freeze({
     [/(?:\bfrom\s+|\brequire\s*\(\s*|\bimport\s*\(\s*|\bimport\s*)["'](?:node:)?(?:child_process|fs|net|http|https|dgram|tls|worker_threads)\b/u, "host_or_network_module"],
     [/\b(?:process\.env|eval\s*\(|new\s+Function\s*\()/u, "dynamic_or_environment_access"],
     [/\b(?:fetch|WebSocket|XMLHttpRequest)\s*\(/u, "network_api"],
+    [/\bstaticFile\s*\(/u, "unsupported_static_asset_reference"],
+    [/\bsrc\s*=\s*\{?\s*["'](?:\.\/)?assets\//u, "unsupported_unbundled_asset_reference"],
   ],
   hyperframes: [
     [/<iframe\b|<object\b|<embed\b/iu, "embedded_external_content"],
@@ -21,6 +23,31 @@ const RULES = Object.freeze({
     [/(?:src|href)\s*=\s*["'](?:https?:)?\/\//iu, "external_url"],
   ],
 });
+
+const JAVASCRIPT_EXTENSIONS = Object.freeze([".js", ".jsx", ".ts", ".tsx", ".json", ".css", ".svg"]);
+const RULE_MESSAGES = Object.freeze({
+  unsupported_static_asset_reference: "Remotion staticFile() is not supported for managed PADStudio assets; import the staged ./assets file instead.",
+  unsupported_unbundled_asset_reference: "A managed Remotion asset cannot be used as a raw assets/ URL; import the staged file and pass the imported URL.",
+  unresolved_local_import: "Relative import is neither a source-package file nor a managed assets/data target.",
+});
+
+function localImportSpecifiers(content) {
+  const values = [];
+  const pattern = /(?:\bimport\s+(?:[^"'`]*?\s+from\s+)?|\bexport\s+[^"'`]*?\s+from\s+|\brequire\s*\(\s*)["']([^"']+)["']/gu;
+  for (const match of content.matchAll(pattern)) if (match[1].startsWith(".")) values.push(match[1]);
+  return values;
+}
+
+function resolvesLocalImport(fromPath, specifier, sourcePaths) {
+  const target = posix.normalize(posix.join(posix.dirname(fromPath), specifier));
+  if (target === ".." || target.startsWith("../") || target.startsWith("/")) return false;
+  if (target === "data/props.json" || target.startsWith("assets/")) return true;
+  const extension = posix.extname(target);
+  const candidates = extension
+    ? [target]
+    : [target, ...JAVASCRIPT_EXTENSIONS.map((suffix) => target + suffix), ...JAVASCRIPT_EXTENSIONS.map((suffix) => posix.join(target, "index" + suffix))];
+  return candidates.some((candidate) => sourcePaths.has(candidate));
+}
 
 function entryFindings(data, entryText) {
   const extension = extname(data.entryFile).toLowerCase();
@@ -50,7 +77,7 @@ function entryFindings(data, entryText) {
 
 export function createCodeAnimationValidator() {
   return {
-    name: "code-animation-validator", version: "1.0.0", provider: "PADStudio", capability: "animation.validate",
+    name: "code-animation-validator", version: "1.1.0", provider: "PADStudio", capability: "animation.validate",
     description: "Validate a managed animation source package without executing its code.",
     runtime: "local", executionMode: "sync", producesFiles: false, approvalRequired: false,
     sideEffects: [], cost: { currency: "USD", estimated: 0 },
@@ -65,10 +92,19 @@ export function createCodeAnimationValidator() {
     },
     async execute({ source }) {
       const findings = [];
+      const sourcePaths = new Set(source.files.map((file) => file.path));
       for (const file of source.files) {
         const content = await readFile(file.filePath, "utf8");
         for (const [pattern, rule] of RULES[source.data.runtime]) {
-          if (pattern.test(content)) findings.push({ file: file.path, rule, message: `Blocked construct detected by ${rule}.` });
+          if (pattern.test(content)) findings.push({ file: file.path, rule, message: RULE_MESSAGES[rule] ?? `Blocked construct detected by ${rule}.` });
+        }
+        if (source.data.runtime === "remotion") {
+          for (const specifier of localImportSpecifiers(content)) {
+            if (!resolvesLocalImport(file.path, specifier, sourcePaths)) findings.push({
+              file: file.path, rule: "unresolved_local_import", specifier,
+              message: `${RULE_MESSAGES.unresolved_local_import} (${specifier})`,
+            });
+          }
         }
       }
       const entry = source.files.find((file) => file.path === source.data.entryFile);
@@ -89,7 +125,8 @@ export function createCodeAnimationValidator() {
           sourceResultId: execution.source.result.id, packageSha256: execution.source.data.packageSha256,
           status: "passed", findings: execution.findings, warnings: execution.warnings,
           validationScope: "static_source_only" },
-        verification: { status: "passed", checks: ["source_checksums_verified", "runtime_entry_checked", "blocked_constructs_absent"],
+        verification: { status: "passed", checks: ["source_checksums_verified", "runtime_entry_checked", "blocked_constructs_absent",
+          ...(execution.source.data.runtime === "remotion" ? ["local_imports_resolved", "managed_asset_references_checked"] : [])],
           details: { codeExecuted: false, securityBoundary: "not_a_sandbox" } },
       };
     },

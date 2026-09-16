@@ -526,10 +526,12 @@ test("skill and workflow template catalogs expose method, standards, and optiona
   const skills = await createDefaultSkillCatalog().listPublic();
   assert.deepEqual(
     skills.map((skill) => skill.id),
-    ["adaptive-planning", "asset-preparation", "code-animation", "creative-direction", "human-release-review", "hyperframes-animation", "manim-animation", "music-direction", "project-intake", "remotion-animation", "result-review", "source-understanding", "stock-sourcing", "taste-direction", "tool-selection", "video-editing-craft", "video-sequence-planning"]
+    ["adaptive-planning", "asset-preparation", "code-animation", "code-animation-review", "creative-direction", "human-release-review", "hyperframes-animation", "manim-animation", "music-direction", "project-intake", "remotion-animation", "result-review", "source-understanding", "stock-sourcing", "taste-direction", "tool-selection", "video-editing-craft", "video-sequence-planning"]
   );
   const reviewSkill = await createDefaultSkillCatalog().read("result-review");
   assert.match(reviewSkill.instructionsText, /technical integrity and creative effectiveness separately/i);
+  const animationReview = await createDefaultSkillCatalog().read("code-animation-review");
+  assert.match(animationReview.instructionsText, /slideshow pacing/i);
 
   const templates = await new WorkflowTemplateCatalog().list();
   assert.deepEqual(templates.map((template) => template.id), ["creative-production", "quick-media-task"]);

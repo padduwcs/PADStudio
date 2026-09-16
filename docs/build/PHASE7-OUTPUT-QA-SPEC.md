@@ -20,6 +20,11 @@ Cho Agent kiểm tra chính exact `video.sequence-render` trước khi xin duy�
 - Capability tổng hợp: `video.inspect-output`, tool local `local-output-quality`.
 - Orchestrator `quality:inspect` dùng lại AnalysisService cho exact Result rồi gọi tool tổng hợp qua Executor.
 - Profile `spoken-video-v1` yêu cầu probe, contact sheet, audio, transcript, không clipping, có speech và biên lời tối thiểu ở đầu/cuối.
+- Frame evidence kết hợp các ranh giới ngữ nghĩa với nhịp lấy mẫu thích ứng trên toàn timeline, tối đa
+  120 mẫu; video ba phút nhắm tới khoảng cách không quá năm giây giữa hai mẫu.
+- Spoken QA nhận tùy chọn `expectedSpeech` gồm `text`, các `terms` quan trọng và ngưỡng. Khi có,
+  độ khớp ASR/kịch bản và khả năng nhận ra thuật ngữ trở thành check chặn delivery; fingerprint của
+  cấu hình này tham gia reuse. Đây là tín hiệu lỗi lời đọc/TTS, không phải kết luận chắc chắn về ngữ âm.
 - Profile `nonverbal-video-v1` không chạy ASR nhưng vẫn yêu cầu hình, audio và full decode.
 - Result QA có `verification.status = passed` khi báo cáo được tạo đúng và toàn vẹn. Kết luận dùng `data.gate.deliveryEligible`; một báo cáo hợp lệ vẫn có thể kết luận output không đạt.
 - Human visual/auditory review luôn là `not_performed` trong Result kỹ thuật.

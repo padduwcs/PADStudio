@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { lstat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -90,7 +91,52 @@ function transcriptMetrics(rows) {
       words += 1;
     }
   }
-  return { segments, words, firstWordStartSeconds, lastWordEndSeconds, finalWord };
+  const text = rows.map((row) => String(row.text ?? (row.words ?? []).map((word) => word.text ?? "").join(" "))).join(" ").trim();
+  return { segments, words, firstWordStartSeconds, lastWordEndSeconds, finalWord, text };
+}
+
+function normalizedTokens(value) {
+  return String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/gu, "").replace(/đ/giu, "d")
+    .toLowerCase().replace(/[^a-z0-9]+/gu, " ").trim().split(/\s+/u).filter(Boolean);
+}
+
+function editDistance(left, right) {
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= left.length; row++) {
+    const current = [row];
+    for (let column = 1; column <= right.length; column++) current[column] = Math.min(
+      current[column - 1] + 1, previous[column] + 1,
+      previous[column - 1] + (left[row - 1] === right[column - 1] ? 0 : 1),
+    );
+    for (let column = 0; column < current.length; column++) previous[column] = current[column];
+  }
+  return previous[right.length];
+}
+
+function similarity(left, right) {
+  const denominator = Math.max(left.length, right.length);
+  return denominator ? Math.max(0, 1 - editDistance(left, right) / denominator) : 1;
+}
+
+export function speechAlignment(expectedSpeech, actualText) {
+  if (!expectedSpeech) return null;
+  const expectedTokens = normalizedTokens(expectedSpeech.text);
+  const actualTokens = normalizedTokens(actualText);
+  const terms = expectedSpeech.terms.map((term) => {
+    const termTokens = normalizedTokens(term);
+    const expectedCharacters = termTokens.join("");
+    let bestSimilarity = 0;
+    const minimumWindow = Math.max(1, termTokens.length - 1);
+    const maximumWindow = Math.max(minimumWindow, termTokens.length + 2);
+    for (let size = minimumWindow; size <= maximumWindow; size++) for (let index = 0; index + size <= actualTokens.length; index++) {
+      bestSimilarity = Math.max(bestSimilarity, similarity([...expectedCharacters], [...actualTokens.slice(index, index + size).join("")]));
+    }
+    return { term, similarity: rounded(bestSimilarity), passed: bestSimilarity >= expectedSpeech.minimumTermSimilarity };
+  });
+  return {
+    similarity: rounded(similarity(expectedTokens, actualTokens)), expectedWords: expectedTokens.length, actualWords: actualTokens.length,
+    minimumSimilarity: expectedSpeech.minimumSimilarity, minimumTermSimilarity: expectedSpeech.minimumTermSimilarity, terms,
+  };
 }
 
 export function sourceCutBoundaryCheck(rows, range, toleranceSeconds = 0.001) {
@@ -167,7 +213,7 @@ export function createLocalOutputQuality({
 } = {}) {
   return {
     name: "local-output-quality",
-    version: "1.2.0",
+    version: "1.3.0",
     provider: "PADStudio",
     capability: "video.inspect-output",
     description: "Tổng hợp full decode, hình, audio và ASR của exact render thành bằng chứng QA fail-closed.",
@@ -183,7 +229,7 @@ export function createLocalOutputQuality({
       properties: {
         resultId: { type: "string" }, analysisJobId: { type: "string" },
         profileId: { enum: listOutputQualityProfiles().map((profile) => profile.id) },
-        evidenceResultIds: { type: "object" }, inspectionPoints: { type: "array" }
+        evidenceResultIds: { type: "object" }, inspectionPoints: { type: "array" }, expectedSpeech: { type: ["object", "null"] }
       },
       additionalProperties: false
     },
@@ -199,13 +245,23 @@ export function createLocalOutputQuality({
     },
 
     async prepare({ store, projectId, inputs, outputWorkspace }) {
-      exactObject(inputs, ["resultId", "analysisJobId", "profileId", "evidenceResultIds", "inspectionPoints"], "Output QA inputs");
+      exactObject(inputs, ["resultId", "analysisJobId", "profileId", "evidenceResultIds", "inspectionPoints", "expectedSpeech"], "Output QA inputs");
       if (![inputs.resultId, inputs.analysisJobId, inputs.profileId].every((value) => typeof value === "string" && value.trim())) {
         fail("Output QA thiếu resultId, analysisJobId hoặc profileId.", "invalid_input");
       }
       const profile = readOutputQualityProfile(inputs.profileId);
-      if (!Array.isArray(inputs.inspectionPoints) || inputs.inspectionPoints.length < 1 || inputs.inspectionPoints.length > 24 || inputs.inspectionPoints.some((item) => !item || !Number.isFinite(item.seconds) || typeof item.track !== "string" || typeof item.label !== "string" || !["start", "middle", "end"].includes(item.position))) {
+      if (!Array.isArray(inputs.inspectionPoints) || inputs.inspectionPoints.length < 1 || inputs.inspectionPoints.length > 120 || inputs.inspectionPoints.some((item) => !item || !Number.isFinite(item.seconds) || typeof item.track !== "string" || typeof item.label !== "string" || !["start", "middle", "end"].includes(item.position))) {
         fail("inspectionPoints không hợp lệ.", "invalid_input");
+      }
+      let expectedSpeech = null;
+      if (inputs.expectedSpeech != null) {
+        const value = exactObject(inputs.expectedSpeech, ["text", "terms", "minimumSimilarity", "minimumTermSimilarity"], "expectedSpeech");
+        if (typeof value.text !== "string" || !value.text.trim() || !Array.isArray(value.terms) ||
+            value.terms.some((term) => typeof term !== "string" || !term.trim()) ||
+            ![value.minimumSimilarity, value.minimumTermSimilarity].every((number) => Number.isFinite(number) && number >= 0 && number <= 1)) {
+          fail("expectedSpeech is invalid.", "invalid_input");
+        }
+        expectedSpeech = { ...value, text: value.text.trim(), terms: value.terms.map((term) => term.trim()) };
       }
       const evidenceIds = exactObject(
         inputs.evidenceResultIds,
@@ -258,6 +314,7 @@ export function createLocalOutputQuality({
           transcriptPath: transcriptDataset?.filePath ?? null,
           sourceCuts,
           inspectionPoints: inputs.inspectionPoints,
+          expectedSpeech,
           frameRows,
           reportPath: join(outputWorkspace.temporaryDirectory, "quality-report.json"),
           generatedAt: now()
@@ -275,7 +332,7 @@ export function createLocalOutputQuality({
       };
     },
 
-    async execute({ sourcePath, sourceSha256, sourceResult, analysisJobId, profile, evidence, transcriptPath, sourceCuts, inspectionPoints, frameRows, reportPath, generatedAt, availability, signal }) {
+    async execute({ sourcePath, sourceSha256, sourceResult, analysisJobId, profile, evidence, transcriptPath, sourceCuts, inspectionPoints, expectedSpeech, frameRows, reportPath, generatedAt, availability, signal }) {
       try {
         await executeCommand(ffmpegCommand, ["-hide_banner", "-v", "error", "-nostdin", "-i", sourcePath, "-map", "0:v:0", "-map", "0:a:0?", "-f", "null", "-"], { timeout: timeoutMs, signal });
       } catch (error) {
@@ -299,10 +356,15 @@ export function createLocalOutputQuality({
       };
       const uncoveredPoints = inspectionPoints.filter((point) => !frameRows.some((row) => Math.abs((finite(row.actualTime) ?? finite(row.requestedTime) ?? -999) - point.seconds) <= 0.25));
       const transcript = profile.speechExpected ? transcriptMetrics(await transcriptRows(transcriptPath)) : null;
+      const alignment = profile.speechExpected ? speechAlignment(expectedSpeech, transcript.text) : null;
       const leadSeconds = transcript?.firstWordStartSeconds === null || transcript?.firstWordStartSeconds === undefined
         ? null : transcript.firstWordStartSeconds;
       const tailSeconds = transcript?.lastWordEndSeconds === null || transcript?.lastWordEndSeconds === undefined
         ? null : Math.max(0, durationSeconds - transcript.lastWordEndSeconds);
+      const orderedPoints = [...inspectionPoints].sort((left, right) => left.seconds - right.seconds);
+      const coverageTimes = [0, ...orderedPoints.map((point) => point.seconds), durationSeconds];
+      const maximumGapSeconds = Math.max(...coverageTimes.slice(1).map((value, index) => value - coverageTimes[index]));
+      const allowedGapSeconds = Math.max(profile.maximumVisualSampleGapSeconds ?? 5, durationSeconds / 119);
       const checks = [
         check("full-decode", "passed", "FFmpeg decoded the exact registered render without errors."),
         check("visual-samples", evidence.frames.data.counts.frames >= profile.minimumFrames && evidence.frames.data.counts.contactSheets >= profile.minimumContactSheets ? "passed" : "failed",
@@ -317,7 +379,8 @@ export function createLocalOutputQuality({
         }),
         check("black-frame-windows", severeBlack.length ? "failed" : visualDefects.black.length ? "warning" : "passed", "Black windows are measured from exact decoded pixels; short windows may be intentional transitions.", { windows: visualDefects.black, severeWindows: severeBlack.length, summary: visualDefectSummary.black }),
         check("freeze-windows", severeFreeze.length ? "warning" : "passed", "Frozen windows are reported for review because intentional still-image segments can look identical.", { windows: visualDefects.freeze, severeWindows: severeFreeze.length, summary: visualDefectSummary.freeze }),
-        check("timeline-window-samples", uncoveredPoints.length ? "failed" : "passed", "Exact frames must cover planned segment, caption, overlay, and transition windows.", { requested: inspectionPoints.length, covered: inspectionPoints.length - uncoveredPoints.length, uncoveredPoints })
+        check("timeline-window-samples", uncoveredPoints.length ? "failed" : "passed", "Exact frames must cover planned segment, caption, overlay, and transition windows.", { requested: inspectionPoints.length, covered: inspectionPoints.length - uncoveredPoints.length, uncoveredPoints }),
+        check("visual-review-coverage", maximumGapSeconds <= allowedGapSeconds + 0.01 ? "passed" : "failed", "Timeline samples must cover the whole render at an adaptive cadence; this evidence still does not replace continuous human viewing.", { samples: inspectionPoints.length, maximumGapSeconds: rounded(maximumGapSeconds), allowedGapSeconds: rounded(allowedGapSeconds) })
       ];
       if (profile.speechExpected) {
         const failedSourceCuts = sourceCuts.filter((item) => item.status === "failed");
@@ -326,6 +389,8 @@ export function createLocalOutputQuality({
           check("speech-lead", leadSeconds !== null && leadSeconds >= profile.minimumSpeechLeadSeconds ? "passed" : "failed", "First word must not touch the start cut.", { leadSeconds: rounded(leadSeconds), minimumSeconds: profile.minimumSpeechLeadSeconds }),
           check("speech-tail", tailSeconds !== null && tailSeconds >= profile.minimumSpeechTailSeconds ? "passed" : "failed", "Final word must have safe room before the end cut.", { tailSeconds: rounded(tailSeconds), minimumSeconds: profile.minimumSpeechTailSeconds }),
           check("final-word-confidence", transcript.finalWord?.score !== null && transcript.finalWord?.score >= profile.minimumFinalWordScore ? "passed" : "failed", "Final ASR word needs a usable confidence score; this does not prove semantic correctness.", { finalWord: transcript.finalWord, minimumScore: profile.minimumFinalWordScore }),
+          check("speech-script-alignment", alignment === null ? "not_applicable" : alignment.similarity >= alignment.minimumSimilarity ? "passed" : "failed", alignment === null ? "No expected speech was supplied or derivable." : "ASR text must remain sufficiently close to the intended script.", alignment ?? undefined),
+          check("pronunciation-terms", alignment === null || alignment.terms.length === 0 ? "not_applicable" : alignment.terms.every((term) => term.passed) ? "passed" : "failed", alignment === null || alignment.terms.length === 0 ? "No pronunciation terms were supplied." : "Required terms must be recognizable in ASR evidence.", alignment === null ? undefined : { minimumSimilarity: alignment.minimumTermSimilarity, terms: alignment.terms }),
           check("source-word-boundaries", sourceCuts.length === 0 ? "not_applicable" : failedSourceCuts.length ? "failed" : "passed", sourceCuts.length === 0
             ? "No referenced source transcript is available for source-led cut validation."
             : "Source-led in/out points must not cross referenced source transcript words.", { inspectedSegments: sourceCuts.length, failedSegments: failedSourceCuts.map((item) => item.segmentId) })
@@ -339,6 +404,13 @@ export function createLocalOutputQuality({
         sourceSha256,
         analysisJobId,
         profile,
+        expectedSpeech: expectedSpeech ? {
+          fingerprint: createHash("sha256").update(JSON.stringify(expectedSpeech)).digest("hex"),
+          wordCount: normalizedTokens(expectedSpeech.text).length,
+          terms: expectedSpeech.terms,
+          minimumSimilarity: expectedSpeech.minimumSimilarity,
+          minimumTermSimilarity: expectedSpeech.minimumTermSimilarity,
+        } : null,
         gate: { status: failed.length ? "failed" : "passed_with_notes", deliveryEligible: failed.length === 0, failedCheckIds: failed.map((item) => item.id) },
         checks,
         metrics: {
@@ -349,7 +421,7 @@ export function createLocalOutputQuality({
           integratedLufs: evidence.audio.data.details?.integratedLufs ?? null,
           visualDefects: { ...visualDefects, summary: visualDefectSummary },
           timelineInspection: { points: inspectionPoints, uncoveredPoints },
-          ...(transcript ? { transcript, speechLeadSeconds: rounded(leadSeconds), speechTailSeconds: rounded(tailSeconds) } : {})
+          ...(transcript ? { transcript: { ...transcript, text: undefined }, speechLeadSeconds: rounded(leadSeconds), speechTailSeconds: rounded(tailSeconds), speechAlignment: alignment } : {})
         },
         sourceCuts,
         evidence: {

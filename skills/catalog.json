@@ -99,6 +99,13 @@
       "instructions": "remotion-animation.md"
     },
     {
+      "id": "code-animation-review", "version": "1.0", "name": "Code animation review",
+      "description": "Review complete code-animation timelines for technical, semantic and creative quality with concrete correction evidence.",
+      "appliesTo": ["review", "verify"], "artifactTypes": ["animation.composition", "review.findings"],
+      "reviewCriteria": ["timeline coverage is explicit", "speech and visual meaning agree", "findings include timestamps and corrections", "distinctness and slideshow risk are assessed"],
+      "instructions": "code-animation-review.md"
+    },
+    {
       "id": "hyperframes-animation", "version": "1.0", "name": "HyperFrames animation craft",
       "description": "Author deterministic HyperFrames timelines and interpret strict runtime/layout diagnostics.",
       "appliesTo": ["plan", "execute", "review"], "artifactTypes": ["animation.composition"],

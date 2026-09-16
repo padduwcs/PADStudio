@@ -150,3 +150,12 @@ Runbook vận hành nằm tại [OPERATIONS-RUNBOOK.md](../OPERATIONS-RUNBOOK.md
 Integrity/Doctor nay phân biệt file `legacy_unchecked` với corruption thật, dùng checksum legacy của primary và từng sequence segment khi có, phát hiện cả thay đổi giữ nguyên kích thước và chỉ đưa remediation đúng nguyên nhân. Visual-quality contract kiểm tra contrast, safe area, cỡ chữ, số dòng, tốc độ đọc và wrap theo Unicode cho graphic/sequence; observer có baseline regression, accessibility smoke và kiểm tra nhãn timeline ở 390/768/1440 px. Catalog production có 3 output profile và 5 style playbook, chỉ chọn tường minh và không tạo pipeline/default mới.
 
 Broad-release checklist nay có 16 gate fail-closed cùng CLI/acceptance. Khi thiếu evidence, toàn bộ vẫn `not_measured`; fixture chỉ kiểm tra evaluator, human viewing/listening và corpus holdout vẫn chưa được đo. `releaseDefault` tiếp tục là `null` và chỉ người phụ trách mới có thể đưa ra quyết định release riêng.
+
+## Cập nhật code-animation QA — 2026-09-17
+
+Pilot ba phút đã làm lộ ba khoảng trống và chúng đã được xử lý ở contract: lỗi asset Remotion được bắt
+trước approval, lệnh approval exact source chạy lặp không hỏi lại, và QA video dài phủ toàn timeline
+theo cadence thích ứng thay vì chỉ ba frame. Spoken QA nhận `expectedSpeech` để so kịch bản/thuật ngữ
+với ASR; Result reuse gắn fingerprint của kỳ vọng này. Skill `code-animation-review` bổ sung review
+semantic, distinctness, slideshow risk và finding có timestamp/cách sửa. Human full viewing/listening
+vẫn là gate độc lập; ASR và contact sheet không được mô tả như đã xem/nghe trọn video.

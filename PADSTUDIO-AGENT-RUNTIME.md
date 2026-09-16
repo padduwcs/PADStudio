@@ -85,13 +85,19 @@ không phải sandbox; host hiện không cưỡng chế cách ly mạng. Không
 để tải package và không đổi Manim/Remotion/HyperFrames ngầm. `animation.render` là Result video
 có thể dùng trực tiếp làm source của `video.sequence`.
 
+Chỉ xin approval sau khi source/props/asset/composition đã ổn định và static validation pass; không
+dùng approval để debug compile. Lặp lại lệnh với đúng source đã duyệt sẽ trả lại Decision cũ mà
+không hỏi lại. Nếu byte source đổi, phải nói rõ đây là trust target mới nên cần approval mới.
+
 Nếu một lỗi contract/runtime của PADStudio chặn công việc, không sửa `src/`, `test/` hay tài liệu build ngay
 trong phiên vận hành video. Ghi lại exact Run/Result và lỗi, báo rõ đây là lỗi hệ thống, rồi chỉ chuyển sang
 phát triển codebase khi phạm vi đó đã được xác nhận.
 
 1. Tạo hoặc cập nhật `video.sequence` với revision và `changeReason`.
 2. Render exact artifact bằng `video.render-sequence`; chỉ reuse Result khi contract/hash khớp.
-3. Chạy `video.inspect-output` trên exact render.
+3. Chạy `video.inspect-output` trên exact render. Với video có lời, truyền `expectedSpeech.text`
+   và các `expectedSpeech.terms` quan trọng khi sequence không lưu narration text; QA sẽ đối chiếu
+   ASR và lấy frame phủ đều toàn timeline.
 4. Agent review đúng Result; người dùng xem trong observer và phản hồi trong chat.
 5. Sau QA hợp lệ, Agent dừng và yêu cầu người dùng tự chạy
    `npm run project:accept -- <project-id> <render-result-id>` trong terminal tương tác. Lệnh hiển thị

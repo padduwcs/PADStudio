@@ -7,14 +7,18 @@ these are mechanics and review heuristics, not a stock-scene recipe.
   do not use wall clocks, CSS transitions, or nondeterministic animation state.
 - Keep the composition component parameterized. Put changeable copy, values and configuration in
   an immutable `animation.props` Result and bind it through `animation.composition.propsResultId`.
-- Use project-managed assets only. Reference their declared `assets/...` targets from source;
-  do not reach outside the Run workspace or fetch media at render time.
+- Use project-managed assets only. Import their declared staged `assets/...` targets as modules and
+  pass the imported URL to Remotion components. Do not use `staticFile()`, raw `assets/...` URLs,
+  paths outside the Run workspace or fetch media at render time.
 - Measure text and DOM geometry before committing a layout. Test the longest real copy, safe
   margins, font loading, line wrapping and vertical rhythm at exact output dimensions.
 - Use `Sequence`, spring/interpolation and transitions because they express the intended motion,
   not merely because a preset exists. Clamp extrapolation where overshoot would expose invalid UI.
 - Prefer one primary visual subject per beat. Reuse utilities and design tokens, but avoid making
   every video look like the same card/chart/title template.
+- For a hero explainer, derive a small visual vocabulary from the subject itself. Vary motion
+  intensity and information density across hook, construction, insight and landing; check that the
+  result would remain recognizable if all words disappeared.
 - After approval, run exact preflight. Use `remotion-preview` for opening, closing and each major
   beat, plus a short transition clip. Revise source/props when evidence exposes a problem; never
   treat preview success as final creative approval.

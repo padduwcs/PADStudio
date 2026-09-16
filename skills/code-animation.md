@@ -18,12 +18,16 @@ Code animation is an optional production branch, not a required pipeline stage.
    `timing.mode: measured`: the target guides planning while the verified render Result owns the
    exact duration within a small bounded tolerance. Use `exact` only when authored timing truly
    controls the output. Remotion always uses `exact` because PADStudio renders a fixed frame range.
-4. Treat generated source as untrusted until reviewed. Run `animation.validate` first.
-   This is static lint, not a sandbox. Before render, stop and ask the user to run
+4. Treat generated source as untrusted until reviewed. Finish source, props, asset mappings and the
+   composition first, then run `animation.validate`. Resolve every static finding—including Remotion
+   asset imports—before involving the user. This is static lint, not a sandbox. Only when the exact
+   immutable source is approval-ready, stop and ask the user to run
    `npm run project:approve-code -- <project-id> <source-result-id>` themselves in an
    interactive terminal. Never type the confirmation for them, pipe input, prepare an approval
    JSON, or continue in the same Agent turn. Only that command can create the confirmed user
-   ProjectDecision for the exact source Result.
+   ProjectDecision for the exact source Result. Do not use approval as a compile/debug step or ask
+   again for an already approved exact source. Changed source bytes necessarily create a new trust
+   decision; explain that boundary instead of implying the earlier approval was lost.
 5. After approval, run matching `animation.preflight` and inspect its diagnostic Result. A failed
    preflight remains evidence and cannot authorize preview/render. Remotion can then create selected
    stills and a short frame-range clip with `animation.preview / remotion-preview`. Use preview as
@@ -37,7 +41,7 @@ Code animation is an optional production branch, not a required pipeline stage.
 7. The renderer materializes a temporary Run workspace, verifies source checksums, copies
    only declared project assets, filters environment variables, and checks output duration,
    resolution and frame rate. Host network isolation is not currently enforced; never claim it is.
-8. Inspect the full animation, not only its poster. Cover every logical beat and transition, plus
+8. Load `code-animation-review` and inspect the full animation, not only its poster. Cover every logical beat and transition, plus
    the opening and ending. Review semantic correctness, hierarchy, pacing, continuity, readability,
    easing and safe margins. Treat black/freeze measurements as evidence: decide whether a hold gives
    the explanation room to land or is merely dead time; notice repeated empty transitions and whether

@@ -2,22 +2,30 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadSourcePackage } from "../animation/source-package.js";
 import { ProjectStore } from "../project/project-store.js";
-import { createHumanConfirmation } from "../project/human-confirmation.js";
+import { createHumanConfirmation, validHumanConfirmation } from "../project/human-confirmation.js";
 import { confirmExactPhrase, requireInteractiveTerminal } from "./interactive-confirmation.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".padstudio", "projects");
 
 async function main(args) {
   if (args.length !== 2) throw new Error("Usage: npm run project:approve-code -- <project-id> <source-result-id>");
-  requireInteractiveTerminal();
   const [projectId, resultId] = args;
   const store = new ProjectStore(root);
   const source = await loadSourcePackage(store, projectId, resultId);
+  const latest = (await store.readDecisions(projectId)).filter((decision) =>
+    decision.kind === "project_decision" && decision.target?.kind === "result" && decision.target.id === source.result.id &&
+    decision.category === "animation_code_execution" && decision.decidedBy === "user"
+  ).at(-1);
+  if (latest?.outcome === "approved" && validHumanConfirmation(latest.confirmation, "execute_animation_code", source.result.id)) {
+    process.stdout.write(JSON.stringify(latest, null, 2) + "\n");
+    return;
+  }
   const validation = (await store.readResults(projectId)).filter((result) =>
     result.type === "animation.validation" && result.data?.status === "passed" &&
     result.data?.sourceResultId === source.result.id && result.data?.packageSha256 === source.data.packageSha256
   ).at(-1);
   if (!validation) throw new Error("This exact source package does not have a passing validation Result.");
+  requireInteractiveTerminal();
   const phrase = `RUN ${source.result.id} ${source.data.packageSha256.slice(0, 12)}`;
   const files = source.data.sourceFiles.map((file) => `  - ${file.path}  sha256:${file.sha256.slice(0, 12)}...`).join("\n");
   await confirmExactPhrase({ phrase, prompt: [

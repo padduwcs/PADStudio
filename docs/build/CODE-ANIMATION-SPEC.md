@@ -110,6 +110,12 @@ The command displays the exact Result, runtime, passing validation, complete pac
 source-file checksums, then requires a target-bound phrase from an interactive TTY. The Agent must
 end its turn at this gate and must not type or pipe the answer. This is a deliberate per-gate pause,
 adapted from OpenMontage's useful approval discipline without adopting its fixed production pipeline.
+Before asking, the Agent must finish source/props/assets/composition and pass every non-executing
+validation available. In particular, Remotion validation rejects `staticFile()`, raw `assets/...`
+media URLs and unresolved relative imports because those constructs cannot consume PADStudio's staged
+assets reliably. Approval is not a compile/debug loop. Re-running the command for an already-approved
+exact source returns the existing decision without prompting; changing source bytes still requires a
+new explicit decision because the trust target is different.
 The receipt records channel, action, target and timestamp. It prevents ordinary Agent-authored
 payloads from impersonating a user; it is not a cryptographic identity boundary against a process
 with unrestricted access to the repository and host.
@@ -139,6 +145,18 @@ The runtime must exit successfully and create the declared MP4. PADStudio probes
 rate and duration against the composition timing contract, then creates a poster and JSON render report. Result files
 carry SHA-256 and remain inside `outputs/<run-id>/`. Technical verification does not assert mathematical
 correctness, visual taste, accessibility or human review.
+
+Final-output QA plans semantic samples and adaptive cadence samples across the complete timeline,
+up to 120 frames. A three-minute render is covered at gaps of at most five seconds rather than only
+its start/middle/end. For spoken output, `quality:inspect` may receive `expectedSpeech` with exact
+script text, important terms and conservative similarity thresholds. ASR/script alignment and term
+recognition become fail-closed checks and participate in the QA reuse key. These checks expose likely
+wording or pronunciation defects; they do not identify phonetic cause and do not replace listening.
+
+The `code-animation-review` skill adds evidence-driven creative review: complete-timeline coverage,
+timestamped findings with proposed corrections, semantic agreement between narration and motion,
+and checks for slideshow/template repetition and project-specific visual identity. These are review
+heuristics, not fixed stages or automatic creative decisions.
 
 An `animation.render` primary file has media type `video`, so the existing `video.sequence` source
 contract consumes it without conversion or duplication. Final delivery remains governed by exact
