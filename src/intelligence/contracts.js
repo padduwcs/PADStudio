@@ -44,7 +44,10 @@ export function requireId(value, label) {
 }
 
 export function normalizeStringList(value, label, { allowEmpty = true } = {}) {
-  if (value === undefined) return [];
+  if (value === undefined) {
+    if (!allowEmpty) throw new IntelligenceValidationError(`${label} must not be empty.`);
+    return [];
+  }
   if (!Array.isArray(value)) throw new IntelligenceValidationError(`${label} must be an array.`);
   const result = value.map((item, index) => requireText(item, `${label}[${index}]`));
   if (!allowEmpty && result.length === 0) throw new IntelligenceValidationError(`${label} must not be empty.`);

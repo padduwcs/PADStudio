@@ -8,6 +8,7 @@ import { ToolRegistry } from "../src/execution/tool-registry.js";
 import { ProjectContextAssembler } from "../src/intelligence/project-context-assembler.js";
 import { ProjectStore } from "../src/project/project-store.js";
 import { createHumanConfirmation } from "../src/project/human-confirmation.js";
+import { normalizeAnimationComposition } from "../src/animation/animation-composition.js";
 import { createCodeAnimationRenderer } from "../src/tools/code-animation-renderer.js";
 import { createCodeAnimationSource } from "../src/tools/code-animation-source.js";
 import { createCodeAnimationValidator } from "../src/tools/code-animation-validator.js";
@@ -47,6 +48,55 @@ function composition(sourceResultId) {
     reviewCriteria: ["Typography remains readable throughout."],
     executionPolicy: { codeTrust: "exact-user-approval", networkAccess: "not-required" } };
 }
+
+test("normalized compositions can be read again when designRead is omitted", () => {
+  const input = composition("result-source");
+  delete input.style.designRead;
+  const once = normalizeAnimationComposition(input);
+  assert.equal(once.style.designRead, null);
+  assert.deepEqual(normalizeAnimationComposition(once), once);
+});
+
+test("new compositions require review criteria while legacy stored values remain readable", () => {
+  const input = composition("result-source");
+  delete input.reviewCriteria;
+  assert.throws(() => normalizeAnimationComposition(input), /reviewCriteria must not be empty/);
+  const legacy = normalizeAnimationComposition(input, { allowLegacy: true });
+  assert.deepEqual(legacy.reviewCriteria, []);
+});
+
+test("projects reopen compositions stored before review criteria became required", async (t) => {
+  const { rootDir, store } = await fixture(t);
+  const data = composition("result-source");
+  data.style.designRead = null;
+  data.reviewCriteria = [];
+  const legacy = {
+    version: "1.0",
+    id: "artifact-legacy-animation",
+    projectId: "demo",
+    key: "legacy-animation",
+    revision: 1,
+    supersedes: null,
+    type: "animation.composition",
+    name: "Legacy animation",
+    summary: "Created before review criteria became mandatory.",
+    status: "active",
+    data,
+    references: [],
+    createdBy: "agent",
+    createdAt: "2026-09-14T00:00:00.000Z",
+  };
+  await writeFile(
+    join(rootDir, "demo", "artifacts", "artifact-legacy-animation.json"),
+    `${JSON.stringify(legacy, null, 2)}\n`,
+    "utf8",
+  );
+
+  const artifacts = await store.intelligence.readArtifacts("demo");
+  assert.equal(artifacts[0].id, legacy.id);
+  assert.equal(artifacts[0].data.style.designRead, null);
+  assert.deepEqual(artifacts[0].data.reviewCriteria, []);
+});
 
 test("source packages are immutable, revisioned and reject traversal", async (t) => {
   const { executor } = await fixture(t);

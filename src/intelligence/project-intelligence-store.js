@@ -532,7 +532,7 @@ export class ProjectIntelligenceStore {
     }
     normalizeReferences(value.references);
     if (value.type === SEQUENCE_TYPE) normalizeSequence(value.data);
-    if (value.type === ANIMATION_COMPOSITION_TYPE) normalizeAnimationComposition(value.data);
+    if (value.type === ANIMATION_COMPOSITION_TYPE) normalizeAnimationComposition(value.data, { allowLegacy: true });
     if (SOURCE_ARTIFACT_TYPES.has(value.type)) normalizeSourceArtifactData(value.type, value.data);
     if (CREATIVE_ARTIFACT_TYPES.has(value.type)) {
       normalizeCreativeArtifactData(value.type, value.data, { allowLegacy: true });

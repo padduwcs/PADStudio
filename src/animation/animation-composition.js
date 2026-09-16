@@ -31,7 +31,7 @@ function relativeFile(value, label) {
   return path;
 }
 
-export function normalizeAnimationComposition(value) {
+export function normalizeAnimationComposition(value, { allowLegacy = false } = {}) {
   requireObject(value, "animation.composition data");
   assertOnlyFields(value, [
     "version", "changeReason", "intent", "runtime", "sourceResultId", "entry",
@@ -134,12 +134,12 @@ export function normalizeAnimationComposition(value) {
     durationSeconds,
     assets: normalizedAssets,
     style: {
-      designRead: style.designRead === undefined ? null : requireText(style.designRead, "animation.composition.style.designRead"),
+      designRead: style.designRead == null ? null : requireText(style.designRead, "animation.composition.style.designRead"),
       palette,
       motionPrinciples: normalizeStringList(style.motionPrinciples, "animation.composition.style.motionPrinciples"),
       antiPatterns: normalizeStringList(style.antiPatterns, "animation.composition.style.antiPatterns"),
     },
-    reviewCriteria: normalizeStringList(value.reviewCriteria, "animation.composition.reviewCriteria", { allowEmpty: false }),
+    reviewCriteria: normalizeStringList(value.reviewCriteria, "animation.composition.reviewCriteria", { allowEmpty: allowLegacy }),
     executionPolicy: { codeTrust: "exact-user-approval", networkAccess: "not-required" },
   };
 }
