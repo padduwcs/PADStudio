@@ -92,6 +92,27 @@
       "instructions": "code-animation.md"
     },
     {
+      "id": "remotion-animation", "version": "1.0", "name": "Remotion animation craft",
+      "description": "Author and review deterministic, parameterized Remotion compositions without defaulting to stock creative components.",
+      "appliesTo": ["plan", "execute", "review"], "artifactTypes": ["animation.composition"],
+      "reviewCriteria": ["frame timing is deterministic", "managed props and assets remain traceable", "key beats are previewed at exact dimensions"],
+      "instructions": "remotion-animation.md"
+    },
+    {
+      "id": "hyperframes-animation", "version": "1.0", "name": "HyperFrames animation craft",
+      "description": "Author deterministic HyperFrames timelines and interpret strict runtime/layout diagnostics.",
+      "appliesTo": ["plan", "execute", "review"], "artifactTypes": ["animation.composition"],
+      "reviewCriteria": ["timeline and IDs are deterministic", "root and media layout survive render", "strict diagnostics are preserved"],
+      "instructions": "hyperframes-animation.md"
+    },
+    {
+      "id": "manim-animation", "version": "1.0", "name": "Manim animation craft",
+      "description": "Plan and review mathematical animation with semantic continuity, deliberate framing and honest measured timing.",
+      "appliesTo": ["plan", "execute", "review"], "artifactTypes": ["animation.composition"],
+      "reviewCriteria": ["mathematics is correct", "transformations preserve visual identity", "layout and pacing teach clearly"],
+      "instructions": "manim-animation.md"
+    },
+    {
       "id": "asset-preparation",
       "version": "1.0",
       "name": "Asset preparation",

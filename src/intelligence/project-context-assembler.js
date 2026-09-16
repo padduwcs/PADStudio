@@ -323,8 +323,11 @@ export class ProjectContextAssembler {
         activeCompositions: animation.activeCompositions.map((composition) => ({
           artifactId: composition.artifactId, key: composition.key, revision: composition.revision,
           name: composition.name, runtime: composition.runtime, sourceResultId: composition.sourceResultId,
+          propsResultId: composition.propsResultId,
           durationSeconds: composition.durationSeconds, timing: composition.timing, format: composition.format,
           validated: Boolean(composition.validation), executionApproval: composition.executionApproval,
+          latestPreflight: composition.preflights.at(-1) ?? null,
+          latestPreviewId: composition.previews.at(-1)?.resultId ?? null,
           latestRenderId: composition.renders.at(-1)?.resultId ?? null,
         })) },
       capabilities: compactCapabilities(capabilities),

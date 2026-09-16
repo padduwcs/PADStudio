@@ -62,10 +62,16 @@ Bundle bàn giao `result-mtynkixa-db2410bc` giữ nguyên SHA-256 video nguồn 
 
 ### Mở rộng code animation — 2026-09-14
 
-Đã triển khai source package bất biến, artifact `animation.composition`, static validation, exact
-user code-execution approval, ba adapter Manim/Remotion/HyperFrames, render QA/poster/report, skill,
+Đã triển khai source và props package bất biến, artifact `animation.composition`, static validation,
+exact user code-execution approval, runtime preflight có diagnostics, still/clip preview cho Remotion,
+ba adapter Manim/Remotion/HyperFrames, render QA/poster/report, skill router cùng skill craft riêng,
 CLI, summary/resume context và observer chỉ đọc. `animation.render` tương thích trực tiếp với nguồn
 Result của `video.sequence`; workflow vẫn tùy biến theo project.
+
+Authoring-loop acceptance thật trên Windows đã pass ngày 2026-09-16 với Chrome Headless Shell
+153.0.8010.47 được pin cục bộ: exact preflight, ba still, preview clip và full Remotion render đều
+đi qua Registry/Executor. Máy còn khoảng 191 GiB trống tại thời điểm kiểm tra, đủ dư địa cho pilot
+video khoảng ba phút; dung lượng vẫn phải được kiểm tra lại trước mỗi render lớn.
 
 Kiểm thử adapter dùng runtime giả lập xác định để chứng minh lifecycle mà không tải/cài package trong
 ordinary render. Môi trường Windows hiện đã cài runtime cô lập và smoke-render thật thành công với

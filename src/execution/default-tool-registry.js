@@ -25,11 +25,16 @@ import { createLocalOutputQuality } from "../tools/local-output-quality.js";
 import { createWikimediaStockSearch } from "../tools/wikimedia-stock-search.js";
 import { createExternalGeneratedMedia } from "../tools/external-generated-media.js";
 import { createCodeAnimationSource } from "../tools/code-animation-source.js";
+import { createCodeAnimationProps } from "../tools/code-animation-props.js";
 import { createCodeAnimationValidator } from "../tools/code-animation-validator.js";
 import {
   createHyperframesAnimationRenderer,
+  createHyperframesAnimationPreflight,
   createManimAnimationRenderer,
+  createManimAnimationPreflight,
+  createRemotionAnimationPreview,
   createRemotionAnimationRenderer,
+  createRemotionAnimationPreflight,
 } from "../tools/code-animation-renderer.js";
 import { applyToolGuidance } from "./tool-guidance-catalog.js";
 
@@ -59,7 +64,12 @@ export function createDefaultToolRegistry(options = {}) {
     createWikimediaStockSearch(options.wikimediaStock),
     createExternalGeneratedMedia(options.externalGeneratedMedia),
     createCodeAnimationSource(options.animationSource),
+    createCodeAnimationProps(options.animationProps),
     createCodeAnimationValidator(options.animationValidation),
+    createManimAnimationPreflight(options.manimAnimation),
+    createRemotionAnimationPreflight(options.remotionAnimation),
+    createHyperframesAnimationPreflight(options.hyperframesAnimation),
+    createRemotionAnimationPreview(options.remotionAnimation),
     createManimAnimationRenderer(options.manimAnimation),
     createRemotionAnimationRenderer(options.remotionAnimation),
     createHyperframesAnimationRenderer(options.hyperframesAnimation),

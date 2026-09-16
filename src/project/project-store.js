@@ -10,6 +10,7 @@ import {
 import { readProjectBudget } from "../execution/project-budget.js";
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { readJson, writeJsonAtomic, writeTextAtomic } from "./atomic-files.js";
 import { withFileLock } from "./file-lock.js";
 import { createHumanConfirmation, requireHumanConfirmation, validHumanConfirmation } from "./human-confirmation.js";
@@ -97,6 +98,19 @@ async function directoryInfo(path) {
   } catch (error) {
     if (error?.code === "ENOENT") return null;
     throw error;
+  }
+}
+
+async function renameAtomicWithRetry(source, destination) {
+  const maxRetries = process.platform === "win32" ? 30 : 0;
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(source, destination);
+      return;
+    } catch (error) {
+      if (attempt >= maxRetries || !["EBUSY", "EPERM"].includes(error?.code)) throw error;
+      await delay(100);
+    }
   }
 }
 
@@ -870,7 +884,7 @@ export class ProjectStore {
     if (await directoryInfo(registered.finalDirectory)) {
       throw new ProjectStoreError("Output đích đã tồn tại: " + registered.runId);
     }
-    await rename(registered.temporaryDirectory, registered.finalDirectory);
+    await renameAtomicWithRetry(registered.temporaryDirectory, registered.finalDirectory);
     registered.committed = true;
   }
 
@@ -880,7 +894,7 @@ export class ProjectStore {
     const target = registered.committed
       ? registered.finalDirectory
       : registered.temporaryDirectory;
-    await rm(target, { recursive: true, force: true });
+    await rm(target, { recursive: true, force: true, maxRetries: process.platform === "win32" ? 20 : 0, retryDelay: 100 });
   }
 
   releaseRunOutputWorkspace(workspace) {

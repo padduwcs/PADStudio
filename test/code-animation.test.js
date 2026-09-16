@@ -9,7 +9,8 @@ import { ProjectContextAssembler } from "../src/intelligence/project-context-ass
 import { ProjectStore } from "../src/project/project-store.js";
 import { createHumanConfirmation } from "../src/project/human-confirmation.js";
 import { normalizeAnimationComposition } from "../src/animation/animation-composition.js";
-import { createCodeAnimationRenderer } from "../src/tools/code-animation-renderer.js";
+import { createCodeAnimationPreflight, createCodeAnimationRenderer, createRemotionAnimationPreview } from "../src/tools/code-animation-renderer.js";
+import { createCodeAnimationProps } from "../src/tools/code-animation-props.js";
 import { createCodeAnimationSource } from "../src/tools/code-animation-source.js";
 import { createCodeAnimationValidator } from "../src/tools/code-animation-validator.js";
 import { ProjectReader } from "../src/web/project-reader.js";
@@ -21,7 +22,7 @@ async function fixture(t, tools = []) {
   const rootDir = join(directory, "projects");
   const store = new ProjectStore(rootDir);
   await store.createProject({ projectId: "demo", title: "Code animation" });
-  const registry = new ToolRegistry([createCodeAnimationSource(), createCodeAnimationValidator(), ...tools]);
+  const registry = new ToolRegistry([createCodeAnimationSource(), createCodeAnimationProps(), createCodeAnimationValidator(), ...tools]);
   return { rootDir, store, executor: new ToolExecutor({ store, registry }) };
 }
 
@@ -55,6 +56,56 @@ test("normalized compositions can be read again when designRead is omitted", () 
   const once = normalizeAnimationComposition(input);
   assert.equal(once.style.designRead, null);
   assert.deepEqual(normalizeAnimationComposition(once), once);
+});
+
+test("animation props are immutable, normalized and composition-bound", async (t) => {
+  const { store, executor } = await fixture(t);
+  const { source } = await sourceAndValidation(executor);
+  const first = (await executor.execute("demo", request("animation.props", "code-animation-props", "Create managed props", {
+    operation: "create", name: "Title data", changeSummary: "Initial copy", props: { title: "Evidence", values: [3, 1, 2] },
+  }))).result;
+  const revised = (await executor.execute("demo", request("animation.props", "code-animation-props", "Revise managed props", {
+    operation: "revise", name: "Title data r2", changeSummary: "Update copy", baseResultId: first.id,
+    props: { values: [3, 1, 2], title: "Evidence first" },
+  }))).result;
+  assert.deepEqual(revised.inputResults, [first.id]);
+  assert.equal(revised.data.parentPropsResultId, first.id);
+  const data = composition(source.id); data.propsResultId = revised.id;
+  await assert.rejects(store.recordArtifact("demo", { key: "bad-props-ref", type: "animation.composition", name: "Missing props ref",
+    summary: "Must reference managed props.", data, references: [{ kind: "result", id: source.id }] }), /reference its props Result/);
+  const artifact = await store.recordArtifact("demo", { key: "props-bound", type: "animation.composition", name: "Props bound",
+    summary: "Uses managed props.", data, references: [{ kind: "result", id: source.id }, { kind: "result", id: revised.id }] });
+  assert.equal(artifact.data.propsResultId, revised.id);
+});
+
+test("managed props cannot overwrite a source file", async (t) => {
+  const { store, executor } = await fixture(t);
+  const created = await executor.execute("demo", request("animation.source", "code-animation-source", "Create colliding source", {
+    operation: "create", runtime: "remotion", name: "Collision", entryFile: "src/index.tsx", entrySymbol: "Demo",
+    changeSummary: "Collision fixture", files: [
+      { path: "src/index.tsx", content: "export const Demo = () => null; // Composition\n" },
+      { path: "data/props.json", content: "{}\n" },
+    ],
+  }));
+  const validated = await executor.execute("demo", request("animation.validate", "code-animation-validator", "Validate collision", {
+    sourceResultId: created.result.id,
+  }));
+  const props = (await executor.execute("demo", request("animation.props", "code-animation-props", "Create managed props", {
+    operation: "create", name: "Props", changeSummary: "Fixture", props: { title: "Managed" },
+  }))).result;
+  const data = composition(created.result.id); data.propsResultId = props.id;
+  const artifact = await store.recordArtifact("demo", { key: "collision", type: "animation.composition", name: "Collision",
+    summary: "Collision fixture.", data, references: [{ kind: "result", id: created.result.id }, { kind: "result", id: props.id }] });
+  await store.recordDecision("demo", { target: { kind: "result", id: created.result.id }, category: "animation_code_execution",
+    subject: "Execute exact animation source", outcome: "approved", options: [], selected: null, reason: "Reviewed fixture.",
+    decidedBy: "user", userVisible: true, confidence: "high" },
+  { humanConfirmation: createHumanConfirmation("execute_animation_code", created.result.id) });
+  const preflight = createCodeAnimationPreflight("remotion", { runtimeCommand: "fake", browserCommand: "fake-browser",
+    ffmpegCommand: "fake-ffmpeg", ffprobeCommand: "fake-ffprobe", executeCommand: async () => ({ stdout: "ok", stderr: "" }) });
+  const collisionExecutor = new ToolExecutor({ store, registry: new ToolRegistry([preflight]) });
+  await assert.rejects(collisionExecutor.execute("demo", request("animation.preflight", "remotion-local-preflight", "Reject collision", {
+    artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: validated.result.id,
+  })), /collides with source file/);
 });
 
 test("new compositions require review criteria while legacy stored values remain readable", () => {
@@ -201,8 +252,12 @@ test("Manim and HyperFrames keep distinct entry contracts", async (t) => {
 test("exact approval gates render; observer exposes it and sequence can consume the Result", async (t) => {
   const fakeCommand = async (executable, args) => {
     if (args.includes("--version") || args[0] === "-version" || args[0] === "help") return { stdout: `${executable} 1.0\n`, stderr: "" };
+    if (executable === "fake-remotion" && args[0] === "compositions") return { stdout: "Demo\n", stderr: "" };
     if (executable === "fake-remotion" && args[0] === "render") {
       await writeFile(args[3], "fake-video-bytes"); return { stdout: "rendered", stderr: "" };
+    }
+    if (executable === "fake-remotion" && args[0] === "still") {
+      await writeFile(args[3], "fake-image-bytes"); return { stdout: "rendered", stderr: "" };
     }
     if (executable === "fake-ffprobe") return { stdout: JSON.stringify({ format: { duration: "1.000" }, streams: [
       { codec_type: "video", width: 320, height: 180, avg_frame_rate: "24/1" },
@@ -214,12 +269,21 @@ test("exact approval gates render; observer exposes it and sequence can consume 
   };
   const renderer = createCodeAnimationRenderer("remotion", { runtimeCommand: "fake-remotion", ffmpegCommand: "fake-ffmpeg",
     ffprobeCommand: "fake-ffprobe", browserCommand: "fake-chrome", executeCommand: fakeCommand });
-  const { rootDir, store, executor } = await fixture(t, [renderer]);
+  const preflightTool = createCodeAnimationPreflight("remotion", { runtimeCommand: "fake-remotion", ffmpegCommand: "fake-ffmpeg",
+    ffprobeCommand: "fake-ffprobe", browserCommand: "fake-chrome", executeCommand: fakeCommand });
+  const previewTool = createRemotionAnimationPreview({ runtimeCommand: "fake-remotion", ffmpegCommand: "fake-ffmpeg",
+    ffprobeCommand: "fake-ffprobe", browserCommand: "fake-chrome", executeCommand: fakeCommand });
+  const { rootDir, store, executor } = await fixture(t, [preflightTool, previewTool, renderer]);
   const exact = await sourceAndValidation(executor);
+  const props = (await executor.execute("demo", request("animation.props", "code-animation-props", "Create title props", {
+    operation: "create", name: "Hero title props", changeSummary: "Initial copy", props: { title: "A traceable title" },
+  }))).result;
+  const compositionData = composition(exact.source.id); compositionData.propsResultId = props.id;
   const artifact = await store.recordArtifact("demo", { key: "hero-title", type: "animation.composition", name: "Hero title",
-    summary: "A short, editable kinetic title.", data: composition(exact.source.id), references: [{ kind: "result", id: exact.source.id }] });
+    summary: "A short, editable kinetic title.", data: compositionData,
+    references: [{ kind: "result", id: exact.source.id }, { kind: "result", id: props.id }] });
   const renderRequest = request("animation.render", "remotion-local", "Render approved title", {
-    artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: exact.validation.id,
+    artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: exact.validation.id, preflightResultId: "result-not-yet-created",
   });
   await assert.rejects(executor.execute("demo", renderRequest), /Exact user approval/);
   await assert.rejects(store.recordDecision("demo", { target: { kind: "result", id: exact.source.id }, category: "animation_code_execution",
@@ -230,14 +294,26 @@ test("exact approval gates render; observer exposes it and sequence can consume 
     subject: "Execute exact animation source", outcome: "approved", options: [], selected: null,
     reason: "Reviewed this immutable source package for local execution.", decidedBy: "user", userVisible: true, confidence: "high" },
   { humanConfirmation: createHumanConfirmation("execute_animation_code", exact.source.id) });
+  const preflight = (await executor.execute("demo", request("animation.preflight", "remotion-local-preflight", "Compile exact title", {
+    artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: exact.validation.id,
+  }))).result;
+  assert.equal(preflight.data.status, "passed");
+  renderRequest.inputs.preflightResultId = preflight.id;
+  const preview = (await executor.execute("demo", request("animation.preview", "remotion-preview", "Review key title frames", {
+    artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: exact.validation.id,
+    preflightResultId: preflight.id, frames: [0, 12, 23], range: { startSeconds: 0, endSeconds: 1 },
+  }))).result;
+  assert.equal(preview.type, "animation.preview");
+  assert.equal(preview.files.filter((file) => file.mediaType === "image").length, 3);
   const rendered = (await executor.execute("demo", renderRequest)).result;
   assert.equal(rendered.type, "animation.render");
   assert.equal(rendered.data.approvalDecisionId, approval.id);
   assert.equal(rendered.data.executionBoundary.networkIsolation, "not_enforced_by_host");
-  assert.deepEqual(rendered.inputResults, [exact.source.id, exact.validation.id]);
+  assert.deepEqual(rendered.inputResults, [exact.source.id, exact.validation.id, props.id, preflight.id]);
   const reportFile = await store.verifyResultFile("demo", rendered.id, "report");
   const report = JSON.parse(await readFile(reportFile.filePath, "utf8"));
   assert.ok(report.commands[0].args.includes("--browser-executable=<configured-browser>"));
+  assert.ok(report.commands[0].args.includes("--props=<managed-props>"));
   assert.ok(report.commands[0].args.includes("--frames=0-23"));
   await store.recordArtifact("demo", { key: "film", type: "video.sequence", name: "Film", summary: "Sequence using managed animation.",
     data: { version: "1.0", changeReason: "Use code animation", format: { width: 320, height: 180, fps: 24 }, segments: [
@@ -246,6 +322,8 @@ test("exact approval gates render; observer exposes it and sequence can consume 
     ] }, references: [] });
   const context = await new ProjectContextAssembler({ projectStore: store }).build("demo");
   assert.equal(context.animation.activeCompositions[0].renders[0].resultId, rendered.id);
+  assert.equal(context.animation.activeCompositions[0].preflights[0].resultId, preflight.id);
+  assert.equal(context.animation.activeCompositions[0].previews[0].resultId, preview.id);
   assert.equal(context.animation.activeCompositions[0].renders[0].durationSeconds, 1);
   assert.equal(context.animation.activeCompositions[0].timing.mode, "exact");
   assert.equal(context.production.sequences[0].segments[0].visual.source.id, rendered.id);
@@ -301,4 +379,36 @@ test("renderer availability is honest and never auto-installs", async (t) => {
   assert.equal((await shimRuntime.checkAvailability()).status, "available");
   assert.equal(shimCalls[0][0], process.execPath);
   assert.equal(shimCalls[0][1], cliScript);
+});
+
+test("failed runtime preflight is preserved as evidence and cannot gate render", async (t) => {
+  const fakeCommand = async (executable, args) => {
+    if (args.includes("--version") || args[0] === "-version" || args[0] === "help") return { stdout: `${executable} 1.0\n`, stderr: "" };
+    if (executable === "fake-remotion" && args[0] === "compositions") {
+      throw Object.assign(new Error("bundle failed"), { stderr: "TS2322: title must be a string" });
+    }
+    throw new Error(`Unexpected command: ${executable} ${args.join(" ")}`);
+  };
+  const options = { runtimeCommand: "fake-remotion", ffmpegCommand: "fake-ffmpeg", ffprobeCommand: "fake-ffprobe",
+    browserCommand: "fake-chrome", executeCommand: fakeCommand };
+  const preflightTool = createCodeAnimationPreflight("remotion", options);
+  const renderer = createCodeAnimationRenderer("remotion", options);
+  const { store, executor } = await fixture(t, [preflightTool, renderer]);
+  const exact = await sourceAndValidation(executor);
+  const artifact = await store.recordArtifact("demo", { key: "broken", type: "animation.composition", name: "Broken title",
+    summary: "Compile failure fixture.", data: composition(exact.source.id), references: [{ kind: "result", id: exact.source.id }] });
+  await store.recordDecision("demo", { target: { kind: "result", id: exact.source.id }, category: "animation_code_execution",
+    subject: "Execute exact animation source", outcome: "approved", options: [], selected: null, reason: "Reviewed fixture.",
+    decidedBy: "user", userVisible: true, confidence: "high" },
+  { humanConfirmation: createHumanConfirmation("execute_animation_code", exact.source.id) });
+  const preflight = (await executor.execute("demo", request("animation.preflight", "remotion-local-preflight", "Capture compile failure", {
+    artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: exact.validation.id,
+  }))).result;
+  assert.equal(preflight.data.status, "failed");
+  assert.equal(preflight.data.errorCode, "runtime_check_failed");
+  const reportPath = await store.verifyResultFile("demo", preflight.id, "report");
+  assert.match(await readFile(reportPath.filePath, "utf8"), /TS2322: title must be a string/);
+  await assert.rejects(executor.execute("demo", request("animation.render", "remotion-local", "Reject failed preflight", {
+    artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: exact.validation.id, preflightResultId: preflight.id,
+  })), /not passed and bound/);
 });

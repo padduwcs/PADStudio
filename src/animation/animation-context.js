@@ -9,6 +9,8 @@ export function buildAnimationContext(context) {
   }
   const activeIds = new Set(context.intelligence?.activeArtifacts?.filter((artifact) => artifact.type === "animation.composition").map((artifact) => artifact.id) ?? []);
   const validations = context.results.filter((result) => result.type === "animation.validation");
+  const preflights = context.results.filter((result) => result.type === "animation.preflight");
+  const previews = context.results.filter((result) => result.type === "animation.preview");
   const renders = context.results.filter((result) => result.type === "animation.render");
   const compositions = artifacts.map((artifact) => {
     const sourceResultId = artifact.data.sourceResultId;
@@ -17,16 +19,23 @@ export function buildAnimationContext(context) {
       decision.target.id === sourceResultId && decision.decidedBy === "user" &&
       validHumanConfirmation(decision.confirmation, "execute_animation_code", sourceResultId)).at(-1) ?? null;
     const exactValidations = validations.filter((result) => result.data?.sourceResultId === sourceResultId);
+    const exactPreflights = preflights.filter((result) => result.data?.composition?.id === artifact.id && result.data?.composition?.revision === artifact.revision);
+    const exactPreviews = previews.filter((result) => result.data?.composition?.id === artifact.id && result.data?.composition?.revision === artifact.revision);
     const exactRenders = renders.filter((result) => result.data?.composition?.id === artifact.id && result.data?.composition?.revision === artifact.revision);
     return {
       artifactId: artifact.id, key: artifact.key, revision: artifact.revision, name: artifact.name,
       summary: artifact.summary, status: artifact.status,
       role: activeIds.has(artifact.id) ? "current" : latestByKey.get(artifact.key)?.id === artifact.id && artifact.status === "draft" ? "candidate" : "history",
       runtime: artifact.data.runtime, sourceResultId, entry: artifact.data.entry,
+      propsResultId: artifact.data.propsResultId ?? null,
       format: artifact.data.format, durationSeconds: artifact.data.durationSeconds,
       timing: artifact.data.timing ?? { mode: artifact.data.runtime === "manim" ? "measured" : "exact" },
       intent: artifact.data.intent, style: artifact.data.style, reviewCriteria: artifact.data.reviewCriteria,
       validation: exactValidations.at(-1) ?? null,
+      preflights: exactPreflights.map((result) => ({ resultId: result.id, createdAt: result.createdAt, status: result.data.status,
+        scope: result.data.scope, runtimeFingerprint: result.data.runtimeFingerprint, limitations: result.data.limitations, files: result.files })),
+      previews: exactPreviews.map((result) => ({ resultId: result.id, createdAt: result.createdAt, frames: result.data.frames,
+        range: result.data.range, clip: result.data.clip, files: result.files })),
       executionApproval: approval ? { id: approval.id, outcome: approval.outcome, reason: approval.reason, createdAt: approval.createdAt } : null,
       renders: exactRenders.map((result) => ({ resultId: result.id, createdAt: result.createdAt,
         files: result.files, verification: result.verification, durationSeconds: result.data.durationSeconds,
@@ -38,6 +47,7 @@ export function buildAnimationContext(context) {
     version: "1.0", compositions,
     activeCompositions: compositions.filter((composition) => composition.role === "current"),
     sourcePackages: context.results.filter((result) => result.type === "animation.source-package"),
+    propsPackages: context.results.filter((result) => result.type === "animation.props"),
     note: "Code animation is an optional project-native production branch; its render Results can be used directly by video.sequence.",
   };
 }

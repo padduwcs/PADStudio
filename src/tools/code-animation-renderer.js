@@ -5,6 +5,7 @@ import { basename, delimiter, dirname, extname, isAbsolute, join, resolve } from
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { normalizeAnimationComposition } from "../animation/animation-composition.js";
+import { loadAnimationProps } from "../animation/animation-props.js";
 import { loadSourcePackage } from "../animation/source-package.js";
 import { validHumanConfirmation } from "../project/human-confirmation.js";
 import { fail, fileEvidence, object, probe, text, workspace } from "./asset-tool-common.js";
@@ -19,15 +20,25 @@ const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "
 const LOCAL_RUNTIME_ROOT = join(REPOSITORY_ROOT, ".runtime-tools");
 const LOCAL_NODE_RUNTIME_ROOT = join(LOCAL_RUNTIME_ROOT, "code-animation-node");
 
-function installedBrowser() {
+function installedBrowser({ allowSystem = true } = {}) {
   const configured = process.env.PADSTUDIO_CHROME_PATH?.trim();
   if (configured) return configured;
   if (process.platform !== "win32") return null;
+  const managed = [
+    join(LOCAL_RUNTIME_ROOT, "chrome-for-testing", "chrome-win64", "chrome.exe"),
+    join(LOCAL_RUNTIME_ROOT, "chrome-for-testing", "chrome.exe"),
+    join(LOCAL_RUNTIME_ROOT, "chrome-headless-shell", "chrome-headless-shell-win64", "chrome-headless-shell.exe"),
+  ].find((candidate) => existsSync(candidate));
+  if (managed || !allowSystem) return managed ?? null;
   return [
     "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
     "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
   ].find((candidate) => existsSync(candidate)) ?? null;
+}
+
+function remotionChromeMode(browser) {
+  return basename(browser ?? "").toLowerCase().includes("headless-shell") ? "headless-shell" : "chrome-for-testing";
 }
 
 function findNodeModules(path) {
@@ -85,6 +96,7 @@ function cleanEnvironment(home, { nodeModules = null, browser = null } = {}) {
     env.NODE_PATH = nodeModules;
   }
   return { ...env, HOME: home, USERPROFILE: home, XDG_CACHE_HOME: join(home, ".cache"), NO_COLOR: "1", CI: "1",
+    LOCALAPPDATA: join(home, "local-app-data"), APPDATA: join(home, "app-data"),
     HYPERFRAMES_NO_UPDATE_CHECK: "1", ...(browser ? { HYPERFRAMES_BROWSER_PATH: browser } : {}) };
 }
 
@@ -126,7 +138,8 @@ function renderArguments(runtime, composition, paths) {
     "-o", "padstudio-animation.mp4", paths.entry, composition.entry.symbol];
   if (runtime === "remotion") return ["render", paths.entry, composition.entry.symbol, paths.output,
     `--width=${composition.format.width}`, `--height=${composition.format.height}`, `--fps=${composition.format.fps}`,
-    `--frames=0-${frames - 1}`, "--codec=h264", "--pixel-format=yuv420p", `--browser-executable=${paths.browser}`];
+    `--frames=0-${frames - 1}`, "--codec=h264", "--pixel-format=yuv420p", `--chrome-mode=${paths.chromeMode}`, `--browser-executable=${paths.browser}`,
+    ...(paths.props ? [`--props=${paths.props}`] : [])];
   return ["render", "--output", paths.output, "--fps", String(composition.format.fps), "--quality", "standard", "--strict"];
 }
 
@@ -137,14 +150,83 @@ function durationTolerance(composition) {
   return Math.max(0.15, 1 / composition.format.fps + 0.05);
 }
 
+async function prepareAnimationWorkspace({ store, projectId, inputs, outputWorkspace, runtime, allowedFields = [] }) {
+  object(inputs, ["artifactId", "artifactRevision", "validationResultId", "allowHistorical", ...allowedFields]);
+  if (inputs.allowHistorical !== undefined && typeof inputs.allowHistorical !== "boolean") fail("allowHistorical must be boolean.");
+  const artifactId = text(inputs.artifactId, "artifactId", 150);
+  if (!Number.isInteger(inputs.artifactRevision) || inputs.artifactRevision < 1) fail("artifactRevision must be a positive integer.");
+  const artifact = (await store.readArtifacts(projectId)).find((item) => item.id === artifactId && item.revision === inputs.artifactRevision);
+  if (!artifact || artifact.type !== "animation.composition") fail("Exact animation.composition revision was not found.");
+  const current = (await store.readContext(projectId)).intelligence.activeArtifacts.some((item) => item.id === artifact.id);
+  if (!current && !inputs.allowHistorical) fail("Animation composition is a draft or historical revision; review it and set allowHistorical explicitly to execute it.", "stale_animation");
+  const composition = normalizeAnimationComposition(artifact.data);
+  if (composition.runtime !== runtime) fail(`Composition runtime is ${composition.runtime}, not ${runtime}.`, "runtime_mismatch");
+  const source = await loadSourcePackage(store, projectId, composition.sourceResultId, runtime);
+  const validation = await store.readResult(projectId, text(inputs.validationResultId, "validationResultId", 150));
+  if (validation.type !== "animation.validation" || validation.data?.status !== "passed" ||
+      validation.data.sourceResultId !== source.result.id || validation.data.packageSha256 !== source.data.packageSha256) {
+    fail("Validation Result is not bound to this exact source package.", "stale_validation");
+  }
+  const approval = latestExecutionApproval(await store.readDecisions(projectId), source.result.id);
+  if (approval?.outcome !== "approved") fail("Exact user approval is required for this source Result before host code execution.", "code_execution_approval_required");
+  const output = workspace(outputWorkspace);
+  const codeDirectory = join(output.temporaryDirectory, "workspace");
+  await mkdir(codeDirectory, { recursive: true });
+  for (const file of source.files) {
+    const target = join(codeDirectory, ...file.path.split("/"));
+    await mkdir(dirname(target), { recursive: true });
+    await copyFile(file.filePath, target);
+  }
+  const inputResources = new Set(); const inputResults = new Set([source.result.id, validation.id]); const assets = [];
+  for (const asset of composition.assets) {
+    if (source.files.some((file) => file.path.toLowerCase() === asset.target.toLowerCase())) fail(`Asset target collides with a source file: ${asset.target}.`);
+    const media = await store.resolveMediaSource(projectId, asset.source);
+    const target = join(codeDirectory, ...asset.target.split("/"));
+    await mkdir(dirname(target), { recursive: true }); await copyFile(media.filePath, target);
+    assets.push({ id: asset.id, source: media.trace, target: asset.target, ...(await fileEvidence(target)) });
+    media.inputResources.forEach((id) => inputResources.add(id)); media.inputResults.forEach((id) => inputResults.add(id));
+  }
+  let props = null;
+  if (composition.propsResultId) {
+    if (source.files.some((file) => file.path.toLowerCase() === "data/props.json")) {
+      fail("Managed props target collides with source file data/props.json.");
+    }
+    props = await loadAnimationProps(store, projectId, composition.propsResultId);
+    const target = join(codeDirectory, "data", "props.json");
+    await mkdir(dirname(target), { recursive: true }); await copyFile(props.file.filePath, target);
+    props = { result: props.result, props: props.props, target, evidence: await fileEvidence(target, 1024 * 1024) };
+    inputResults.add(props.result.id);
+  }
+  let preflight = null;
+  if (inputs.preflightResultId !== undefined) {
+    preflight = await store.readResult(projectId, text(inputs.preflightResultId, "preflightResultId", 150));
+    if (preflight.type !== "animation.preflight" || preflight.data?.status !== "passed" ||
+        preflight.data?.runtime !== runtime || preflight.data?.composition?.id !== artifact.id ||
+        preflight.data?.composition?.revision !== artifact.revision || preflight.data?.sourceResultId !== source.result.id ||
+        preflight.data?.validationResultId !== validation.id || preflight.data?.propsResultId !== (props?.result.id ?? null)) {
+      fail("Preflight Result is not passed and bound to this exact composition/source/props/validation set.", "stale_preflight");
+    }
+    inputResults.add(preflight.id);
+  }
+  return { runtime: { composition, source, validation, approval, assets, props, preflight,
+      artifact: { id: artifact.id, revision: artifact.revision }, codeDirectory,
+      entryPath: join(codeDirectory, ...composition.entry.file.split("/")),
+      outputPath: join(output.temporaryDirectory, "animation.mp4"), mediaDirectory: join(output.temporaryDirectory, "manim-media"),
+      homeDirectory: join(output.temporaryDirectory, "home"), outputDirectory: output.temporaryDirectory },
+    trace: { directory: output.projectRelativeDirectory, artifact: { id: artifact.id, revision: artifact.revision },
+      sourceResultId: source.result.id, validationResultId: validation.id, approvalDecisionId: approval.id,
+      propsResultId: props?.result.id ?? null, preflightResultId: preflight?.id ?? null,
+      allowHistorical: inputs.allowHistorical === true, inputResources: [...inputResources], inputResults: [...inputResults] } };
+}
+
 export function createCodeAnimationRenderer(runtime, {
   runtimeCommand = process.env[RUNTIME_META[runtime]?.env]?.trim() || null,
   runtimePrefixArgs = [],
   ffmpegCommand = process.env.PADSTUDIO_FFMPEG_PATH?.trim() || "ffmpeg",
   ffprobeCommand = process.env.PADSTUDIO_FFPROBE_PATH?.trim() || "ffprobe",
-  browserCommand = installedBrowser(),
+  browserCommand = installedBrowser({ allowSystem: runtime === "hyperframes" }),
   executeCommand = hostCommand,
-  timeoutMs = 20 * 60 * 1000,
+  timeoutMs = 60 * 60 * 1000,
 } = {}) {
   const meta = RUNTIME_META[runtime];
   if (!meta) throw new Error(`Unsupported animation runtime: ${runtime}.`);
@@ -155,12 +237,15 @@ export function createCodeAnimationRenderer(runtime, {
     runtime: "local", executionMode: "sync", producesFiles: true, approvalRequired: false,
     sideEffects: ["Executes user-approved source code in a temporary Run workspace on the local host.", "Creates verified video, poster and render-report files."],
     cost: { currency: "USD", estimated: 0 },
-    outputDescription: "A verified animation.render Result bound to exact source, validation and composition revisions.",
-    inputSchema: { type: "object", required: ["artifactId", "artifactRevision", "validationResultId"], additionalProperties: false,
-      properties: { artifactId: { type: "string" }, artifactRevision: { type: "integer", minimum: 1 }, validationResultId: { type: "string" }, allowHistorical: { type: "boolean" } } },
+    outputDescription: "A verified animation.render Result bound to exact source, props, validation, preflight and composition revisions.",
+    inputSchema: { type: "object", required: ["artifactId", "artifactRevision", "validationResultId", "preflightResultId"], additionalProperties: false,
+      properties: { artifactId: { type: "string" }, artifactRevision: { type: "integer", minimum: 1 }, validationResultId: { type: "string" },
+        preflightResultId: { type: "string" }, allowHistorical: { type: "boolean" } } },
     async checkAvailability() {
       if (["remotion", "hyperframes"].includes(runtime) && !browserCommand) {
-        return { status: "unavailable", reason: `${meta.provider} requires an existing Chrome/Edge browser. Configure PADSTUDIO_CHROME_PATH; PADStudio will not download a browser automatically.` };
+        return { status: "unavailable", reason: runtime === "remotion"
+          ? "Remotion requires an explicitly installed Chrome for Testing or Chrome Headless Shell. Put it under .runtime-tools or configure PADSTUDIO_CHROME_PATH; PADStudio will not download a browser automatically. Branded Chrome 136+ is not auto-selected because its remote-debugging policy can reject automation profiles."
+          : `${meta.provider} requires an existing Chrome/Edge browser. Configure PADSTUDIO_CHROME_PATH; PADStudio will not download a browser automatically.` };
       }
       if (["remotion", "hyperframes"].includes(runtime) && isAbsolute(browserCommand) && !existsSync(browserCommand)) {
         return { status: "unavailable", reason: `Configured browser does not exist: ${browserCommand}. PADStudio will not download a browser automatically.` };
@@ -182,55 +267,15 @@ export function createCodeAnimationRenderer(runtime, {
       }
     },
     async prepare({ store, projectId, inputs, outputWorkspace }) {
-      object(inputs, ["artifactId", "artifactRevision", "validationResultId", "allowHistorical"]);
-      if (inputs.allowHistorical !== undefined && typeof inputs.allowHistorical !== "boolean") fail("allowHistorical must be boolean.");
-      const artifactId = text(inputs.artifactId, "artifactId", 150);
-      if (!Number.isInteger(inputs.artifactRevision) || inputs.artifactRevision < 1) fail("artifactRevision must be a positive integer.");
-      const artifact = (await store.readArtifacts(projectId)).find((item) => item.id === artifactId && item.revision === inputs.artifactRevision);
-      if (!artifact || artifact.type !== "animation.composition") fail("Exact animation.composition revision was not found.");
-      const current = (await store.readContext(projectId)).intelligence.activeArtifacts.some((item) => item.id === artifact.id);
-      if (!current && !inputs.allowHistorical) fail("Animation composition is a draft or historical revision; review it and set allowHistorical explicitly to render it.", "stale_animation");
-      const composition = normalizeAnimationComposition(artifact.data);
-      if (composition.runtime !== runtime) fail(`Composition runtime is ${composition.runtime}, not ${runtime}.`, "runtime_mismatch");
-      const source = await loadSourcePackage(store, projectId, composition.sourceResultId, runtime);
-      const validation = await store.readResult(projectId, text(inputs.validationResultId, "validationResultId", 150));
-      if (validation.type !== "animation.validation" || validation.data?.status !== "passed" ||
-          validation.data.sourceResultId !== source.result.id || validation.data.packageSha256 !== source.data.packageSha256) {
-        fail("Validation Result is not bound to this exact source package.", "stale_validation");
-      }
-      const approval = latestExecutionApproval(await store.readDecisions(projectId), source.result.id);
-      if (approval?.outcome !== "approved") fail("Exact user approval is required for this source Result before host code execution.", "code_execution_approval_required");
-      const output = workspace(outputWorkspace);
-      const codeDirectory = join(output.temporaryDirectory, "workspace");
-      await mkdir(codeDirectory, { recursive: true });
-      for (const file of source.files) {
-        const target = join(codeDirectory, ...file.path.split("/"));
-        await mkdir(dirname(target), { recursive: true });
-        await copyFile(file.filePath, target);
-      }
-      const inputResources = new Set(); const inputResults = new Set([source.result.id, validation.id]); const assets = [];
-      for (const asset of composition.assets) {
-        if (source.files.some((file) => file.path.toLowerCase() === asset.target.toLowerCase())) {
-          fail(`Asset target collides with a source file: ${asset.target}.`);
-        }
-        const media = await store.resolveMediaSource(projectId, asset.source);
-        const target = join(codeDirectory, ...asset.target.split("/"));
-        await mkdir(dirname(target), { recursive: true }); await copyFile(media.filePath, target);
-        assets.push({ id: asset.id, source: media.trace, target: asset.target, ...(await fileEvidence(target)) });
-        media.inputResources.forEach((id) => inputResources.add(id)); media.inputResults.forEach((id) => inputResults.add(id));
-      }
-      const outputPath = join(output.temporaryDirectory, "animation.mp4");
-      return { runtime: { composition, source, validation, approval, assets, artifact: { id: artifact.id, revision: artifact.revision }, codeDirectory,
-          entryPath: join(codeDirectory, ...composition.entry.file.split("/")), outputPath,
-          mediaDirectory: join(output.temporaryDirectory, "manim-media"), homeDirectory: join(output.temporaryDirectory, "home") },
-        trace: { directory: output.projectRelativeDirectory, artifact: { id: artifact.id, revision: artifact.revision },
-          sourceResultId: source.result.id, validationResultId: validation.id, approvalDecisionId: approval.id, allowHistorical: inputs.allowHistorical === true,
-          inputResources: [...inputResources], inputResults: [...inputResults] } };
+      const prepared = await prepareAnimationWorkspace({ store, projectId, inputs, outputWorkspace, runtime, allowedFields: ["preflightResultId"] });
+      if (inputs.preflightResultId === undefined) fail("A passed exact preflightResultId is required before full render.", "preflight_required");
+      return prepared;
     },
-    async execute({ composition, source, validation, approval, assets, artifact, codeDirectory, entryPath, outputPath, mediaDirectory, homeDirectory, availability, signal }) {
-      await mkdir(homeDirectory, { recursive: true });
-      const paths = { entry: entryPath, output: outputPath, media: mediaDirectory,
-        config: join(homeDirectory, "manim.cfg"), browser: browserCommand };
+    async execute({ composition, source, validation, approval, assets, props, artifact, codeDirectory, entryPath, outputPath, mediaDirectory, homeDirectory, availability, signal }) {
+      await Promise.all([homeDirectory, join(homeDirectory, "local-app-data"), join(homeDirectory, "app-data")]
+        .map((directory) => mkdir(directory, { recursive: true })));
+      const paths = { entry: entryPath, output: outputPath, media: mediaDirectory, props: props?.target ?? null,
+        config: join(homeDirectory, "manim.cfg"), browser: browserCommand, chromeMode: remotionChromeMode(browserCommand) };
       const env = cleanEnvironment(homeDirectory, { nodeModules: launch.nodeModules, browser: browserCommand });
       if (runtime === "manim") await writeFile(paths.config, `[CLI]\nbackground_color = ${composition.format.background}\n`, "utf8");
       const commands = [];
@@ -238,6 +283,7 @@ export function createCodeAnimationRenderer(runtime, {
         commands.push({ executable: executable === launch.executable ? meta.name : executable === ffmpegCommand ? "ffmpeg" : "ffprobe", args: args.map((arg) =>
           typeof arg === "string" && arg.startsWith("--browser-executable=") ? "--browser-executable=<configured-browser>" :
             launch.prefixArgs.includes(arg) ? "<runtime-entry>" :
+            typeof arg === "string" && arg.startsWith("--props=") ? "--props=<managed-props>" :
             [entryPath, outputPath, paths.config, codeDirectory, mediaDirectory].includes(arg) ? `<${extname(arg) ? "file" : "workspace"}>` : arg) });
         try { return await executeCommand(executable, args, { cwd: codeDirectory, timeout: timeoutMs, env, signal, ...options }); }
         catch (error) { fail(`${meta.provider} render command failed: ${String(error?.stderr || error?.message || "unknown error").slice(-1000)}`, error?.killed ? "timeout" : "animation_render_failed"); }
@@ -277,7 +323,9 @@ export function createCodeAnimationRenderer(runtime, {
         validationResultId: validation.id, approvalDecisionId: approval.id, format: composition.format,
         timing: { ...composition.timing, targetDurationSeconds: composition.durationSeconds,
           actualDurationSeconds: video.durationSeconds, durationDriftSeconds, toleranceSeconds: tolerance },
-        dependencies: source.data.dependencies, assets, output: video, commands,
+        dependencies: source.data.dependencies, assets,
+        props: props ? { resultId: props.result.id, target: "data/props.json", ...props.evidence } : null,
+        output: video, commands,
         executionBoundary: { workspace: "temporary_run_workspace", environment: "allowlisted_variables", networkIsolation: "not_enforced_by_host" },
         executableVersion: availability.executableVersion ?? null };
       const reportPath = join(dirname(outputPath), "render-report.json");
@@ -296,10 +344,12 @@ export function createCodeAnimationRenderer(runtime, {
         ],
         data: { version: "1.0", runtime, composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
           validationResultId: prepared.trace.validationResultId, approvalDecisionId: prepared.trace.approvalDecisionId,
+          propsResultId: prepared.runtime.props?.result.id ?? null,
+          preflightResultId: prepared.trace.preflightResultId,
           durationSeconds: execution.video.durationSeconds, timing: execution.report.timing,
           video: { width: execution.video.width, height: execution.video.height, frameRate: execution.video.frameRate },
           hasAudio: execution.video.hasAudio, executionBoundary: execution.report.executionBoundary },
-        verification: { status: "passed", checks: ["source_checksums_verified", "exact_user_code_approval", "static_validation_bound",
+        verification: { status: "passed", checks: ["source_checksums_verified", "exact_user_code_approval", "static_validation_bound", "exact_preflight_bound",
           "runtime_exit_0", "video_stream_present", "resolution_matches", "frame_rate_matches",
           prepared.runtime.composition.timing.mode === "measured" ? "duration_measured_within_tolerance" : "duration_matches",
           "poster_generated"],
@@ -311,3 +361,224 @@ export function createCodeAnimationRenderer(runtime, {
 export const createManimAnimationRenderer = (options) => createCodeAnimationRenderer("manim", options);
 export const createRemotionAnimationRenderer = (options) => createCodeAnimationRenderer("remotion", options);
 export const createHyperframesAnimationRenderer = (options) => createCodeAnimationRenderer("hyperframes", options);
+
+function outputTail(value, limit = 32_000) {
+  return String(value ?? "").slice(-limit);
+}
+
+function redactDiagnostic(value, replacements) {
+  let result = outputTail(value);
+  for (const [path, label] of replacements) {
+    if (!path) continue;
+    result = result.split(path).join(label).split(path.replaceAll("\\", "/")).join(label);
+  }
+  return result;
+}
+
+function parseJsonOutput(value) {
+  const textValue = String(value ?? "").trim();
+  if (!textValue) return null;
+  try { return JSON.parse(textValue); } catch { return null; }
+}
+
+export function createCodeAnimationPreflight(runtime, options = {}) {
+  const meta = RUNTIME_META[runtime];
+  if (!meta) throw new Error(`Unsupported animation runtime: ${runtime}.`);
+  const runtimeCommand = options.runtimeCommand ?? process.env[meta.env]?.trim() ?? null;
+  const launch = runtimeLaunch(runtime, runtimeCommand, options.runtimePrefixArgs ?? []);
+  const browserCommand = options.browserCommand === undefined ? installedBrowser({ allowSystem: runtime === "hyperframes" }) : options.browserCommand;
+  const executeCommand = options.executeCommand ?? hostCommand;
+  const timeoutMs = options.timeoutMs ?? 5 * 60 * 1000;
+  const availabilityTool = createCodeAnimationRenderer(runtime, options);
+  return {
+    name: `${meta.name}-preflight`, version: "1.0.0", provider: meta.provider, capability: "animation.preflight",
+    description: `Run an exact, approved ${runtime} runtime preflight and preserve structured diagnostics.`,
+    runtime: "local", executionMode: "sync", producesFiles: true, approvalRequired: false,
+    sideEffects: ["Executes the approved animation package in a temporary Run workspace when the runtime check requires compilation.",
+      "Writes a diagnostic report even when the runtime check fails."],
+    cost: { currency: "USD", estimated: 0 },
+    outputDescription: "An animation.preflight Result bound to exact composition, source, props, assets and validation revisions.",
+    inputSchema: { type: "object", required: ["artifactId", "artifactRevision", "validationResultId"], additionalProperties: false,
+      properties: { artifactId: { type: "string" }, artifactRevision: { type: "integer", minimum: 1 },
+        validationResultId: { type: "string" }, allowHistorical: { type: "boolean" } } },
+    checkAvailability: availabilityTool.checkAvailability,
+    async prepare(args) { return prepareAnimationWorkspace({ ...args, runtime }); },
+    async execute({ composition, source, props, artifact, codeDirectory, entryPath, homeDirectory, outputDirectory, availability, signal }) {
+      await Promise.all([homeDirectory, join(homeDirectory, "local-app-data"), join(homeDirectory, "app-data")]
+        .map((directory) => mkdir(directory, { recursive: true })));
+      const env = cleanEnvironment(homeDirectory, { nodeModules: launch.nodeModules, browser: browserCommand });
+      const args = runtime === "remotion"
+        ? ["compositions", entryPath, "--quiet", `--chrome-mode=${remotionChromeMode(browserCommand)}`, `--browser-executable=${browserCommand}`, ...(props ? [`--props=${props.target}`] : [])]
+        : runtime === "hyperframes" ? ["check", "--strict", "--json"] : ["--version"];
+      const commandRecord = { executable: meta.name, args: args.map((arg) =>
+        arg === entryPath ? "<entry-file>" : typeof arg === "string" && arg.startsWith("--browser-executable=") ? "--browser-executable=<configured-browser>" :
+          typeof arg === "string" && arg.startsWith("--props=") ? "--props=<managed-props>" : launch.prefixArgs.includes(arg) ? "<runtime-entry>" : arg) };
+      let status = "passed"; let stdout = ""; let stderr = ""; let errorCode = null;
+      const diagnosticPaths = [[codeDirectory, "<run-workspace>"], [outputDirectory, "<run-output>"],
+        [homeDirectory, "<run-home>"], [REPOSITORY_ROOT, "<padstudio-root>"]];
+      try {
+        const response = await executeCommand(launch.executable, [...launch.prefixArgs, ...args],
+          { cwd: codeDirectory, timeout: timeoutMs, env, signal });
+        stdout = redactDiagnostic(response.stdout, diagnosticPaths); stderr = redactDiagnostic(response.stderr, diagnosticPaths);
+        if (runtime === "remotion" && !stdout.split(/\s+/u).includes(composition.entry.symbol)) {
+          status = "failed"; errorCode = "composition_not_found";
+          stderr = outputTail(`${stderr}\nDeclared composition ${composition.entry.symbol} was not listed by Remotion.`.trim());
+        }
+      } catch (error) {
+        status = "failed"; stdout = redactDiagnostic(error?.stdout, diagnosticPaths);
+        stderr = redactDiagnostic(error?.stderr || error?.message, diagnosticPaths);
+        errorCode = error?.killed ? "timeout" : "runtime_check_failed";
+      }
+      const dependencyChecks = {};
+      if (runtime === "manim") {
+        for (const dependency of ["latex", "dvisvgm"]) {
+          try {
+            const lookup = await executeCommand(process.platform === "win32" ? "where.exe" : "which", [dependency],
+              { cwd: codeDirectory, timeout: 8_000, env, signal });
+            dependencyChecks[dependency] = { available: Boolean(String(lookup.stdout ?? "").trim()) };
+          } catch { dependencyChecks[dependency] = { available: false }; }
+        }
+      }
+      const scope = runtime === "manim" ? "runtime_environment" : "exact_composition_compile_and_runtime_check";
+      const report = { version: "1.0", status, runtime, scope, artifact, sourceResultId: source.result.id,
+        propsResultId: props?.result.id ?? null, command: commandRecord, diagnostics: { stdout, stderr, parsed: parseJsonOutput(stdout) },
+        dependencyChecks,
+        runtimeFingerprint: { executableVersion: availability.executableVersion ?? null, ffmpegVersion: availability.ffmpegVersion ?? null,
+          ffprobeVersion: availability.ffprobeVersion ?? null }, errorCode,
+        limitations: runtime === "manim" ? ["Manim preflight verifies the installed runtime and reports TeX tool availability; exact Scene execution, fonts and Scene-specific dependencies remain part of render."] : [] };
+      const reportPath = join(outputDirectory, "preflight-report.json");
+      await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n", "utf8");
+      return { actualCostUsd: 0, report, reportFile: await fileEvidence(reportPath, 2 * 1024 * 1024) };
+    },
+    createResult({ prepared, execution }) {
+      return { type: "animation.preflight", name: `${runtime} preflight: ${prepared.trace.artifact.id} r${prepared.trace.artifact.revision}`,
+        inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults, inputArtifacts: [prepared.trace.artifact.id],
+        files: [{ id: "report", role: "evidence", path: `${prepared.trace.directory}/preflight-report.json`, name: "preflight-report.json",
+          mediaType: "application/json", ...execution.reportFile }],
+        data: { version: "1.0", status: execution.report.status, runtime, scope: execution.report.scope,
+          composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
+          validationResultId: prepared.trace.validationResultId, propsResultId: prepared.trace.propsResultId,
+          approvalDecisionId: prepared.trace.approvalDecisionId, runtimeFingerprint: execution.report.runtimeFingerprint,
+          errorCode: execution.report.errorCode, limitations: execution.report.limitations },
+        verification: { status: "passed", checks: ["source_checksums_verified", "exact_user_code_approval", "static_validation_bound",
+          "managed_assets_staged", "runtime_diagnostics_preserved"], details: { preflightStatus: execution.report.status, runtime } } };
+    },
+  };
+}
+
+export function createRemotionAnimationPreview(options = {}) {
+  const runtime = "remotion"; const meta = RUNTIME_META[runtime];
+  const runtimeCommand = options.runtimeCommand ?? process.env[meta.env]?.trim() ?? null;
+  const launch = runtimeLaunch(runtime, runtimeCommand, options.runtimePrefixArgs ?? []);
+  const browserCommand = options.browserCommand === undefined ? installedBrowser({ allowSystem: false }) : options.browserCommand;
+  const executeCommand = options.executeCommand ?? hostCommand;
+  const ffprobeCommand = options.ffprobeCommand ?? process.env.PADSTUDIO_FFPROBE_PATH?.trim() ?? "ffprobe";
+  const timeoutMs = options.timeoutMs ?? 10 * 60 * 1000;
+  const availabilityTool = createCodeAnimationRenderer(runtime, options);
+  return {
+    name: "remotion-preview", version: "1.0.0", provider: meta.provider, capability: "animation.preview",
+    description: "Render selected still frames and/or a short frame-exact clip from an approved, preflighted Remotion composition.",
+    runtime: "local", executionMode: "sync", producesFiles: true, approvalRequired: false,
+    sideEffects: ["Executes exact approved Remotion source in a temporary Run workspace.", "Creates project-owned preview media and a report."],
+    cost: { currency: "USD", estimated: 0 },
+    outputDescription: "An animation.preview Result containing requested stills and/or a short video clip.",
+    inputSchema: { type: "object", required: ["artifactId", "artifactRevision", "validationResultId", "preflightResultId"], additionalProperties: false,
+      properties: { artifactId: { type: "string" }, artifactRevision: { type: "integer", minimum: 1 }, validationResultId: { type: "string" },
+        preflightResultId: { type: "string" }, allowHistorical: { type: "boolean" },
+        frames: { type: "array", maxItems: 12, items: { type: "integer", minimum: 0 } },
+        range: { type: "object", required: ["startSeconds", "endSeconds"], additionalProperties: false,
+          properties: { startSeconds: { type: "number", minimum: 0 }, endSeconds: { type: "number", minimum: 0 } } } } },
+    checkAvailability: availabilityTool.checkAvailability,
+    async prepare(args) {
+      const prepared = await prepareAnimationWorkspace({ ...args, runtime, allowedFields: ["preflightResultId", "frames", "range"] });
+      const { frames, range } = args.inputs;
+      if (frames !== undefined && (!Array.isArray(frames) || !frames.length || frames.length > 12 || frames.some((frame) => !Number.isInteger(frame) || frame < 0))) {
+        fail("frames must contain 1-12 nonnegative integer frame numbers.");
+      }
+      const totalFrames = Math.round(prepared.runtime.composition.durationSeconds * prepared.runtime.composition.format.fps);
+      const normalizedFrames = [...new Set(frames ?? [])];
+      if (normalizedFrames.some((frame) => frame >= totalFrames)) fail(`Preview frames must be between 0 and ${totalFrames - 1}.`);
+      let normalizedRange = null;
+      if (range !== undefined) {
+        object(range, ["startSeconds", "endSeconds"], "range");
+        if (!Number.isFinite(range.startSeconds) || !Number.isFinite(range.endSeconds) || range.startSeconds < 0 ||
+            range.endSeconds <= range.startSeconds || range.endSeconds > prepared.runtime.composition.durationSeconds || range.endSeconds - range.startSeconds > 30) {
+          fail("range must be inside the composition, have positive duration, and be at most 30 seconds.");
+        }
+        const fps = prepared.runtime.composition.format.fps;
+        normalizedRange = { startFrame: Math.floor(range.startSeconds * fps), endFrame: Math.ceil(range.endSeconds * fps) - 1 };
+      }
+      if (!normalizedFrames.length && !normalizedRange) fail("Request at least one frame or one preview range.");
+      prepared.runtime.previewFrames = normalizedFrames; prepared.runtime.previewRange = normalizedRange;
+      prepared.trace.previewFrames = normalizedFrames; prepared.trace.previewRange = normalizedRange;
+      return prepared;
+    },
+    async execute({ composition, source, props, artifact, codeDirectory, entryPath, homeDirectory, outputDirectory,
+      previewFrames, previewRange, availability, signal }) {
+      await Promise.all([homeDirectory, join(homeDirectory, "local-app-data"), join(homeDirectory, "app-data")]
+        .map((directory) => mkdir(directory, { recursive: true })));
+      const env = cleanEnvironment(homeDirectory, { nodeModules: launch.nodeModules, browser: browserCommand });
+      const common = [`--width=${composition.format.width}`, `--height=${composition.format.height}`, `--chrome-mode=${remotionChromeMode(browserCommand)}`, `--browser-executable=${browserCommand}`,
+        ...(props ? [`--props=${props.target}`] : [])];
+      const commands = [];
+      const run = async (args) => {
+        commands.push({ executable: meta.name, args: args.map((arg) => arg === entryPath ? "<entry-file>" :
+          typeof arg === "string" && arg.startsWith("--browser-executable=") ? "--browser-executable=<configured-browser>" :
+            typeof arg === "string" && arg.startsWith("--props=") ? "--props=<managed-props>" :
+              isAbsolute(arg) ? `<output:${basename(arg)}>` : launch.prefixArgs.includes(arg) ? "<runtime-entry>" : arg) });
+        try { return await executeCommand(launch.executable, [...launch.prefixArgs, ...args], { cwd: codeDirectory, timeout: timeoutMs, env, signal }); }
+        catch (error) { fail(`Remotion preview failed: ${outputTail(error?.stderr || error?.message, 2000)}`, error?.killed ? "timeout" : "animation_preview_failed"); }
+      };
+      const snapshots = [];
+      for (const frame of previewFrames) {
+        const name = `snapshot-${String(frame).padStart(6, "0")}.png`; const path = join(outputDirectory, name);
+        await run(["still", entryPath, composition.entry.symbol, path, `--frame=${frame}`, ...common]);
+        snapshots.push({ frame, name, path, ...(await fileEvidence(path, 50 * 1024 * 1024)) });
+      }
+      let clip = null;
+      if (previewRange) {
+        const path = join(outputDirectory, "preview.mp4");
+        await run(["render", entryPath, composition.entry.symbol, path, `--fps=${composition.format.fps}`,
+          `--frames=${previewRange.startFrame}-${previewRange.endFrame}`, "--codec=h264", "--pixel-format=yuv420p", ...common]);
+        const video = mediaDetails(await probe(path, { run: executeCommand, ffprobe: ffprobeCommand, signal }));
+        const expectedDuration = (previewRange.endFrame - previewRange.startFrame + 1) / composition.format.fps;
+        if (video.width !== composition.format.width || video.height !== composition.format.height ||
+            Math.abs(video.frameRate - composition.format.fps) > 0.05 || Math.abs(video.durationSeconds - expectedDuration) > Math.max(0.15, 2 / composition.format.fps)) {
+          fail("Remotion preview clip does not match the requested frame range and format.", "invalid_output");
+        }
+        clip = { name: "preview.mp4", path, video, expectedDuration, ...(await fileEvidence(path)) };
+      }
+      const report = { version: "1.0", runtime, artifact, sourceResultId: source.result.id, propsResultId: props?.result.id ?? null,
+        frames: previewFrames, range: previewRange, snapshots: snapshots.map(({ frame, name, sizeBytes, sha256 }) => ({ frame, name, sizeBytes, sha256 })),
+        clip: clip ? { name: clip.name, video: clip.video, expectedDuration: clip.expectedDuration, sizeBytes: clip.sizeBytes, sha256: clip.sha256 } : null,
+        commands, runtimeFingerprint: { executableVersion: availability.executableVersion ?? null } };
+      const reportPath = join(outputDirectory, "preview-report.json");
+      await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n", "utf8");
+      return { actualCostUsd: 0, snapshots, clip, report, reportFile: await fileEvidence(reportPath, 2 * 1024 * 1024) };
+    },
+    createResult({ prepared, execution }) {
+      return { type: "animation.preview", name: `Remotion preview: ${prepared.trace.artifact.id} r${prepared.trace.artifact.revision}`,
+        inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults, inputArtifacts: [prepared.trace.artifact.id],
+        files: [
+          ...execution.snapshots.map((snapshot, index) => ({ id: `snapshot-${index + 1}`, role: "preview", path: `${prepared.trace.directory}/${snapshot.name}`,
+            name: snapshot.name, mediaType: "image", sizeBytes: snapshot.sizeBytes, sha256: snapshot.sha256 })),
+          ...(execution.clip ? [{ id: "clip", role: "preview", path: `${prepared.trace.directory}/preview.mp4`, name: "preview.mp4", mediaType: "video",
+            sizeBytes: execution.clip.sizeBytes, sha256: execution.clip.sha256 }] : []),
+          { id: "report", role: "evidence", path: `${prepared.trace.directory}/preview-report.json`, name: "preview-report.json",
+            mediaType: "application/json", ...execution.reportFile },
+        ],
+        data: { version: "1.0", runtime, composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
+          validationResultId: prepared.trace.validationResultId, propsResultId: prepared.trace.propsResultId,
+          preflightResultId: prepared.trace.preflightResultId, approvalDecisionId: prepared.trace.approvalDecisionId,
+          frames: prepared.trace.previewFrames, range: prepared.trace.previewRange,
+          clip: execution.clip ? { durationSeconds: execution.clip.video.durationSeconds, width: execution.clip.video.width,
+            height: execution.clip.video.height, frameRate: execution.clip.video.frameRate } : null },
+        verification: { status: "passed", checks: ["exact_preflight_bound", "exact_user_code_approval", "requested_frames_rendered",
+          ...(execution.clip ? ["preview_clip_probed", "preview_format_matches"] : [])], details: { runtime } } };
+    },
+  };
+}
+
+export const createManimAnimationPreflight = (options) => createCodeAnimationPreflight("manim", options);
+export const createRemotionAnimationPreflight = (options) => createCodeAnimationPreflight("remotion", options);
+export const createHyperframesAnimationPreflight = (options) => createCodeAnimationPreflight("hyperframes", options);

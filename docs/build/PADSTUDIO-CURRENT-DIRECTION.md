@@ -99,12 +99,14 @@ giữ kết quả hiểu và sáng tạo; workflow giữ kế hoạch hiện hà
 ### Mở rộng hoạt họa bằng code — 2026-09-14
 
 PADStudio có nhánh tùy chọn project-native cho Manim Community, Remotion và HyperFrames. Source
-được lưu thành Result bất biến; ý định/runtime/format/asset/style thành artifact
-`animation.composition` có revision; validation và render đều bind exact source checksum. Render đi
+và props JSON được lưu thành Result bất biến; ý định/runtime/format/asset/style thành artifact
+`animation.composition` có revision; validation, runtime preflight, preview và render đều bind exact
+source/props/composition. Remotion có still/clip preview theo frame; preflight của cả ba runtime giữ
+diagnostics và full render bắt buộc bind một preflight passed. Render đi
 qua Executor và trở thành Result video dùng trực tiếp trong sequence, không tạo pipeline bắt buộc.
 
-Đã học có chọn lọc từ OpenMontage về craft theo runtime, frame accuracy và HyperFrames
-check-before-render. Không lấy raw output path, workspace mutable, auto-`npx`, static denylist như
+Đã học có chọn lọc từ OpenMontage về skill craft tải theo runtime, frame accuracy, managed props/asset
+staging, authoring preview và HyperFrames check-before-render. Không lấy raw output path, workspace mutable, auto-`npx`, static denylist như
 sandbox, runtime fallback hoặc `final.mp4` semantics. Host execution cần user approval trên đúng
 source Result. Hiện chỉ lọc environment và cô lập workspace; network isolation cấp OS chưa được
 cưỡng chế và phải luôn được báo trung thực. Contract: [CODE-ANIMATION-SPEC.md](CODE-ANIMATION-SPEC.md).

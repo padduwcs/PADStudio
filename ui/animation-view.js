@@ -13,8 +13,10 @@ function resultUrl(projectId, resultId, fileId) {
 
 function statusLine(composition) {
   const validation = composition.validation ? "đã validation" : "chưa validation";
+  const preflight = composition.preflights?.at(-1);
+  const runtimeCheck = preflight ? `preflight ${preflight.status}` : "chưa preflight";
   const approval = composition.executionApproval?.outcome === "approved" ? "đã cho phép chạy exact source" : "chưa được phép chạy code";
-  return `${composition.runtime} · r${composition.revision} · ${validation} · ${approval}`;
+  return `${composition.runtime} · r${composition.revision} · ${validation} · ${runtimeCheck} · ${approval}`;
 }
 
 export function renderAnimation(container, context) {
@@ -38,7 +40,28 @@ export function renderAnimation(container, context) {
       node("p", `${composition.durationSeconds}s mục tiêu (${composition.timing?.mode ?? "exact"}) · ${composition.format.width}×${composition.format.height} · ${composition.format.fps} fps · ${composition.entry.file}#${composition.entry.symbol}`, "input-meta"),
       node("p", `Exact source: ${composition.sourceResultId}`, "exact-result-id")
     );
+    if (composition.propsResultId) card.append(node("p", `Managed props: ${composition.propsResultId}`, "exact-result-id"));
     if (composition.executionApproval) card.append(node("p", `Quyết định ${composition.executionApproval.id}: ${composition.executionApproval.reason}`, "input-meta"));
+    const preflight = composition.preflights?.at(-1);
+    if (preflight) {
+      card.append(node("p", `Preflight ${preflight.status}: ${preflight.resultId} · ${preflight.scope}`,
+        preflight.status === "passed" ? "result-verification" : "sequence-warning"));
+      for (const limitation of preflight.limitations ?? []) card.append(node("p", limitation, "input-meta"));
+    }
+    const preview = composition.previews?.at(-1);
+    if (preview) {
+      const gallery = node("div", undefined, "animation-preview-gallery");
+      for (const file of preview.files.filter((file) => file.available && file.mediaType === "image")) {
+        const image = node("img"); image.loading = "lazy"; image.alt = file.name;
+        image.src = resultUrl(context.project.id, preview.resultId, file.id); gallery.append(image);
+      }
+      const clip = preview.files.find((file) => file.available && file.mediaType === "video");
+      if (clip) {
+        const video = node("video"); video.controls = true; video.preload = "metadata";
+        video.src = resultUrl(context.project.id, preview.resultId, clip.id); gallery.append(video);
+      }
+      if (gallery.childElementCount) card.append(node("p", `Preview exact: ${preview.resultId}`, "exact-result-id"), gallery);
+    }
     const render = composition.renders.at(-1);
     if (render) {
       const primary = render.files.find((file) => file.id === "primary" && file.available);

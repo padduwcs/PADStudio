@@ -35,7 +35,7 @@ export function normalizeAnimationComposition(value, { allowLegacy = false } = {
   requireObject(value, "animation.composition data");
   assertOnlyFields(value, [
     "version", "changeReason", "intent", "runtime", "sourceResultId", "entry",
-    "format", "durationSeconds", "timing", "assets", "style", "reviewCriteria", "executionPolicy",
+    "format", "durationSeconds", "timing", "assets", "propsResultId", "style", "reviewCriteria", "executionPolicy",
   ], "animation.composition data");
   if (value.version !== "1.0") {
     throw new IntelligenceValidationError("animation.composition version must be 1.0.");
@@ -144,6 +144,7 @@ export function normalizeAnimationComposition(value, { allowLegacy = false } = {
     durationSeconds,
     timing: { mode: timingMode },
     assets: normalizedAssets,
+    propsResultId: value.propsResultId == null ? null : requireId(value.propsResultId, "animation.composition.propsResultId"),
     style: {
       designRead: style.designRead == null ? null : requireText(style.designRead, "animation.composition.style.designRead"),
       palette,
@@ -174,6 +175,16 @@ export async function validateAnimationCompositionAgainstProject({ projectStore,
       throw new IntelligenceValidationError(`animation.composition must reference asset source ${asset.source.kind}:${asset.source.id}.`);
     }
     if (status !== "retired") await projectStore.resolveMediaSource(projectId, asset.source);
+  }
+  if (data.propsResultId) {
+    const props = await projectStore.readResult(projectId, data.propsResultId);
+    if (props.type !== "animation.props") {
+      throw new IntelligenceValidationError("animation.composition propsResultId must reference animation.props.");
+    }
+    if (!references.some((reference) => reference.kind === "result" && reference.id === data.propsResultId)) {
+      throw new IntelligenceValidationError("animation.composition must reference its props Result.");
+    }
+    if (status !== "retired") await projectStore.verifyResultFile(projectId, props.id, "primary");
   }
   if (status !== "retired") {
     for (const file of result.files) await projectStore.verifyResultFile(projectId, result.id, file.id);
