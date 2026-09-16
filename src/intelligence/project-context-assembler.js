@@ -23,7 +23,7 @@ function checkpointFreshness(context, analysis = null) {
   const latestActivityAt = activities.at(-1)?.at ?? null;
   if (!context.checkpoint) {
     return {
-      status: "missing", checkpointUpdatedAt: null, latestActivityAt,
+      status: "missing", authority: "none", checkpointUpdatedAt: null, latestActivityAt,
       newerActivityCount: activities.length,
       newerActivityKinds: [...new Set(activities.map((item) => item.kind))],
     };
@@ -31,6 +31,7 @@ function checkpointFreshness(context, analysis = null) {
   const newer = activities.filter((item) => item.at > context.checkpoint.updatedAt);
   return {
     status: newer.length ? "stale" : "current",
+    authority: newer.length ? "advisory" : "current",
     checkpointUpdatedAt: context.checkpoint.updatedAt,
     latestActivityAt,
     newerActivityCount: newer.length,
@@ -322,7 +323,7 @@ export class ProjectContextAssembler {
         activeCompositions: animation.activeCompositions.map((composition) => ({
           artifactId: composition.artifactId, key: composition.key, revision: composition.revision,
           name: composition.name, runtime: composition.runtime, sourceResultId: composition.sourceResultId,
-          durationSeconds: composition.durationSeconds, format: composition.format,
+          durationSeconds: composition.durationSeconds, timing: composition.timing, format: composition.format,
           validated: Boolean(composition.validation), executionApproval: composition.executionApproval,
           latestRenderId: composition.renders.at(-1)?.resultId ?? null,
         })) },

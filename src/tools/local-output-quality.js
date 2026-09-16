@@ -51,6 +51,17 @@ export function parseVisualDefects(stderr, durationSeconds = null) {
   return { black, freeze };
 }
 
+function summarizeWindows(windows, durationSeconds) {
+  const durations = windows.map((item) => finite(item.durationSeconds)).filter((value) => value !== null && value >= 0);
+  const totalDurationSeconds = durations.reduce((sum, value) => sum + value, 0);
+  return {
+    windowCount: windows.length,
+    totalDurationSeconds: rounded(totalDurationSeconds),
+    longestDurationSeconds: rounded(durations.length ? Math.max(...durations) : 0),
+    shareOfVideo: rounded(Number.isFinite(durationSeconds) && durationSeconds > 0 ? totalDurationSeconds / durationSeconds : null),
+  };
+}
+
 async function transcriptRows(path) {
   const rows = [];
   const lines = createInterface({ input: createReadStream(path, { encoding: "utf8" }), crlfDelay: Infinity });
@@ -282,6 +293,10 @@ export function createLocalOutputQuality({
       }
       const severeBlack = visualDefects.black.filter((item) => item.durationSeconds >= Math.min(2, durationSeconds * 0.2));
       const severeFreeze = visualDefects.freeze.filter((item) => item.durationSeconds !== null && item.durationSeconds >= Math.max(5, durationSeconds * 0.5));
+      const visualDefectSummary = {
+        black: summarizeWindows(visualDefects.black, durationSeconds),
+        freeze: summarizeWindows(visualDefects.freeze, durationSeconds),
+      };
       const uncoveredPoints = inspectionPoints.filter((point) => !frameRows.some((row) => Math.abs((finite(row.actualTime) ?? finite(row.requestedTime) ?? -999) - point.seconds) <= 0.25));
       const transcript = profile.speechExpected ? transcriptMetrics(await transcriptRows(transcriptPath)) : null;
       const leadSeconds = transcript?.firstWordStartSeconds === null || transcript?.firstWordStartSeconds === undefined
@@ -300,8 +315,8 @@ export function createLocalOutputQuality({
           clippingCandidates: evidence.audio.data.counts.clippingCandidates,
           peakNormalized: evidence.audio.data.details?.peakNormalized ?? null
         }),
-        check("black-frame-windows", severeBlack.length ? "failed" : visualDefects.black.length ? "warning" : "passed", "Black windows are measured from exact decoded pixels; short windows may be intentional transitions.", { windows: visualDefects.black, severeWindows: severeBlack.length }),
-        check("freeze-windows", severeFreeze.length ? "warning" : "passed", "Frozen windows are reported for review because intentional still-image segments can look identical.", { windows: visualDefects.freeze, severeWindows: severeFreeze.length }),
+        check("black-frame-windows", severeBlack.length ? "failed" : visualDefects.black.length ? "warning" : "passed", "Black windows are measured from exact decoded pixels; short windows may be intentional transitions.", { windows: visualDefects.black, severeWindows: severeBlack.length, summary: visualDefectSummary.black }),
+        check("freeze-windows", severeFreeze.length ? "warning" : "passed", "Frozen windows are reported for review because intentional still-image segments can look identical.", { windows: visualDefects.freeze, severeWindows: severeFreeze.length, summary: visualDefectSummary.freeze }),
         check("timeline-window-samples", uncoveredPoints.length ? "failed" : "passed", "Exact frames must cover planned segment, caption, overlay, and transition windows.", { requested: inspectionPoints.length, covered: inspectionPoints.length - uncoveredPoints.length, uncoveredPoints })
       ];
       if (profile.speechExpected) {
@@ -332,7 +347,7 @@ export function createLocalOutputQuality({
           contactSheets: evidence.frames.data.counts.contactSheets,
           clippingCandidates: evidence.audio.data.counts.clippingCandidates,
           integratedLufs: evidence.audio.data.details?.integratedLufs ?? null,
-          visualDefects,
+          visualDefects: { ...visualDefects, summary: visualDefectSummary },
           timelineInspection: { points: inspectionPoints, uncoveredPoints },
           ...(transcript ? { transcript, speechLeadSeconds: rounded(leadSeconds), speechTailSeconds: rounded(tailSeconds) } : {})
         },

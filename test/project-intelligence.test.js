@@ -652,6 +652,7 @@ test("context assembler joins durable intelligence, resume state, and real capab
   assert.equal(context.capabilities.capabilities[0].id, "media.inspect");
   assert.equal(context.intelligence.relevantSkills[0].id, "creative-direction");
   assert.equal(context.checkpointFreshness.status, "current");
+  assert.equal(context.checkpointFreshness.authority, "current");
   const summary = await assembler.buildSummary("demo");
   assert.equal(summary.resumeView.activeWorkflowId, workflow.id);
   assert.equal(summary.resumeView.activeWorkItemId, "direction");
@@ -690,6 +691,7 @@ test("context reports stale checkpoints and refreshes capability availability af
   });
   const first = await assembler.build("demo");
   assert.equal(first.checkpointFreshness.status, "stale");
+  assert.equal(first.checkpointFreshness.authority, "advisory");
   assert.deepEqual(first.checkpointFreshness.newerActivityKinds, ["artifact"]);
   assert.equal(first.capabilities.capabilities[0].check, 1);
   const summary = await assembler.buildSummary("demo");

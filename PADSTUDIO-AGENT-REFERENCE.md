@@ -207,6 +207,12 @@ Contract đầy đủ:
 5. `animation.render` với exact tool `manim-ce`, `remotion-local` hoặc `hyperframes-local`,
    truyền `artifactId`, `artifactRevision`, `validationResultId`.
 
+`animation.composition.durationSeconds` là thời lượng mục tiêu căn frame. `timing.mode` mặc định là
+`measured` cho Manim và `exact` cho Remotion/HyperFrames. Chế độ measured chỉ chấp nhận sai số nhỏ có
+giới hạn và ghi cả target/actual/drift vào Render Result; nó không tự cắt, đệm hay retime output.
+Sau khi người dùng báo đã chạy approval, đọc lại `project:resume`; nếu checkpoint có
+`authority: advisory` thì không dùng `checkpoint.next` cũ để yêu cầu lại cùng exact Result.
+
 Đọc manifest/source đã lưu bằng
 `npm run animation:read -- <project-id> <source-result-id> [relative-file|--all]`; lệnh chỉ trả
 nội dung đã đăng ký theo Result ID, không trả raw path.

@@ -35,7 +35,7 @@ export function normalizeAnimationComposition(value, { allowLegacy = false } = {
   requireObject(value, "animation.composition data");
   assertOnlyFields(value, [
     "version", "changeReason", "intent", "runtime", "sourceResultId", "entry",
-    "format", "durationSeconds", "assets", "style", "reviewCriteria", "executionPolicy",
+    "format", "durationSeconds", "timing", "assets", "style", "reviewCriteria", "executionPolicy",
   ], "animation.composition data");
   if (value.version !== "1.0") {
     throw new IntelligenceValidationError("animation.composition version must be 1.0.");
@@ -61,6 +61,16 @@ export function normalizeAnimationComposition(value, { allowLegacy = false } = {
   const durationSeconds = finite(value.durationSeconds, "animation.composition.durationSeconds", 0.1, 600);
   if (Math.abs(durationSeconds * fps - Math.round(durationSeconds * fps)) > 1e-6) {
     throw new IntelligenceValidationError("Animation durationSeconds must align to an output frame.");
+  }
+  const timing = value.timing ?? { mode: runtime === "manim" ? "measured" : "exact" };
+  requireObject(timing, "animation.composition.timing");
+  assertOnlyFields(timing, ["mode"], "animation.composition.timing");
+  const timingMode = requireText(timing.mode, "animation.composition.timing.mode");
+  if (!["exact", "measured"].includes(timingMode)) {
+    throw new IntelligenceValidationError("animation.composition.timing.mode must be exact or measured.");
+  }
+  if (runtime === "remotion" && timingMode !== "exact") {
+    throw new IntelligenceValidationError("Remotion compositions must use exact timing because PADStudio renders an exact frame range.");
   }
   const executionPolicy = requireObject(value.executionPolicy, "animation.composition.executionPolicy");
   assertOnlyFields(executionPolicy, ["codeTrust", "networkAccess"], "animation.composition.executionPolicy");
@@ -132,6 +142,7 @@ export function normalizeAnimationComposition(value, { allowLegacy = false } = {
     },
     format: { width, height, fps, background, transparent: false },
     durationSeconds,
+    timing: { mode: timingMode },
     assets: normalizedAssets,
     style: {
       designRead: style.designRead == null ? null : requireText(style.designRead, "animation.composition.style.designRead"),

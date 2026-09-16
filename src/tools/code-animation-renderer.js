@@ -130,6 +130,13 @@ function renderArguments(runtime, composition, paths) {
   return ["render", "--output", paths.output, "--fps", String(composition.format.fps), "--quality", "standard", "--strict"];
 }
 
+function durationTolerance(composition) {
+  if (composition.timing.mode === "measured") {
+    return Math.max(2 / composition.format.fps, Math.min(2, composition.durationSeconds * 0.01));
+  }
+  return Math.max(0.15, 1 / composition.format.fps + 0.05);
+}
+
 export function createCodeAnimationRenderer(runtime, {
   runtimeCommand = process.env[RUNTIME_META[runtime]?.env]?.trim() || null,
   runtimePrefixArgs = [],
@@ -244,27 +251,33 @@ export function createCodeAnimationRenderer(runtime, {
       }
       const info = await probe(outputPath, { run: executeCommand, ffprobe: ffprobeCommand, signal });
       const video = mediaDetails(info);
-      const tolerance = Math.max(0.15, 1 / composition.format.fps + 0.05);
+      const tolerance = durationTolerance(composition);
+      const durationDriftSeconds = video.durationSeconds - composition.durationSeconds;
       if (video.width !== composition.format.width || video.height !== composition.format.height ||
-          !Number.isFinite(video.durationSeconds) || Math.abs(video.durationSeconds - composition.durationSeconds) > tolerance ||
+          !Number.isFinite(video.durationSeconds) || video.durationSeconds <= 0 || video.durationSeconds > 600 ||
+          Math.abs(durationDriftSeconds) > tolerance ||
           !Number.isFinite(video.frameRate) || Math.abs(video.frameRate - composition.format.fps) > 0.05) {
         fail(
-          `Rendered animation does not match the composition resolution, frame rate or duration. ` +
-          `Expected duration: ${composition.durationSeconds}, actual duration: ${video.durationSeconds}, ` +
-          `expected fps: ${composition.format.fps}, actual fps: ${video.frameRate}`,
+          `Rendered animation does not match the composition contract. ` +
+          `Expected ${composition.format.width}x${composition.format.height} at ${composition.format.fps} fps, ` +
+          `actual ${video.width}x${video.height} at ${video.frameRate} fps. ` +
+          `Timing mode: ${composition.timing.mode}; target duration: ${composition.durationSeconds}s, ` +
+          `actual duration: ${video.durationSeconds}s, allowed drift: ${tolerance}s.`,
           "invalid_output"
         );
       }
       const posterPath = join(dirname(outputPath), "poster.jpg");
       try {
-        await executeCommand(ffmpegCommand, ["-hide_banner", "-loglevel", "error", "-ss", String(Math.min(composition.durationSeconds / 2, composition.durationSeconds - 0.01)),
+        await executeCommand(ffmpegCommand, ["-hide_banner", "-loglevel", "error", "-ss", String(Math.min(video.durationSeconds / 2, video.durationSeconds - 0.01)),
           "-i", outputPath, "-frames:v", "1", "-y", posterPath], { signal, timeout: 60_000, env });
       } catch (error) {
         fail(`FFmpeg could not create the animation poster: ${String(error?.stderr || error?.message || "unknown error").slice(-500)}`, "poster_failed");
       }
       const report = { version: "1.0", runtime, artifact, sourceResultId: source.result.id,
         validationResultId: validation.id, approvalDecisionId: approval.id, format: composition.format,
-        expectedDurationSeconds: composition.durationSeconds, dependencies: source.data.dependencies, assets, output: video, commands,
+        timing: { ...composition.timing, targetDurationSeconds: composition.durationSeconds,
+          actualDurationSeconds: video.durationSeconds, durationDriftSeconds, toleranceSeconds: tolerance },
+        dependencies: source.data.dependencies, assets, output: video, commands,
         executionBoundary: { workspace: "temporary_run_workspace", environment: "allowlisted_variables", networkIsolation: "not_enforced_by_host" },
         executableVersion: availability.executableVersion ?? null };
       const reportPath = join(dirname(outputPath), "render-report.json");
@@ -283,10 +296,13 @@ export function createCodeAnimationRenderer(runtime, {
         ],
         data: { version: "1.0", runtime, composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
           validationResultId: prepared.trace.validationResultId, approvalDecisionId: prepared.trace.approvalDecisionId,
-          durationSeconds: execution.video.durationSeconds, video: { width: execution.video.width, height: execution.video.height, frameRate: execution.video.frameRate },
+          durationSeconds: execution.video.durationSeconds, timing: execution.report.timing,
+          video: { width: execution.video.width, height: execution.video.height, frameRate: execution.video.frameRate },
           hasAudio: execution.video.hasAudio, executionBoundary: execution.report.executionBoundary },
         verification: { status: "passed", checks: ["source_checksums_verified", "exact_user_code_approval", "static_validation_bound",
-          "runtime_exit_0", "video_stream_present", "resolution_matches", "frame_rate_matches", "duration_matches", "poster_generated"],
+          "runtime_exit_0", "video_stream_present", "resolution_matches", "frame_rate_matches",
+          prepared.runtime.composition.timing.mode === "measured" ? "duration_measured_within_tolerance" : "duration_matches",
+          "poster_generated"],
           details: { runtime, artifactRevision: prepared.trace.artifact.revision, networkIsolation: "not_enforced_by_host" } } };
     },
   };

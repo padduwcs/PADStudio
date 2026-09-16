@@ -24,11 +24,13 @@ export function buildAnimationContext(context) {
       role: activeIds.has(artifact.id) ? "current" : latestByKey.get(artifact.key)?.id === artifact.id && artifact.status === "draft" ? "candidate" : "history",
       runtime: artifact.data.runtime, sourceResultId, entry: artifact.data.entry,
       format: artifact.data.format, durationSeconds: artifact.data.durationSeconds,
+      timing: artifact.data.timing ?? { mode: artifact.data.runtime === "manim" ? "measured" : "exact" },
       intent: artifact.data.intent, style: artifact.data.style, reviewCriteria: artifact.data.reviewCriteria,
       validation: exactValidations.at(-1) ?? null,
       executionApproval: approval ? { id: approval.id, outcome: approval.outcome, reason: approval.reason, createdAt: approval.createdAt } : null,
       renders: exactRenders.map((result) => ({ resultId: result.id, createdAt: result.createdAt,
-        files: result.files, verification: result.verification, video: result.data.video,
+        files: result.files, verification: result.verification, durationSeconds: result.data.durationSeconds,
+        timing: result.data.timing ?? null, video: result.data.video,
         hasAudio: result.data.hasAudio, reviews: context.reviews.filter((review) => review.target?.kind === "result" && review.target.id === result.id) })),
     };
   });

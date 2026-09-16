@@ -6,7 +6,7 @@ test("resume context keeps current action and drops historical/tool detail", () 
   const summary = {
     project: { id: "demo", title: "Demo", createdAt: "2026-09-14T00:00:00.000Z" },
     checkpoint: { updatedAt: "2026-09-14T01:00:00.000Z", goal: "Make a film", constraints: ["Local"], selectedResources: ["resource-1"], pending: [], next: "Render", activeWorkflowId: "workflow-1", activeWorkItemId: "edit", activeArtifacts: ["artifact-1"], pendingDecisions: [] },
-    checkpointFreshness: { status: "current" },
+    checkpointFreshness: { status: "current", authority: "current" },
     health: { status: "ready", issues: [], counts: { results: 12 } },
     activeWorkflow: { id: "workflow-1", revision: 2, name: "Film", purpose: "Deliver", status: "active", items: [{ id: "history" }] },
     resumeView: { activeWorkItemId: "edit", attention: [{ id: "edit", status: "in_progress", purpose: "Edit", skillIds: ["video-sequence-planning"], blockedBy: [] }], pendingApprovalIds: [] },
@@ -20,6 +20,7 @@ test("resume context keeps current action and drops historical/tool detail", () 
   const resume = compactResumeContext(summary);
   assert.equal(resume.view, "resume");
   assert.equal(resume.production.activeSequences[0].latestRender.resultId, "latest");
+  assert.equal(resume.checkpointFreshness.authority, "current");
   assert.deepEqual(resume.work.relevantSkillIds, ["video-sequence-planning"]);
   assert.deepEqual(resume.capabilityStatus, { total: 2, available: 1, unavailable: ["tts.synthesize"] });
   assert.equal("items" in resume.work.activeWorkflow, false);

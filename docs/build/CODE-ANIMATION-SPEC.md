@@ -64,9 +64,17 @@ ID when an Agent needs to continue editing; it does not expose backing filesyste
 ## Composition artifact 1.0
 
 `animation.composition` stores intent/change reason, exact runtime/source/entry, even output
-dimensions, integer FPS, frame-aligned duration, opaque MP4 background, explicit assets mapped only under `assets/`, style
+dimensions, integer FPS, frame-aligned target duration, timing mode, opaque MP4 background, explicit assets mapped only under `assets/`, style
 principles, and review criteria. It fixes `executionPolicy.codeTrust` to `exact-user-approval` and
 `executionPolicy.networkAccess` to `not-required`.
+
+Timing is explicit without making the Agent chase runtime rounding. `exact` keeps the target duration
+as a strict output contract (with only container-level tolerance). Manim defaults to `measured`: its
+verified output may differ from the target within a small bounded tolerance of two frames to 1% of
+the target, capped at two seconds. The Result records target, actual duration, drift and tolerance;
+the exact measured Result duration is what downstream sequence composition consumes. Remotion is
+always `exact` because PADStudio supplies its frame range. PADStudio never silently trims, pads or
+retimes code-animation output to make a mismatch pass.
 
 The Store verifies source type/runtime/entry, every source checksum, every declared asset, and all
 artifact references before accepting an active revision. Asset targets cannot overwrite source files
@@ -99,7 +107,7 @@ not_enforced_by_host`. This limitation is explicit and must not be represented a
 ## Render verification and reuse
 
 The runtime must exit successfully and create the declared MP4. PADStudio probes resolution, frame
-rate and duration against the composition, then creates a poster and JSON render report. Result files
+rate and duration against the composition timing contract, then creates a poster and JSON render report. Result files
 carry SHA-256 and remain inside `outputs/<run-id>/`. Technical verification does not assert mathematical
 correctness, visual taste, accessibility or human review.
 

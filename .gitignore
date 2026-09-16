@@ -16,6 +16,7 @@ coverage/
 tmp/
 temp/
 .runtime-tools/
+.agent-work/
 
 # Environment variables and secrets
 .env

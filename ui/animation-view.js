@@ -35,7 +35,7 @@ export function renderAnimation(container, context) {
       node("h4", `${composition.name} · ${composition.role}`),
       node("p", statusLine(composition), composition.executionApproval?.outcome === "approved" ? "result-verification" : "sequence-warning"),
       node("p", composition.intent),
-      node("p", `${composition.durationSeconds}s · ${composition.format.width}×${composition.format.height} · ${composition.format.fps} fps · ${composition.entry.file}#${composition.entry.symbol}`, "input-meta"),
+      node("p", `${composition.durationSeconds}s mục tiêu (${composition.timing?.mode ?? "exact"}) · ${composition.format.width}×${composition.format.height} · ${composition.format.fps} fps · ${composition.entry.file}#${composition.entry.symbol}`, "input-meta"),
       node("p", `Exact source: ${composition.sourceResultId}`, "exact-result-id")
     );
     if (composition.executionApproval) card.append(node("p", `Quyết định ${composition.executionApproval.id}: ${composition.executionApproval.reason}`, "input-meta"));
@@ -49,6 +49,11 @@ export function renderAnimation(container, context) {
         card.append(video);
       }
       card.append(node("p", `Exact render: ${render.resultId}`, "exact-result-id"));
+      if (Number.isFinite(render.durationSeconds)) {
+        const drift = render.timing?.durationDriftSeconds;
+        const driftText = Number.isFinite(drift) ? ` · lệch ${Math.round(drift * 1000) / 1000}s` : "";
+        card.append(node("p", `${render.durationSeconds}s đo được${driftText}`, "input-meta"));
+      }
     } else {
       card.append(node("p", "Revision này chưa có render.", "empty-note"));
     }

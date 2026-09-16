@@ -9,9 +9,11 @@ A result or artifact must be checked before continuation, delivery, or approval.
 1. Read the target, its purpose, relevant brief/direction, and the producing run.
 2. Evaluate technical integrity and creative effectiveness separately.
 3. When a result assembles or transforms other results (concatenation, reformatting, a still pulled from a clip), check continuity and consistency at each seam — not only the final output in isolation.
-4. For each criterion, record evidence and a status.
-5. Every failure must include a concrete proposed action.
-6. Record a verdict; do not silently repair or approve on the user's behalf.
+4. For code animation, inspect every logical beat and transition. Use cumulative black/freeze evidence
+   to locate suspicious ranges, then judge those ranges against narration and intent instead of failing them mechanically.
+5. For each criterion, record evidence and a status.
+6. Every failure must include a concrete proposed action.
+7. Record a verdict; do not silently repair or approve on the user's behalf.
 
 ## Standard
 

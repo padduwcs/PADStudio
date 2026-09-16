@@ -138,8 +138,12 @@ test("output QA records a valid failed report for unsafe speech tail, low confid
 
 test("output QA blocks a severe black window and reports freeze as advisory", async (t) => {
   const assessed = await assess(await fixture(t), "black_start:1 black_end:4 black_duration:3\nfreeze_start: 4\nfreeze_duration: 5.5\nfreeze_end: 9.5");
-  assert.equal(assessed.execution.report.checks.find((item) => item.id === "black-frame-windows").status, "failed");
-  assert.equal(assessed.execution.report.checks.find((item) => item.id === "freeze-windows").status, "warning");
+  const black = assessed.execution.report.checks.find((item) => item.id === "black-frame-windows");
+  const freeze = assessed.execution.report.checks.find((item) => item.id === "freeze-windows");
+  assert.equal(black.status, "failed");
+  assert.deepEqual(black.metrics.summary, { windowCount: 1, totalDurationSeconds: 3, longestDurationSeconds: 3, shareOfVideo: 0.3 });
+  assert.equal(freeze.status, "warning");
+  assert.deepEqual(freeze.metrics.summary, { windowCount: 1, totalDurationSeconds: 5.5, longestDurationSeconds: 5.5, shareOfVideo: 0.55 });
   assert.equal(assessed.execution.report.gate.deliveryEligible, false);
 });
 

@@ -98,6 +98,58 @@ test("projects reopen compositions stored before review criteria became required
   assert.deepEqual(artifacts[0].data.reviewCriteria, []);
 });
 
+test("Manim measures bounded runtime drift while frame-controlled Remotion stays exact", async (t) => {
+  const manimInput = composition("result-source");
+  manimInput.runtime = "manim";
+  manimInput.entry = { file: "lesson.py", symbol: "Lesson" };
+  manimInput.format = { width: 1920, height: 1080, fps: 30, background: "#101010", transparent: false };
+  manimInput.durationSeconds = 180;
+  const measured = normalizeAnimationComposition(manimInput);
+  assert.deepEqual(measured.timing, { mode: "measured" });
+  assert.deepEqual(normalizeAnimationComposition(composition("result-source")).timing, { mode: "exact" });
+  const invalidRemotion = composition("result-source");
+  invalidRemotion.timing = { mode: "measured" };
+  assert.throws(() => normalizeAnimationComposition(invalidRemotion), /Remotion compositions must use exact timing/);
+
+  const directory = await mkdtemp(join(tmpdir(), "padstudio-manim-timing-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const fakeCommand = async (executable, args) => {
+    if (executable === "fake-manim") {
+      const mediaDirectory = args[args.indexOf("--media_dir") + 1];
+      await mkdir(mediaDirectory, { recursive: true });
+      await writeFile(join(mediaDirectory, "padstudio-animation.mp4"), "fake-video-bytes");
+      return { stdout: "rendered", stderr: "" };
+    }
+    if (executable === "fake-ffprobe") return { stdout: JSON.stringify({ format: { duration: "180.400" }, streams: [
+      { codec_type: "video", width: 1920, height: 1080, avg_frame_rate: "30/1" },
+    ] }), stderr: "" };
+    if (executable === "fake-ffmpeg") {
+      await writeFile(args.at(-1), "fake-poster-bytes");
+      return { stdout: "", stderr: "" };
+    }
+    throw new Error(`Unexpected command: ${executable} ${args.join(" ")}`);
+  };
+  const renderer = createCodeAnimationRenderer("manim", { runtimeCommand: "fake-manim", ffmpegCommand: "fake-ffmpeg",
+    ffprobeCommand: "fake-ffprobe", executeCommand: fakeCommand });
+  const execute = (compositionData, suffix) => renderer.execute({
+    composition: compositionData,
+    source: { result: { id: "result-source" }, data: { dependencies: [] } },
+    validation: { id: "result-validation" }, approval: { id: "decision-approval" }, assets: [],
+    artifact: { id: "artifact-animation", revision: 1 },
+    codeDirectory: join(directory, `code-${suffix}`), entryPath: join(directory, `code-${suffix}`, "lesson.py"),
+    outputPath: join(directory, `animation-${suffix}.mp4`), mediaDirectory: join(directory, `media-${suffix}`),
+    homeDirectory: join(directory, `home-${suffix}`), availability: { executableVersion: "fake-manim 1.0" },
+  });
+  await mkdir(join(directory, "code-measured"), { recursive: true });
+  const execution = await execute(measured, "measured");
+  assert.equal(execution.report.timing.actualDurationSeconds, 180.4);
+  assert.ok(Math.abs(execution.report.timing.durationDriftSeconds - 0.4) < 1e-9);
+  assert.equal(execution.report.timing.toleranceSeconds, 1.8);
+
+  await mkdir(join(directory, "code-exact"), { recursive: true });
+  await assert.rejects(execute({ ...measured, timing: { mode: "exact" } }, "exact"), /allowed drift: 0.15s/);
+});
+
 test("source packages are immutable, revisioned and reject traversal", async (t) => {
   const { executor } = await fixture(t);
   const { source } = await sourceAndValidation(executor);
@@ -194,6 +246,8 @@ test("exact approval gates render; observer exposes it and sequence can consume 
     ] }, references: [] });
   const context = await new ProjectContextAssembler({ projectStore: store }).build("demo");
   assert.equal(context.animation.activeCompositions[0].renders[0].resultId, rendered.id);
+  assert.equal(context.animation.activeCompositions[0].renders[0].durationSeconds, 1);
+  assert.equal(context.animation.activeCompositions[0].timing.mode, "exact");
   assert.equal(context.production.sequences[0].segments[0].visual.source.id, rendered.id);
   const observer = await new ProjectReader(rootDir).readObserverSection("demo", "animation");
   assert.equal(observer.animation.compositions[0].executionApproval.id, approval.id);

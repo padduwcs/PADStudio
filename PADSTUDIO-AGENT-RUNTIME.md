@@ -18,6 +18,10 @@ npm run project:resume -- <project-id>
 ```
 
 `project:resume` là context mặc định. Nó chỉ trả checkpoint, việc hiện hành, artifact active cần tiếp tục, sequence/render mới nhất, feedback, health, budget và trạng thái phân tích cô đọng. Không dùng full context theo thói quen.
+Nếu `checkpointFreshness.authority` là `advisory`, `checkpoint.pending` và `checkpoint.next` chỉ là lịch sử;
+không chạy lại chúng trước khi đối chiếu trạng thái bền vững hiện tại trong `work`, `production`, `animation`,
+decision và review. Sau khi người dùng nói đã tự chạy một lệnh approval/acceptance, luôn đọc lại
+`project:resume` rồi mới tiếp tục; không yêu cầu lại cùng exact Result chỉ vì cuộc chat hoặc checkpoint chưa cập nhật.
 
 Chỉ khi resume thiếu dữ kiện cho việc cụ thể:
 
@@ -80,6 +84,10 @@ pipe stdin hoặc soạn JSON approval thay người dùng. Static validation
 không phải sandbox; host hiện không cưỡng chế cách ly mạng. Không tự cài runtime, không gọi `npx`
 để tải package và không đổi Manim/Remotion/HyperFrames ngầm. `animation.render` là Result video
 có thể dùng trực tiếp làm source của `video.sequence`.
+
+Nếu một lỗi contract/runtime của PADStudio chặn công việc, không sửa `src/`, `test/` hay tài liệu build ngay
+trong phiên vận hành video. Ghi lại exact Run/Result và lỗi, báo rõ đây là lỗi hệ thống, rồi chỉ chuyển sang
+phát triển codebase khi phạm vi đó đã được xác nhận.
 
 1. Tạo hoặc cập nhật `video.sequence` với revision và `changeReason`.
 2. Render exact artifact bằng `video.render-sequence`; chỉ reuse Result khi contract/hash khớp.

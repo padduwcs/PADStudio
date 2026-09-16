@@ -15,6 +15,8 @@ Trước tiên xác định yêu cầu thuộc **vận hành project video** hay
 Trong chế độ này, không đọc `docs/build/`, `reports/`, `test/`, lịch sử Git, `PADSTUDIO-REFERENCE.md`, `PADSTUDIO-AGENT-REFERENCE.md` hoặc thư mục của project khác, trừ khi một lỗi cụ thể buộc phải điều tra. Không quét toàn bộ `.padstudio/projects`; luôn truyền project ID tường minh. Web chỉ quan sát; thay đổi project qua CLI/tool contract. Trạng thái `final` chỉ có sau exact user acceptance, QA hợp lệ và `video.export-delivery` tạo Delivery Result; tên file hoặc bản sao thủ công không tạo ra trạng thái đó.
 
 Nếu phát hiện lỗi sản phẩm cần sửa code, báo rõ và chuyển sang chế độ phát triển trước khi đọc tài liệu build.
+Không sửa `src/`, `test/` hoặc tài liệu build trong khi vẫn đang vận hành video. Hãy giữ nguyên project,
+ghi lại lỗi/Run/Result cụ thể và chỉ sửa code sau khi phạm vi đã được chuyển rõ sang phát triển PADStudio.
 
 ## 2. Phát triển PADStudio
 
