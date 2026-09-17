@@ -46,6 +46,15 @@ export function renderAnimation(container, context) {
     if (preflight) {
       card.append(node("p", `Preflight ${preflight.status}: ${preflight.resultId} · ${preflight.scope}`,
         preflight.status === "passed" ? "result-verification" : "sequence-warning"));
+      if (preflight.findings) card.append(node("p",
+        `${preflight.findings.findingCount} finding · ${preflight.findings.errorCount} lỗi · ${preflight.findings.warningCount} cảnh báo · ${preflight.snapshotCount} ảnh bằng chứng`,
+        preflight.findings.errorCount || preflight.findings.warningCount ? "sequence-warning" : "input-meta"));
+      const evidence = node("div", undefined, "animation-preview-gallery");
+      for (const file of preflight.files?.filter((file) => file.available && file.mediaType === "image") ?? []) {
+        const image = node("img"); image.loading = "lazy"; image.alt = file.name;
+        image.src = resultUrl(context.project.id, preflight.resultId, file.id); evidence.append(image);
+      }
+      if (evidence.childElementCount) card.append(evidence);
       for (const limitation of preflight.limitations ?? []) card.append(node("p", limitation, "input-meta"));
     }
     const preview = composition.previews?.at(-1);

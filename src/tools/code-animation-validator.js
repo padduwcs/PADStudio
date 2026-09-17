@@ -77,7 +77,7 @@ function entryFindings(data, entryText) {
 
 export function createCodeAnimationValidator() {
   return {
-    name: "code-animation-validator", version: "1.1.0", provider: "PADStudio", capability: "animation.validate",
+    name: "code-animation-validator", version: "1.2.0", provider: "PADStudio", capability: "animation.validate",
     description: "Validate a managed animation source package without executing its code.",
     runtime: "local", executionMode: "sync", producesFiles: false, approvalRequired: false,
     sideEffects: [], cost: { currency: "USD", estimated: 0 },
@@ -94,6 +94,10 @@ export function createCodeAnimationValidator() {
       const findings = [];
       const sourcePaths = new Set(source.files.map((file) => file.path));
       for (const file of source.files) {
+        if (source.data.runtime === "hyperframes" && (file.path.toLowerCase() === "snapshots" || file.path.toLowerCase().startsWith("snapshots/"))) {
+          findings.push({ file: file.path, rule: "reserved_runtime_output_path",
+            message: "HyperFrames snapshots/ is reserved for runtime-generated preflight evidence." });
+        }
         const content = await readFile(file.filePath, "utf8");
         for (const [pattern, rule] of RULES[source.data.runtime]) {
           if (pattern.test(content)) findings.push({ file: file.path, rule, message: RULE_MESSAGES[rule] ?? `Blocked construct detected by ${rule}.` });

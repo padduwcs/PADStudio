@@ -30,6 +30,7 @@ import { createCodeAnimationValidator } from "../tools/code-animation-validator.
 import {
   createHyperframesAnimationRenderer,
   createHyperframesAnimationPreflight,
+  createHyperframesAnimationPreview,
   createManimAnimationRenderer,
   createManimAnimationPreflight,
   createRemotionAnimationPreview,
@@ -70,6 +71,7 @@ export function createDefaultToolRegistry(options = {}) {
     createRemotionAnimationPreflight(options.remotionAnimation),
     createHyperframesAnimationPreflight(options.hyperframesAnimation),
     createRemotionAnimationPreview(options.remotionAnimation),
+    createHyperframesAnimationPreview(options.hyperframesAnimation),
     createManimAnimationRenderer(options.manimAnimation),
     createRemotionAnimationRenderer(options.remotionAnimation),
     createHyperframesAnimationRenderer(options.hyperframesAnimation),

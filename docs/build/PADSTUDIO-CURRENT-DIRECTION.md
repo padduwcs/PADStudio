@@ -101,7 +101,8 @@ giữ kết quả hiểu và sáng tạo; workflow giữ kế hoạch hiện hà
 PADStudio có nhánh tùy chọn project-native cho Manim Community, Remotion và HyperFrames. Source
 và props JSON được lưu thành Result bất biến; ý định/runtime/format/asset/style thành artifact
 `animation.composition` có revision; validation, runtime preflight, preview và render đều bind exact
-source/props/composition. Remotion có still/clip preview theo frame; preflight của cả ba runtime giữ
+source/props/composition. Remotion có still/clip preview theo frame; HyperFrames có exact-frame snapshot/contact
+sheet preview và preflight chuẩn hóa findings, giữ snapshot/crop từ strict check. Preflight của cả ba runtime giữ
 diagnostics và full render bắt buộc bind một preflight passed. Render đi
 qua Executor và trở thành Result video dùng trực tiếp trong sequence, không tạo pipeline bắt buộc.
 

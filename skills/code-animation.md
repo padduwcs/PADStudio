@@ -30,9 +30,10 @@ Code animation is an optional production branch, not a required pipeline stage.
    decision; explain that boundary instead of implying the earlier approval was lost.
 5. After approval, run matching `animation.preflight` and inspect its diagnostic Result. A failed
    preflight remains evidence and cannot authorize preview/render. Remotion can then create selected
-   stills and a short frame-range clip with `animation.preview / remotion-preview`. Use preview as
-   an authoring loop, not as acceptance. Manim preflight currently checks runtime health only;
-   HyperFrames preflight preserves its strict structured check.
+   stills and a short frame-range clip with `animation.preview / remotion-preview`; HyperFrames can
+   capture exact requested frames and a contact sheet with `animation.preview / hyperframes-preview`.
+   Use preview as an authoring loop, not as acceptance. Manim preflight currently checks runtime
+   health only; HyperFrames preflight preserves normalized findings, snapshots and its raw strict report.
 6. Render with the matching adapter and exact passed preflight Result. Draft/history requires explicit `allowHistorical: true`.
    PADStudio never installs dependencies, calls `npx`,
    or falls back to another runtime automatically. If unavailable, surface setup guidance.

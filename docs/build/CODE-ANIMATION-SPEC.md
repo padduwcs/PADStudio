@@ -28,7 +28,7 @@ animation.source-package Result (immutable code + manifest + checksums)
                               │
                     animation.preflight Result
                               │
-              optional animation.preview Result (Remotion)
+              optional animation.preview Result (Remotion/HyperFrames)
                               │
                     animation.render Result
                               │
@@ -50,6 +50,7 @@ The renderer records all three plus the exact user execution decision.
 | `animation.validate` | `code-animation-validator` | Verify checksums, entry contract and blocked host/network constructs without execution. |
 | `animation.preflight` | three runtime-specific `*-preflight` tools | Check the exact approved workspace and preserve diagnostics, including failures. |
 | `animation.preview` | `remotion-preview` | Render selected still frames and/or a clip of at most 30 seconds after passed preflight. |
+| `animation.preview` | `hyperframes-preview` | Capture selected exact frames and a contact sheet after passed preflight. |
 | `animation.render` | `manim-ce` | Render an approved Manim `Scene`. |
 | `animation.render` | `remotion-local` | Render an approved Remotion composition frame-accurately. |
 | `animation.render` | `hyperframes-local` | Run strict HyperFrames check, then render authored `index.html`. |
@@ -138,8 +139,12 @@ dependencies first resolve during render.
 
 Remotion preview requires the exact passed preflight and can emit up to twelve PNG stills plus an
 optional frame-aligned clip no longer than 30 seconds. The clip is probed for resolution, FPS and
-duration. Preview is an authoring aid, not technical or creative acceptance. PADStudio does not
-pretend that Manim and HyperFrames expose the same seek/still contract.
+duration. HyperFrames preflight uses adaptive timeline samples, transition-boundary sampling, and
+preserves normalized lint/runtime/layout/motion/contrast findings plus snapshots and finding crops.
+Its preview can capture up to twelve requested exact frames and preserves the generated contact
+sheet. A matching `*.motion.json` may be included in the immutable source package when the authored
+motion has useful testable promises; it remains optional. Preview is an authoring aid, not technical
+or creative acceptance. PADStudio does not pretend that all runtimes expose the same preview contract.
 
 The runtime must exit successfully and create the declared MP4. PADStudio probes resolution, frame
 rate and duration against the composition timing contract, then creates a poster and JSON render report. Result files

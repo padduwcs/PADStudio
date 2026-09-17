@@ -9,7 +9,9 @@ import { ProjectContextAssembler } from "../src/intelligence/project-context-ass
 import { ProjectStore } from "../src/project/project-store.js";
 import { createHumanConfirmation } from "../src/project/human-confirmation.js";
 import { normalizeAnimationComposition } from "../src/animation/animation-composition.js";
-import { createCodeAnimationPreflight, createCodeAnimationRenderer, createRemotionAnimationPreview } from "../src/tools/code-animation-renderer.js";
+import {
+  createCodeAnimationPreflight, createCodeAnimationRenderer, createHyperframesAnimationPreview, createRemotionAnimationPreview,
+} from "../src/tools/code-animation-renderer.js";
 import { createCodeAnimationProps } from "../src/tools/code-animation-props.js";
 import { createCodeAnimationSource } from "../src/tools/code-animation-source.js";
 import { createCodeAnimationValidator } from "../src/tools/code-animation-validator.js";
@@ -269,6 +271,105 @@ test("Manim and HyperFrames keep distinct entry contracts", async (t) => {
     }));
     assert.equal(validated.result.data.runtime, sample.runtime);
   }
+});
+
+test("HyperFrames source cannot impersonate runtime snapshot evidence", async (t) => {
+  const { executor } = await fixture(t);
+  const created = await executor.execute("demo", request("animation.source", "code-animation-source", "Create ambiguous HyperFrames evidence", {
+    operation: "create", runtime: "hyperframes", name: "Ambiguous snapshots", entryFile: "index.html", entrySymbol: "hero-title",
+    changeSummary: "Reserved path fixture", files: [
+      { path: "index.html", content: "<!doctype html><html><body data-composition-id='hero-title'></body></html>" },
+      { path: "snapshots/frame-00.png", content: "not runtime evidence" },
+    ],
+  }));
+  await assert.rejects(executor.execute("demo", request("animation.validate", "code-animation-validator", "Reject ambiguous evidence", {
+    sourceResultId: created.result.id,
+  })), /reserved_runtime_output_path/);
+});
+
+test("HyperFrames preflight preserves normalized findings and images, then previews exact frames", async (t) => {
+  const calls = [];
+  const fakeCommand = async (executable, args, options = {}) => {
+    calls.push([executable, ...args]);
+    if (args.includes("--version") || args[0] === "-version") return { stdout: `${executable} 1.0\n`, stderr: "" };
+    if (executable === "fake-hyperframes" && args[0] === "check") {
+      assert.ok(args.includes("--strict"));
+      assert.ok(args.includes("--snapshots"));
+      assert.ok(args.includes("--at-transitions"));
+      assert.ok(args.includes("--samples=9"));
+      assert.equal(await readFile(join(options.cwd, "index.motion.json"), "utf8"), "{\"staysInFrame\":[]}\n");
+      await mkdir(join(options.cwd, "snapshots"), { recursive: true });
+      await writeFile(join(options.cwd, "snapshots", "frame-00-at-0.0s.png"), "check-frame");
+      await writeFile(join(options.cwd, "snapshots", "finding-00-overflow.png"), "finding-crop");
+      return { stdout: JSON.stringify({ ok: true, strict: true,
+        lint: { errorCount: 0, warningCount: 0, findings: [] },
+        runtime: { errorCount: 0, warningCount: 0, findings: [] },
+        layout: { errorCount: 0, warningCount: 0, samples: [0, 0.5, 1], findings: [{ code: "layout_note", severity: "info",
+          message: "Measured title bounds.", selector: "#title", sourceFile: "index.html", time: 0.5,
+          bbox: { x: 10, y: 20, width: 100, height: 30 } }] },
+        motion: { enabled: true, errorCount: 0, warningCount: 0, samples: 3, findings: [] },
+        contrast: { enabled: true, errorCount: 0, warningCount: 0, samples: [0, 1], findings: [] },
+        snapshots: { enabled: true, files: ["snapshots/frame-00-at-0.0s.png"], findingFiles: ["snapshots/finding-00-overflow.png"] },
+      }), stderr: "" };
+    }
+    if (executable === "fake-hyperframes" && args[0] === "snapshot") {
+      const output = args.find((arg) => arg.startsWith("--output=")).slice("--output=".length);
+      await mkdir(output, { recursive: true });
+      await writeFile(join(output, "frame-00-at-0.0s.png"), "preview-zero");
+      await writeFile(join(output, "frame-01-at-0.5s.png"), "preview-half");
+      await writeFile(join(output, "contact-sheet.jpg"), "preview-contact-sheet");
+      return { stdout: "3 snapshots saved", stderr: "" };
+    }
+    if (["fake-ffmpeg", "fake-ffprobe"].includes(executable)) return { stdout: `${executable} 1.0\n`, stderr: "" };
+    throw new Error(`Unexpected command: ${executable} ${args.join(" ")}`);
+  };
+  const options = { runtimeCommand: "fake-hyperframes", ffmpegCommand: "fake-ffmpeg", ffprobeCommand: "fake-ffprobe",
+    browserCommand: "fake-browser", executeCommand: fakeCommand };
+  const preflightTool = createCodeAnimationPreflight("hyperframes", options);
+  const previewTool = createHyperframesAnimationPreview(options);
+  const { rootDir, store, executor } = await fixture(t, [preflightTool, previewTool]);
+  const created = await executor.execute("demo", request("animation.source", "code-animation-source", "Create HyperFrames source", {
+    operation: "create", runtime: "hyperframes", name: "HyperFrames title", entryFile: "index.html", entrySymbol: "hero-title",
+    changeSummary: "Fixture with an optional motion contract", dependencies: [{ name: "hyperframes", version: "0.8.38" }], files: [
+      { path: "index.html", content: "<!doctype html><html><body data-composition-id='hero-title'><h1 id='title'>Clear</h1></body></html>" },
+      { path: "index.motion.json", content: "{\"staysInFrame\":[]}\n" },
+    ],
+  }));
+  const validation = (await executor.execute("demo", request("animation.validate", "code-animation-validator", "Validate HyperFrames source", {
+    sourceResultId: created.result.id,
+  }))).result;
+  const compositionData = composition(created.result.id);
+  compositionData.runtime = "hyperframes";
+  compositionData.entry = { file: "index.html", symbol: "hero-title" };
+  const artifact = await store.recordArtifact("demo", { key: "hyperframes-title", type: "animation.composition", name: "HyperFrames title",
+    summary: "Structured check and snapshot fixture.", data: compositionData, references: [{ kind: "result", id: created.result.id }] });
+  await store.recordDecision("demo", { target: { kind: "result", id: created.result.id }, category: "animation_code_execution",
+    subject: "Execute exact animation source", outcome: "approved", options: [], selected: null, reason: "Reviewed fixture.",
+    decidedBy: "user", userVisible: true, confidence: "high" },
+  { humanConfirmation: createHumanConfirmation("execute_animation_code", created.result.id) });
+  const preflight = (await executor.execute("demo", request("animation.preflight", "hyperframes-local-preflight", "Check exact composition", {
+    artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: validation.id,
+  }))).result;
+  assert.equal(preflight.data.status, "passed");
+  assert.equal(preflight.data.findings.findingCount, 1);
+  assert.equal(preflight.data.findings.findings[0].section, "layout");
+  assert.equal(preflight.data.findings.sections.motion.enabled, true);
+  assert.equal(preflight.data.snapshotCount, 2);
+  assert.equal(preflight.files.filter((file) => file.mediaType === "image").length, 2);
+  const preview = (await executor.execute("demo", request("animation.preview", "hyperframes-preview", "Inspect exact key frames", {
+    artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: validation.id,
+    preflightResultId: preflight.id, frames: [0, 12],
+  }))).result;
+  assert.deepEqual(preview.data.frames, [0, 12]);
+  assert.equal(preview.files.filter((file) => file.mediaType === "image").length, 3);
+  assert.ok(calls.some((call) => call.includes("--at=0,0.5") && call.includes("--no-end") && call.includes("--describe=false")));
+  const context = await new ProjectContextAssembler({ projectStore: store }).build("demo");
+  assert.equal(context.animation.activeCompositions[0].preflights[0].findings.findingCount, 1);
+  assert.equal(context.animation.activeCompositions[0].previews[0].resultId, preview.id);
+  const observer = await new ProjectReader(rootDir).readObserverSection("demo", "animation");
+  const observedPreflight = observer.animation.compositions[0].preflights[0];
+  assert.equal(observedPreflight.findings.sections.motion.enabled, true);
+  assert.equal(observedPreflight.files.filter((file) => file.available && file.mediaType === "image").length, 2);
 });
 
 test("exact approval gates render; observer exposes it and sequence can consume the Result", async (t) => {

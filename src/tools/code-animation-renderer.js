@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readdir, writeFile } from "node:fs/promises";
-import { basename, delimiter, dirname, extname, isAbsolute, join, resolve } from "node:path";
+import { basename, delimiter, dirname, extname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { normalizeAnimationComposition } from "../animation/animation-composition.js";
@@ -366,8 +366,8 @@ function outputTail(value, limit = 32_000) {
   return String(value ?? "").slice(-limit);
 }
 
-function redactDiagnostic(value, replacements) {
-  let result = outputTail(value);
+function redactDiagnostic(value, replacements, limit) {
+  let result = outputTail(value, limit);
   for (const [path, label] of replacements) {
     if (!path) continue;
     result = result.split(path).join(label).split(path.replaceAll("\\", "/")).join(label);
@@ -379,6 +379,79 @@ function parseJsonOutput(value) {
   const textValue = String(value ?? "").trim();
   if (!textValue) return null;
   try { return JSON.parse(textValue); } catch { return null; }
+}
+
+const HYPERFRAMES_FINDING_SECTIONS = Object.freeze(["lint", "runtime", "layout", "motion", "contrast"]);
+
+function finiteNumber(value) { return Number.isFinite(value) ? value : null; }
+
+function normalizeHyperframesFinding(section, finding) {
+  if (!finding || typeof finding !== "object") return null;
+  const bbox = finding.bbox && typeof finding.bbox === "object" ? {
+    x: finiteNumber(finding.bbox.x), y: finiteNumber(finding.bbox.y),
+    width: finiteNumber(finding.bbox.width), height: finiteNumber(finding.bbox.height),
+  } : null;
+  return {
+    section,
+    code: String(finding.code ?? "unknown").slice(0, 160),
+    severity: ["error", "warning", "info"].includes(finding.severity) ? finding.severity : "info",
+    message: String(finding.message ?? "").slice(0, 2_000),
+    selector: finding.selector == null ? null : String(finding.selector).slice(0, 500),
+    sourceFile: finding.sourceFile == null ? null : String(finding.sourceFile).slice(0, 500),
+    time: finiteNumber(finding.time), firstSeen: finiteNumber(finding.firstSeen), lastSeen: finiteNumber(finding.lastSeen),
+    occurrences: Number.isInteger(finding.occurrences) && finding.occurrences > 0 ? finding.occurrences : null,
+    bbox, fixHint: finding.fixHint == null ? null : String(finding.fixHint).slice(0, 2_000),
+  };
+}
+
+function normalizeHyperframesDiagnostics(parsed) {
+  if (!parsed || typeof parsed !== "object") return null;
+  const all = HYPERFRAMES_FINDING_SECTIONS.flatMap((section) => Array.isArray(parsed[section]?.findings)
+    ? parsed[section].findings.map((finding) => normalizeHyperframesFinding(section, finding)).filter(Boolean) : []);
+  const findings = all.slice(0, 200);
+  const count = (severity) => all.filter((finding) => finding.severity === severity).length;
+  const sections = Object.fromEntries(HYPERFRAMES_FINDING_SECTIONS.map((section) => [section, {
+    errorCount: Number.isInteger(parsed[section]?.errorCount) ? parsed[section].errorCount : all.filter((finding) => finding.section === section && finding.severity === "error").length,
+    warningCount: Number.isInteger(parsed[section]?.warningCount) ? parsed[section].warningCount : all.filter((finding) => finding.section === section && finding.severity === "warning").length,
+    sampleCount: Array.isArray(parsed[section]?.samples) ? parsed[section].samples.length : finiteNumber(parsed[section]?.samples),
+    enabled: typeof parsed[section]?.enabled === "boolean" ? parsed[section].enabled : null,
+  }]));
+  return { ok: parsed.ok === true, strict: parsed.strict === true, errorCount: count("error"), warningCount: count("warning"),
+    findingCount: all.length, findings, findingsTruncated: all.length > findings.length, sections };
+}
+
+async function imageEvidenceIn(directory, { prefix = "", limit = 40 } = {}) {
+  if (!existsSync(directory)) return [];
+  const images = [];
+  async function visit(current) {
+    for (const entry of await readdir(current, { withFileTypes: true })) {
+      if (images.length >= limit) return;
+      const path = join(current, entry.name);
+      if (entry.isDirectory()) await visit(path);
+      else if (entry.isFile() && [".png", ".jpg", ".jpeg"].includes(extname(entry.name).toLowerCase())) {
+        images.push({ name: `${prefix}${entry.name}`, path, mediaType: "image", ...(await fileEvidence(path, 50 * 1024 * 1024)) });
+      }
+    }
+  }
+  await visit(directory);
+  return images.sort((left, right) => left.name.localeCompare(right.name));
+}
+
+async function preserveHyperframesCheckImages(codeDirectory, outputDirectory) {
+  const sourceDirectory = join(codeDirectory, "snapshots");
+  const sourceImages = await imageEvidenceIn(sourceDirectory, { limit: 40 });
+  const preserved = [];
+  for (let index = 0; index < sourceImages.length; index += 1) {
+    const source = sourceImages[index];
+    const sourcePath = resolve(source.path);
+    const root = resolve(sourceDirectory);
+    if (sourcePath !== root && !sourcePath.startsWith(root + sep)) continue;
+    const name = `check-${String(index + 1).padStart(2, "0")}-${basename(source.name)}`;
+    const target = join(outputDirectory, name);
+    await copyFile(sourcePath, target);
+    preserved.push({ name, path: target, mediaType: source.mediaType, ...(await fileEvidence(target, 50 * 1024 * 1024)) });
+  }
+  return preserved;
 }
 
 export function createCodeAnimationPreflight(runtime, options = {}) {
@@ -407,9 +480,10 @@ export function createCodeAnimationPreflight(runtime, options = {}) {
       await Promise.all([homeDirectory, join(homeDirectory, "local-app-data"), join(homeDirectory, "app-data")]
         .map((directory) => mkdir(directory, { recursive: true })));
       const env = cleanEnvironment(homeDirectory, { nodeModules: launch.nodeModules, browser: browserCommand });
+      const hyperframesSamples = Math.min(60, Math.max(9, Math.ceil(composition.durationSeconds / 5)));
       const args = runtime === "remotion"
         ? ["compositions", entryPath, "--quiet", `--chrome-mode=${remotionChromeMode(browserCommand)}`, `--browser-executable=${browserCommand}`, ...(props ? [`--props=${props.target}`] : [])]
-        : runtime === "hyperframes" ? ["check", "--strict", "--json"] : ["--version"];
+        : runtime === "hyperframes" ? ["check", "--strict", "--json", `--samples=${hyperframesSamples}`, "--at-transitions", "--max-transition-samples=120", "--snapshots"] : ["--version"];
       const commandRecord = { executable: meta.name, args: args.map((arg) =>
         arg === entryPath ? "<entry-file>" : typeof arg === "string" && arg.startsWith("--browser-executable=") ? "--browser-executable=<configured-browser>" :
           typeof arg === "string" && arg.startsWith("--props=") ? "--props=<managed-props>" : launch.prefixArgs.includes(arg) ? "<runtime-entry>" : arg) };
@@ -419,13 +493,14 @@ export function createCodeAnimationPreflight(runtime, options = {}) {
       try {
         const response = await executeCommand(launch.executable, [...launch.prefixArgs, ...args],
           { cwd: codeDirectory, timeout: timeoutMs, env, signal });
-        stdout = redactDiagnostic(response.stdout, diagnosticPaths); stderr = redactDiagnostic(response.stderr, diagnosticPaths);
+        stdout = redactDiagnostic(response.stdout, diagnosticPaths, runtime === "hyperframes" ? 512_000 : undefined);
+        stderr = redactDiagnostic(response.stderr, diagnosticPaths);
         if (runtime === "remotion" && !stdout.split(/\s+/u).includes(composition.entry.symbol)) {
           status = "failed"; errorCode = "composition_not_found";
           stderr = outputTail(`${stderr}\nDeclared composition ${composition.entry.symbol} was not listed by Remotion.`.trim());
         }
       } catch (error) {
-        status = "failed"; stdout = redactDiagnostic(error?.stdout, diagnosticPaths);
+        status = "failed"; stdout = redactDiagnostic(error?.stdout, diagnosticPaths, runtime === "hyperframes" ? 512_000 : undefined);
         stderr = redactDiagnostic(error?.stderr || error?.message, diagnosticPaths);
         errorCode = error?.killed ? "timeout" : "runtime_check_failed";
       }
@@ -440,26 +515,34 @@ export function createCodeAnimationPreflight(runtime, options = {}) {
         }
       }
       const scope = runtime === "manim" ? "runtime_environment" : "exact_composition_compile_and_runtime_check";
-      const report = { version: "1.0", status, runtime, scope, artifact, sourceResultId: source.result.id,
-        propsResultId: props?.result.id ?? null, command: commandRecord, diagnostics: { stdout, stderr, parsed: parseJsonOutput(stdout) },
+      const parsed = parseJsonOutput(stdout);
+      const hyperframesDiagnostics = runtime === "hyperframes" ? normalizeHyperframesDiagnostics(parsed) : null;
+      const snapshots = runtime === "hyperframes" ? await preserveHyperframesCheckImages(codeDirectory, outputDirectory) : [];
+      const report = { version: runtime === "hyperframes" ? "1.1" : "1.0", status, runtime, scope, artifact, sourceResultId: source.result.id,
+        propsResultId: props?.result.id ?? null, command: commandRecord, diagnostics: { stdout, stderr, parsed },
+        ...(hyperframesDiagnostics ? { findings: hyperframesDiagnostics } : {}),
+        ...(runtime === "hyperframes" ? { snapshots: snapshots.map(({ name, sizeBytes, sha256 }) => ({ name, sizeBytes, sha256 })) } : {}),
         dependencyChecks,
         runtimeFingerprint: { executableVersion: availability.executableVersion ?? null, ffmpegVersion: availability.ffmpegVersion ?? null,
           ffprobeVersion: availability.ffprobeVersion ?? null }, errorCode,
         limitations: runtime === "manim" ? ["Manim preflight verifies the installed runtime and reports TeX tool availability; exact Scene execution, fonts and Scene-specific dependencies remain part of render."] : [] };
       const reportPath = join(outputDirectory, "preflight-report.json");
       await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n", "utf8");
-      return { actualCostUsd: 0, report, reportFile: await fileEvidence(reportPath, 2 * 1024 * 1024) };
+      return { actualCostUsd: 0, report, snapshots, reportFile: await fileEvidence(reportPath, 2 * 1024 * 1024) };
     },
     createResult({ prepared, execution }) {
       return { type: "animation.preflight", name: `${runtime} preflight: ${prepared.trace.artifact.id} r${prepared.trace.artifact.revision}`,
         inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults, inputArtifacts: [prepared.trace.artifact.id],
         files: [{ id: "report", role: "evidence", path: `${prepared.trace.directory}/preflight-report.json`, name: "preflight-report.json",
-          mediaType: "application/json", ...execution.reportFile }],
-        data: { version: "1.0", status: execution.report.status, runtime, scope: execution.report.scope,
+          mediaType: "application/json", ...execution.reportFile },
+          ...execution.snapshots.map((snapshot, index) => ({ id: `snapshot-${index + 1}`, role: "evidence", path: `${prepared.trace.directory}/${snapshot.name}`,
+            name: snapshot.name, mediaType: snapshot.mediaType, sizeBytes: snapshot.sizeBytes, sha256: snapshot.sha256 }))],
+        data: { version: runtime === "hyperframes" ? "1.1" : "1.0", status: execution.report.status, runtime, scope: execution.report.scope,
           composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
           validationResultId: prepared.trace.validationResultId, propsResultId: prepared.trace.propsResultId,
           approvalDecisionId: prepared.trace.approvalDecisionId, runtimeFingerprint: execution.report.runtimeFingerprint,
-          errorCode: execution.report.errorCode, limitations: execution.report.limitations },
+          errorCode: execution.report.errorCode, limitations: execution.report.limitations,
+          ...(runtime === "hyperframes" ? { findings: execution.report.findings ?? null, snapshotCount: execution.snapshots.length } : {}) },
         verification: { status: "passed", checks: ["source_checksums_verified", "exact_user_code_approval", "static_validation_bound",
           "managed_assets_staged", "runtime_diagnostics_preserved"], details: { preflightStatus: execution.report.status, runtime } } };
     },
@@ -575,6 +658,81 @@ export function createRemotionAnimationPreview(options = {}) {
             height: execution.clip.video.height, frameRate: execution.clip.video.frameRate } : null },
         verification: { status: "passed", checks: ["exact_preflight_bound", "exact_user_code_approval", "requested_frames_rendered",
           ...(execution.clip ? ["preview_clip_probed", "preview_format_matches"] : [])], details: { runtime } } };
+    },
+  };
+}
+
+export function createHyperframesAnimationPreview(options = {}) {
+  const runtime = "hyperframes"; const meta = RUNTIME_META[runtime];
+  const runtimeCommand = options.runtimeCommand ?? process.env[meta.env]?.trim() ?? null;
+  const launch = runtimeLaunch(runtime, runtimeCommand, options.runtimePrefixArgs ?? []);
+  const browserCommand = options.browserCommand === undefined ? installedBrowser({ allowSystem: true }) : options.browserCommand;
+  const executeCommand = options.executeCommand ?? hostCommand;
+  const timeoutMs = options.timeoutMs ?? 10 * 60 * 1000;
+  const availabilityTool = createCodeAnimationRenderer(runtime, options);
+  return {
+    name: "hyperframes-preview", version: "1.0.0", provider: meta.provider, capability: "animation.preview",
+    description: "Capture exact requested frames and a contact sheet from an approved, preflighted HyperFrames composition.",
+    runtime: "local", executionMode: "sync", producesFiles: true, approvalRequired: false,
+    sideEffects: ["Executes exact approved HyperFrames source in a temporary Run workspace.", "Creates project-owned preview images and a report."],
+    cost: { currency: "USD", estimated: 0 },
+    outputDescription: "An animation.preview Result containing requested HyperFrames snapshots and a contact sheet when available.",
+    inputSchema: { type: "object", required: ["artifactId", "artifactRevision", "validationResultId", "preflightResultId", "frames"], additionalProperties: false,
+      properties: { artifactId: { type: "string" }, artifactRevision: { type: "integer", minimum: 1 }, validationResultId: { type: "string" },
+        preflightResultId: { type: "string" }, allowHistorical: { type: "boolean" },
+        frames: { type: "array", minItems: 1, maxItems: 12, items: { type: "integer", minimum: 0 } } } },
+    checkAvailability: availabilityTool.checkAvailability,
+    async prepare(args) {
+      const prepared = await prepareAnimationWorkspace({ ...args, runtime, allowedFields: ["preflightResultId", "frames"] });
+      const frames = args.inputs.frames;
+      if (!Array.isArray(frames) || !frames.length || frames.length > 12 || frames.some((frame) => !Number.isInteger(frame) || frame < 0)) {
+        fail("frames must contain 1-12 nonnegative integer frame numbers.");
+      }
+      const totalFrames = Math.round(prepared.runtime.composition.durationSeconds * prepared.runtime.composition.format.fps);
+      const normalizedFrames = [...new Set(frames)];
+      if (normalizedFrames.some((frame) => frame >= totalFrames)) fail(`Preview frames must be between 0 and ${totalFrames - 1}.`);
+      prepared.runtime.previewFrames = normalizedFrames;
+      prepared.trace.previewFrames = normalizedFrames;
+      return prepared;
+    },
+    async execute({ composition, source, props, artifact, codeDirectory, homeDirectory, outputDirectory, previewFrames, availability, signal }) {
+      await Promise.all([homeDirectory, join(homeDirectory, "local-app-data"), join(homeDirectory, "app-data")]
+        .map((directory) => mkdir(directory, { recursive: true })));
+      const env = cleanEnvironment(homeDirectory, { nodeModules: launch.nodeModules, browser: browserCommand });
+      const previewDirectory = join(outputDirectory, "hyperframes-preview");
+      await mkdir(previewDirectory, { recursive: true });
+      const times = previewFrames.map((frame) => frame / composition.format.fps);
+      const args = ["snapshot", `--output=${previewDirectory}`, `--at=${times.join(",")}`, "--no-end", "--describe=false"];
+      const command = { executable: meta.name, args: args.map((arg) => arg.startsWith("--output=") ? "--output=<run-output>" : launch.prefixArgs.includes(arg) ? "<runtime-entry>" : arg) };
+      try {
+        await executeCommand(launch.executable, [...launch.prefixArgs, ...args], { cwd: codeDirectory, timeout: timeoutMs, env, signal });
+      } catch (error) {
+        fail(`HyperFrames preview failed: ${outputTail(error?.stderr || error?.message, 2000)}`, error?.killed ? "timeout" : "animation_preview_failed");
+      }
+      const images = await imageEvidenceIn(previewDirectory, { limit: 20 });
+      const snapshots = images.filter((file) => file.name.toLowerCase().endsWith(".png") && file.name.startsWith("frame-"));
+      if (snapshots.length !== previewFrames.length) fail("HyperFrames preview did not create every requested frame.", "invalid_output");
+      const report = { version: "1.0", runtime, artifact, sourceResultId: source.result.id, propsResultId: props?.result.id ?? null,
+        frames: previewFrames, times, files: images.map(({ name, sizeBytes, sha256 }) => ({ name, sizeBytes, sha256 })), command,
+        runtimeFingerprint: { executableVersion: availability.executableVersion ?? null } };
+      const reportPath = join(outputDirectory, "preview-report.json");
+      await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n", "utf8");
+      return { actualCostUsd: 0, images, report, reportFile: await fileEvidence(reportPath, 2 * 1024 * 1024) };
+    },
+    createResult({ prepared, execution }) {
+      return { type: "animation.preview", name: `HyperFrames preview: ${prepared.trace.artifact.id} r${prepared.trace.artifact.revision}`,
+        inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults, inputArtifacts: [prepared.trace.artifact.id],
+        files: [...execution.images.map((snapshot, index) => ({ id: `snapshot-${index + 1}`, role: "preview",
+          path: `${prepared.trace.directory}/hyperframes-preview/${snapshot.name}`, name: snapshot.name, mediaType: snapshot.mediaType,
+          sizeBytes: snapshot.sizeBytes, sha256: snapshot.sha256 })),
+          { id: "report", role: "evidence", path: `${prepared.trace.directory}/preview-report.json`, name: "preview-report.json",
+            mediaType: "application/json", ...execution.reportFile }],
+        data: { version: "1.0", runtime, composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
+          validationResultId: prepared.trace.validationResultId, propsResultId: prepared.trace.propsResultId,
+          preflightResultId: prepared.trace.preflightResultId, approvalDecisionId: prepared.trace.approvalDecisionId,
+          frames: prepared.trace.previewFrames, range: null, clip: null },
+        verification: { status: "passed", checks: ["exact_preflight_bound", "exact_user_code_approval", "requested_frames_rendered", "snapshot_count_matches"],
+          details: { runtime } } };
     },
   };
 }

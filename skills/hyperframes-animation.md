@@ -10,9 +10,17 @@ Load this skill only for an explicitly selected HyperFrames composition.
   transparent-background defects that appear in rendered output.
 - Keep video/audio hierarchy compatible with the runtime and verify intrinsic aspect ratio,
   object-fit and letterboxing using the exact project asset.
-- Run strict `animation.preflight`; inspect its preserved JSON diagnostics. The adapter must not
-  silently downgrade warnings, swap runtimes or mutate authored `index.html`.
-- Treat checks as technical evidence, not proof of visual quality. Review representative frames,
+- Run strict `animation.preflight`; inspect its normalized lint/runtime/layout/motion/contrast
+  findings and preserved snapshots/crops, then open the raw JSON report only when more detail is
+  needed. The adapter must not silently downgrade warnings, swap runtimes or mutate authored HTML.
+- For important motion promises, optionally keep a matching `*.motion.json` beside the composition.
+  Use assertions supported by the pinned runtime (for example appearance order, staying in frame,
+  or continued movement); do not invent assertions merely to make the check pass.
+- Design for the camera: compose each beat for the actual output frame, readable scale and visual
+  hierarchy. Sub-compositions and relative timing are useful for long work when they clarify
+  structure, but they are not mandatory architecture.
+- Use `animation.preview / hyperframes-preview` for exact key frames, transition boundaries and
+  suspicious timestamps before a long render. Treat checks as technical evidence, not proof of visual quality. Review representative frames,
   opening/ending holds and dense keyframe regions. For video-heavy compositions prefer stable,
   conservative concurrency over maximum worker count.
 - Do not assume a feature described by a different HyperFrames version exists. Pin dependencies
