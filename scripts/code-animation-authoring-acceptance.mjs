@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { ToolExecutor } from "../src/execution/tool-executor.js";
 import { ToolRegistry } from "../src/execution/tool-registry.js";
 import { ProjectStore } from "../src/project/project-store.js";
-import { createHumanConfirmation } from "../src/project/human-confirmation.js";
 import { createCodeAnimationProps } from "../src/tools/code-animation-props.js";
 import { createCodeAnimationSource } from "../src/tools/code-animation-source.js";
 import { createCodeAnimationValidator } from "../src/tools/code-animation-validator.js";
@@ -58,11 +57,7 @@ export {Demo};
       assets: [], style: { designRead: "Minimal runtime fixture.", palette: ["#101820", "#FFFFFF"],
         motionPrinciples: ["One purposeful fade."], antiPatterns: ["No decorative motion."] },
       reviewCriteria: ["Managed title is visible at the end."],
-      executionPolicy: { codeTrust: "exact-user-approval", networkAccess: "not-required" } } });
-  await store.recordDecision("acceptance", { target: { kind: "result", id: source.id }, category: "animation_code_execution",
-    subject: "Development acceptance fixture", outcome: "approved", options: [], selected: null,
-    reason: "Repository-owned deterministic fixture, not user project content.", decidedBy: "user", userVisible: true, confidence: "high" },
-  { humanConfirmation: createHumanConfirmation("execute_animation_code", source.id) });
+      executionPolicy: { codeTrust: "agent-managed-execution", networkAccess: "not-required" } } });
   const common = { artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: validation.id };
   const preflight = (await executor.execute("acceptance", request("animation.preflight", "remotion-local-preflight", "Real compile preflight", common))).result;
   if (preflight.data.status !== "passed") {

@@ -1407,11 +1407,9 @@ export class ProjectStore {
       throw new ProjectStoreError("A recorded choice requires at least two options and a selection.");
     }
     const decidedBy = value.decidedBy ?? "agent";
-    const requiresExecutionConfirmation = normalizedTarget.kind === "result" &&
-      value.category === "animation_code_execution" && outcome === "approved" && decidedBy === "user";
-    const confirmation = requiresExecutionConfirmation
-      ? requireHumanConfirmation(humanConfirmation, "execute_animation_code", normalizedTarget.id)
-      : null;
+    if (value.category === "animation_code_execution") {
+      throw new ProjectStoreError("animation_code_execution is retired; managed animation execution no longer records a user code-approval decision.");
+    }
     if (normalizedTarget.kind === "work_item" && outcome === "approved" && decidedBy !== "user") {
       throw new ProjectStoreError("A work item approval must be decided by the user.");
     }
@@ -1440,7 +1438,6 @@ export class ProjectStore {
       selected,
       reason: requireText(value.reason, "Decision reason"),
       decidedBy,
-      ...(confirmation ? { confirmation: createHumanConfirmation("execute_animation_code", normalizedTarget.id) } : {}),
       userVisible: value.userVisible ?? true,
       confidence: value.confidence ?? null,
       ...(binding ? { binding } : {}),

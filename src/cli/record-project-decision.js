@@ -17,7 +17,7 @@ async function main(args) {
   const value = await readJsonInput(decisionSource);
   if (value?.target && value.category === "animation_code_execution" &&
       value.outcome === "approved" && value.decidedBy === "user") {
-    throw new Error("Code execution approval cannot be imported from Agent-authored JSON. Run project:approve-code directly in an interactive terminal.");
+    throw new Error("animation_code_execution is a retired decision category; code animation now runs through managed validation and preflight without a user code-approval decision.");
   }
   if (!value?.target && value.outcome === "accepted") {
     const result = await store.readResult(projectId, value.resultId);

@@ -1,7 +1,7 @@
 const DEFAULT_PROFILE = Object.freeze({ quality: 3, control: 4, reliability: 4, costEfficiency: 5, latency: 4, privacy: 5 });
 
 function group(capability) {
-  if (capability.startsWith("animation.")) return ["Project-native, revisioned code animation.", "Generated code still requires exact user trust before host execution.", "code-animation"];
+  if (capability.startsWith("animation.")) return ["Project-native, revisioned code animation.", "Generated code executes locally after exact static validation; validation is not a sandbox.", "code-animation"];
   if (capability.startsWith("source.") || ["audio.transcribe", "audio.analyze", "video.detect-scenes"].includes(capability)) return ["Evidence-backed source understanding.", "Machine evidence requires review.", "source-understanding"];
   if (["audio.prepare", "graphic.render", "media.acquire", "media.search-stock", "tts.synthesize"].includes(capability)) return ["Traceable reusable project assets.", "Does not approve creative quality or usage rights.", "asset-preparation"];
   if (["video.render-sequence", "video.export-delivery"].includes(capability)) return ["Exact revision rendering and delivery.", "Does not approve on behalf of the Agent or user.", "video-sequence-planning"];

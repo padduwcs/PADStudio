@@ -24,8 +24,6 @@ animation.source-package Result (immutable code + manifest + checksums)
              │
              └── animation.composition Artifact rN (intent + runtime + format + assets + props ref)
                               │
-                user ProjectDecision on exact source Result
-                              │
                     animation.preflight Result
                               │
               optional animation.preview Result (Remotion/HyperFrames)
@@ -39,7 +37,7 @@ Source/props edits create new Results. Composition edits create a new artifact r
 `expectedRevision`. Preflight/render inputs name the exact artifact ID, revision and validation
 Result. Full render also requires a passed preflight bound to the same source, props and composition.
 Draft/history rendering is blocked unless `allowHistorical: true` is explicit.
-The renderer records all three plus the exact user execution decision.
+The renderer records the exact source, validation, composition, props and preflight bindings.
 
 ## Capabilities and tools
 
@@ -48,12 +46,12 @@ The renderer records all three plus the exact user execution decision.
 | `animation.source` | `code-animation-source` | Create/revise up to 64 UTF-8 source files; never execute them. |
 | `animation.props` | `code-animation-props` | Create/revise bounded immutable JSON props/data without executing code. |
 | `animation.validate` | `code-animation-validator` | Verify checksums, entry contract and blocked host/network constructs without execution. |
-| `animation.preflight` | three runtime-specific `*-preflight` tools | Check the exact approved workspace and preserve diagnostics, including failures. |
+| `animation.preflight` | three runtime-specific `*-preflight` tools | Check the exact validated workspace and preserve diagnostics, including failures. |
 | `animation.preview` | `remotion-preview` | Render selected still frames and/or a clip of at most 30 seconds after passed preflight. |
 | `animation.preview` | `hyperframes-preview` | Capture selected exact frames and a contact sheet after passed preflight. |
 | `animation.preview` | `hyperframes-motion-preview` | Inspect one selector and preserve a bounded onion-skin path/strip plus JSON keyframe diagnostics. |
-| `animation.render` | `manim-ce` | Render an approved Manim `Scene`. |
-| `animation.render` | `remotion-local` | Render an approved Remotion composition frame-accurately. |
+| `animation.render` | `manim-ce` | Render a validated Manim `Scene`. |
+| `animation.render` | `remotion-local` | Render a validated Remotion composition frame-accurately. |
 | `animation.render` | `hyperframes-local` | Run strict HyperFrames check, then render authored `index.html`. |
 
 All adapters use the shared Executor and project-owned output workspace. They never accept raw
@@ -76,7 +74,7 @@ ID when an Agent needs to continue editing; it does not expose backing filesyste
 
 `animation.composition` stores intent/change reason, exact runtime/source/entry, even output
 dimensions, integer FPS, frame-aligned target duration, timing mode, opaque MP4 background, explicit assets mapped only under `assets/`, style
-principles, and review criteria. It fixes `executionPolicy.codeTrust` to `exact-user-approval` and
+principles, and review criteria. It fixes `executionPolicy.codeTrust` to `agent-managed-execution` and
 `executionPolicy.networkAccess` to `not-required`.
 
 `propsResultId` is optional and must reference an `animation.props` Result included in artifact
@@ -100,27 +98,18 @@ during materialization.
 ## Trust and execution boundary
 
 Generated code is not safe merely because it passed a regex or AST check. Validation therefore says
-`static_source_only` and `not_a_sandbox`. Rendering requires the latest confirmed user
-ProjectDecision targeting the exact source Result. Positive execution approval cannot be imported
-through `project:decide`, JSON, stdin or a non-interactive process. The human must run:
+`static_source_only` and `not_a_sandbox`. It is nevertheless the automatic execution gate: after the
+exact immutable source passes validation, the Agent may run preflight, preview and render without a
+separate user code-approval decision. This matches the useful OpenMontage authoring behavior: runtime
+checks and renders stay inside the agent loop, while human approval is reserved for creative/publish
+milestones rather than repeated source-level confirmations.
 
-```powershell
-npm run project:approve-code -- <project-id> <source-result-id>
-```
-
-The command displays the exact Result, runtime, passing validation, complete package checksum and
-source-file checksums, then requires a target-bound phrase from an interactive TTY. The Agent must
-end its turn at this gate and must not type or pipe the answer. This is a deliberate per-gate pause,
-adapted from OpenMontage's useful approval discipline without adopting its fixed production pipeline.
-Before asking, the Agent must finish source/props/assets/composition and pass every non-executing
-validation available. In particular, Remotion validation rejects `staticFile()`, raw `assets/...`
-media URLs and unresolved relative imports because those constructs cannot consume PADStudio's staged
-assets reliably. Approval is not a compile/debug loop. Re-running the command for an already-approved
-exact source returns the existing decision without prompting; changing source bytes still requires a
-new explicit decision because the trust target is different.
-The receipt records channel, action, target and timestamp. It prevents ordinary Agent-authored
-payloads from impersonating a user; it is not a cryptographic identity boundary against a process
-with unrestricted access to the repository and host.
+Remotion validation rejects `staticFile()`, raw `assets/...` media URLs and unresolved relative imports
+because those constructs cannot consume PADStudio's staged assets reliably. Changing source bytes
+creates a new immutable Result and invalidates the old validation/preflight binding, so the Agent must
+validate and preflight the new revision before it executes. Historical `animation_code_execution`
+decisions remain readable for old projects but are ignored and cannot be newly recorded. The retired
+`project:approve-code` command is not part of the runtime contract.
 
 Each preflight, preview or render copies verified source, props and declared assets into a temporary Run workspace and passes an
 allowlisted environment. It does not expose provider secrets. The current host process does not
@@ -203,13 +192,13 @@ multi-minute composition is not constrained by the short-preview budget; cancell
 
 ## Observer and acceptance
 
-Full context exposes compositions, source/props packages, exact validation, execution approval,
+Full context exposes compositions, source/props packages, exact validation,
 preflights, previews and render files. Summary/resume expose active compositions compactly. The
 read-only observer shows runtime status, diagnostics limitations, a still/clip gallery and playable
 registered render Results. It performs no mutation.
 
 Automated tests cover immutable source/props revision provenance, traversal rejection, blocked host/network APIs,
-exact validation/preflight binding, interactive-confirmation enforcement, preview/render evidence,
+exact validation/preflight binding, autonomous managed execution without a code-approval decision, preview/render evidence,
 unavailable-runtime honesty, observer projection, and direct `video.sequence` consumption. Runtime-specific
 skills route only the selected Remotion, HyperFrames or Manim craft guidance. Real runtime smoke tests must be run only
 in a prepared, pinned environment and must never trigger installs during an ordinary render.

@@ -11,7 +11,6 @@
     "project:import": "node src/cli/import-project-input.js",
     "project:checkpoint": "node src/cli/write-project-checkpoint.js",
     "project:decide": "node src/cli/record-project-decision.js",
-    "project:approve-code": "node src/cli/confirm-animation-code.js",
     "project:accept": "node src/cli/confirm-video-acceptance.js",
     "project:artifact": "node src/cli/record-project-artifact.js",
     "project:workflow": "node src/cli/write-project-workflow.js",

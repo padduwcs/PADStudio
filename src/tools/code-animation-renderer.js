@@ -7,7 +7,6 @@ import { promisify } from "node:util";
 import { normalizeAnimationComposition } from "../animation/animation-composition.js";
 import { loadAnimationProps } from "../animation/animation-props.js";
 import { loadSourcePackage } from "../animation/source-package.js";
-import { validHumanConfirmation } from "../project/human-confirmation.js";
 import { fail, fileEvidence, object, probe, text, workspace } from "./asset-tool-common.js";
 
 const execFileAsync = promisify(execFile);
@@ -137,13 +136,6 @@ async function findNamedFile(directory, name) {
   return null;
 }
 
-function latestExecutionApproval(decisions, sourceResultId) {
-  return decisions.filter((decision) => decision.kind === "project_decision" &&
-    decision.target?.kind === "result" && decision.target.id === sourceResultId &&
-    decision.category === "animation_code_execution" && decision.decidedBy === "user" &&
-    validHumanConfirmation(decision.confirmation, "execute_animation_code", sourceResultId)).at(-1) ?? null;
-}
-
 function renderArguments(runtime, composition, paths) {
   const frames = Math.round(composition.durationSeconds * composition.format.fps);
   if (runtime === "manim") return ["render", "--config_file", paths.config, "--disable_caching", "--format", "mp4", "--media_dir", paths.media,
@@ -181,8 +173,6 @@ async function prepareAnimationWorkspace({ store, projectId, inputs, outputWorks
       validation.data.sourceResultId !== source.result.id || validation.data.packageSha256 !== source.data.packageSha256) {
     fail("Validation Result is not bound to this exact source package.", "stale_validation");
   }
-  const approval = latestExecutionApproval(await store.readDecisions(projectId), source.result.id);
-  if (approval?.outcome !== "approved") fail("Exact user approval is required for this source Result before host code execution.", "code_execution_approval_required");
   const output = workspace(outputWorkspace);
   const codeDirectory = join(output.temporaryDirectory, "workspace");
   await mkdir(codeDirectory, { recursive: true });
@@ -222,13 +212,13 @@ async function prepareAnimationWorkspace({ store, projectId, inputs, outputWorks
     }
     inputResults.add(preflight.id);
   }
-  return { runtime: { composition, source, validation, approval, assets, props, preflight,
+  return { runtime: { composition, source, validation, assets, props, preflight,
       artifact: { id: artifact.id, revision: artifact.revision }, codeDirectory,
       entryPath: join(codeDirectory, ...composition.entry.file.split("/")),
       outputPath: join(output.temporaryDirectory, "animation.mp4"), mediaDirectory: join(output.temporaryDirectory, "manim-media"),
       homeDirectory: join(output.temporaryDirectory, "home"), outputDirectory: output.temporaryDirectory },
     trace: { directory: output.projectRelativeDirectory, artifact: { id: artifact.id, revision: artifact.revision },
-      sourceResultId: source.result.id, validationResultId: validation.id, approvalDecisionId: approval.id,
+      sourceResultId: source.result.id, validationResultId: validation.id,
       propsResultId: props?.result.id ?? null, preflightResultId: preflight?.id ?? null,
       allowHistorical: inputs.allowHistorical === true, inputResources: [...inputResources], inputResults: [...inputResults] } };
 }
@@ -247,9 +237,9 @@ export function createCodeAnimationRenderer(runtime, {
   const launch = runtimeLaunch(runtime, runtimeCommand, runtimePrefixArgs);
   return {
     name: meta.name, version: "1.0.0", provider: meta.provider, capability: "animation.render",
-    description: `Render an exact, approved ${runtime} composition from managed project sources.`,
+    description: `Render an exact, validated ${runtime} composition from managed project sources.`,
     runtime: "local", executionMode: "sync", producesFiles: true, approvalRequired: false,
-    sideEffects: ["Executes user-approved source code in a temporary Run workspace on the local host.", "Creates verified video, poster and render-report files."],
+    sideEffects: ["Executes statically validated source code in a temporary Run workspace on the local host.", "Creates verified video, poster and render-report files."],
     cost: { currency: "USD", estimated: 0 },
     outputDescription: "A verified animation.render Result bound to exact source, props, validation, preflight and composition revisions.",
     inputSchema: { type: "object", required: ["artifactId", "artifactRevision", "validationResultId", "preflightResultId"], additionalProperties: false,
@@ -292,7 +282,7 @@ export function createCodeAnimationRenderer(runtime, {
       if (inputs.preflightResultId === undefined) fail("A passed exact preflightResultId is required before full render.", "preflight_required");
       return prepared;
     },
-    async execute({ composition, source, validation, approval, assets, props, artifact, codeDirectory, entryPath, outputPath, mediaDirectory, homeDirectory, availability, signal }) {
+    async execute({ composition, source, validation, assets, props, artifact, codeDirectory, entryPath, outputPath, mediaDirectory, homeDirectory, availability, signal }) {
       await Promise.all([homeDirectory, join(homeDirectory, "local-app-data"), join(homeDirectory, "app-data")]
         .map((directory) => mkdir(directory, { recursive: true })));
       const paths = { entry: entryPath, output: outputPath, media: mediaDirectory, props: props?.target ?? null,
@@ -341,7 +331,7 @@ export function createCodeAnimationRenderer(runtime, {
         fail(`FFmpeg could not create the animation poster: ${String(error?.stderr || error?.message || "unknown error").slice(-500)}`, "poster_failed");
       }
       const report = { version: "1.0", runtime, artifact, sourceResultId: source.result.id,
-        validationResultId: validation.id, approvalDecisionId: approval.id, format: composition.format,
+        validationResultId: validation.id, format: composition.format,
         timing: { ...composition.timing, targetDurationSeconds: composition.durationSeconds,
           actualDurationSeconds: video.durationSeconds, durationDriftSeconds, toleranceSeconds: tolerance },
         dependencies: source.data.dependencies, assets,
@@ -364,13 +354,13 @@ export function createCodeAnimationRenderer(runtime, {
           { id: "report", role: "evidence", path: `${prepared.trace.directory}/render-report.json`, name: "render-report.json", mediaType: "application/json", ...execution.reportFile },
         ],
         data: { version: "1.0", runtime, composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
-          validationResultId: prepared.trace.validationResultId, approvalDecisionId: prepared.trace.approvalDecisionId,
+          validationResultId: prepared.trace.validationResultId,
           propsResultId: prepared.runtime.props?.result.id ?? null,
           preflightResultId: prepared.trace.preflightResultId,
           durationSeconds: execution.video.durationSeconds, timing: execution.report.timing,
           video: { width: execution.video.width, height: execution.video.height, frameRate: execution.video.frameRate },
           hasAudio: execution.video.hasAudio, executionBoundary: execution.report.executionBoundary },
-        verification: { status: "passed", checks: ["source_checksums_verified", "exact_user_code_approval", "static_validation_bound", "exact_preflight_bound",
+        verification: { status: "passed", checks: ["source_checksums_verified", "agent_managed_code_execution", "static_validation_bound", "exact_preflight_bound",
           "runtime_exit_0", "video_stream_present", "resolution_matches", "frame_rate_matches",
           prepared.runtime.composition.timing.mode === "measured" ? "duration_measured_within_tolerance" : "duration_matches",
           "poster_generated"],
@@ -525,9 +515,9 @@ export function createCodeAnimationPreflight(runtime, options = {}) {
   const availabilityTool = createCodeAnimationRenderer(runtime, options);
   return {
     name: `${meta.name}-preflight`, version: "1.0.0", provider: meta.provider, capability: "animation.preflight",
-    description: `Run an exact, approved ${runtime} runtime preflight and preserve structured diagnostics.`,
+    description: `Run an exact, validated ${runtime} runtime preflight and preserve structured diagnostics.`,
     runtime: "local", executionMode: "sync", producesFiles: true, approvalRequired: false,
-    sideEffects: ["Executes the approved animation package in a temporary Run workspace when the runtime check requires compilation.",
+    sideEffects: ["Executes the validated animation package in a temporary Run workspace when the runtime check requires compilation.",
       "Writes a diagnostic report even when the runtime check fails."],
     cost: { currency: "USD", estimated: 0 },
     outputDescription: "An animation.preflight Result bound to exact composition, source, props, assets and validation revisions.",
@@ -607,10 +597,10 @@ export function createCodeAnimationPreflight(runtime, options = {}) {
         data: { version: runtime === "hyperframes" ? "1.2" : "1.0", status: execution.report.status, runtime, scope: execution.report.scope,
           composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
           validationResultId: prepared.trace.validationResultId, propsResultId: prepared.trace.propsResultId,
-          approvalDecisionId: prepared.trace.approvalDecisionId, runtimeFingerprint: execution.report.runtimeFingerprint,
+          runtimeFingerprint: execution.report.runtimeFingerprint,
           errorCode: execution.report.errorCode, limitations: execution.report.limitations,
           ...(runtime === "hyperframes" ? { findings: execution.report.findings ?? null, snapshotCount: execution.snapshots.length } : {}) },
-        verification: { status: "passed", checks: ["source_checksums_verified", "exact_user_code_approval", "static_validation_bound",
+        verification: { status: "passed", checks: ["source_checksums_verified", "agent_managed_code_execution", "static_validation_bound",
           "managed_assets_staged", "runtime_diagnostics_preserved"], details: { preflightStatus: execution.report.status, runtime } } };
     },
   };
@@ -627,9 +617,9 @@ export function createRemotionAnimationPreview(options = {}) {
   const availabilityTool = createCodeAnimationRenderer(runtime, options);
   return {
     name: "remotion-preview", version: "1.0.0", provider: meta.provider, capability: "animation.preview",
-    description: "Render selected still frames and/or a short frame-exact clip from an approved, preflighted Remotion composition.",
+    description: "Render selected still frames and/or a short frame-exact clip from a validated, preflighted Remotion composition.",
     runtime: "local", executionMode: "sync", producesFiles: true, approvalRequired: false,
-    sideEffects: ["Executes exact approved Remotion source in a temporary Run workspace.", "Creates project-owned preview media and a report."],
+    sideEffects: ["Executes exact validated Remotion source in a temporary Run workspace.", "Creates project-owned preview media and a report."],
     cost: { currency: "USD", estimated: 0 },
     outputDescription: "An animation.preview Result containing requested stills and/or a short video clip.",
     inputSchema: { type: "object", required: ["artifactId", "artifactRevision", "validationResultId", "preflightResultId"], additionalProperties: false,
@@ -719,11 +709,11 @@ export function createRemotionAnimationPreview(options = {}) {
         ],
         data: { version: "1.0", runtime, composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
           validationResultId: prepared.trace.validationResultId, propsResultId: prepared.trace.propsResultId,
-          preflightResultId: prepared.trace.preflightResultId, approvalDecisionId: prepared.trace.approvalDecisionId,
+          preflightResultId: prepared.trace.preflightResultId,
           frames: prepared.trace.previewFrames, range: prepared.trace.previewRange,
           clip: execution.clip ? { durationSeconds: execution.clip.video.durationSeconds, width: execution.clip.video.width,
             height: execution.clip.video.height, frameRate: execution.clip.video.frameRate } : null },
-        verification: { status: "passed", checks: ["exact_preflight_bound", "exact_user_code_approval", "requested_frames_rendered",
+        verification: { status: "passed", checks: ["exact_preflight_bound", "agent_managed_code_execution", "requested_frames_rendered",
           ...(execution.clip ? ["preview_clip_probed", "preview_format_matches"] : [])], details: { runtime } } };
     },
   };
@@ -739,9 +729,9 @@ export function createHyperframesAnimationPreview(options = {}) {
   const availabilityTool = createCodeAnimationRenderer(runtime, options);
   return {
     name: "hyperframes-preview", version: "1.0.0", provider: meta.provider, capability: "animation.preview",
-    description: "Capture exact requested frames and a contact sheet from an approved, preflighted HyperFrames composition.",
+    description: "Capture exact requested frames and a contact sheet from a validated, preflighted HyperFrames composition.",
     runtime: "local", executionMode: "sync", producesFiles: true, approvalRequired: false,
-    sideEffects: ["Executes exact approved HyperFrames source in a temporary Run workspace.", "Creates project-owned preview images and a report."],
+    sideEffects: ["Executes exact validated HyperFrames source in a temporary Run workspace.", "Creates project-owned preview images and a report."],
     cost: { currency: "USD", estimated: 0 },
     outputDescription: "An animation.preview Result containing requested HyperFrames snapshots and a contact sheet when available.",
     inputSchema: { type: "object", required: ["artifactId", "artifactRevision", "validationResultId", "preflightResultId", "frames"], additionalProperties: false,
@@ -796,9 +786,9 @@ export function createHyperframesAnimationPreview(options = {}) {
             mediaType: "application/json", ...execution.reportFile }],
         data: { version: "1.0", runtime, composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
           validationResultId: prepared.trace.validationResultId, propsResultId: prepared.trace.propsResultId,
-          preflightResultId: prepared.trace.preflightResultId, approvalDecisionId: prepared.trace.approvalDecisionId,
+          preflightResultId: prepared.trace.preflightResultId,
           frames: prepared.trace.previewFrames, range: null, clip: null },
-        verification: { status: "passed", checks: ["exact_preflight_bound", "exact_user_code_approval", "requested_frames_rendered", "snapshot_count_matches"],
+        verification: { status: "passed", checks: ["exact_preflight_bound", "agent_managed_code_execution", "requested_frames_rendered", "snapshot_count_matches"],
           details: { runtime } } };
     },
   };
@@ -816,7 +806,7 @@ export function createHyperframesMotionPreview(options = {}) {
     name: "hyperframes-motion-preview", version: "1.0.0", provider: meta.provider, capability: "animation.preview",
     description: "Inspect a selected HyperFrames element and create an onion-skin motion-path preview over an exact frame range.",
     runtime: "local", executionMode: "sync", producesFiles: true, approvalRequired: false,
-    sideEffects: ["Executes exact approved HyperFrames source in a temporary Run workspace.",
+    sideEffects: ["Executes exact validated HyperFrames source in a temporary Run workspace.",
       "Creates a project-owned motion diagnostic image and structured keyframe report."],
     cost: { currency: "USD", estimated: 0 },
     outputDescription: "An animation.preview Result containing an onion-skin motion image and machine-readable keyframe evidence.",
@@ -898,9 +888,9 @@ export function createHyperframesMotionPreview(options = {}) {
         ],
         data: { version: "1.0", runtime, composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
           validationResultId: prepared.trace.validationResultId, propsResultId: prepared.trace.propsResultId,
-          preflightResultId: prepared.trace.preflightResultId, approvalDecisionId: prepared.trace.approvalDecisionId,
+          preflightResultId: prepared.trace.preflightResultId,
           frames: [], range: null, clip: null, motion: execution.report.motion },
-        verification: { status: "passed", checks: ["exact_preflight_bound", "exact_user_code_approval", "keyframes_inspected",
+        verification: { status: "passed", checks: ["exact_preflight_bound", "agent_managed_code_execution", "keyframes_inspected",
           "motion_preview_created"], details: { runtime, selector: prepared.trace.motionPreview.selector } } };
     },
   };

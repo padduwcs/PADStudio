@@ -108,8 +108,8 @@ qua Executor và trở thành Result video dùng trực tiếp trong sequence, k
 
 Đã học có chọn lọc từ OpenMontage về skill craft tải theo runtime, frame accuracy, managed props/asset
 staging, authoring preview và HyperFrames check-before-render. Không lấy raw output path, workspace mutable, auto-`npx`, static denylist như
-sandbox, runtime fallback hoặc `final.mp4` semantics. Host execution cần user approval trên đúng
-source Result. Hiện chỉ lọc environment và cô lập workspace; network isolation cấp OS chưa được
+sandbox, runtime fallback hoặc `final.mp4` semantics. Host execution đi qua exact validation và
+preflight do Agent quản lý, không có source-level user approval. Hiện chỉ lọc environment và cô lập workspace; network isolation cấp OS chưa được
 cưỡng chế và phải luôn được báo trung thực. Contract: [CODE-ANIMATION-SPEC.md](CODE-ANIMATION-SPEC.md).
 
 PADStudio cung cấp một đường chung để Agent dùng chương trình trên máy, mô hình local và dịch vụ bên ngoài. Agent chọn việc và công cụ; Bộ thực thi chỉ kiểm soát cách yêu cầu đó được chạy và ghi lại.
@@ -429,6 +429,9 @@ trước đó không bao phủ Result sinh ra sau. PADStudio vẫn giữ workflo
 cố định của OpenMontage. Receipt tương tác làm thất bại đường mạo nhận thông thường, nhưng không được
 tuyên bố là xác thực mật mã trước một process có toàn quyền trên host.
 
+Phần code-execution approval trong quyết định ngày 2026-09-15 là lịch sử và đã được quyết định
+2026-09-17 bên dưới thay thế. Gate `project:accept` cho exact final render vẫn giữ nguyên.
+
 ## Hardening vòng code-animation thật — 2026-09-17
 
 Từ pilot `gradient-descent-vn-3min`, PADStudio giữ nguyên exact-source approval nhưng loại hai lần hỏi
@@ -446,6 +449,22 @@ không phải stage cố định hay quyền tự phê duyệt sáng tạo.
 HyperFrames local đã được pin ở 0.8.42 và render fail-closed với lint warning cùng media chưa sẵn sàng,
 thay vì xuất best-effort. Availability giữ báo cáo `doctor`; preflight công khai phần transition bị bỏ
 mẫu hoặc finding bị cắt. Hai preview bổ sung cho nhau: exact-frame/contact sheet để xem bố cục và
-selector-scoped onion-skin để xem quỹ đạo giữa các frame. Các công cụ này dùng lại cùng một approval
-của exact source và passed preflight; chúng không tạo thêm approval gate, storyboard bắt buộc hay
-workflow cố định.
+selector-scoped onion-skin để xem quỹ đạo giữa các frame. Các công cụ này dùng lại exact source,
+validation và passed preflight; chúng không tạo thêm approval gate, storyboard bắt buộc hay workflow
+cố định.
+
+## Bỏ code-approval khỏi vòng authoring — 2026-09-17
+
+Đối chiếu lại OpenMontage cho thấy compose/preflight/render code animation được chạy trực tiếp trong
+vòng Agent; các human approval của họ nằm ở milestone nội dung/publish, không phải mỗi lần source đổi.
+PADStudio vì vậy bỏ `project:approve-code` và không còn đọc `animation_code_execution` Decision để mở
+khóa preflight, preview hay render. Agent phải tự validate, preflight, xem evidence, sửa source và chạy
+lại đến khi có video cho người dùng đánh giá. Người dùng yêu cầu chỉnh tiếp nếu chưa ưng và chỉ
+`project:accept` exact final render khi chốt.
+
+Việc bỏ prompt không bỏ các ràng buộc kỹ thuật: source/props vẫn bất biến và có checksum, validation
+và preflight phải khớp exact revision, asset chỉ được materialize theo contract, runtime phải pin,
+workspace là tạm, environment bị lọc, không auto-install và không silent fallback. Static validation
+không phải sandbox; host vẫn chưa cưỡng chế network isolation. Project cũ có Decision code approval
+vẫn đọc được để tương thích, nhưng Decision đó bị bỏ qua và không thể tạo mới. Đây là thay đổi UX và
+phân bổ trách nhiệm, không phải tuyên bố rằng generated code đã trở nên an toàn tuyệt đối.

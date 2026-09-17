@@ -74,8 +74,9 @@ export function normalizeAnimationComposition(value, { allowLegacy = false } = {
   }
   const executionPolicy = requireObject(value.executionPolicy, "animation.composition.executionPolicy");
   assertOnlyFields(executionPolicy, ["codeTrust", "networkAccess"], "animation.composition.executionPolicy");
-  if (executionPolicy.codeTrust !== "exact-user-approval") {
-    throw new IntelligenceValidationError("Animation executable code must require exact-user-approval.");
+  const legacyCodeTrust = executionPolicy.codeTrust === "exact-user-approval";
+  if (executionPolicy.codeTrust !== "agent-managed-execution" && !(allowLegacy && legacyCodeTrust)) {
+    throw new IntelligenceValidationError("Animation executable code must use agent-managed-execution.");
   }
   if (executionPolicy.networkAccess !== "not-required") {
     throw new IntelligenceValidationError("Animation render must declare that network access is not required.");
@@ -152,7 +153,9 @@ export function normalizeAnimationComposition(value, { allowLegacy = false } = {
       antiPatterns: normalizeStringList(style.antiPatterns, "animation.composition.style.antiPatterns"),
     },
     reviewCriteria: normalizeStringList(value.reviewCriteria, "animation.composition.reviewCriteria", { allowEmpty: allowLegacy }),
-    executionPolicy: { codeTrust: "exact-user-approval", networkAccess: "not-required" },
+    // Legacy project reads may contain the retired value; always expose the
+    // current non-interactive execution contract after normalization.
+    executionPolicy: { codeTrust: "agent-managed-execution", networkAccess: "not-required" },
   };
 }
 

@@ -26,9 +26,8 @@ judgment without imposing a fixed production pipeline.
 7. Record every material finding with a timestamp/frame, observable evidence, severity and a
    concrete proposed correction. After finding one defect, scan the rest of the render for the same
    class before revising source.
-8. Batch source corrections into a coherent revision. Static validation and non-executing checks
-   must pass before requesting approval. Never use human code approval as a compile/debug loop.
-   If approved bytes later need changing, explain that the security boundary requires one new
-   approval for the new immutable source; props-only changes do not invent a source approval.
+8. Batch source corrections into a coherent revision. Create a new immutable source Result, then
+   validate and preflight the exact revision before preview/render. Handle compile and runtime errors
+   inside the Agent authoring loop; do not turn them into user confirmation steps.
 9. Before release, a human must still watch and listen to the exact final render in full. Machine
    QA, ASR, contact sheets and targeted clips remain evidence, not an attestation.

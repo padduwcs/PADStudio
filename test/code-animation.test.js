@@ -7,7 +7,6 @@ import { ToolExecutor } from "../src/execution/tool-executor.js";
 import { ToolRegistry } from "../src/execution/tool-registry.js";
 import { ProjectContextAssembler } from "../src/intelligence/project-context-assembler.js";
 import { ProjectStore } from "../src/project/project-store.js";
-import { createHumanConfirmation } from "../src/project/human-confirmation.js";
 import { normalizeAnimationComposition } from "../src/animation/animation-composition.js";
 import {
   createCodeAnimationPreflight, createCodeAnimationRenderer, createHyperframesAnimationPreview, createHyperframesMotionPreview,
@@ -50,7 +49,7 @@ function composition(sourceResultId) {
     assets: [], style: { designRead: "High-contrast editorial title.", palette: ["#101010", "#FFFFFF"],
       motionPrinciples: ["Use purposeful easing."], antiPatterns: ["No decorative bouncing."] },
     reviewCriteria: ["Typography remains readable throughout."],
-    executionPolicy: { codeTrust: "exact-user-approval", networkAccess: "not-required" } };
+    executionPolicy: { codeTrust: "agent-managed-execution", networkAccess: "not-required" } };
 }
 
 test("normalized compositions can be read again when designRead is omitted", () => {
@@ -59,6 +58,24 @@ test("normalized compositions can be read again when designRead is omitted", () 
   const once = normalizeAnimationComposition(input);
   assert.equal(once.style.designRead, null);
   assert.deepEqual(normalizeAnimationComposition(once), once);
+});
+
+test("legacy code approval compositions normalize to managed execution", () => {
+  const input = composition("result-source");
+  input.executionPolicy.codeTrust = "exact-user-approval";
+  assert.throws(() => normalizeAnimationComposition(input), /agent-managed-execution/);
+  assert.equal(normalizeAnimationComposition(input, { allowLegacy: true }).executionPolicy.codeTrust, "agent-managed-execution");
+});
+
+test("retired code approval decisions cannot be created", async (t) => {
+  const { store, executor } = await fixture(t);
+  const { source } = await sourceAndValidation(executor);
+  await assert.rejects(store.recordDecision("demo", {
+    target: { kind: "result", id: source.id }, category: "animation_code_execution",
+    subject: "Retired approval", outcome: "approved", options: [], selected: null,
+    reason: "The managed execution loop no longer records this decision.",
+    decidedBy: "user", userVisible: true, confidence: "high",
+  }), /is retired/);
 });
 
 test("animation props are immutable, normalized and composition-bound", async (t) => {
@@ -99,10 +116,6 @@ test("managed props cannot overwrite a source file", async (t) => {
   const data = composition(created.result.id); data.propsResultId = props.id;
   const artifact = await store.recordArtifact("demo", { key: "collision", type: "animation.composition", name: "Collision",
     summary: "Collision fixture.", data, references: [{ kind: "result", id: created.result.id }, { kind: "result", id: props.id }] });
-  await store.recordDecision("demo", { target: { kind: "result", id: created.result.id }, category: "animation_code_execution",
-    subject: "Execute exact animation source", outcome: "approved", options: [], selected: null, reason: "Reviewed fixture.",
-    decidedBy: "user", userVisible: true, confidence: "high" },
-  { humanConfirmation: createHumanConfirmation("execute_animation_code", created.result.id) });
   const preflight = createCodeAnimationPreflight("remotion", { runtimeCommand: "fake", browserCommand: "fake-browser",
     ffmpegCommand: "fake-ffmpeg", ffprobeCommand: "fake-ffprobe", executeCommand: async () => ({ stdout: "ok", stderr: "" }) });
   const collisionExecutor = new ToolExecutor({ store, registry: new ToolRegistry([preflight]) });
@@ -188,7 +201,7 @@ test("Manim measures bounded runtime drift while frame-controlled Remotion stays
   const execute = (compositionData, suffix) => renderer.execute({
     composition: compositionData,
     source: { result: { id: "result-source" }, data: { dependencies: [] } },
-    validation: { id: "result-validation" }, approval: { id: "decision-approval" }, assets: [],
+    validation: { id: "result-validation" }, assets: [],
     artifact: { id: "artifact-animation", revision: 1 },
     codeDirectory: join(directory, `code-${suffix}`), entryPath: join(directory, `code-${suffix}`, "lesson.py"),
     outputPath: join(directory, `animation-${suffix}.mp4`), mediaDirectory: join(directory, `media-${suffix}`),
@@ -233,7 +246,7 @@ test("static validation fails closed on host and network APIs", async (t) => {
   })), /host_or_network_module/);
 });
 
-test("Remotion validation catches asset packaging mistakes before approval", async (t) => {
+test("Remotion validation catches asset packaging mistakes before execution", async (t) => {
   const { executor } = await fixture(t);
   for (const sample of [
     { name: "Static file", content: "import {staticFile} from 'remotion'; export const Demo=()=>staticFile('voice.wav'); // Composition", rule: "unsupported_static_asset_reference" },
@@ -364,10 +377,6 @@ test("HyperFrames preflight preserves normalized findings and images, then previ
   compositionData.entry = { file: "index.html", symbol: "hero-title" };
   const artifact = await store.recordArtifact("demo", { key: "hyperframes-title", type: "animation.composition", name: "HyperFrames title",
     summary: "Structured check and snapshot fixture.", data: compositionData, references: [{ kind: "result", id: created.result.id }] });
-  await store.recordDecision("demo", { target: { kind: "result", id: created.result.id }, category: "animation_code_execution",
-    subject: "Execute exact animation source", outcome: "approved", options: [], selected: null, reason: "Reviewed fixture.",
-    decidedBy: "user", userVisible: true, confidence: "high" },
-  { humanConfirmation: createHumanConfirmation("execute_animation_code", created.result.id) });
   const preflight = (await executor.execute("demo", request("animation.preflight", "hyperframes-local-preflight", "Check exact composition", {
     artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: validation.id,
   }))).result;
@@ -414,7 +423,7 @@ test("HyperFrames preflight preserves normalized findings and images, then previ
   assert.equal(observedPreflight.files.filter((file) => file.available && file.mediaType === "image").length, 2);
 });
 
-test("exact approval gates render; observer exposes it and sequence can consume the Result", async (t) => {
+test("managed validation and preflight gate render without code approval; sequence can consume the Result", async (t) => {
   const fakeCommand = async (executable, args) => {
     if (args.includes("--version") || args[0] === "-version" || args[0] === "help") return { stdout: `${executable} 1.0\n`, stderr: "" };
     if (executable === "fake-remotion" && args[0] === "compositions") return { stdout: "Demo\n", stderr: "" };
@@ -447,18 +456,10 @@ test("exact approval gates render; observer exposes it and sequence can consume 
   const artifact = await store.recordArtifact("demo", { key: "hero-title", type: "animation.composition", name: "Hero title",
     summary: "A short, editable kinetic title.", data: compositionData,
     references: [{ kind: "result", id: exact.source.id }, { kind: "result", id: props.id }] });
-  const renderRequest = request("animation.render", "remotion-local", "Render approved title", {
+  const renderRequest = request("animation.render", "remotion-local", "Render validated title", {
     artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: exact.validation.id, preflightResultId: "result-not-yet-created",
   });
-  await assert.rejects(executor.execute("demo", renderRequest), /Exact user approval/);
-  await assert.rejects(store.recordDecision("demo", { target: { kind: "result", id: exact.source.id }, category: "animation_code_execution",
-    subject: "Agent-authored approval", outcome: "approved", options: [], selected: null,
-    reason: "A JSON payload must not impersonate the user.", decidedBy: "user", userVisible: true, confidence: "high" }),
-  /direct interactive human confirmation/);
-  const approval = await store.recordDecision("demo", { target: { kind: "result", id: exact.source.id }, category: "animation_code_execution",
-    subject: "Execute exact animation source", outcome: "approved", options: [], selected: null,
-    reason: "Reviewed this immutable source package for local execution.", decidedBy: "user", userVisible: true, confidence: "high" },
-  { humanConfirmation: createHumanConfirmation("execute_animation_code", exact.source.id) });
+  await assert.rejects(executor.execute("demo", renderRequest), /Không tìm thấy result|not passed and bound/);
   const preflight = (await executor.execute("demo", request("animation.preflight", "remotion-local-preflight", "Compile exact title", {
     artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: exact.validation.id,
   }))).result;
@@ -472,7 +473,7 @@ test("exact approval gates render; observer exposes it and sequence can consume 
   assert.equal(preview.files.filter((file) => file.mediaType === "image").length, 3);
   const rendered = (await executor.execute("demo", renderRequest)).result;
   assert.equal(rendered.type, "animation.render");
-  assert.equal(rendered.data.approvalDecisionId, approval.id);
+  assert.equal("approvalDecisionId" in rendered.data, false);
   assert.equal(rendered.data.executionBoundary.networkIsolation, "not_enforced_by_host");
   assert.deepEqual(rendered.inputResults, [exact.source.id, exact.validation.id, props.id, preflight.id]);
   const reportFile = await store.verifyResultFile("demo", rendered.id, "report");
@@ -493,7 +494,7 @@ test("exact approval gates render; observer exposes it and sequence can consume 
   assert.equal(context.animation.activeCompositions[0].timing.mode, "exact");
   assert.equal(context.production.sequences[0].segments[0].visual.source.id, rendered.id);
   const observer = await new ProjectReader(rootDir).readObserverSection("demo", "animation");
-  assert.equal(observer.animation.compositions[0].executionApproval.id, approval.id);
+  assert.equal("executionApproval" in observer.animation.compositions[0], false);
   assert.equal(observer.animation.compositions[0].renders[0].files.find((file) => file.id === "primary").available, true);
   const server = createPadStudioServer({ reader: new ProjectReader(rootDir) });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -569,10 +570,6 @@ test("failed runtime preflight is preserved as evidence and cannot gate render",
   const exact = await sourceAndValidation(executor);
   const artifact = await store.recordArtifact("demo", { key: "broken", type: "animation.composition", name: "Broken title",
     summary: "Compile failure fixture.", data: composition(exact.source.id), references: [{ kind: "result", id: exact.source.id }] });
-  await store.recordDecision("demo", { target: { kind: "result", id: exact.source.id }, category: "animation_code_execution",
-    subject: "Execute exact animation source", outcome: "approved", options: [], selected: null, reason: "Reviewed fixture.",
-    decidedBy: "user", userVisible: true, confidence: "high" },
-  { humanConfirmation: createHumanConfirmation("execute_animation_code", exact.source.id) });
   const preflight = (await executor.execute("demo", request("animation.preflight", "remotion-local-preflight", "Capture compile failure", {
     artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: exact.validation.id,
   }))).result;

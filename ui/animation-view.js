@@ -15,8 +15,7 @@ function statusLine(composition) {
   const validation = composition.validation ? "đã validation" : "chưa validation";
   const preflight = composition.preflights?.at(-1);
   const runtimeCheck = preflight ? `preflight ${preflight.status}` : "chưa preflight";
-  const approval = composition.executionApproval?.outcome === "approved" ? "đã cho phép chạy exact source" : "chưa được phép chạy code";
-  return `${composition.runtime} · r${composition.revision} · ${validation} · ${runtimeCheck} · ${approval}`;
+  return `${composition.runtime} · r${composition.revision} · ${validation} · ${runtimeCheck}`;
 }
 
 export function renderAnimation(container, context) {
@@ -35,13 +34,12 @@ export function renderAnimation(container, context) {
     card.dataset.animationRevision = String(composition.revision);
     card.append(
       node("h4", `${composition.name} · ${composition.role}`),
-      node("p", statusLine(composition), composition.executionApproval?.outcome === "approved" ? "result-verification" : "sequence-warning"),
+      node("p", statusLine(composition), composition.validation ? "result-verification" : "sequence-warning"),
       node("p", composition.intent),
       node("p", `${composition.durationSeconds}s mục tiêu (${composition.timing?.mode ?? "exact"}) · ${composition.format.width}×${composition.format.height} · ${composition.format.fps} fps · ${composition.entry.file}#${composition.entry.symbol}`, "input-meta"),
       node("p", `Exact source: ${composition.sourceResultId}`, "exact-result-id")
     );
     if (composition.propsResultId) card.append(node("p", `Managed props: ${composition.propsResultId}`, "exact-result-id"));
-    if (composition.executionApproval) card.append(node("p", `Quyết định ${composition.executionApproval.id}: ${composition.executionApproval.reason}`, "input-meta"));
     const preflight = composition.preflights?.at(-1);
     if (preflight) {
       card.append(node("p", `Preflight ${preflight.status}: ${preflight.resultId} · ${preflight.scope}`,

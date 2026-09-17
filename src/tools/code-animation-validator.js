@@ -118,7 +118,7 @@ export function createCodeAnimationValidator() {
       }
       return { actualCostUsd: 0, source, findings, warnings: [
         "Static validation is not a security sandbox.",
-        "Rendering still requires an exact user approval for this source Result.",
+        "Validated source may execute locally during preflight, preview and render without a separate code-approval prompt.",
       ] };
     },
     createResult({ execution }) {

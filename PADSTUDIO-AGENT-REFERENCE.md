@@ -202,16 +202,15 @@ Contract đầy đủ:
 1. `animation.source / code-animation-source` tạo hoặc revise source package bất biến;
 2. `animation.validate / code-animation-validator` kiểm tra đúng package mà không chạy code;
 3. `npm run project:animation -- <project-id> <json-file|->` lưu `animation.composition`;
-4. Agent dừng lượt; người dùng tự chạy
-   `npm run project:approve-code -- <project-id> <source-result-id>` trong terminal tương tác;
+4. Agent chạy matching `animation.preflight`, preview có chọn lọc, sửa/validate/preflight lại nếu cần;
 5. `animation.render` với exact tool `manim-ce`, `remotion-local` hoặc `hyperframes-local`,
-   truyền `artifactId`, `artifactRevision`, `validationResultId`.
+   truyền `artifactId`, `artifactRevision`, `validationResultId`, `preflightResultId`.
 
 `animation.composition.durationSeconds` là thời lượng mục tiêu căn frame. `timing.mode` mặc định là
 `measured` cho Manim và `exact` cho Remotion/HyperFrames. Chế độ measured chỉ chấp nhận sai số nhỏ có
 giới hạn và ghi cả target/actual/drift vào Render Result; nó không tự cắt, đệm hay retime output.
-Sau khi người dùng báo đã chạy approval, đọc lại `project:resume`; nếu checkpoint có
-`authority: advisory` thì không dùng `checkpoint.next` cũ để yêu cầu lại cùng exact Result.
+Không có code-approval gate. Người dùng chỉ accept exact render cuối sau khi đã xem/nghe đầy đủ;
+checkpoint cũ nhắc `approve-code` là advisory lịch sử và không được dùng để chặn luồng mới.
 
 Đọc manifest/source đã lưu bằng
 `npm run animation:read -- <project-id> <source-result-id> [relative-file|--all]`; lệnh chỉ trả
@@ -220,7 +219,7 @@ nội dung đã đăng ký theo Result ID, không trả raw path.
 Không truyền raw path. Không tự cài dependency hoặc fallback runtime. Source dependency chỉ là
 declaration provenance; kiểm tra availability/setup bằng `tool:list -- --capability animation.render`.
 Render Result có poster/report/checksum và dùng được ngay trong `video.sequence`. Chi tiết contract,
-giới hạn sandbox và ví dụ approval: [CODE-ANIMATION-SPEC.md](docs/build/CODE-ANIMATION-SPEC.md).
+giới hạn sandbox và vòng managed execution: [CODE-ANIMATION-SPEC.md](docs/build/CODE-ANIMATION-SPEC.md).
 
 Đọc skill `video-sequence-planning` khi cần tổ chức và sửa một video.
 Lưu sequence qua `npm run project:sequence -- <project-id> <json-file|->`.

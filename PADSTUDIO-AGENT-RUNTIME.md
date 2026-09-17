@@ -20,7 +20,7 @@ npm run project:resume -- <project-id>
 `project:resume` là context mặc định. Nó chỉ trả checkpoint, việc hiện hành, artifact active cần tiếp tục, sequence/render mới nhất, feedback, health, budget và trạng thái phân tích cô đọng. Không dùng full context theo thói quen.
 Nếu `checkpointFreshness.authority` là `advisory`, `checkpoint.pending` và `checkpoint.next` chỉ là lịch sử;
 không chạy lại chúng trước khi đối chiếu trạng thái bền vững hiện tại trong `work`, `production`, `animation`,
-decision và review. Sau khi người dùng nói đã tự chạy một lệnh approval/acceptance, luôn đọc lại
+decision và review. Sau khi người dùng nói đã tự chạy một lệnh acceptance, luôn đọc lại
 `project:resume` rồi mới tiếp tục; không yêu cầu lại cùng exact Result chỉ vì cuộc chat hoặc checkpoint chưa cập nhật.
 
 Chỉ khi resume thiếu dữ kiện cho việc cụ thể:
@@ -77,21 +77,17 @@ authorization thì phải dùng recovery, không abandon.
 
 Khi project cần hoạt họa bằng code, đọc skill `code-animation`. Tạo/revise source bằng
 `animation.source`, chạy `animation.validate`, rồi lưu `animation.composition` bằng
-`project:animation`. Render chỉ được chạy sau khi người dùng tự chạy lệnh tương tác
-`npm run project:approve-code -- <project-id> <source-result-id>` và chấp thuận việc thực thi
-đúng source Result. Agent phải kết thúc lượt tại gate này; không chạy lệnh, gõ câu xác nhận,
-pipe stdin hoặc soạn JSON approval thay người dùng. Static validation
-không phải sandbox; host hiện không cưỡng chế cách ly mạng. Không tự cài runtime, không gọi `npx`
-để tải package và không đổi Manim/Remotion/HyperFrames ngầm. `animation.render` là Result video
-có thể dùng trực tiếp làm source của `video.sequence`.
+`project:animation`. Sau khi validation pass, Agent chủ động chạy preflight, preview, sửa lỗi và render;
+không hỏi người dùng duyệt source code. Static validation không phải sandbox và host hiện không cưỡng
+chế cách ly mạng, nên chỉ dùng source/dependency/asset thuộc project, workspace tạm và runtime đã pin.
+Không tự cài runtime, không gọi `npx` để tải package và không đổi Manim/Remotion/HyperFrames ngầm.
+`animation.render` là Result video có thể dùng trực tiếp làm source của `video.sequence`.
 
-Chỉ xin approval sau khi source/props/asset/composition đã ổn định và static validation pass; không
-dùng approval để debug compile. Lặp lại lệnh với đúng source đã duyệt sẽ trả lại Decision cũ mà
-không hỏi lại. Nếu byte source đổi, phải nói rõ đây là trust target mới nên cần approval mới.
-Sau một approval hợp lệ, `animation.preflight`, `hyperframes-preview`,
-`hyperframes-motion-preview` và `animation.render` của đúng source/composition revision phải dùng lại
-Decision đó; không dừng để xin lại giữa các bước. Motion preview chỉ dùng có chọn lọc cho selector/đoạn
-khó đánh giá, không phải gate bắt buộc cho mọi composition.
+Mỗi lần byte source đổi phải tạo source Result mới, validate lại và preflight lại đúng revision trước
+khi preview/render. Agent tự lặp vòng này đến khi có bản xem được; không biến lỗi compile thành câu hỏi
+cho người dùng. Motion preview chỉ dùng có chọn lọc cho selector/đoạn khó đánh giá, không phải gate bắt
+buộc cho mọi composition. Người dùng xem video, yêu cầu chỉnh tiếp nếu chưa ưng và chỉ chạy
+`project:accept` khi chốt exact render cuối.
 
 Nếu một lỗi contract/runtime của PADStudio chặn công việc, không sửa `src/`, `test/` hay tài liệu build ngay
 trong phiên vận hành video. Ghi lại exact Run/Result và lỗi, báo rõ đây là lỗi hệ thống, rồi chỉ chuyển sang
@@ -109,9 +105,9 @@ phát triển codebase khi phạm vi đó đã được xác nhận.
    Agent không được chạy lệnh, gõ câu xác nhận hoặc tạo attestation/acceptance bằng JSON.
 6. `video.export-delivery` chỉ dùng exact Result có confirmed human review, confirmed acceptance và QA hợp lệ.
 
-`project:decide` vẫn dùng cho feedback, rejection và quyết định không thuộc hai gate tin cậy trên.
+`project:decide` vẫn dùng cho feedback, rejection và quyết định không thuộc final acceptance gate.
 `project:attest` dạng JSON đã ngừng nhận human attestation. Một yêu cầu kiểu “cứ làm đi” ở trước đó
-không tự động phê duyệt source/render xuất hiện về sau; mỗi gate gắn với đúng immutable Result.
+không tự động phê duyệt render xuất hiện về sau; final acceptance gắn với đúng immutable Result.
 
 Render verification chỉ chứng minh file dựng được tạo đúng contract; nó không thay thế exact-output QA, review của Agent hay việc người dùng xem/nghe. Khi lời thoại, subtitle hoặc hình ảnh được sửa, tạo revision/render mới rồi lặp lại QA và approval trên đúng Result mới.
 

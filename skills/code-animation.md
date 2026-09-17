@@ -18,17 +18,12 @@ Code animation is an optional production branch, not a required pipeline stage.
    `timing.mode: measured`: the target guides planning while the verified render Result owns the
    exact duration within a small bounded tolerance. Use `exact` only when authored timing truly
    controls the output. Remotion always uses `exact` because PADStudio renders a fixed frame range.
-4. Treat generated source as untrusted until reviewed. Finish source, props, asset mappings and the
+4. Treat generated source as untrusted input. Finish source, props, asset mappings and the
    composition first, then run `animation.validate`. Resolve every static finding—including Remotion
-   asset imports—before involving the user. This is static lint, not a sandbox. Only when the exact
-   immutable source is approval-ready, stop and ask the user to run
-   `npm run project:approve-code -- <project-id> <source-result-id>` themselves in an
-   interactive terminal. Never type the confirmation for them, pipe input, prepare an approval
-   JSON, or continue in the same Agent turn. Only that command can create the confirmed user
-   ProjectDecision for the exact source Result. Do not use approval as a compile/debug step or ask
-   again for an already approved exact source. Changed source bytes necessarily create a new trust
-   decision; explain that boundary instead of implying the earlier approval was lost.
-5. After approval, run matching `animation.preflight` and inspect its diagnostic Result. A failed
+   asset imports—before execution. Static validation is not a sandbox, but it is the automatic gate:
+   there is no user code-approval prompt. Use only project-owned source/assets, pinned runtimes,
+   the managed temporary workspace and the filtered environment.
+5. Run matching `animation.preflight` and inspect its diagnostic Result. A failed
    preflight remains evidence and cannot authorize preview/render. Remotion can then create selected
    stills and a short frame-range clip with `animation.preview / remotion-preview`; HyperFrames can
    capture exact requested frames and a contact sheet with `animation.preview / hyperframes-preview`.
@@ -37,8 +32,8 @@ Code animation is an optional production branch, not a required pipeline stage.
 6. Render with the matching adapter and exact passed preflight Result. Draft/history requires explicit `allowHistorical: true`.
    PADStudio never installs dependencies, calls `npx`,
    or falls back to another runtime automatically. If unavailable, surface setup guidance.
-   After the user reports completing an approval command, run `project:resume` and trust its durable
-   execution approval. Do not ask for the same exact source again because an older checkpoint still says pending.
+   When source bytes change, create a new immutable source Result, validate and preflight it again.
+   Ignore historical checkpoints that mention `approve-code`; they are advisory state from the retired contract.
 7. The renderer materializes a temporary Run workspace, verifies source checksums, copies
    only declared project assets, filters environment variables, and checks output duration,
    resolution and frame rate. Host network isolation is not currently enforced; never claim it is.
