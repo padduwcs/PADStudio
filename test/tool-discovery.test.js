@@ -23,6 +23,8 @@ function tool(name, capability, status = "available") {
     cost: { currency: "USD", estimated: 0 },
     approvalRequired: false,
     producesFiles: true,
+    resourceProfile: { class: "standard", cpuCores: 2, ramMb: 2048, vramMb: 0,
+      workingDiskMb: 1024, networkRequired: false, confidence: "catalog_estimate" },
     availability: status === "available"
       ? { status, executableVersion: "1.2.3" }
       : { status, reason: "missing dependency" }
@@ -60,6 +62,7 @@ test("tool discovery summary keeps choice-critical fields and omits full schemas
   });
   assert.equal(summary.capabilities[0].tools[0].provider, "local");
   assert.equal(summary.capabilities[0].tools[0].approvalRequired, false);
+  assert.equal(summary.capabilities[0].tools[0].resourceProfile.class, "standard");
   assert.deepEqual(summary.capabilities[0].tools[0].requiredInputs, ["source"]);
   assert.equal("inputSchema" in summary.capabilities[0].tools[0], false);
   assert.equal("version" in summary.capabilities[0].tools[0], false);

@@ -81,4 +81,29 @@ test("registry rejects tools with incomplete public contracts", () => {
     () => new ToolRegistry([fakeTool({ outputDescription: "" })]),
     /outputDescription/
   );
+  assert.throws(
+    () => new ToolRegistry([fakeTool({ resourceProfile: { class: "heavy" } })]),
+    /resourceProfile/
+  );
+});
+
+test("registry exposes a valid planning resource profile", async () => {
+  const resourceProfile = { class: "standard", cpuCores: 2, ramMb: 2048, vramMb: 0,
+    workingDiskMb: 1024, networkRequired: false, confidence: "declared" };
+  const registry = new ToolRegistry([fakeTool({ resourceProfile })]);
+  assert.deepEqual((await registry.describeCapabilities()).capabilities[0].tools[0].resourceProfile, resourceProfile);
+});
+
+test("registry removes optional VRAM demand when a tool is discovered in CPU mode", async () => {
+  const resourceProfile = { class: "heavy", cpuCores: 4, ramMb: 8192, vramMb: 6144,
+    workingDiskMb: 4096, networkRequired: false, confidence: "catalog_estimate" };
+  const registry = new ToolRegistry([fakeTool({
+    resourceProfile,
+    async checkAvailability() {
+      return { status: "available", device: "cpu" };
+    },
+  })]);
+  const reported = (await registry.describeCapabilities()).capabilities[0].tools[0].resourceProfile;
+  assert.equal(reported.vramMb, 0);
+  assert.equal(resourceProfile.vramMb, 6144);
 });

@@ -48,6 +48,7 @@ test("system doctor keeps optional tools non-blocking and reports release limits
     minimumFreeBytes: 0
   });
   assert.equal(result.status, "ready");
+  assert.equal(result.machine.privacy.secretsRead, false);
   assert.equal(result.release.releaseDefault, null);
   assert.equal(
     result.capabilities.find((entry) => entry.id === "optional.fixture").requirement,

@@ -3,6 +3,7 @@ import { access, statfs } from "node:fs/promises";
 import { ProjectContextAssembler } from "../intelligence/project-context-assembler.js";
 import { ProjectStore } from "../project/project-store.js";
 import { createDefaultToolRegistry } from "../execution/default-tool-registry.js";
+import { inspectMachineProfile } from "./machine-profile.js";
 
 export const PRACTICAL_REQUIRED_CAPABILITIES = Object.freeze([
   "media.inspect",
@@ -63,9 +64,11 @@ export async function inspectPadStudio({
   projectId = null,
   registry = createDefaultToolRegistry(),
   store = new ProjectStore(rootDir),
-  minimumFreeBytes = 1024 ** 3
+  minimumFreeBytes = 1024 ** 3,
+  machineProfileReader = inspectMachineProfile,
 }) {
   const remediations = [];
+  const machinePromise = machineProfileReader({ rootDir });
   const nodeMajor = Number(process.versions.node.split(".")[0]);
   const runtime = {
     node: process.version,
@@ -108,7 +111,7 @@ export async function inspectPadStudio({
     ));
   }
 
-  const described = await registry.describeCapabilities();
+  const [machine, described] = await Promise.all([machinePromise, registry.describeCapabilities()]);
   const required = new Set(PRACTICAL_REQUIRED_CAPABILITIES);
   const capabilities = described.capabilities.map((capability) => ({
     id: capability.id,
@@ -197,6 +200,7 @@ export async function inspectPadStudio({
     status: systemBlocked ? "blocked" : projectAttention ? "attention" : "ready",
     mode: deep ? "deep" : "quick",
     runtime,
+    machine,
     storage,
     capabilities,
     missingRequiredCapabilities: missingRequired,

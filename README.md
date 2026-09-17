@@ -19,7 +19,12 @@ Các nhóm khả năng chính gồm phân tích source, transcript/scene/frame/a
 ```powershell
 npm run tool:list
 npm run tool:list -- --capability video.render-sequence
+npm run system:profile
 ```
+
+`project:resume` tự kèm một planning environment cô đọng cho Agent: CPU/RAM/GPU khi dò được,
+dung lượng, runtime composition, capability đang dùng được, cảnh báo và setup offer không chứa secret.
+`system:profile` mở cùng dữ kiện ở mức hệ thống khi cần kiểm tra riêng.
 
 Tài liệu lệnh/contract đầy đủ chỉ tra cứu khi cần: [`PADSTUDIO-AGENT-REFERENCE.md`](PADSTUDIO-AGENT-REFERENCE.md). README dài trước đây được giữ tại [`PADSTUDIO-REFERENCE.md`](PADSTUDIO-REFERENCE.md).
 

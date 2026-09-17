@@ -243,9 +243,13 @@ Xem các capability và công cụ thực sự dùng được trên máy:
 
 ```powershell
 npm run tool:list
+npm run system:profile
 $recommendation = @{ capability = "tts.synthesize"; priorities = @{ quality = 5; privacy = 3 } } | ConvertTo-Json -Compress
 $recommendation | npm run tool:recommend -- -
 ```
+
+`system:profile` trả hồ sơ máy và planning envelope không chứa secret. `project:resume` đã nhúng bản
+cô đọng trong `environment`; chỉ gọi lệnh riêng khi cần chẩn đoán hoặc xem toàn bộ capability menu.
 
 Đọc best-for, limitation, setup, cost, alternatives và skill trước khi chọn.
 Recommendation chỉ advisory; request chạy luôn nêu exact capability/tool và không

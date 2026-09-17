@@ -70,10 +70,24 @@ function validateTool(tool) {
       throw new ToolRegistryError(`selectionProfile của công cụ ${tool.name} không hợp lệ.`);
     }
   }
+  if (tool.resourceProfile !== undefined) {
+    const profile = tool.resourceProfile;
+    const numericFields = ["cpuCores", "ramMb", "vramMb", "workingDiskMb"];
+    if (!profile || typeof profile !== "object" || Array.isArray(profile) ||
+        !["light", "standard", "heavy", "provider"].includes(profile.class) ||
+        numericFields.some((key) => !Number.isFinite(profile[key]) || profile[key] < 0) ||
+        typeof profile.networkRequired !== "boolean" || !["declared", "catalog_estimate"].includes(profile.confidence)) {
+      throw new ToolRegistryError(`resourceProfile của công cụ ${tool.name} không hợp lệ.`);
+    }
+  }
   return tool;
 }
 
 function publicToolInfo(tool, availability) {
+  const resourceProfile = tool.resourceProfile ? structuredClone(tool.resourceProfile) : null;
+  // A tool discovered in CPU mode must not retain a catalog VRAM estimate
+  // that belongs to its optional accelerated path.
+  if (resourceProfile && availability?.device === "cpu") resourceProfile.vramMb = 0;
   return {
     name: tool.name,
     version: tool.version,
@@ -92,6 +106,7 @@ function publicToolInfo(tool, availability) {
     skillIds: [...(tool.skillIds ?? [])], setup: tool.setup ? structuredClone(tool.setup) : null,
     usage: tool.usage ? structuredClone(tool.usage) : null,
     selectionProfile: tool.selectionProfile ? structuredClone(tool.selectionProfile) : null,
+    resourceProfile,
     availability
   };
 }

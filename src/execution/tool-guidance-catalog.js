@@ -19,6 +19,17 @@ function setup(tool) {
   return { kind: "tool_reported", instructions: "Use live tool availability and setup hints.", configKeys: [] };
 }
 
+function resourceProfile(tool) {
+  const networkRequired = ["network", "cloud"].includes(tool.runtime) || ["elevenlabs", "wikimedia-stock", "https-media"].includes(tool.name);
+  if (tool.name.startsWith("manim-")) return { class: "standard", cpuCores: 2, ramMb: 2048, vramMb: 0, workingDiskMb: 2048, networkRequired: false, confidence: "catalog_estimate" };
+  if (tool.name.startsWith("remotion-")) return { class: "standard", cpuCores: 4, ramMb: 4096, vramMb: 0, workingDiskMb: 2048, networkRequired: false, confidence: "catalog_estimate" };
+  if (tool.name.startsWith("hyperframes-")) return { class: "standard", cpuCores: 4, ramMb: 3072, vramMb: 0, workingDiskMb: 2048, networkRequired: false, confidence: "catalog_estimate" };
+  if (tool.name.startsWith("faster-whisper")) return { class: "heavy", cpuCores: 4, ramMb: 8192, vramMb: 6000, workingDiskMb: 4096, networkRequired: false, confidence: "catalog_estimate" };
+  if (tool.name === "piper-local") return { class: "standard", cpuCores: 2, ramMb: 2048, vramMb: 0, workingDiskMb: 1024, networkRequired: false, confidence: "catalog_estimate" };
+  if (tool.runtime.startsWith("local")) return { class: "standard", cpuCores: 2, ramMb: 2048, vramMb: 0, workingDiskMb: 4096, networkRequired: false, confidence: "catalog_estimate" };
+  return { class: "provider", cpuCores: 1, ramMb: 512, vramMb: 0, workingDiskMb: 1024, networkRequired, confidence: "catalog_estimate" };
+}
+
 export function applyToolGuidance(tool) {
   const info = group(tool.capability);
   const profile = tool.name === "elevenlabs"
@@ -37,5 +48,5 @@ export function applyToolGuidance(tool) {
     : [info[2]];
   return { ...tool, bestFor: [info[0]], limitations: [info[1]], skillIds, setup: setup(tool),
     usage: { unit: tool.cost?.estimated === 0 ? "run" : (tool.approvalRequired ? "provider_usage" : "unknown"), estimate: tool.cost?.estimated ?? null },
-    selectionProfile: profile };
+    selectionProfile: profile, resourceProfile: resourceProfile(tool) };
 }

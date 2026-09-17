@@ -18,6 +18,11 @@ npm run project:resume -- <project-id>
 ```
 
 `project:resume` là context mặc định. Nó chỉ trả checkpoint, việc hiện hành, artifact active cần tiếp tục, sequence/render mới nhất, feedback, health, budget và trạng thái phân tích cô đọng. Không dùng full context theo thói quen.
+Resume còn có `environment`: hồ sơ máy/capability cô đọng được đo lại để lập kế hoạch. Với project mới,
+`environment.mode` là `onboarding`; hãy nói ngắn gọn khả năng nào dùng được, runtime composition nào
+phù hợp để cân nhắc và cảnh báo thực sự liên quan. Không dump toàn bộ menu, không khoe thông số không
+liên quan và không tự cài theo `setupOffers`. Resource profile là ước lượng lập kế hoạch, không phải
+benchmark; exact tool vẫn phải qua availability/preflight trước việc dài hoặc tốn tiền.
 Nếu `checkpointFreshness.authority` là `advisory`, `checkpoint.pending` và `checkpoint.next` chỉ là lịch sử;
 không chạy lại chúng trước khi đối chiếu trạng thái bền vững hiện tại trong `work`, `production`, `animation`,
 decision và review. Sau khi người dùng nói đã tự chạy một lệnh acceptance, luôn đọc lại
@@ -60,6 +65,7 @@ authorization thì phải dùng recovery, không abandon.
 
 - Đọc đúng các skill trong `work.relevantSkillIds` bằng `npm run skill:read -- <skill-id> <project-id>`.
 - Khi chọn tool, lọc capability cụ thể bằng `npm run tool:list -- --capability <capability>`; chỉ dùng `--view full` khi cần schema.
+- Khi cần kiểm tra môi trường ngoài project, dùng `npm run system:profile`; `padstudio:doctor` dành cho readiness/integrity và remediation rộng hơn.
 - Transcript, scene, frame và audio phải được đọc theo `resultId`/`sourceKey`, range, cursor và limit; không nạp toàn bộ JSONL.
 - Không đọc `docs/build/`, `reports/`, `test/`, project khác hoặc lịch sử Git trong một phiên vận hành bình thường.
 

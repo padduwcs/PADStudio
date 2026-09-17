@@ -2,6 +2,8 @@ import { buildProductionContext } from "../production/production-context.js";
 import { AnalysisReader } from "../analysis/analysis-reader.js";
 import { buildProjectHealth } from "../operations/project-health.js";
 import { buildAnimationContext } from "../animation/animation-context.js";
+import { inspectMachineProfile } from "../operations/machine-profile.js";
+import { buildPlanningEnvironment } from "../operations/planning-environment.js";
 
 function activity(kind, id, value) {
   if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) return null;
@@ -126,7 +128,7 @@ function compactResumeAnalysis(analysis) {
   };
 }
 
-export function compactResumeContext(summary) {
+export function compactResumeContext(summary, environment = null) {
   const capabilities = summary.capabilities?.capabilities ?? [];
   const unavailable = capabilities.filter((capability) => !capability.available).map((capability) => capability.id);
   const attention = summary.resumeView?.attention ?? [];
@@ -178,7 +180,8 @@ export function compactResumeContext(summary) {
       total: capabilities.length,
       available: capabilities.length - unavailable.length,
       unavailable
-    }
+    },
+    ...(environment ? { environment } : {}),
   };
 }
 
@@ -271,13 +274,17 @@ function compactAnalysis(value) {
 }
 
 export class ProjectContextAssembler {
-  constructor({ projectStore, toolRegistry = null, analysisReader = null, capabilityCacheTtlMs = 5_000, now = Date.now }) {
+  constructor({ projectStore, toolRegistry = null, analysisReader = null, capabilityCacheTtlMs = 5_000,
+    machineProfileReader = null, machineProfileCacheTtlMs = 60_000, now = Date.now }) {
     this.projectStore = projectStore;
     this.toolRegistry = toolRegistry;
     this.analysisReader = analysisReader ?? new AnalysisReader({ rootDir: projectStore.rootDir, projectStore });
     this.capabilityCacheTtlMs = capabilityCacheTtlMs;
+    this.machineProfileReader = machineProfileReader ?? (() => inspectMachineProfile({ rootDir: projectStore.rootDir }));
+    this.machineProfileCacheTtlMs = machineProfileCacheTtlMs;
     this.now = now;
     this.capabilitiesCache = null;
+    this.machineProfileCache = null;
   }
 
   async build(projectId) {
@@ -336,7 +343,28 @@ export class ProjectContextAssembler {
   }
 
   async buildResume(projectId) {
-    return compactResumeContext(await this.buildSummary(projectId));
+    const [summary, machine, capabilities] = await Promise.all([
+      this.buildSummary(projectId), this.#machineProfile(), this.#capabilities(),
+    ]);
+    const onboarding = summary.activeArtifacts.length === 0 &&
+      !(summary.production?.activeSequences?.length) && !(summary.analysis?.sources?.length);
+    return compactResumeContext(summary, buildPlanningEnvironment({
+      machine, capabilityDescription: capabilities, onboarding,
+    }));
+  }
+
+  async #machineProfile() {
+    const checkedAt = this.now();
+    if (!this.machineProfileCache || checkedAt - this.machineProfileCache.checkedAt >= this.machineProfileCacheTtlMs) {
+      const promise = this.machineProfileReader();
+      this.machineProfileCache = { checkedAt, promise };
+      try { return await promise; }
+      catch (error) {
+        if (this.machineProfileCache?.promise === promise) this.machineProfileCache = null;
+        throw error;
+      }
+    }
+    return this.machineProfileCache.promise;
   }
 
   async #capabilities() {

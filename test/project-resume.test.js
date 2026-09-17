@@ -28,3 +28,14 @@ test("resume context keeps current action and drops historical/tool detail", () 
   assert.equal("tools" in resume.capabilityStatus, false);
   assert.ok(JSON.stringify(resume).length < 4_000);
 });
+
+test("resume includes a compact planning environment when supplied", () => {
+  const summary = {
+    project: { id: "new", title: "New" }, checkpoint: null, checkpointFreshness: null,
+    health: { status: "ready" }, activeWorkflow: null, resumeView: { attention: [] }, activeArtifacts: [],
+    production: { activeSequences: [], affectedWorkItems: [], pendingFinalizations: [] }, pendingFeedback: [],
+    budget: {}, analysis: { counts: {}, jobStates: {}, sources: [] }, capabilities: { capabilities: [] },
+  };
+  const environment = { version: "1.0", mode: "onboarding", capabilityMenu: [] };
+  assert.equal(compactResumeContext(summary, environment).environment.mode, "onboarding");
+});

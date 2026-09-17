@@ -7,6 +7,7 @@ Yêu cầu nền: Windows, Node.js 20+, FFmpeg/ffprobe, Python/profile phân tí
 Từ thư mục repository:
 
     npm run padstudio:doctor
+    npm run system:profile
     npm start
 
 Mở `http://127.0.0.1:7603`. Server chỉ bind localhost và Observer không có mutation endpoint.
@@ -16,6 +17,10 @@ Doctor nhanh kiểm runtime, disk, capability và health metadata. Khi nghi file
     npm run padstudio:doctor -- --deep <project-id>
 
 Doctor không cài dependency, không tải model và không sửa project. Exit code 0 là ready/attention có JSON chi tiết; 2 là system blocked; 1 là lỗi gọi/đọc.
+
+`system:profile` là lớp lập kế hoạch read-only: CPU/RAM/GPU/disk, FFmpeg encoder candidate, live
+capability menu, composition runtime, setup offer và resource risk. Nó không benchmark, không đọc giá
+trị secret và không thay thế exact availability/preflight của tool được chọn.
 
 ## 2. Tạo, nhập và quan sát project
 

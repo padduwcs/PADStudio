@@ -92,6 +92,7 @@ function summarizeTool(tool) {
     skillIds: tool.skillIds,
     setup: tool.setup,
     usage: tool.usage,
+    resourceProfile: tool.resourceProfile,
     alternatives: tool.alternatives
   };
 }

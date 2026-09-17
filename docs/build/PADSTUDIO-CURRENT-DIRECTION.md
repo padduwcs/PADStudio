@@ -468,3 +468,18 @@ workspace là tạm, environment bị lọc, không auto-install và không sile
 không phải sandbox; host vẫn chưa cưỡng chế network isolation. Project cũ có Decision code approval
 vẫn đọc được để tương thích, nhưng Decision đó bị bỏ qua và không thể tạo mới. Đây là thay đổi UX và
 phân bổ trách nhiệm, không phải tuyên bố rằng generated code đã trở nên an toàn tuyệt đối.
+
+## Machine & Capability Profile cho Agent — 2026-09-17
+
+`project:resume` nay có `environment` được tạo từ hồ sơ máy read-only và live Tool Registry. Agent biết
+CPU/RAM, GPU/VRAM khi platform probe xác nhận được, disk, các FFmpeg encoder candidate, menu capability,
+trạng thái riêng của Manim/Remotion/HyperFrames/FFmpeg, setup offer, warning và resource risk trước khi
+lập kế hoạch. Project trống được đánh dấu `onboarding`; project đang làm dùng `refresh`. CLI
+`system:profile` cho phép đọc cùng envelope ngoài một project, còn doctor giữ nhiệm vụ readiness,
+integrity và remediation.
+
+Thiết kế học capability-summary/setup-offer/resource-profile từ OpenMontage nhưng không sao chép
+pipeline bắt buộc hoặc suy diễn quá mức từ dependency. Resource profile của PADStudio ghi rõ
+`catalog_estimate`; encoder có trong FFmpeg chỉ là candidate, không phải benchmark hay bằng chứng GPU
+chạy được. Profile không đọc giá trị secret, không probe network, không auto-install và không tự chọn
+creative workflow/runtime thay Agent.
