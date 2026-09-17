@@ -51,6 +51,7 @@ The renderer records all three plus the exact user execution decision.
 | `animation.preflight` | three runtime-specific `*-preflight` tools | Check the exact approved workspace and preserve diagnostics, including failures. |
 | `animation.preview` | `remotion-preview` | Render selected still frames and/or a clip of at most 30 seconds after passed preflight. |
 | `animation.preview` | `hyperframes-preview` | Capture selected exact frames and a contact sheet after passed preflight. |
+| `animation.preview` | `hyperframes-motion-preview` | Inspect one selector and preserve a bounded onion-skin path/strip plus JSON keyframe diagnostics. |
 | `animation.render` | `manim-ce` | Render an approved Manim `Scene`. |
 | `animation.render` | `remotion-local` | Render an approved Remotion composition frame-accurately. |
 | `animation.render` | `hyperframes-local` | Run strict HyperFrames check, then render authored `index.html`. |
@@ -141,8 +142,11 @@ Remotion preview requires the exact passed preflight and can emit up to twelve P
 optional frame-aligned clip no longer than 30 seconds. The clip is probed for resolution, FPS and
 duration. HyperFrames preflight uses adaptive timeline samples, transition-boundary sampling, and
 preserves normalized lint/runtime/layout/motion/contrast findings plus snapshots and finding crops.
-Its preview can capture up to twelve requested exact frames and preserves the generated contact
-sheet. A matching `*.motion.json` may be included in the immutable source package when the authored
+Its frame preview can capture up to twelve requested exact frames and preserves the generated contact
+sheet. Its optional selector-scoped motion preview records keyframe diagnostics and a bounded onion-skin
+path/strip for a chosen frame interval. Preflight also exposes whether findings were truncated or
+transition samples were dropped; incomplete coverage remains visible rather than being treated as
+full coverage. A matching `*.motion.json` may be included in the immutable source package when the authored
 motion has useful testable promises; it remains optional. Preview is an authoring aid, not technical
 or creative acceptance. PADStudio does not pretend that all runtimes expose the same preview contract.
 
@@ -175,7 +179,10 @@ sequence render acceptance, output QA and `video.export-delivery`.
   remote debugging in branded Chrome 136+, so PADStudio only auto-discovers Chrome for Testing or
   Chrome Headless Shell under `.runtime-tools`; use `PADSTUDIO_REMOTION_PATH` and
   `PADSTUDIO_CHROME_PATH` for explicit overrides. It never downloads a browser.
-- HyperFrames: explicitly install/pin the CLI. PADStudio discovers the same isolated Node runtime
+- HyperFrames: explicitly install/pin the CLI. The prepared local runtime is pinned to 0.8.42;
+  renders use strict warnings and disable best-effort media fallback. Availability runs structured
+  `doctor` diagnostics and reports optional failures as degraded evidence rather than hiding them.
+  PADStudio discovers the same isolated Node runtime
   and existing browser; use `PADSTUDIO_HYPERFRAMES_PATH` or `PADSTUDIO_CHROME_PATH` to override them.
 - FFmpeg/ffprobe can use `PADSTUDIO_FFMPEG_PATH` and `PADSTUDIO_FFPROBE_PATH`.
 
@@ -183,6 +190,8 @@ Dependency declarations are provenance, not an instruction to install packages. 
 reported by `tool:list`. The optional runtimes remain local and ignored by Git. Windows acceptance on
 2026-09-14 used Manim CE 0.21.0, Remotion 4.0.524, HyperFrames 0.8.38, React 18.2.0, Chrome and
 FFmpeg 8.1.2; each runtime produced a probed 320x180, 24 fps, one-second MP4.
+HyperFrames was upgraded locally to 0.8.42 on 2026-09-17 for process-cleanup, long-capture media and
+SDR/HDR reliability fixes; PADStudio still does not auto-update it during project operation.
 
 The expanded authoring-loop acceptance passed on Windows on 2026-09-16 with pinned Chrome Headless
 Shell 153.0.8010.47: managed source and props, static validation, exact preflight, three stills, a

@@ -442,3 +442,10 @@ thể nhận kịch bản cùng thuật ngữ quan trọng để fail-closed khi
 cần thiết. Skill review riêng cho code animation yêu cầu timestamp, sửa đề xuất, semantic motion,
 distinctness và slideshow/template risk. Đây là heuristic thích ứng học có chọn lọc từ OpenMontage,
 không phải stage cố định hay quyền tự phê duyệt sáng tạo.
+
+HyperFrames local đã được pin ở 0.8.42 và render fail-closed với lint warning cùng media chưa sẵn sàng,
+thay vì xuất best-effort. Availability giữ báo cáo `doctor`; preflight công khai phần transition bị bỏ
+mẫu hoặc finding bị cắt. Hai preview bổ sung cho nhau: exact-frame/contact sheet để xem bố cục và
+selector-scoped onion-skin để xem quỹ đạo giữa các frame. Các công cụ này dùng lại cùng một approval
+của exact source và passed preflight; chúng không tạo thêm approval gate, storyboard bắt buộc hay
+workflow cố định.

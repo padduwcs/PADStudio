@@ -88,6 +88,10 @@ có thể dùng trực tiếp làm source của `video.sequence`.
 Chỉ xin approval sau khi source/props/asset/composition đã ổn định và static validation pass; không
 dùng approval để debug compile. Lặp lại lệnh với đúng source đã duyệt sẽ trả lại Decision cũ mà
 không hỏi lại. Nếu byte source đổi, phải nói rõ đây là trust target mới nên cần approval mới.
+Sau một approval hợp lệ, `animation.preflight`, `hyperframes-preview`,
+`hyperframes-motion-preview` và `animation.render` của đúng source/composition revision phải dùng lại
+Decision đó; không dừng để xin lại giữa các bước. Motion preview chỉ dùng có chọn lọc cho selector/đoạn
+khó đánh giá, không phải gate bắt buộc cho mọi composition.
 
 Nếu một lỗi contract/runtime của PADStudio chặn công việc, không sửa `src/`, `test/` hay tài liệu build ngay
 trong phiên vận hành video. Ghi lại exact Run/Result và lỗi, báo rõ đây là lỗi hệ thống, rồi chỉ chuyển sang

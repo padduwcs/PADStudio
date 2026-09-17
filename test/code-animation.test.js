@@ -10,7 +10,8 @@ import { ProjectStore } from "../src/project/project-store.js";
 import { createHumanConfirmation } from "../src/project/human-confirmation.js";
 import { normalizeAnimationComposition } from "../src/animation/animation-composition.js";
 import {
-  createCodeAnimationPreflight, createCodeAnimationRenderer, createHyperframesAnimationPreview, createRemotionAnimationPreview,
+  createCodeAnimationPreflight, createCodeAnimationRenderer, createHyperframesAnimationPreview, createHyperframesMotionPreview,
+  createRemotionAnimationPreview,
 } from "../src/tools/code-animation-renderer.js";
 import { createCodeAnimationProps } from "../src/tools/code-animation-props.js";
 import { createCodeAnimationSource } from "../src/tools/code-animation-source.js";
@@ -292,8 +293,12 @@ test("HyperFrames preflight preserves normalized findings and images, then previ
   const fakeCommand = async (executable, args, options = {}) => {
     calls.push([executable, ...args]);
     if (args.includes("--version") || args[0] === "-version") return { stdout: `${executable} 1.0\n`, stderr: "" };
+    if (executable === "fake-hyperframes" && args[0] === "doctor") return { stdout: JSON.stringify({ ok: false,
+      checks: [{ name: "FFmpeg", ok: true, detail: "available" }, { name: "TTS (Kokoro)", ok: false, detail: "optional" }],
+      _meta: { version: "0.8.42" } }), stderr: "" };
     if (executable === "fake-hyperframes" && args[0] === "check") {
       assert.ok(args.includes("--strict"));
+      if (!args.includes("--json")) return { stdout: "check passed", stderr: "" };
       assert.ok(args.includes("--snapshots"));
       assert.ok(args.includes("--at-transitions"));
       assert.ok(args.includes("--samples=9"));
@@ -304,7 +309,8 @@ test("HyperFrames preflight preserves normalized findings and images, then previ
       return { stdout: JSON.stringify({ ok: true, strict: true,
         lint: { errorCount: 0, warningCount: 0, findings: [] },
         runtime: { errorCount: 0, warningCount: 0, findings: [] },
-        layout: { errorCount: 0, warningCount: 0, samples: [0, 0.5, 1], findings: [{ code: "layout_note", severity: "info",
+        layout: { errorCount: 0, warningCount: 0, samples: [0, 0.5, 1], duration: 1, transitionSamples: [0.45, 0.5],
+          transitionSamplesDropped: 2, totalIssueCount: 1, truncated: false, findings: [{ code: "layout_note", severity: "info",
           message: "Measured title bounds.", selector: "#title", sourceFile: "index.html", time: 0.5,
           bbox: { x: 10, y: 20, width: 100, height: 30 } }] },
         motion: { enabled: true, errorCount: 0, warningCount: 0, samples: 3, findings: [] },
@@ -320,17 +326,32 @@ test("HyperFrames preflight preserves normalized findings and images, then previ
       await writeFile(join(output, "contact-sheet.jpg"), "preview-contact-sheet");
       return { stdout: "3 snapshots saved", stderr: "" };
     }
-    if (["fake-ffmpeg", "fake-ffprobe"].includes(executable)) return { stdout: `${executable} 1.0\n`, stderr: "" };
+    if (executable === "fake-hyperframes" && args[0] === "keyframes" && args.includes("--json")) {
+      return { stdout: JSON.stringify({ ok: true, target: "index.html", selector: "#title", keyframes: [{ time: 0, x: 0 }, { time: 1, x: 200 }] }), stderr: "" };
+    }
+    if (executable === "fake-hyperframes" && args[0] === "keyframes" && args.some((arg) => arg.startsWith("--shot="))) {
+      const output = args.find((arg) => arg.startsWith("--shot=")).slice("--shot=".length);
+      await writeFile(output, "motion-preview"); return { stdout: "saved", stderr: "" };
+    }
+    if (executable === "fake-hyperframes" && args[0] === "render") {
+      const output = args[args.indexOf("--output") + 1]; await writeFile(output, "fake-video"); return { stdout: "rendered", stderr: "" };
+    }
+    if (executable === "fake-ffprobe") return { stdout: JSON.stringify({ format: { duration: "1.000" }, streams: [
+      { codec_type: "video", width: 320, height: 180, avg_frame_rate: "24/1" },
+    ] }), stderr: "" };
+    if (executable === "fake-ffmpeg") { await writeFile(args.at(-1), "fake-poster"); return { stdout: "", stderr: "" }; }
     throw new Error(`Unexpected command: ${executable} ${args.join(" ")}`);
   };
   const options = { runtimeCommand: "fake-hyperframes", ffmpegCommand: "fake-ffmpeg", ffprobeCommand: "fake-ffprobe",
     browserCommand: "fake-browser", executeCommand: fakeCommand };
   const preflightTool = createCodeAnimationPreflight("hyperframes", options);
   const previewTool = createHyperframesAnimationPreview(options);
-  const { rootDir, store, executor } = await fixture(t, [preflightTool, previewTool]);
+  const motionPreviewTool = createHyperframesMotionPreview(options);
+  const renderer = createCodeAnimationRenderer("hyperframes", options);
+  const { rootDir, store, executor } = await fixture(t, [preflightTool, previewTool, motionPreviewTool, renderer]);
   const created = await executor.execute("demo", request("animation.source", "code-animation-source", "Create HyperFrames source", {
     operation: "create", runtime: "hyperframes", name: "HyperFrames title", entryFile: "index.html", entrySymbol: "hero-title",
-    changeSummary: "Fixture with an optional motion contract", dependencies: [{ name: "hyperframes", version: "0.8.38" }], files: [
+    changeSummary: "Fixture with an optional motion contract", dependencies: [{ name: "hyperframes", version: "0.8.42" }], files: [
       { path: "index.html", content: "<!doctype html><html><body data-composition-id='hero-title'><h1 id='title'>Clear</h1></body></html>" },
       { path: "index.motion.json", content: "{\"staysInFrame\":[]}\n" },
     ],
@@ -354,6 +375,12 @@ test("HyperFrames preflight preserves normalized findings and images, then previ
   assert.equal(preflight.data.findings.findingCount, 1);
   assert.equal(preflight.data.findings.findings[0].section, "layout");
   assert.equal(preflight.data.findings.sections.motion.enabled, true);
+  assert.equal(preflight.data.findings.sections.layout.duration, 1);
+  assert.equal(preflight.data.findings.sections.layout.transitionSampleCount, 2);
+  assert.equal(preflight.data.findings.sections.layout.transitionSamplesDropped, 2);
+  assert.equal(preflight.data.findings.coverageComplete, false);
+  assert.equal(preflight.data.runtimeFingerprint.doctor.status, "degraded");
+  assert.equal(preflight.data.limitations.length, 1);
   assert.equal(preflight.data.snapshotCount, 2);
   assert.equal(preflight.files.filter((file) => file.mediaType === "image").length, 2);
   const preview = (await executor.execute("demo", request("animation.preview", "hyperframes-preview", "Inspect exact key frames", {
@@ -363,9 +390,24 @@ test("HyperFrames preflight preserves normalized findings and images, then previ
   assert.deepEqual(preview.data.frames, [0, 12]);
   assert.equal(preview.files.filter((file) => file.mediaType === "image").length, 3);
   assert.ok(calls.some((call) => call.includes("--at=0,0.5") && call.includes("--no-end") && call.includes("--describe=false")));
+  const motionPreview = (await executor.execute("demo", request("animation.preview", "hyperframes-motion-preview", "Inspect title motion", {
+    artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: validation.id,
+    preflightResultId: preflight.id, selector: "#title", fromFrame: 0, toFrame: 23, samples: 7, layout: "path", ghost: true,
+  }))).result;
+  assert.equal(motionPreview.data.motion.selector, "#title");
+  assert.equal(motionPreview.data.motion.samples, 7);
+  assert.equal(motionPreview.files.find((file) => file.id === "motion").mediaType, "image");
+  assert.ok(calls.some((call) => call.includes("--selector=#title") && call.includes("--runtime=all") && call.includes("--json")));
+  assert.ok(calls.some((call) => call.includes("--samples=7") && call.includes("--ghost") && call.includes("--to=0.9583333333333334")));
+  const rendered = (await executor.execute("demo", request("animation.render", "hyperframes-local", "Render fail-closed", {
+    artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: validation.id, preflightResultId: preflight.id,
+  }))).result;
+  assert.equal(rendered.type, "animation.render");
+  assert.ok(calls.some((call) => call[1] === "render" && call.includes("--strict-all") && call.includes("--no-best-effort")));
   const context = await new ProjectContextAssembler({ projectStore: store }).build("demo");
   assert.equal(context.animation.activeCompositions[0].preflights[0].findings.findingCount, 1);
   assert.equal(context.animation.activeCompositions[0].previews[0].resultId, preview.id);
+  assert.equal(context.animation.activeCompositions[0].previews[1].motion.selector, "#title");
   const observer = await new ProjectReader(rootDir).readObserverSection("demo", "animation");
   const observedPreflight = observer.animation.compositions[0].preflights[0];
   assert.equal(observedPreflight.findings.sections.motion.enabled, true);
@@ -480,6 +522,13 @@ test("renderer availability is honest and never auto-installs", async (t) => {
     browserCommand: "C:\\missing\\chrome.exe", executeCommand: async () => { throw new Error("must not execute"); } });
   assert.equal((await missingBrowser.checkAvailability()).status, "unavailable");
   assert.match((await missingBrowser.checkAvailability()).reason, /does not exist/);
+  const unhealthyRuntime = createCodeAnimationRenderer("hyperframes", { runtimeCommand: "hyperframes", browserCommand: "browser",
+    ffmpegCommand: "ffmpeg", ffprobeCommand: "ffprobe", executeCommand: async (executable, args) => {
+      if (args[0] === "doctor") return { stdout: JSON.stringify({ checks: [{ name: "Chrome", ok: false, detail: "missing" }],
+        _meta: { version: "0.8.42" } }), stderr: "" };
+      return { stdout: `${executable} 1.0\n`, stderr: "" };
+    } });
+  assert.equal((await unhealthyRuntime.checkAvailability()).status, "unavailable");
   const scriptCalls = [];
   const scriptRuntime = createCodeAnimationRenderer("remotion", { runtimeCommand: "C:\\runtime\\node_modules\\@remotion\\cli\\remotion-cli.js",
     browserCommand: "browser", executeCommand: async (executable, args) => {

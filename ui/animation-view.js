@@ -48,7 +48,10 @@ export function renderAnimation(container, context) {
         preflight.status === "passed" ? "result-verification" : "sequence-warning"));
       if (preflight.findings) card.append(node("p",
         `${preflight.findings.findingCount} finding · ${preflight.findings.errorCount} lỗi · ${preflight.findings.warningCount} cảnh báo · ${preflight.snapshotCount} ảnh bằng chứng`,
-        preflight.findings.errorCount || preflight.findings.warningCount ? "sequence-warning" : "input-meta"));
+        preflight.findings.errorCount || preflight.findings.warningCount || preflight.findings.coverageComplete === false ? "sequence-warning" : "input-meta"));
+      if (preflight.findings?.coverageComplete === false) card.append(node("p",
+        `Diagnostic coverage incomplete: ${preflight.findings.sections?.layout?.transitionSamplesDropped ?? 0} transition samples dropped or report findings truncated.`,
+        "sequence-warning"));
       const evidence = node("div", undefined, "animation-preview-gallery");
       for (const file of preflight.files?.filter((file) => file.available && file.mediaType === "image") ?? []) {
         const image = node("img"); image.loading = "lazy"; image.alt = file.name;
@@ -69,7 +72,9 @@ export function renderAnimation(container, context) {
         const video = node("video"); video.controls = true; video.preload = "metadata";
         video.src = resultUrl(context.project.id, preview.resultId, clip.id); gallery.append(video);
       }
-      if (gallery.childElementCount) card.append(node("p", `Preview exact: ${preview.resultId}`, "exact-result-id"), gallery);
+      if (gallery.childElementCount) card.append(node("p",
+        preview.motion ? `Motion preview ${preview.motion.selector}: ${preview.resultId}` : `Preview exact: ${preview.resultId}`,
+        "exact-result-id"), gallery);
     }
     const render = composition.renders.at(-1);
     if (render) {

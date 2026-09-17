@@ -100,6 +100,19 @@ function cleanEnvironment(home, { nodeModules = null, browser = null } = {}) {
     HYPERFRAMES_NO_UPDATE_CHECK: "1", ...(browser ? { HYPERFRAMES_BROWSER_PATH: browser } : {}) };
 }
 
+function availabilityEnvironment({ nodeModules = null, browser = null } = {}) {
+  const names = ["PATH", "Path", "PATHEXT", "SYSTEMROOT", "SystemRoot", "WINDIR", "COMSPEC", "TEMP", "TMP", "LANG",
+    "HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA"];
+  const env = Object.fromEntries(names.filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]]));
+  const pathValue = process.env.Path ?? process.env.PATH ?? "";
+  if (nodeModules) {
+    env.PATH = `${join(nodeModules, ".bin")}${delimiter}${pathValue}`;
+    env.Path = env.PATH; env.NODE_PATH = nodeModules;
+  }
+  return { ...env, NO_COLOR: "1", CI: "1", HYPERFRAMES_NO_UPDATE_CHECK: "1",
+    ...(browser ? { HYPERFRAMES_BROWSER_PATH: browser } : {}) };
+}
+
 function ratio(value) {
   if (typeof value !== "string") return null;
   const [top, bottom = "1"] = value.split("/").map(Number);
@@ -140,7 +153,8 @@ function renderArguments(runtime, composition, paths) {
     `--width=${composition.format.width}`, `--height=${composition.format.height}`, `--fps=${composition.format.fps}`,
     `--frames=0-${frames - 1}`, "--codec=h264", "--pixel-format=yuv420p", `--chrome-mode=${paths.chromeMode}`, `--browser-executable=${paths.browser}`,
     ...(paths.props ? [`--props=${paths.props}`] : [])];
-  return ["render", "--output", paths.output, "--fps", String(composition.format.fps), "--quality", "standard", "--strict"];
+  return ["render", "--output", paths.output, "--fps", String(composition.format.fps), "--quality", "standard",
+    "--strict-all", "--no-best-effort"];
 }
 
 function durationTolerance(composition) {
@@ -256,12 +270,19 @@ export function createCodeAnimationRenderer(runtime, {
           executeCommand(launch.executable, [...launch.prefixArgs, ...versionArgs], { timeout: 8_000 }),
           executeCommand(ffmpegCommand, ["-version"], { timeout: 8_000 }),
           executeCommand(ffprobeCommand, ["-version"], { timeout: 8_000 }),
+          ...(runtime === "hyperframes" ? [executeCommand(launch.executable, [...launch.prefixArgs, "doctor", "--json"], {
+            timeout: 20_000, env: availabilityEnvironment({ nodeModules: launch.nodeModules, browser: browserCommand }),
+          })] : []),
         ];
-        const [runtimeVersion, ffmpegVersion, ffprobeVersion] = await Promise.all(checks);
+        const [runtimeVersion, ffmpegVersion, ffprobeVersion, doctorOutput] = await Promise.all(checks);
+        const doctor = runtime === "hyperframes" ? normalizeHyperframesDoctor(parseJsonOutput(doctorOutput?.stdout)) : null;
+        if (runtime === "hyperframes" && !doctor) throw new Error("HyperFrames doctor did not return valid JSON.");
+        if (doctor?.blockingFailedCount) throw new Error("HyperFrames doctor reported a required runtime failure.");
         return { status: "available", runtime,
           executableVersion: String(runtimeVersion.stdout || runtimeVersion.stderr || "").split(/\r?\n/u)[0].slice(0, 200),
           ffmpegVersion: String(ffmpegVersion.stdout || "").split(/\r?\n/u)[0].slice(0, 200),
-          ffprobeVersion: String(ffprobeVersion.stdout || "").split(/\r?\n/u)[0].slice(0, 200) };
+          ffprobeVersion: String(ffprobeVersion.stdout || "").split(/\r?\n/u)[0].slice(0, 200),
+          ...(doctor ? { doctor } : {}) };
       } catch (error) {
         return { status: "unavailable", reason: `${meta.provider} runtime or FFmpeg is unavailable. Install it explicitly, pin its dependencies, or configure ${meta.env}; PADStudio will not auto-install or silently switch runtimes.` };
       }
@@ -381,6 +402,27 @@ function parseJsonOutput(value) {
   try { return JSON.parse(textValue); } catch { return null; }
 }
 
+function normalizeHyperframesDoctor(parsed) {
+  if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.checks)) return null;
+  const checks = parsed.checks.slice(0, 60).map((check) => ({
+    name: String(check?.name ?? "unknown").slice(0, 120),
+    ok: check?.ok === true,
+    detail: String(check?.detail ?? "").slice(0, 500),
+    hint: check?.hint == null ? null : String(check.hint).slice(0, 500),
+  }));
+  const failed = checks.filter((check) => !check.ok);
+  const blockingNames = new Set(["Version", "Node.js", "FFmpeg", "FFprobe", "Chrome"]);
+  const blockingFailed = failed.filter((check) => blockingNames.has(check.name));
+  return {
+    status: blockingFailed.length ? "blocked" : failed.length ? "degraded" : "healthy",
+    checkCount: checks.length,
+    failedCount: failed.length,
+    blockingFailedCount: blockingFailed.length,
+    failedChecks: failed.map(({ name, detail, hint }) => ({ name, detail, hint })),
+    version: parsed._meta?.version == null ? null : String(parsed._meta.version).slice(0, 80),
+  };
+}
+
 const HYPERFRAMES_FINDING_SECTIONS = Object.freeze(["lint", "runtime", "layout", "motion", "contrast"]);
 
 function finiteNumber(value) { return Number.isFinite(value) ? value : null; }
@@ -409,15 +451,33 @@ function normalizeHyperframesDiagnostics(parsed) {
   const all = HYPERFRAMES_FINDING_SECTIONS.flatMap((section) => Array.isArray(parsed[section]?.findings)
     ? parsed[section].findings.map((finding) => normalizeHyperframesFinding(section, finding)).filter(Boolean) : []);
   const findings = all.slice(0, 200);
-  const count = (severity) => all.filter((finding) => finding.severity === severity).length;
   const sections = Object.fromEntries(HYPERFRAMES_FINDING_SECTIONS.map((section) => [section, {
     errorCount: Number.isInteger(parsed[section]?.errorCount) ? parsed[section].errorCount : all.filter((finding) => finding.section === section && finding.severity === "error").length,
     warningCount: Number.isInteger(parsed[section]?.warningCount) ? parsed[section].warningCount : all.filter((finding) => finding.section === section && finding.severity === "warning").length,
     sampleCount: Array.isArray(parsed[section]?.samples) ? parsed[section].samples.length : finiteNumber(parsed[section]?.samples),
     enabled: typeof parsed[section]?.enabled === "boolean" ? parsed[section].enabled : null,
+    totalIssueCount: Number.isInteger(parsed[section]?.totalIssueCount) ? parsed[section].totalIssueCount : null,
+    truncated: parsed[section]?.truncated === true,
+    ...(section === "layout" ? {
+      duration: finiteNumber(parsed.layout?.duration),
+      transitionSampleCount: Array.isArray(parsed.layout?.transitionSamples) ? parsed.layout.transitionSamples.length : finiteNumber(parsed.layout?.transitionSamples),
+      transitionSamplesDropped: Number.isInteger(parsed.layout?.transitionSamplesDropped) ? parsed.layout.transitionSamplesDropped
+        : Number.isInteger(parsed.transitionSamplesDropped) ? parsed.transitionSamplesDropped : 0,
+    } : {}),
   }]));
-  return { ok: parsed.ok === true, strict: parsed.strict === true, errorCount: count("error"), warningCount: count("warning"),
-    findingCount: all.length, findings, findingsTruncated: all.length > findings.length, sections };
+  const coverageComplete = sections.layout.transitionSamplesDropped === 0 &&
+    parsed.truncated !== true && !Object.values(sections).some((section) => section.truncated) && all.length <= findings.length;
+  const snapshots = parsed.snapshots && typeof parsed.snapshots === "object" ? {
+    enabled: parsed.snapshots.enabled === true,
+    fileCount: Array.isArray(parsed.snapshots.files) ? parsed.snapshots.files.length : null,
+    findingFileCount: Array.isArray(parsed.snapshots.findingFiles) ? parsed.snapshots.findingFiles.length : null,
+    expected: finiteNumber(parsed.snapshots.expected), written: finiteNumber(parsed.snapshots.written),
+  } : null;
+  return { ok: parsed.ok === true, strict: parsed.strict === true,
+    errorCount: Object.values(sections).reduce((total, section) => total + section.errorCount, 0),
+    warningCount: Object.values(sections).reduce((total, section) => total + section.warningCount, 0),
+    findingCount: all.length, reportedIssueCount: Object.values(sections).reduce((total, section) => total + (section.totalIssueCount ?? 0), 0),
+    findings, findingsTruncated: all.length > findings.length, coverageComplete, sections, snapshots };
 }
 
 async function imageEvidenceIn(directory, { prefix = "", limit = 40 } = {}) {
@@ -517,15 +577,22 @@ export function createCodeAnimationPreflight(runtime, options = {}) {
       const scope = runtime === "manim" ? "runtime_environment" : "exact_composition_compile_and_runtime_check";
       const parsed = parseJsonOutput(stdout);
       const hyperframesDiagnostics = runtime === "hyperframes" ? normalizeHyperframesDiagnostics(parsed) : null;
+      if (runtime === "hyperframes" && status === "passed" && (!hyperframesDiagnostics || !hyperframesDiagnostics.ok || !hyperframesDiagnostics.strict)) {
+        status = "failed"; errorCode = "invalid_runtime_diagnostics";
+        stderr = outputTail(`${stderr}\nHyperFrames check did not return a successful strict JSON report.`.trim());
+      }
       const snapshots = runtime === "hyperframes" ? await preserveHyperframesCheckImages(codeDirectory, outputDirectory) : [];
-      const report = { version: runtime === "hyperframes" ? "1.1" : "1.0", status, runtime, scope, artifact, sourceResultId: source.result.id,
+      const limitations = runtime === "manim"
+        ? ["Manim preflight verifies the installed runtime and reports TeX tool availability; exact Scene execution, fonts and Scene-specific dependencies remain part of render."]
+        : runtime === "hyperframes" && hyperframesDiagnostics && !hyperframesDiagnostics.coverageComplete
+          ? ["HyperFrames diagnostic coverage was truncated or transition samples were dropped; inspect the report and run targeted previews before relying on this preflight."] : [];
+      const report = { version: runtime === "hyperframes" ? "1.2" : "1.0", status, runtime, scope, artifact, sourceResultId: source.result.id,
         propsResultId: props?.result.id ?? null, command: commandRecord, diagnostics: { stdout, stderr, parsed },
         ...(hyperframesDiagnostics ? { findings: hyperframesDiagnostics } : {}),
         ...(runtime === "hyperframes" ? { snapshots: snapshots.map(({ name, sizeBytes, sha256 }) => ({ name, sizeBytes, sha256 })) } : {}),
         dependencyChecks,
         runtimeFingerprint: { executableVersion: availability.executableVersion ?? null, ffmpegVersion: availability.ffmpegVersion ?? null,
-          ffprobeVersion: availability.ffprobeVersion ?? null }, errorCode,
-        limitations: runtime === "manim" ? ["Manim preflight verifies the installed runtime and reports TeX tool availability; exact Scene execution, fonts and Scene-specific dependencies remain part of render."] : [] };
+          ffprobeVersion: availability.ffprobeVersion ?? null, doctor: availability.doctor ?? null }, errorCode, limitations };
       const reportPath = join(outputDirectory, "preflight-report.json");
       await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n", "utf8");
       return { actualCostUsd: 0, report, snapshots, reportFile: await fileEvidence(reportPath, 2 * 1024 * 1024) };
@@ -537,7 +604,7 @@ export function createCodeAnimationPreflight(runtime, options = {}) {
           mediaType: "application/json", ...execution.reportFile },
           ...execution.snapshots.map((snapshot, index) => ({ id: `snapshot-${index + 1}`, role: "evidence", path: `${prepared.trace.directory}/${snapshot.name}`,
             name: snapshot.name, mediaType: snapshot.mediaType, sizeBytes: snapshot.sizeBytes, sha256: snapshot.sha256 }))],
-        data: { version: runtime === "hyperframes" ? "1.1" : "1.0", status: execution.report.status, runtime, scope: execution.report.scope,
+        data: { version: runtime === "hyperframes" ? "1.2" : "1.0", status: execution.report.status, runtime, scope: execution.report.scope,
           composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
           validationResultId: prepared.trace.validationResultId, propsResultId: prepared.trace.propsResultId,
           approvalDecisionId: prepared.trace.approvalDecisionId, runtimeFingerprint: execution.report.runtimeFingerprint,
@@ -733,6 +800,108 @@ export function createHyperframesAnimationPreview(options = {}) {
           frames: prepared.trace.previewFrames, range: null, clip: null },
         verification: { status: "passed", checks: ["exact_preflight_bound", "exact_user_code_approval", "requested_frames_rendered", "snapshot_count_matches"],
           details: { runtime } } };
+    },
+  };
+}
+
+export function createHyperframesMotionPreview(options = {}) {
+  const runtime = "hyperframes"; const meta = RUNTIME_META[runtime];
+  const runtimeCommand = options.runtimeCommand ?? process.env[meta.env]?.trim() ?? null;
+  const launch = runtimeLaunch(runtime, runtimeCommand, options.runtimePrefixArgs ?? []);
+  const browserCommand = options.browserCommand === undefined ? installedBrowser({ allowSystem: true }) : options.browserCommand;
+  const executeCommand = options.executeCommand ?? hostCommand;
+  const timeoutMs = options.timeoutMs ?? 10 * 60 * 1000;
+  const availabilityTool = createCodeAnimationRenderer(runtime, options);
+  return {
+    name: "hyperframes-motion-preview", version: "1.0.0", provider: meta.provider, capability: "animation.preview",
+    description: "Inspect a selected HyperFrames element and create an onion-skin motion-path preview over an exact frame range.",
+    runtime: "local", executionMode: "sync", producesFiles: true, approvalRequired: false,
+    sideEffects: ["Executes exact approved HyperFrames source in a temporary Run workspace.",
+      "Creates a project-owned motion diagnostic image and structured keyframe report."],
+    cost: { currency: "USD", estimated: 0 },
+    outputDescription: "An animation.preview Result containing an onion-skin motion image and machine-readable keyframe evidence.",
+    inputSchema: { type: "object", required: ["artifactId", "artifactRevision", "validationResultId", "preflightResultId", "selector"], additionalProperties: false,
+      properties: { artifactId: { type: "string" }, artifactRevision: { type: "integer", minimum: 1 }, validationResultId: { type: "string" },
+        preflightResultId: { type: "string" }, allowHistorical: { type: "boolean" }, selector: { type: "string", minLength: 1, maxLength: 500 },
+        fromFrame: { type: "integer", minimum: 0 }, toFrame: { type: "integer", minimum: 0 }, samples: { type: "integer", minimum: 2, maximum: 30 },
+        layout: { type: "string", enum: ["path", "strip"] }, ghost: { type: "boolean" },
+        angle: { type: "string", enum: ["front", "iso", "top", "side", "rear-iso"] }, fit: { type: "boolean" } } },
+    checkAvailability: availabilityTool.checkAvailability,
+    async prepare(args) {
+      const allowedFields = ["preflightResultId", "selector", "fromFrame", "toFrame", "samples", "layout", "ghost", "angle", "fit"];
+      const prepared = await prepareAnimationWorkspace({ ...args, runtime, allowedFields });
+      const selector = text(args.inputs.selector, "selector", 500);
+      const totalFrames = Math.round(prepared.runtime.composition.durationSeconds * prepared.runtime.composition.format.fps);
+      const fromFrame = args.inputs.fromFrame ?? 0;
+      const toFrame = args.inputs.toFrame ?? totalFrames - 1;
+      const samples = args.inputs.samples ?? 9;
+      const layout = args.inputs.layout ?? "path";
+      const ghost = args.inputs.ghost ?? false;
+      const fit = args.inputs.fit ?? true;
+      if (!Number.isInteger(fromFrame) || !Number.isInteger(toFrame) || fromFrame < 0 || toFrame < fromFrame || toFrame >= totalFrames) {
+        fail(`Motion preview frame range must be between 0 and ${totalFrames - 1}, with fromFrame <= toFrame.`);
+      }
+      if (!Number.isInteger(samples) || samples < 2 || samples > 30) fail("samples must be an integer between 2 and 30.");
+      if (!["path", "strip"].includes(layout)) fail("layout must be path or strip.");
+      if (typeof ghost !== "boolean" || typeof fit !== "boolean") fail("ghost and fit must be boolean when provided.");
+      if (args.inputs.angle !== undefined && !["front", "iso", "top", "side", "rear-iso"].includes(args.inputs.angle)) {
+        fail("angle must be a supported camera preset.");
+      }
+      const motion = { selector, fromFrame, toFrame, samples, layout, ghost, fit, angle: args.inputs.angle ?? null };
+      prepared.runtime.motionPreview = motion; prepared.trace.motionPreview = motion;
+      return prepared;
+    },
+    async execute({ composition, source, props, artifact, codeDirectory, homeDirectory, outputDirectory, motionPreview, availability, signal }) {
+      await Promise.all([homeDirectory, join(homeDirectory, "local-app-data"), join(homeDirectory, "app-data")]
+        .map((directory) => mkdir(directory, { recursive: true })));
+      const env = cleanEnvironment(homeDirectory, { nodeModules: launch.nodeModules, browser: browserCommand });
+      const shotPath = join(outputDirectory, "motion-preview.png");
+      const seconds = (frame) => frame / composition.format.fps;
+      const diagnosticArgs = ["keyframes", `--selector=${motionPreview.selector}`, "--runtime=all", "--json"];
+      const shotArgs = ["keyframes", `--selector=${motionPreview.selector}`, `--shot=${shotPath}`, `--samples=${motionPreview.samples}`,
+        `--layout=${motionPreview.layout}`, `--from=${seconds(motionPreview.fromFrame)}`, `--to=${seconds(motionPreview.toFrame)}`,
+        ...(motionPreview.ghost ? ["--ghost"] : []), ...(motionPreview.fit ? [] : ["--no-fit"]),
+        ...(motionPreview.angle ? [`--angle=${motionPreview.angle}`] : [])];
+      const commandRecord = (args) => ({ executable: meta.name, args: args.map((arg) => arg.startsWith("--shot=")
+        ? "--shot=<run-output>" : launch.prefixArgs.includes(arg) ? "<runtime-entry>" : arg) });
+      let diagnosticOutput;
+      try {
+        diagnosticOutput = await executeCommand(launch.executable, [...launch.prefixArgs, ...diagnosticArgs],
+          { cwd: codeDirectory, timeout: timeoutMs, env, signal });
+        await executeCommand(launch.executable, [...launch.prefixArgs, ...shotArgs],
+          { cwd: codeDirectory, timeout: timeoutMs, env, signal });
+      } catch (error) {
+        fail(`HyperFrames motion preview failed: ${outputTail(error?.stderr || error?.message, 2000)}`,
+          error?.killed ? "timeout" : "animation_preview_failed");
+      }
+      const diagnosticText = redactDiagnostic(diagnosticOutput?.stdout, [[codeDirectory, "<run-workspace>"],
+        [outputDirectory, "<run-output>"], [homeDirectory, "<run-home>"], [REPOSITORY_ROOT, "<padstudio-root>"]], 512_000);
+      const diagnostics = parseJsonOutput(diagnosticText);
+      if (!diagnostics || typeof diagnostics !== "object") fail("HyperFrames keyframes did not return valid JSON diagnostics.", "invalid_output");
+      const shot = await fileEvidence(shotPath, 50 * 1024 * 1024);
+      const report = { version: "1.0", runtime, artifact, sourceResultId: source.result.id, propsResultId: props?.result.id ?? null,
+        motion: { ...motionPreview, fromSeconds: seconds(motionPreview.fromFrame), toSeconds: seconds(motionPreview.toFrame) },
+        diagnostics, commands: [commandRecord(diagnosticArgs), commandRecord(shotArgs)],
+        runtimeFingerprint: { executableVersion: availability.executableVersion ?? null, doctor: availability.doctor ?? null } };
+      const reportPath = join(outputDirectory, "motion-preview-report.json");
+      await writeFile(reportPath, JSON.stringify(report, null, 2) + "\n", "utf8");
+      return { actualCostUsd: 0, shot, report, reportFile: await fileEvidence(reportPath, 8 * 1024 * 1024) };
+    },
+    createResult({ prepared, execution }) {
+      return { type: "animation.preview", name: `HyperFrames motion preview: ${prepared.trace.artifact.id} r${prepared.trace.artifact.revision}`,
+        inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults, inputArtifacts: [prepared.trace.artifact.id],
+        files: [
+          { id: "motion", role: "preview", path: `${prepared.trace.directory}/motion-preview.png`, name: "motion-preview.png",
+            mediaType: "image", ...execution.shot },
+          { id: "report", role: "evidence", path: `${prepared.trace.directory}/motion-preview-report.json`, name: "motion-preview-report.json",
+            mediaType: "application/json", ...execution.reportFile },
+        ],
+        data: { version: "1.0", runtime, composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
+          validationResultId: prepared.trace.validationResultId, propsResultId: prepared.trace.propsResultId,
+          preflightResultId: prepared.trace.preflightResultId, approvalDecisionId: prepared.trace.approvalDecisionId,
+          frames: [], range: null, clip: null, motion: execution.report.motion },
+        verification: { status: "passed", checks: ["exact_preflight_bound", "exact_user_code_approval", "keyframes_inspected",
+          "motion_preview_created"], details: { runtime, selector: prepared.trace.motionPreview.selector } } };
     },
   };
 }

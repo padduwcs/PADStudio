@@ -36,7 +36,7 @@ export function buildAnimationContext(context) {
         scope: result.data.scope, runtimeFingerprint: result.data.runtimeFingerprint, limitations: result.data.limitations,
         findings: result.data.findings ?? null, snapshotCount: result.data.snapshotCount ?? 0, files: result.files })),
       previews: exactPreviews.map((result) => ({ resultId: result.id, createdAt: result.createdAt, frames: result.data.frames,
-        range: result.data.range, clip: result.data.clip, files: result.files })),
+        range: result.data.range, clip: result.data.clip, motion: result.data.motion ?? null, files: result.files })),
       executionApproval: approval ? { id: approval.id, outcome: approval.outcome, reason: approval.reason, createdAt: approval.createdAt } : null,
       renders: exactRenders.map((result) => ({ resultId: result.id, createdAt: result.createdAt,
         files: result.files, verification: result.verification, durationSeconds: result.data.durationSeconds,

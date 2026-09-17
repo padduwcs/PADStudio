@@ -19,6 +19,10 @@ judgment without imposing a fixed production pipeline.
    motion. Reuse engines and utilities freely; give important videos a bespoke visual argument.
 6. Evaluate variation deliberately: visual vocabulary, motion intensity and information density
    should change with the narrative. Variation must clarify progression, not create random novelty.
+   Check for front-loading: the opening must not receive all bespoke motion while the middle and end
+   collapse into repetitive cards. Each major beat should earn its treatment from the content.
+   When HyperFrames motion is hard to infer from stills, use a targeted motion preview for the
+   relevant selector and interval rather than increasing global sampling blindly.
 7. Record every material finding with a timestamp/frame, observable evidence, severity and a
    concrete proposed correction. After finding one defect, scan the rest of the render for the same
    class before revising source.
