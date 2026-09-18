@@ -92,10 +92,10 @@
       "instructions": "code-animation.md"
     },
     {
-      "id": "visual-choreography", "version": "1.1", "name": "Visual choreography",
-      "description": "Translate narration into a continuous, frame-aligned visual model with persistent heroes, causal chapters and explicit state inheritance.",
+      "id": "visual-choreography", "version": "1.2", "name": "Visual choreography",
+      "description": "Direct narration as a frame-aligned visual argument with truthful operations, purposeful scene relationships and agent-chosen variation.",
       "appliesTo": ["plan", "execute", "review"], "artifactTypes": ["animation.choreography", "animation.composition"],
-      "reviewCriteria": ["semantic claims cause visible state changes", "hero objects and state IDs persist across beats", "chapter boundaries bridge instead of reset", "the primary stage dominates text and empty chrome", "preview evidence covers action results"],
+      "reviewCriteria": ["semantic claims cause visible state changes", "audience insights form a causal argument", "scene relationships are purposeful without forcing layout sameness", "composition serves the current explanatory question", "representative motion is previewed before full polish"],
       "instructions": "visual-choreography.md"
     },
     {
@@ -106,7 +106,7 @@
       "instructions": "remotion-animation.md"
     },
     {
-      "id": "code-animation-review", "version": "1.1", "name": "Code animation review",
+      "id": "code-animation-review", "version": "1.2", "name": "Code animation review",
       "description": "Review complete code-animation timelines for technical, semantic and creative quality with concrete correction evidence.",
       "appliesTo": ["review", "verify"], "artifactTypes": ["animation.composition", "review.findings"],
       "reviewCriteria": ["timeline coverage is explicit", "speech and visual meaning agree", "findings include timestamps and corrections", "distinctness and slideshow risk are assessed"],

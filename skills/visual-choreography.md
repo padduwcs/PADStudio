@@ -1,68 +1,80 @@
 # Visual choreography for explanatory motion
 
 Use when narration, a process, an algorithm, a transformation or a product action must be
-shown step by step. Skip it for a tiny decorative loop or a clip whose source motion already
-communicates the whole idea. This is an optional planning artifact, not a mandatory storyboard
-stage.
+understood through motion. Skip it for a tiny decorative loop or source footage that already
+communicates the idea. This is optional directorial support for the Agent, not a storyboard stage
+or a layout generator.
 
-1. Read the active brief, direction, exact narration/script and relevant evidence. Split the
-   explanation at changes of meaning or state, not at arbitrary sentence lengths. A beat may be
-   short, but it must give the viewer enough time to perceive the result.
-2. Write one visual thesis before splitting beats: name the model that the viewer will watch evolve.
-   Choose one to three persistent hero objects and reuse their identity, position and visual grammar.
-   Transform or update the same matrix, heap, node, cursor, token or UI control instead of replacing
-   it with a look-alike at every sentence.
-3. Group the explanation into a few causal chapters, not one mini-slide per narration sentence. A
-   chapter must retain at least one global hero. At a chapter boundary, bridge visibly from the
-   prior state; use a reset only when continuity would be misleading, state why, and keep the reset
-   budget explicit and small.
-4. Write `animation.choreography` version 1.1 with `project:choreography`. Give every beat a stable
-   `stateBeforeId`/`stateAfterId`, the immediately preceding beat as its continuity source, carried
-   hero objects, one genuinely new piece of information and an honest continuity mode. State IDs
-   must form an unbroken chain unless the beat declares a justified reset.
-5. Mark action effect honestly. A semantic beat needs a semantic `state-change` action. Camera drift,
-   decorative easing, a title entrance, reveal, highlight, annotation or generic zoom is presentation
-   or focus motion; it does not count as advancing the explanatory model.
-6. Prefer verbs that describe visible causality: select, traverse, accumulate, calculate,
-   substitute, compare, connect or transform. Use `other` only when the description and resulting
-   state make the project-specific action unambiguous.
-7. Keep actions and beat boundaries frame-aligned. Actions may overlap when they are intentionally
-   simultaneous, but list them by start time. `holdAfterSeconds` begins after the last action and
-   must fit inside the beat.
-8. Plan a dominant visual stage before authoring. Use `voice-led` or `selective-captions`; never put
-   the full narration in a competing card. Set explicit stage-coverage and maximum-text-area targets.
-   Labels, values and short conclusions may support the model, but they must not become a second slide.
-9. Review the plan before source authoring. Read only `newInformation` in order: it must form a logical
-   explanation. Then follow state IDs and carried heroes: every beat must visibly inherit its context.
-   Do not manufacture constant motion; a meaningful change followed by a readable hold is stronger.
-10. For code animation, create `animation.composition` version 1.1 and bind the exact choreography
-   Artifact. Its duration and FPS must match. Source code may implement the plan creatively, but it
-   must not silently drop or reorder semantic actions.
-11. Preview with `useChoreographyFrames: true` when using Remotion or HyperFrames. PADStudio derives
-   bounded exact frames from beat starts, semantic action results and intentional holds. Add a short
-   range or selector-scoped motion preview when stills cannot establish trajectory or continuity.
-12. After rendering, load `code-animation-review`. Compare each semantic beat against the exact
-    rendered interval and record timestamped corrections. Sampled frames are evidence, not a
-    substitute for continuous playback and human listening.
+## Direct the visual argument
 
-For version 1.1, add these exact fields to the existing 1.0 shape:
+1. Read the active brief, direction, exact narration/script and relevant evidence. Find the chain
+   of questions the viewer must answer. Split at a change of meaning, operation or inference—not at
+   arbitrary sentence boundaries.
+2. Write the visual thesis: what the viewer will come to understand by watching. Then describe:
+   how causality remains legible, how composition and intensity may vary, the motion language, the
+   project's anti-patterns, and which opening plus representative operation should be sampled first.
+3. Treat each important beat as a visual proposition. Record its question, the visible operation,
+   the resulting state, the intended audience insight and the composition that best exposes it.
+   A viewer should be able to infer the point from the operation without reading a transcript card.
+4. Choose the relationship to earlier material deliberately:
+   - `carry`: retain useful state or identity;
+   - `transform`: visibly turn prior material into the next idea;
+   - `reframe`: change scale or composition around the same evidence;
+   - `contrast`: compare against an earlier state or case;
+   - `analogy`: temporarily map the idea into a clearer model;
+   - `cutaway`: leave the current view for relevant context;
+   - `reset`: begin a genuinely different visual situation.
 
-- top-level `continuity`: `mode` (`continuous-model` or `chaptered-model`), `visualThesis`,
-  persistent `heroObjectIds`, and integer `maxResets`;
-- top-level `presentation`: `narrationMode` (`voice-led` or `selective-captions`),
-  `stageDescription`, `targetStageCoveragePercent` (40–95), and `maxTextAreaPercent` (0–35);
-- top-level `chapters`: ordered objects with `id`, `label`, `goal`, and persistent
-  `heroObjectIds`; use every declared chapter exactly once and in order;
-- every beat: `chapterId`, `continuityMode` (`establish`, `continue`, `transform`, `bridge`, or
-  `reset`), `stateBeforeId`, `stateAfterId`, `carriedObjectIds`, `newInformation`, and
-  `resetReason` (null except for reset);
+   Continuity is conceptual and causal, not a requirement to keep one object or layout forever.
+   A purposeful cut can be more coherent than a forced persistent dashboard.
+5. Mark action effect honestly. A semantic beat needs a semantic `state-change` action. Camera
+   drift, decorative easing, title entrance, reveal, highlight, annotation or generic zoom is
+   presentation/focus motion and does not prove the spoken claim.
+6. Prefer visible causal verbs: select, traverse, accumulate, calculate, substitute, compare,
+   connect, move or transform. Use `other` only when the description and resulting state make the
+   project-specific action unambiguous. Give the result time to be perceived; do not manufacture
+   constant movement.
+7. Let the subject determine the frame. Preserve objects, colors, positions or values when they
+   help the viewer follow causality; change or discard them when the explanatory question changes.
+   Keep narration text subordinate unless kinetic typography is itself the chosen visual subject.
+
+## Author and review
+
+8. Write `animation.choreography` version 1.2 with `project:choreography`. Keep frame-aligned beat
+   and action timing, stable IDs for meanings that survive revisions, and concrete review criteria.
+   Do not invent chapters, hero quotas, state-ID chains, reset budgets or screen-area percentages.
+9. For a long or visually uncertain piece, author enough source to preview the opening and one
+   representative operational passage before polishing the whole timeline. The Agent chooses these
+   passages from the creative risk, not from a fixed timestamp. Revise the visual language if that
+   sample feels like slides, a static dashboard or disconnected novelty.
+10. Create `animation.composition` version 1.1 and bind the exact choreography Artifact. Duration
+    and FPS must match. Source may realize the argument creatively but must not silently drop,
+    reverse or falsify semantic operations.
+11. Use choreography frames for exact states and targeted range/motion previews for trajectories.
+    One preview run is limited evidence; use additional targeted previews when the chosen sample or
+    a difficult beat is not covered.
+12. After rendering, load `code-animation-review`. Review the full timeline for semantic truth and
+    the sequence of audience insights, then inspect adjacent scenes for coherence without sameness.
+    Record timestamped corrections and revise before presenting the review render.
+
+## Contract 1.2 shape
+
+In addition to the shared objects, beats, actions and review criteria:
+
+- `direction`: `visualThesis`, `continuityIntent`, `variationIntent`, non-empty
+  `motionLanguage`, non-empty `antiPatterns`, and `sampleIntent`;
+- `presentation`: `narrationMode` (`voice-led`, `selective-captions`, `kinetic-type`, or
+  `full-transcript`), plus prose `stageIntent` and `textIntent`;
+- every beat: `visualQuestion`, `audienceInsight`, `relationToPrevious` (`establish`, `carry`,
+  `transform`, `reframe`, `contrast`, `analogy`, `cutaway`, or `reset`), `continuityCue`, and
+  `compositionIntent`;
 - every action: `effect` (`state-change`, `focus-change`, or `presentation`). The final semantic
-  state-change action's `resultingState` must exactly equal the beat's `stateAfter`.
+  state-change action's `resultingState` must equal the beat's `stateAfter`.
 
-The first beat uses `establish`, has no continuity source and may carry no object. Every later beat
-references the immediately preceding beat. Non-reset beats inherit its output state ID and carry a
-global hero. A new chapter uses `bridge` with a hero shared by both chapters, or a justified `reset`.
-Semantic beats must change state IDs. Keep `newInformation` unique across beats.
+The first beat uses `establish`; later beats state an actual relationship instead of establishing
+the film again. The contract validates timing, references and semantic honesty. It deliberately
+does not score aesthetics, force a global hero, require adjacent state IDs, cap cuts/resets, or
+turn directorial prose into numeric layout quotas.
 
-For the schema and lifecycle, see `docs/build/VISUAL-CHOREOGRAPHY-SPEC.md`. Preserve stable object
-and beat IDs across revisions when their meaning remains the same.
+Versions 1.0 and 1.1 remain readable for existing projects. Use 1.2 for new explanatory work. See
+`docs/build/VISUAL-CHOREOGRAPHY-SPEC.md` for lifecycle and compatibility.

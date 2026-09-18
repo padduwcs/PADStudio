@@ -38,6 +38,8 @@ export function buildAnimationContext(context) {
       objectCount: data.objects.length,
       semanticBeatCount: data.beats.filter((beat) => beat.kind === "semantic").length,
       continuity: choreographyContinuityMetrics(data),
+      direction: data.direction ?? null,
+      presentation: data.presentation ?? null,
       beats: data.beats,
       reviewCriteria: data.reviewCriteria,
       reviewPoints: choreographyReviewPoints(data),
@@ -84,11 +86,11 @@ export function buildAnimationContext(context) {
     };
   });
   return {
-    version: "1.1", compositions, choreographies,
+    version: "1.2", compositions, choreographies,
     activeCompositions: compositions.filter((composition) => composition.role === "current"),
     activeChoreographies: choreographies.filter((choreography) => choreography.role === "current"),
     sourcePackages: context.results.filter((result) => result.type === "animation.source-package"),
     propsPackages: context.results.filter((result) => result.type === "animation.props"),
-    note: "Code animation is an optional project-native production branch. Narration-led or stepwise work can bind an exact visual choreography before source authoring; render Results can be used directly by video.sequence.",
+    note: "Code animation is an optional project-native production branch. Narration-led or stepwise work can bind an exact agent-directed visual argument before source authoring; render Results can be used directly by video.sequence.",
   };
 }

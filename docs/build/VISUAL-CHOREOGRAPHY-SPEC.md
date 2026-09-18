@@ -1,11 +1,11 @@
 # Visual Choreography — semantic motion contract
 
-Status: implemented as an optional project-native planning layer, 2026-09-18.
+Status: contract 1.2 implemented as an optional project-native directorial layer, 2026-09-18.
 
 ## Purpose
 
-`animation.choreography` turns an explanation into observable, frame-aligned state changes before
-runtime source is authored. It is intended for narration-led explainers, algorithms, diagrams,
+`animation.choreography` turns an explanation into a visual argument with observable, frame-aligned
+state changes before runtime source is authored. It is intended for narration-led explainers, algorithms, diagrams,
 mathematical transformations and product actions where a single still or generic pan/zoom cannot
 prove the spoken claim.
 
@@ -60,7 +60,7 @@ beats are validated. Revisions preserve history and require `expectedRevision`.
 Contract 1.0 remains readable for existing projects. It proves local beat semantics but does not
 prove that the complete film preserves a visual model across beat boundaries.
 
-## Contract 1.1 — continuity-first explanation
+## Contract 1.1 compatibility — continuity-first explanation
 
 Version 1.1 adds a machine-checked continuity layer for narration-led and procedural explainers:
 
@@ -78,9 +78,29 @@ Version 1.1 adds a machine-checked continuity layer for narration-led and proced
   `state-change`. Reveal, entrance, highlight, annotation and hold cannot be state changes;
 - the final semantic state-change action must produce the beat's declared `stateAfter`.
 
-These checks do not judge aesthetics or measure rendered pixels. They prevent a plan from satisfying
-“motion per beat” while still describing disconnected animated slides. Render review remains
-responsible for confirming that hero identity, stage coverage and text-area targets are visible.
+These checks do not judge aesthetics or measure rendered pixels. Pilot use showed that their global
+hero, exact state-chain and numeric presentation requirements could also overconstrain direction and
+encourage one fixed dashboard. Contract 1.1 therefore remains readable for existing projects but is
+not recommended for new explanatory work.
+
+## Contract 1.2 — agent-directed visual argument
+
+Version 1.2 keeps machine-checkable semantic truth while returning scene direction to the Agent:
+
+- `direction` records the visual thesis, conceptual continuity intent, variation intent, motion
+  language, anti-patterns and the opening/representative passage the Agent intends to sample first;
+- `presentation` records narration mode plus prose stage/text intent without screen-area quotas;
+- every beat records the visual question, intended audience insight, composition intent and a
+  relationship to earlier material: establish, carry, transform, reframe, contrast, analogy,
+  cutaway or reset;
+- actions remain frame-aligned. A semantic beat still needs a genuine semantic `state-change`, and
+  the final such action must produce the declared visible state.
+
+The contract validates references, timing and semantic honesty. It deliberately does not require a
+global hero, causal chapters, adjacent state IDs, carried-object ratios, reset budgets or numeric
+layout targets. Continuity may live in evidence, color roles, values, spatial orientation, a visual
+mapping or the logic of the argument. A purposeful cut or analogy is valid when it advances the
+viewer; keeping one layout is not evidence of coherence.
 
 ## Preview evidence
 
@@ -96,10 +116,12 @@ include both the composition and exact choreography in `inputArtifacts`.
 ## Review standard
 
 Review each semantic beat for claim agreement, object identity, action order, direction, scale,
-causality, state transition and readable hold. For 1.1, also review consecutive boundaries: the
-hero must remain locatable, output state must become the next visible input state, ordinary beats
-must not clear and rebuild the stage, and chapter changes must bridge. Audit the complete frame for
-unused regions, repeated dashboard/card grammar and narration text competing with the model.
+causality, state transition and readable hold. For 1.1, retain its legacy boundary checks. For 1.2,
+review whether each declared relationship is legible and whether the audience insights form one
+causal argument: carried state should remain recognizable, transformations should show cause,
+reframing should preserve orientation, and contrasts/analogies should expose their mapping. Audit
+the complete frame for unused regions, repeated dashboard/card grammar and narration text competing
+with the visual subject.
 Missing, reordered or visually ambiguous semantic actions require revision even when the render is
 technically clean. Continuous viewing and human listening remain mandatory before release; sampled
 frames are evidence only.

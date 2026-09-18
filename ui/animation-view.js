@@ -42,13 +42,22 @@ export function renderAnimation(container, context) {
       card.append(node("p",
         `${choreography.continuity.continuityMode} · ${choreography.continuity.chapterCount} chương · ${choreography.continuity.heroObjectCount} đối tượng chủ đạo · ${choreography.continuity.resetCount} reset · sân khấu mục tiêu ${choreography.continuity.targetStageCoveragePercent}% · chữ tối đa ${choreography.continuity.maxTextAreaPercent}%`,
         choreography.continuity.resetCount > 0 ? "sequence-warning" : "result-verification"));
+    } else if (choreography.continuity?.contractVersion === "1.2") {
+      const relationships = Object.entries(choreography.continuity.relationshipCounts ?? {})
+        .map(([name, count]) => `${name} ${count}`).join(" · ");
+      card.append(
+        node("p", choreography.direction.visualThesis, "result-verification"),
+        node("p", `Quan hệ cảnh do agent chọn: ${relationships || "chưa có"} · ${choreography.presentation.narrationMode}`, "input-meta"),
+        node("p", `Ý định biến hóa: ${choreography.direction.variationIntent}`, "input-meta"),
+        node("p", `Mẫu đại diện: ${choreography.direction.sampleIntent}`, "input-meta")
+      );
     }
     const beats = node("ol", undefined, "choreography-beats");
     for (const beat of choreography.beats) {
       const item = node("li");
       item.append(
         node("strong", `${beat.startSeconds}s–${beat.endSeconds}s · ${beat.message}`),
-        node("span", `${beat.actions.length} hành động · ${beat.stateBefore} → ${beat.stateAfter}${beat.continuityMode ? ` · ${beat.continuityMode} · ${beat.stateBeforeId} → ${beat.stateAfterId}` : ""}`, "input-meta")
+        node("span", `${beat.actions.length} hành động · ${beat.stateBefore} → ${beat.stateAfter}${beat.continuityMode ? ` · ${beat.continuityMode} · ${beat.stateBeforeId} → ${beat.stateAfterId}` : ""}${beat.relationToPrevious ? ` · ${beat.relationToPrevious} · ${beat.audienceInsight}` : ""}`, "input-meta")
       );
       beats.append(item);
     }

@@ -16,7 +16,11 @@ const ACTION_MEANINGS = new Set(["semantic", "support", "transition"]);
 const ACTION_EFFECTS = new Set(["state-change", "focus-change", "presentation"]);
 const CONTINUITY_MODES = new Set(["continuous-model", "chaptered-model"]);
 const BEAT_CONTINUITY_MODES = new Set(["establish", "continue", "transform", "bridge", "reset"]);
-const NARRATION_MODES = new Set(["voice-led", "selective-captions", "full-transcript"]);
+const VISUAL_RELATIONSHIPS = new Set([
+  "establish", "carry", "transform", "reframe", "contrast", "analogy", "cutaway", "reset",
+]);
+const LEGACY_NARRATION_MODES = new Set(["voice-led", "selective-captions", "full-transcript"]);
+const NARRATION_MODES = new Set(["voice-led", "selective-captions", "kinetic-type", "full-transcript"]);
 const PRESENTATION_ONLY_VERBS = new Set(["introduce", "reveal", "highlight", "annotate", "hold"]);
 const ACTION_VERBS = new Set([
   "introduce", "reveal", "highlight", "select", "traverse", "accumulate", "transform",
@@ -64,10 +68,11 @@ function frameAligned(value, fps, label) {
 export function normalizeVisualChoreography(value) {
   requireObject(value, "animation.choreography data");
   const version = value.version;
-  if (!["1.0", "1.1"].includes(version)) fail("animation.choreography version must be 1.0 or 1.1.");
+  if (!["1.0", "1.1", "1.2"].includes(version)) fail("animation.choreography version must be 1.0, 1.1 or 1.2.");
   assertOnlyFields(value, [
     "version", "changeReason", "purpose", "durationSeconds", "fps", "objects", "beats", "reviewCriteria",
     ...(version === "1.1" ? ["continuity", "presentation", "chapters"] : []),
+    ...(version === "1.2" ? ["direction", "presentation"] : []),
   ], "animation.choreography data");
   const fps = finite(value.fps, "animation.choreography.fps", 1, 60);
   if (!Number.isInteger(fps)) fail("animation.choreography.fps must be an integer.");
@@ -96,6 +101,7 @@ export function normalizeVisualChoreography(value) {
   const persistentObjectIds = new Set(objects.filter((object) => object.continuity === "persistent").map((object) => object.id));
   let continuity = null;
   let presentation = null;
+  let direction = null;
   let chapters = null;
   let chapterById = new Map();
   if (version === "1.1") {
@@ -125,7 +131,7 @@ export function normalizeVisualChoreography(value) {
       fail("animation.choreography presentation must give the primary stage more area than text.");
     }
     presentation = {
-      narrationMode: choice(value.presentation.narrationMode, NARRATION_MODES, "animation.choreography.presentation.narrationMode"),
+      narrationMode: choice(value.presentation.narrationMode, LEGACY_NARRATION_MODES, "animation.choreography.presentation.narrationMode"),
       stageDescription: requireText(value.presentation.stageDescription, "animation.choreography.presentation.stageDescription"),
       targetStageCoveragePercent,
       maxTextAreaPercent,
@@ -157,6 +163,27 @@ export function normalizeVisualChoreography(value) {
     });
     chapterById = new Map(chapters.map((chapter) => [chapter.id, chapter]));
     if (chapterById.size !== chapters.length) fail("animation.choreography chapter IDs must be unique.");
+  } else if (version === "1.2") {
+    requireObject(value.direction, "animation.choreography.direction");
+    assertOnlyFields(value.direction, [
+      "visualThesis", "continuityIntent", "variationIntent", "motionLanguage", "antiPatterns", "sampleIntent",
+    ], "animation.choreography.direction");
+    direction = {
+      visualThesis: requireText(value.direction.visualThesis, "animation.choreography.direction.visualThesis"),
+      continuityIntent: requireText(value.direction.continuityIntent, "animation.choreography.direction.continuityIntent"),
+      variationIntent: requireText(value.direction.variationIntent, "animation.choreography.direction.variationIntent"),
+      motionLanguage: normalizeStringList(value.direction.motionLanguage, "animation.choreography.direction.motionLanguage", { allowEmpty: false }),
+      antiPatterns: normalizeStringList(value.direction.antiPatterns, "animation.choreography.direction.antiPatterns", { allowEmpty: false }),
+      sampleIntent: requireText(value.direction.sampleIntent, "animation.choreography.direction.sampleIntent"),
+    };
+
+    requireObject(value.presentation, "animation.choreography.presentation");
+    assertOnlyFields(value.presentation, ["narrationMode", "stageIntent", "textIntent"], "animation.choreography.presentation");
+    presentation = {
+      narrationMode: choice(value.presentation.narrationMode, NARRATION_MODES, "animation.choreography.presentation.narrationMode"),
+      stageIntent: requireText(value.presentation.stageIntent, "animation.choreography.presentation.stageIntent"),
+      textIntent: requireText(value.presentation.textIntent, "animation.choreography.presentation.textIntent"),
+    };
   }
   if (!Array.isArray(value.beats) || value.beats.length === 0 || value.beats.length > 240) {
     fail("animation.choreography.beats must contain between 1 and 240 beats.");
@@ -180,6 +207,9 @@ export function normalizeVisualChoreography(value) {
         "chapterId", "continuityMode", "stateBeforeId", "stateAfterId", "carriedObjectIds",
         "newInformation", "resetReason",
       ] : []),
+      ...(version === "1.2" ? [
+        "visualQuestion", "audienceInsight", "relationToPrevious", "continuityCue", "compositionIntent",
+      ] : []),
     ], label);
     const id = requireId(entry.id, `${label}.id`);
     if (knownBeatIds.has(id)) fail("animation.choreography beat IDs must be unique.");
@@ -201,7 +231,7 @@ export function normalizeVisualChoreography(value) {
       requireObject(action, actionLabel);
       assertOnlyFields(action, [
         "id", "startSeconds", "endSeconds", "verb", "meaning", "subjectIds", "targetIds", "description", "resultingState",
-        ...(version === "1.1" ? ["effect"] : []),
+        ...(["1.1", "1.2"].includes(version) ? ["effect"] : []),
       ], actionLabel);
       const actionId = requireId(action.id, `${actionLabel}.id`);
       if (actionIds.has(actionId)) fail(`${label} action IDs must be unique.`);
@@ -212,8 +242,10 @@ export function normalizeVisualChoreography(value) {
       if (actionStart < previousActionStart) fail(`${label}.actions must be ordered by startSeconds.`);
       previousActionStart = actionStart;
       const verb = choice(action.verb, ACTION_VERBS, `${actionLabel}.verb`);
-      const effect = version === "1.1" ? choice(action.effect, ACTION_EFFECTS, `${actionLabel}.effect`) : null;
-      if (version === "1.1" && effect === "state-change" && PRESENTATION_ONLY_VERBS.has(verb)) {
+      const effect = ["1.1", "1.2"].includes(version)
+        ? choice(action.effect, ACTION_EFFECTS, `${actionLabel}.effect`)
+        : null;
+      if (["1.1", "1.2"].includes(version) && effect === "state-change" && PRESENTATION_ONLY_VERBS.has(verb)) {
         fail(`${actionLabel}.${verb} is presentation/focus motion and cannot count as a state change.`);
       }
       return {
@@ -222,7 +254,7 @@ export function normalizeVisualChoreography(value) {
         endSeconds: actionEnd,
         verb,
         meaning: choice(action.meaning, ACTION_MEANINGS, `${actionLabel}.meaning`),
-        ...(version === "1.1" ? { effect } : {}),
+        ...(["1.1", "1.2"].includes(version) ? { effect } : {}),
         subjectIds: idList(action.subjectIds, `${actionLabel}.subjectIds`, objectIds, { allowEmpty: false }),
         targetIds: idList(action.targetIds ?? [], `${actionLabel}.targetIds`, objectIds),
         description: requireText(action.description, `${actionLabel}.description`),
@@ -232,10 +264,10 @@ export function normalizeVisualChoreography(value) {
     if (kind === "semantic" && !actions.some((action) => action.meaning === "semantic" && action.verb !== "hold")) {
       fail(`${label} is semantic and must include a non-hold semantic action.`);
     }
-    if (version === "1.1" && kind === "semantic" && !actions.some((action) => action.meaning === "semantic" && action.effect === "state-change")) {
+    if (["1.1", "1.2"].includes(version) && kind === "semantic" && !actions.some((action) => action.meaning === "semantic" && action.effect === "state-change")) {
       fail(`${label} is semantic and must include a semantic state-change action; entrance, highlight and hold motion do not qualify.`);
     }
-    if (version === "1.1" && kind === "semantic") {
+    if (["1.1", "1.2"].includes(version) && kind === "semantic") {
       const finalStateChange = [...actions].reverse().find((action) => action.meaning === "semantic" && action.effect === "state-change");
       if (finalStateChange.resultingState !== entry.stateAfter) {
         fail(`${label}.stateAfter must equal the resultingState of its final semantic state-change action.`);
@@ -315,6 +347,21 @@ export function normalizeVisualChoreography(value) {
       continuityFields = {
         chapterId, continuityMode, stateBeforeId, stateAfterId, carriedObjectIds, newInformation, resetReason,
       };
+    } else if (version === "1.2") {
+      const relationToPrevious = choice(entry.relationToPrevious, VISUAL_RELATIONSHIPS, `${label}.relationToPrevious`);
+      if (previousBeat === null && relationToPrevious !== "establish") {
+        fail(`${label} is the first beat and must establish the visual argument.`);
+      }
+      if (previousBeat !== null && relationToPrevious === "establish") {
+        fail(`${label} cannot establish the visual argument again; choose how it relates to earlier material.`);
+      }
+      continuityFields = {
+        visualQuestion: requireText(entry.visualQuestion, `${label}.visualQuestion`),
+        audienceInsight: requireText(entry.audienceInsight, `${label}.audienceInsight`),
+        relationToPrevious,
+        continuityCue: requireText(entry.continuityCue, `${label}.continuityCue`),
+        compositionIntent: requireText(entry.compositionIntent, `${label}.compositionIntent`),
+      };
     }
     knownBeatIds.add(id);
     previousBeatEnd = endSeconds;
@@ -359,6 +406,7 @@ export function normalizeVisualChoreography(value) {
     beats,
     reviewCriteria: normalizeStringList(value.reviewCriteria, "animation.choreography.reviewCriteria", { allowEmpty: false }),
     ...(version === "1.1" ? { continuity, presentation, chapters } : {}),
+    ...(version === "1.2" ? { direction, presentation } : {}),
   };
 }
 
@@ -367,6 +415,18 @@ export function choreographyContinuityMetrics(choreography) {
   if (normalized.version === "1.0") {
     return { contractVersion: "1.0", chapterCount: null, heroObjectCount: null, resetCount: null,
       carriedBeatRatio: null, narrationMode: null, targetStageCoveragePercent: null, maxTextAreaPercent: null };
+  }
+  if (normalized.version === "1.2") {
+    const relationshipCounts = Object.fromEntries([...VISUAL_RELATIONSHIPS]
+      .map((relationship) => [relationship, normalized.beats.filter((beat) => beat.relationToPrevious === relationship).length])
+      .filter(([, count]) => count > 0));
+    return {
+      contractVersion: "1.2", continuityMode: null, chapterCount: null, heroObjectCount: null,
+      resetCount: relationshipCounts.reset ?? 0, carriedBeatRatio: null,
+      narrationMode: normalized.presentation.narrationMode,
+      targetStageCoveragePercent: null, maxTextAreaPercent: null,
+      relationshipCounts, motionLanguageCount: normalized.direction.motionLanguage.length,
+    };
   }
   const followupBeats = normalized.beats.slice(1);
   const carriedBeats = followupBeats.filter((beat) => beat.continuityMode !== "reset"

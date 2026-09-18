@@ -333,6 +333,8 @@ export class ProjectContextAssembler {
           fps: choreography.fps, objectCount: choreography.objectCount,
           semanticBeatCount: choreography.semanticBeatCount,
           continuity: choreography.continuity,
+          direction: choreography.direction,
+          presentation: choreography.presentation,
           recommendedPreviewFrames: choreography.recommendedPreviewFrames,
         })),
         activeCompositions: animation.activeCompositions.map((composition) => ({

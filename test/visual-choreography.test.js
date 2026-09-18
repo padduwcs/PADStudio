@@ -95,6 +95,43 @@ function continuousChoreography() {
   return value;
 }
 
+function visualArgumentChoreography() {
+  const value = choreography();
+  value.version = "1.2";
+  value.direction = {
+    visualThesis: "The viewer follows evidence becoming a conclusion, not one fixed dashboard.",
+    continuityIntent: "Carry the selected values conceptually; preserve screen objects only when that helps causality.",
+    variationIntent: "Move from the matrix operation to a compact arithmetic close-up when the explanatory question changes.",
+    motionLanguage: ["Direct manipulation before labels", "Results settle long enough to read"],
+    antiPatterns: ["Do not repeat one card layout", "Do not animate decoration in place of the operation"],
+    sampleIntent: "Preview the first selection and the representative accumulation before authoring the remaining treatment.",
+  };
+  value.presentation = {
+    narrationMode: "voice-led",
+    stageIntent: "Let the active evidence determine framing and scale from beat to beat.",
+    textIntent: "Use only values, operators and short labels that point into the visual argument.",
+  };
+  Object.assign(value.beats[0], {
+    visualQuestion: "Which cells participate?",
+    audienceInsight: "The viewer can identify the selected region without reading narration text.",
+    relationToPrevious: "establish",
+    continuityCue: "Introduce the concrete matrix that supplies the evidence.",
+    compositionIntent: "Use the matrix as a large operational field rather than a card inside a dashboard.",
+  });
+  value.beats[0].actions[0].effect = "state-change";
+  value.beats[0].actions[0].resultingState = value.beats[0].stateAfter;
+  Object.assign(value.beats[1], {
+    visualQuestion: "How does that evidence become the stored result?",
+    audienceInsight: "The viewer sees the selected values combine into the answer.",
+    relationToPrevious: "reframe",
+    continuityCue: "Carry the selected values and their color roles into the arithmetic close-up.",
+    compositionIntent: "Reframe around the calculation; the matrix may recede instead of occupying a fixed location.",
+  });
+  value.beats[1].actions[0].effect = "state-change";
+  value.beats[1].actions[0].resultingState = value.beats[1].stateAfter;
+  return value;
+}
+
 function composition(sourceResultId, choreographyArtifactId) {
   return {
     version: "1.1", changeReason: "Bind semantic motion plan.", intent: "Teach prefix accumulation through visible operations.",
@@ -166,6 +203,47 @@ test("visual choreography 1.1 enforces a continuous model instead of animated mi
   assert.throws(() => normalizeVisualChoreography(unexplainedState), /must equal the resultingState/);
 });
 
+test("visual choreography 1.2 preserves semantic truth while leaving scene direction to the agent", () => {
+  const normalized = normalizeVisualChoreography(visualArgumentChoreography());
+  assert.equal(normalized.version, "1.2");
+  assert.equal(normalized.beats[1].relationToPrevious, "reframe");
+  assert.equal(normalized.continuity, undefined);
+  assert.equal(normalized.chapters, undefined);
+  assert.deepEqual(choreographyContinuityMetrics(normalized), {
+    contractVersion: "1.2", continuityMode: null, chapterCount: null, heroObjectCount: null,
+    resetCount: 0, carriedBeatRatio: null, narrationMode: "voice-led",
+    targetStageCoveragePercent: null, maxTextAreaPercent: null,
+    relationshipCounts: { establish: 1, reframe: 1 }, motionLanguageCount: 2,
+  });
+
+  const analogy = visualArgumentChoreography();
+  analogy.objects.push({ id: "number-line", label: "Arithmetic close-up", role: "evidence", continuity: "beat-local", initialState: "Empty." });
+  analogy.beats[1].primaryObjectId = "number-line";
+  analogy.beats[1].focusObjectIds = ["number-line"];
+  analogy.beats[1].actions[0].subjectIds = ["number-line"];
+  analogy.beats[1].actions[0].targetIds = [];
+  analogy.beats[1].relationToPrevious = "analogy";
+  assert.doesNotThrow(() => normalizeVisualChoreography(analogy));
+
+  const noPersistentObjects = visualArgumentChoreography();
+  for (const object of noPersistentObjects.objects) object.continuity = "beat-local";
+  assert.doesNotThrow(() => normalizeVisualChoreography(noPersistentObjects));
+
+  for (const relationship of ["carry", "transform", "reframe", "contrast", "analogy", "cutaway", "reset"]) {
+    const treatment = visualArgumentChoreography();
+    treatment.beats[1].relationToPrevious = relationship;
+    assert.doesNotThrow(() => normalizeVisualChoreography(treatment));
+  }
+
+  const decorative = visualArgumentChoreography();
+  decorative.beats[0].actions[0].verb = "highlight";
+  assert.throws(() => normalizeVisualChoreography(decorative), /cannot count as a state change/);
+
+  const repeatedEstablish = visualArgumentChoreography();
+  repeatedEstablish.beats[1].relationToPrevious = "establish";
+  assert.throws(() => normalizeVisualChoreography(repeatedEstablish), /cannot establish the visual argument again/);
+});
+
 test("composition 1.1 binds exact choreography provenance and observer context", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "padstudio-choreography-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -197,9 +275,13 @@ test("composition 1.1 binds exact choreography provenance and observer context",
     capability: "animation.validate", tool: "code-animation-validator", purpose: "Validate fixture source",
     inputs: { sourceResultId: source.id },
   })).result;
+  await store.recordArtifact("demo", {
+    key: "legacy-continuity-choreography", type: "animation.choreography", name: "Legacy continuity choreography",
+    summary: "Version 1.1 compatibility fixture.", status: "draft", data: continuousChoreography(), references: [],
+  });
   const plan = await store.recordArtifact("demo", {
     key: "prefix-choreography", type: "animation.choreography", name: "Prefix choreography",
-    summary: "Two semantic operations.", data: continuousChoreography(), references: [],
+    summary: "Two semantic operations.", data: visualArgumentChoreography(), references: [],
   });
   const data = composition(source.id, plan.id);
   await assert.rejects(store.recordArtifact("demo", {
@@ -230,16 +312,33 @@ test("composition 1.1 binds exact choreography provenance and observer context",
   assert.equal(preview.data.frameSelection, "choreography");
   assert.deepEqual(preview.inputArtifacts, [artifact.id, plan.id]);
 
-  const context = await new ProjectContextAssembler({ projectStore: store }).build("demo");
+  const assembler = new ProjectContextAssembler({ projectStore: store });
+  const context = await assembler.build("demo");
   assert.equal(context.animation.activeChoreographies[0].semanticBeatCount, 2);
   assert.deepEqual(context.animation.activeCompositions[0].choreography.recommendedPreviewFrames, [0, 24, 47, 48, 84, 95]);
   const observer = await new ProjectReader(rootDir).readObserverSection("demo", "animation");
   assert.equal(observer.animation.compositions[0].choreographyArtifactId, plan.id);
-  assert.equal(observer.animation.choreographies[0].continuity.continuityMode, "continuous-model");
-  assert.equal(observer.animation.choreographies[0].continuity.carriedBeatRatio, 1);
-  assert.equal(observer.animation.choreographies[0].beats[1].actions[0].verb, "accumulate");
+  assert.equal(observer.animation.version, "1.2");
+  const currentObserver = observer.animation.choreographies.find((item) => item.artifactId === plan.id);
+  assert.equal(currentObserver.continuity.contractVersion, "1.2");
+  assert.equal(currentObserver.continuity.carriedBeatRatio, null);
+  assert.equal(currentObserver.direction.visualThesis,
+    "The viewer follows evidence becoming a conclusion, not one fixed dashboard.");
+  assert.equal(currentObserver.beats[1].relationToPrevious, "reframe");
+  assert.equal(currentObserver.beats[1].actions[0].verb, "accumulate");
+  const legacyObserver = observer.animation.choreographies.find((item) => item.key === "legacy-continuity-choreography");
+  assert.equal(legacyObserver.continuity.contractVersion, "1.1");
+  assert.equal(legacyObserver.continuity.continuityMode, "continuous-model");
+  assert.equal(legacyObserver.direction, null);
 
-  const revisedData = continuousChoreography();
+  const summary = await assembler.buildSummary("demo");
+  assert.equal(summary.animation.version, "1.2");
+  assert.equal(summary.animation.activeChoreographies[0].direction.sampleIntent,
+    "Preview the first selection and the representative accumulation before authoring the remaining treatment.");
+  assert.equal(summary.animation.activeChoreographies[0].presentation.stageIntent,
+    "Let the active evidence determine framing and scale from beat to beat.");
+
+  const revisedData = visualArgumentChoreography();
   revisedData.changeReason = "Clarify the accumulation action.";
   revisedData.beats[1].actions[0].description = "Move each selected value into the expression, then resolve the total.";
   const revisedPlan = await store.recordArtifact("demo", {
@@ -247,6 +346,6 @@ test("composition 1.1 binds exact choreography provenance and observer context",
     summary: "Clarified semantic operation.", data: revisedData, references: [], expectedRevision: 1,
   });
   assert.equal(revisedPlan.revision, 2);
-  const staleContext = await new ProjectContextAssembler({ projectStore: store }).build("demo");
+  const staleContext = await assembler.build("demo");
   assert.equal(staleContext.animation.activeCompositions[0].dependencyReasons[0].reason, "choreography_not_active_revision");
 });

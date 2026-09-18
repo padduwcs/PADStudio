@@ -20,12 +20,14 @@ judgment without imposing a fixed production pipeline.
 5. Run a distinctness pass. Ask whether the frames could belong to any unrelated video after only
    replacing the text. Flag repeated card/title/diagram grammar, slideshow pacing and decorative
    motion. Reuse engines and utilities freely; give important videos a bespoke visual argument.
-6. Run a continuity pass on consecutive samples and targeted motion clips. Track the same hero
-   objects across beat boundaries; verify that the next `stateBeforeId` is visibly the prior
-   `stateAfterId`. Treat unexplained clearing, rebuilding, example switching or re-entry animation as
-   a continuity failure. A declared reset must be rare, motivated and visually bridged.
-7. Run a composition-usage pass. The primary explanatory stage should dominate the frame near its
-   declared coverage target. Flag persistent empty regions, repeated dashboard chrome, narration
+6. Run a relational pass on consecutive samples and targeted motion clips. For choreography 1.2,
+   check the declared `relationToPrevious`: carried state must remain recognizable, transformations
+   must show cause, reframing must preserve orientation, contrasts and analogies must have a readable
+   mapping, and cutaways/resets must earn their place in the argument. For legacy 1.1, check its hero
+   and state-ID promises as declared. Do not penalize a purposeful cut merely because an object or
+   layout changes; do flag unexplained loss of evidence or repeated re-entry.
+7. Run a composition-usage pass. The primary explanatory subject should receive the frame it needs.
+   Flag persistent empty regions, repeated dashboard chrome, narration
    paragraphs that duplicate the voice, and layouts where the real operation occupies a small card.
    Short labels and selective captions are acceptable when they point into the model.
 8. Evaluate variation deliberately: visual vocabulary, motion intensity and information density

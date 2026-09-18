@@ -113,6 +113,16 @@ entrance/reveal/highlight/hold không còn đủ để chứng minh ý nghĩa. F
 choreography 1.1. Observer hiển thị continuity metrics để Agent và người dùng nhận ra kế hoạch đang
 tiến triển như một mô hình liên tục hay chỉ là chuỗi mini-slide. Contract 1.0 vẫn đọc được cho project cũ.
 
+Đối chiếu tiếp với toàn bộ thư viện video mẫu cho thấy các ràng buộc toàn cục của 1.1 có thể đẩy Agent
+sang cực ngược lại: giữ một dashboard tĩnh và một hero xuyên suốt dù câu hỏi giải thích đã thay đổi.
+Contract 1.2 vì vậy giữ kiểm tra semantic state-change nhưng thay continuity hình thức bằng visual
+argument do Agent đạo diễn. Mỗi beat nêu câu hỏi thị giác, insight dành cho người xem, quan hệ với phần
+trước và ý định bố cục; Agent được chọn carry, transform, reframe, contrast, analogy, cutaway hoặc reset.
+Không còn hero quota, state-ID chain, reset budget hay phần trăm sân khấu/chữ cho project mới. Direction
+ghi cả opening và đoạn thao tác đại diện cần preview trước khi hoàn thiện timeline dài. Contract 1.0/1.1
+vẫn đọc được; observer mô tả lựa chọn của Agent thay vì chấm điểm continuity. Đây vẫn là skill/artifact
+tùy chọn, không phải pipeline hay storyboard bắt buộc.
+
 ### Mở rộng hoạt họa bằng code — 2026-09-14
 
 PADStudio có nhánh tùy chọn project-native cho Manim Community, Remotion và HyperFrames. Source

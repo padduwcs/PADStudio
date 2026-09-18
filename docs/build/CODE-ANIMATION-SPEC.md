@@ -37,10 +37,10 @@ For narration-led and stepwise work, an `animation.choreography` Artifact may be
 source authoring. `animation.composition` 1.1 binds its exact Artifact revision; see
 [VISUAL-CHOREOGRAPHY-SPEC.md](VISUAL-CHOREOGRAPHY-SPEC.md). Composition 1.0 remains supported.
 
-New continuity-first explainers should use choreography 1.1: persistent hero objects, ordered causal
-chapters, exact state inheritance, explicit reset budget and dominant-stage presentation constraints.
-This prevents per-beat motion from degenerating into disconnected animated cards while preserving
-choreography 1.0 compatibility for existing projects.
+New explainers should use choreography 1.2: an Agent-authored visual thesis, purposeful relationships
+between beats, truthful semantic operations, composition intent and an explicit representative-sample
+intent. It avoids both disconnected animated cards and the opposite failure of forcing the complete
+film into one persistent dashboard. Choreography 1.0 and 1.1 remain compatible for existing projects.
 
 Source/props edits create new Results. Composition edits create a new artifact revision with
 `expectedRevision`. Preflight/render inputs name the exact artifact ID, revision and validation
@@ -167,9 +167,10 @@ script text, important terms and conservative similarity thresholds. ASR/script 
 recognition become fail-closed checks and participate in the QA reuse key. These checks expose likely
 wording or pronunciation defects; they do not identify phonetic cause and do not replace listening.
 
-The `code-animation-review` skill adds evidence-driven creative review: complete-timeline coverage,
-timestamped findings with proposed corrections, semantic agreement between narration and motion,
-and checks for slideshow/template repetition and project-specific visual identity. These are review
+The `code-animation-review` skill adds evidence-driven creative review: representative authoring
+samples, complete-timeline coverage, timestamped findings with proposed corrections, semantic
+agreement between narration and motion, purposeful scene relationships, and checks for
+slideshow/template repetition and project-specific visual identity. These are review
 heuristics, not fixed stages or automatic creative decisions.
 
 An `animation.render` primary file has media type `video`, so the existing `video.sequence` source
