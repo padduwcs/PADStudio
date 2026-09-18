@@ -24,9 +24,31 @@ export function renderAnimation(container, context) {
   lastSignature = signature;
   container.replaceChildren();
   const compositions = context.animation?.compositions ?? [];
-  if (!compositions.length) {
+  const choreographies = context.animation?.choreographies ?? [];
+  if (!compositions.length && !choreographies.length) {
     container.append(node("p", "Project chưa có composition hoạt họa bằng code. Đây là một nhánh tùy chọn, không phải bước bắt buộc.", "empty-note"));
     return;
+  }
+  for (const choreography of [...choreographies].reverse()) {
+    const card = node("article", undefined, "sequence-panel choreography-panel");
+    card.dataset.choreographyArtifact = choreography.artifactId;
+    card.append(
+      node("h4", `${choreography.name} · ${choreography.role}`),
+      node("p", choreography.purpose),
+      node("p", `${choreography.durationSeconds}s · ${choreography.fps} fps · ${choreography.objectCount} đối tượng · ${choreography.semanticBeatCount} beat ngữ nghĩa`, "input-meta"),
+      node("p", `Exact choreography: ${choreography.artifactId} · r${choreography.revision}`, "exact-result-id")
+    );
+    const beats = node("ol", undefined, "choreography-beats");
+    for (const beat of choreography.beats) {
+      const item = node("li");
+      item.append(
+        node("strong", `${beat.startSeconds}s–${beat.endSeconds}s · ${beat.message}`),
+        node("span", `${beat.actions.length} hành động · ${beat.stateBefore} → ${beat.stateAfter}`, "input-meta")
+      );
+      beats.append(item);
+    }
+    card.append(beats);
+    container.append(card);
   }
   for (const composition of [...compositions].reverse()) {
     const card = node("article", undefined, "sequence-panel");
@@ -40,6 +62,12 @@ export function renderAnimation(container, context) {
       node("p", `Exact source: ${composition.sourceResultId}`, "exact-result-id")
     );
     if (composition.propsResultId) card.append(node("p", `Managed props: ${composition.propsResultId}`, "exact-result-id"));
+    if (composition.choreography) card.append(node("p",
+      `Biên đạo: ${composition.choreography.name} · ${composition.choreography.semanticBeatCount} beat ngữ nghĩa · preview frames ${composition.choreography.recommendedPreviewFrames.join(", ")}`,
+      "result-verification"));
+    if (composition.dependencyReasons?.length) card.append(node("p",
+      "Composition đang bind một choreography revision không còn active; cần revise hoặc chủ động chạy historical.",
+      "sequence-warning"));
     const preflight = composition.preflights?.at(-1);
     if (preflight) {
       card.append(node("p", `Preflight ${preflight.status}: ${preflight.resultId} · ${preflight.scope}`,
@@ -71,7 +99,8 @@ export function renderAnimation(container, context) {
         video.src = resultUrl(context.project.id, preview.resultId, clip.id); gallery.append(video);
       }
       if (gallery.childElementCount) card.append(node("p",
-        preview.motion ? `Motion preview ${preview.motion.selector}: ${preview.resultId}` : `Preview exact: ${preview.resultId}`,
+        preview.motion ? `Motion preview ${preview.motion.selector}: ${preview.resultId}` :
+          `Preview exact (${preview.frameSelection === "choreography" ? "theo beat biên đạo" : "frame chỉ định"}): ${preview.resultId}`,
         "exact-result-id"), gallery);
     }
     const render = composition.renders.at(-1);

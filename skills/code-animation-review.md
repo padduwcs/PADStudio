@@ -14,6 +14,9 @@ judgment without imposing a fixed production pipeline.
    and revise pronunciation, wording or TTS—not as proof of the exact phonetic cause.
 4. Check whether motion teaches the spoken claim: object identity, direction, scale, causality,
    timing and mathematical meaning must agree. A polished but semantically wrong animation fails.
+   When the composition binds `animation.choreography`, review every semantic beat against its
+   message, state-before/state-after and ordered actions. Missing or reordered actions are failures,
+   even when the sampled frames look attractive.
 5. Run a distinctness pass. Ask whether the frames could belong to any unrelated video after only
    replacing the text. Flag repeated card/title/diagram grammar, slideshow pacing and decorative
    motion. Reuse engines and utilities freely; give important videos a bespoke visual argument.

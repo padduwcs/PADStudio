@@ -36,6 +36,7 @@
     "test": "node --test",
     "observer:browser-test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/source-observer-browser-smoke.ps1",
     "project:sequence": "node src/cli/write-video-sequence.js",
+    "project:choreography": "node src/cli/write-animation-choreography.js",
     "project:animation": "node src/cli/write-animation-composition.js",
     "animation:read": "node src/cli/read-animation-source.js",
     "animation:acceptance": "node scripts/code-animation-authoring-acceptance.mjs",

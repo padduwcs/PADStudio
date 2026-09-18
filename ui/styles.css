@@ -697,6 +697,9 @@ h3 {
   object-fit: contain;
 }
 
+.choreography-beats { display: grid; gap: .55rem; margin: .8rem 0 0; padding-left: 1.25rem; }
+.choreography-beats li span { display: block; margin-top: .2rem; }
+
 @media (max-width: 700px) {
   .app-shell {
     padding-top: 1.5rem;

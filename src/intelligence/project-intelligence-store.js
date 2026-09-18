@@ -37,6 +37,10 @@ import {
   normalizeAnimationComposition,
   validateAnimationCompositionAgainstProject,
 } from "../animation/animation-composition.js";
+import {
+  ANIMATION_CHOREOGRAPHY_TYPE,
+  normalizeVisualChoreography,
+} from "../animation/visual-choreography.js";
 
 const VERSION = "1.0";
 
@@ -136,6 +140,8 @@ export class ProjectIntelligenceStore {
           ? normalizeSequence(value.data)
           : type === ANIMATION_COMPOSITION_TYPE
             ? normalizeAnimationComposition(value.data)
+            : type === ANIMATION_CHOREOGRAPHY_TYPE
+              ? normalizeVisualChoreography(value.data)
             : sourceData ?? creativeData ?? structuredClone(value.data);
         const references = normalizeReferences(value.references);
         if (type === SEQUENCE_TYPE) {
@@ -189,6 +195,7 @@ export class ProjectIntelligenceStore {
           (previous && (
             type === SEQUENCE_TYPE ||
             type === ANIMATION_COMPOSITION_TYPE ||
+            type === ANIMATION_CHOREOGRAPHY_TYPE ||
             SOURCE_ARTIFACT_TYPES.has(type) ||
             CREATIVE_ARTIFACT_TYPES.has(type)
           )) ||
@@ -533,6 +540,7 @@ export class ProjectIntelligenceStore {
     normalizeReferences(value.references);
     if (value.type === SEQUENCE_TYPE) normalizeSequence(value.data);
     if (value.type === ANIMATION_COMPOSITION_TYPE) normalizeAnimationComposition(value.data, { allowLegacy: true });
+    if (value.type === ANIMATION_CHOREOGRAPHY_TYPE) normalizeVisualChoreography(value.data);
     if (SOURCE_ARTIFACT_TYPES.has(value.type)) normalizeSourceArtifactData(value.type, value.data);
     if (CREATIVE_ARTIFACT_TYPES.has(value.type)) {
       normalizeCreativeArtifactData(value.type, value.data, { allowLegacy: true });

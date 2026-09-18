@@ -33,6 +33,10 @@ animation.source-package Result (immutable code + manifest + checksums)
                 optional source in video.sequence
 ```
 
+For narration-led and stepwise work, an `animation.choreography` Artifact may be created before
+source authoring. `animation.composition` 1.1 binds its exact Artifact revision; see
+[VISUAL-CHOREOGRAPHY-SPEC.md](VISUAL-CHOREOGRAPHY-SPEC.md). Composition 1.0 remains supported.
+
 Source/props edits create new Results. Composition edits create a new artifact revision with
 `expectedRevision`. Preflight/render inputs name the exact artifact ID, revision and validation
 Result. Full render also requires a passed preflight bound to the same source, props and composition.
@@ -70,12 +74,15 @@ dependencies inherit from the base package. Earlier bytes and metadata remain in
 `animation:read` returns the manifest by default and retrieves one file or `--all` by exact Result
 ID when an Agent needs to continue editing; it does not expose backing filesystem paths.
 
-## Composition artifact 1.0
+## Composition artifact 1.0 and 1.1
 
 `animation.composition` stores intent/change reason, exact runtime/source/entry, even output
 dimensions, integer FPS, frame-aligned target duration, timing mode, opaque MP4 background, explicit assets mapped only under `assets/`, style
 principles, and review criteria. It fixes `executionPolicy.codeTrust` to `agent-managed-execution` and
 `executionPolicy.networkAccess` to `not-required`.
+
+Version 1.1 additionally requires `choreographyArtifactId`. The Store verifies that it identifies
+an exact `animation.choreography` Artifact included in references and that duration/FPS match.
 
 `propsResultId` is optional and must reference an `animation.props` Result included in artifact
 references. Props are normalized JSON, limited to 1 MiB and depth 32, stored both as metadata and a
@@ -138,6 +145,10 @@ transition samples were dropped; incomplete coverage remains visible rather than
 full coverage. A matching `*.motion.json` may be included in the immutable source package when the authored
 motion has useful testable promises; it remains optional. Preview is an authoring aid, not technical
 or creative acceptance. PADStudio does not pretend that all runtimes expose the same preview contract.
+
+When a composition binds choreography, Remotion and HyperFrames preview may use
+`useChoreographyFrames: true`. PADStudio selects bounded exact frames from beat starts, semantic
+action results and deliberate holds, and records `frameSelection: choreography` in the preview.
 
 The runtime must exit successfully and create the declared MP4. PADStudio probes resolution, frame
 rate and duration against the composition timing contract, then creates a poster and JSON render report. Result files

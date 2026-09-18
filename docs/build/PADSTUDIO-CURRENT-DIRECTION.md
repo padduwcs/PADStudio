@@ -96,6 +96,16 @@ giữ kết quả hiểu và sáng tạo; workflow giữ kế hoạch hiện hà
 
 ## Hệ thống công cụ và Bộ thực thi
 
+### Biên đạo thị giác theo nghĩa — 2026-09-18
+
+PADStudio bổ sung artifact tùy chọn `animation.choreography` cho video giải thích theo lời thoại,
+thuật toán, biến đổi và thao tác sản phẩm. Artifact giữ đối tượng có identity, semantic beat, trạng
+thái trước/sau, hành động frame-aligned và deliberate hold trước khi Agent viết source. Composition
+1.1 bind exact choreography, bắt buộc khớp FPS/thời lượng; Remotion/HyperFrames preview có thể tự lấy
+bounded exact frames tại beat/action/hold. Observer cho xem plan và provenance của preflight,
+preview/render giữ cả composition lẫn choreography. Composition 1.0 và workflow không dùng nhánh
+này vẫn tương thích; đây không phải storyboard hay stage bắt buộc.
+
 ### Mở rộng hoạt họa bằng code — 2026-09-14
 
 PADStudio có nhánh tùy chọn project-native cho Manim Community, Remotion và HyperFrames. Source

@@ -8,13 +8,16 @@ Code animation is an optional production branch, not a required pipeline stage.
    Remotion for React-driven, frame-accurate motion systems and typography; HyperFrames
    for authored HTML/CSS/SVG/GSAP compositions. Do not silently swap runtimes. Load exactly one
    runtime craft skill (`manim-animation`, `remotion-animation`, or `hyperframes-animation`).
+   For narration-led, procedural or stepwise explanation, load `visual-choreography` first and
+   create the choreography before source. A tiny decorative loop does not need this artifact.
 2. Create source with `animation.source / code-animation-source`. Reopen an existing package with
    `animation:read` by Result ID; request one file or `--all` only when its content is needed. Revise from an exact
    `baseResultId`; never mutate an earlier package. Declare dependencies and pin versions.
 3. Put changeable JSON data in an immutable `animation.props` Result when useful, then create or
    revise `animation.composition` with exact source/props Results, entry symbol,
    frame-aligned target duration, output format, local asset mappings, style principles and
-   concrete review criteria. Preserve stable artifact IDs across revisions. Manim defaults to
+   concrete review criteria. Use composition 1.1 and bind the exact choreography Artifact when a
+   choreography exists; its FPS and duration must match. Preserve stable artifact IDs across revisions. Manim defaults to
    `timing.mode: measured`: the target guides planning while the verified render Result owns the
    exact duration within a small bounded tolerance. Use `exact` only when authored timing truly
    controls the output. Remotion always uses `exact` because PADStudio renders a fixed frame range.
@@ -27,7 +30,8 @@ Code animation is an optional production branch, not a required pipeline stage.
    preflight remains evidence and cannot authorize preview/render. Remotion can then create selected
    stills and a short frame-range clip with `animation.preview / remotion-preview`; HyperFrames can
    capture exact requested frames and a contact sheet with `animation.preview / hyperframes-preview`.
-   Use preview as an authoring loop, not as acceptance. Manim preflight currently checks runtime
+   For a bound choreography, prefer `useChoreographyFrames: true`; add targeted clips or motion
+   previews where stills cannot prove the action. Use preview as an authoring loop, not as acceptance. Manim preflight currently checks runtime
    health only; HyperFrames preflight preserves normalized findings, snapshots and its raw strict report.
 6. Render with the matching adapter and exact passed preflight Result. Draft/history requires explicit `allowHistorical: true`.
    PADStudio never installs dependencies, calls `npx`,

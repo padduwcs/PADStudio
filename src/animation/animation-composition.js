@@ -6,6 +6,7 @@ import {
   requireObject,
   requireText,
 } from "../intelligence/contracts.js";
+import { ANIMATION_CHOREOGRAPHY_TYPE, normalizeVisualChoreography } from "./visual-choreography.js";
 
 export const ANIMATION_COMPOSITION_TYPE = "animation.composition";
 export const ANIMATION_RUNTIMES = Object.freeze(["manim", "remotion", "hyperframes"]);
@@ -33,13 +34,15 @@ function relativeFile(value, label) {
 
 export function normalizeAnimationComposition(value, { allowLegacy = false } = {}) {
   requireObject(value, "animation.composition data");
+  const version = value.version;
+  if (!["1.0", "1.1"].includes(version)) {
+    throw new IntelligenceValidationError("animation.composition version must be 1.0 or 1.1.");
+  }
   assertOnlyFields(value, [
     "version", "changeReason", "intent", "runtime", "sourceResultId", "entry",
     "format", "durationSeconds", "timing", "assets", "propsResultId", "style", "reviewCriteria", "executionPolicy",
+    ...(version === "1.1" ? ["choreographyArtifactId"] : []),
   ], "animation.composition data");
-  if (value.version !== "1.0") {
-    throw new IntelligenceValidationError("animation.composition version must be 1.0.");
-  }
   const runtime = requireText(value.runtime, "animation.composition.runtime");
   if (!ANIMATION_RUNTIMES.includes(runtime)) {
     throw new IntelligenceValidationError(`animation.composition.runtime is not supported: ${runtime}.`);
@@ -132,7 +135,7 @@ export function normalizeAnimationComposition(value, { allowLegacy = false } = {
     throw new IntelligenceValidationError("Animation asset IDs and targets must be unique.");
   }
   return {
-    version: "1.0",
+    version,
     changeReason: requireText(value.changeReason, "animation.composition.changeReason"),
     intent: requireText(value.intent, "animation.composition.intent"),
     runtime,
@@ -146,6 +149,9 @@ export function normalizeAnimationComposition(value, { allowLegacy = false } = {
     timing: { mode: timingMode },
     assets: normalizedAssets,
     propsResultId: value.propsResultId == null ? null : requireId(value.propsResultId, "animation.composition.propsResultId"),
+    ...(version === "1.1" ? {
+      choreographyArtifactId: requireId(value.choreographyArtifactId, "animation.composition.choreographyArtifactId"),
+    } : {}),
     style: {
       designRead: style.designRead == null ? null : requireText(style.designRead, "animation.composition.style.designRead"),
       palette,
@@ -188,6 +194,24 @@ export async function validateAnimationCompositionAgainstProject({ projectStore,
       throw new IntelligenceValidationError("animation.composition must reference its props Result.");
     }
     if (status !== "retired") await projectStore.verifyResultFile(projectId, props.id, "primary");
+  }
+  if (data.version === "1.1") {
+    const choreography = (await projectStore.intelligence.readArtifacts(projectId))
+      .find((artifact) => artifact.id === data.choreographyArtifactId);
+    if (!choreography || choreography.type !== ANIMATION_CHOREOGRAPHY_TYPE) {
+      throw new IntelligenceValidationError("animation.composition choreographyArtifactId must reference animation.choreography.");
+    }
+    if (!references.some((reference) => reference.kind === "artifact" && reference.id === choreography.id)) {
+      throw new IntelligenceValidationError("animation.composition must reference its exact choreography Artifact.");
+    }
+    if (status === "active" && !(await projectStore.intelligence.readActiveArtifacts(projectId))
+      .some((artifact) => artifact.id === choreography.id)) {
+      throw new IntelligenceValidationError("An active animation.composition must bind the active choreography revision.");
+    }
+    const plan = normalizeVisualChoreography(choreography.data);
+    if (plan.fps !== data.format.fps || plan.durationSeconds !== data.durationSeconds) {
+      throw new IntelligenceValidationError("animation.composition format timing must match its choreography FPS and duration.");
+    }
   }
   if (status !== "retired") {
     for (const file of result.files) await projectStore.verifyResultFile(projectId, result.id, file.id);

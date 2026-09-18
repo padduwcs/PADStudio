@@ -92,6 +92,13 @@
       "instructions": "code-animation.md"
     },
     {
+      "id": "visual-choreography", "version": "1.0", "name": "Visual choreography",
+      "description": "Translate narration and procedural meaning into frame-aligned object state changes before code-animation authoring.",
+      "appliesTo": ["plan", "execute", "review"], "artifactTypes": ["animation.choreography", "animation.composition"],
+      "reviewCriteria": ["semantic claims have visible actions", "object identity persists where causality depends on it", "holds are deliberate", "preview evidence covers action results"],
+      "instructions": "visual-choreography.md"
+    },
+    {
       "id": "remotion-animation", "version": "1.0", "name": "Remotion animation craft",
       "description": "Author and review deterministic, parameterized Remotion compositions without defaulting to stock creative components.",
       "appliesTo": ["plan", "execute", "review"], "artifactTypes": ["animation.composition"],

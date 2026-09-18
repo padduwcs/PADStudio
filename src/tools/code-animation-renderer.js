@@ -5,6 +5,7 @@ import { basename, delimiter, dirname, extname, isAbsolute, join, resolve, sep }
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { normalizeAnimationComposition } from "../animation/animation-composition.js";
+import { normalizeVisualChoreography, selectChoreographyPreviewFrames } from "../animation/visual-choreography.js";
 import { loadAnimationProps } from "../animation/animation-props.js";
 import { loadSourcePackage } from "../animation/source-package.js";
 import { fail, fileEvidence, object, probe, text, workspace } from "./asset-tool-common.js";
@@ -167,6 +168,18 @@ async function prepareAnimationWorkspace({ store, projectId, inputs, outputWorks
   if (!current && !inputs.allowHistorical) fail("Animation composition is a draft or historical revision; review it and set allowHistorical explicitly to execute it.", "stale_animation");
   const composition = normalizeAnimationComposition(artifact.data);
   if (composition.runtime !== runtime) fail(`Composition runtime is ${composition.runtime}, not ${runtime}.`, "runtime_mismatch");
+  let choreography = null;
+  if (composition.choreographyArtifactId) {
+    const choreographyArtifact = (await store.readArtifacts(projectId))
+      .find((item) => item.id === composition.choreographyArtifactId && item.type === "animation.choreography");
+    if (!choreographyArtifact) fail("Exact animation.choreography revision was not found.", "stale_choreography");
+    choreography = { artifact: choreographyArtifact, data: normalizeVisualChoreography(choreographyArtifact.data) };
+    const choreographyCurrent = (await store.readContext(projectId)).intelligence.activeArtifacts
+      .some((item) => item.id === choreographyArtifact.id);
+    if (!choreographyCurrent && !inputs.allowHistorical) {
+      fail("Bound choreography is a draft or historical revision; revise the composition or set allowHistorical explicitly.", "stale_choreography");
+    }
+  }
   const source = await loadSourcePackage(store, projectId, composition.sourceResultId, runtime);
   const validation = await store.readResult(projectId, text(inputs.validationResultId, "validationResultId", 150));
   if (validation.type !== "animation.validation" || validation.data?.status !== "passed" ||
@@ -212,7 +225,7 @@ async function prepareAnimationWorkspace({ store, projectId, inputs, outputWorks
     }
     inputResults.add(preflight.id);
   }
-  return { runtime: { composition, source, validation, assets, props, preflight,
+  return { runtime: { composition, choreography, source, validation, assets, props, preflight,
       artifact: { id: artifact.id, revision: artifact.revision }, codeDirectory,
       entryPath: join(codeDirectory, ...composition.entry.file.split("/")),
       outputPath: join(output.temporaryDirectory, "animation.mp4"), mediaDirectory: join(output.temporaryDirectory, "manim-media"),
@@ -220,6 +233,7 @@ async function prepareAnimationWorkspace({ store, projectId, inputs, outputWorks
     trace: { directory: output.projectRelativeDirectory, artifact: { id: artifact.id, revision: artifact.revision },
       sourceResultId: source.result.id, validationResultId: validation.id,
       propsResultId: props?.result.id ?? null, preflightResultId: preflight?.id ?? null,
+      choreographyArtifactId: choreography?.artifact.id ?? null,
       allowHistorical: inputs.allowHistorical === true, inputResources: [...inputResources], inputResults: [...inputResults] } };
 }
 
@@ -282,7 +296,7 @@ export function createCodeAnimationRenderer(runtime, {
       if (inputs.preflightResultId === undefined) fail("A passed exact preflightResultId is required before full render.", "preflight_required");
       return prepared;
     },
-    async execute({ composition, source, validation, assets, props, artifact, codeDirectory, entryPath, outputPath, mediaDirectory, homeDirectory, availability, signal }) {
+    async execute({ composition, choreography, source, validation, assets, props, artifact, codeDirectory, entryPath, outputPath, mediaDirectory, homeDirectory, availability, signal }) {
       await Promise.all([homeDirectory, join(homeDirectory, "local-app-data"), join(homeDirectory, "app-data")]
         .map((directory) => mkdir(directory, { recursive: true })));
       const paths = { entry: entryPath, output: outputPath, media: mediaDirectory, props: props?.target ?? null,
@@ -331,7 +345,7 @@ export function createCodeAnimationRenderer(runtime, {
         fail(`FFmpeg could not create the animation poster: ${String(error?.stderr || error?.message || "unknown error").slice(-500)}`, "poster_failed");
       }
       const report = { version: "1.0", runtime, artifact, sourceResultId: source.result.id,
-        validationResultId: validation.id, format: composition.format,
+        validationResultId: validation.id, choreographyArtifactId: choreography?.artifact.id ?? null, format: composition.format,
         timing: { ...composition.timing, targetDurationSeconds: composition.durationSeconds,
           actualDurationSeconds: video.durationSeconds, durationDriftSeconds, toleranceSeconds: tolerance },
         dependencies: source.data.dependencies, assets,
@@ -347,7 +361,8 @@ export function createCodeAnimationRenderer(runtime, {
     },
     createResult({ prepared, execution }) {
       return { type: "animation.render", name: `${runtime} animation: ${prepared.trace.artifact.id} r${prepared.trace.artifact.revision}`,
-        inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults, inputArtifacts: [prepared.trace.artifact.id],
+        inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults,
+        inputArtifacts: [prepared.trace.artifact.id, prepared.trace.choreographyArtifactId].filter(Boolean),
         files: [
           { id: "primary", role: "primary", path: `${prepared.trace.directory}/animation.mp4`, name: "animation.mp4", mediaType: "video", ...execution.output },
           { id: "poster", role: "poster", path: `${prepared.trace.directory}/poster.jpg`, name: "poster.jpg", mediaType: "image", ...execution.poster },
@@ -356,6 +371,7 @@ export function createCodeAnimationRenderer(runtime, {
         data: { version: "1.0", runtime, composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
           validationResultId: prepared.trace.validationResultId,
           propsResultId: prepared.runtime.props?.result.id ?? null,
+          choreographyArtifactId: prepared.trace.choreographyArtifactId,
           preflightResultId: prepared.trace.preflightResultId,
           durationSeconds: execution.video.durationSeconds, timing: execution.report.timing,
           video: { width: execution.video.width, height: execution.video.height, frameRate: execution.video.frameRate },
@@ -526,7 +542,7 @@ export function createCodeAnimationPreflight(runtime, options = {}) {
         validationResultId: { type: "string" }, allowHistorical: { type: "boolean" } } },
     checkAvailability: availabilityTool.checkAvailability,
     async prepare(args) { return prepareAnimationWorkspace({ ...args, runtime }); },
-    async execute({ composition, source, props, artifact, codeDirectory, entryPath, homeDirectory, outputDirectory, availability, signal }) {
+    async execute({ composition, choreography, source, props, artifact, codeDirectory, entryPath, homeDirectory, outputDirectory, availability, signal }) {
       await Promise.all([homeDirectory, join(homeDirectory, "local-app-data"), join(homeDirectory, "app-data")]
         .map((directory) => mkdir(directory, { recursive: true })));
       const env = cleanEnvironment(homeDirectory, { nodeModules: launch.nodeModules, browser: browserCommand });
@@ -577,7 +593,8 @@ export function createCodeAnimationPreflight(runtime, options = {}) {
         : runtime === "hyperframes" && hyperframesDiagnostics && !hyperframesDiagnostics.coverageComplete
           ? ["HyperFrames diagnostic coverage was truncated or transition samples were dropped; inspect the report and run targeted previews before relying on this preflight."] : [];
       const report = { version: runtime === "hyperframes" ? "1.2" : "1.0", status, runtime, scope, artifact, sourceResultId: source.result.id,
-        propsResultId: props?.result.id ?? null, command: commandRecord, diagnostics: { stdout, stderr, parsed },
+        propsResultId: props?.result.id ?? null, choreographyArtifactId: choreography?.artifact.id ?? null,
+        command: commandRecord, diagnostics: { stdout, stderr, parsed },
         ...(hyperframesDiagnostics ? { findings: hyperframesDiagnostics } : {}),
         ...(runtime === "hyperframes" ? { snapshots: snapshots.map(({ name, sizeBytes, sha256 }) => ({ name, sizeBytes, sha256 })) } : {}),
         dependencyChecks,
@@ -589,13 +606,15 @@ export function createCodeAnimationPreflight(runtime, options = {}) {
     },
     createResult({ prepared, execution }) {
       return { type: "animation.preflight", name: `${runtime} preflight: ${prepared.trace.artifact.id} r${prepared.trace.artifact.revision}`,
-        inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults, inputArtifacts: [prepared.trace.artifact.id],
+        inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults,
+        inputArtifacts: [prepared.trace.artifact.id, prepared.trace.choreographyArtifactId].filter(Boolean),
         files: [{ id: "report", role: "evidence", path: `${prepared.trace.directory}/preflight-report.json`, name: "preflight-report.json",
           mediaType: "application/json", ...execution.reportFile },
           ...execution.snapshots.map((snapshot, index) => ({ id: `snapshot-${index + 1}`, role: "evidence", path: `${prepared.trace.directory}/${snapshot.name}`,
             name: snapshot.name, mediaType: snapshot.mediaType, sizeBytes: snapshot.sizeBytes, sha256: snapshot.sha256 }))],
         data: { version: runtime === "hyperframes" ? "1.2" : "1.0", status: execution.report.status, runtime, scope: execution.report.scope,
           composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
+          choreographyArtifactId: prepared.trace.choreographyArtifactId,
           validationResultId: prepared.trace.validationResultId, propsResultId: prepared.trace.propsResultId,
           runtimeFingerprint: execution.report.runtimeFingerprint,
           errorCode: execution.report.errorCode, limitations: execution.report.limitations,
@@ -626,17 +645,26 @@ export function createRemotionAnimationPreview(options = {}) {
       properties: { artifactId: { type: "string" }, artifactRevision: { type: "integer", minimum: 1 }, validationResultId: { type: "string" },
         preflightResultId: { type: "string" }, allowHistorical: { type: "boolean" },
         frames: { type: "array", maxItems: 12, items: { type: "integer", minimum: 0 } },
+        useChoreographyFrames: { type: "boolean" },
         range: { type: "object", required: ["startSeconds", "endSeconds"], additionalProperties: false,
           properties: { startSeconds: { type: "number", minimum: 0 }, endSeconds: { type: "number", minimum: 0 } } } } },
     checkAvailability: availabilityTool.checkAvailability,
     async prepare(args) {
-      const prepared = await prepareAnimationWorkspace({ ...args, runtime, allowedFields: ["preflightResultId", "frames", "range"] });
-      const { frames, range } = args.inputs;
+      const prepared = await prepareAnimationWorkspace({ ...args, runtime, allowedFields: ["preflightResultId", "frames", "range", "useChoreographyFrames"] });
+      const { frames, range, useChoreographyFrames } = args.inputs;
+      if (useChoreographyFrames !== undefined && typeof useChoreographyFrames !== "boolean") fail("useChoreographyFrames must be boolean.");
+      if (frames !== undefined && useChoreographyFrames === true) fail("Choose explicit frames or useChoreographyFrames, not both.");
       if (frames !== undefined && (!Array.isArray(frames) || !frames.length || frames.length > 12 || frames.some((frame) => !Number.isInteger(frame) || frame < 0))) {
         fail("frames must contain 1-12 nonnegative integer frame numbers.");
       }
       const totalFrames = Math.round(prepared.runtime.composition.durationSeconds * prepared.runtime.composition.format.fps);
-      const normalizedFrames = [...new Set(frames ?? [])];
+      if (useChoreographyFrames === true && !prepared.runtime.choreography) {
+        fail("useChoreographyFrames requires a composition bound to animation.choreography.", "missing_choreography");
+      }
+      const selectedFrames = useChoreographyFrames === true
+        ? selectChoreographyPreviewFrames(prepared.runtime.choreography.data)
+        : frames ?? [];
+      const normalizedFrames = [...new Set(selectedFrames)];
       if (normalizedFrames.some((frame) => frame >= totalFrames)) fail(`Preview frames must be between 0 and ${totalFrames - 1}.`);
       let normalizedRange = null;
       if (range !== undefined) {
@@ -651,6 +679,7 @@ export function createRemotionAnimationPreview(options = {}) {
       if (!normalizedFrames.length && !normalizedRange) fail("Request at least one frame or one preview range.");
       prepared.runtime.previewFrames = normalizedFrames; prepared.runtime.previewRange = normalizedRange;
       prepared.trace.previewFrames = normalizedFrames; prepared.trace.previewRange = normalizedRange;
+      prepared.trace.frameSelection = useChoreographyFrames === true ? "choreography" : "explicit";
       return prepared;
     },
     async execute({ composition, source, props, artifact, codeDirectory, entryPath, homeDirectory, outputDirectory,
@@ -698,7 +727,8 @@ export function createRemotionAnimationPreview(options = {}) {
     },
     createResult({ prepared, execution }) {
       return { type: "animation.preview", name: `Remotion preview: ${prepared.trace.artifact.id} r${prepared.trace.artifact.revision}`,
-        inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults, inputArtifacts: [prepared.trace.artifact.id],
+        inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults,
+        inputArtifacts: [prepared.trace.artifact.id, prepared.trace.choreographyArtifactId].filter(Boolean),
         files: [
           ...execution.snapshots.map((snapshot, index) => ({ id: `snapshot-${index + 1}`, role: "preview", path: `${prepared.trace.directory}/${snapshot.name}`,
             name: snapshot.name, mediaType: "image", sizeBytes: snapshot.sizeBytes, sha256: snapshot.sha256 })),
@@ -710,6 +740,8 @@ export function createRemotionAnimationPreview(options = {}) {
         data: { version: "1.0", runtime, composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
           validationResultId: prepared.trace.validationResultId, propsResultId: prepared.trace.propsResultId,
           preflightResultId: prepared.trace.preflightResultId,
+          choreographyArtifactId: prepared.trace.choreographyArtifactId,
+          frameSelection: prepared.trace.frameSelection,
           frames: prepared.trace.previewFrames, range: prepared.trace.previewRange,
           clip: execution.clip ? { durationSeconds: execution.clip.video.durationSeconds, width: execution.clip.video.width,
             height: execution.clip.video.height, frameRate: execution.clip.video.frameRate } : null },
@@ -734,22 +766,32 @@ export function createHyperframesAnimationPreview(options = {}) {
     sideEffects: ["Executes exact validated HyperFrames source in a temporary Run workspace.", "Creates project-owned preview images and a report."],
     cost: { currency: "USD", estimated: 0 },
     outputDescription: "An animation.preview Result containing requested HyperFrames snapshots and a contact sheet when available.",
-    inputSchema: { type: "object", required: ["artifactId", "artifactRevision", "validationResultId", "preflightResultId", "frames"], additionalProperties: false,
+    inputSchema: { type: "object", required: ["artifactId", "artifactRevision", "validationResultId", "preflightResultId"], additionalProperties: false,
       properties: { artifactId: { type: "string" }, artifactRevision: { type: "integer", minimum: 1 }, validationResultId: { type: "string" },
         preflightResultId: { type: "string" }, allowHistorical: { type: "boolean" },
-        frames: { type: "array", minItems: 1, maxItems: 12, items: { type: "integer", minimum: 0 } } } },
+        frames: { type: "array", minItems: 1, maxItems: 12, items: { type: "integer", minimum: 0 } },
+        useChoreographyFrames: { type: "boolean" } } },
     checkAvailability: availabilityTool.checkAvailability,
     async prepare(args) {
-      const prepared = await prepareAnimationWorkspace({ ...args, runtime, allowedFields: ["preflightResultId", "frames"] });
-      const frames = args.inputs.frames;
-      if (!Array.isArray(frames) || !frames.length || frames.length > 12 || frames.some((frame) => !Number.isInteger(frame) || frame < 0)) {
+      const prepared = await prepareAnimationWorkspace({ ...args, runtime, allowedFields: ["preflightResultId", "frames", "useChoreographyFrames"] });
+      const { frames, useChoreographyFrames } = args.inputs;
+      if (useChoreographyFrames !== undefined && typeof useChoreographyFrames !== "boolean") fail("useChoreographyFrames must be boolean.");
+      if (frames !== undefined && useChoreographyFrames === true) fail("Choose explicit frames or useChoreographyFrames, not both.");
+      if (useChoreographyFrames === true && !prepared.runtime.choreography) {
+        fail("useChoreographyFrames requires a composition bound to animation.choreography.", "missing_choreography");
+      }
+      const selectedFrames = useChoreographyFrames === true
+        ? selectChoreographyPreviewFrames(prepared.runtime.choreography.data)
+        : frames;
+      if (!Array.isArray(selectedFrames) || !selectedFrames.length || selectedFrames.length > 12 || selectedFrames.some((frame) => !Number.isInteger(frame) || frame < 0)) {
         fail("frames must contain 1-12 nonnegative integer frame numbers.");
       }
       const totalFrames = Math.round(prepared.runtime.composition.durationSeconds * prepared.runtime.composition.format.fps);
-      const normalizedFrames = [...new Set(frames)];
+      const normalizedFrames = [...new Set(selectedFrames)];
       if (normalizedFrames.some((frame) => frame >= totalFrames)) fail(`Preview frames must be between 0 and ${totalFrames - 1}.`);
       prepared.runtime.previewFrames = normalizedFrames;
       prepared.trace.previewFrames = normalizedFrames;
+      prepared.trace.frameSelection = useChoreographyFrames === true ? "choreography" : "explicit";
       return prepared;
     },
     async execute({ composition, source, props, artifact, codeDirectory, homeDirectory, outputDirectory, previewFrames, availability, signal }) {
@@ -778,7 +820,8 @@ export function createHyperframesAnimationPreview(options = {}) {
     },
     createResult({ prepared, execution }) {
       return { type: "animation.preview", name: `HyperFrames preview: ${prepared.trace.artifact.id} r${prepared.trace.artifact.revision}`,
-        inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults, inputArtifacts: [prepared.trace.artifact.id],
+        inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults,
+        inputArtifacts: [prepared.trace.artifact.id, prepared.trace.choreographyArtifactId].filter(Boolean),
         files: [...execution.images.map((snapshot, index) => ({ id: `snapshot-${index + 1}`, role: "preview",
           path: `${prepared.trace.directory}/hyperframes-preview/${snapshot.name}`, name: snapshot.name, mediaType: snapshot.mediaType,
           sizeBytes: snapshot.sizeBytes, sha256: snapshot.sha256 })),
@@ -787,6 +830,8 @@ export function createHyperframesAnimationPreview(options = {}) {
         data: { version: "1.0", runtime, composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
           validationResultId: prepared.trace.validationResultId, propsResultId: prepared.trace.propsResultId,
           preflightResultId: prepared.trace.preflightResultId,
+          choreographyArtifactId: prepared.trace.choreographyArtifactId,
+          frameSelection: prepared.trace.frameSelection,
           frames: prepared.trace.previewFrames, range: null, clip: null },
         verification: { status: "passed", checks: ["exact_preflight_bound", "agent_managed_code_execution", "requested_frames_rendered", "snapshot_count_matches"],
           details: { runtime } } };
@@ -879,7 +924,8 @@ export function createHyperframesMotionPreview(options = {}) {
     },
     createResult({ prepared, execution }) {
       return { type: "animation.preview", name: `HyperFrames motion preview: ${prepared.trace.artifact.id} r${prepared.trace.artifact.revision}`,
-        inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults, inputArtifacts: [prepared.trace.artifact.id],
+        inputResources: prepared.trace.inputResources, inputResults: prepared.trace.inputResults,
+        inputArtifacts: [prepared.trace.artifact.id, prepared.trace.choreographyArtifactId].filter(Boolean),
         files: [
           { id: "motion", role: "preview", path: `${prepared.trace.directory}/motion-preview.png`, name: "motion-preview.png",
             mediaType: "image", ...execution.shot },
@@ -889,6 +935,7 @@ export function createHyperframesMotionPreview(options = {}) {
         data: { version: "1.0", runtime, composition: prepared.trace.artifact, sourceResultId: prepared.trace.sourceResultId,
           validationResultId: prepared.trace.validationResultId, propsResultId: prepared.trace.propsResultId,
           preflightResultId: prepared.trace.preflightResultId,
+          choreographyArtifactId: prepared.trace.choreographyArtifactId,
           frames: [], range: null, clip: null, motion: execution.report.motion },
         verification: { status: "passed", checks: ["exact_preflight_bound", "agent_managed_code_execution", "keyframes_inspected",
           "motion_preview_created"], details: { runtime, selector: prepared.trace.motionPreview.selector } } };
