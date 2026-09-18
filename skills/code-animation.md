@@ -9,7 +9,8 @@ Code animation is an optional production branch, not a required pipeline stage.
    for authored HTML/CSS/SVG/GSAP compositions. Do not silently swap runtimes. Load exactly one
    runtime craft skill (`manim-animation`, `remotion-animation`, or `hyperframes-animation`).
    For narration-led, procedural or stepwise explanation, load `visual-choreography` first and
-   create the choreography before source. A tiny decorative loop does not need this artifact.
+   create choreography 1.1 before source. Build one persistent visual model with causal chapters;
+   do not map each sentence to a self-contained card. A tiny decorative loop does not need this artifact.
 2. Create source with `animation.source / code-animation-source`. Reopen an existing package with
    `animation:read` by Result ID; request one file or `--all` only when its content is needed. Revise from an exact
    `baseResultId`; never mutate an earlier package. Declare dependencies and pin versions.
@@ -46,6 +47,8 @@ Code animation is an optional production branch, not a required pipeline stage.
    easing and safe margins. Treat black/freeze measurements as evidence: decide whether a hold gives
    the explanation room to land or is merely dead time; notice repeated empty transitions and whether
    visual changes track the narration. Do not turn every static explanatory hold into an automatic failure.
+   For choreography 1.1, reject a render that clears and rebuilds the stage between ordinary beats,
+   repeats the same card grammar, loses its hero objects, or lets transcript UI compete with the model.
 9. Use the resulting `animation.render` as a normal Result source in `video.sequence`.
    Keep reusable animation renders independent; do not flatten them into an unmanaged clip.
 

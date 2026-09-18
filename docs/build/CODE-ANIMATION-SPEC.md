@@ -37,6 +37,11 @@ For narration-led and stepwise work, an `animation.choreography` Artifact may be
 source authoring. `animation.composition` 1.1 binds its exact Artifact revision; see
 [VISUAL-CHOREOGRAPHY-SPEC.md](VISUAL-CHOREOGRAPHY-SPEC.md). Composition 1.0 remains supported.
 
+New continuity-first explainers should use choreography 1.1: persistent hero objects, ordered causal
+chapters, exact state inheritance, explicit reset budget and dominant-stage presentation constraints.
+This prevents per-beat motion from degenerating into disconnected animated cards while preserving
+choreography 1.0 compatibility for existing projects.
+
 Source/props edits create new Results. Composition edits create a new artifact revision with
 `expectedRevision`. Preflight/render inputs name the exact artifact ID, revision and validation
 Result. Full render also requires a passed preflight bound to the same source, props and composition.

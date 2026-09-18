@@ -1,5 +1,6 @@
 import {
   ANIMATION_CHOREOGRAPHY_TYPE,
+  choreographyContinuityMetrics,
   choreographyReviewPoints,
   normalizeVisualChoreography,
   selectChoreographyPreviewFrames,
@@ -36,6 +37,7 @@ export function buildAnimationContext(context) {
       fps: data.fps,
       objectCount: data.objects.length,
       semanticBeatCount: data.beats.filter((beat) => beat.kind === "semantic").length,
+      continuity: choreographyContinuityMetrics(data),
       beats: data.beats,
       reviewCriteria: data.reviewCriteria,
       reviewPoints: choreographyReviewPoints(data),

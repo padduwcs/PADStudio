@@ -20,17 +20,25 @@ judgment without imposing a fixed production pipeline.
 5. Run a distinctness pass. Ask whether the frames could belong to any unrelated video after only
    replacing the text. Flag repeated card/title/diagram grammar, slideshow pacing and decorative
    motion. Reuse engines and utilities freely; give important videos a bespoke visual argument.
-6. Evaluate variation deliberately: visual vocabulary, motion intensity and information density
+6. Run a continuity pass on consecutive samples and targeted motion clips. Track the same hero
+   objects across beat boundaries; verify that the next `stateBeforeId` is visibly the prior
+   `stateAfterId`. Treat unexplained clearing, rebuilding, example switching or re-entry animation as
+   a continuity failure. A declared reset must be rare, motivated and visually bridged.
+7. Run a composition-usage pass. The primary explanatory stage should dominate the frame near its
+   declared coverage target. Flag persistent empty regions, repeated dashboard chrome, narration
+   paragraphs that duplicate the voice, and layouts where the real operation occupies a small card.
+   Short labels and selective captions are acceptable when they point into the model.
+8. Evaluate variation deliberately: visual vocabulary, motion intensity and information density
    should change with the narrative. Variation must clarify progression, not create random novelty.
    Check for front-loading: the opening must not receive all bespoke motion while the middle and end
    collapse into repetitive cards. Each major beat should earn its treatment from the content.
    When HyperFrames motion is hard to infer from stills, use a targeted motion preview for the
    relevant selector and interval rather than increasing global sampling blindly.
-7. Record every material finding with a timestamp/frame, observable evidence, severity and a
+9. Record every material finding with a timestamp/frame, observable evidence, severity and a
    concrete proposed correction. After finding one defect, scan the rest of the render for the same
    class before revising source.
-8. Batch source corrections into a coherent revision. Create a new immutable source Result, then
+10. Batch source corrections into a coherent revision. Create a new immutable source Result, then
    validate and preflight the exact revision before preview/render. Handle compile and runtime errors
    inside the Agent authoring loop; do not turn them into user confirmation steps.
-9. Before release, a human must still watch and listen to the exact final render in full. Machine
+11. Before release, a human must still watch and listen to the exact final render in full. Machine
    QA, ASR, contact sheets and targeted clips remain evidence, not an attestation.

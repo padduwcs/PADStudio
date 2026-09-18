@@ -106,6 +106,13 @@ bounded exact frames tại beat/action/hold. Observer cho xem plan và provenanc
 preview/render giữ cả composition lẫn choreography. Composition 1.0 và workflow không dùng nhánh
 này vẫn tương thích; đây không phải storyboard hay stage bắt buộc.
 
+Sau pilot Priority Queue, contract 1.1 bổ sung continuity-first planning: visual thesis, persistent
+hero objects, causal chapters, exact state inheritance, carried-object continuity, bounded justified
+resets và presentation budget cho sân khấu/chữ. Một semantic beat chỉ hợp lệ khi có state-change thật;
+entrance/reveal/highlight/hold không còn đủ để chứng minh ý nghĩa. Full-transcript panel bị loại khỏi
+choreography 1.1. Observer hiển thị continuity metrics để Agent và người dùng nhận ra kế hoạch đang
+tiến triển như một mô hình liên tục hay chỉ là chuỗi mini-slide. Contract 1.0 vẫn đọc được cho project cũ.
+
 ### Mở rộng hoạt họa bằng code — 2026-09-14
 
 PADStudio có nhánh tùy chọn project-native cho Manim Community, Remotion và HyperFrames. Source

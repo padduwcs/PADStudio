@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { normalizeAnimationComposition } from "../src/animation/animation-composition.js";
 import {
+  choreographyContinuityMetrics,
   choreographyReviewPoints,
   normalizeVisualChoreography,
   selectChoreographyPreviewFrames,
@@ -58,6 +59,42 @@ function choreography() {
   };
 }
 
+function continuousChoreography() {
+  const value = choreography();
+  value.version = "1.1";
+  value.continuity = {
+    mode: "continuous-model",
+    visualThesis: "One matrix remains visible while its selected region becomes a computed prefix value.",
+    heroObjectIds: ["matrix-a"],
+    maxResets: 0,
+  };
+  value.presentation = {
+    narrationMode: "voice-led",
+    stageDescription: "The matrix and result occupy the primary vertical stage; text is limited to values and operation labels.",
+    targetStageCoveragePercent: 70,
+    maxTextAreaPercent: 15,
+  };
+  value.chapters = [{
+    id: "build-prefix", label: "Build one prefix value", goal: "Carry one selected region into its computed total.",
+    heroObjectIds: ["matrix-a"],
+  }];
+  Object.assign(value.beats[0], {
+    chapterId: "build-prefix", continuityMode: "establish", stateBeforeId: "matrix-neutral",
+    stateAfterId: "matrix-selected", carriedObjectIds: [], newInformation: "The prefix region has explicit membership.",
+    resetReason: null,
+  });
+  value.beats[0].actions[0].effect = "state-change";
+  value.beats[0].actions[0].resultingState = value.beats[0].stateAfter;
+  Object.assign(value.beats[1], {
+    chapterId: "build-prefix", continuityMode: "continue", stateBeforeId: "matrix-selected",
+    stateAfterId: "prefix-computed", carriedObjectIds: ["matrix-a"], newInformation: "The selected region resolves into one stored total.",
+    resetReason: null,
+  });
+  value.beats[1].actions[0].effect = "state-change";
+  value.beats[1].actions[0].resultingState = value.beats[1].stateAfter;
+  return value;
+}
+
 function composition(sourceResultId, choreographyArtifactId) {
   return {
     version: "1.1", changeReason: "Bind semantic motion plan.", intent: "Teach prefix accumulation through visible operations.",
@@ -87,6 +124,46 @@ test("visual choreography validates semantic state changes and derives exact rev
   const offFrame = choreography();
   offFrame.beats[0].actions[0].endSeconds = 1.01;
   assert.throws(() => normalizeVisualChoreography(offFrame), /align to the choreography frame rate/);
+});
+
+test("visual choreography 1.1 enforces a continuous model instead of animated mini-slides", () => {
+  const normalized = normalizeVisualChoreography(continuousChoreography());
+  assert.equal(normalized.version, "1.1");
+  assert.deepEqual(choreographyContinuityMetrics(normalized), {
+    contractVersion: "1.1", continuityMode: "continuous-model", chapterCount: 1,
+    heroObjectCount: 1, resetCount: 0, carriedBeatRatio: 1, narrationMode: "voice-led",
+    targetStageCoveragePercent: 70, maxTextAreaPercent: 15,
+  });
+
+  const disconnected = continuousChoreography();
+  disconnected.beats[1].carriedObjectIds = [];
+  assert.throws(() => normalizeVisualChoreography(disconnected), /preserve at least one choreography hero/);
+
+  const brokenStateChain = continuousChoreography();
+  brokenStateChain.beats[1].stateBeforeId = "new-slide";
+  assert.throws(() => normalizeVisualChoreography(brokenStateChain), /must equal the preceding beat stateAfterId/);
+
+  const decorativeSemanticAction = continuousChoreography();
+  decorativeSemanticAction.beats[0].actions[0].verb = "highlight";
+  assert.throws(() => normalizeVisualChoreography(decorativeSemanticAction), /cannot count as a state change/);
+
+  const repeatedBeat = continuousChoreography();
+  repeatedBeat.beats[1].newInformation = repeatedBeat.beats[0].newInformation;
+  assert.throws(() => normalizeVisualChoreography(repeatedBeat), /repeats an earlier beat/);
+
+  const transcriptPanel = continuousChoreography();
+  transcriptPanel.presentation.narrationMode = "full-transcript";
+  assert.throws(() => normalizeVisualChoreography(transcriptPanel), /cannot use a full-transcript presentation panel/);
+
+  const excessiveReset = continuousChoreography();
+  excessiveReset.beats[1].continuityMode = "reset";
+  excessiveReset.beats[1].resetReason = "A deliberately isolated counterexample.";
+  excessiveReset.beats[1].carriedObjectIds = [];
+  assert.throws(() => normalizeVisualChoreography(excessiveReset), /exceeding continuity.maxResets/);
+
+  const unexplainedState = continuousChoreography();
+  unexplainedState.beats[1].stateAfter = "A different result description.";
+  assert.throws(() => normalizeVisualChoreography(unexplainedState), /must equal the resultingState/);
 });
 
 test("composition 1.1 binds exact choreography provenance and observer context", async (t) => {
@@ -122,7 +199,7 @@ test("composition 1.1 binds exact choreography provenance and observer context",
   })).result;
   const plan = await store.recordArtifact("demo", {
     key: "prefix-choreography", type: "animation.choreography", name: "Prefix choreography",
-    summary: "Two semantic operations.", data: choreography(), references: [],
+    summary: "Two semantic operations.", data: continuousChoreography(), references: [],
   });
   const data = composition(source.id, plan.id);
   await assert.rejects(store.recordArtifact("demo", {
@@ -158,9 +235,11 @@ test("composition 1.1 binds exact choreography provenance and observer context",
   assert.deepEqual(context.animation.activeCompositions[0].choreography.recommendedPreviewFrames, [0, 24, 47, 48, 84, 95]);
   const observer = await new ProjectReader(rootDir).readObserverSection("demo", "animation");
   assert.equal(observer.animation.compositions[0].choreographyArtifactId, plan.id);
+  assert.equal(observer.animation.choreographies[0].continuity.continuityMode, "continuous-model");
+  assert.equal(observer.animation.choreographies[0].continuity.carriedBeatRatio, 1);
   assert.equal(observer.animation.choreographies[0].beats[1].actions[0].verb, "accumulate");
 
-  const revisedData = choreography();
+  const revisedData = continuousChoreography();
   revisedData.changeReason = "Clarify the accumulation action.";
   revisedData.beats[1].actions[0].description = "Move each selected value into the expression, then resolve the total.";
   const revisedPlan = await store.recordArtifact("demo", {

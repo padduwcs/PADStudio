@@ -38,12 +38,17 @@ export function renderAnimation(container, context) {
       node("p", `${choreography.durationSeconds}s · ${choreography.fps} fps · ${choreography.objectCount} đối tượng · ${choreography.semanticBeatCount} beat ngữ nghĩa`, "input-meta"),
       node("p", `Exact choreography: ${choreography.artifactId} · r${choreography.revision}`, "exact-result-id")
     );
+    if (choreography.continuity?.contractVersion === "1.1") {
+      card.append(node("p",
+        `${choreography.continuity.continuityMode} · ${choreography.continuity.chapterCount} chương · ${choreography.continuity.heroObjectCount} đối tượng chủ đạo · ${choreography.continuity.resetCount} reset · sân khấu mục tiêu ${choreography.continuity.targetStageCoveragePercent}% · chữ tối đa ${choreography.continuity.maxTextAreaPercent}%`,
+        choreography.continuity.resetCount > 0 ? "sequence-warning" : "result-verification"));
+    }
     const beats = node("ol", undefined, "choreography-beats");
     for (const beat of choreography.beats) {
       const item = node("li");
       item.append(
         node("strong", `${beat.startSeconds}s–${beat.endSeconds}s · ${beat.message}`),
-        node("span", `${beat.actions.length} hành động · ${beat.stateBefore} → ${beat.stateAfter}`, "input-meta")
+        node("span", `${beat.actions.length} hành động · ${beat.stateBefore} → ${beat.stateAfter}${beat.continuityMode ? ` · ${beat.continuityMode} · ${beat.stateBeforeId} → ${beat.stateAfterId}` : ""}`, "input-meta")
       );
       beats.append(item);
     }
