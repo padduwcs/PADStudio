@@ -16,6 +16,9 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
   các lát cắt đã dùng được trong phạm vi đã kiểm chứng; chúng không đồng nghĩa với một studio đã
   bao phủ mọi loại video, provider hoặc môi trường.
 - Workflow mẫu là điểm bắt đầu tùy chọn. Không có pipeline chung bắt buộc cho mọi project.
+- Choreography 1.3 là nhánh tùy chọn cho giải thích bằng hoạt họa: giữ lập luận thị giác do Agent
+  đạo diễn, lưu minh chứng bằng hình và footprint chữ chính xác cho review; không tự đảm bảo chất
+  lượng hình ảnh khi chưa preview/xem một video thật.
 - Broad release chưa được chứng nhận. `npm run release:gates` hiện cố ý fail-closed khi chưa có
   corpus, phép đo và human evidence độc lập.
 
@@ -23,9 +26,11 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 Tại ngày cập nhật tài liệu này:
 
-- `npm test`: **300/300 pass**;
-- `node --test --experimental-test-coverage`: **83,10% line**, **73,73% branch**,
-  **89,69% function**;
+- `npm test`: **303/303 pass**;
+- `npm run animation:acceptance`: **passed** (local Remotion preflight, preview và render một fixture
+  độc lập trong thư mục tạm; không phải pilot sáng tạo của người dùng);
+- Lần đo coverage gần nhất (trước đợt 1.3): `node --test --experimental-test-coverage`:
+  **83,10% line**, **73,73% branch**, **89,69% function**;
 - `npm run release:gates`: **blocked**, 16/16 gate `not_measured`, `releaseDefault: null`.
 
 Các số trên là ảnh chụp tại ngày ghi nhận, không phải giá trị tự cập nhật. Khi chúng khác kết quả
@@ -51,6 +56,7 @@ số test nằm trong một báo cáo cũ.
 
 ## Phạm vi đợt chỉnh chu hiện tại
 
-Đợt này chỉ dọn cấu trúc thông tin và tính nhất quán của repository. Không thay đổi hành vi runtime,
-storage format, CLI contract, workflow, approval, delivery, tool selection hoặc ranh giới sản phẩm.
-Các đề xuất phát triển mới chỉ được chọn sau khi nền tài liệu và trạng thái đã rõ ràng.
+Đợt này mở rộng contract `animation.choreography` lên 1.3 để Agent lập kế hoạch visual-first và
+kiểm kê chữ theo beat; observer, skill authoring/review và test liên quan được cập nhật. Version
+1.0–1.2 vẫn đọc được; workflow, approval, delivery, tool selection và ranh giới sản phẩm không đổi.
+Chưa chạy một pilot render mới để chứng minh chất lượng sáng tạo của video đầu ra.

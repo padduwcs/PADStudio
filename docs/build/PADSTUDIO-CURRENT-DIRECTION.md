@@ -129,6 +129,15 @@ ghi cả opening và đoạn thao tác đại diện cần preview trước khi 
 vẫn đọc được; observer mô tả lựa chọn của Agent thay vì chấm điểm continuity. Đây vẫn là skill/artifact
 tùy chọn, không phải pipeline hay storyboard bắt buộc.
 
+Phản hồi tiếp theo làm rõ ưu tiên **hình ảnh mang nghĩa, chữ chỉ hỗ trợ**. Contract 1.3 giữ toàn bộ
+quyền đạo diễn của 1.2 nhưng buộc kế hoạch mới nêu `visualProof` cho từng beat và kiểm kê chính xác
+mọi chữ dự kiến xuất hiện theo vai trò/lý do. Chế độ `visual-first` loại full transcript, không cho
+annotation làm chủ thể của semantic beat và chặn caption/title/quote bê nguyên lời thoại lên màn hình;
+`type-led` vẫn dành cho project mà chữ thực sự là chất liệu thị giác. Observer hiện footprint của chữ
+để review, không dùng word count hay phần trăm màn hình làm phán quyết thẩm mỹ. Skill authoring đồng
+thời hướng Agent tách scene/passage, primitive và timing/data khi composition đủ lớn, nhưng không lấy
+số file làm thước đo chất lượng. Contract 1.0–1.2 vẫn tương thích.
+
 ### Mở rộng hoạt họa bằng code — 2026-09-14
 
 PADStudio có nhánh tùy chọn project-native cho Manim Community, Remotion và HyperFrames. Source

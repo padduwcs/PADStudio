@@ -30,6 +30,11 @@ judgment without imposing a fixed production pipeline.
    Flag persistent empty regions, repeated dashboard chrome, narration
    paragraphs that duplicate the voice, and layouts where the real operation occupies a small card.
    Short labels and selective captions are acceptable when they point into the model.
+   For choreography 1.3, compare every visible word against the beat's exact `textElements` inventory.
+   Flag undeclared copy, unnecessary headings, transcript duplication and persistent labels that no
+   longer help the current question. Then perform a no-prose pass: mentally hide titles, captions and
+   paragraphs while retaining essential values, symbols and labels. The declared `visualProof` must
+   still be legible unless the project explicitly chose `type-led` communication.
 8. Evaluate variation deliberately: visual vocabulary, motion intensity and information density
    should change with the narrative. Variation must clarify progression, not create random novelty.
    Check for front-loading: the opening must not receive all bespoke motion while the middle and end

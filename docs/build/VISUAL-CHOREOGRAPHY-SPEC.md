@@ -1,6 +1,6 @@
 # Visual Choreography — semantic motion contract
 
-Status: contract 1.2 implemented as an optional project-native directorial layer, 2026-09-18.
+Status: contract 1.3 implemented as an optional project-native directorial layer, 2026-09-20.
 
 ## Purpose
 
@@ -102,6 +102,32 @@ layout targets. Continuity may live in evidence, color roles, values, spatial or
 mapping or the logic of the argument. A purposeful cut or analogy is valid when it advances the
 viewer; keeping one layout is not evidence of coherence.
 
+## Contract 1.3 — visual-first communication
+
+Version 1.3 keeps the directorial freedom of 1.2 and makes dependence on on-screen prose
+inspectable before source is written:
+
+- `presentation.communicationMode` declares `visual-first` or `type-led`. Ordinary narrated
+  explanation should use visual-first; type-led remains valid when typography, a quotation or the
+  written form is intentionally the subject;
+- every beat declares `visualProof`: the understanding produced by visible objects, relationships
+  and change rather than by reading a transcript;
+- every planned text element is inventoried exactly with its role and purpose. Roles distinguish
+  labels, values, formulas, captions, titles and quotations without imposing one visual style;
+- visual-first rejects full-transcript presentation, an annotation as the primary subject of a
+  semantic beat, and captions/titles/quotes that exactly duplicate that beat's narration;
+- visual-first display strings have generous role-specific safety bounds that prevent paragraph-sized
+  headings and labels; type-led retains a larger general data bound. These are structural guards,
+  not an aesthetic word-count score.
+
+PADStudio exposes communication metrics in observer context: text element and textless-beat counts,
+role distribution, longest string, narration duplication and semantic beats with visual proof. The
+metrics are evidence for Agent and human review; they do not automatically decide whether a video is
+good or prescribe how much motion, text or empty space every project must contain.
+
+Versions 1.0–1.2 remain readable. New narrated explanatory work should use 1.3. Existing 1.2 plans
+do not become invalid merely because their text inventory was not recorded under the older contract.
+
 ## Preview evidence
 
 PADStudio derives review points from every beat start, semantic action result and intentional hold.
@@ -116,12 +142,15 @@ include both the composition and exact choreography in `inputArtifacts`.
 ## Review standard
 
 Review each semantic beat for claim agreement, object identity, action order, direction, scale,
-causality, state transition and readable hold. For 1.1, retain its legacy boundary checks. For 1.2,
+causality, state transition and readable hold. For 1.1, retain its legacy boundary checks. For 1.2/1.3,
 review whether each declared relationship is legible and whether the audience insights form one
 causal argument: carried state should remain recognizable, transformations should show cause,
 reframing should preserve orientation, and contrasts/analogies should expose their mapping. Audit
 the complete frame for unused regions, repeated dashboard/card grammar and narration text competing
 with the visual subject.
+For 1.3, compare the rendered words with `textElements` and perform a no-prose pass against each
+`visualProof`. Values, symbols and labels may remain when they are part of the model; the test is
+whether prose is doing explanatory work the planned imagery was supposed to do.
 Missing, reordered or visually ambiguous semantic actions require revision even when the render is
 technically clean. Continuous viewing and human listening remain mandatory before release; sampled
 frames are evidence only.

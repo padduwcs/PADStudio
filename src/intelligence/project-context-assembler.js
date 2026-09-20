@@ -333,6 +333,7 @@ export class ProjectContextAssembler {
           fps: choreography.fps, objectCount: choreography.objectCount,
           semanticBeatCount: choreography.semanticBeatCount,
           continuity: choreography.continuity,
+          communication: choreography.communication,
           direction: choreography.direction,
           presentation: choreography.presentation,
           recommendedPreviewFrames: choreography.recommendedPreviewFrames,

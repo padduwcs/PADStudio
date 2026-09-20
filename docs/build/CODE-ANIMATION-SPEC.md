@@ -37,10 +37,11 @@ For narration-led and stepwise work, an `animation.choreography` Artifact may be
 source authoring. `animation.composition` 1.1 binds its exact Artifact revision; see
 [VISUAL-CHOREOGRAPHY-SPEC.md](VISUAL-CHOREOGRAPHY-SPEC.md). Composition 1.0 remains supported.
 
-New explainers should use choreography 1.2: an Agent-authored visual thesis, purposeful relationships
-between beats, truthful semantic operations, composition intent and an explicit representative-sample
-intent. It avoids both disconnected animated cards and the opposite failure of forcing the complete
-film into one persistent dashboard. Choreography 1.0 and 1.1 remain compatible for existing projects.
+New explainers should use choreography 1.3: an Agent-authored visual thesis, purposeful relationships
+between beats, truthful semantic operations, composition intent, an explicit representative-sample
+intent, visual proof for each beat and an exact inventory of planned text. It avoids disconnected
+animated cards, transcript panels and the opposite failure of forcing the complete film into one
+persistent dashboard. Choreography 1.0–1.2 remain compatible for existing projects.
 
 Source/props edits create new Results. Composition edits create a new artifact revision with
 `expectedRevision`. Preflight/render inputs name the exact artifact ID, revision and validation

@@ -42,7 +42,7 @@ export function renderAnimation(container, context) {
       card.append(node("p",
         `${choreography.continuity.continuityMode} · ${choreography.continuity.chapterCount} chương · ${choreography.continuity.heroObjectCount} đối tượng chủ đạo · ${choreography.continuity.resetCount} reset · sân khấu mục tiêu ${choreography.continuity.targetStageCoveragePercent}% · chữ tối đa ${choreography.continuity.maxTextAreaPercent}%`,
         choreography.continuity.resetCount > 0 ? "sequence-warning" : "result-verification"));
-    } else if (choreography.continuity?.contractVersion === "1.2") {
+    } else if (["1.2", "1.3"].includes(choreography.continuity?.contractVersion)) {
       const relationships = Object.entries(choreography.continuity.relationshipCounts ?? {})
         .map(([name, count]) => `${name} ${count}`).join(" · ");
       card.append(
@@ -51,14 +51,32 @@ export function renderAnimation(container, context) {
         node("p", `Ý định biến hóa: ${choreography.direction.variationIntent}`, "input-meta"),
         node("p", `Mẫu đại diện: ${choreography.direction.sampleIntent}`, "input-meta")
       );
+      if (choreography.communication?.communicationMode) {
+        const textRoles = Object.entries(choreography.communication.roleCounts ?? {})
+          .map(([role, count]) => `${role}: ${count}`).join(" · ");
+        card.append(node("p",
+          `Giao tiếp ${choreography.communication.communicationMode} · ${choreography.communication.totalTextElementCount} phần chữ · ${choreography.communication.textlessBeatCount} beat không chữ${textRoles ? ` · ${textRoles}` : ""}`,
+          choreography.communication.communicationMode === "visual-first"
+            && choreography.communication.narrationDuplicateCount > 0 ? "sequence-warning" : "result-verification"));
+      }
     }
     const beats = node("ol", undefined, "choreography-beats");
     for (const beat of choreography.beats) {
       const item = node("li");
       item.append(
         node("strong", `${beat.startSeconds}s–${beat.endSeconds}s · ${beat.message}`),
-        node("span", `${beat.actions.length} hành động · ${beat.stateBefore} → ${beat.stateAfter}${beat.continuityMode ? ` · ${beat.continuityMode} · ${beat.stateBeforeId} → ${beat.stateAfterId}` : ""}${beat.relationToPrevious ? ` · ${beat.relationToPrevious} · ${beat.audienceInsight}` : ""}`, "input-meta")
+        node("span", `${beat.actions.length} hành động · ${beat.stateBefore} → ${beat.stateAfter}${beat.continuityMode ? ` · ${beat.continuityMode} · ${beat.stateBeforeId} → ${beat.stateAfterId}` : ""}${beat.relationToPrevious ? ` · ${beat.relationToPrevious} · ${beat.audienceInsight}` : ""}${beat.visualProof ? ` · minh chứng hình: ${beat.visualProof}` : ""}${beat.textElements ? ` · ${beat.textElements.length} phần chữ` : ""}`, "input-meta")
       );
+      if (beat.textElements?.length) {
+        const textDetail = node("details");
+        textDetail.append(node("summary", `Chữ trên hình (${beat.textElements.length})`));
+        const inventory = node("ul");
+        for (const element of beat.textElements) {
+          inventory.append(node("li", `${element.role}: “${element.text}” — ${element.purpose}`));
+        }
+        textDetail.append(inventory);
+        item.append(textDetail);
+      }
       beats.append(item);
     }
     card.append(beats);

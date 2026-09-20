@@ -1,5 +1,6 @@
 import {
   ANIMATION_CHOREOGRAPHY_TYPE,
+  choreographyCommunicationMetrics,
   choreographyContinuityMetrics,
   choreographyReviewPoints,
   normalizeVisualChoreography,
@@ -38,6 +39,7 @@ export function buildAnimationContext(context) {
       objectCount: data.objects.length,
       semanticBeatCount: data.beats.filter((beat) => beat.kind === "semantic").length,
       continuity: choreographyContinuityMetrics(data),
+      communication: choreographyCommunicationMetrics(data),
       direction: data.direction ?? null,
       presentation: data.presentation ?? null,
       beats: data.beats,
@@ -86,7 +88,7 @@ export function buildAnimationContext(context) {
     };
   });
   return {
-    version: "1.2", compositions, choreographies,
+    version: "1.3", compositions, choreographies,
     activeCompositions: compositions.filter((composition) => composition.role === "current"),
     activeChoreographies: choreographies.filter((choreography) => choreography.role === "current"),
     sourcePackages: context.results.filter((result) => result.type === "animation.source-package"),

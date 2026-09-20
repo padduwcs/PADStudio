@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { normalizeAnimationComposition } from "../src/animation/animation-composition.js";
 import {
+  choreographyCommunicationMetrics,
   choreographyContinuityMetrics,
   choreographyReviewPoints,
   normalizeVisualChoreography,
@@ -132,6 +133,23 @@ function visualArgumentChoreography() {
   return value;
 }
 
+function visualFirstChoreography() {
+  const value = visualArgumentChoreography();
+  value.version = "1.3";
+  value.presentation.communicationMode = "visual-first";
+  Object.assign(value.beats[0], {
+    visualProof: "The selected cells change state in place and remain visibly grouped.",
+    textElements: [{ id: "cell-values", text: "2  4  3", role: "value",
+      purpose: "The values are evidence used by the visible accumulation." }],
+  });
+  Object.assign(value.beats[1], {
+    visualProof: "The same colored values move into an expression and resolve into the stored result.",
+    textElements: [{ id: "sum-formula", text: "2 + 4 + 3 = 9", role: "formula",
+      purpose: "The formula makes the exact arithmetic operation inspectable." }],
+  });
+  return value;
+}
+
 function composition(sourceResultId, choreographyArtifactId) {
   return {
     version: "1.1", changeReason: "Bind semantic motion plan.", intent: "Teach prefix accumulation through visible operations.",
@@ -244,6 +262,61 @@ test("visual choreography 1.2 preserves semantic truth while leaving scene direc
   assert.throws(() => normalizeVisualChoreography(repeatedEstablish), /cannot establish the visual argument again/);
 });
 
+test("visual choreography 1.3 makes visual proof and exact text intent inspectable", () => {
+  const normalized = normalizeVisualChoreography(visualFirstChoreography());
+  assert.equal(normalized.version, "1.3");
+  assert.equal(normalized.presentation.communicationMode, "visual-first");
+  assert.equal(normalized.beats[1].textElements[0].role, "formula");
+  assert.deepEqual(choreographyCommunicationMetrics(normalized), {
+    contractVersion: "1.3", communicationMode: "visual-first", totalTextElementCount: 2,
+    textlessBeatCount: 0, roleCounts: { value: 1, formula: 1 }, longestTextCharacters: 13,
+    narrationDuplicateCount: 0, semanticVisualProofCount: 2,
+  });
+
+  const transcript = visualFirstChoreography();
+  transcript.presentation.narrationMode = "full-transcript";
+  assert.throws(() => normalizeVisualChoreography(transcript), /cannot use full-transcript/);
+
+  const annotationLead = visualFirstChoreography();
+  annotationLead.objects[0].role = "annotation";
+  assert.throws(() => normalizeVisualChoreography(annotationLead), /cannot be an annotation/);
+
+  const narrationCard = visualFirstChoreography();
+  narrationCard.beats[0].textElements = [{ id: "narration-card", text: "First, select these cells.", role: "caption",
+    purpose: "Repeat the voice as a paragraph." }];
+  assert.throws(() => normalizeVisualChoreography(narrationCard), /must not duplicate the full narration/);
+
+  const supportCard = visualFirstChoreography();
+  supportCard.beats[0].kind = "support";
+  supportCard.beats[0].textElements = [{ id: "support-card", text: "First, select these cells.", role: "caption",
+    purpose: "Repeat the voice in a support beat." }];
+  assert.throws(() => normalizeVisualChoreography(supportCard), /must not duplicate the full narration/);
+
+  const missingProof = visualFirstChoreography();
+  delete missingProof.beats[0].visualProof;
+  assert.throws(() => normalizeVisualChoreography(missingProof), /visualProof must be a non-empty string/);
+
+  const missingInventory = visualFirstChoreography();
+  delete missingInventory.beats[0].textElements;
+  assert.throws(() => normalizeVisualChoreography(missingInventory), /textElements must be an array/);
+
+  const longTitle = visualFirstChoreography();
+  longTitle.beats[0].textElements = [{ id: "long-title", text: "x".repeat(81), role: "title",
+    purpose: "Use a long heading." }];
+  assert.throws(() => normalizeVisualChoreography(longTitle), /too long for role title/);
+
+  const typeLed = visualFirstChoreography();
+  typeLed.presentation.communicationMode = "type-led";
+  typeLed.presentation.narrationMode = "kinetic-type";
+  typeLed.objects[0].role = "annotation";
+  typeLed.beats[0].textElements[0].role = "caption";
+  typeLed.beats[0].textElements[0].text = typeLed.beats[0].narrationText;
+  assert.doesNotThrow(() => normalizeVisualChoreography(typeLed));
+  assert.equal(choreographyCommunicationMetrics(typeLed).narrationDuplicateCount, 1);
+  typeLed.beats[0].textElements[0].text = "A deliberately long written passage. ".repeat(10);
+  assert.doesNotThrow(() => normalizeVisualChoreography(typeLed));
+});
+
 test("composition 1.1 binds exact choreography provenance and observer context", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "padstudio-choreography-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -281,7 +354,7 @@ test("composition 1.1 binds exact choreography provenance and observer context",
   });
   const plan = await store.recordArtifact("demo", {
     key: "prefix-choreography", type: "animation.choreography", name: "Prefix choreography",
-    summary: "Two semantic operations.", data: visualArgumentChoreography(), references: [],
+    summary: "Two semantic operations.", data: visualFirstChoreography(), references: [],
   });
   const data = composition(source.id, plan.id);
   await assert.rejects(store.recordArtifact("demo", {
@@ -318,10 +391,12 @@ test("composition 1.1 binds exact choreography provenance and observer context",
   assert.deepEqual(context.animation.activeCompositions[0].choreography.recommendedPreviewFrames, [0, 24, 47, 48, 84, 95]);
   const observer = await new ProjectReader(rootDir).readObserverSection("demo", "animation");
   assert.equal(observer.animation.compositions[0].choreographyArtifactId, plan.id);
-  assert.equal(observer.animation.version, "1.2");
+  assert.equal(observer.animation.version, "1.3");
   const currentObserver = observer.animation.choreographies.find((item) => item.artifactId === plan.id);
-  assert.equal(currentObserver.continuity.contractVersion, "1.2");
+  assert.equal(currentObserver.continuity.contractVersion, "1.3");
   assert.equal(currentObserver.continuity.carriedBeatRatio, null);
+  assert.equal(currentObserver.communication.communicationMode, "visual-first");
+  assert.equal(currentObserver.communication.totalTextElementCount, 2);
   assert.equal(currentObserver.direction.visualThesis,
     "The viewer follows evidence becoming a conclusion, not one fixed dashboard.");
   assert.equal(currentObserver.beats[1].relationToPrevious, "reframe");
@@ -332,13 +407,14 @@ test("composition 1.1 binds exact choreography provenance and observer context",
   assert.equal(legacyObserver.direction, null);
 
   const summary = await assembler.buildSummary("demo");
-  assert.equal(summary.animation.version, "1.2");
+  assert.equal(summary.animation.version, "1.3");
   assert.equal(summary.animation.activeChoreographies[0].direction.sampleIntent,
     "Preview the first selection and the representative accumulation before authoring the remaining treatment.");
   assert.equal(summary.animation.activeChoreographies[0].presentation.stageIntent,
     "Let the active evidence determine framing and scale from beat to beat.");
+  assert.equal(summary.animation.activeChoreographies[0].communication.communicationMode, "visual-first");
 
-  const revisedData = visualArgumentChoreography();
+  const revisedData = visualFirstChoreography();
   revisedData.changeReason = "Clarify the accumulation action.";
   revisedData.beats[1].actions[0].description = "Move each selected value into the expression, then resolve the total.";
   const revisedPlan = await store.recordArtifact("demo", {

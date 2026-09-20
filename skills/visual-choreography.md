@@ -37,12 +37,21 @@ or a layout generator.
 7. Let the subject determine the frame. Preserve objects, colors, positions or values when they
    help the viewer follow causality; change or discard them when the explanatory question changes.
    Keep narration text subordinate unless kinetic typography is itself the chosen visual subject.
+   For spoken explainers, default to `visual-first`: remove the narration and ask what the viewer
+   can still infer from objects, spatial relationships and change. Do not reserve permanent space
+   for a heading, section label, transcript or decorative studio chrome. Labels, values and formulas
+   should point into the model; they must not become a second script competing with it.
 
 ## Author and review
 
-8. Write `animation.choreography` version 1.2 with `project:choreography`. Keep frame-aligned beat
+8. Write `animation.choreography` version 1.3 with `project:choreography`. Keep frame-aligned beat
    and action timing, stable IDs for meanings that survive revisions, and concrete review criteria.
-   Do not invent chapters, hero quotas, state-ID chains, reset budgets or screen-area percentages.
+   Use `presentation.communicationMode: visual-first` for normal narrated explanation. Use
+   `type-led` only when words, quotations or kinetic typography are intentionally the visual subject.
+   For every beat, state its `visualProof` and inventory every planned `textElement` exactly, with
+   role and purpose. If text has no indispensable pointing, naming, numeric, symbolic or subject role,
+   remove it before source authoring. Do not invent chapters, hero quotas, state-ID chains, reset
+   budgets or screen-area percentages.
 9. For a long or visually uncertain piece, author enough source to preview the opening and one
    representative operational passage before polishing the whole timeline. The Agent chooses these
    passages from the creative risk, not from a fixed timestamp. Revise the visual language if that
@@ -55,19 +64,25 @@ or a layout generator.
     a difficult beat is not covered.
 12. After rendering, load `code-animation-review`. Review the full timeline for semantic truth and
     the sequence of audience insights, then inspect adjacent scenes for coherence without sameness.
-    Record timestamped corrections and revise before presenting the review render.
+    Compare rendered text against the declared inventory, perform a no-prose pass for every semantic
+    beat, record timestamped corrections and revise before presenting the review render.
 
-## Contract 1.2 shape
+## Contract 1.3 shape
 
 In addition to the shared objects, beats, actions and review criteria:
 
 - `direction`: `visualThesis`, `continuityIntent`, `variationIntent`, non-empty
   `motionLanguage`, non-empty `antiPatterns`, and `sampleIntent`;
 - `presentation`: `narrationMode` (`voice-led`, `selective-captions`, `kinetic-type`, or
-  `full-transcript`), plus prose `stageIntent` and `textIntent`;
+  `full-transcript`), `communicationMode` (`visual-first` or `type-led`), plus prose `stageIntent`
+  and `textIntent`; `visual-first` rejects full-transcript presentation;
 - every beat: `visualQuestion`, `audienceInsight`, `relationToPrevious` (`establish`, `carry`,
   `transform`, `reframe`, `contrast`, `analogy`, `cutaway`, or `reset`), `continuityCue`, and
   `compositionIntent`;
+- every beat: `visualProof`, describing what the imagery itself proves, and exact `textElements`
+  with `id`, visible `text`, `role` (`label`, `value`, `formula`, `caption`, `title`, or `quote`) and
+  `purpose`; display text is bounded by role and visual-first captions/titles/quotes cannot simply
+  duplicate the complete narration;
 - every action: `effect` (`state-change`, `focus-change`, or `presentation`). The final semantic
   state-change action's `resultingState` must equal the beat's `stateAfter`.
 
@@ -76,5 +91,5 @@ the film again. The contract validates timing, references and semantic honesty. 
 does not score aesthetics, force a global hero, require adjacent state IDs, cap cuts/resets, or
 turn directorial prose into numeric layout quotas.
 
-Versions 1.0 and 1.1 remain readable for existing projects. Use 1.2 for new explanatory work. See
+Versions 1.0–1.2 remain readable for existing projects. Use 1.3 for new explanatory work. See
 `docs/build/VISUAL-CHOREOGRAPHY-SPEC.md` for lifecycle and compatibility.

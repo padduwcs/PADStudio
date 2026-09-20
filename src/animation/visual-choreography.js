@@ -21,6 +21,8 @@ const VISUAL_RELATIONSHIPS = new Set([
 ]);
 const LEGACY_NARRATION_MODES = new Set(["voice-led", "selective-captions", "full-transcript"]);
 const NARRATION_MODES = new Set(["voice-led", "selective-captions", "kinetic-type", "full-transcript"]);
+const COMMUNICATION_MODES = new Set(["visual-first", "type-led"]);
+const TEXT_ROLES = new Set(["label", "value", "formula", "caption", "title", "quote"]);
 const PRESENTATION_ONLY_VERBS = new Set(["introduce", "reveal", "highlight", "annotate", "hold"]);
 const ACTION_VERBS = new Set([
   "introduce", "reveal", "highlight", "select", "traverse", "accumulate", "transform",
@@ -68,11 +70,11 @@ function frameAligned(value, fps, label) {
 export function normalizeVisualChoreography(value) {
   requireObject(value, "animation.choreography data");
   const version = value.version;
-  if (!["1.0", "1.1", "1.2"].includes(version)) fail("animation.choreography version must be 1.0, 1.1 or 1.2.");
+  if (!["1.0", "1.1", "1.2", "1.3"].includes(version)) fail("animation.choreography version must be 1.0, 1.1, 1.2 or 1.3.");
   assertOnlyFields(value, [
     "version", "changeReason", "purpose", "durationSeconds", "fps", "objects", "beats", "reviewCriteria",
     ...(version === "1.1" ? ["continuity", "presentation", "chapters"] : []),
-    ...(version === "1.2" ? ["direction", "presentation"] : []),
+    ...(["1.2", "1.3"].includes(version) ? ["direction", "presentation"] : []),
   ], "animation.choreography data");
   const fps = finite(value.fps, "animation.choreography.fps", 1, 60);
   if (!Number.isInteger(fps)) fail("animation.choreography.fps must be an integer.");
@@ -163,7 +165,7 @@ export function normalizeVisualChoreography(value) {
     });
     chapterById = new Map(chapters.map((chapter) => [chapter.id, chapter]));
     if (chapterById.size !== chapters.length) fail("animation.choreography chapter IDs must be unique.");
-  } else if (version === "1.2") {
+  } else if (["1.2", "1.3"].includes(version)) {
     requireObject(value.direction, "animation.choreography.direction");
     assertOnlyFields(value.direction, [
       "visualThesis", "continuityIntent", "variationIntent", "motionLanguage", "antiPatterns", "sampleIntent",
@@ -178,12 +180,22 @@ export function normalizeVisualChoreography(value) {
     };
 
     requireObject(value.presentation, "animation.choreography.presentation");
-    assertOnlyFields(value.presentation, ["narrationMode", "stageIntent", "textIntent"], "animation.choreography.presentation");
+    assertOnlyFields(value.presentation, [
+      "narrationMode", "stageIntent", "textIntent", ...(version === "1.3" ? ["communicationMode"] : []),
+    ], "animation.choreography.presentation");
     presentation = {
       narrationMode: choice(value.presentation.narrationMode, NARRATION_MODES, "animation.choreography.presentation.narrationMode"),
       stageIntent: requireText(value.presentation.stageIntent, "animation.choreography.presentation.stageIntent"),
       textIntent: requireText(value.presentation.textIntent, "animation.choreography.presentation.textIntent"),
+      ...(version === "1.3" ? {
+        communicationMode: choice(value.presentation.communicationMode, COMMUNICATION_MODES,
+          "animation.choreography.presentation.communicationMode"),
+      } : {}),
     };
+    if (version === "1.3" && presentation.communicationMode === "visual-first"
+      && presentation.narrationMode === "full-transcript") {
+      fail("animation.choreography 1.3 visual-first work cannot use full-transcript presentation.");
+    }
   }
   if (!Array.isArray(value.beats) || value.beats.length === 0 || value.beats.length > 240) {
     fail("animation.choreography.beats must contain between 1 and 240 beats.");
@@ -207,9 +219,10 @@ export function normalizeVisualChoreography(value) {
         "chapterId", "continuityMode", "stateBeforeId", "stateAfterId", "carriedObjectIds",
         "newInformation", "resetReason",
       ] : []),
-      ...(version === "1.2" ? [
+      ...(["1.2", "1.3"].includes(version) ? [
         "visualQuestion", "audienceInsight", "relationToPrevious", "continuityCue", "compositionIntent",
       ] : []),
+      ...(version === "1.3" ? ["visualProof", "textElements"] : []),
     ], label);
     const id = requireId(entry.id, `${label}.id`);
     if (knownBeatIds.has(id)) fail("animation.choreography beat IDs must be unique.");
@@ -231,7 +244,7 @@ export function normalizeVisualChoreography(value) {
       requireObject(action, actionLabel);
       assertOnlyFields(action, [
         "id", "startSeconds", "endSeconds", "verb", "meaning", "subjectIds", "targetIds", "description", "resultingState",
-        ...(["1.1", "1.2"].includes(version) ? ["effect"] : []),
+        ...(["1.1", "1.2", "1.3"].includes(version) ? ["effect"] : []),
       ], actionLabel);
       const actionId = requireId(action.id, `${actionLabel}.id`);
       if (actionIds.has(actionId)) fail(`${label} action IDs must be unique.`);
@@ -242,10 +255,10 @@ export function normalizeVisualChoreography(value) {
       if (actionStart < previousActionStart) fail(`${label}.actions must be ordered by startSeconds.`);
       previousActionStart = actionStart;
       const verb = choice(action.verb, ACTION_VERBS, `${actionLabel}.verb`);
-      const effect = ["1.1", "1.2"].includes(version)
+      const effect = ["1.1", "1.2", "1.3"].includes(version)
         ? choice(action.effect, ACTION_EFFECTS, `${actionLabel}.effect`)
         : null;
-      if (["1.1", "1.2"].includes(version) && effect === "state-change" && PRESENTATION_ONLY_VERBS.has(verb)) {
+      if (["1.1", "1.2", "1.3"].includes(version) && effect === "state-change" && PRESENTATION_ONLY_VERBS.has(verb)) {
         fail(`${actionLabel}.${verb} is presentation/focus motion and cannot count as a state change.`);
       }
       return {
@@ -254,7 +267,7 @@ export function normalizeVisualChoreography(value) {
         endSeconds: actionEnd,
         verb,
         meaning: choice(action.meaning, ACTION_MEANINGS, `${actionLabel}.meaning`),
-        ...(["1.1", "1.2"].includes(version) ? { effect } : {}),
+        ...(["1.1", "1.2", "1.3"].includes(version) ? { effect } : {}),
         subjectIds: idList(action.subjectIds, `${actionLabel}.subjectIds`, objectIds, { allowEmpty: false }),
         targetIds: idList(action.targetIds ?? [], `${actionLabel}.targetIds`, objectIds),
         description: requireText(action.description, `${actionLabel}.description`),
@@ -264,10 +277,10 @@ export function normalizeVisualChoreography(value) {
     if (kind === "semantic" && !actions.some((action) => action.meaning === "semantic" && action.verb !== "hold")) {
       fail(`${label} is semantic and must include a non-hold semantic action.`);
     }
-    if (["1.1", "1.2"].includes(version) && kind === "semantic" && !actions.some((action) => action.meaning === "semantic" && action.effect === "state-change")) {
+    if (["1.1", "1.2", "1.3"].includes(version) && kind === "semantic" && !actions.some((action) => action.meaning === "semantic" && action.effect === "state-change")) {
       fail(`${label} is semantic and must include a semantic state-change action; entrance, highlight and hold motion do not qualify.`);
     }
-    if (["1.1", "1.2"].includes(version) && kind === "semantic") {
+    if (["1.1", "1.2", "1.3"].includes(version) && kind === "semantic") {
       const finalStateChange = [...actions].reverse().find((action) => action.meaning === "semantic" && action.effect === "state-change");
       if (finalStateChange.resultingState !== entry.stateAfter) {
         fail(`${label}.stateAfter must equal the resultingState of its final semantic state-change action.`);
@@ -347,7 +360,7 @@ export function normalizeVisualChoreography(value) {
       continuityFields = {
         chapterId, continuityMode, stateBeforeId, stateAfterId, carriedObjectIds, newInformation, resetReason,
       };
-    } else if (version === "1.2") {
+    } else if (["1.2", "1.3"].includes(version)) {
       const relationToPrevious = choice(entry.relationToPrevious, VISUAL_RELATIONSHIPS, `${label}.relationToPrevious`);
       if (previousBeat === null && relationToPrevious !== "establish") {
         fail(`${label} is the first beat and must establish the visual argument.`);
@@ -362,6 +375,44 @@ export function normalizeVisualChoreography(value) {
         continuityCue: requireText(entry.continuityCue, `${label}.continuityCue`),
         compositionIntent: requireText(entry.compositionIntent, `${label}.compositionIntent`),
       };
+      if (version === "1.3") {
+        const visualProof = requireText(entry.visualProof, `${label}.visualProof`);
+        if (!Array.isArray(entry.textElements) || entry.textElements.length > 100) {
+          fail(`${label}.textElements must be an array with at most 100 items.`);
+        }
+        const textIds = new Set();
+        const textElements = entry.textElements.map((item, textIndex) => {
+          const textLabel = `${label}.textElements[${textIndex}]`;
+          requireObject(item, textLabel);
+          assertOnlyFields(item, ["id", "text", "role", "purpose"], textLabel);
+          const textId = requireId(item.id, `${textLabel}.id`);
+          if (textIds.has(textId)) fail(`${label}.textElements IDs must be unique.`);
+          textIds.add(textId);
+          const role = choice(item.role, TEXT_ROLES, `${textLabel}.role`);
+          const displayText = requireText(item.text, `${textLabel}.text`);
+          const maximumCharacters = presentation.communicationMode === "type-led" ? 2000
+            : ["label", "value", "title"].includes(role) ? 80 : role === "formula" ? 160 : 240;
+          if ([...displayText].length > maximumCharacters) {
+            fail(`${textLabel}.text is too long for role ${role}; split or remove prose instead of creating a text panel.`);
+          }
+          return { id: textId, text: displayText, role, purpose: requireText(item.purpose, `${textLabel}.purpose`) };
+        });
+        if (presentation.communicationMode === "visual-first") {
+          if (kind === "semantic" && objects.find((object) => object.id === primaryObjectId).role === "annotation") {
+            fail(`${label}.primaryObjectId cannot be an annotation in visual-first semantic work.`);
+          }
+          const normalizedNarration = typeof entry.narrationText === "string"
+            ? entry.narrationText.trim().replace(/\s+/gu, " ").toLocaleLowerCase()
+            : null;
+          const duplicatesNarration = normalizedNarration && textElements.some((item) =>
+            ["caption", "title", "quote"].includes(item.role)
+            && item.text.trim().replace(/\s+/gu, " ").toLocaleLowerCase() === normalizedNarration);
+          if (duplicatesNarration) {
+            fail(`${label}.textElements must not duplicate the full narration in visual-first work.`);
+          }
+        }
+        continuityFields = { ...continuityFields, visualProof, textElements };
+      }
     }
     knownBeatIds.add(id);
     previousBeatEnd = endSeconds;
@@ -406,7 +457,7 @@ export function normalizeVisualChoreography(value) {
     beats,
     reviewCriteria: normalizeStringList(value.reviewCriteria, "animation.choreography.reviewCriteria", { allowEmpty: false }),
     ...(version === "1.1" ? { continuity, presentation, chapters } : {}),
-    ...(version === "1.2" ? { direction, presentation } : {}),
+    ...(["1.2", "1.3"].includes(version) ? { direction, presentation } : {}),
   };
 }
 
@@ -416,12 +467,12 @@ export function choreographyContinuityMetrics(choreography) {
     return { contractVersion: "1.0", chapterCount: null, heroObjectCount: null, resetCount: null,
       carriedBeatRatio: null, narrationMode: null, targetStageCoveragePercent: null, maxTextAreaPercent: null };
   }
-  if (normalized.version === "1.2") {
+  if (["1.2", "1.3"].includes(normalized.version)) {
     const relationshipCounts = Object.fromEntries([...VISUAL_RELATIONSHIPS]
       .map((relationship) => [relationship, normalized.beats.filter((beat) => beat.relationToPrevious === relationship).length])
       .filter(([, count]) => count > 0));
     return {
-      contractVersion: "1.2", continuityMode: null, chapterCount: null, heroObjectCount: null,
+      contractVersion: normalized.version, continuityMode: null, chapterCount: null, heroObjectCount: null,
       resetCount: relationshipCounts.reset ?? 0, carriedBeatRatio: null,
       narrationMode: normalized.presentation.narrationMode,
       targetStageCoveragePercent: null, maxTextAreaPercent: null,
@@ -441,6 +492,35 @@ export function choreographyContinuityMetrics(choreography) {
     narrationMode: normalized.presentation.narrationMode,
     targetStageCoveragePercent: normalized.presentation.targetStageCoveragePercent,
     maxTextAreaPercent: normalized.presentation.maxTextAreaPercent,
+  };
+}
+
+export function choreographyCommunicationMetrics(choreography) {
+  const normalized = normalizeVisualChoreography(choreography);
+  if (normalized.version !== "1.3") {
+    return { contractVersion: normalized.version, communicationMode: null, totalTextElementCount: null,
+      textlessBeatCount: null, roleCounts: null, longestTextCharacters: null,
+      narrationDuplicateCount: null, semanticVisualProofCount: null };
+  }
+  const textElements = normalized.beats.flatMap((beat) => beat.textElements);
+  const roleCounts = Object.fromEntries([...TEXT_ROLES]
+    .map((role) => [role, textElements.filter((item) => item.role === role).length])
+    .filter(([, count]) => count > 0));
+  const narrationDuplicateCount = normalized.beats.filter((beat) => {
+    const narration = beat.narrationText?.trim().replace(/\s+/gu, " ").toLocaleLowerCase();
+    return narration && beat.textElements.some((item) =>
+      ["caption", "title", "quote"].includes(item.role)
+      && item.text.trim().replace(/\s+/gu, " ").toLocaleLowerCase() === narration);
+  }).length;
+  return {
+    contractVersion: "1.3",
+    communicationMode: normalized.presentation.communicationMode,
+    totalTextElementCount: textElements.length,
+    textlessBeatCount: normalized.beats.filter((beat) => beat.textElements.length === 0).length,
+    roleCounts,
+    longestTextCharacters: textElements.reduce((longest, item) => Math.max(longest, [...item.text].length), 0),
+    narrationDuplicateCount,
+    semanticVisualProofCount: normalized.beats.filter((beat) => beat.kind === "semantic" && beat.visualProof).length,
   };
 }
 

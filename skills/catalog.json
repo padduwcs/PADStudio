@@ -83,7 +83,7 @@
     },
     {
       "id": "code-animation",
-      "version": "1.0",
+      "version": "1.1",
       "name": "Code animation",
       "description": "Author, revise, validate and render project-native Manim, Remotion and HyperFrames compositions.",
       "appliesTo": ["ideate", "plan", "execute", "review"],
@@ -92,24 +92,24 @@
       "instructions": "code-animation.md"
     },
     {
-      "id": "visual-choreography", "version": "1.2", "name": "Visual choreography",
-      "description": "Direct narration as a frame-aligned visual argument with truthful operations, purposeful scene relationships and agent-chosen variation.",
+      "id": "visual-choreography", "version": "1.3", "name": "Visual choreography",
+      "description": "Direct narration as a visual-first, frame-aligned argument with truthful operations, purposeful scene relationships and an inspectable text footprint.",
       "appliesTo": ["plan", "execute", "review"], "artifactTypes": ["animation.choreography", "animation.composition"],
-      "reviewCriteria": ["semantic claims cause visible state changes", "audience insights form a causal argument", "scene relationships are purposeful without forcing layout sameness", "composition serves the current explanatory question", "representative motion is previewed before full polish"],
+      "reviewCriteria": ["semantic claims cause visible state changes", "imagery proves the point without transcript dependence", "on-screen text is exact, necessary and subordinate unless type-led", "scene relationships are purposeful without forcing layout sameness", "composition serves the current explanatory question", "representative motion is previewed before full polish"],
       "instructions": "visual-choreography.md"
     },
     {
-      "id": "remotion-animation", "version": "1.0", "name": "Remotion animation craft",
+      "id": "remotion-animation", "version": "1.1", "name": "Remotion animation craft",
       "description": "Author and review deterministic, parameterized Remotion compositions without defaulting to stock creative components.",
       "appliesTo": ["plan", "execute", "review"], "artifactTypes": ["animation.composition"],
       "reviewCriteria": ["frame timing is deterministic", "managed props and assets remain traceable", "key beats are previewed at exact dimensions"],
       "instructions": "remotion-animation.md"
     },
     {
-      "id": "code-animation-review", "version": "1.2", "name": "Code animation review",
+      "id": "code-animation-review", "version": "1.3", "name": "Code animation review",
       "description": "Review complete code-animation timelines for technical, semantic and creative quality with concrete correction evidence.",
       "appliesTo": ["review", "verify"], "artifactTypes": ["animation.composition", "review.findings"],
-      "reviewCriteria": ["timeline coverage is explicit", "speech and visual meaning agree", "findings include timestamps and corrections", "distinctness and slideshow risk are assessed"],
+      "reviewCriteria": ["timeline coverage is explicit", "speech and visual meaning agree", "visual proof survives removal of prose", "declared and rendered text agree", "findings include timestamps and corrections", "distinctness and slideshow risk are assessed"],
       "instructions": "code-animation-review.md"
     },
     {

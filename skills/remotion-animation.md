@@ -16,6 +16,10 @@ these are mechanics and review heuristics, not a stock-scene recipe.
   not merely because a preset exists. Clamp extrapolation where overshoot would expose invalid UI.
 - Prefer one primary visual subject per beat. Reuse utilities and design tokens, but avoid making
   every video look like the same card/chart/title template.
+- Keep a multi-beat composition modular enough to revise locally: a thin registered root, passage
+  or scene modules, low-level visual primitives, and timing/data/theme separated where they actually
+  vary. Do not build one universal scene component with a large optional-prop switchboard; that moves
+  creative decisions into fallback behavior and tends to produce template slides.
 - For a hero explainer, derive a small visual vocabulary from the subject itself. Vary motion
   intensity and information density across hook, construction, insight and landing; check that the
   result would remain recognizable if all words disappeared.

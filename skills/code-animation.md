@@ -9,12 +9,16 @@ Code animation is an optional production branch, not a required pipeline stage.
    for authored HTML/CSS/SVG/GSAP compositions. Do not silently swap runtimes. Load exactly one
    runtime craft skill (`manim-animation`, `remotion-animation`, or `hyperframes-animation`).
    For narration-led, procedural or stepwise explanation, load `visual-choreography` first and
-   create choreography 1.2 before source. Build a coherent visual argument whose scene relationships
+   create choreography 1.3 before source. Build a coherent visual argument whose scene relationships
    follow the content; do not map each sentence to a self-contained card or force the whole film into
    one persistent dashboard. A tiny decorative loop does not need this artifact.
 2. Create source with `animation.source / code-animation-source`. Reopen an existing package with
    `animation:read` by Result ID; request one file or `--all` only when its content is needed. Revise from an exact
-   `baseResultId`; never mutate an earlier package. Declare dependencies and pin versions.
+   `baseResultId`; never mutate an earlier package. Declare dependencies and pin versions. For more
+   than a small single-beat composition, keep the runtime entry/root thin, separate scene or passage
+   modules, reusable visual primitives, and timing/data/theme concerns. Share mechanics, not a stock
+   scene grammar. A single file remains valid when it is genuinely the clearest unit; file count is
+   not a quality score.
 3. Put changeable JSON data in an immutable `animation.props` Result when useful, then create or
    revise `animation.composition` with exact source/props Results, entry symbol,
    frame-aligned target duration, output format, local asset mappings, style principles and
@@ -50,9 +54,11 @@ Code animation is an optional production branch, not a required pipeline stage.
    easing and safe margins. Treat black/freeze measurements as evidence: decide whether a hold gives
    the explanation room to land or is merely dead time; notice repeated empty transitions and whether
    visual changes track the narration. Do not turn every static explanatory hold into an automatic failure.
-   For choreography 1.2, reject a render when declared operations do not occur, adjacent insights do
+   For choreography 1.2/1.3, reject a render when declared operations do not occur, adjacent insights do
    not form a causal argument, composition changes feel arbitrary, one layout is repeated regardless
-   of meaning, or transcript UI competes with the actual visual subject.
+   of meaning, or transcript UI competes with the actual visual subject. For 1.3, also reject undeclared
+   text, prose that merely repeats the voice, ornamental headings/chrome that steal hierarchy, or a
+   semantic beat whose declared visual proof disappears when prose is mentally removed.
 9. Use the resulting `animation.render` as a normal Result source in `video.sequence`.
    Keep reusable animation renders independent; do not flatten them into an unmanaged clip.
 
