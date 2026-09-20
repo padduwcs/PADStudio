@@ -1,16 +1,46 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { createLocalOutputQuality, parseVisualDefects, sourceCutBoundaryCheck, speechAlignment } from "../src/tools/local-output-quality.js";
+import { promisify } from "node:util";
+import {
+  createLocalOutputQuality,
+  parseVisualDefects,
+  severeBlackWindowThreshold,
+  sourceCutBoundaryCheck,
+  speechAlignment,
+  VISUAL_DEFECT_FILTER
+} from "../src/tools/local-output-quality.js";
 import { sequenceInspectionPoints } from "../src/quality/output-quality-service.js";
+
+const execFileAsync = promisify(execFile);
 
 test("visual defect parser keeps exact black and freeze windows", () => {
   const parsed = parseVisualDefects("black_start:1.2 black_end:3.7 black_duration:2.5\nfreeze_start: 4\nfreeze_duration: 5.5\nfreeze_end: 9.5");
   assert.deepEqual(parsed.black, [{ startSeconds: 1.2, endSeconds: 3.7, durationSeconds: 2.5 }]);
   assert.deepEqual(parsed.freeze, [{ startSeconds: 4, endSeconds: 9.5, durationSeconds: 5.5 }]);
   assert.deepEqual(parseVisualDefects("freeze_start: 7", 10).freeze, [{ startSeconds: 7, endSeconds: 10, durationSeconds: 3 }]);
+});
+
+test("visual defect scan only treats near-total black pixels as black frames", () => {
+  assert.match(VISUAL_DEFECT_FILTER, /blackdetect=d=0\.5:pix_th=0\.10:pic_th=0\.9999/);
+  assert.equal(severeBlackWindowThreshold(10), 2);
+  assert.equal(severeBlackWindowThreshold(292.375), 3);
+});
+
+test("FFmpeg scan distinguishes a blank screen from sparse content on black", async (t) => {
+  const ffmpeg = process.env.PADSTUDIO_FFMPEG_PATH?.trim() || "ffmpeg";
+  try { await execFileAsync(ffmpeg, ["-version"], { windowsHide: true }); }
+  catch { t.skip("FFmpeg unavailable"); return; }
+  const scan = async (foreground) => {
+    const filter = `${foreground ? "drawbox=x=140:y=70:w=8:h=8:color=white:t=fill," : ""}${VISUAL_DEFECT_FILTER}`;
+    const { stderr } = await execFileAsync(ffmpeg, ["-hide_banner", "-nostdin", "-f", "lavfi", "-i", "color=c=black:s=320x180:r=25:d=3", "-vf", filter, "-an", "-f", "null", "-"], { windowsHide: true });
+    return parseVisualDefects(stderr, 3).black;
+  };
+  assert.ok((await scan(false)).some((window) => window.durationSeconds >= 2.9));
+  assert.deepEqual(await scan(true), []);
 });
 
 test("inspection planner covers segment, caption, overlay and transition windows", () => {
@@ -118,7 +148,7 @@ async function fixture(t, { lastWordEnd = 9.6, finalScore = 0.9, clipping = 0, f
 }
 
 async function assess(state, visualStderr = "", expectedSpeech = null) {
-  const tool = createLocalOutputQuality({ executeCommand: async (_command, args) => ({ stdout: "ffmpeg version fixture\n", stderr: args.includes("blackdetect=d=0.5:pix_th=0.10,freezedetect=n=-60dB:d=2") ? visualStderr : "" }) });
+  const tool = createLocalOutputQuality({ executeCommand: async (_command, args) => ({ stdout: "ffmpeg version fixture\n", stderr: args.includes(VISUAL_DEFECT_FILTER) ? visualStderr : "" }) });
   const prepared = await tool.prepare({
     store: state.store, projectId: "demo",
     inputs: {
@@ -174,6 +204,17 @@ test("output QA blocks a severe black window and reports freeze as advisory", as
   assert.equal(freeze.status, "warning");
   assert.deepEqual(freeze.metrics.summary, { windowCount: 1, totalDurationSeconds: 5.5, longestDurationSeconds: 5.5, shareOfVideo: 0.55 });
   assert.equal(assessed.execution.report.gate.deliveryEligible, false);
+});
+
+test("output QA reports a brief near-black transition without blocking a long render", async (t) => {
+  const state = await fixture(t);
+  state.source.data.durationSeconds = 292.375;
+  state.evidence[0].data.details.format.durationSeconds = 292.375;
+  const assessed = await assess(state, "black_start:72.875 black_end:75.208 black_duration:2.333");
+  const black = assessed.execution.report.checks.find((item) => item.id === "black-frame-windows");
+  assert.equal(black.status, "warning");
+  assert.equal(black.metrics.severeWindows, 0);
+  assert.ok(!assessed.execution.report.gate.failedCheckIds.includes("black-frame-windows"));
 });
 
 test("output QA rejects evidence belonging to another exact render", async (t) => {

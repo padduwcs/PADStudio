@@ -15,12 +15,13 @@ function fixtures() {
   };
 }
 
-test("production policy catalogs expose three versioned profiles and five optional playbooks", () => {
+test("production policy catalogs expose four versioned profiles and five optional playbooks", () => {
   const profiles = defaultProductionPolicyCatalog.listOutputProfiles();
   const playbooks = defaultProductionPolicyCatalog.listStylePlaybooks();
 
   assert.deepEqual(profiles.map((profile) => profile.id), [
     "local-portrait-h264-v1",
+    "local-portrait-720p24-h264-v1",
     "local-landscape-h264-v1",
     "local-square-h264-v1"
   ]);
@@ -30,7 +31,7 @@ test("production policy catalogs expose three versioned profiles and five option
   assert.ok(profiles.every((profile) => profile.version === "1.0"));
   assert.ok(playbooks.every((playbook) => playbook.version === "1.0" && playbook.optional === true));
   assert.deepEqual(defaultProductionPolicyCatalog.versions(), {
-    outputProfiles: "1.0", stylePlaybooks: "1.0"
+    outputProfiles: "1.1", stylePlaybooks: "1.0"
   });
 });
 

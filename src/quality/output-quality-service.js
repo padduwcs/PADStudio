@@ -5,6 +5,7 @@ import { ToolExecutor } from "../execution/tool-executor.js";
 import { ProjectStore } from "../project/project-store.js";
 import { readOutputQualityProfile } from "./output-quality-profiles.js";
 import { compositionTimeline } from "../production/sequence-composition.js";
+import { OUTPUT_QUALITY_TOOL_VERSION } from "../tools/local-output-quality.js";
 
 export class OutputQualityServiceError extends Error {
   constructor(message, code = "output_quality_failed") {
@@ -76,7 +77,7 @@ function expectedSpeechFingerprint(expectedSpeech) {
 
 function sameEvidence(result, profileId, ids, speechFingerprint) {
   if (result.type !== "video.output-quality" || result.tool?.name !== "local-output-quality" ||
-      result.tool?.version !== "1.3.0" || result.data?.profile?.id !== profileId ||
+      result.tool?.version !== OUTPUT_QUALITY_TOOL_VERSION || result.data?.profile?.id !== profileId ||
       (result.data?.expectedSpeech?.fingerprint ?? null) !== speechFingerprint) return false;
   const evidence = result.data.evidence ?? {};
   return evidence.probeResultId === ids.probe && evidence.framesResultId === ids.frames &&

@@ -9,6 +9,13 @@ import { readOutputQualityProfile, listOutputQualityProfiles } from "../quality/
 
 const execFileAsync = promisify(execFile);
 
+export const OUTPUT_QUALITY_TOOL_VERSION = "1.3.1";
+export const VISUAL_DEFECT_FILTER = "blackdetect=d=0.5:pix_th=0.10:pic_th=0.9999,freezedetect=n=-60dB:d=2";
+
+export function severeBlackWindowThreshold(durationSeconds) {
+  return Math.min(3, durationSeconds * 0.2);
+}
+
 export class OutputQualityToolError extends Error {
   constructor(message, code = "output_quality_failed") {
     super(message);
@@ -213,7 +220,7 @@ export function createLocalOutputQuality({
 } = {}) {
   return {
     name: "local-output-quality",
-    version: "1.3.0",
+    version: OUTPUT_QUALITY_TOOL_VERSION,
     provider: "PADStudio",
     capability: "video.inspect-output",
     description: "Tổng hợp full decode, hình, audio và ASR của exact render thành bằng chứng QA fail-closed.",
@@ -343,12 +350,12 @@ export function createLocalOutputQuality({
       let visualDefects;
       try {
         const visualResponse = await executeCommand(ffmpegCommand, ["-hide_banner", "-nostdin", "-i", sourcePath,
-          "-vf", "blackdetect=d=0.5:pix_th=0.10,freezedetect=n=-60dB:d=2", "-an", "-f", "null", "-"], { timeout: timeoutMs, signal });
+          "-vf", VISUAL_DEFECT_FILTER, "-an", "-f", "null", "-"], { timeout: timeoutMs, signal });
         visualDefects = parseVisualDefects(visualResponse.stderr, durationSeconds);
       } catch (error) {
         fail(error?.killed ? "Visual defect scan vượt thời gian." : "Không thể quét black/freeze frame.", "visual_scan_failed");
       }
-      const severeBlack = visualDefects.black.filter((item) => item.durationSeconds >= Math.min(2, durationSeconds * 0.2));
+      const severeBlack = visualDefects.black.filter((item) => item.durationSeconds >= severeBlackWindowThreshold(durationSeconds));
       const severeFreeze = visualDefects.freeze.filter((item) => item.durationSeconds !== null && item.durationSeconds >= Math.max(5, durationSeconds * 0.5));
       const visualDefectSummary = {
         black: summarizeWindows(visualDefects.black, durationSeconds),

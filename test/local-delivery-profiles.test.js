@@ -8,11 +8,15 @@ import {
 test("local delivery keeps the legacy profile export while discovering all catalog profiles", async () => {
   const expected = [
     "local-portrait-h264-v1",
+    "local-portrait-720p24-h264-v1",
     "local-landscape-h264-v1",
     "local-square-h264-v1"
   ];
   assert.deepEqual(Object.keys(LOCAL_DELIVERY_PROFILES), expected);
   assert.equal(LOCAL_DELIVERY_PROFILES["local-portrait-h264-v1"].width, 1080);
+  assert.equal(LOCAL_DELIVERY_PROFILES["local-portrait-720p24-h264-v1"].width, 720);
+  assert.equal(LOCAL_DELIVERY_PROFILES["local-portrait-720p24-h264-v1"].height, 1280);
+  assert.equal(LOCAL_DELIVERY_PROFILES["local-portrait-720p24-h264-v1"].fps, 24);
   assert.equal(Object.isFrozen(LOCAL_DELIVERY_PROFILES["local-portrait-h264-v1"].integratedLufs), true);
 
   const tool = createLocalDeliveryExporter({
