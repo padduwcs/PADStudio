@@ -3,9 +3,9 @@
   "skills": [
     {
       "id": "project-intake",
-      "version": "1.0",
+      "version": "1.1",
       "name": "Project intake",
-      "description": "Turn an incomplete request into a useful brief without forcing a fixed questionnaire.",
+      "description": "Turn a short request and supplied material into a useful brief without shifting production planning to the user.",
       "appliesTo": ["understand", "plan"],
       "artifactTypes": ["project.brief"],
       "reviewCriteria": ["intent is explicit", "unknowns are separated from assumptions", "constraints are actionable"],
@@ -13,7 +13,7 @@
     },
     {
       "id": "source-understanding",
-      "version": "1.0",
+      "version": "1.1",
       "name": "Source understanding",
       "description": "Inspect source material and preserve observations that should influence creative work.",
       "appliesTo": ["understand", "review"],
@@ -23,7 +23,7 @@
     },
     {
       "id": "creative-direction",
-      "version": "1.0",
+      "version": "1.1",
       "name": "Creative direction",
       "description": "Develop and compare creative directions before committing production effort.",
       "appliesTo": ["ideate", "plan", "review"],
@@ -43,7 +43,7 @@
     },
     {
       "id": "result-review",
-      "version": "1.0",
+      "version": "1.1",
       "name": "Result review",
       "description": "Review creative intent and technical integrity as distinct but connected concerns.",
       "appliesTo": ["review", "verify"],
@@ -106,7 +106,7 @@
       "instructions": "remotion-animation.md"
     },
     {
-      "id": "code-animation-review", "version": "1.3", "name": "Code animation review",
+      "id": "code-animation-review", "version": "1.4", "name": "Code animation review",
       "description": "Review complete code-animation timelines for technical, semantic and creative quality with concrete correction evidence.",
       "appliesTo": ["review", "verify"], "artifactTypes": ["animation.composition", "review.findings"],
       "reviewCriteria": ["timeline coverage is explicit", "speech and visual meaning agree", "visual proof survives removal of prose", "declared and rendered text agree", "findings include timestamps and corrections", "distinctness and slideshow risk are assessed"],

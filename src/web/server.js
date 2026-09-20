@@ -23,6 +23,7 @@ const projectRoot = join(applicationRoot, ".padstudio", "projects");
 const staticFiles = {
   "/": { file: "index.html", type: "text/html; charset=utf-8" },
   "/app.js": { file: "app.js", type: "text/javascript; charset=utf-8" },
+  "/review-inspection.js": { file: "review-inspection.js", type: "text/javascript; charset=utf-8" },
   "/source-analysis-view.js": { file: "source-analysis-view.js", type: "text/javascript; charset=utf-8" },
   "/production-view.js": { file: "production-view.js", type: "text/javascript; charset=utf-8" },
   "/animation-view.js": { file: "animation-view.js", type: "text/javascript; charset=utf-8" },

@@ -1,3 +1,5 @@
+import { reviewInspectionLabel } from "./review-inspection.js";
+
 let lastSignature = null;
 const choices = new Map();
 
@@ -208,7 +210,7 @@ function revisionPanel(context, sequence, baseline = null, render = null) {
     const feedback = feedbackPanel(render);
     if (feedback) panel.append(feedback);
     for (const review of render.reviews) {
-      const coverage = review.attestation ? " · đã xem hết · " + (review.attestation.listenedFull === true ? "đã nghe hết" : "audio không áp dụng") : "";
+      const coverage = reviewInspectionLabel(review);
       panel.append(node("p", review.perspective + " · " + review.verdict + coverage + " — " + review.summary));
     }
     panel.append(feedbackAnchor(context, sequence, render));

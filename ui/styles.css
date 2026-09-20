@@ -103,6 +103,7 @@ h3 {
 
 .observer-pane {
   border-radius: 0 1rem 1rem 0;
+  overflow-wrap: anywhere;
 }
 
 .project-list {
@@ -403,7 +404,7 @@ h3 {
   color: var(--accent);
   font-size: 0.72rem;
   font-weight: 700;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .output-quality {
@@ -796,6 +797,7 @@ h3 {
 
 .source-browser-list {
   display: grid;
+  min-width: 0;
   align-content: start;
   gap: 0.5rem;
   max-height: 78vh;

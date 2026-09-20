@@ -7,6 +7,7 @@ Creative or technical decisions depend on media, documents, previous results, or
 ## Method
 
 1. Inspect the material with the least destructive available capability.
+   When the user supplies a reference folder, look for material that could change the video's form or scope before committing to a duration, narration mode or production approach. Explain a consequential decision to omit such material; availability alone does not require its use.
 2. Before combining multiple sources into one result (e.g. concatenation), confirm each source's technical shape individually — do not assume compatibility.
 3. Separate measured facts from interpretation.
 4. Capture notable structure, content, quality, limitations, opportunities, and risks.

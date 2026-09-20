@@ -90,6 +90,7 @@ test("observer endpoints expose context and serve registered byte ranges", async
   const { port } = server.address();
   const pageResponse = await fetch(`http://127.0.0.1:${port}/`);
   const appResponse = await fetch(`http://127.0.0.1:${port}/app.js`);
+  const reviewInspectionResponse = await fetch(`http://127.0.0.1:${port}/review-inspection.js`);
   const sourceViewResponse = await fetch(`http://127.0.0.1:${port}/source-analysis-view.js`);
   const stylesResponse = await fetch(`http://127.0.0.1:${port}/styles.css`);
   const listResponse = await fetch(`http://127.0.0.1:${port}/api/projects`);
@@ -102,6 +103,8 @@ test("observer endpoints expose context and serve registered byte ranges", async
   });
 
   assert.equal(pageResponse.status, 200);
+  assert.equal(reviewInspectionResponse.status, 200);
+  assert.match(await reviewInspectionResponse.text(), /reviewInspectionLabel/);
   const pageBody = await pageResponse.text();
   assert.match(pageBody, /id="checkpoint"/);
   assert.match(pageBody, /id="source-analysis-view"/);

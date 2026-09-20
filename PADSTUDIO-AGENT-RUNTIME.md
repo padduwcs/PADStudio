@@ -18,6 +18,7 @@ npm run project:resume -- <project-id>
 ```
 
 `project:resume` là context mặc định. Nó chỉ trả checkpoint, việc hiện hành, artifact active cần tiếp tục, sequence/render mới nhất, feedback, health, budget và trạng thái phân tích cô đọng. Không dùng full context theo thói quen.
+Một yêu cầu ngắn như “làm video về chủ đề này từ tư liệu kia” đã đủ để Agent bắt đầu. Agent tự xem tư liệu đáng kể trước khi chọn thời lượng, lời dẫn và hình thức; ghi rõ lý do nếu một lựa chọn lớn bỏ qua phần nguồn có thể quan trọng. Chỉ hỏi người dùng khi quyết định ảnh hưởng lớn mà không thể suy ra từ mục tiêu và bằng chứng; không chuyển việc brainstorm sản xuất sang người dùng.
 Resume còn có `environment`: hồ sơ máy/capability cô đọng được đo lại để lập kế hoạch. Với project mới,
 `environment.mode` là `onboarding`; hãy nói ngắn gọn khả năng nào dùng được, runtime composition nào
 phù hợp để cân nhắc và cảnh báo thực sự liên quan. Không dump toàn bộ menu, không khoe thông số không
@@ -77,6 +78,7 @@ authorization thì phải dùng recovery, không abandon.
 - Tool trả phí cần budget và authorization chính xác trước khi gọi provider.
 - Ý tưởng, brief, direction, sequence và workflow quan trọng phải được lưu thành artifact/workflow; không chỉ nằm trong chat.
 - Kết quả, lỗi, quyết định và feedback phải gắn đúng Resource/Result/Artifact revision.
+- Khi người dùng góp ý cho một preview cụ thể, ghi `changes_requested` qua `project:decide` với exact Result và `feedbackTarget` trước khi sửa. Khi bản sửa đáp ứng góp ý, liên kết các Decision đã giải quyết theo contract; không chỉ chép phản hồi vào brief hoặc để nó nằm trong chat.
 - Sau thay đổi quan trọng, cập nhật checkpoint ngắn với goal, constraints, selectedResources, pending và next.
 
 ## Dựng, review và delivery
@@ -104,7 +106,7 @@ phát triển codebase khi phạm vi đó đã được xác nhận.
 3. Chạy `video.inspect-output` trên exact render. Với video có lời, truyền `expectedSpeech.text`
    và các `expectedSpeech.terms` quan trọng khi sequence không lưu narration text; QA sẽ đối chiếu
    ASR và lấy frame phủ đều toàn timeline.
-4. Agent review đúng Result; người dùng xem trong observer và phản hồi trong chat.
+4. Agent review đúng Result; với video, ghi `review.inspection` về cách đã xem hình/chuyển động và đánh giá tiếng, cùng giới hạn thực tế. Ảnh mẫu và số liệu âm thanh không chứng minh đã xem/nghe liên tục. Người dùng xem trong observer và phản hồi trong chat.
 5. Sau QA hợp lệ, Agent dừng và yêu cầu người dùng tự chạy
    `npm run project:accept -- <project-id> <render-result-id>` trong terminal tương tác. Lệnh hiển thị
    exact Result, revision, thời lượng, checksum và yêu cầu người dùng xác nhận đã xem/nghe trọn vẹn.

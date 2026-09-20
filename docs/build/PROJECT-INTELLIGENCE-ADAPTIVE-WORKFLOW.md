@@ -67,6 +67,20 @@ chính xác tập output đã review. Approval cũng được gắn với tập 
 pass. Nếu ý nghĩa hoặc output thay đổi, review/approval cũ không còn mở gate; Agent
 phải tạo identity mới hoặc đưa item qua review và approval lại.
 
+Với Agent review sáng tạo hoặc kết hợp trên một exact `video.sequence-render` mới,
+`project:review` yêu cầu `inspection`. Đây là lời khai về phạm vi Agent thực sự kiểm tra,
+không phải chứng nhận tự động rằng Agent đã xem/nghe. `visual.method` là
+`not_reviewed`, `sampled_frames`, `motion_samples` hoặc `continuous_playback`;
+`audio.method` là `not_reviewed`, `analysis_only`, `sampled_listening`,
+`continuous_listening` hoặc `not_applicable`. Mỗi phương thức có mô tả evidence cụ thể;
+`limitations` ghi phần còn chưa được đánh giá. Review tích cực phải có motion evidence
+và phải nghe ít nhất các đoạn tiếng mẫu nếu render có tiếng. ASR/đo mức mà không nghe
+chỉ hỗ trợ QA kỹ thuật, không đủ cho verdict sáng tạo tích cực. Nếu chỉ xem/nghe các
+đoạn mẫu, verdict tối đa là `passed_with_notes` và phải nêu giới hạn. `passed` chỉ
+hợp lệ khi Agent khai đã xem hình liên tục và nghe tiếng liên tục (hoặc video không có
+tiếng). Human acceptance vẫn là xác nhận tương tác riêng, không thể thay bằng trường
+`inspection`. Review cũ không có trường này vẫn đọc được để giữ lịch sử.
+
 ## Artifact và revision
 
 ~~~json

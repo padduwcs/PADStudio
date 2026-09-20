@@ -164,6 +164,27 @@ Review chỉ được ghi khi work item đang `awaiting_review` và đã có out
 chỉ được ghi khi item đang `awaiting_approval`. Review và approval được khóa theo
 đúng tập output; thay output hoặc đổi ý nghĩa item bắt buộc phải review/duyệt lại.
 
+Khi Agent ghi review `creative` hoặc `combined` cho exact `video.sequence-render`,
+truyền thêm `inspection` để nêu đúng phạm vi đã kiểm tra. Ví dụ sau chỉ xem và nghe
+các đoạn mẫu nên verdict là `passed_with_notes`, với giới hạn được ghi rõ:
+
+```json
+{
+  "inspection": {
+    "version": "1.0",
+    "visual": { "method": "motion_samples", "evidence": "Các clip mở đầu, chuyển cảnh và đoạn có thao tác khó của exact Result." },
+    "audio": { "method": "sampled_listening", "evidence": "Nghe các đoạn mở đầu, chuyển cảnh và kết của exact Result; đối chiếu thêm QA loudness và ASR." },
+    "limitations": ["Chưa xem/nghe liên tục toàn bộ render."]
+  }
+}
+```
+
+Các giá trị visual: `not_reviewed`, `sampled_frames`, `motion_samples`,
+`continuous_playback`. Audio: `not_reviewed`, `analysis_only`, `sampled_listening`,
+`continuous_listening`, `not_applicable`. Review tích cực cần có motion evidence và
+đánh giá audio; `passed` chỉ dành cho kiểm tra liên tục của Agent. Trường này là lời
+khai của Agent, không thay thế xác nhận xem/nghe trực tiếp của người dùng.
+
 ```json
 {
   "target": {

@@ -1,6 +1,6 @@
 # PADStudio — trạng thái phát triển
 
-Cập nhật: **2026-09-20**.
+Cập nhật: **2026-09-21**.
 
 Đây là điểm vào ngắn để biết codebase đang ở đâu. PADStudio vẫn đang được xây dựng và chỉnh
 chu; các báo cáo có chữ `completion`, tên đợt hoặc số phiên bản ghi lại một mốc nghiệm thu kỹ
@@ -16,6 +16,7 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
   các lát cắt đã dùng được trong phạm vi đã kiểm chứng; chúng không đồng nghĩa với một studio đã
   bao phủ mọi loại video, provider hoặc môi trường.
 - Workflow mẫu là điểm bắt đầu tùy chọn. Không có pipeline chung bắt buộc cho mọi project.
+- Intake và creative direction hướng Agent tự quyết định từ brief ngắn sau khi xem tư liệu liên quan; Agent phải nêu rõ các lựa chọn lớn khi bỏ qua nguồn đáng kể. Agent review sáng tạo trên exact video mới phải khai phạm vi xem chuyển động và nghe tiếng; review mẫu không được trình bày như đã xem/nghe toàn bộ. Observer hiển thị phạm vi này. Review cũ vẫn đọc được.
 - Choreography 1.3 là nhánh tùy chọn cho giải thích bằng hoạt họa: giữ lập luận thị giác do Agent
   đạo diễn, lưu minh chứng bằng hình và footprint chữ chính xác cho review; không tự đảm bảo chất
   lượng hình ảnh khi chưa preview/xem một video thật.
@@ -26,7 +27,8 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 Tại ngày cập nhật tài liệu này:
 
-- `npm test`: **303/303 pass**;
+- `npm test`: **308/308 pass**;
+- `npm run observer:browser-test -- -ProjectId priority-queue-visual-20260920 -StructureOnly`: **passed** với observer server đang chạy, tại 390, 768 và 1440 px;
 - `npm run animation:acceptance`: **passed** (local Remotion preflight, preview và render một fixture
   độc lập trong thư mục tạm; không phải pilot sáng tạo của người dùng);
 - Lần đo coverage gần nhất (trước đợt 1.3): `node --test --experimental-test-coverage`:

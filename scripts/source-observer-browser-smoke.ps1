@@ -178,7 +178,8 @@ try {
       $sizesJson = Evaluate 'JSON.stringify({scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth})'
       $sizes = $sizesJson | ConvertFrom-Json
       if ($sizes.scrollWidth -gt $sizes.clientWidth) {
-        throw "Observer has horizontal overflow at viewport $width px: $sizesJson"
+        $overflow = Evaluate 'JSON.stringify([...document.querySelectorAll("body *")].filter(node => node.scrollWidth > node.clientWidth + 2 && getComputedStyle(node).overflowX === "visible").slice(0, 20).map(node => ({tag: node.tagName, className: typeof node.className === "string" ? node.className : "", right: Math.round(node.getBoundingClientRect().right), width: Math.round(node.getBoundingClientRect().width), scrollWidth: node.scrollWidth, parent: node.parentElement?.className})))'
+        throw "Observer has horizontal overflow at viewport $width px: $sizesJson; elements: $overflow"
       }
     }
     [PSCustomObject]@{

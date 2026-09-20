@@ -9,6 +9,7 @@ judgment without imposing a fixed production pipeline.
    three-minute video, plus exact beat and transition boundaries. Inspect contact sheets page by
    page and open targeted frames or short clips around anything suspicious. State plainly that
    sampled frames are not the same as watching continuous playback.
+   Before recording a positive creative or combined review of the exact video, inspect motion in representative and risky intervals and state how audio was assessed. Record the actual methods in `review.inspection`; sampled review has a `passed_with_notes` verdict with explicit limits.
 3. For spoken work, compare ASR with the intended script. Supply important names, English terms,
    symbols and abbreviations as `expectedSpeech.terms`; treat failed recognition as a cue to listen
    and revise pronunciation, wording or TTS—not as proof of the exact phonetic cause.

@@ -62,8 +62,8 @@ function compactArtifact(artifact) {
 }
 
 function compactReview(review) {
-  const { id, target, round, perspective, verdict, summary, reviewer, attestation, exactResult, createdAt } = review;
-  return { id, target, round, perspective, verdict, summary, reviewer, attestation, exactResult, createdAt };
+  const { id, target, round, perspective, verdict, summary, reviewer, inspection, attestation, exactResult, createdAt } = review;
+  return { id, target, round, perspective, verdict, summary, reviewer, inspection, attestation, exactResult, createdAt };
 }
 
 function observerSection(context, section, generation) {

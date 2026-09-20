@@ -4,6 +4,7 @@ import { renderCreativeDirection, clearCreativeDirection } from "./creative-dire
 import { renderDelivery, clearDelivery } from "./delivery-view.js";
 import { renderHealth, clearHealth } from "./health-view.js";
 import { renderAnimation, clearAnimation } from "./animation-view.js";
+import { reviewInspectionLabel } from "./review-inspection.js";
 
 const elements = {
   production: document.querySelector("#production-view"),
@@ -275,7 +276,7 @@ function renderIntelligence(context) {
     const list = document.createElement("ul");
     list.replaceChildren(...reviews.map((review) => {
       const item = document.createElement("li");
-      const coverage = review.attestation ? ` · watched full · ${review.attestation.listenedFull === true ? "listened full" : "audio n/a"}` : "";
+      const coverage = reviewInspectionLabel(review);
       item.textContent = `${review.perspective} · ${review.verdict}${coverage} — ${review.summary}`;
       return item;
     }));

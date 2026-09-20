@@ -104,6 +104,44 @@ function assertReviewVerdict(verdict, criteria) {
   }
 }
 
+function normalizeVideoInspection(value) {
+  const inspection = requireObject(value, "review.inspection");
+  assertOnlyFields(inspection, ["version", "visual", "audio", "limitations"], "review.inspection");
+  if (inspection.version !== "1.0") throw new IntelligenceValidationError("review.inspection.version must be 1.0.");
+  const visual = requireObject(inspection.visual, "review.inspection.visual");
+  const audio = requireObject(inspection.audio, "review.inspection.audio");
+  assertOnlyFields(visual, ["method", "evidence"], "review.inspection.visual");
+  assertOnlyFields(audio, ["method", "evidence"], "review.inspection.audio");
+  if (!["not_reviewed", "sampled_frames", "motion_samples", "continuous_playback"].includes(visual.method)) {
+    throw new IntelligenceValidationError("review.inspection.visual.method is not supported.");
+  }
+  if (!["not_reviewed", "analysis_only", "sampled_listening", "continuous_listening", "not_applicable"].includes(audio.method)) {
+    throw new IntelligenceValidationError("review.inspection.audio.method is not supported.");
+  }
+  return {
+    version: "1.0",
+    visual: { method: visual.method, evidence: requireText(visual.evidence, "review.inspection.visual.evidence") },
+    audio: { method: audio.method, evidence: requireText(audio.evidence, "review.inspection.audio.evidence") },
+    limitations: normalizeStringList(inspection.limitations, "review.inspection.limitations")
+  };
+}
+
+function assertVideoInspectionVerdict(inspection, verdict) {
+  if (!["passed", "passed_with_notes"].includes(verdict)) return;
+  if (!["motion_samples", "continuous_playback"].includes(inspection.visual.method) ||
+      !["sampled_listening", "continuous_listening", "not_applicable"].includes(inspection.audio.method)) {
+    throw new IntelligenceValidationError("A positive creative video review requires motion evidence and listening to available audio.");
+  }
+  const limited = inspection.visual.method !== "continuous_playback" ||
+    !["continuous_listening", "not_applicable"].includes(inspection.audio.method);
+  if (limited && verdict === "passed") {
+    throw new IntelligenceValidationError("A sampled video review cannot have an unqualified passed verdict.");
+  }
+  if (limited && inspection.limitations.length === 0) {
+    throw new IntelligenceValidationError("A sampled video review must describe its inspection limits.");
+  }
+}
+
 export class ProjectIntelligenceStore {
   constructor({ rootDir, projectStore, skillCatalog = null }) {
     this.rootDir = rootDir;
@@ -365,7 +403,7 @@ export class ProjectIntelligenceStore {
     requireObject(value, "review");
     assertOnlyFields(
       value,
-      ["target", "perspective", "verdict", "summary", "criteria", "reviewer", "attestation"],
+      ["target", "perspective", "verdict", "summary", "criteria", "reviewer", "attestation", "inspection"],
       "review"
     );
     const target = this.#normalizeReviewTarget(value.target);
@@ -386,6 +424,20 @@ export class ProjectIntelligenceStore {
         assertReviewVerdict(verdict, criteria);
         const reviewer = value.reviewer ?? "agent";
         const attestation = value.attestation === undefined ? null : normalizeHumanAttestation(value.attestation);
+        if (perspective === "human" && value.inspection !== undefined) {
+          throw new IntelligenceValidationError("Human review uses direct confirmation, not agent inspection metadata.");
+        }
+        const inspection = value.inspection === undefined ? null : normalizeVideoInspection(value.inspection);
+        const creativeVideoReview = target.kind === "result" && targetState.result.type === "video.sequence-render" &&
+          reviewer === "agent" && ["creative", "combined"].includes(perspective);
+        if (creativeVideoReview && !inspection) {
+          throw new IntelligenceValidationError("Agent creative review of an exact video requires review.inspection.");
+        }
+        if (target.kind === "result" && targetState.result.type === "video.sequence-render" &&
+            inspection?.audio.method === "not_applicable" && targetState.result.data?.hasAudio !== false) {
+          throw new IntelligenceValidationError("review.inspection.audio cannot be not_applicable when the render has audio.");
+        }
+        if (creativeVideoReview) assertVideoInspectionVerdict(inspection, verdict);
         if (perspective === "human" && (target.kind !== "result" || reviewer !== "user" || !attestation)) {
           throw new IntelligenceValidationError("Human review requires a user attestation on an exact Result.");
         }
@@ -444,6 +496,7 @@ export class ProjectIntelligenceStore {
           summary: requireText(value.summary, "review.summary"),
           criteria,
           reviewer,
+          ...(inspection ? { inspection } : {}),
           ...(confirmation ? { confirmation: createHumanConfirmation("review_video", target.id) } : {}),
           ...(attestation ? { attestation, exactResult: {
             sha256: (await this.projectStore.verifyResultFile(projectId, target.id, "primary")).sha256,
@@ -579,7 +632,7 @@ export class ProjectIntelligenceStore {
     requireObject(value, "stored review");
     assertOnlyFields(
       value,
-      ["version", "id", "projectId", "target", "round", "perspective", "verdict", "summary", "criteria", "reviewer", "binding", "attestation", "exactResult", "confirmation", "createdAt"],
+      ["version", "id", "projectId", "target", "round", "perspective", "verdict", "summary", "criteria", "reviewer", "binding", "attestation", "exactResult", "confirmation", "inspection", "createdAt"],
       "stored review"
     );
     if (value.projectId !== projectId || value.version !== VERSION || !Number.isInteger(value.round) || value.round < 1) {
@@ -598,6 +651,11 @@ export class ProjectIntelligenceStore {
       throw new IntelligenceValidationError("Stored review payload is invalid.");
     }
     assertReviewVerdict(value.verdict, criteria);
+    if (value.inspection !== undefined) {
+      const inspection = normalizeVideoInspection(value.inspection);
+      if (value.perspective === "human") throw new IntelligenceValidationError("Stored human review cannot contain agent inspection metadata.");
+      if (["creative", "combined"].includes(value.perspective)) assertVideoInspectionVerdict(inspection, value.verdict);
+    }
     if (value.perspective === "human") {
       const { version: attestationVersion, ...storedAttestation } = value.attestation ?? {};
       if (attestationVersion !== VERSION) {

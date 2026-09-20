@@ -13,10 +13,11 @@ A result or artifact must be checked before continuation, delivery, or approval.
    and adaptive timeline samples to locate suspicious ranges, then judge those ranges against narration
    and intent instead of failing them mechanically. Compare expected speech and important terms with ASR
    when available, and never describe sampled-frame inspection as a complete watch.
-5. For each criterion, record evidence and a status.
-6. Every failure must include a timestamp/frame and a concrete proposed action; scan for repetitions
+5. For an exact video Result, record `inspection` with the actual visual and audio methods used, concrete evidence, and any limits. Frame samples establish states; motion samples establish trajectories; audio analysis or ASR does not establish what a listener hears. A positive creative review needs motion evidence and actual listening when the render has audio. Use `passed_with_notes` when coverage remains sampled, and name its limits. Do not claim continuous playback or listening unless it actually occurred.
+6. For each criterion, record evidence and a status.
+7. Every failure must include a timestamp/frame and a concrete proposed action; scan for repetitions
    of the same defect before asking for a revision.
-7. Record a verdict; do not silently repair or approve on the user's behalf.
+8. Record a verdict; do not silently repair or approve on the user's behalf.
 
 ## Standard
 
