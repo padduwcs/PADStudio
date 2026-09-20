@@ -17,7 +17,7 @@ Prototype hiện tại kiểm tra các phần của một vòng project có th�
 Chat vẫn nằm trong Agent host mà người dùng đang dùng. Các endpoint local chỉ
 phục vụ observer trong trình duyệt; chúng không phải cầu nối điều khiển Agent.
 
-Trạng thái bàn giao V1: [PADSTUDIO-V1-COMPLETION.md](docs/build/PADSTUDIO-V1-COMPLETION.md).
+Trạng thái bàn giao V1: [PADSTUDIO-V1-COMPLETION.md](docs/build/history/PADSTUDIO-V1-COMPLETION.md).
 
 ## Cấu trúc project
 
@@ -234,8 +234,8 @@ creative. Mốc Đợt 2 đạt 138/138; bộ repository hiện tại đạt 160
 npm run creative:acceptance -- --project phase2-brute-force-pilot --report reports/phase2-creative-direction-acceptance.json
 ```
 
-Kết quả và giới hạn: [Gói D](docs/build/CREATIVE-DIRECTION-PACKAGE-D.md) và
-[Gói E](docs/build/CREATIVE-DIRECTION-PACKAGE-E.md).
+Kết quả và giới hạn: [Gói D](docs/build/history/CREATIVE-DIRECTION-PACKAGE-D.md) và
+[Gói E](docs/build/history/CREATIVE-DIRECTION-PACKAGE-E.md).
 
 ## Source Understanding — gói B–F
 
@@ -259,13 +259,13 @@ $edit | npm run project:transcript-edit -- <project-id> -
 
 Reader hỗ trợ transcript/scene/frame/audio/assessment/search theo range và cursor; raw transcript
 không bị sửa bởi correction. CLI, context và observer dùng chung đường đọc. Contract và giới hạn:
-[gói B](docs/build/SOURCE-UNDERSTANDING-PACKAGE-B.md),
-[gói C](docs/build/SOURCE-UNDERSTANDING-PACKAGE-C.md),
-[gói D](docs/build/SOURCE-UNDERSTANDING-PACKAGE-D.md).
+[gói B](docs/build/history/SOURCE-UNDERSTANDING-PACKAGE-B.md),
+[gói C](docs/build/history/SOURCE-UNDERSTANDING-PACKAGE-C.md),
+[gói D](docs/build/history/SOURCE-UNDERSTANDING-PACKAGE-D.md).
 
 Gói E thêm workspace observer chỉ đọc để chọn nguồn/Result set, phát nguồn hoặc proxy theo source
 time, xem coverage/freshness và lazy-load transcript, scene, frame, audio, assessment, search.
-Contract UI và browser acceptance: [gói E](docs/build/SOURCE-UNDERSTANDING-PACKAGE-E.md).
+Contract UI và browser acceptance: [gói E](docs/build/history/SOURCE-UNDERSTANDING-PACKAGE-E.md).
 
 Gói F đã đóng nghiệm thu practical trên máy hiện tại bằng acceptance runner tổng hợp test, harness,
 doctor, verify và browser gate mở rộng. Chạy lại và ghi report bằng:
@@ -276,7 +276,7 @@ npm run analysis:acceptance -- --browser-project <project-id> --report <report-p
 
 Project browser acceptance cần có preview/transcript, nhiều Result set và đủ transcript để phân
 trang. Không truyền project sẽ trả trạng thái `incomplete`. Kết quả và các gate release còn
-`not_measured`: [gói F](docs/build/SOURCE-UNDERSTANDING-PACKAGE-F.md).
+`not_measured`: [gói F](docs/build/history/SOURCE-UNDERSTANDING-PACKAGE-F.md).
 
 Kiểm tra 16 broad-release gate fail-closed và chạy acceptance của chính evaluator bằng:
 
@@ -364,7 +364,7 @@ endpoint thay đổi project.
 
 Pilot local `phase3-vd04-asset-pilot` đã đi trọn nguồn → direction → graphic/Piper → sequence r9 →
 render/review, không gọi provider trả phí. Trạng thái và kế hoạch tiếp theo:
-[PADSTUDIO-STATE-AND-NEXT.md](docs/build/PADSTUDIO-STATE-AND-NEXT.md). Báo cáo:
+[PADSTUDIO-STATE-AND-NEXT.md](docs/build/history/PADSTUDIO-STATE-AND-NEXT.md). Báo cáo:
 [phase3-vd04-pilot-acceptance.json](reports/phase3-vd04-pilot-acceptance.json).
 
 ```powershell

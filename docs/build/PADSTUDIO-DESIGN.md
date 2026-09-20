@@ -81,4 +81,8 @@ Tên bảng dữ liệu, cấu trúc thư mục, API, trạng thái, mô hình A
 
 Khi cần biết các định hướng đã được chốt trong quá trình phát triển, đọc [PADSTUDIO-CURRENT-DIRECTION.md](PADSTUDIO-CURRENT-DIRECTION.md). Tài liệu này làm rõ trạng thái hiện tại nhưng không thay thế bản thiết kế gốc.
 
+Khi cần biết baseline code/test gần nhất và phân biệt tài liệu hiện hành với snapshot lịch sử, đọc
+[PADSTUDIO-DEVELOPMENT-STATUS.md](PADSTUDIO-DEVELOPMENT-STATUS.md). Tên file hoặc một báo cáo
+`completion` không tự xác định trạng thái sản phẩm.
+
 Khi cần dàn ý sâu hơn để bắt đầu một phần hệ thống, đọc [PADSTUDIO-BUILD-OUTLINE.md](PADSTUDIO-BUILD-OUTLINE.md). Khi chuẩn bị thay đổi code, đọc [DEVELOPMENT-PROTOCOL.md](DEVELOPMENT-PROTOCOL.md).

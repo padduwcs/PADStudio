@@ -1,7 +1,7 @@
 # Source Understanding — gói B: hợp đồng và vòng đời
 
 Trạng thái: **đã triển khai**. Tài liệu này ghi contract thực tế của gói B theo
-[`SOURCE-UNDERSTANDING-SPEC.md`](SOURCE-UNDERSTANDING-SPEC.md), không thay thế đặc tả toàn đợt.
+[`SOURCE-UNDERSTANDING-SPEC.md`](../SOURCE-UNDERSTANDING-SPEC.md), không thay thế đặc tả toàn đợt.
 Quyết định sử dụng gói A tại §18 vẫn giữ nguyên: `large-v3-gpu-fp16` là
 `practicalDefault`, không cần dataset riêng để bắt đầu sử dụng và không tuyên bố đã đạt gate
 holdout rộng.

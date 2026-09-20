@@ -2,6 +2,12 @@
 
 Tài liệu này ghi các định hướng đã chốt để làm rõ [`PADSTUDIO-DESIGN.md`](./PADSTUDIO-DESIGN.md); không thay thế bản thiết kế gốc.
 
+> **Cách đọc:** đây là sổ quyết định tích lũy, không phải dashboard trạng thái hay backlog tuyến tính.
+> Các mục có ngày giữ nguyên bối cảnh lúc quyết định được ghi; những câu “ưu tiên tiếp theo” bên
+> trong mục cũ không còn là chỉ dẫn hiện hành sau khi mốc sau đã được triển khai. Xem
+> [`PADSTUDIO-DEVELOPMENT-STATUS.md`](./PADSTUDIO-DEVELOPMENT-STATUS.md) để biết baseline code/test
+> gần nhất. Không suy ra sản phẩm đã hoàn chỉnh chỉ từ một mục có chữ “hoàn thành”.
+
 ## Agent bên ngoài, một project, observer chỉ đọc
 
 PADStudio là nơi Agent và người dùng cùng làm video mà không ép mọi project theo một pipeline cố định. Kiến trúc sản phẩm đã chốt không xây chat tích hợp:
@@ -258,9 +264,9 @@ không verify hay chạy tool ngầm và không thêm đường mutation.
 
 Runtime thiếu hoặc profile/model không đúng lock trả `blocked`, modality không tồn tại trả
 `not_applicable`; không tự tải model, fallback hay gọi harness gói A như production.
-Chi tiết: [gói B](./SOURCE-UNDERSTANDING-PACKAGE-B.md) và
-[gói C](./SOURCE-UNDERSTANDING-PACKAGE-C.md), [gói D](./SOURCE-UNDERSTANDING-PACKAGE-D.md),
-[gói E](./SOURCE-UNDERSTANDING-PACKAGE-E.md).
+Chi tiết: [gói B](./history/SOURCE-UNDERSTANDING-PACKAGE-B.md) và
+[gói C](./history/SOURCE-UNDERSTANDING-PACKAGE-C.md), [gói D](./history/SOURCE-UNDERSTANDING-PACKAGE-D.md),
+[gói E](./history/SOURCE-UNDERSTANDING-PACKAGE-E.md).
 
 ## Cấu trúc video và vòng sửa đã triển khai
 
@@ -288,7 +294,7 @@ ba viewport.
 Đợt 1 được đóng theo phạm vi practical đã chốt ở §18 đặc tả. `releaseDefault` vẫn là `null`;
 corpus holdout, ngưỡng ASR/scene, nguồn 2 giờ/4K/VFR/offset và benchmark 100 file/10 giờ vẫn là
 `not_measured`, không được mô tả là đã đạt. Chi tiết tại
-[SOURCE-UNDERSTANDING-PACKAGE-F.md](./SOURCE-UNDERSTANDING-PACKAGE-F.md).
+[SOURCE-UNDERSTANDING-PACKAGE-F.md](./history/SOURCE-UNDERSTANDING-PACKAGE-F.md).
 
 ## Ưu tiên tiếp theo
 
@@ -304,11 +310,11 @@ và workflow đã hoàn tất. Gói D đã bổ sung observer chỉ đọc cho v
 nghiệm thu round-trip, failure/recovery, freshness và browser. Đợt 3 đã hoàn tất một pilot local
 evidence-to-preview có graphic, Piper TTS thật, sequence/render, ASR và kiểm tra mix; không gọi
 dịch vụ trả phí. Trạng thái hiện hành và bước tiếp theo nằm trong
-[PADSTUDIO-STATE-AND-NEXT.md](./PADSTUDIO-STATE-AND-NEXT.md).
-Chi tiết tại [Gói B](./CREATIVE-DIRECTION-PACKAGE-B.md),
-[Gói C](./CREATIVE-DIRECTION-PACKAGE-C.md),
-[Gói D](./CREATIVE-DIRECTION-PACKAGE-D.md) và
-[Gói E](./CREATIVE-DIRECTION-PACKAGE-E.md).
+[PADSTUDIO-STATE-AND-NEXT.md](./history/PADSTUDIO-STATE-AND-NEXT.md).
+Chi tiết tại [Gói B](./history/CREATIVE-DIRECTION-PACKAGE-B.md),
+[Gói C](./history/CREATIVE-DIRECTION-PACKAGE-C.md),
+[Gói D](./history/CREATIVE-DIRECTION-PACKAGE-D.md) và
+[Gói E](./history/CREATIVE-DIRECTION-PACKAGE-E.md).
 
 ## Kiến trúc giao diện đã chốt
 

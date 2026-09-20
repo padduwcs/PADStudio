@@ -500,24 +500,24 @@ Bằng chứng: `eval/source-understanding/reports/2026-09-08/semantic-review.js
 
 Gói B — hợp đồng và vòng đời — đã được triển khai sau gói A. Contract thực tế, CLI, semantics
 resume/cancel/reconcile, giới hạn và bản đồ test được ghi tại
-[`SOURCE-UNDERSTANDING-PACKAGE-B.md`](SOURCE-UNDERSTANDING-PACKAGE-B.md).
+[`SOURCE-UNDERSTANDING-PACKAGE-B.md`](history/SOURCE-UNDERSTANDING-PACKAGE-B.md).
 
 Gói C — adapter production — đã được triển khai sau gói B. Sáu capability probe, scene, frame,
 audio analysis, ASR và preview đã được đăng ký vào default registry, chạy qua cùng lifecycle và
 được kiểm chứng trên tư liệu owner. Cấu hình, bằng chứng và giới hạn được ghi tại
-[`SOURCE-UNDERSTANDING-PACKAGE-C.md`](SOURCE-UNDERSTANDING-PACKAGE-C.md).
+[`SOURCE-UNDERSTANDING-PACKAGE-C.md`](history/SOURCE-UNDERSTANDING-PACKAGE-C.md).
 
 Gói D — hiểu biết và truy xuất — đã được triển khai sau gói C. Ba artifact chuyên biệt,
 evidence validation, reader/search/summary, verify freshness, context và observer API dùng chung
-được ghi tại [`SOURCE-UNDERSTANDING-PACKAGE-D.md`](SOURCE-UNDERSTANDING-PACKAGE-D.md).
+được ghi tại [`SOURCE-UNDERSTANDING-PACKAGE-D.md`](history/SOURCE-UNDERSTANDING-PACKAGE-D.md).
 
 Gói E — workspace observer — đã được triển khai sau gói D. Chọn nguồn/Result set, media theo
 source time, coverage/freshness, lazy-load evidence/search và browser acceptance được ghi tại
-[`SOURCE-UNDERSTANDING-PACKAGE-E.md`](SOURCE-UNDERSTANDING-PACKAGE-E.md).
+[`SOURCE-UNDERSTANDING-PACKAGE-E.md`](history/SOURCE-UNDERSTANDING-PACKAGE-E.md).
 
 Gói F — nghiệm thu phân hệ — đã hoàn thành sau gói E trong phạm vi sử dụng thực dụng trên máy
 owner. Acceptance runner, ma trận bằng chứng, browser gate mở rộng, kết quả và giới hạn được ghi tại
-[`SOURCE-UNDERSTANDING-PACKAGE-F.md`](SOURCE-UNDERSTANDING-PACKAGE-F.md).
+[`SOURCE-UNDERSTANDING-PACKAGE-F.md`](history/SOURCE-UNDERSTANDING-PACKAGE-F.md).
 
 Việc hoàn thành gói F áp dụng điều chỉnh §18: cấu hình dùng thực tế không đồng nghĩa đã đạt ngưỡng
 corpus rộng. Các gate §13 về gold holdout, chất lượng định lượng, nguồn 2 giờ/4K/VFR/offset và quy

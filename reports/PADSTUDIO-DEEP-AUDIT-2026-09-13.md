@@ -175,7 +175,7 @@ OpenMontage checkout được đối chiếu là commit `cd9f3c1` ngày 22/08/20
 
 ## Sources
 
-1. PADStudio, [trạng thái hiện tại](../docs/build/PADSTUDIO-STATE-AND-NEXT.md), các mục “Kiểm chứng mới nhất” và “Automated output QA”.
+1. PADStudio, [trạng thái tại thời điểm audit](../docs/build/history/PADSTUDIO-STATE-AND-NEXT.md), các mục “Kiểm chứng mới nhất” và “Automated output QA”.
 2. PADStudio, [tool registry](../src/execution/tool-registry.js) và runtime `tool:list`, kiểm tra ngày 13/09/2026.
 3. PADStudio, [release gates](../src/release/release-gates.js) và [manifest](../eval/release-gates/manifest.json).
 4. PADStudio, [định hướng hiện tại](../docs/build/PADSTUDIO-CURRENT-DIRECTION.md), các mục “Một UI, một project”, “Chat điều khiển, web quan sát” và “Triển khai tạm thời”.

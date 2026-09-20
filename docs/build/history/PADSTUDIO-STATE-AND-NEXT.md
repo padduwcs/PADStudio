@@ -1,6 +1,10 @@
 # PADStudio — trạng thái hiện tại và bước tiếp theo
 
-Cập nhật: **2026-09-15**. Đây là bản tóm tắt vận hành hiện hành; khi số liệu cũ trong tài liệu gói khác nhau, ưu tiên code, report nghiệm thu mới nhất và tài liệu này.
+> **Snapshot lịch sử.** File này tích lũy trạng thái và bằng chứng đến **2026-09-17**; tên file
+> được giữ để không phá liên kết cũ. Nó không còn là nguồn trạng thái hiện hành và các số test,
+> project ID hoặc “bước tiếp theo” bên dưới chỉ đúng tại thời điểm được ghi. Xem
+> [`PADSTUDIO-DEVELOPMENT-STATUS.md`](../PADSTUDIO-DEVELOPMENT-STATUS.md) trước; khi có khác biệt,
+> ưu tiên code và test đang chạy.
 
 ## Đã có và dùng được
 
@@ -40,7 +44,7 @@ Bundle bàn giao `result-mtynkixa-db2410bc` giữ nguyên SHA-256 video nguồn 
 
 - V1 repository: 274/274 test; source-analysis harness: 20/20.
 - Asset, production, operations và release-evaluator acceptance đều đạt; browser kiểm tra 390/768/1440 px.
-- Báo cáo bàn giao hiện hành: [PADSTUDIO-V1-COMPLETION.md](PADSTUDIO-V1-COMPLETION.md) và [padstudio-v1-completion.json](../../reports/padstudio-v1-completion.json).
+- Báo cáo bàn giao tại mốc này: [PADSTUDIO-V1-COMPLETION.md](PADSTUDIO-V1-COMPLETION.md) và [padstudio-v1-completion.json](../../../reports/padstudio-v1-completion.json).
 - `npm run operations:acceptance`: `passed_with_documented_limits`.
 - Repository: 226/226 pass; source-analysis harness: 20/20 pass.
 - Browser: timeline/seek, player preservation, conditional polling, lazy activity, feedback anchor, exact Result selection/comparison, Health và Delivery đều pass ở 390/768/1440 px.
@@ -50,7 +54,7 @@ Bundle bàn giao `result-mtynkixa-db2410bc` giữ nguyên SHA-256 video nguồn 
 - Persistence/reopen, target mismatch/out-of-range, explicit resolution, concurrent append/double-resolve và lock cleanup đều pass.
 - Delivery pilot: full decode, exact-byte copy, MP4/H.264/yuv420p 1080×1920 30 fps, AAC 48 kHz stereo, -18,46 LUFS, -3,97 dBTP, tail silence 0,355 giây đều pass.
 - Pilot thật Longest Substring: deep doctor `ready`, 39/39 file xác minh, 0 pending feedback/finalization; delivery r2 giữ exact SHA-256 của Result và đạt đủ 8 gate xuất bản local.
-- Báo cáo: [phase6b-operations-acceptance.json](../../reports/phase6b-operations-acceptance.json).
+- Báo cáo: [phase6b-operations-acceptance.json](../../../reports/phase6b-operations-acceptance.json).
 ## Giới hạn còn lại
 
 - Không có code nào được phép tự khẳng định đã xem/nghe: người dùng sẽ thực hiện human attestation trong lần dùng thử cuối.
@@ -78,11 +82,11 @@ ordinary render. Môi trường Windows hiện đã cài runtime cô lập và s
 Manim CE 0.21.0, Remotion 4.0.524 và HyperFrames 0.8.38; cả ba output mẫu đều được ffprobe xác nhận
 320x180, 24 fps, đúng một giây. Giới hạn an toàn còn lại là network isolation cấp OS chưa được cưỡng
 chế; contract yêu cầu approval exact source và báo rõ `not_enforced_by_host`. Chi tiết:
-[CODE-ANIMATION-SPEC.md](CODE-ANIMATION-SPEC.md).
+[CODE-ANIMATION-SPEC.md](../CODE-ANIMATION-SPEC.md).
 
 **V1 theo mô hình Agent ngoài đã hoàn thành về implementation.** Việc còn lại là user acceptance trên project thật và, nếu muốn tuyên bố broad release, cung cấp account/provider cùng corpus holdout và phép đo thật. Đây là kiểm chứng bên ngoài có chủ ý, không phải backlog code bị chia nhỏ.
 
-Project thật `real-pilot-longest-substring` đã đi qua import → probe/scenes/frames/audio/ASR/preview → brief/direction/sequence → render → review/acceptance → delivery. Lần tự duyệt phát hiện r1 cắt hụt âm cuối nên đã tạo r2 ở 320,2–330,0 giây. Exact Result hiện hành `result-mtzsqygo-18e21678` dài 9,821333 giây; exact-output ASR giữ trọn câu đến 9,36 giây, không có clipping candidate và hình đã được kiểm tra bằng contact sheet cùng lấy mẫu tiêu đề 4 fps. Theo ủy quyền rõ của người dùng, Decision `decision-mtzswrzy-57d409a2` chấp nhận đúng artifact r2; delivery `result-mtzswyx2-5fe1c724` giữ nguyên SHA-256 `9e519a1a06bf1cc22c9f26105b00b3b9098bef5561baee39e7b2e10b61b3ea5f`. Deep doctor `ready`, xác minh 39/39 file và không còn việc vận hành chờ. Bằng chứng ở [real-project-pilot.json](../../reports/real-project-pilot.json).
+Project thật `real-pilot-longest-substring` đã đi qua import → probe/scenes/frames/audio/ASR/preview → brief/direction/sequence → render → review/acceptance → delivery. Lần tự duyệt phát hiện r1 cắt hụt âm cuối nên đã tạo r2 ở 320,2–330,0 giây. Exact Result hiện hành `result-mtzsqygo-18e21678` dài 9,821333 giây; exact-output ASR giữ trọn câu đến 9,36 giây, không có clipping candidate và hình đã được kiểm tra bằng contact sheet cùng lấy mẫu tiêu đề 4 fps. Theo ủy quyền rõ của người dùng, Decision `decision-mtzswrzy-57d409a2` chấp nhận đúng artifact r2; delivery `result-mtzswyx2-5fe1c724` giữ nguyên SHA-256 `9e519a1a06bf1cc22c9f26105b00b3b9098bef5561baee39e7b2e10b61b3ea5f`. Deep doctor `ready`, xác minh 39/39 file và không còn việc vận hành chờ. Bằng chứng ở [real-project-pilot.json](../../../reports/real-project-pilot.json).
 
 ## Cập nhật Lượt 4 — automated output QA
 
@@ -106,7 +110,7 @@ như lịch sử và không còn là đường xuất hiện hành.
 Deep doctor sau cùng xác minh 69/69 file, không có file lỗi; checkpoint đã fresh và
 project trở lại `ready`.
 
-Bằng chứng tổng hợp: [phase7-output-qa-acceptance.json](../../reports/phase7-output-qa-acceptance.json).
+Bằng chứng tổng hợp: [phase7-output-qa-acceptance.json](../../../reports/phase7-output-qa-acceptance.json).
 
 Giới hạn còn lại không đổi: machine QA không thay thế việc một người thực sự xem toàn
 bộ video, nghe độ tự nhiên/cảm xúc của giọng và duyệt sáng tạo. Đây là lớp kiểm chứng
@@ -117,19 +121,19 @@ Bước tiếp theo không còn là hoàn tất pilot này mà là chọn cải 
 
 Đã triển khai sequence 1.1 và renderer composition: timing lời đọc, automation
 âm thanh, music/ducking/loudness, caption style, overlay, animation preset,
-transition và timeline quan sát. Chi tiết trong [đặc tả](PHASE4-PRODUCTION-SPEC.md).
+transition và timeline quan sát. Chi tiết trong [đặc tả](../PHASE4-PRODUCTION-SPEC.md).
 Bản sửa giữ footage nguồn 8 giây và concept card 4 giây. Tiếng nguồn tắt trong phần
 lời Piper đầu, mở có chủ ý từ giây 4–8; card có lời Piper riêng nên không còn khoảng
 im lặng 4,075 giây. Bản cũ và nhánh thử sai vẫn còn dưới dạng lịch sử. Phản hồi user
 đã ghi vào project; approval của người dùng chỉ gắn exact Result r10. Đợt 4 đã đóng.
 Trạng thái kiểm tra cuối nằm ở
-[report](../../reports/phase4-production-acceptance.json) và
-[pilot](../../reports/phase4-pilot.json). Tại thời điểm đóng Đợt 4, điểm bàn giao là review đúng bản này
+[report](../../../reports/phase4-production-acceptance.json) và
+[pilot](../../../reports/phase4-pilot.json). Tại thời điểm đóng Đợt 4, điểm bàn giao là review đúng bản này
 và chỉ chuyển đợt sau khi người phụ trách yêu cầu; điều đó nay đã diễn ra với Đợt 5A.
 
 ## Cập nhật Đợt 5A — 2026-09-12
 
-Observer đã chuyển sang snapshot theo generation/ETag, tách summary và detail tải lười, giữ player khi polling không đổi và thêm mốc phản hồi exact Result/artifact/revision/segment/time. Mutation artifact/workflow/review đã được tuần tự hóa; sửa workflow bắt buộc `expectedRevision`. Acceptance đạt 171/171 repository tests, 20/20 analysis tests và browser 390/768/1440; summary pilot 6.028 byte so với full context cũ 424.020 byte. Chi tiết tại [đặc tả](PHASE5A-OBSERVER-SPEC.md) và [report](../../reports/phase5a-observer-acceptance.json). Đợt 5A đã đạt acceptance riêng nhưng chưa đóng toàn bộ Đợt 5. Điểm tiếp tục là Đợt 5B; chỉ sau khi vòng feedback exact target và Agent summary được nghiệm thu mới đánh giá chuyển Đợt 6A.
+Observer đã chuyển sang snapshot theo generation/ETag, tách summary và detail tải lười, giữ player khi polling không đổi và thêm mốc phản hồi exact Result/artifact/revision/segment/time. Mutation artifact/workflow/review đã được tuần tự hóa; sửa workflow bắt buộc `expectedRevision`. Acceptance đạt 171/171 repository tests, 20/20 analysis tests và browser 390/768/1440; summary pilot 6.028 byte so với full context cũ 424.020 byte. Chi tiết tại [đặc tả](../PHASE5A-OBSERVER-SPEC.md) và [report](../../../reports/phase5a-observer-acceptance.json). Đợt 5A đã đạt acceptance riêng nhưng chưa đóng toàn bộ Đợt 5. Điểm tiếp tục là Đợt 5B; chỉ sau khi vòng feedback exact target và Agent summary được nghiệm thu mới đánh giá chuyển Đợt 6A.
 
 ## Cập nhật Đợt 5B — 2026-09-12
 
@@ -137,13 +141,13 @@ Decision của sequence render nay bắt buộc `feedbackTarget` khớp exact Re
 
 ## Cập nhật Đợt 6A — 2026-09-13
 
-Capability `video.export-delivery` và tool `local-delivery` đóng gói nguyên byte exact Result đã accepted. Gate từ chối approval cũ bị quyết định mới thay thế, pending feedback cùng sequence, stale dependency/analysis, run chưa finalization, thiếu/sai checksum, profile sai, decode lỗi, loudness/true peak/tail silence ngoài giới hạn. Mọi Result file mới đều có SHA-256; đường tool/UI xác minh checksum đã biết. Observer snapshot retry khi mutation xen giữa assemble và ETag. Project/Result Decision dùng chung mutex. Pilot r10 đã tạo bundle thật và feedback legacy được resolve bằng Decision append-only. Acceptance 183/183 + 20/20 + browser 390/768/1440 đạt; chi tiết ở [đặc tả](PHASE6A-LOCAL-DELIVERY-SPEC.md) và [report](../../reports/phase6a-delivery-acceptance.json).
+Capability `video.export-delivery` và tool `local-delivery` đóng gói nguyên byte exact Result đã accepted. Gate từ chối approval cũ bị quyết định mới thay thế, pending feedback cùng sequence, stale dependency/analysis, run chưa finalization, thiếu/sai checksum, profile sai, decode lỗi, loudness/true peak/tail silence ngoài giới hạn. Mọi Result file mới đều có SHA-256; đường tool/UI xác minh checksum đã biết. Observer snapshot retry khi mutation xen giữa assemble và ETag. Project/Result Decision dùng chung mutex. Pilot r10 đã tạo bundle thật và feedback legacy được resolve bằng Decision append-only. Acceptance 183/183 + 20/20 + browser 390/768/1440 đạt; chi tiết ở [đặc tả](../PHASE6A-LOCAL-DELIVERY-SPEC.md) và [report](../../../reports/phase6a-delivery-acceptance.json).
 
 ## Cập nhật Đợt 6B — 2026-09-13
 
 `padstudio:doctor` kiểm tra runtime, quyền đọc/ghi, dung lượng, capability bắt buộc/tùy chọn và health project; `--deep` xác minh từng Result file mà không sửa dữ liệu. `project:recover` mặc định chỉ lập kế hoạch, còn `--apply` chỉ hoàn tất bằng chứng đã bền vững dưới project lock, bỏ qua trường hợp không an toàn và chạy lặp không tạo Result/render trùng. Observer có Health chỉ đọc và Agent summary mang trạng thái sẵn sàng.
 
-Runbook vận hành nằm tại [OPERATIONS-RUNBOOK.md](../OPERATIONS-RUNBOOK.md). Acceptance tạo project mới, tiêm lỗi finalization sau render, reopen/recover, duyệt exact Result, xuất bundle, reopen/deep verify và kiểm tra browser; kết quả 191/191 repository tests, 20/20 analysis tests, 9/9 file fixture và ba viewport đều đạt. Chi tiết tại [đặc tả 6B](PHASE6B-OPERATIONS-SPEC.md) và [report](../../reports/phase6b-operations-acceptance.json). Đợt 6 practical đã đóng với các giới hạn đã ghi rõ.
+Runbook vận hành nằm tại [OPERATIONS-RUNBOOK.md](../../OPERATIONS-RUNBOOK.md). Acceptance tạo project mới, tiêm lỗi finalization sau render, reopen/recover, duyệt exact Result, xuất bundle, reopen/deep verify và kiểm tra browser; kết quả 191/191 repository tests, 20/20 analysis tests, 9/9 file fixture và ba viewport đều đạt. Chi tiết tại [đặc tả 6B](../PHASE6B-OPERATIONS-SPEC.md) và [report](../../../reports/phase6b-operations-acceptance.json). Đợt 6 practical đã đóng với các giới hạn đã ghi rõ.
 
 ## Cập nhật hardening — 2026-09-13
 

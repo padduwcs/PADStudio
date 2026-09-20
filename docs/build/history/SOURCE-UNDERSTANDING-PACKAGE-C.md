@@ -126,7 +126,7 @@ nguyên.
 ## Kiểm chứng
 
 Báo cáo máy đọc được:
-[package-c-verification.json](../../eval/source-understanding/reports/2026-09-09/package-c-verification.json).
+[package-c-verification.json](../../../eval/source-understanding/reports/2026-09-09/package-c-verification.json).
 
 Kiểm chứng tự động gồm:
 

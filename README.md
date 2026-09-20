@@ -40,6 +40,10 @@ người dùng không phải duyệt từng source code trung gian.
 
 Coding Agent làm theo router trong [`AGENTS.md`](AGENTS.md). Điểm vào tài liệu phát triển là [`docs/build/README.md`](docs/build/README.md); không dùng tài liệu Phase/Package lịch sử làm trạng thái hiện hành.
 
+PADStudio vẫn đang trong quá trình phát triển và chỉnh chu. Baseline code/test gần nhất cùng cách
+phân biệt tài liệu hiện hành với snapshot lịch sử nằm tại
+[`docs/build/PADSTUDIO-DEVELOPMENT-STATUS.md`](docs/build/PADSTUDIO-DEVELOPMENT-STATUS.md).
+
 ```powershell
 npm test
 npm run assets:acceptance
@@ -48,4 +52,7 @@ npm run operations:acceptance
 npm run release:acceptance
 ```
 
-Trạng thái V1 và giới hạn bằng chứng thực: [`docs/build/PADSTUDIO-V1-COMPLETION.md`](docs/build/PADSTUDIO-V1-COMPLETION.md). Hướng dẫn vận hành/backup/khôi phục: [`docs/OPERATIONS-RUNBOOK.md`](docs/OPERATIONS-RUNBOOK.md).
+Báo cáo mốc V1 ngày 2026-09-14 được giữ để truy vết tại
+[`docs/build/history/PADSTUDIO-V1-COMPLETION.md`](docs/build/history/PADSTUDIO-V1-COMPLETION.md); đó không phải
+tuyên bố trạng thái sản phẩm hiện tại. Hướng dẫn vận hành/backup/khôi phục:
+[`docs/OPERATIONS-RUNBOOK.md`](docs/OPERATIONS-RUNBOOK.md).

@@ -16,7 +16,7 @@ lỗi và phục hồi, observer chỉ đọc, freshness của nguồn và trìn
 - Render r2 giữ reuse **6/7 segment**; không còn workflow hoặc approval đang chờ.
 - Không dùng mạng, provider trả phí hay phát sinh chi phí.
 
-Báo cáo máy đọc được: [phase2-creative-direction-acceptance.json](../../reports/phase2-creative-direction-acceptance.json).
+Báo cáo máy đọc được: [phase2-creative-direction-acceptance.json](../../../reports/phase2-creative-direction-acceptance.json).
 
 ## Chạy lại
 

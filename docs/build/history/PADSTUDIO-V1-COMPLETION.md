@@ -1,6 +1,11 @@
 # PADStudio V1 — completion report
 
-Updated: **2026-09-14**. Status: **implementation complete; ready for owner user acceptance**.
+> **Milestone report, không phải trạng thái sản phẩm hiện tại.** Tài liệu này đóng băng bằng chứng
+> của lát cắt V1 ngày **2026-09-14**. “Implementation complete” bên dưới chỉ nói về phạm vi lát cắt
+> đã chốt lúc đó; PADStudio vẫn đang được phát triển và chưa được chứng nhận broad release. Trạng
+> thái gần nhất nằm tại [`PADSTUDIO-DEVELOPMENT-STATUS.md`](../PADSTUDIO-DEVELOPMENT-STATUS.md).
+
+Updated: **2026-09-14**. Milestone status at that time: **implementation complete; ready for owner user acceptance**.
 
 ## Product boundary
 
@@ -32,4 +37,4 @@ PADStudio V1 uses an external Agent host for chat and control. The local web app
 
 Machine verification does not claim that a person watched or listened, that an unavailable provider account works, or that a real independent holdout corpus meets broad-release thresholds. Those are the owner's user-acceptance and release-evidence inputs, not unfinished implementation.
 
-Machine-readable summary: [padstudio-v1-completion.json](../../reports/padstudio-v1-completion.json).
+Machine-readable summary: [padstudio-v1-completion.json](../../../reports/padstudio-v1-completion.json).

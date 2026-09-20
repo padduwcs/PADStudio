@@ -1,7 +1,7 @@
 # Source Understanding — gói E: workspace observer
 
 Cập nhật: **2026-09-09**. Tài liệu này ghi phạm vi thực tế sau khi triển khai gói E.
-Đặc tả toàn đợt vẫn là [SOURCE-UNDERSTANDING-SPEC.md](SOURCE-UNDERSTANDING-SPEC.md);
+Đặc tả toàn đợt vẫn là [SOURCE-UNDERSTANDING-SPEC.md](../SOURCE-UNDERSTANDING-SPEC.md);
 đường đọc mà UI sử dụng được chốt tại
 [SOURCE-UNDERSTANDING-PACKAGE-D.md](SOURCE-UNDERSTANDING-PACKAGE-D.md).
 

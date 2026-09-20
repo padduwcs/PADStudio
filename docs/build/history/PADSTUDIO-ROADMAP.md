@@ -1,5 +1,9 @@
 # PADStudio — lộ trình 6 đợt
 
+> **Lộ trình lịch sử.** Tài liệu này mô tả sáu đợt practical đã dùng để xây nền hiện có; nó không
+> phải backlog phát triển hiện hành. Xem [`PADSTUDIO-DEVELOPMENT-STATUS.md`](../PADSTUDIO-DEVELOPMENT-STATUS.md)
+> trước khi chọn việc mới.
+
 Cập nhật: **2026-09-13**. Hiện tại: **cả sáu đợt đã hoàn thành practical trên máy chủ sở hữu**. Bước tiếp theo là dùng trên project thật và chỉ mở phạm vi mới từ ma sát có bằng chứng. Ảnh AI, search stock và ElevenLabs thật chưa được dùng. Đây là bản đồ phát triển, không phải chứng nhận release rộng.
 
 ## 1. Cách dùng lộ trình
@@ -12,7 +16,7 @@ Cập nhật: **2026-09-13**. Hiện tại: **cả sáu đợt đã hoàn thành
 - Sau nghiệm thu và dùng thử, cập nhật phạm vi đợt tiếp theo. Thứ tự có thể điều chỉnh khi có lý do cụ thể; không tự biến ý tưởng mới thành yêu cầu bắt buộc.
 - Bảo toàn dữ liệu, liên kết đúng nguồn, báo lỗi và kiểm tra phù hợp là yêu cầu xuyên suốt. Không dồn việc kiểm thử hoặc giao diện thiết yếu đến đợt cuối.
 
-Đây là thứ tự **phát triển ứng dụng**, không phải pipeline bắt buộc cho từng video. Agent vẫn chọn cách làm theo project; chat điều khiển, web quan sát theo [định hướng hiện tại](PADSTUDIO-CURRENT-DIRECTION.md).
+Đây là thứ tự **phát triển ứng dụng**, không phải pipeline bắt buộc cho từng video. Agent vẫn chọn cách làm theo project; chat điều khiển, web quan sát theo [định hướng hiện tại](../PADSTUDIO-CURRENT-DIRECTION.md).
 
 ## 2. Bản đồ tổng thể
 
@@ -44,9 +48,9 @@ Các điều kiện trên là định hướng đầu ra. Trước mỗi đợt 
 
 Đợt 1 được đóng theo điều chỉnh §18 ở mức sử dụng thực dụng, không quy đổi thành chứng nhận phát hành rộng. Acceptance đã kiểm tra vòng tạo/mở lại, cancel/resume/reconcile, runtime failure, stale/missing/tampered data, pagination/range/nhiều Result set, capability regression và browser. Báo cáo giữ `releaseDefault: null` và đánh dấu riêng corpus holdout, ngưỡng ASR/scene, nguồn 2 giờ/4K/VFR/offset cùng benchmark 100 file/10 giờ là `not_measured`.
 
-Bằng chứng và cách chạy lại nằm tại [SOURCE-UNDERSTANDING-PACKAGE-F.md](SOURCE-UNDERSTANDING-PACKAGE-F.md) và [package-f-verification.json](../../eval/source-understanding/reports/2026-09-09/package-f-verification.json). Không được suy diễn trạng thái practical thành các gate §13 chưa đo.
+Bằng chứng và cách chạy lại nằm tại [SOURCE-UNDERSTANDING-PACKAGE-F.md](SOURCE-UNDERSTANDING-PACKAGE-F.md) và [package-f-verification.json](../../../eval/source-understanding/reports/2026-09-09/package-f-verification.json). Không được suy diễn trạng thái practical thành các gate §13 chưa đo.
 
-**Đợt 2 đã hoàn thành practical — Định hướng sáng tạo và duyệt mẫu.** Gói A–C đã chốt hợp đồng, direction `keys-first`, dựng/sửa mẫu r2, reuse 6/7 segment và exact user approval. Gói D đã nối vòng creative/sample vào observer chỉ đọc. Gói E đã nghiệm thu 138/138 test, freshness và browser ở ba viewport. Chi tiết tại [đặc tả](CREATIVE-DIRECTION-SPEC.md), [Gói D](CREATIVE-DIRECTION-PACKAGE-D.md) và [Gói E](CREATIVE-DIRECTION-PACKAGE-E.md).
+**Đợt 2 đã hoàn thành practical — Định hướng sáng tạo và duyệt mẫu.** Gói A–C đã chốt hợp đồng, direction `keys-first`, dựng/sửa mẫu r2, reuse 6/7 segment và exact user approval. Gói D đã nối vòng creative/sample vào observer chỉ đọc. Gói E đã nghiệm thu 138/138 test, freshness và browser ở ba viewport. Chi tiết tại [đặc tả](../CREATIVE-DIRECTION-SPEC.md), [Gói D](CREATIVE-DIRECTION-PACKAGE-D.md) và [Gói E](CREATIVE-DIRECTION-PACKAGE-E.md).
 
 ## 4. Giữ khối lượng vừa đủ ở các đợt sau
 
@@ -62,18 +66,18 @@ Sau mỗi đợt chỉ cần ghi: **đã dùng được gì, còn giới hạn g
 
 ## 5. Tài liệu để tiếp tục
 
-- [Đặc tả đợt 2](CREATIVE-DIRECTION-SPEC.md): pilot, hợp đồng, workflow, các gói và nghiệm thu định hướng sáng tạo/duyệt mẫu.
+- [Đặc tả đợt 2](../CREATIVE-DIRECTION-SPEC.md): pilot, hợp đồng, workflow, các gói và nghiệm thu định hướng sáng tạo/duyệt mẫu.
 - [Gói B đợt 2](CREATIVE-DIRECTION-PACKAGE-B.md): project pilot thật, bằng chứng nguồn, ba phương án và user approval gắn đúng revision.
 - [Gói C đợt 2](CREATIVE-DIRECTION-PACKAGE-C.md): sequence/render thật, review, sửa cục bộ có reuse và user approval cho exact result.
 - [Gói D đợt 2](CREATIVE-DIRECTION-PACKAGE-D.md): observer chỉ đọc cho brief, proposal, direction, sample, review và approval.
 - [Gói E đợt 2](CREATIVE-DIRECTION-PACKAGE-E.md): cổng nghiệm thu, bằng chứng và giới hạn practical.
-- [Đặc tả đợt 1](SOURCE-UNDERSTANDING-SPEC.md): phạm vi kỹ thuật, các bước, nghiệm thu và điều chỉnh đã ghi.
-- [Bước 1 — review thực tế](../../eval/source-understanding/PRACTICAL-REVIEW.md), [bước 2 — hợp đồng/vòng đời](SOURCE-UNDERSTANDING-PACKAGE-B.md), [bước 3 — công cụ](SOURCE-UNDERSTANDING-PACKAGE-C.md), [bước 4 — hiểu biết/truy xuất](SOURCE-UNDERSTANDING-PACKAGE-D.md), [bước 5 — workspace observer](SOURCE-UNDERSTANDING-PACKAGE-E.md), [bước 6 — nghiệm thu phân hệ](SOURCE-UNDERSTANDING-PACKAGE-F.md): kết quả và giới hạn đã có.
-- [Báo cáo kiểm chứng bước 3](../../eval/source-understanding/reports/2026-09-09/package-c-verification.json): bằng chứng kiểm tra đã lưu.
-- [Trí tuệ project và workflow](PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md), [sequence và renderer](VIDEO-SEQUENCE-PRODUCTION.md): nền dùng tiếp ở các đợt sau.
-- [Trạng thái hiện tại và bước tiếp theo](PADSTUDIO-STATE-AND-NEXT.md), [đặc tả Đợt 6B](PHASE6B-OPERATIONS-SPEC.md), [runbook](../OPERATIONS-RUNBOOK.md), [báo cáo nghiệm thu Đợt 6B](../../reports/phase6b-operations-acceptance.json): bằng chứng bàn giao local, doctor, recovery và acceptance end-to-end.
+- [Đặc tả đợt 1](../SOURCE-UNDERSTANDING-SPEC.md): phạm vi kỹ thuật, các bước, nghiệm thu và điều chỉnh đã ghi.
+- [Bước 1 — review thực tế](../../../eval/source-understanding/PRACTICAL-REVIEW.md), [bước 2 — hợp đồng/vòng đời](SOURCE-UNDERSTANDING-PACKAGE-B.md), [bước 3 — công cụ](SOURCE-UNDERSTANDING-PACKAGE-C.md), [bước 4 — hiểu biết/truy xuất](SOURCE-UNDERSTANDING-PACKAGE-D.md), [bước 5 — workspace observer](SOURCE-UNDERSTANDING-PACKAGE-E.md), [bước 6 — nghiệm thu phân hệ](SOURCE-UNDERSTANDING-PACKAGE-F.md): kết quả và giới hạn đã có.
+- [Báo cáo kiểm chứng bước 3](../../../eval/source-understanding/reports/2026-09-09/package-c-verification.json): bằng chứng kiểm tra đã lưu.
+- [Trí tuệ project và workflow](../PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md), [sequence và renderer](../VIDEO-SEQUENCE-PRODUCTION.md): nền dùng tiếp ở các đợt sau.
+- [Trạng thái tại mốc này](PADSTUDIO-STATE-AND-NEXT.md), [đặc tả Đợt 6B](../PHASE6B-OPERATIONS-SPEC.md), [runbook](../../OPERATIONS-RUNBOOK.md), [báo cáo nghiệm thu Đợt 6B](../../../reports/phase6b-operations-acceptance.json): bằng chứng bàn giao local, doctor, recovery và acceptance end-to-end.
 
-Lộ trình bổ sung cách tổ chức công việc; không thay thế [thiết kế](PADSTUDIO-DESIGN.md), [định hướng](PADSTUDIO-CURRENT-DIRECTION.md) hoặc tự ghi đè hợp đồng đã triển khai.
+Lộ trình bổ sung cách tổ chức công việc; không thay thế [thiết kế](../PADSTUDIO-DESIGN.md), [định hướng](../PADSTUDIO-CURRENT-DIRECTION.md) hoặc tự ghi đè hợp đồng đã triển khai.
 
 ## Đợt 3 — gói nguyên liệu dùng chung
 
@@ -83,13 +87,13 @@ thật trong sequence/render local, sửa lỗi phát âm/mix, review bằng fra
 khép project không còn blocker. ElevenLabs cloud thật chưa được gọi do chưa có API key người dùng;
 ở thời điểm đóng đợt 3, ảnh AI và search stock chưa triển khai vì chưa có nhu cầu pilot bắt buộc.
 V1 sau đó đã bổ sung Wikimedia stock search và đường đăng ký asset sinh ngoài có provenance. Đợt 3 được xem là hoàn
-thành ở phạm vi practical-local này. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](./ASSET-CAPABILITIES-SPEC.md),
-[TTS-CAPABILITY.md](./TTS-CAPABILITY.md) và [báo cáo pilot](../../reports/phase3-vd04-pilot-acceptance.json).
+thành ở phạm vi practical-local này. Chi tiết trong [ASSET-CAPABILITIES-SPEC.md](../ASSET-CAPABILITIES-SPEC.md),
+[TTS-CAPABILITY.md](../TTS-CAPABILITY.md) và [báo cáo pilot](../../../reports/phase3-vd04-pilot-acceptance.json).
 
 ## Cập nhật 2026-09-12 — Đợt 4
 
 Phạm vi composition được duyệt đã có implementation và bộ acceptance riêng:
-[đặc tả](PHASE4-PRODUCTION-SPEC.md). Nghiệm thu kỹ thuật và trạng thái pilot nằm
+[đặc tả](../PHASE4-PRODUCTION-SPEC.md). Nghiệm thu kỹ thuật và trạng thái pilot nằm
 trong reports/phase4-production-acceptance.json và reports/phase4-pilot.json.
 Bản sửa `pilot-preview` r10 dài 12 giây đã được người dùng duyệt; nhánh thử sai đã
 retire và project chỉ còn một sequence hiện hành. Đợt 4 đã đóng; điểm tiếp tục là
@@ -97,11 +101,11 @@ retire và project chỉ còn một sequence hiện hành. Đợt 4 đã đóng;
 
 ## Cập nhật 2026-09-12 — Đợt 5
 
-Đợt 5A đã hoàn thiện observer conditional theo generation/ETag, payload tải lười, timeline/seek, bảo toàn player và mốc feedback exact revision. Đợt 5B đã khép vòng còn lại: chọn/so sánh exact render Result, Decision có `feedbackTarget` Result/artifact revision/segment/time được validate và lưu bền vững, explicit resolution, pending feedback cho Agent, summary pilot 19.008 byte và sửa race lock Windows. Acceptance đạt 177/177 repository tests, 20/20 analysis tests và browser 390/768/1440. Bằng chứng ở [đặc tả 5A](PHASE5A-OBSERVER-SPEC.md), [đặc tả 5B](PHASE5B-EXACT-FEEDBACK-SPEC.md) và [report 5B](../../reports/phase5b-feedback-acceptance.json). Đợt 5 đã đóng.
+Đợt 5A đã hoàn thiện observer conditional theo generation/ETag, payload tải lười, timeline/seek, bảo toàn player và mốc feedback exact revision. Đợt 5B đã khép vòng còn lại: chọn/so sánh exact render Result, Decision có `feedbackTarget` Result/artifact revision/segment/time được validate và lưu bền vững, explicit resolution, pending feedback cho Agent, summary pilot 19.008 byte và sửa race lock Windows. Acceptance đạt 177/177 repository tests, 20/20 analysis tests và browser 390/768/1440. Bằng chứng ở [đặc tả 5A](../PHASE5A-OBSERVER-SPEC.md), [đặc tả 5B](../PHASE5B-EXACT-FEEDBACK-SPEC.md) và [report 5B](../../../reports/phase5b-feedback-acceptance.json). Đợt 5 đã đóng.
 
 ## Cập nhật 2026-09-13 — Đợt 6A
 
-Đường local delivery đã hoàn chỉnh cho profile video pilot: exact accepted/current Result, finalization và freshness gate, SHA-256 mọi Result file mới, full decode/media/audio validation, bundle provenance/review/approval/checksums và Observer Delivery chỉ đọc. Đồng thời đã sửa race snapshot/ETag và mutex Decision. Bundle pilot giữ nguyên byte r10; acceptance đạt 183/183 repository tests, 20/20 analysis tests và browser ba viewport. Xem [đặc tả](PHASE6A-LOCAL-DELIVERY-SPEC.md) và [report](../../reports/phase6a-delivery-acceptance.json). Điểm tiếp tục là Đợt 6B cho setup/doctor/recovery/hướng dẫn và acceptance end-to-end; không tự mở publishing provider.
+Đường local delivery đã hoàn chỉnh cho profile video pilot: exact accepted/current Result, finalization và freshness gate, SHA-256 mọi Result file mới, full decode/media/audio validation, bundle provenance/review/approval/checksums và Observer Delivery chỉ đọc. Đồng thời đã sửa race snapshot/ETag và mutex Decision. Bundle pilot giữ nguyên byte r10; acceptance đạt 183/183 repository tests, 20/20 analysis tests và browser ba viewport. Xem [đặc tả](../PHASE6A-LOCAL-DELIVERY-SPEC.md) và [report](../../../reports/phase6a-delivery-acceptance.json). Điểm tiếp tục là Đợt 6B cho setup/doctor/recovery/hướng dẫn và acceptance end-to-end; không tự mở publishing provider.
 
 ## Cập nhật 2026-09-13 — Đợt 6B
 

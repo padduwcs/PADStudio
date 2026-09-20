@@ -2,7 +2,7 @@
 
 Trạng thái: **đã hoàn thành ở phạm vi practical trên máy owner**. Cập nhật: **2026-09-11**.
 
-Tài liệu này chốt phạm vi kỹ thuật cho Đợt 2 của [lộ trình](./PADSTUDIO-ROADMAP.md), tuân theo
+Tài liệu này chốt phạm vi kỹ thuật cho Đợt 2 của [lộ trình](./history/PADSTUDIO-ROADMAP.md), tuân theo
 [thiết kế](./PADSTUDIO-DESIGN.md), [định hướng hiện tại](./PADSTUDIO-CURRENT-DIRECTION.md) và
 tái sử dụng [Project Intelligence + Adaptive Workflow](./PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md).
 
@@ -171,7 +171,7 @@ template library, chat tích hợp hay ngân sách trả phí. Chỉ mở khi pi
 Người dùng đã duyệt exact render r2 sau một sửa đổi cục bộ và 6/7 segment được reuse.
 Observer chỉ đọc đã nối toàn bộ vòng creative; cổng nghiệm thu đạt 138/138 test, freshness và browser
 ở ba viewport. Đợt 2 vì vậy đã hoàn thành ở phạm vi practical trên máy owner. Bằng chứng nằm tại
-[CREATIVE-DIRECTION-PACKAGE-B.md](./CREATIVE-DIRECTION-PACKAGE-B.md) và
-[CREATIVE-DIRECTION-PACKAGE-C.md](./CREATIVE-DIRECTION-PACKAGE-C.md),
-[CREATIVE-DIRECTION-PACKAGE-D.md](./CREATIVE-DIRECTION-PACKAGE-D.md) và
-[CREATIVE-DIRECTION-PACKAGE-E.md](./CREATIVE-DIRECTION-PACKAGE-E.md).
+[CREATIVE-DIRECTION-PACKAGE-B.md](./history/CREATIVE-DIRECTION-PACKAGE-B.md) và
+[CREATIVE-DIRECTION-PACKAGE-C.md](./history/CREATIVE-DIRECTION-PACKAGE-C.md),
+[CREATIVE-DIRECTION-PACKAGE-D.md](./history/CREATIVE-DIRECTION-PACKAGE-D.md) và
+[CREATIVE-DIRECTION-PACKAGE-E.md](./history/CREATIVE-DIRECTION-PACKAGE-E.md).

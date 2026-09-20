@@ -4,7 +4,7 @@ Cập nhật: **2026-09-09**. Trạng thái: **đã hoàn thành trong phạm vi
 owner, với các giới hạn phát hành rộng được ghi rõ**.
 
 Gói F đóng đợt 1 theo điều chỉnh nghiệm thu §18 của
-[`SOURCE-UNDERSTANDING-SPEC.md`](SOURCE-UNDERSTANDING-SPEC.md): dùng cấu hình đã kiểm chứng trên
+[`SOURCE-UNDERSTANDING-SPEC.md`](../SOURCE-UNDERSTANDING-SPEC.md): dùng cấu hình đã kiểm chứng trên
 máy hiện tại, không yêu cầu corpus độc lập để chặn sử dụng, không tuyên bố các gate chưa đo đã đạt.
 `large-v3-gpu-fp16` tiếp tục là `practicalDefault`; `releaseDefault` tiếp tục là `null`.
 
@@ -36,7 +36,7 @@ hành. Nếu không truyền project, runner vẫn chạy test/harness/doctor nh
 ## Kết quả trên máy hiện tại
 
 Báo cáo máy đọc được:
-[`package-f-verification.json`](../../eval/source-understanding/reports/2026-09-09/package-f-verification.json).
+[`package-f-verification.json`](../../../eval/source-understanding/reports/2026-09-09/package-f-verification.json).
 
 | Gate | Kết quả |
 | --- | --- |

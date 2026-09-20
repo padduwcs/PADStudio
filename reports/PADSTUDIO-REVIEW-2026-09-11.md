@@ -149,7 +149,7 @@ Bước triển khai gần nhất nên là **chốt bài toán nguyên liệu v�
 
 [1] PADStudio, [Thiết kế](../docs/build/PADSTUDIO-DESIGN.md) và [Định hướng hiện tại](../docs/build/PADSTUDIO-CURRENT-DIRECTION.md), checkout 0026aa8.
 
-[2] PADStudio, [Lộ trình 6 đợt](../docs/build/PADSTUDIO-ROADMAP.md), cập nhật 11/09/2026.
+[2] PADStudio, [Lộ trình 6 đợt](../docs/build/history/PADSTUDIO-ROADMAP.md), cập nhật 11/09/2026.
 
 [3] PADStudio, [README tại thời điểm review](../PADSTUDIO-REFERENCE.md), [Agent runtime tại thời điểm review](../PADSTUDIO-AGENT-REFERENCE.md), [package.json](../package.json).
 
@@ -159,11 +159,11 @@ Bước triển khai gần nhất nên là **chốt bài toán nguyên liệu v�
 
 [6] PADStudio, [Video sequence contract](../docs/build/VIDEO-SEQUENCE-PRODUCTION.md), [Renderer](../src/tools/ffmpeg-sequence-renderer.js).
 
-[7] PADStudio, [Source Understanding gói F](../docs/build/SOURCE-UNDERSTANDING-PACKAGE-F.md), [Analysis service](../src/analysis/analysis-service.js), [Analysis reader](../src/analysis/analysis-reader.js).
+[7] PADStudio, [Source Understanding gói F](../docs/build/history/SOURCE-UNDERSTANDING-PACKAGE-F.md), [Analysis service](../src/analysis/analysis-service.js), [Analysis reader](../src/analysis/analysis-reader.js).
 
 [8] PADStudio, [Creative Direction spec](../docs/build/CREATIVE-DIRECTION-SPEC.md), [Creative contracts](../src/intelligence/creative-artifacts.js).
 
-[9] PADStudio, [Pilot gói C](../docs/build/CREATIVE-DIRECTION-PACKAGE-C.md), [Nghiệm thu gói E](../docs/build/CREATIVE-DIRECTION-PACKAGE-E.md), [Báo cáo nghiệm thu đã lưu](phase2-creative-direction-acceptance.json); đối chiếu thêm project runtime local phase2-brute-force-pilot ngày 11/09/2026.
+[9] PADStudio, [Pilot gói C](../docs/build/history/CREATIVE-DIRECTION-PACKAGE-C.md), [Nghiệm thu gói E](../docs/build/history/CREATIVE-DIRECTION-PACKAGE-E.md), [Báo cáo nghiệm thu đã lưu](phase2-creative-direction-acceptance.json); đối chiếu thêm project runtime local phase2-brute-force-pilot ngày 11/09/2026.
 
 [10] PADStudio, [Baseline](../eval/source-understanding/BASELINE-REPORT.md), [Practical review](../eval/source-understanding/PRACTICAL-REVIEW.md), 08/09/2026; đối chiếu metadata 25 video local ngày 11/09/2026.
 

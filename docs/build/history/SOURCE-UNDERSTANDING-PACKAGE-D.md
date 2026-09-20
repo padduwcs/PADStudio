@@ -1,7 +1,7 @@
 # Source Understanding — gói D: hiểu biết và truy xuất
 
 Cập nhật: **2026-09-09**. Tài liệu này ghi contract thực tế sau khi triển khai gói D.
-Đặc tả tổng thể vẫn là [SOURCE-UNDERSTANDING-SPEC.md](SOURCE-UNDERSTANDING-SPEC.md).
+Đặc tả tổng thể vẫn là [SOURCE-UNDERSTANDING-SPEC.md](../SOURCE-UNDERSTANDING-SPEC.md).
 
 ## Phạm vi đã hoàn thành
 

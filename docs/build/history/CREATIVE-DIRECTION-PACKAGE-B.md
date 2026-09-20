@@ -2,7 +2,7 @@
 
 Trạng thái: **đã hoàn thành, hướng pilot đã được người dùng phê duyệt**. Ngày kiểm tra: **2026-09-10**.
 
-Gói này hiện thực hóa pilot đã chốt trong [đặc tả Đợt 2](./CREATIVE-DIRECTION-SPEC.md).
+Gói này hiện thực hóa pilot đã chốt trong [đặc tả Đợt 2](../CREATIVE-DIRECTION-SPEC.md).
 Nó không dựng sample; việc đó thuộc Gói C sau khi người dùng duyệt hướng.
 
 ## Kết quả
@@ -16,7 +16,7 @@ Project local `phase2-brute-force-pilot` đã được tạo trong `.padstudio/p
 - workflow phê duyệt đã hoàn tất và checkpoint mở lại ở đầu Gói C.
 
 Project runtime được gitignore theo thiết kế. Báo cáo bằng chứng có thể review nằm tại
-[`package-b-pilot.json`](../../eval/creative-direction/reports/2026-09-10/package-b-pilot.json).
+[`package-b-pilot.json`](../../../eval/creative-direction/reports/2026-09-10/package-b-pilot.json).
 
 ## Bằng chứng nguồn
 

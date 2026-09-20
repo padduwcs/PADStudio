@@ -100,7 +100,7 @@ Mọi nhận xét có hệ quả phải dẫn Result/item/file/range tồn tại
 `evidenceReviewed`. Không ghi `watched`/`listened` nếu chỉ đọc transcript hoặc xem
 contact sheet. Khi sửa artifact, đọc revision mới nhất và truyền `expectedRevision`
 cùng `changeReason`. Contract đầy đủ:
-[SOURCE-UNDERSTANDING-PACKAGE-D.md](docs/build/SOURCE-UNDERSTANDING-PACKAGE-D.md).
+[SOURCE-UNDERSTANDING-PACKAGE-D.md](docs/build/history/SOURCE-UNDERSTANDING-PACKAGE-D.md).
 
 ## Dùng project intelligence và workflow thích nghi
 

@@ -20,7 +20,7 @@ Gói C tiếp tục pilot `phase2-brute-force-pilot` từ direction `keys-first`
 Preview đã duyệt nằm trong project runtime tại
 `.padstudio/projects/phase2-brute-force-pilot/outputs/run-mtv3bu4k-7cbe2621/preview.mp4`.
 Runtime được gitignore theo thiết kế; báo cáo bằng chứng có thể review nằm tại
-[`package-c-pilot.json`](../../eval/creative-direction/reports/2026-09-10/package-c-pilot.json).
+[`package-c-pilot.json`](../../../eval/creative-direction/reports/2026-09-10/package-c-pilot.json).
 
 ## Cấu trúc nội dung
 

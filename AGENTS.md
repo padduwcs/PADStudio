@@ -26,11 +26,15 @@ Trước khi thay đổi:
 
 1. Đọc [`docs/build/PADSTUDIO-DESIGN.md`](docs/build/PADSTUDIO-DESIGN.md).
 2. Đọc [`docs/build/PADSTUDIO-CURRENT-DIRECTION.md`](docs/build/PADSTUDIO-CURRENT-DIRECTION.md).
-3. Đọc phần liên quan trong [`docs/build/PADSTUDIO-BUILD-OUTLINE.md`](docs/build/PADSTUDIO-BUILD-OUTLINE.md).
-4. Đọc [`docs/build/DEVELOPMENT-PROTOCOL.md`](docs/build/DEVELOPMENT-PROTOCOL.md).
-5. Kiểm tra code và test liên quan; nêu mục tiêu, phạm vi, giả định và cách xác minh.
+3. Đọc [`docs/build/PADSTUDIO-DEVELOPMENT-STATUS.md`](docs/build/PADSTUDIO-DEVELOPMENT-STATUS.md)
+   để phân biệt baseline hiện tại với snapshot hoặc báo cáo mốc cũ.
+4. Đọc phần liên quan trong [`docs/build/PADSTUDIO-BUILD-OUTLINE.md`](docs/build/PADSTUDIO-BUILD-OUTLINE.md).
+5. Đọc [`docs/build/DEVELOPMENT-PROTOCOL.md`](docs/build/DEVELOPMENT-PROTOCOL.md).
+6. Kiểm tra code và test liên quan; nêu mục tiêu, phạm vi, giả định và cách xác minh.
 
-Chỉ đọc spec Phase/Package khi thay đổi thực sự chạm phần đó. `docs/build/HISTORICAL-DOCUMENTS.md` và các báo cáo cũ chỉ là lịch sử, không phải trạng thái hiện hành.
+Chỉ đọc spec Phase/Package khi thay đổi thực sự chạm phần đó. `docs/build/HISTORICAL-DOCUMENTS.md`,
+roadmap, state/completion report và các báo cáo cũ chỉ là lịch sử hoặc evidence của một mốc, không
+phải trạng thái hay backlog hiện hành.
 
 ## Quy tắc chung
 
