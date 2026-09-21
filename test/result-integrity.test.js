@@ -1,10 +1,28 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { ProjectStore, ProjectStoreError } from "../src/project/project-store.js";
 import { ProjectReader, ProjectResultFileNotFoundError } from "../src/web/project-reader.js";
+
+test("committing an output workspace removes empty runtime directories", async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), "padstudio-output-cleanup-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const store = new ProjectStore(join(workspace, "projects"));
+  await store.createProject({ projectId: "demo", title: "Output cleanup" });
+  const run = await store.startRun("demo", {
+    capability: "fixture.write", purpose: "Verify output cleanup",
+    tool: { name: "fixture", version: "1.0.0", provider: "test" }
+  });
+  const output = await store.createRunOutputWorkspace("demo", run.id);
+  await mkdir(join(output.temporaryDirectory, "home", "app-data"), { recursive: true });
+  await mkdir(join(output.temporaryDirectory, "kept"), { recursive: true });
+  await writeFile(join(output.temporaryDirectory, "kept", "payload.txt"), "kept");
+  await store.commitRunOutputWorkspace(output);
+  await assert.rejects(access(join(output.finalDirectory, "home")));
+  assert.equal(await readFile(join(output.finalDirectory, "kept", "payload.txt"), "utf8"), "kept");
+});
 
 test("all new Result files get SHA-256 and exact-byte verification detects same-size tampering", async (t) => {
   const workspace = await mkdtemp(join(tmpdir(), "padstudio-result-integrity-"));

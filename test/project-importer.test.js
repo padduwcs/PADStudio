@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import test from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -60,7 +60,7 @@ test("import preserves sources and records grouped resources and completed runs"
   );
   assert.deepEqual(
     (await readdir(join(projectRoot, "coffee-video"))).filter((name) => name !== ".locks").sort(),
-    ["analysis", "artifacts", "authorizations", "decisions", "inputs", "outputs", "project.json", "resources", "results", "reviews", "runs", "skills", "workflows"]
+    ["inputs", "project.json", "resources", "runs"]
   );
   assert.equal(
     (await readdir(join(projectRoot, "coffee-video"))).some((name) => name.startsWith(".import-")),
@@ -111,7 +111,7 @@ test("a failed import records the error without creating a resource", async (t) 
   assert.equal(context.runs.length, 1);
   assert.equal(context.runs[0].status, "failed");
   assert.match(context.runs[0].error, /Không tìm thấy/);
-  assert.deepEqual(await readdir(join(projectRoot, "coffee-video", "inputs")), []);
+  await assert.rejects(access(join(projectRoot, "coffee-video", "inputs")));
 });
 
 test("import rejects an unsafe inputs junction and a source containing the destination", async (t) => {
@@ -123,7 +123,7 @@ test("import rejects an unsafe inputs junction and a source containing the desti
   await mkdir(outsideDirectory, { recursive: true });
   await mkdir(sourceRoot, { recursive: true });
   await writeFile(join(sourceRoot, "brief.txt"), "brief", "utf8");
-  await rm(join(projectDirectory, "inputs"), { recursive: true });
+  await rm(join(projectDirectory, "inputs"), { recursive: true, force: true });
   await symlink(outsideDirectory, join(projectDirectory, "inputs"), "junction");
 
   await assert.rejects(

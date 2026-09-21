@@ -108,7 +108,7 @@ test("invalid decisions leave no durable record", async (t) => {
 
 test("projects created before decisions existed open with an empty decision list", async (t) => {
   const { rootDir, store } = await fixture(t);
-  await rm(join(rootDir, "demo", "decisions"), { recursive: true });
+  await rm(join(rootDir, "demo", "decisions"), { recursive: true, force: true });
   assert.deepEqual((await store.readContext("demo")).decisions, []);
 });
 

@@ -8,7 +8,7 @@ import {
   settleExecutionAuthorization
 } from "../execution/execution-authorizations.js";
 import { readProjectBudget } from "../execution/project-budget.js";
-import { lstat, mkdir, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, realpath, rename, rm, rmdir } from "node:fs/promises";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { readJson, writeJsonAtomic, writeTextAtomic } from "./atomic-files.js";
@@ -110,6 +110,20 @@ async function renameAtomicWithRetry(source, destination) {
     } catch (error) {
       if (attempt >= maxRetries || !["EBUSY", "EPERM"].includes(error?.code)) throw error;
       await delay(100);
+    }
+  }
+}
+
+async function pruneEmptyChildDirectories(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    const child = join(directory, entry.name);
+    await pruneEmptyChildDirectories(child);
+    try {
+      await rmdir(child);
+    } catch (error) {
+      if (!["ENOTEMPTY", "ENOENT"].includes(error?.code)) throw error;
     }
   }
 }
@@ -535,21 +549,6 @@ export class ProjectStore {
     const staging = join(this.rootDir, `.project-${randomUUID()}`);
     const createdAt = now();
     try {
-      await mkdir(join(staging, "inputs"), { recursive: true });
-      await mkdir(join(staging, "resources"), { recursive: true });
-      await mkdir(join(staging, "results"), { recursive: true });
-      await mkdir(join(staging, "outputs"), { recursive: true });
-      await mkdir(join(staging, "decisions"), { recursive: true });
-      await mkdir(join(staging, "runs"), { recursive: true });
-      await mkdir(join(staging, "authorizations"), { recursive: true });
-      await mkdir(join(staging, "artifacts"), { recursive: true });
-      await mkdir(join(staging, "workflows"), { recursive: true });
-      await mkdir(join(staging, "reviews"), { recursive: true });
-      await mkdir(join(staging, "skills"), { recursive: true });
-      await mkdir(join(staging, "analysis", "jobs"), { recursive: true });
-      await mkdir(join(staging, "analysis", "indexes"), { recursive: true });
-      await mkdir(join(staging, "analysis", "leases", "archive"), { recursive: true });
-      await mkdir(join(staging, "analysis", "cancellations"), { recursive: true });
       await writeJsonAtomic(join(staging, "project.json"), {
         version: PROJECT_VERSION,
         id: projectId,
@@ -884,6 +883,7 @@ export class ProjectStore {
     if (await directoryInfo(registered.finalDirectory)) {
       throw new ProjectStoreError("Output đích đã tồn tại: " + registered.runId);
     }
+    await pruneEmptyChildDirectories(registered.temporaryDirectory);
     await renameAtomicWithRetry(registered.temporaryDirectory, registered.finalDirectory);
     registered.committed = true;
   }

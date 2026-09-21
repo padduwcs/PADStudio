@@ -27,7 +27,7 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 Tại ngày cập nhật tài liệu này:
 
-- `npm test`: **308/308 pass**;
+- `npm test`: **314/314 pass**;
 - `npm run observer:browser-test -- -ProjectId priority-queue-visual-20260920 -StructureOnly`: **passed** với observer server đang chạy, tại 390, 768 và 1440 px;
 - `npm run animation:acceptance`: **passed** (local Remotion preflight, preview và render một fixture
   độc lập trong thư mục tạm; không phải pilot sáng tạo của người dùng);
@@ -62,3 +62,10 @@ số test nằm trong một báo cáo cũ.
 kiểm kê chữ theo beat; observer, skill authoring/review và test liên quan được cập nhật. Version
 1.0–1.2 vẫn đọc được; workflow, approval, delivery, tool selection và ranh giới sản phẩm không đổi.
 Chưa chạy một pilot render mới để chứng minh chất lượng sáng tạo của video đầu ra.
+
+Pilot recursion sau đó làm rõ hai lỗi vận hành ở đoạn chốt. `project:accept` nay kiểm tra exact media
+khớp một delivery profile trước khi mở confirmation và tự đưa feedback còn chờ của đúng sequence vào
+`resolvesDecisionIds`; người dùng không còn phải xác nhận lại chỉ vì lỗi profile hoặc thiếu cờ
+`--resolves`. Sequence compositor xuất `yuv420p` limited range với metadata BT.709. Khi commit output,
+ProjectStore xóa các thư mục runtime rỗng nhưng giữ nguyên mọi file và thư mục có nội dung. Project mới
+chỉ tạo `project.json`; các kho con được tạo khi lần đầu có dữ liệu thay vì dựng sẵn nhiều thư mục rỗng.

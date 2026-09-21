@@ -73,6 +73,12 @@ async function rms(path, start, duration) {
   for (let i = 0; i < stdout.length; i += 4) sum += stdout.readFloatLE(i) ** 2;
   return Math.sqrt(sum / (stdout.length / 4));
 }
+async function videoStream(path) {
+  const { stdout } = await exec("ffprobe", [
+    "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=pix_fmt,color_range,color_space,color_transfer,color_primaries", "-of", "json", path
+  ]);
+  return JSON.parse(stdout).streams[0];
+}
 test("real composition renders timed audio, overlays, styled text, transitions, music and reuses unchanged segments", async (t) => {
   const dir = await mkdtemp(join(tmpdir(), "padstudio-composition-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
@@ -108,6 +114,10 @@ test("real composition renders timed audio, overlays, styled text, transitions, 
   const before = await sampleRgb(segment.filePath, 0.2, 20, 20), during = await sampleRgb(segment.filePath, 0.8, 20, 20), after = await sampleRgb(segment.filePath, 1.5, 20, 20);
   assert.ok(before[2] > before[0] + 100 && during[0] > during[2] + 100 && after[2] > after[0] + 100, "overlay appears only in declared interval");
   const final = await store.resolveResultFile("demo", r1.id, "primary");
+  assert.deepEqual(await videoStream(final.filePath), {
+    pix_fmt: "yuv420p", color_range: "tv", color_space: "bt709",
+    color_transfer: "bt709", color_primaries: "bt709"
+  });
   const transition = await sampleRgb(final.filePath, 1.8, 250, 20);
   assert.ok(transition[0] > 40 && transition[2] > 40, "crossfade mixes adjacent images");
   assert.ok(await rms(final.filePath, 2.4, 0.3) > 0.005, "looped music survives across segments");

@@ -60,7 +60,7 @@ test("reader does not follow an inputs junction outside the project", async (t) 
   await new ProjectStore(rootDir).createProject({ projectId: "coffee-video", title: "Coffee" });
   await mkdir(outsideDirectory, { recursive: true });
   await writeFile(join(outsideDirectory, "secret.txt"), "outside-secret", "utf8");
-  await rm(join(projectDirectory, "inputs"), { recursive: true });
+  await rm(join(projectDirectory, "inputs"), { recursive: true, force: true });
   await symlink(outsideDirectory, join(projectDirectory, "inputs"), "junction");
 
   const reader = new ProjectReader(rootDir);

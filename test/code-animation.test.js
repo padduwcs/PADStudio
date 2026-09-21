@@ -153,6 +153,7 @@ test("projects reopen compositions stored before review criteria became required
     createdBy: "agent",
     createdAt: "2026-09-14T00:00:00.000Z",
   };
+  await mkdir(join(rootDir, "demo", "artifacts"), { recursive: true });
   await writeFile(
     join(rootDir, "demo", "artifacts", "artifact-legacy-animation.json"),
     `${JSON.stringify(legacy, null, 2)}\n`,

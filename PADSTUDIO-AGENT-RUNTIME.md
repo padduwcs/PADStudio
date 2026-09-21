@@ -55,6 +55,7 @@ authorization thì phải dùng recovery, không abandon.
 ## Ranh giới file và trạng thái final
 
 - Mọi input, asset tạo ngoài, render và output có giá trị tiếp tục phải được import hoặc tạo qua contract để trở thành Resource/Result/Artifact/Delivery của đúng project. Không dùng raw path hay file rời làm nguồn sự thật.
+- Scratch workspace do Agent tự tạo phải nằm trong `.agent-work` hoặc thư mục tạm của hệ điều hành và phải được xóa khi bước authoring kết thúc. Không tạo `.tmp-*` ở root repository; trước khi bàn giao, kiểm tra không còn scratch directory do phiên làm việc để lại.
 - Không tự sao chép preview/render vào root repo, Desktop hoặc thư mục tùy ý để thay cho delivery. `preview.mp4` và mọi `video.sequence-render` vẫn là preview, kể cả khi được đổi tên thành `final.mp4`.
 - `final` là trạng thái có bằng chứng, không phải tên file. Chỉ mô tả video là final/đã bàn giao khi exact render đã được người dùng chấp nhận, QA của chính render đó đạt và `video.export-delivery` đã tạo một Delivery Result.
 - Không suy diễn approval từ việc người dùng yêu cầu xem thử, không phản hồi hoặc chỉ nhận xét một phần. Không tự ghi Decision/attestation nếu người dùng chưa thực sự quyết định hoặc xem/nghe đủ.
@@ -115,6 +116,10 @@ phát triển codebase khi phạm vi đó đã được xác nhận.
 5. Sau QA hợp lệ, Agent dừng và yêu cầu người dùng tự chạy
    `npm run project:accept -- <project-id> <render-result-id>` trong terminal tương tác. Lệnh hiển thị
    exact Result, revision, thời lượng, checksum và yêu cầu người dùng xác nhận đã xem/nghe trọn vẹn.
+   Trước khi hiện câu xác nhận, lệnh kiểm tra media khớp ít nhất một delivery profile và tự liệt kê
+   các feedback `changes_requested` còn chờ của đúng sequence để acceptance mới giải quyết chúng.
+   Nếu preflight này lỗi, phải sửa hoặc render lại trước; không yêu cầu người dùng xác nhận một Result
+   mà delivery chắc chắn sẽ từ chối.
    Agent không được chạy lệnh, gõ câu xác nhận hoặc tạo attestation/acceptance bằng JSON.
 6. `video.export-delivery` chỉ dùng exact Result có confirmed human review, confirmed acceptance và QA hợp lệ.
 

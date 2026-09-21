@@ -8,6 +8,7 @@ import { pendingResultFeedback } from "../intelligence/project-context-assembler
 import { validHumanConfirmation } from "../project/human-confirmation.js";
 import { buildProductionContext } from "../production/production-context.js";
 import { defaultProductionPolicyCatalog, OUTPUT_PROFILES } from "../production/production-policy-catalog.js";
+import { deliveryProfileMismatches, parseDeliveryProbe } from "../production/delivery-readiness.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
@@ -24,13 +25,6 @@ export class LocalDeliveryToolError extends Error {
 
 function fail(message, code) {
   throw new LocalDeliveryToolError(message, code);
-}
-
-function ratio(value) {
-  const [numerator, denominator] = String(value ?? "").split("/").map(Number);
-  return Number.isFinite(numerator) && Number.isFinite(denominator) && denominator !== 0
-    ? numerator / denominator
-    : null;
 }
 
 function finite(value) {
@@ -389,30 +383,14 @@ export function createLocalDeliveryExporter({
         ["-v", "error", "-show_format", "-show_streams", "-of", "json", sourcePath],
         paths
       );
-      let probe;
+      let probedMedia;
       try {
-        probe = JSON.parse(stdout);
+        probedMedia = parseDeliveryProbe(stdout);
       } catch {
         fail("ffprobe trả dữ liệu không hợp lệ.", "invalid_probe");
       }
-      const video = probe.streams?.find((stream) => stream.codec_type === "video");
-      const audio = probe.streams?.find((stream) => stream.codec_type === "audio");
-      const durationSeconds = finite(probe.format?.duration);
-      const fps = ratio(video?.avg_frame_rate);
-      const mismatches = [];
-      if (!String(probe.format?.format_name ?? "").split(",").includes(profile.container)) mismatches.push("container");
-      if (video?.codec_name !== profile.videoCodec) mismatches.push("video_codec");
-      if (video?.pix_fmt !== profile.pixelFormat) mismatches.push("pixel_format");
-      if (video?.width !== profile.width || video?.height !== profile.height) mismatches.push("dimensions");
-      if (fps === null || Math.abs(fps - profile.fps) > 0.001) mismatches.push("fps");
-      if (audio?.codec_name !== profile.audioCodec) mismatches.push("audio_codec");
-      if (Number(audio?.sample_rate) !== profile.sampleRate) mismatches.push("sample_rate");
-      if (audio?.channels !== profile.channels) mismatches.push("channels");
-      if (durationSeconds === null || durationSeconds <= 0) mismatches.push("duration");
-      if (expectedDurationSeconds !== null && durationSeconds !== null &&
-          Math.abs(durationSeconds - expectedDurationSeconds) > Math.max(0.15, 2 / profile.fps)) {
-        mismatches.push("expected_duration");
-      }
+      const { video, audio, durationSeconds, fps } = probedMedia;
+      const mismatches = deliveryProfileMismatches(probedMedia, profile, { expectedDurationSeconds });
       if (mismatches.length) {
         fail("Video không khớp delivery profile: " + mismatches.join(", "), "profile_mismatch");
       }

@@ -18,6 +18,7 @@ test("project identity and checkpoint survive reopening without temporary files"
     title: "Video giới thiệu cà phê"
   });
   assert.equal(project.title, "Video giới thiệu cà phê");
+  assert.deepEqual(await readdir(join(rootDir, "coffee-video")), ["project.json"]);
 
   await store.writeCheckpoint("coffee-video", {
     goal: "Tạo video 30 giây.",
@@ -88,7 +89,7 @@ test("uninitialized folders are ignored and unsafe project ids are rejected", as
 test("projects created before results existed still open with an empty result list", async (t) => {
   const { rootDir, store } = await temporaryStore(t);
   await store.createProject({ projectId: "legacy-project", title: "Legacy" });
-  await rm(join(rootDir, "legacy-project", "results"), { recursive: true });
+  await rm(join(rootDir, "legacy-project", "results"), { recursive: true, force: true });
 
   const context = await new ProjectStore(rootDir).readContext("legacy-project");
   assert.deepEqual(context.results, []);
@@ -111,6 +112,7 @@ test("results created before file outputs normalize to empty provenance and file
     createdAt: new Date().toISOString(),
     createdByRun: "run-legacy"
   };
+  await mkdir(join(rootDir, "legacy-result", "results"), { recursive: true });
   await writeFile(
     join(rootDir, "legacy-result", "results", "result-legacy.json"),
     JSON.stringify(result),

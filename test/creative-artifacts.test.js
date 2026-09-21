@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -241,6 +241,7 @@ test("legacy creative artifacts remain readable and can be retired", async (t) =
     createdBy: "agent",
     createdAt: "2026-09-10T00:00:00.000Z",
   };
+  await mkdir(join(rootDir, "demo", "artifacts"), { recursive: true });
   await writeFile(
     join(rootDir, "demo", "artifacts", "artifact-legacy.json"),
     `${JSON.stringify(legacy, null, 2)}\n`,

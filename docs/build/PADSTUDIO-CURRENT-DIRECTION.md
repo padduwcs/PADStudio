@@ -511,6 +511,22 @@ không phải sandbox; host vẫn chưa cưỡng chế network isolation. Projec
 vẫn đọc được để tương thích, nhưng Decision đó bị bỏ qua và không thể tạo mới. Đây là thay đổi UX và
 phân bổ trách nhiệm, không phải tuyên bố rằng generated code đã trở nên an toàn tuyệt đối.
 
+## Chặn lỗi delivery trước human acceptance — 2026-09-21
+
+Pilot recursion cho thấy exact Result có thể vượt QA nhưng vẫn không khớp delivery profile, khiến người
+dùng đã xem và xác nhận xong mới nhận lỗi `pixel_format`; cùng lúc, feedback của đúng sequence chỉ được
+resolve khi Agent nhớ truyền `--resolves`. Gate `project:accept` nay ffprobe exact byte trước confirmation,
+chỉ tiếp tục khi có ít nhất một output profile tương thích, hiển thị profile đó và tự gắn mọi feedback
+`changes_requested` còn chờ của đúng sequence vào acceptance. Exact user confirmation vẫn là gate cuối
+và vẫn chỉ do người dùng thực hiện trong terminal tương tác.
+
+Sequence compositor chuẩn hóa video sang `yuv420p` limited range và gắn BT.709 ngay trong render để
+output mặc định phù hợp catalog hiện hành. Local delivery dùng chung phép so khớp profile với acceptance,
+tránh hai nơi diễn giải contract khác nhau. ProjectStore đồng thời loại các thư mục rỗng trong output
+workspace ngay trước commit và khởi tạo các kho con của project theo nhu cầu. Mọi thư mục có dữ liệu
+vẫn được giữ nguyên; project mới không còn sinh sẵn một cây thư mục trống. Scratch authoring của Agent
+phải dùng `.agent-work` hoặc thư mục tạm hệ điều hành, được dọn khi xong và không tạo `.tmp-*` ở root repo.
+
 ## Machine & Capability Profile cho Agent — 2026-09-17
 
 `project:resume` nay có `environment` được tạo từ hồ sơ máy read-only và live Tool Registry. Agent biết

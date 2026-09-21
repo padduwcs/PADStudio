@@ -4,6 +4,11 @@ import { sequenceDuration } from "../production/sequence-composition.js";
 import { wrapCaptionLines } from "../production/visual-quality.js";
 
 const number = (v) => Number(v).toFixed(6);
+const DELIVERY_COLOR_FILTER = "scale=in_range=auto:out_range=tv,format=yuv420p,setparams=range=limited:color_primaries=bt709:color_trc=bt709:colorspace=bt709";
+const DELIVERY_COLOR_ARGS = [
+  "-pix_fmt", "yuv420p", "-color_range", "tv", "-colorspace", "bt709",
+  "-color_primaries", "bt709", "-color_trc", "bt709"
+];
 const fit = (w, h, mode) => mode === "crop"
   ? `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h}`
   : `scale=${w}:${h}:force_original_aspect_ratio=decrease,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black@0`;
@@ -60,7 +65,7 @@ export async function renderComposedSegment({ entry, sequence, directory, output
     const x = s.visual.motion === "panLeft" ? `(iw-iw/zoom)*(1-on/${denominator})` : s.visual.motion === "panRight" ? `(iw-iw/zoom)*on/${denominator}` : "iw/2-iw/zoom/2";
     visualFilter += `,zoompan=z='${z}':x='${x}':y='ih/2-ih/zoom/2':d=1:s=${w}x${h}:fps=${fps}`;
   }
-  filters.push(`[0:v]${visualFilter},format=yuv420p[v0]`);
+  filters.push(`[0:v]${visualFilter},${DELIVERY_COLOR_FILTER}[v0]`);
   let volume = String(s.visual.volume);
   for (const r of [...s.visual.volumeRanges].reverse()) volume = `if(gte(t,${r.startSeconds})*lt(t,${r.endSeconds}),${r.volume},${volume})`;
   if (vp.audio) filters.push(`[0:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,asetpts=PTS-STARTPTS,volume='${volume}':eval=frame${fades(s.visual, d)},apad,atrim=duration=${d}[base]`);
@@ -97,7 +102,7 @@ export async function renderComposedSegment({ entry, sequence, directory, output
     await writeFile(join(directory, subtitleName), createStyledAss(s.captions, sequence.format), "utf8");
     filters.push(`[${video}]ass=filename=${subtitleName}[captioned]`); video = "captioned";
   }
-  args.push("-filter_complex", filters.join(";"), "-map", `[${video}]`, "-map", `[${audio}]`, "-t", String(d), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "medium", "-crf", "18", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-movflags", "+faststart", "-y", outputPath);
+  args.push("-filter_complex", filters.join(";"), "-map", `[${video}]`, "-map", `[${audio}]`, "-t", String(d), "-c:v", "libx264", ...DELIVERY_COLOR_ARGS, "-preset", "medium", "-crf", "18", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-movflags", "+faststart", "-y", outputPath);
   await command(ffmpegCommand, args, { cwd: directory });
   if (subtitleName) await unlink(join(directory, subtitleName));
 }
@@ -137,8 +142,8 @@ export async function finishComposition({ sequence, segments, music, directory, 
   if (sequence.audio.loudnessTargetLufs !== null) {
     filters.push(`[mixed]loudnorm=I=${sequence.audio.loudnessTargetLufs}:TP=-1.5:LRA=11,aresample=48000[normalized]`); mix = "normalized";
   }
-  filters.push(`[${v}]fps=${fps},tpad=stop_mode=clone:stop_duration=${1 / fps},trim=end_frame=${Math.round(duration * fps)},setpts=PTS-STARTPTS[finalvideo]`);
-  args.push("-filter_complex", filters.join(";"), "-map", "[finalvideo]", "-map", `[${mix}]`, "-t", number(duration), "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "medium", "-crf", "18", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-movflags", "+faststart", "-y", finalPath);
+  filters.push(`[${v}]fps=${fps},tpad=stop_mode=clone:stop_duration=${1 / fps},trim=end_frame=${Math.round(duration * fps)},setpts=PTS-STARTPTS,${DELIVERY_COLOR_FILTER}[finalvideo]`);
+  args.push("-filter_complex", filters.join(";"), "-map", "[finalvideo]", "-map", `[${mix}]`, "-t", number(duration), "-c:v", "libx264", ...DELIVERY_COLOR_ARGS, "-preset", "medium", "-crf", "18", "-c:a", "aac", "-ar", "48000", "-ac", "2", "-movflags", "+faststart", "-y", finalPath);
   await command(ffmpegCommand, args, { cwd: directory });
   return duration;
 }
