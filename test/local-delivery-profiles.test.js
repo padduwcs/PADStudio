@@ -26,7 +26,7 @@ test("local delivery keeps the legacy profile export while discovering all catal
   assert.deepEqual((await tool.checkAvailability()).profiles, expected);
 });
 
-test("local delivery can consume an injected validated catalog without introducing a default", () => {
+test("local delivery can consume an injected validated catalog while keeping profile optional", () => {
   const customProfile = {
     id: "custom-profile-v1", width: 640, height: 360, fps: 25,
     container: "mp4", videoCodec: "h264", pixelFormat: "yuv420p",
@@ -43,5 +43,5 @@ test("local delivery can consume an injected validated catalog without introduci
   };
   const tool = createLocalDeliveryExporter({ policyCatalog });
   assert.deepEqual(tool.inputSchema.properties.profileId.enum, [customProfile.id]);
-  assert.equal(tool.inputSchema.required.includes("profileId"), true);
+  assert.equal(tool.inputSchema.required.includes("profileId"), false);
 });

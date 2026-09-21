@@ -5,7 +5,10 @@ import { join } from "node:path";
 import test from "node:test";
 import { sha256File } from "../src/analysis/source-identity.js";
 import { createLocalDeliveryExporter } from "../src/tools/local-delivery-exporter.js";
-import { createHumanConfirmation } from "../src/project/human-confirmation.js";
+import {
+  AGENT_HOST_CONFIRMATION_CHANNEL,
+  createHumanConfirmation
+} from "../src/project/human-confirmation.js";
 
 async function fixture(t) {
   const directory = await mkdtemp(join(tmpdir(), "padstudio-delivery-tool-"));
@@ -56,7 +59,9 @@ async function fixture(t) {
     id: "decision-approved", resultId: result.id, outcome: "accepted", decidedBy: "user",
     note: "Approved", createdAt: "2026-09-13T00:01:00.000Z",
     feedbackTarget: { artifactId: artifact.id, revision: 1 }, resolvesDecisionIds: [],
-    confirmation: createHumanConfirmation("accept_video", result.id)
+    confirmation: createHumanConfirmation("accept_video", result.id, {
+      channel: AGENT_HOST_CONFIRMATION_CHANNEL
+    })
   };
   const quality = {
     id: "result-quality", projectId: "demo", type: "video.output-quality",
@@ -163,17 +168,19 @@ test("local delivery packages the exact approved current Result with evidence", 
   assert.match(checksums, /metadata\/quality\.json/);
 });
 
-test("local delivery fails closed without exact automated output QA", async (t) => {
+test("local delivery preserves an accepted exact Result without automated QA", async (t) => {
   const { directory, store, context, result } = await fixture(t);
   context.results = context.results.filter((candidate) => candidate.type !== "video.output-quality");
   const tool = createLocalDeliveryExporter({ executeCommand: fakeMediaCommand, analysisSummary: async () => ({ sources: [] }) });
-  await assert.rejects(tool.prepare({
-    store, projectId: "demo", inputs: { resultId: result.id, profileId: "local-portrait-h264-v1" },
+  const prepared = await tool.prepare({
+    store, projectId: "demo", inputs: { resultId: result.id },
     outputWorkspace: { temporaryDirectory: join(directory, "no-qa.tmp"), projectRelativeDirectory: "outputs/run-no-qa" }
-  }), (error) => error.code === "output_quality_required");
+  });
+  assert.equal(prepared.runtime.bundle.quality.status, "not_run");
+  assert.equal(prepared.runtime.profile, null);
 });
 
-test("local delivery rejects Agent-authored acceptance and human-review claims", async (t) => {
+test("local delivery requires exact acceptance but not a separate full-view attestation", async (t) => {
   const { directory, store, context, result } = await fixture(t);
   delete context.decisions[0].confirmation;
   const tool = createLocalDeliveryExporter({ executeCommand: fakeMediaCommand, analysisSummary: async () => ({ sources: [] }) });
@@ -182,66 +189,75 @@ test("local delivery rejects Agent-authored acceptance and human-review claims",
     outputWorkspace: { temporaryDirectory: join(directory, "unconfirmed.tmp"), projectRelativeDirectory: "outputs/run-unconfirmed" }
   }), (error) => error.code === "approval_required");
 
-  context.decisions[0].confirmation = createHumanConfirmation("accept_video", result.id);
-  delete context.reviews.find((review) => review.reviewer === "user").confirmation;
-  await assert.rejects(tool.prepare({
+  context.decisions[0].confirmation = createHumanConfirmation("accept_video", result.id, {
+    channel: AGENT_HOST_CONFIRMATION_CHANNEL
+  });
+  context.reviews = context.reviews.filter((review) => review.reviewer !== "user");
+  const prepared = await tool.prepare({
     store, projectId: "demo", inputs: { resultId: result.id, profileId: "local-portrait-h264-v1" },
     outputWorkspace: { temporaryDirectory: join(directory, "unattested.tmp"), projectRelativeDirectory: "outputs/run-unattested" }
-  }), (error) => error.code === "human_review_required");
+  });
+  assert.equal(prepared.runtime.bundle.approval.resultId, result.id);
 });
 
-test("local delivery refuses a project with unfinished Runs", async (t) => {
+test("local delivery is not blocked by unrelated unfinished Runs after exact acceptance", async (t) => {
   const { directory, store, context, result } = await fixture(t);
   context.runRecovery = { pendingFinalizations: [{ runId: "run-stale", recoverable: false, resultIds: [] }] };
   const tool = createLocalDeliveryExporter({ executeCommand: fakeMediaCommand, analysisSummary: async () => ({ sources: [] }) });
-  await assert.rejects(tool.prepare({
+  const prepared = await tool.prepare({
     store, projectId: "demo", inputs: { resultId: result.id, profileId: "local-portrait-h264-v1" },
     outputWorkspace: { temporaryDirectory: join(directory, "blocked-project.tmp"), projectRelativeDirectory: "outputs/run-blocked-project" }
-  }), (error) => error.code === "project_health_blocked");
+  });
+  assert.equal(prepared.trace.result.id, result.id);
 });
 
-test("local delivery fails closed without Agent review of the exact promised Result", async (t) => {
+test("local delivery does not reopen creative review after the user accepted", async (t) => {
   const { directory, store, context, result } = await fixture(t);
   context.reviews = context.reviews.filter((review) => review.reviewer !== "agent");
   const tool = createLocalDeliveryExporter({ executeCommand: fakeMediaCommand, analysisSummary: async () => ({ sources: [] }) });
-  await assert.rejects(tool.prepare({
+  const prepared = await tool.prepare({
     store, projectId: "demo", inputs: { resultId: result.id, profileId: "local-portrait-h264-v1" },
     outputWorkspace: { temporaryDirectory: join(directory, "no-review.tmp"), projectRelativeDirectory: "outputs/run-no-review" }
-  }), (error) => error.code === "final_review_required");
+  });
+  assert.equal(prepared.trace.result.id, result.id);
 });
 
-test("local delivery requires every blocking delivery promise to pass", async (t) => {
+test("local delivery treats earlier delivery-promise review as advisory after acceptance", async (t) => {
   const { directory, store, context, result } = await fixture(t);
   context.reviews[0].criteria[0].status = "warning";
   context.reviews[0].verdict = "passed_with_notes";
   const tool = createLocalDeliveryExporter({ executeCommand: fakeMediaCommand, analysisSummary: async () => ({ sources: [] }) });
-  await assert.rejects(tool.prepare({
+  const prepared = await tool.prepare({
     store, projectId: "demo", inputs: { resultId: result.id, profileId: "local-portrait-h264-v1" },
     outputWorkspace: { temporaryDirectory: join(directory, "unverified.tmp"), projectRelativeDirectory: "outputs/run-unverified" }
-  }), (error) => error.code === "delivery_promise_unverified");
+  });
+  assert.equal(prepared.runtime.bundle.reviews.reviews.length, 2);
 });
 
-test("local delivery fails closed when exact automated output QA failed", async (t) => {
+test("local delivery records failed automated QA as advisory after acceptance", async (t) => {
   const { directory, store, quality, result } = await fixture(t);
   quality.data.gate.deliveryEligible = false;
   const tool = createLocalDeliveryExporter({ executeCommand: fakeMediaCommand, analysisSummary: async () => ({ sources: [] }) });
-  await assert.rejects(tool.prepare({
+  const prepared = await tool.prepare({
     store, projectId: "demo", inputs: { resultId: result.id, profileId: "local-portrait-h264-v1" },
     outputWorkspace: { temporaryDirectory: join(directory, "failed-qa.tmp"), projectRelativeDirectory: "outputs/run-failed-qa" }
-  }), (error) => error.code === "output_quality_failed");
+  });
+  assert.equal(prepared.runtime.bundle.quality.status, "advisory");
+  assert.equal(prepared.runtime.bundle.quality.gate.deliveryEligible, false);
 });
 
-test("local delivery fails closed when QA is stale for the exact output bytes", async (t) => {
+test("local delivery marks stale QA without blocking the accepted exact bytes", async (t) => {
   const { directory, store, quality, result } = await fixture(t);
   quality.data.sourceSha256 = "0".repeat(64);
   const tool = createLocalDeliveryExporter({ executeCommand: fakeMediaCommand, analysisSummary: async () => ({ sources: [] }) });
-  await assert.rejects(tool.prepare({
+  const prepared = await tool.prepare({
     store, projectId: "demo", inputs: { resultId: result.id, profileId: "local-portrait-h264-v1" },
     outputWorkspace: { temporaryDirectory: join(directory, "stale-qa.tmp"), projectRelativeDirectory: "outputs/run-stale-qa" }
-  }), (error) => error.code === "output_quality_stale");
+  });
+  assert.equal(prepared.runtime.bundle.quality.matchesDeliveredBytes, false);
 });
 
-test("local delivery blocks unresolved feedback for the same sequence", async (t) => {
+test("local delivery treats an exact acceptance as the final creative decision", async (t) => {
   const { directory, store, context, result } = await fixture(t);
   context.results.push({
     ...result, id: "result-old",
@@ -255,17 +271,15 @@ test("local delivery blocks unresolved feedback for the same sequence", async (t
     executeCommand: fakeMediaCommand,
     analysisSummary: async () => ({ sources: [] })
   });
-  await assert.rejects(
-    tool.prepare({
+  const prepared = await tool.prepare({
       store, projectId: "demo",
       inputs: { resultId: result.id, profileId: "local-portrait-h264-v1" },
       outputWorkspace: {
         temporaryDirectory: join(directory, "blocked.tmp"),
         projectRelativeDirectory: "outputs/run-blocked"
       }
-    }),
-    (error) => error.code === "pending_feedback"
-  );
+    });
+  assert.equal(prepared.trace.approval.id, "decision-approved");
 });
 
 test("local delivery requires the latest exact Result decision to be accepted", async (t) => {

@@ -497,7 +497,7 @@ export class ProjectIntelligenceStore {
           criteria,
           reviewer,
           ...(inspection ? { inspection } : {}),
-          ...(confirmation ? { confirmation: createHumanConfirmation("review_video", target.id) } : {}),
+          ...(confirmation ? { confirmation } : {}),
           ...(attestation ? { attestation, exactResult: {
             sha256: (await this.projectStore.verifyResultFile(projectId, target.id, "primary")).sha256,
             artifactId: targetState.result.data?.sequence?.artifactId ?? null,

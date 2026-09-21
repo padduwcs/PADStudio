@@ -114,14 +114,34 @@ async function renameAtomicWithRetry(source, destination) {
   }
 }
 
-async function pruneEmptyChildDirectories(directory) {
+export async function pruneEmptyChildDirectories(directory, {
+  removeDirectory = rmdir,
+  platform = process.platform,
+  maxRetries = platform === "win32" ? 30 : 0,
+  retryDelayMs = 100,
+  wait = delay
+} = {}) {
   const entries = await readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
     const child = join(directory, entry.name);
-    await pruneEmptyChildDirectories(child);
+    await pruneEmptyChildDirectories(child, {
+      removeDirectory, platform, maxRetries, retryDelayMs, wait
+    });
     try {
-      await rmdir(child);
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          await removeDirectory(child);
+          break;
+        } catch (error) {
+          if (
+            attempt >= maxRetries ||
+            platform !== "win32" ||
+            !["EBUSY", "EPERM"].includes(error?.code)
+          ) throw error;
+          await wait(retryDelayMs);
+        }
+      }
     } catch (error) {
       if (!["ENOTEMPTY", "ENOENT"].includes(error?.code)) throw error;
     }
@@ -1321,7 +1341,7 @@ export class ProjectStore {
           feedbackTarget,
           resolvesDecisionIds,
           decidedBy: "user",
-          ...(confirmation ? { confirmation: createHumanConfirmation("accept_video", result.id) } : {}),
+          ...(confirmation ? { confirmation } : {}),
           createdAt: new Date(Math.max(Date.now(), latestTimestamp + 1)).toISOString()
         };
         validateDecision(decision, projectId);

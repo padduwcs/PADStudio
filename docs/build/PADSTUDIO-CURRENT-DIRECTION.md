@@ -541,3 +541,31 @@ pipeline bắt buộc hoặc suy diễn quá mức từ dependency. Resource pro
 `catalog_estimate`; encoder có trong FFmpeg chỉ là candidate, không phải benchmark hay bằng chứng GPU
 chạy được. Profile không đọc giá trị secret, không probe network, không auto-install và không tự chọn
 creative workflow/runtime thay Agent.
+
+## Acceptance là điểm kết thúc sáng tạo, delivery giữ nguyên byte — 2026-09-22
+
+Đối chiếu trải nghiệm dùng thật và checkpoint của OpenMontage cho thấy PADStudio đã đặt quá nhiều
+gate kỹ thuật sau quyết định sáng tạo cuối của người dùng. Người dùng đã chốt một exact render nhưng
+hệ thống còn có thể buộc sửa profile, chạy QA sâu, render lại và xin duyệt lại. Việc đó tiêu tốn
+thời gian/quota mà không làm file người dùng vừa chọn hữu ích hơn, đồng thời mâu thuẫn với kiến trúc
+“chat trong Agent host là kênh điều khiển duy nhất”.
+
+Quyết định hiện hành thay thế phần gate hậu duyệt trong các mục ngày 2026-09-13, 2026-09-15 và
+2026-09-21:
+
+- người dùng chấp nhận exact Result trong chat; Agent ghi bằng `project:accept --from-agent-host`;
+- acceptance vẫn bind Result ID, artifact revision và SHA-256, đồng thời resolve feedback cùng sequence;
+- kênh Agent host không tự tạo lời khai đã xem/nghe toàn bộ; terminal tương tác chỉ còn là lựa chọn để
+  lưu attestation đó khi người dùng thực sự muốn;
+- `video.export-delivery` là thao tác đóng gói nhẹ: xác minh exact file, probe media tối thiểu, copy nguyên
+  byte và kiểm tra checksum sau copy;
+- automated QA, delivery profile, loudness, tail silence, delivery-promise review, dependency freshness
+  và Run không liên quan không còn chặn local delivery sau acceptance. Evidence có sẵn vẫn được giữ
+  trong bundle dưới dạng advisory;
+- không render hoặc sửa thêm sau khi người dùng chốt, trừ khi exact file thiếu/hỏng hoặc người dùng yêu
+  cầu một biến thể hay chuẩn xuất mới.
+
+QA sâu và profile vẫn có giá trị khi chạy trước lúc trình người dùng, khi xuất cho một nền tảng có spec
+bắt buộc hoặc khi làm release evaluation rộng. Chúng không còn được dùng để phủ quyết local exact-output
+acceptance. Đây là phân bổ lại thời điểm và trách nhiệm, không bỏ Result bất biến, checksum, provenance,
+feedback binding hay quyền quyết định cuối của người dùng.

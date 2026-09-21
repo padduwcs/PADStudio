@@ -566,10 +566,10 @@ Với `video.sequence-render`, luôn chuyển mốc người dùng sao chép tro
 `segmentId` và `timeRange` là tùy chọn nếu phản hồi áp dụng cho toàn Result, nhưng `artifactId` và `revision` là bắt buộc đối với sequence render. Store sẽ từ chối target không khớp exact Result, segment không tồn tại hoặc range ngoài biên; không tự đổi target sang revision hiện hành.
 
 Khi Result thay thế đã thực sự xử lý feedback đang chờ, Agent nêu các Decision ID cần resolve.
-Người dùng xác nhận exact render và resolution trong cùng lệnh tương tác:
+Sau khi người dùng xác nhận exact render trong chat, Agent ghi acceptance và resolution trong cùng lệnh:
 
 ```powershell
-npm run project:accept -- <project-id> <render-result-id> --resolves decision-old-feedback
+npm run project:accept -- <project-id> <render-result-id> --from-agent-host --resolves decision-old-feedback
 ```
 
 `project:decide` chỉ nhận `changes_requested`, `rejected` và các quyết định không đặc quyền qua
@@ -583,14 +583,14 @@ checkpoint riêng nếu trạng thái tổng thể đã đổi.
 Một render hoặc `preview.mp4` không phải bản final chỉ vì đã dựng xong, verification
 đạt, được đổi tên hoặc được sao chép ra ngoài project. Không dùng `copy`, FFmpeg hay
 raw filesystem path để né các gate. `final` chỉ là exact render đã có user Decision
-`accepted`, QA hợp lệ và một `delivery.bundle` do `video.export-delivery` tạo ra.
+`accepted` và một `delivery.bundle` giữ nguyên byte do `video.export-delivery` tạo ra.
 
 Mọi file tạo ngoài phải được đăng ký vào đúng project trước khi dùng. Chỉ sao chép
 official Delivery ra vị trí ngoài project khi người dùng yêu cầu rõ; bản sao đó không
 thay Delivery Result/checksum làm nguồn sự thật và phải được ghi lại trong checkpoint.
 Nếu chưa đủ gate, gọi đúng là preview hoặc blocked và nói rõ bước còn thiếu.
 
-Sau khi có `video.sequence-render` cuối cùng, tạo QA bằng JSON qua standard input:
+Khi QA sâu có ích cho việc review trước khi trình người dùng, tạo nó bằng JSON qua standard input:
 
 ```powershell
 $qa = @{
@@ -602,22 +602,22 @@ $qa = @{
 $qa | npm run quality:inspect -- <project-id> -
 ```
 
-Dùng `nonverbal-video-v1` khi sản phẩm không kỳ vọng lời nói. Chỉ tiếp tục
-`video.export-delivery` khi Result `video.output-quality` của đúng render có
-`gate.deliveryEligible: true`. Không tự sửa report, không dùng QA của render khác và
-không mô tả contact sheet/ASR là human viewing/listening. Delivery sẽ tự từ chối khi
-thiếu QA, QA fail, evidence hỏng hoặc checksum exact render đã đổi.
+Dùng `nonverbal-video-v1` khi sản phẩm không kỳ vọng lời nói. Không tự sửa report, không dùng QA của
+render khác và không mô tả contact sheet/ASR là human viewing/listening. QA giúp Agent phát hiện lỗi
+trước khi xin duyệt; sau khi người dùng đã chốt, kết quả QA được đóng gói ở trạng thái advisory và
+không ép sửa/render lại.
 
-Sau khi QA đạt, Agent kết thúc lượt và yêu cầu người dùng tự chạy:
+Sau khi người dùng chốt trong chat, Agent tự ghi acceptance:
 
 ```powershell
-npm run project:accept -- <project-id> <render-result-id>
+npm run project:accept -- <project-id> <render-result-id> --from-agent-host
 ```
 
-Lệnh tương tác hiển thị exact Result, artifact revision, thời lượng, SHA-256 và QA, rồi mới ghi
-confirmed human review cùng confirmed acceptance. Agent không được chạy lệnh, nhập câu xác nhận,
-pipe stdin hay soạn payload thay người dùng. `project:attest` dạng JSON đã ngừng nhận attestation.
-Không tái dùng xác nhận cho Result mới. Holdout/release evidence dùng
+Lệnh bind approval vào exact Result và SHA-256, tự resolve feedback cùng sequence rồi cho phép
+`video.export-delivery` copy nguyên byte. Không suy diễn acceptance từ im lặng, yêu cầu xem thử hoặc
+phản hồi mơ hồ; không tái dùng xác nhận cho Result mới. Chế độ terminal không có `--from-agent-host`
+vẫn tồn tại như lựa chọn để lưu full-view/full-listen attestation. `project:attest` dạng JSON đã ngừng
+nhận attestation. Holdout/release evidence dùng
 `release:holdout:lock`, `release:evidence:assemble` rồi `release:gates`; không
 được thay benchmark hoặc human evidence bằng fixture.
 

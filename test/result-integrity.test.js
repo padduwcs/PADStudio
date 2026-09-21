@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, rmdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { ProjectStore, ProjectStoreError } from "../src/project/project-store.js";
+import {
+  ProjectStore,
+  ProjectStoreError,
+  pruneEmptyChildDirectories
+} from "../src/project/project-store.js";
 import { ProjectReader, ProjectResultFileNotFoundError } from "../src/web/project-reader.js";
 
 test("committing an output workspace removes empty runtime directories", async (t) => {
@@ -22,6 +26,52 @@ test("committing an output workspace removes empty runtime directories", async (
   await store.commitRunOutputWorkspace(output);
   await assert.rejects(access(join(output.finalDirectory, "home")));
   assert.equal(await readFile(join(output.finalDirectory, "kept", "payload.txt"), "utf8"), "kept");
+});
+
+test("empty runtime directory cleanup retries transient Windows locks", async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), "padstudio-output-cleanup-retry-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const locked = join(workspace, "workspace");
+  await mkdir(locked);
+  let attempts = 0;
+  const waits = [];
+
+  await pruneEmptyChildDirectories(workspace, {
+    platform: "win32",
+    maxRetries: 3,
+    retryDelayMs: 25,
+    wait: async (milliseconds) => waits.push(milliseconds),
+    removeDirectory: async (path) => {
+      attempts += 1;
+      if (attempts < 3) throw Object.assign(new Error("temporarily locked"), { code: "EBUSY" });
+      await rmdir(path);
+    }
+  });
+
+  assert.equal(attempts, 3);
+  assert.deepEqual(waits, [25, 25]);
+  await assert.rejects(access(locked));
+});
+
+test("empty runtime directory cleanup still fails after bounded Windows lock retries", async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), "padstudio-output-cleanup-persistent-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  await mkdir(join(workspace, "workspace"));
+  let attempts = 0;
+
+  await assert.rejects(
+    pruneEmptyChildDirectories(workspace, {
+      platform: "win32",
+      maxRetries: 2,
+      wait: async () => {},
+      removeDirectory: async () => {
+        attempts += 1;
+        throw Object.assign(new Error("still locked"), { code: "EBUSY" });
+      }
+    }),
+    (error) => error?.code === "EBUSY"
+  );
+  assert.equal(attempts, 3);
 });
 
 test("all new Result files get SHA-256 and exact-byte verification detects same-size tampering", async (t) => {

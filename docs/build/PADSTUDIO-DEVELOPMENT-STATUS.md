@@ -1,6 +1,6 @@
 # PADStudio — trạng thái phát triển
 
-Cập nhật: **2026-09-21**.
+Cập nhật: **2026-09-22**.
 
 Đây là điểm vào ngắn để biết codebase đang ở đâu. PADStudio vẫn đang được xây dựng và chỉnh
 chu; các báo cáo có chữ `completion`, tên đợt hoặc số phiên bản ghi lại một mốc nghiệm thu kỹ
@@ -27,7 +27,7 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 Tại ngày cập nhật tài liệu này:
 
-- `npm test`: **314/314 pass**;
+- `npm test`: **317/317 pass**;
 - `npm run observer:browser-test -- -ProjectId priority-queue-visual-20260920 -StructureOnly`: **passed** với observer server đang chạy, tại 390, 768 và 1440 px;
 - `npm run animation:acceptance`: **passed** (local Remotion preflight, preview và render một fixture
   độc lập trong thư mục tạm; không phải pilot sáng tạo của người dùng);
@@ -69,3 +69,10 @@ khớp một delivery profile trước khi mở confirmation và tự đưa feed
 `--resolves`. Sequence compositor xuất `yuv420p` limited range với metadata BT.709. Khi commit output,
 ProjectStore xóa các thư mục runtime rỗng nhưng giữ nguyên mọi file và thư mục có nội dung. Project mới
 chỉ tạo `project.json`; các kho con được tạo khi lần đầu có dữ liệu thay vì dựng sẵn nhiều thư mục rỗng.
+
+Vòng dùng thật tiếp theo cho thấy chính profile/QA gate hậu duyệt vẫn gây lãng phí: người dùng đã chốt
+file có thể sử dụng nhưng Agent phải sửa, render và xin duyệt lại để thỏa contract nội bộ. Baseline mới
+coi acceptance trong Agent host là quyết định sáng tạo cuối. Agent ghi nó bằng `project:accept
+--from-agent-host`; local delivery chỉ probe tối thiểu, copy exact byte và kiểm checksum. QA sâu, profile,
+loudness, tail silence, promise review và freshness là kiểm tra trước duyệt hoặc evidence advisory, không
+còn block local delivery sau acceptance. Terminal full-view/full-listen attestation vẫn có nhưng là tùy chọn.

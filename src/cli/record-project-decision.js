@@ -22,7 +22,7 @@ async function main(args) {
   if (!value?.target && value.outcome === "accepted") {
     const result = await store.readResult(projectId, value.resultId);
     if (result.type === "video.sequence-render") {
-      throw new Error("Final video acceptance cannot be imported from Agent-authored JSON. Run project:accept directly after watching the exact video in full.");
+      throw new Error("Final video acceptance cannot be imported from generic JSON. Record the user's exact-result approval with project:accept, using --from-agent-host when the user approved in chat.");
     }
   }
   const decision = await store.recordDecision(projectId, value);

@@ -5,7 +5,10 @@ import { join } from "node:path";
 import test from "node:test";
 import { ProjectStore } from "../src/project/project-store.js";
 import { releaseMeasurementsFromHumanReview } from "../src/intelligence/human-attestation.js";
-import { createHumanConfirmation } from "../src/project/human-confirmation.js";
+import {
+  AGENT_HOST_CONFIRMATION_CHANNEL,
+  createHumanConfirmation
+} from "../src/project/human-confirmation.js";
 
 test("human attestation binds full review to exact render bytes and revision", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "padstudio-attest-")); t.after(() => rm(root, { recursive: true, force: true }));
@@ -29,9 +32,34 @@ test("human attestation binds full review to exact render bytes and revision", a
   await assert.rejects(store.recordReview("demo", { target: { kind: "result", id: result.id }, perspective: "human", reviewer: "user", verdict: "passed", summary: "Agent-authored claim",
     criteria: [{ id: "full-review", criterion: "Full human review", status: "passed", evidence: "Opaque JSON" }],
     attestation: { watchedFull: true, listenedFull: true, device: "Unknown", context: "Agent payload", findings: [] } }),
-  /direct interactive human confirmation/);
+  /explicit human confirmation through a supported channel/);
   await assert.rejects(store.recordReview("demo", { target: { kind: "result", id: result.id }, perspective: "human", reviewer: "user", verdict: "passed", summary: "Invalid",
     criteria: [{ id: "full-review", criterion: "Full human review", status: "passed", evidence: "Claim" }],
     attestation: { watchedFull: false, listenedFull: true, device: "Desktop", context: "Quiet room", findings: [] } },
   { humanConfirmation: createHumanConfirmation("review_video", result.id) }), /watchedFull/);
+
+  const decision = await store.recordDecision("demo", {
+    resultId: result.id,
+    outcome: "accepted",
+    note: "User approved this exact result in the external Agent host.",
+    feedbackTarget: { artifactId: artifact.id, revision: artifact.revision },
+    resolvesDecisionIds: []
+  }, { humanConfirmation: createHumanConfirmation("accept_video", result.id, {
+    channel: AGENT_HOST_CONFIRMATION_CHANNEL
+  }) });
+  assert.equal(decision.confirmation.channel, AGENT_HOST_CONFIRMATION_CHANNEL);
+  assert.throws(
+    () => createHumanConfirmation("review_video", result.id, { channel: AGENT_HOST_CONFIRMATION_CHANNEL }),
+    /Unsupported human confirmation channel/
+  );
+});
+
+test("human confirmation preserves the legacy timestamp-factory call shape", () => {
+  const confirmation = createHumanConfirmation(
+    "accept_video",
+    "result-legacy",
+    () => "2026-09-22T00:00:00.000Z"
+  );
+  assert.equal(confirmation.channel, "interactive_cli");
+  assert.equal(confirmation.confirmedAt, "2026-09-22T00:00:00.000Z");
 });

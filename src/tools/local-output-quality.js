@@ -240,7 +240,7 @@ export function createLocalOutputQuality({
       },
       additionalProperties: false
     },
-    outputDescription: "video.output-quality với report, exact evidence references, cut margins và delivery gate.",
+    outputDescription: "video.output-quality với report, exact evidence references, cut margins và đánh giá readiness advisory.",
 
     async checkAvailability() {
       try {

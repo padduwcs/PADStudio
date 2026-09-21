@@ -3,12 +3,9 @@ import { copyFile, lstat, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { sha256File } from "../analysis/source-identity.js";
-import { AnalysisReader } from "../analysis/analysis-reader.js";
-import { pendingResultFeedback } from "../intelligence/project-context-assembler.js";
 import { validHumanConfirmation } from "../project/human-confirmation.js";
-import { buildProductionContext } from "../production/production-context.js";
 import { defaultProductionPolicyCatalog, OUTPUT_PROFILES } from "../production/production-policy-catalog.js";
-import { deliveryProfileMismatches, parseDeliveryProbe } from "../production/delivery-readiness.js";
+import { parseDeliveryProbe } from "../production/delivery-readiness.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
@@ -51,42 +48,6 @@ function safeDetail(value, paths) {
   return detail.slice(0, 1200);
 }
 
-function parseLoudnorm(stderr) {
-  const matches = [...String(stderr ?? "").matchAll(/\{[\s\S]*?"input_i"[\s\S]*?\}/g)];
-  const candidate = matches.at(-1);
-  if (!candidate) fail("FFmpeg không trả kết quả đo loudness.", "invalid_audio_measurement");
-  try {
-    const value = JSON.parse(candidate[0]);
-    const integratedLufs = finite(value.input_i);
-    const truePeakDbtp = finite(value.input_tp);
-    const loudnessRange = finite(value.input_lra);
-    if ([integratedLufs, truePeakDbtp, loudnessRange].some((item) => item === null)) throw new Error();
-    return { integratedLufs, truePeakDbtp, loudnessRange };
-  } catch {
-    fail("Kết quả đo loudness của FFmpeg không hợp lệ.", "invalid_audio_measurement");
-  }
-}
-
-function parseTailSilence(stderr, durationSeconds) {
-  const events = [...String(stderr ?? "").matchAll(/silence_(start|end):\s*(-?[0-9]+(?:\.[0-9]+)?)/g)]
-    .map((match) => ({ type: match[1], seconds: Number(match[2]) }))
-    .filter((event) => Number.isFinite(event.seconds));
-  let open = null;
-  const intervals = [];
-  for (const event of events) {
-    if (event.type === "start") open = Math.max(0, event.seconds);
-    if (event.type === "end" && open !== null) {
-      intervals.push({ start: open, end: Math.min(durationSeconds, event.seconds) });
-      open = null;
-    }
-  }
-  if (open !== null) intervals.push({ start: open, end: durationSeconds });
-  const tail = intervals.at(-1);
-  return tail && Math.abs(tail.end - durationSeconds) <= 0.06
-    ? round(Math.max(0, tail.end - tail.start))
-    : 0;
-}
-
 function exactApproval(context, result) {
   const latest = context.decisions
     .filter((decision) =>
@@ -105,24 +66,6 @@ function exactOutputQuality(context, result) {
   ).at(-1) ?? null;
 }
 
-function exactResultReview(context, result) {
-  return context.reviews.filter((review) =>
-    review.target?.kind === "result" && review.target.id === result.id && review.reviewer === "agent"
-  ).at(-1) ?? null;
-}
-
-function exactHumanReview(context, result) {
-  return context.reviews.filter((review) =>
-    review.target?.kind === "result" && review.target.id === result.id &&
-    review.perspective === "human" && review.reviewer === "user" &&
-    validHumanConfirmation(review.confirmation, "review_video", result.id)
-  ).at(-1) ?? null;
-}
-
-function sequenceKeyForDecision(context, decision) {
-  return context.results.find((result) => result.id === decision.resultId)?.data?.sequence?.key ?? null;
-}
-
 async function writeMetadata(directory, name, value) {
   const path = join(directory, name);
   await writeFile(path, json(value), "utf8");
@@ -130,7 +73,6 @@ async function writeMetadata(directory, name, value) {
 }
 
 export function createLocalDeliveryExporter({
-  ffmpegCommand = process.env.PADSTUDIO_FFMPEG_PATH?.trim() || "ffmpeg",
   ffprobeCommand = process.env.PADSTUDIO_FFPROBE_PATH?.trim() || "ffprobe",
   executeCommand = (command, args, options) => execFileAsync(command, args, {
     windowsHide: true,
@@ -140,9 +82,7 @@ export function createLocalDeliveryExporter({
   }),
   timeoutMs = 180_000,
   now = () => new Date().toISOString(),
-  policyCatalog = defaultProductionPolicyCatalog,
-  analysisSummary = (store, projectId) =>
-    new AnalysisReader({ rootDir: store.rootDir, projectStore: store }).summary(projectId)
+  policyCatalog = defaultProductionPolicyCatalog
 } = {}) {
   async function command(executable, args, paths, options = {}) {
     try {
@@ -163,7 +103,7 @@ export function createLocalDeliveryExporter({
     version: "1.0.0",
     provider: "PADStudio",
     capability: "video.export-delivery",
-    description: "Đóng gói nguyên byte của video đã được người dùng duyệt thành bundle giao cục bộ có kiểm chứng.",
+    description: "Đóng gói nguyên byte của video đã được người dùng duyệt; không render lại hoặc ép chuẩn profile sau khi duyệt.",
     runtime: "local",
     executionMode: "sync",
     producesFiles: true,
@@ -172,24 +112,20 @@ export function createLocalDeliveryExporter({
     sideEffects: ["Tạo một bundle delivery mới trong outputs của project; không ghi đè Result nguồn."],
     inputSchema: {
       type: "object",
-      required: ["resultId", "profileId"],
+      required: ["resultId"],
       properties: {
         resultId: { type: "string" },
         profileId: { enum: policyCatalog.listOutputProfiles().map((profile) => profile.id) }
       },
       additionalProperties: false
     },
-    outputDescription: "Video đã duyệt cùng manifest, provenance, review, approval và SHA-256 checksums.",
+    outputDescription: "Exact video đã duyệt cùng manifest, provenance, approval và SHA-256 checksums.",
 
     async checkAvailability() {
       try {
-        const [ffmpeg, ffprobe] = await Promise.all([
-          command(ffmpegCommand, ["-version"], []),
-          command(ffprobeCommand, ["-version"], [])
-        ]);
+        const ffprobe = await command(ffprobeCommand, ["-version"], []);
         return {
           status: "available",
-          executableVersion: String(ffmpeg.stdout).split(/\r?\n/)[0],
           ffprobeVersion: String(ffprobe.stdout).split(/\r?\n/)[0],
           profiles: policyCatalog.listOutputProfiles().map((profile) => profile.id)
         };
@@ -201,103 +137,30 @@ export function createLocalDeliveryExporter({
     async prepare({ store, projectId, inputs, runId, outputWorkspace }) {
       if (!inputs || typeof inputs !== "object" || Array.isArray(inputs) ||
           Object.keys(inputs).some((key) => !["resultId", "profileId"].includes(key)) ||
-          typeof inputs.resultId !== "string" || typeof inputs.profileId !== "string") {
-        fail("Delivery chỉ nhận resultId và profileId.", "invalid_input");
+          typeof inputs.resultId !== "string" ||
+          (inputs.profileId !== undefined && typeof inputs.profileId !== "string")) {
+        fail("Delivery chỉ nhận resultId và profileId tùy chọn.", "invalid_input");
       }
-      let profile;
-      try {
-        profile = policyCatalog.readOutputProfile(inputs.profileId);
-      } catch {
-        fail("Delivery profile không được hỗ trợ: " + inputs.profileId, "invalid_profile");
+      let profile = null;
+      if (inputs.profileId !== undefined) {
+        try {
+          profile = policyCatalog.readOutputProfile(inputs.profileId);
+        } catch {
+          fail("Delivery profile không được hỗ trợ: " + inputs.profileId, "invalid_profile");
+        }
       }
       if (!outputWorkspace?.temporaryDirectory || !outputWorkspace?.projectRelativeDirectory) {
         fail("PADStudio chưa cấp output workspace cho delivery.", "invalid_output_workspace");
       }
       const context = await store.readContext(projectId);
-      const unfinishedRuns = (context.runRecovery?.pendingFinalizations ?? [])
-        .filter((entry) => entry.runId !== runId);
-      if (unfinishedRuns.length) {
-        fail(
-          `Project has unfinished Runs: ${unfinishedRuns.map((entry) => entry.runId).join(", ")}. ` +
-          "Recover or safely abandon them before delivery.",
-          "project_health_blocked"
-        );
-      }
       const result = context.results.find((candidate) => candidate.id === inputs.resultId);
       if (!result || result.type !== "video.sequence-render") {
         fail("Delivery cần đúng một Result video.sequence-render đã lưu.", "invalid_source_result");
       }
-      if (result.verification?.status !== "passed") {
-        fail("Result nguồn chưa vượt qua kiểm tra kỹ thuật.", "source_not_verified");
-      }
       const sourceFile = await store.verifyResultFile(projectId, result.id, "primary");
       const quality = exactOutputQuality(context, result);
-      if (!quality) fail("Result nguồn chưa có automated output QA.", "output_quality_required");
-      if (quality.verification?.status !== "passed" || quality.data?.gate?.deliveryEligible !== true) {
-        fail("Automated output QA mới nhất chưa cho phép delivery.", "output_quality_failed");
-      }
-      if (quality.data?.sourceSha256 !== sourceFile.sha256) {
-        fail("Automated output QA không còn khớp byte của exact Result.", "output_quality_stale");
-      }
-      const qualityReport = await store.verifyResultFile(projectId, quality.id, "report");
-      for (const evidenceId of quality.inputResults.filter((id) => id !== result.id)) {
-        const evidence = context.results.find((candidate) => candidate.id === evidenceId);
-        if (!evidence) fail("Thiếu Result bằng chứng của automated QA.", "output_quality_stale");
-        for (const file of evidence.files) await store.verifyResultFile(projectId, evidence.id, file.id);
-      }
       const approval = exactApproval(context, result);
       if (!approval) fail("Result nguồn chưa được người dùng accepted.", "approval_required");
-      const humanReview = exactHumanReview(context, result);
-      if (!humanReview || !["passed", "passed_with_notes"].includes(humanReview.verdict)) {
-        fail(
-          "Delivery requires direct interactive human confirmation after watching and listening to the exact Result in full.",
-          "human_review_required"
-        );
-      }
-      const run = context.runs.find((candidate) => candidate.id === result.createdByRun);
-      if (!run || run.status !== "completed" || run.pendingResult ||
-          !run.outputs.includes(result.id)) {
-        fail("Run tạo Result chưa finalization hoàn chỉnh.", "pending_finalization");
-      }
-      const analysis = await analysisSummary(store, projectId);
-      const production = buildProductionContext({ ...context, analysis });
-      const sequence = production.sequences.find((candidate) =>
-        candidate.artifactId === result.data?.sequence?.artifactId);
-      const resultState = production.resultStates.find((candidate) => candidate.resultId === result.id);
-      if (!sequence || sequence.role !== "current" || sequence.reasons.length ||
-          !resultState || resultState.reasons.length) {
-        fail("Result nguồn hoặc dependency không còn là bản current.", "stale_result");
-      }
-      const direction = sequence.references
-        .filter((reference) => reference.kind === "artifact")
-        .map((reference) => context.artifacts.find((artifact) => artifact.id === reference.id))
-        .find((artifact) => artifact?.type === "creative.direction");
-      const deliveryPromise = direction?.data?.deliveryPromise ?? null;
-      const finalReview = exactResultReview(context, result);
-      if (deliveryPromise) {
-        if (!finalReview || finalReview.reviewer !== "agent" ||
-            !["passed", "passed_with_notes"].includes(finalReview.verdict)) {
-          fail("The exact Result requires a passing Agent final review.", "final_review_required");
-        }
-        const checks = new Map(finalReview.criteria.map((criterion) => [criterion.id, criterion]));
-        const unverified = deliveryPromise.requirements.filter((requirement) =>
-          requirement.blocking && checks.get(requirement.id)?.status !== "passed");
-        if (unverified.length) {
-          fail(
-            "Final review has not proven blocking delivery promises: " +
-              unverified.map((requirement) => requirement.id).join(", "),
-            "delivery_promise_unverified"
-          );
-        }
-      }
-      const pendingForSequence = pendingResultFeedback(context.decisions).filter((decision) =>
-        sequenceKeyForDecision(context, decision) === result.data.sequence.key);
-      if (pendingForSequence.length) {
-        fail(
-          "Sequence còn feedback chưa được giải quyết: " + pendingForSequence.map((item) => item.id).join(", "),
-          "pending_feedback"
-        );
-      }
       return {
         runtime: {
           sourcePath: sourceFile.filePath,
@@ -333,33 +196,26 @@ export function createLocalDeliveryExporter({
               sequence: result.data.sequence
             },
             reviews: {
-              deliveryPromise: deliveryPromise ? {
-                directionArtifactId: direction.id,
-                summary: deliveryPromise.summary,
-                requirements: deliveryPromise.requirements
-              } : null,
               sourceResultId: result.id,
               reviews: context.reviews.filter((review) =>
                 review.target?.kind === "result" && review.target.id === result.id)
             },
-            quality: {
+            quality: quality ? {
+              status: "advisory",
               resultId: quality.id,
-              sourceResultId: quality.data.sourceResultId,
-              profile: quality.data.profile,
-              gate: quality.data.gate,
-              checks: quality.data.checks,
-              metrics: quality.data.metrics,
-              evidence: quality.data.evidence,
-              humanReview: quality.data.humanReview,
-              reportSha256: qualityReport.sha256
-            }
+              sourceResultId: quality.data?.sourceResultId ?? null,
+              sourceSha256: quality.data?.sourceSha256 ?? null,
+              matchesDeliveredBytes: quality.data?.sourceSha256 === sourceFile.sha256,
+              gate: quality.data?.gate ?? null,
+              checks: quality.data?.checks ?? [],
+              metrics: quality.data?.metrics ?? null
+            } : { status: "not_run", resultId: null, matchesDeliveredBytes: null }
           }
         },
         trace: {
           result,
           approval,
-          quality,
-          qualityReport,
+          advisoryResultIds: quality ? [quality.id] : [],
           reviews: context.reviews.filter((review) =>
             review.target?.kind === "result" && review.target.id === result.id),
           sourceFile: {
@@ -389,40 +245,9 @@ export function createLocalDeliveryExporter({
       } catch {
         fail("ffprobe trả dữ liệu không hợp lệ.", "invalid_probe");
       }
-      const { video, audio, durationSeconds, fps } = probedMedia;
-      const mismatches = deliveryProfileMismatches(probedMedia, profile, { expectedDurationSeconds });
-      if (mismatches.length) {
-        fail("Video không khớp delivery profile: " + mismatches.join(", "), "profile_mismatch");
-      }
-
-      await command(
-        ffmpegCommand,
-        ["-hide_banner", "-v", "error", "-i", sourcePath, "-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-"],
-        paths
-      );
-      const loudnessRun = await command(
-        ffmpegCommand,
-        ["-hide_banner", "-nostats", "-i", sourcePath, "-map", "0:a:0",
-          "-af", "loudnorm=I=-18:TP=-1.5:LRA=11:print_format=json", "-f", "null", "-"],
-        paths
-      );
-      const silenceRun = await command(
-        ffmpegCommand,
-        ["-hide_banner", "-nostats", "-i", sourcePath, "-map", "0:a:0",
-          "-af", "silencedetect=noise=-50dB:d=0.2", "-f", "null", "-"],
-        paths
-      );
-      const loudness = parseLoudnorm(loudnessRun.stderr);
-      const tailSilenceSeconds = parseTailSilence(silenceRun.stderr, durationSeconds);
-      if (loudness.integratedLufs < profile.integratedLufs.minimum ||
-          loudness.integratedLufs > profile.integratedLufs.maximum) {
-        fail("Loudness nằm ngoài delivery profile.", "loudness_out_of_range");
-      }
-      if (loudness.truePeakDbtp > profile.maximumTruePeakDbtp) {
-        fail("True peak vượt delivery profile.", "true_peak_out_of_range");
-      }
-      if (tailSilenceSeconds > profile.maximumTailSilenceSeconds) {
-        fail("Khoảng lặng cuối video vượt delivery profile.", "tail_silence_out_of_range");
+      const { raw, video, audio, durationSeconds, fps } = probedMedia;
+      if (!video || durationSeconds === null || durationSeconds <= 0) {
+        fail("Exact Result không có video stream hoặc duration hợp lệ.", "invalid_media");
       }
 
       const videoDirectory = join(directory, "video");
@@ -439,26 +264,26 @@ export function createLocalDeliveryExporter({
       }
       const copiedInfo = await lstat(outputVideo);
       const media = {
-        container: profile.container,
+        container: String(raw.format?.format_name ?? "").split(",")[0] || null,
         videoCodec: video.codec_name,
         pixelFormat: video.pix_fmt,
         width: video.width,
         height: video.height,
         fps: round(fps),
-        audioCodec: audio.codec_name,
-        sampleRate: Number(audio.sample_rate),
-        channels: audio.channels,
+        audioCodec: audio?.codec_name ?? null,
+        sampleRate: audio?.sample_rate ? Number(audio.sample_rate) : null,
+        channels: audio?.channels ?? null,
         durationSeconds: round(durationSeconds),
-        integratedLufs: round(loudness.integratedLufs, 2),
-        truePeakDbtp: round(loudness.truePeakDbtp, 2),
-        loudnessRange: round(loudness.loudnessRange, 2),
-        tailSilenceSeconds
+        expectedDurationSeconds,
+        requestedProfileId: profile?.id ?? null,
+        profileComplianceEnforced: false
       };
       const manifest = {
         version: "1.0",
         type: "PADStudio local delivery bundle",
         generatedAt,
-        profile,
+        deliveryMode: "preserve_exact_source",
+        requestedProfile: profile,
         sourceResultId: bundle.provenance.sourceResultId,
         approvalDecisionId: bundle.approval.decisionId,
         outputQualityResultId: bundle.quality.resultId,
@@ -520,19 +345,14 @@ export function createLocalDeliveryExporter({
           status: "passed",
           checks: [
             "exact_result_accepted",
-            "exact_output_quality_passed",
-            "current_dependencies",
             "source_sha256_verified",
-            "full_decode_passed",
-            "delivery_profile_matched",
-            "loudness_in_range",
-            "tail_silence_in_range",
+            "source_media_probed",
             "copy_sha256_matched"
           ],
           details: {
-            profileId: profile.id,
+            deliveryMode: "preserve_exact_source",
+            requestedProfileId: profile?.id ?? null,
             media,
-            executableVersion: availability.executableVersion ?? null,
             ffprobeVersion: availability.ffprobeVersion ?? null
           }
         },
@@ -546,7 +366,7 @@ export function createLocalDeliveryExporter({
         type: "delivery.bundle",
         name: "Delivery bundle: " + execution.sourceResultName,
         inputResources: trace.result.inputResources,
-        inputResults: [trace.result.id, trace.quality.id],
+        inputResults: [trace.result.id, ...trace.advisoryResultIds],
         inputArtifacts: trace.result.inputArtifacts,
         files: execution.files.map(({ id, role, relativePath, name, mediaType, sizeBytes }) => ({
           id, role, path: trace.finalDirectory + "/" + relativePath, name, mediaType, sizeBytes
@@ -554,8 +374,9 @@ export function createLocalDeliveryExporter({
         data: {
           sourceResultId: trace.result.id,
           approvalDecisionId: trace.approval.id,
-          outputQualityResultId: trace.quality.id,
-          profileId: execution.profile.id,
+          outputQualityResultId: execution.manifest.outputQualityResultId ?? null,
+          profileId: execution.profile?.id ?? null,
+          deliveryMode: "preserve_exact_source",
           generatedAt: execution.generatedAt,
           sourceSha256: trace.sourceFile.sha256,
           outputSha256: execution.copiedSha256,

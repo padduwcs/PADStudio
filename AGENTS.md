@@ -12,7 +12,7 @@ Trước tiên xác định yêu cầu thuộc **vận hành project video** hay
 4. Chỉ mở context/dataset chi tiết khi trường trong resume chỉ ra cần thiết.
 5. Mọi asset và output có giá trị phải đi qua Resource/Result/Artifact/Delivery của đúng project. Không tự sao chép preview/render ra ngoài project hoặc gọi một file là `final` để thay cho delivery hợp lệ.
 
-Trong chế độ này, không đọc `docs/build/`, `reports/`, `test/`, lịch sử Git, `PADSTUDIO-REFERENCE.md`, `PADSTUDIO-AGENT-REFERENCE.md` hoặc thư mục của project khác, trừ khi một lỗi cụ thể buộc phải điều tra. Không quét toàn bộ `.padstudio/projects`; luôn truyền project ID tường minh. Web chỉ quan sát; thay đổi project qua CLI/tool contract. Trạng thái `final` chỉ có sau exact user acceptance, QA hợp lệ và `video.export-delivery` tạo Delivery Result; tên file hoặc bản sao thủ công không tạo ra trạng thái đó.
+Trong chế độ này, không đọc `docs/build/`, `reports/`, `test/`, lịch sử Git, `PADSTUDIO-REFERENCE.md`, `PADSTUDIO-AGENT-REFERENCE.md` hoặc thư mục của project khác, trừ khi một lỗi cụ thể buộc phải điều tra. Không quét toàn bộ `.padstudio/projects`; luôn truyền project ID tường minh. Web chỉ quan sát; thay đổi project qua CLI/tool contract. Trạng thái `final` chỉ có sau exact user acceptance và `video.export-delivery` tạo Delivery Result giữ nguyên byte; QA sâu là kiểm tra trước duyệt hoặc evidence advisory, không phải blocker hậu duyệt. Tên file hoặc bản sao thủ công không tạo ra trạng thái đó.
 
 Nếu phát hiện lỗi sản phẩm cần sửa code, báo rõ và chuyển sang chế độ phát triển trước khi đọc tài liệu build.
 Không sửa `src/`, `test/` hoặc tài liệu build trong khi vẫn đang vận hành video. Hãy giữ nguyên project,

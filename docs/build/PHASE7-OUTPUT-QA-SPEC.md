@@ -28,10 +28,10 @@ Cho Agent kiểm tra chính exact `video.sequence-render` trước khi xin duy�
 - Profile `nonverbal-video-v1` không chạy ASR nhưng vẫn yêu cầu hình, audio và full decode.
 - Result QA có `verification.status = passed` khi báo cáo được tạo đúng và toàn vẹn. Kết luận dùng `data.gate.deliveryEligible`; một báo cáo hợp lệ vẫn có thể kết luận output không đạt.
 - Human visual/auditory review luôn là `not_performed` trong Result kỹ thuật.
-- `local-delivery` chỉ xuất khi có exact QA Result mới nhất với `deliveryEligible = true`; bundle mang theo `quality.json` và tham chiếu QA Result.
-- Nếu creative direction khai báo `deliveryPromise`, delivery còn yêu cầu một Agent review
-  đạt trên đúng render Result. Từng promise `blocking` phải được review bằng criterion cùng ID
-  và trạng thái `passed`; bundle giữ cả promise lẫn review để kiểm tra lại.
+- `local-delivery` giữ QA của exact Result trong `quality.json` ở trạng thái advisory nếu có; từ quyết định UX ngày 2026-09-22, thiếu/fail/stale QA không phủ quyết một exact Result người dùng đã chấp nhận.
+- Nếu creative direction khai báo `deliveryPromise`, Agent nên review từng promise `blocking` trên
+  exact Result trước khi trình người dùng. Bundle giữ review nếu có để kiểm tra lại, nhưng acceptance
+  sau đó là quyết định cuối và local delivery không mở lại gate này.
 - User acceptance của exact Result vẫn là gate độc lập. Agent review không được ghi thành human
   viewing/listening và không thay quyền chấp nhận đầu ra của người dùng.
 
@@ -40,4 +40,4 @@ Cho Agent kiểm tra chính exact `video.sequence-render` trước khi xin duy�
 - Không OCR để tự khẳng định caption đúng nội dung.
 - Không chấm cảm xúc, nhịp dựng hoặc độ tự nhiên của giọng.
 - Không tự ghi user acceptance và không tự chọn profile theo loại project.
-- Không biến QA thành stage bắt buộc cho mọi Result; gate chỉ áp dụng khi xuất local delivery từ sequence render.
+- Không biến QA thành stage bắt buộc cho mọi Result. QA sâu nên chạy trước khi trình người dùng hoặc khi một chuẩn phát hành cụ thể thực sự yêu cầu; nó không còn là gate hậu duyệt của local delivery.

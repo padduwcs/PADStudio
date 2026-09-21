@@ -78,8 +78,9 @@ và phải nghe ít nhất các đoạn tiếng mẫu nếu render có tiếng. 
 chỉ hỗ trợ QA kỹ thuật, không đủ cho verdict sáng tạo tích cực. Nếu chỉ xem/nghe các
 đoạn mẫu, verdict tối đa là `passed_with_notes` và phải nêu giới hạn. `passed` chỉ
 hợp lệ khi Agent khai đã xem hình liên tục và nghe tiếng liên tục (hoặc video không có
-tiếng). Human acceptance vẫn là xác nhận tương tác riêng, không thể thay bằng trường
-`inspection`. Review cũ không có trường này vẫn đọc được để giữ lịch sử.
+tiếng). Human acceptance vẫn là quyết định riêng, không thể thay bằng trường `inspection`. Quyết định
+đó có thể được người dùng đưa trong Agent host rồi Agent bind vào exact Result; kênh này không tự sinh
+full-view/full-listen attestation. Review cũ không có trường này vẫn đọc được để giữ lịch sử.
 
 ## Artifact và revision
 

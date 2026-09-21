@@ -30,9 +30,9 @@ Tài liệu lệnh/contract đầy đủ chỉ tra cứu khi cần: [`PADSTUDIO-
 
 Project hoàn thành có thể được đưa khỏi danh sách active mà không xóa dữ liệu bằng `npm run project:archive -- archive ... --confirm-stopped`; xem bootstrap runtime trước khi dùng.
 
-Một render/preview không phải file final. Bản bàn giao chính thức chỉ được tạo từ exact Result đã được người dùng duyệt và qua QA bằng `video.export-delivery`; không lấy file sao chép thủ công ngoài project làm nguồn sự thật.
+Một render/preview không phải file final. Bản bàn giao chính thức được tạo từ exact Result người dùng đã duyệt bằng `video.export-delivery`, giữ nguyên byte và checksum; QA sâu là kiểm tra trước duyệt hoặc bằng chứng advisory, không phải blocker hậu duyệt.
 
-Gate tương tác dành cho người dùng chỉ còn ở exact render cuối: `npm run project:accept -- ...`.
+Người dùng duyệt exact render ngay trong chat; Agent ghi quyết định bằng `project:accept -- ... --from-agent-host`. Terminal tương tác chỉ là lựa chọn cho full-view/full-listen attestation.
 Code animation được Agent validate, preflight, preview, sửa và render trong workspace được quản lý;
 người dùng không phải duyệt từng source code trung gian.
 

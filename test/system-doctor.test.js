@@ -9,9 +9,9 @@ import {
 } from "../src/operations/system-doctor.js";
 import { ProjectStore } from "../src/project/project-store.js";
 
-test("delivery export readiness includes its exact-output inspection dependency", () => {
+test("delivery export readiness does not require optional deep output inspection", () => {
   assert.ok(PRACTICAL_REQUIRED_CAPABILITIES.includes("video.export-delivery"));
-  assert.ok(PRACTICAL_REQUIRED_CAPABILITIES.includes("video.inspect-output"));
+  assert.equal(PRACTICAL_REQUIRED_CAPABILITIES.includes("video.inspect-output"), false);
 });
 
 function registryWithout(missing = null) {

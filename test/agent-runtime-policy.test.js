@@ -10,7 +10,8 @@ test("runtime bootstrap preserves managed-output and final-delivery guardrails",
   ]);
 
   assert.match(router, /Không tự sao chép preview\/render ra ngoài project/);
-  assert.match(router, /final.*exact user acceptance.*QA.*video\.export-delivery.*Delivery Result/s);
+  assert.match(router, /final.*exact user acceptance.*video\.export-delivery.*Delivery Result.*giữ nguyên byte/s);
+  assert.match(router, /QA sâu.*không phải blocker hậu duyệt/s);
 
   assert.match(runtime, /Không dùng raw path hay file rời làm nguồn sự thật/);
   assert.match(runtime, /preview\.mp4.*vẫn là preview.*final\.mp4/s);
@@ -19,7 +20,7 @@ test("runtime bootstrap preserves managed-output and final-delivery guardrails",
   assert.match(runtime, /không bypass bằng FFmpeg, lệnh copy hoặc công cụ ngoài Executor/);
   assert.match(runtime, /Chỉ tạo bản sao ngoài project sau khi đã có official Delivery và người dùng yêu cầu rõ vị trí/);
   assert.match(runtime, /health\.counts\.deliveries/);
-  assert.match(runtime, /Render verification.*không thay thế exact-output QA/s);
+  assert.match(runtime, /Render verification.*QA sâu không thay thế đánh giá sáng tạo.*không phủ quyết acceptance/s);
 
   assert.match(reference, /Không dùng `copy`, FFmpeg hay.*để né các gate/s);
   assert.match(reference, /delivery\.bundle.*video\.export-delivery/s);

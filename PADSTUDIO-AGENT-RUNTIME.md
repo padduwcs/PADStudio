@@ -57,9 +57,9 @@ authorization thì phải dùng recovery, không abandon.
 - Mọi input, asset tạo ngoài, render và output có giá trị tiếp tục phải được import hoặc tạo qua contract để trở thành Resource/Result/Artifact/Delivery của đúng project. Không dùng raw path hay file rời làm nguồn sự thật.
 - Scratch workspace do Agent tự tạo phải nằm trong `.agent-work` hoặc thư mục tạm của hệ điều hành và phải được xóa khi bước authoring kết thúc. Không tạo `.tmp-*` ở root repository; trước khi bàn giao, kiểm tra không còn scratch directory do phiên làm việc để lại.
 - Không tự sao chép preview/render vào root repo, Desktop hoặc thư mục tùy ý để thay cho delivery. `preview.mp4` và mọi `video.sequence-render` vẫn là preview, kể cả khi được đổi tên thành `final.mp4`.
-- `final` là trạng thái có bằng chứng, không phải tên file. Chỉ mô tả video là final/đã bàn giao khi exact render đã được người dùng chấp nhận, QA của chính render đó đạt và `video.export-delivery` đã tạo một Delivery Result.
+- `final` là trạng thái có bằng chứng, không phải tên file. Chỉ mô tả video là final/đã bàn giao khi exact render đã được người dùng chấp nhận và `video.export-delivery` đã tạo một Delivery Result bằng cách giữ nguyên byte của bản đó. QA sâu là bằng chứng trước duyệt hoặc kiểm tra tùy chọn, không phải lý do mở lại sản phẩm sau khi người dùng đã chốt.
 - Không suy diễn approval từ việc người dùng yêu cầu xem thử, không phản hồi hoặc chỉ nhận xét một phần. Không tự ghi Decision/attestation nếu người dùng chưa thực sự quyết định hoặc xem/nghe đủ.
-- Nếu thiếu approval, QA, review, provenance hoặc finalization, báo rõ đây là preview hay đang bị chặn và thực hiện đúng bước còn thiếu; không bypass bằng FFmpeg, lệnh copy hoặc công cụ ngoài Executor.
+- Nếu thiếu approval, file exact hoặc provenance tối thiểu, báo rõ đây là preview hay đang bị chặn và thực hiện đúng bước còn thiếu; không bypass bằng FFmpeg, lệnh copy hoặc công cụ ngoài Executor. QA/review chưa có hoặc có cảnh báo phải được nói đúng mức, nhưng không được dùng chúng để phủ quyết một exact Result mà người dùng vừa chấp nhận.
 - Chỉ tạo bản sao ngoài project sau khi đã có official Delivery và người dùng yêu cầu rõ vị trí. Bản sao đó chỉ để tiện sử dụng; Delivery Result cùng checksum trong project vẫn là bản chuẩn, và checkpoint phải ghi Delivery Result cùng vị trí bản sao.
 - Trước khi báo hoàn tất, đọc lại `project:resume`: không được còn pending feedback/finalization liên quan, `health.counts.deliveries` phải có delivery vừa tạo, và câu trả lời phải nêu exact Delivery Result thay vì chỉ đưa raw path.
 
@@ -100,8 +100,8 @@ kiểm tra cả câu cuối. Freeze/QA kỹ thuật không tự kết luận nh�
 Mỗi lần byte source đổi phải tạo source Result mới, validate lại và preflight lại đúng revision trước
 khi preview/render. Agent tự lặp vòng này đến khi có bản xem được; không biến lỗi compile thành câu hỏi
 cho người dùng. Motion preview chỉ dùng có chọn lọc cho selector/đoạn khó đánh giá, không phải gate bắt
-buộc cho mọi composition. Người dùng xem video, yêu cầu chỉnh tiếp nếu chưa ưng và chỉ chạy
-`project:accept` khi chốt exact render cuối.
+buộc cho mọi composition. Người dùng xem video, yêu cầu chỉnh tiếp nếu chưa ưng rồi chốt exact render
+cuối trong chat; Agent ghi acceptance vào project.
 
 Nếu một lỗi contract/runtime của PADStudio chặn công việc, không sửa `src/`, `test/` hay tài liệu build ngay
 trong phiên vận hành video. Ghi lại exact Run/Result và lỗi, báo rõ đây là lỗi hệ thống, rồi chỉ chuyển sang
@@ -109,25 +109,25 @@ phát triển codebase khi phạm vi đó đã được xác nhận.
 
 1. Tạo hoặc cập nhật `video.sequence` với revision và `changeReason`.
 2. Render exact artifact bằng `video.render-sequence`; chỉ reuse Result khi contract/hash khớp.
-3. Chạy `video.inspect-output` trên exact render. Với video có lời, truyền `expectedSpeech.text`
+3. Khi hữu ích và tương xứng với rủi ro, chạy `video.inspect-output` trên exact render **trước khi** trình người dùng. Với video có lời, truyền `expectedSpeech.text`
    và các `expectedSpeech.terms` quan trọng khi sequence không lưu narration text; QA sẽ đối chiếu
    ASR và lấy frame phủ đều toàn timeline.
-4. Agent review đúng Result; với video, ghi `review.inspection` về cách đã xem hình/chuyển động và đánh giá tiếng, cùng giới hạn thực tế. Ảnh mẫu và số liệu âm thanh không chứng minh đã xem/nghe liên tục. Người dùng xem trong observer và phản hồi trong chat.
-5. Sau QA hợp lệ, Agent dừng và yêu cầu người dùng tự chạy
-   `npm run project:accept -- <project-id> <render-result-id>` trong terminal tương tác. Lệnh hiển thị
-   exact Result, revision, thời lượng, checksum và yêu cầu người dùng xác nhận đã xem/nghe trọn vẹn.
-   Trước khi hiện câu xác nhận, lệnh kiểm tra media khớp ít nhất một delivery profile và tự liệt kê
-   các feedback `changes_requested` còn chờ của đúng sequence để acceptance mới giải quyết chúng.
-   Nếu preflight này lỗi, phải sửa hoặc render lại trước; không yêu cầu người dùng xác nhận một Result
-   mà delivery chắc chắn sẽ từ chối.
-   Agent không được chạy lệnh, gõ câu xác nhận hoặc tạo attestation/acceptance bằng JSON.
-6. `video.export-delivery` chỉ dùng exact Result có confirmed human review, confirmed acceptance và QA hợp lệ.
+4. Agent review đúng Result ở mức thực sự giúp chất lượng trước khi gửi xem; với video, ghi `review.inspection` trung thực về phạm vi đã kiểm tra. Không chạy thêm một vòng kiểm định chỉ để đủ thủ tục sau khi người dùng đã chốt.
+5. Người dùng xem trong observer và phản hồi trong chat. Khi họ chốt rõ ràng exact Result đang được trình, Agent chạy
+   `npm run project:accept -- <project-id> <render-result-id> --from-agent-host`.
+   Lệnh xác minh exact file/checksum, ghi acceptance và tự resolve feedback còn chờ của đúng sequence. Nó không
+   gán thêm lời khai “đã xem/nghe toàn bộ”; terminal tương tác cũ chỉ còn là lựa chọn khi người dùng thực sự muốn
+   lưu attestation đó.
+6. Agent chạy `video.export-delivery` ngay trên exact Result đã chốt. Delivery sao chép nguyên byte, không render lại,
+   không đổi codec và không ép profile. QA, delivery profile, loudness, tail silence, dependency freshness và review
+   trước đó được giữ như bằng chứng/cảnh báo nếu có, không phải blocker hậu duyệt. Chỉ làm lại video khi file exact
+   bị thiếu/hỏng hoặc người dùng yêu cầu một biến thể/chuẩn xuất khác.
 
 `project:decide` vẫn dùng cho feedback, rejection và quyết định không thuộc final acceptance gate.
 `project:attest` dạng JSON đã ngừng nhận human attestation. Một yêu cầu kiểu “cứ làm đi” ở trước đó
 không tự động phê duyệt render xuất hiện về sau; final acceptance gắn với đúng immutable Result.
 
-Render verification chỉ chứng minh file dựng được tạo đúng contract; nó không thay thế exact-output QA, review của Agent hay việc người dùng xem/nghe. Khi lời thoại, subtitle hoặc hình ảnh được sửa, tạo revision/render mới rồi lặp lại QA và approval trên đúng Result mới.
+Render verification chỉ chứng minh file dựng được tạo đúng contract; QA sâu không thay thế đánh giá sáng tạo và không phủ quyết acceptance. Khi lời thoại, subtitle hoặc hình ảnh được sửa theo yêu cầu mới, tạo revision/render mới rồi xin approval trên đúng Result mới. Không tự phát sinh sửa đổi sau một acceptance đã rõ ràng.
 
 Nguồn thiếu, evidence stale, QA fail hoặc finalization dang dở phải được báo rõ; không tự bỏ qua. Dùng lệnh recovery hiện có để hoàn tất output đã bảo toàn mà không chạy lại provider.
 
