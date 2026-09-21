@@ -9,7 +9,7 @@ import { readOutputQualityProfile, listOutputQualityProfiles } from "../quality/
 
 const execFileAsync = promisify(execFile);
 
-export const OUTPUT_QUALITY_TOOL_VERSION = "1.3.1";
+export const OUTPUT_QUALITY_TOOL_VERSION = "1.3.2";
 export const VISUAL_DEFECT_FILTER = "blackdetect=d=0.5:pix_th=0.10:pic_th=0.9999,freezedetect=n=-60dB:d=2";
 
 export function severeBlackWindowThreshold(durationSeconds) {
@@ -361,6 +361,8 @@ export function createLocalOutputQuality({
         black: summarizeWindows(visualDefects.black, durationSeconds),
         freeze: summarizeWindows(visualDefects.freeze, durationSeconds),
       };
+      const substantialFreezeShare = visualDefectSummary.freeze.windowCount >= 3 &&
+        visualDefectSummary.freeze.shareOfVideo >= 0.35;
       const uncoveredPoints = inspectionPoints.filter((point) => !frameRows.some((row) => Math.abs((finite(row.actualTime) ?? finite(row.requestedTime) ?? -999) - point.seconds) <= 0.25));
       const transcript = profile.speechExpected ? transcriptMetrics(await transcriptRows(transcriptPath)) : null;
       const alignment = profile.speechExpected ? speechAlignment(expectedSpeech, transcript.text) : null;
@@ -385,7 +387,7 @@ export function createLocalOutputQuality({
           peakNormalized: evidence.audio.data.details?.peakNormalized ?? null
         }),
         check("black-frame-windows", severeBlack.length ? "failed" : visualDefects.black.length ? "warning" : "passed", "Black windows are measured from exact decoded pixels; short windows may be intentional transitions.", { windows: visualDefects.black, severeWindows: severeBlack.length, summary: visualDefectSummary.black }),
-        check("freeze-windows", severeFreeze.length ? "warning" : "passed", "Frozen windows are reported for review because intentional still-image segments can look identical.", { windows: visualDefects.freeze, severeWindows: severeFreeze.length, summary: visualDefectSummary.freeze }),
+        check("freeze-windows", severeFreeze.length || substantialFreezeShare ? "warning" : "passed", "Frozen windows are reported for review because intentional still-image segments can look identical. A large aggregate share is an advisory prompt to inspect pacing, not a creative verdict.", { windows: visualDefects.freeze, severeWindows: severeFreeze.length, substantialAggregateShare: substantialFreezeShare, summary: visualDefectSummary.freeze }),
         check("timeline-window-samples", uncoveredPoints.length ? "failed" : "passed", "Exact frames must cover planned segment, caption, overlay, and transition windows.", { requested: inspectionPoints.length, covered: inspectionPoints.length - uncoveredPoints.length, uncoveredPoints }),
         check("visual-review-coverage", maximumGapSeconds <= allowedGapSeconds + 0.01 ? "passed" : "failed", "Timeline samples must cover the whole render at an adaptive cadence; this evidence still does not replace continuous human viewing.", { samples: inspectionPoints.length, maximumGapSeconds: rounded(maximumGapSeconds), allowedGapSeconds: rounded(allowedGapSeconds) })
       ];

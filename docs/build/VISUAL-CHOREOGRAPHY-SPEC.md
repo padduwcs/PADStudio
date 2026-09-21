@@ -125,6 +125,12 @@ role distribution, longest string, narration duplication and semantic beats with
 metrics are evidence for Agent and human review; they do not automatically decide whether a video is
 good or prescribe how much motion, text or empty space every project must contain.
 
+Timed narration may be represented by an optional 1.3 `narrationCueMap`. Each cue identifies its
+active beat and either a timed action or a reason to hold the completed image. Validation checks
+chronology, references and gross action-duration mismatches. The observer exposes cue counts. This
+is an authored synchronization plan, not audiovisual recognition; the Agent still inspects the
+render against the actual voice. Existing 1.3 artifacts without a map remain valid.
+
 Versions 1.0–1.2 remain readable. New narrated explanatory work should use 1.3. Existing 1.2 plans
 do not become invalid merely because their text inventory was not recorded under the older contract.
 

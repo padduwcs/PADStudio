@@ -52,6 +52,10 @@ or a layout generator.
    role and purpose. If text has no indispensable pointing, naming, numeric, symbolic or subject role,
    remove it before source authoring. Do not invent chapters, hero quotas, state-ID chains, reset
    budgets or screen-area percentages.
+   If timed voice is available, map each meaningful spoken cue to a visual action or a deliberate
+   hold using the optional `narrationCueMap`. Split long sections into the source's thought units.
+   Compare source timestamps with the plan before authoring; the map cannot prove the rendered
+   action actually happened at the declared time.
 9. For a long or visually uncertain piece, author enough source to preview the opening and one
    representative operational passage before polishing the whole timeline. The Agent chooses these
    passages from the creative risk, not from a fixed timestamp. Revise the visual language if that
@@ -85,6 +89,9 @@ In addition to the shared objects, beats, actions and review criteria:
   duplicate the complete narration;
 - every action: `effect` (`state-change`, `focus-change`, or `presentation`). The final semantic
   state-change action's `resultingState` must equal the beat's `stateAfter`.
+- optional `narrationCueMap`: `sourceDescription` and ordered `cues` with `id`, `startSeconds`,
+  `endSeconds`, `beatId`, `visualPurpose`, and either `actionId` or `holdReason`. Include the final
+  spoken point. A hold explains why an already completed image remains on screen.
 
 The first beat uses `establish`; later beats state an actual relationship instead of establishing
 the film again. The contract validates timing, references and semantic honesty. It deliberately

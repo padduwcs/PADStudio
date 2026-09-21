@@ -75,6 +75,7 @@ export function normalizeVisualChoreography(value) {
     "version", "changeReason", "purpose", "durationSeconds", "fps", "objects", "beats", "reviewCriteria",
     ...(version === "1.1" ? ["continuity", "presentation", "chapters"] : []),
     ...(["1.2", "1.3"].includes(version) ? ["direction", "presentation"] : []),
+    ...(version === "1.3" ? ["narrationCueMap"] : []),
   ], "animation.choreography data");
   const fps = finite(value.fps, "animation.choreography.fps", 1, 60);
   if (!Number.isInteger(fps)) fail("animation.choreography.fps must be an integer.");
@@ -447,6 +448,48 @@ export function normalizeVisualChoreography(value) {
       fail("animation.choreography beats must use every declared chapter once and in declared order.");
     }
   }
+  let narrationCueMap = null;
+  if (version === "1.3" && value.narrationCueMap !== undefined) {
+    const map = requireObject(value.narrationCueMap, "animation.choreography.narrationCueMap");
+    assertOnlyFields(map, ["sourceDescription", "cues"], "animation.choreography.narrationCueMap");
+    if (!Array.isArray(map.cues) || map.cues.length === 0 || map.cues.length > 1000) {
+      fail("animation.choreography.narrationCueMap.cues must contain 1 to 1000 cues.");
+    }
+    const beatById = new Map(beats.map((beat) => [beat.id, beat]));
+    const ids = new Set();
+    let previousEnd = 0;
+    const cues = map.cues.map((entry, index) => {
+      const label = `animation.choreography.narrationCueMap.cues[${index}]`;
+      requireObject(entry, label);
+      assertOnlyFields(entry, ["id", "startSeconds", "endSeconds", "beatId", "actionId", "holdReason", "visualPurpose"], label);
+      const id = requireId(entry.id, `${label}.id`);
+      if (ids.has(id)) fail(`${label}.id must be unique.`);
+      ids.add(id);
+      const startSeconds = finite(entry.startSeconds, `${label}.startSeconds`, previousEnd, durationSeconds);
+      const endSeconds = finite(entry.endSeconds, `${label}.endSeconds`, startSeconds, durationSeconds);
+      if (endSeconds <= startSeconds) fail(`${label} must have positive duration.`);
+      previousEnd = endSeconds;
+      const beat = beatById.get(requireId(entry.beatId, `${label}.beatId`));
+      if (!beat || (startSeconds + endSeconds) / 2 < beat.startSeconds || (startSeconds + endSeconds) / 2 > beat.endSeconds) {
+        fail(`${label}.beatId must identify the beat active at the cue midpoint.`);
+      }
+      const actionId = entry.actionId == null ? null : requireId(entry.actionId, `${label}.actionId`);
+      const holdReason = entry.holdReason == null ? null : requireText(entry.holdReason, `${label}.holdReason`);
+      if (Boolean(actionId) === Boolean(holdReason)) fail(`${label} requires either actionId or holdReason.`);
+      if (actionId) {
+        const action = beat.actions.find((candidate) => candidate.id === actionId);
+        if (!action || action.endSeconds <= startSeconds || action.startSeconds >= endSeconds) {
+          fail(`${label}.actionId must overlap this cue inside its beat.`);
+        }
+        if (action.endSeconds - action.startSeconds > (endSeconds - startSeconds) + 2) {
+          fail(`${label}.actionId spans too much narration; divide the visual response into timed actions or declare an intentional hold.`);
+        }
+      }
+      return { id, startSeconds, endSeconds, beatId: beat.id, actionId, holdReason,
+        visualPurpose: requireText(entry.visualPurpose, `${label}.visualPurpose`) };
+    });
+    narrationCueMap = { sourceDescription: requireText(map.sourceDescription, "animation.choreography.narrationCueMap.sourceDescription"), cues };
+  }
   return {
     version,
     changeReason: requireText(value.changeReason, "animation.choreography.changeReason"),
@@ -458,6 +501,20 @@ export function normalizeVisualChoreography(value) {
     reviewCriteria: normalizeStringList(value.reviewCriteria, "animation.choreography.reviewCriteria", { allowEmpty: false }),
     ...(version === "1.1" ? { continuity, presentation, chapters } : {}),
     ...(["1.2", "1.3"].includes(version) ? { direction, presentation } : {}),
+    ...(narrationCueMap ? { narrationCueMap } : {}),
+  };
+}
+
+export function choreographyNarrationCueMetrics(choreography) {
+  const normalized = normalizeVisualChoreography(choreography);
+  const map = normalized.narrationCueMap;
+  if (!map) return null;
+  return {
+    sourceDescription: map.sourceDescription,
+    cueCount: map.cues.length,
+    actionCueCount: map.cues.filter((cue) => cue.actionId).length,
+    deliberateHoldCount: map.cues.filter((cue) => cue.holdReason).length,
+    longestCueSeconds: Math.max(...map.cues.map((cue) => cue.endSeconds - cue.startSeconds)),
   };
 }
 

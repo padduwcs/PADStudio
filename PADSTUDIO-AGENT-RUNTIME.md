@@ -91,6 +91,11 @@ chế cách ly mạng, nên chỉ dùng source/dependency/asset thuộc project,
 Không tự cài runtime, không gọi `npx` để tải package và không đổi Manim/Remotion/HyperFrames ngầm.
 `animation.render` là Result video có thể dùng trực tiếp làm source của `video.sequence`.
 
+Với voice có timestamp, đọc các cue có ý nghĩa trong nguồn và, nếu dùng choreography 1.3,
+ghi `narrationCueMap` để nối lời với hành động hoặc một khoảng giữ hình có lý do. Map chỉ kiểm tra
+kế hoạch thời gian; khi review phải xem chuyển động đúng các mốc lời nói, nghe đoạn tương ứng và
+kiểm tra cả câu cuối. Freeze/QA kỹ thuật không tự kết luận nhịp kể hay chất lượng hình.
+
 Mỗi lần byte source đổi phải tạo source Result mới, validate lại và preflight lại đúng revision trước
 khi preview/render. Agent tự lặp vòng này đến khi có bản xem được; không biến lỗi compile thành câu hỏi
 cho người dùng. Motion preview chỉ dùng có chọn lọc cho selector/đoạn khó đánh giá, không phải gate bắt

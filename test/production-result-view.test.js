@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { feedbackForSegment, productionRenderOptions } from "../ui/production-view.js";
+import { creativeReviewStatus, feedbackForSegment, productionRenderOptions } from "../ui/production-view.js";
+
+test("technical review alone does not imply creative review of the exact render", () => {
+  assert.equal(creativeReviewStatus({ reviews: [{ perspective: "technical", verdict: "passed" }] }), "missing");
+  assert.equal(creativeReviewStatus({ reviews: [{ perspective: "creative", verdict: "passed_with_notes" }] }), "reviewed");
+});
 
 test("production result options retain multiple exact Results from one revision", () => {
   const options = productionRenderOptions([

@@ -18,6 +18,10 @@ judgment without imposing a fixed production pipeline.
    When the composition binds `animation.choreography`, review every semantic beat against its
    message, state-before/state-after and ordered actions. Missing or reordered actions are failures,
    even when the sampled frames look attractive.
+   With timed voice, compare each spoken thought to the rendered visual change. Play or scrub
+   short intervals across cue boundaries and record whether speech leads, follows or matches the
+   image. A valid `narrationCueMap` is a plan, not render evidence. Check the ending against the
+   final spoken point.
 5. Run a distinctness pass. Ask whether the frames could belong to any unrelated video after only
    replacing the text. Flag repeated card/title/diagram grammar, slideshow pacing and decorative
    motion. Reuse engines and utilities freely; give important videos a bespoke visual argument.
@@ -38,6 +42,9 @@ judgment without imposing a fixed production pipeline.
    still be legible unless the project explicitly chose `type-led` communication.
 8. Evaluate variation deliberately: visual vocabulary, motion intensity and information density
    should change with the narrative. Variation must clarify progression, not create random novelty.
+   On sparse dark frames, inspect whether the explanatory subject receives enough of the safe
+   stage to read comfortably. Distinguish a purposeful pause from an undersized diagram. Freeze
+   duration and foreground area are prompts for review, not aesthetic verdicts by themselves.
    Check for front-loading: the opening must not receive all bespoke motion while the middle and end
    collapse into repetitive cards. Each major beat should earn its treatment from the content.
    When HyperFrames motion is hard to infer from stills, use a targeted motion preview for the

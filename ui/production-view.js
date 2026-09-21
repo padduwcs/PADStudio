@@ -51,6 +51,13 @@ export function feedbackForSegment(render, segmentId = null) {
   );
 }
 
+export function creativeReviewStatus(render) {
+  const reviews = render?.reviews ?? [];
+  if (reviews.some((review) => ["creative", "combined"].includes(review.perspective) &&
+    ["passed", "passed_with_notes"].includes(review.verdict))) return "reviewed";
+  return "missing";
+}
+
 function feedbackPanel(render, segmentId = null) {
   const decisions = feedbackForSegment(render, segmentId);
   if (!decisions.length) return null;
@@ -213,6 +220,8 @@ function revisionPanel(context, sequence, baseline = null, render = null) {
       const coverage = reviewInspectionLabel(review);
       panel.append(node("p", review.perspective + " · " + review.verdict + coverage + " — " + review.summary));
     }
+    if (creativeReviewStatus(render) === "missing") panel.append(node("p",
+      "Chưa có review sáng tạo cho exact Result này: cần xem chuyển động, đối chiếu lời với hình và nghe các đoạn quan trọng.", "sequence-warning"));
     panel.append(feedbackAnchor(context, sequence, render));
   } else panel.append(node("p", "Chưa có bản dựng cho phiên bản này.", "empty-note"));
   panel.append(timelinePanel(sequence, previewVideo));

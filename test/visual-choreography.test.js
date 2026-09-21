@@ -6,6 +6,7 @@ import test from "node:test";
 import { normalizeAnimationComposition } from "../src/animation/animation-composition.js";
 import {
   choreographyCommunicationMetrics,
+  choreographyNarrationCueMetrics,
   choreographyContinuityMetrics,
   choreographyReviewPoints,
   normalizeVisualChoreography,
@@ -315,6 +316,35 @@ test("visual choreography 1.3 makes visual proof and exact text intent inspectab
   assert.equal(choreographyCommunicationMetrics(typeLed).narrationDuplicateCount, 1);
   typeLed.beats[0].textElements[0].text = "A deliberately long written passage. ".repeat(10);
   assert.doesNotThrow(() => normalizeVisualChoreography(typeLed));
+});
+
+test("optional narration cue map checks visual responses against spoken cue timing", () => {
+  const value = visualFirstChoreography();
+  value.narrationCueMap = {
+    sourceDescription: "Imported voice alignment with two timed statements.",
+    cues: [
+      { id: "spoken-select", startSeconds: 0, endSeconds: 1.5, beatId: "select-cells", actionId: "select", visualPurpose: "Select cells when selection is spoken." },
+      { id: "spoken-sum", startSeconds: 2, endSeconds: 3.75, beatId: "accumulate", actionId: "sum", visualPurpose: "Resolve values as the sum is spoken." },
+    ],
+  };
+  const normalized = normalizeVisualChoreography(value);
+  assert.deepEqual(choreographyNarrationCueMetrics(normalized), {
+    sourceDescription: value.narrationCueMap.sourceDescription, cueCount: 2, actionCueCount: 2,
+    deliberateHoldCount: 0, longestCueSeconds: 1.75,
+  });
+
+  const missingAction = structuredClone(value);
+  missingAction.narrationCueMap.cues[1].actionId = "select";
+  assert.throws(() => normalizeVisualChoreography(missingAction), /actionId must overlap/);
+
+  const earlyImage = structuredClone(value);
+  earlyImage.narrationCueMap.cues[1].startSeconds = 1;
+  assert.throws(() => normalizeVisualChoreography(earlyImage), /startSeconds/);
+
+  const intentionalHold = structuredClone(value);
+  delete intentionalHold.narrationCueMap.cues[1].actionId;
+  intentionalHold.narrationCueMap.cues[1].holdReason = "The completed sum stays visible while its meaning is spoken.";
+  assert.equal(choreographyNarrationCueMetrics(intentionalHold).deliberateHoldCount, 1);
 });
 
 test("composition 1.1 binds exact choreography provenance and observer context", async (t) => {

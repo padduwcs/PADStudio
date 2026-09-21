@@ -1,6 +1,7 @@
 import {
   ANIMATION_CHOREOGRAPHY_TYPE,
   choreographyCommunicationMetrics,
+  choreographyNarrationCueMetrics,
   choreographyContinuityMetrics,
   choreographyReviewPoints,
   normalizeVisualChoreography,
@@ -40,6 +41,7 @@ export function buildAnimationContext(context) {
       semanticBeatCount: data.beats.filter((beat) => beat.kind === "semantic").length,
       continuity: choreographyContinuityMetrics(data),
       communication: choreographyCommunicationMetrics(data),
+      narrationCues: choreographyNarrationCueMetrics(data),
       direction: data.direction ?? null,
       presentation: data.presentation ?? null,
       beats: data.beats,

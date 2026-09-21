@@ -206,6 +206,19 @@ test("output QA blocks a severe black window and reports freeze as advisory", as
   assert.equal(assessed.execution.report.gate.deliveryEligible, false);
 });
 
+test("output QA flags accumulated short frozen windows for pacing review", async (t) => {
+  const state = await fixture(t);
+  const assessed = await assess(state, [
+    "freeze_start: 0", "freeze_end: 1.4", "freeze_duration: 1.4",
+    "freeze_start: 3", "freeze_end: 4.4", "freeze_duration: 1.4",
+    "freeze_start: 6", "freeze_end: 7.4", "freeze_duration: 1.4",
+  ].join("\n"));
+  const freeze = assessed.execution.report.checks.find((item) => item.id === "freeze-windows");
+  assert.equal(freeze.status, "warning");
+  assert.equal(freeze.metrics.substantialAggregateShare, true);
+  assert.equal(assessed.execution.report.gate.deliveryEligible, true);
+});
+
 test("output QA reports a brief near-black transition without blocking a long render", async (t) => {
   const state = await fixture(t);
   state.source.data.durationSeconds = 292.375;
