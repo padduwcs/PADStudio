@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "node src/web/server.js",
     "start": "node src/web/server.js",
+    "observer:ensure": "node src/cli/ensure-observer.js",
     "project:create": "node src/cli/create-project.js",
     "project:import": "node src/cli/import-project-input.js",
     "project:checkpoint": "node src/cli/write-project-checkpoint.js",
@@ -39,6 +40,7 @@
     "project:choreography": "node src/cli/write-animation-choreography.js",
     "project:animation": "node src/cli/write-animation-composition.js",
     "animation:read": "node src/cli/read-animation-source.js",
+    "animation:preview-range": "node src/cli/preview-animation-range.js",
     "animation:acceptance": "node scripts/code-animation-authoring-acceptance.mjs",
     "analysis:eval": "node scripts/source-eval.mjs",
     "analysis:doctor": "node src/cli/analysis-doctor.js",

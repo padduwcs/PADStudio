@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { renderAnimation, clearAnimation } from "../ui/animation-view.js";
+import { renderAnimation, clearAnimation, previewClipDescription } from "../ui/animation-view.js";
 
 class Element {
   constructor(tagName) {
@@ -77,4 +77,16 @@ test("type-led narration repetition is not flagged as a visual-first warning", (
     clearAnimation(container);
     globalThis.document = originalDocument;
   }
+});
+
+test("animation preview labels the exact source interval and frame range", () => {
+  assert.equal(previewClipDescription({
+    range: { startFrame: 48, endFrame: 95 },
+    clip: { frameRate: 24 },
+  }), "2s–4s · frame 48–95");
+});
+
+test("animation preview remains honest when timing metadata is incomplete", () => {
+  assert.equal(previewClipDescription({ range: { startFrame: 12, endFrame: 23 } }), "frame 12–23");
+  assert.equal(previewClipDescription({}), "Đoạn preview ngắn");
 });

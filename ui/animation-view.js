@@ -11,6 +11,39 @@ function resultUrl(projectId, resultId, fileId) {
   return "/project-results/" + [projectId, resultId, fileId].map(encodeURIComponent).join("/");
 }
 
+function seconds(value) {
+  return `${Math.round(value * 1000) / 1000}s`;
+}
+
+export function previewClipDescription(preview) {
+  const range = preview?.range;
+  const frameRate = preview?.clip?.frameRate;
+  if (!range || !Number.isInteger(range.startFrame) || !Number.isInteger(range.endFrame)) return "Đoạn preview ngắn";
+  const frames = `frame ${range.startFrame}–${range.endFrame}`;
+  if (!Number.isFinite(frameRate) || frameRate <= 0) return frames;
+  const start = range.startFrame / frameRate;
+  const end = (range.endFrame + 1) / frameRate;
+  return `${seconds(start)}–${seconds(end)} · ${frames}`;
+}
+
+function reviewClip(projectId, preview, clip) {
+  const figure = node("figure", undefined, "animation-review-clip");
+  const video = node("video");
+  video.controls = true;
+  video.preload = "metadata";
+  video.src = resultUrl(projectId, preview.resultId, clip.id);
+  const caption = node("figcaption");
+  caption.append(node("span", previewClipDescription(preview)));
+  const loopLabel = node("label", undefined, "animation-loop-control");
+  const loop = node("input");
+  loop.type = "checkbox";
+  loop.addEventListener("change", () => { video.loop = loop.checked; });
+  loopLabel.append(loop, document.createTextNode(" Lặp đoạn để so hình với tiếng"));
+  caption.append(loopLabel);
+  figure.append(video, caption);
+  return figure;
+}
+
 function statusLine(composition) {
   const validation = composition.validation ? "đã validation" : "chưa validation";
   const preflight = composition.preflights?.at(-1);
@@ -127,8 +160,7 @@ export function renderAnimation(container, context) {
       }
       const clip = preview.files.find((file) => file.available && file.mediaType === "video");
       if (clip) {
-        const video = node("video"); video.controls = true; video.preload = "metadata";
-        video.src = resultUrl(context.project.id, preview.resultId, clip.id); gallery.append(video);
+        gallery.append(reviewClip(context.project.id, preview, clip));
       }
       if (gallery.childElementCount) card.append(node("p",
         preview.motion ? `Motion preview ${preview.motion.selector}: ${preview.resultId}` :

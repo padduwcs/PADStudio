@@ -37,8 +37,14 @@ Code animation is an optional production branch, not a required pipeline stage.
    stills and a short frame-range clip with `animation.preview / remotion-preview`; HyperFrames can
    capture exact requested frames and a contact sheet with `animation.preview / hyperframes-preview`.
    For a bound choreography, prefer `useChoreographyFrames: true`; add targeted clips or motion
-   previews where stills cannot prove the action. For long or visually uncertain work, inspect an
-   opening plus one representative operational passage before polishing the complete timeline.
+   previews where stills cannot prove the action. Before choosing preview ranges, make a small risk
+   map from the actual composition: the opening, each first appearance of an important object,
+   state-changing operations, handoffs between beats, pointer/click interactions, dense layouts and
+   the ending. Render the smallest voice-bearing clips that prove those uncertain moments; a still
+   cannot prove trajectory, synchronization or a click. For long or visually uncertain work, inspect
+   an opening plus one representative operational passage before polishing the complete timeline.
+   Do not spend preview budget uniformly merely to satisfy coverage: inspect where misunderstanding
+   or visible craft defects are most likely.
    Use preview as an authoring loop, not as acceptance. Manim preflight currently checks runtime
    health only; HyperFrames preflight preserves normalized findings, snapshots and its raw strict report.
 6. Render with the matching adapter and exact passed preflight Result. Draft/history requires explicit `allowHistorical: true`.
@@ -59,6 +65,10 @@ Code animation is an optional production branch, not a required pipeline stage.
    of meaning, or transcript UI competes with the actual visual subject. For 1.3, also reject undeclared
    text, prose that merely repeats the voice, ornamental headings/chrome that steal hierarchy, or a
    semantic beat whose declared visual proof disappears when prose is mentally removed.
+   Do not present a preview to the user merely because validation, preflight or output QA passed.
+   First play the authored motion with its real voice at the risky intervals, then scan the remaining
+   timeline for static holds, accidental overlaps, clipping, malformed shapes and unexplained visual
+   changes. Treat this as agent judgment supported by evidence, not a universal geometry gate.
 9. Use the resulting `animation.render` as a normal Result source in `video.sequence`.
    Keep reusable animation renders independent; do not flatten them into an unmanaged clip.
 

@@ -27,7 +27,8 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 Tại ngày cập nhật tài liệu này:
 
-- `npm test`: **317/317 pass**;
+- Lần chạy full gần nhất, `npm test`: **317/317 pass**;
+- Vòng sửa chữa preview/review/Observer hiện tại: **34/34 targeted tests pass**; chưa chạy lại toàn bộ suite;
 - `npm run observer:browser-test -- -ProjectId priority-queue-visual-20260920 -StructureOnly`: **passed** với observer server đang chạy, tại 390, 768 và 1440 px;
 - `npm run animation:acceptance`: **passed** (local Remotion preflight, preview và render một fixture
   độc lập trong thư mục tạm; không phải pilot sáng tạo của người dùng);
@@ -62,6 +63,13 @@ số test nằm trong một báo cáo cũ.
 kiểm kê chữ theo beat; observer, skill authoring/review và test liên quan được cập nhật. Version
 1.0–1.2 vẫn đọc được; workflow, approval, delivery, tool selection và ranh giới sản phẩm không đổi.
 Chưa chạy một pilot render mới để chứng minh chất lượng sáng tạo của video đầu ra.
+
+Vòng sửa chữa hiện tại bổ sung một shortcut project-native để tạo preview Remotion theo khoảng thời
+gian từ đúng composition revision/preflight đã pass, hiển thị khoảng thời gian/frame và tùy chọn lặp
+clip trong Observer để so chuyển động với tiếng, cùng lệnh `observer:ensure` có thể tái sử dụng hoặc
+khởi động Observer local. Skill authoring/review hướng Agent chọn đoạn rủi ro theo nội dung và tự xem
+chuyển động có voice trước khi đưa người dùng xem; đây không phải eval Greedy, template hình ảnh hay
+bộ luật thẩm mỹ cứng.
 
 Pilot recursion sau đó làm rõ hai lỗi vận hành ở đoạn chốt. `project:accept` nay kiểm tra exact media
 khớp một delivery profile trước khi mở confirmation và tự đưa feedback còn chờ của đúng sequence vào

@@ -10,6 +10,9 @@ judgment without imposing a fixed production pipeline.
    page and open targeted frames or short clips around anything suspicious. State plainly that
    sampled frames are not the same as watching continuous playback.
    Before recording a positive creative or combined review of the exact video, inspect motion in representative and risky intervals and state how audio was assessed. Record the actual methods in `review.inspection`; sampled review has a `passed_with_notes` verdict with explicit limits.
+   Select risky intervals from the work itself: first object appearances, transformations, selections,
+   joins/splits, pointer interactions, scene handoffs, dense compositions and the final claim. Do not
+   confuse evenly spaced samples with evidence for those events.
 3. For spoken work, compare ASR with the intended script. Supply important names, English terms,
    symbols and abbreviations as `expectedSpeech.terms`; treat failed recognition as a cue to listen
    and revise pronunciation, wording or TTS—not as proof of the exact phonetic cause.
@@ -22,6 +25,11 @@ judgment without imposing a fixed production pipeline.
    short intervals across cue boundaries and record whether speech leads, follows or matches the
    image. A valid `narrationCueMap` is a plan, not render evidence. Check the ending against the
    final spoken point.
+   Watch once as a first-time learner: at every important change, ask what the viewer is meant to
+   notice, what visible cause produces the change and what state is carried forward. For an arrow,
+   connector, highlight or cursor action, verify that the target exists before the cue, the motion
+   actually reaches it, and the resulting state change happens after contact. Apply these checks only
+   where the visual language uses them; they are review questions, not global layout rules.
 5. Run a distinctness pass. Ask whether the frames could belong to any unrelated video after only
    replacing the text. Flag repeated card/title/diagram grammar, slideshow pacing and decorative
    motion. Reuse engines and utilities freely; give important videos a bespoke visual argument.
@@ -52,6 +60,9 @@ judgment without imposing a fixed production pipeline.
 9. Record every material finding with a timestamp/frame, observable evidence, severity and a
    concrete proposed correction. After finding one defect, scan the rest of the render for the same
    class before revising source.
+   Prefer evidence such as “the cursor is still 18 px from the button when its pressed state appears”
+   over taste labels such as “the cursor feels wrong.” Measurements may describe an observed defect;
+   they do not let PADStudio invent the creative rule that should have applied.
 10. Batch source corrections into a coherent revision. Create a new immutable source Result, then
    validate and preflight the exact revision before preview/render. Handle compile and runtime errors
    inside the Agent authoring loop; do not turn them into user confirmation steps.

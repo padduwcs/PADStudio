@@ -698,6 +698,25 @@ h3 {
   object-fit: contain;
 }
 
+.animation-review-clip {
+  margin: 0;
+}
+
+.animation-review-clip figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.4rem 1rem;
+  padding-top: 0.45rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.animation-loop-control {
+  cursor: pointer;
+  user-select: none;
+}
+
 .choreography-beats { display: grid; gap: .55rem; margin: .8rem 0 0; padding-left: 1.25rem; }
 .choreography-beats li span { display: block; margin-top: .2rem; }
 
