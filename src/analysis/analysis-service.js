@@ -981,7 +981,3 @@ export class AnalysisService {
     await this.analysisStore.releaseLease(projectId, lease);
   }
 }
-
-export function defaultAnalysisOperationDefinitions() {
-  return structuredClone(OPERATION_DEFINITIONS);
-}

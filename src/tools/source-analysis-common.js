@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, open, readFile, writeFile } from "node:fs/promises";
-import { basename, dirname, extname, isAbsolute, join } from "node:path";
+import { basename, extname, isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { canonicalJson, normalizeSourceReference, normalizeTimeRange } from "../analysis/contracts.js";
 
@@ -292,14 +292,6 @@ export async function probeSource(filePath, { ffprobeCommand = "ffprobe", signal
   }
 }
 
-export function mediaDuration(probe) {
-  const values = [
-    finiteNumber(probe?.format?.duration),
-    ...((probe?.streams ?? []).map((stream) => finiteNumber(stream.duration)))
-  ].filter((value) => value !== null && value >= 0);
-  return values.length ? Math.max(...values) : null;
-}
-
 export function selectStream(probe, type, requestedIndex, { allowDefault = true } = {}) {
   const streams = probe.streams.filter((stream) => stream.codec_type === type);
   if (!streams.length) throw new SourceAnalysisToolError(`Nguồn không có ${type} stream.`, "not_applicable");
@@ -404,8 +396,4 @@ export function outputFile({ id, role, workspace, name, mediaType, sizeBytes }) 
 export function timeoutForDuration(range, { baseMs = 30_000, factor = 3, maximumMs = 4 * 60 * 60 * 1000 } = {}) {
   const duration = range ? range.endSeconds - range.startSeconds : 1;
   return Math.min(maximumMs, Math.max(baseMs, Math.ceil(duration * factor * 1000)));
-}
-
-export function directoryOf(path) {
-  return dirname(path);
 }

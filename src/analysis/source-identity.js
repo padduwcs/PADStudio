@@ -103,16 +103,6 @@ export async function resolveAnalysisSource({ store, projectId, source }) {
   };
 }
 
-export async function verifySourceSnapshot({ store, projectId, snapshot }) {
-  const current = await resolveAnalysisSource({ store, projectId, source: snapshot.source });
-  if (current.sourceKey !== snapshot.sourceKey || current.sourceVersion !== snapshot.sourceVersion) {
-    throw new SourceIdentityError("Source hiện tại không còn khớp snapshot của analysis job.", {
-      code: "source_changed"
-    });
-  }
-  return current;
-}
-
 export function analysisFingerprint(value) {
   return sha256Text(canonicalJson(value));
 }

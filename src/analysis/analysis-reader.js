@@ -617,7 +617,3 @@ export class AnalysisReader {
     };
   }
 }
-
-export function createAnalysisReader({ rootDir, projectStore }) {
-  return new AnalysisReader({ rootDir, projectStore });
-}
