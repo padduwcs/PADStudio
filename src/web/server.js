@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -15,29 +14,12 @@ import { AnalysisReaderError } from "../analysis/analysis-reader.js";
 import { AnalysisValidationError } from "../analysis/contracts.js";
 import { etagMatches, quotedEtag } from "./project-generation.js";
 import { resolveProjectRoot } from "../config/project-root.js";
+import { buildStaticAssets, sendStaticAsset } from "./static-assets.js";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const applicationRoot = join(currentDirectory, "..", "..");
 const uiDirectory = join(applicationRoot, "ui");
 const projectRoot = resolveProjectRoot();
-
-const staticFiles = {
-  "/": { file: "index.html", type: "text/html; charset=utf-8" },
-  "/app.js": { file: "app.js", type: "text/javascript; charset=utf-8" },
-  "/review-inspection.js": { file: "review-inspection.js", type: "text/javascript; charset=utf-8" },
-  "/source-analysis-view.js": { file: "source-analysis-view.js", type: "text/javascript; charset=utf-8" },
-  "/production-view.js": { file: "production-view.js", type: "text/javascript; charset=utf-8" },
-  "/animation-view.js": { file: "animation-view.js", type: "text/javascript; charset=utf-8" },
-  "/delivery-view.js": { file: "delivery-view.js", type: "text/javascript; charset=utf-8" },
-  "/health-view.js": { file: "health-view.js", type: "text/javascript; charset=utf-8" },
-  "/creative-direction-view.js": { file: "creative-direction-view.js", type: "text/javascript; charset=utf-8" },
-  "/styles.css": { file: "styles.css", type: "text/css; charset=utf-8" },
-  "/fonts/manrope-variable.ttf": { file: "fonts/manrope-variable.ttf", type: "font/ttf" },
-  "/brand/padstudio-emblem-dark.png": { file: "brand/padstudio-emblem-dark.png", type: "image/png" },
-  "/brand/padstudio-signature-dark.png": { file: "brand/padstudio-signature-dark.png", type: "image/png" },
-  "/brand/padstudio-emblem-transparent.png": { file: "brand/padstudio-emblem-transparent.png", type: "image/png" },
-  "/brand/favicon.svg": { file: "brand/favicon.svg", type: "image/svg+xml" }
-};
 
 const previewContentTypes = {
   ".jpg": "image/jpeg",
@@ -131,7 +113,8 @@ function sendMediaFile(request, response, input) {
   stream.pipe(response);
 }
 
-export function createPadStudioServer({ reader }) {
+export function createPadStudioServer({ reader, staticDirectory = uiDirectory }) {
+  const staticAssets = buildStaticAssets(staticDirectory);
   return createServer(async (request, response) => {
     try {
       const url = new URL(request.url, "http://127.0.0.1");
@@ -144,7 +127,7 @@ export function createPadStudioServer({ reader }) {
         return sendJson(response, 200, { projects }, { ETag: etag, "Cache-Control": "no-cache" });
       }
 
-      const observerMatch = /^\/api\/projects\/([^/]+)\/observer\/(summary|source|creative|animation|production|delivery|health|activity)$/.exec(url.pathname);
+      const observerMatch = /^\/api\/projects\/([^/]+)\/observer\/(card|summary|source|creative|animation|production|delivery|health|activity)$/.exec(url.pathname);
       if (request.method === "GET" && observerMatch) {
         const projectId = decodeURIComponent(observerMatch[1]);
         const section = observerMatch[2];
@@ -213,11 +196,8 @@ export function createPadStudioServer({ reader }) {
         );
       }
 
-      if (request.method === "GET" && staticFiles[url.pathname]) {
-        const asset = staticFiles[url.pathname];
-        const content = await readFile(join(uiDirectory, asset.file));
-        response.writeHead(200, { "Content-Type": asset.type });
-        return response.end(content);
+      if (request.method === "GET" && staticAssets.has(url.pathname)) {
+        return sendStaticAsset(request, response, staticAssets.get(url.pathname));
       }
 
       return sendJson(response, 404, { error: "Không tìm thấy." });

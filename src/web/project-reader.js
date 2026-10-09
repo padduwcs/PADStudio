@@ -16,7 +16,8 @@ import {
 import { ProjectContextAssembler } from "../intelligence/project-context-assembler.js";
 import { createDefaultToolRegistry } from "../execution/default-tool-registry.js";
 import { AnalysisReader } from "../analysis/analysis-reader.js";
-import { projectGeneration } from "./project-generation.js";
+import { buildProjectCard } from "./observer-card.js";
+import { projectGeneration, projectSnapshotInfo } from "./project-generation.js";
 
 export class ProjectNotFoundError extends Error {
   constructor(projectId) {
@@ -68,6 +69,7 @@ function compactReview(review) {
 
 function observerSection(context, section, generation) {
   const base = { version: "1.0", view: `observer-${section}`, generation, project: context.project };
+  if (section === "card") return { ...base, card: buildProjectCard(context) };
   if (section === "summary") {
     return { ...base, checkpoint: context.checkpoint, checkpointFreshness: context.checkpointFreshness,
       resumeView: context.resumeView, budget: context.budget,
@@ -154,7 +156,7 @@ export class ProjectReader {
     const projects = await this.store.listProjects();
     return Promise.all(projects.map(async (project) => ({
       ...project,
-      generation: await projectGeneration(this.rootDir, project.id),
+      ...(await projectSnapshotInfo(this.rootDir, project.id)),
     })));
   }
 
