@@ -523,6 +523,38 @@ try {
     currentChapter = currentChapter && chapterGroup.querySelector('.chapter-button').matches('.is-active[aria-current="true"]');
     chapter.closest('details').open = false;
   }
+  let feedbackAnchor = null;
+  const anchorButton = group?.querySelector('.anchor-button');
+  if (anchorButton) {
+    const anchorPlayer = group.querySelector('video');
+    const anchorProject = document.querySelector('#project-id').title;
+    const pause = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+    let copied = null;
+    Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText: async value => { copied = value; }}});
+    try {
+      anchorButton.click();
+      await pause(150);
+      const wholeResult = !!copied && copied.startsWith('project=' + anchorProject + ' · result=result-') && !copied.includes(' · at=') &&
+        anchorButton.parentElement.querySelector('.anchor-status').textContent.startsWith('Đã sao chép');
+      let atPlayhead = true;
+      if (Number.isFinite(anchorPlayer.duration) && anchorPlayer.duration > 1) {
+        const seeked = new Promise(resolve => anchorPlayer.addEventListener('seeked', resolve, {once: true}));
+        anchorPlayer.currentTime = Math.min(anchorPlayer.duration / 2, anchorPlayer.duration - 0.2);
+        await seeked;
+        copied = null;
+        anchorButton.click();
+        await pause(150);
+        atPlayhead = !!copied && / · artifact=artifact-\S+ · revision=\d+/.test(copied) && / · at=\d+\.\d{3}$/.test(copied) &&
+          Math.abs(Number(copied.match(/ · at=(\d+\.\d{3})$/)[1]) - anchorPlayer.currentTime) < 0.01;
+        const reset = new Promise(resolve => anchorPlayer.addEventListener('seeked', resolve, {once: true}));
+        anchorPlayer.currentTime = 0;
+        await reset;
+      }
+      feedbackAnchor = wholeResult && atPlayhead;
+    } finally {
+      delete navigator.clipboard;
+    }
+  }
   let download = null;
   const link = document.querySelector('#delivery-view a');
   if (link) {
@@ -539,14 +571,19 @@ try {
   const accessibility = document.documentElement.lang === 'vi' && document.querySelectorAll('main').length === 1 && document.querySelectorAll('h1').length === 1 && new Set(ids).size === ids.length &&
     [...document.querySelectorAll('[aria-labelledby], [aria-controls]')].every(node => ['aria-labelledby', 'aria-controls'].every(attribute => !node.hasAttribute(attribute) || node.getAttribute(attribute).split(/\s+/).every(id => document.getElementById(id)))) &&
     [...document.images].every(image => image.hasAttribute('alt'));
-  return JSON.stringify({searchEmpty, searchRestored, sourceSearch, focusedLayout, exactSelection, accessibility, download, playerPreserved, keyboard, dark, themeStored, player: !!player, playback, videoSelection, revisionSelection, comparison, seeking, currentChapter, adaptiveFrame});
+  return JSON.stringify({searchEmpty, searchRestored, sourceSearch, focusedLayout, exactSelection, accessibility, download, playerPreserved, keyboard, dark, themeStored, player: !!player, playback, videoSelection, revisionSelection, comparison, seeking, currentChapter, feedbackAnchor, sequencePlayer: !!group?.querySelector("video"), adaptiveFrame});
 })()
 '@
   $interactions = $interactionsJson | ConvertFrom-Json
   foreach ($property in @("searchEmpty", "searchRestored", "focusedLayout", "exactSelection", "accessibility", "playerPreserved", "keyboard", "dark", "themeStored")) {
     if (-not $interactions.$property) { throw "Interaction failed ($property): $interactionsJson" }
   }
-  foreach ($property in @("sourceSearch", "download", "playback", "videoSelection", "revisionSelection", "comparison", "seeking", "currentChapter", "adaptiveFrame")) {
+  # A project that plays a sequence render must expose the feedback-anchor control, and it must copy a
+  # correct anchor. (Featured animation previews without a sequence have no exact sequence to point at.)
+  if ($interactions.sequencePlayer -and $interactions.feedbackAnchor -ne $true) {
+    throw "Feedback anchor failed: $interactionsJson"
+  }
+  foreach ($property in @("sourceSearch", "download", "playback", "videoSelection", "revisionSelection", "comparison", "seeking", "currentChapter", "feedbackAnchor", "adaptiveFrame")) {
     if ($null -ne $interactions.$property -and -not $interactions.$property) { throw "Media interaction failed ($property): $interactionsJson" }
   }
   if ($ScreenshotDirectory) {

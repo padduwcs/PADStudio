@@ -27,6 +27,63 @@ export function productionRenderOptions(revisions) {
     resultId: render.resultId, createdAt: render.createdAt
   })));
 }
+function timecode(seconds) {
+  return Number(seconds).toFixed(3);
+}
+// The segment of the exact timeline whose picture track covers `seconds`; the last segment owns its end.
+export function segmentAtTime(sequence, seconds) {
+  const rows = (sequence?.timeline ?? []).filter(item => item.track === "Hình" && item.segmentId);
+  if (!rows.length || !Number.isFinite(seconds) || seconds < 0) return null;
+  const row = rows.find(item => seconds >= item.startSeconds && seconds < item.endSeconds) ??
+    (seconds <= rows.at(-1).endSeconds ? rows.at(-1) : null);
+  if (!row) return null;
+  const segment = (sequence.segments ?? []).find(item => item.id === row.segmentId);
+  return { id: row.segmentId, title: segment?.title ?? row.segmentId, startSeconds: row.startSeconds, endSeconds: row.endSeconds };
+}
+// Text a user pastes into the Agent chat to point at an exact Result, and optionally a moment in it.
+// `segment`/`time` give the segment range; `at` is the playhead inside that range.
+export function feedbackAnchorText({ projectId, sequence, render, currentTime = 0 }) {
+  const parts = [
+    "project=" + projectId, "result=" + render.resultId,
+    "artifact=" + sequence.artifactId, "revision=" + sequence.revision
+  ];
+  const duration = Number(sequence.durationSeconds);
+  const at = Number.isFinite(currentTime) && currentTime > 0
+    ? (Number.isFinite(duration) && duration > 0 ? Math.min(currentTime, duration) : currentTime) : 0;
+  if (at > 0) {
+    const segment = segmentAtTime(sequence, at);
+    if (segment) parts.push("segment=" + segment.id, "time=" + timecode(segment.startSeconds) + "-" + timecode(segment.endSeconds));
+    parts.push("at=" + timecode(at));
+  }
+  return parts.join(" · ");
+}
+function feedbackAnchorControl(context, sequence, render, video) {
+  const box = node("div", undefined, "feedback-anchor");
+  const button = node("button", "Sao chép mốc phản hồi", "anchor-button");
+  button.type = "button";
+  button.title = "Sao chép vị trí đang xem của đúng bản này để gửi cho Agent trong cuộc trò chuyện";
+  const status = node("span", undefined, "anchor-status");
+  status.setAttribute("role", "status");
+  status.setAttribute("aria-live", "polite");
+  box.append(button, status);
+  button.addEventListener("click", async () => {
+    const at = video.currentTime;
+    const value = feedbackAnchorText({ projectId: context.project.id, sequence, render, currentTime: at });
+    const segment = at > 0 ? segmentAtTime(sequence, at) : null;
+    const where = at > 0 ? " tại " + clock(at) + (segment ? " · " + segment.title : "") : " cho cả video";
+    box.querySelector(".anchor-fallback")?.remove();
+    try {
+      await navigator.clipboard.writeText(value);
+      status.textContent = "Đã sao chép mốc" + where + ". Dán vào cuộc trò chuyện với Agent.";
+    } catch {
+      const field = node("input", undefined, "anchor-fallback");
+      field.readOnly = true; field.value = value; field.setAttribute("aria-label", "Mốc phản hồi");
+      box.append(field); field.focus(); field.select();
+      status.textContent = "Không tự sao chép được. Hãy sao chép mã bên dưới.";
+    }
+  });
+  return box;
+}
 export function feedbackForSegment(render, segmentId = null) {
   return (render?.decisions ?? []).filter(decision => segmentId === null
     ? !decision.feedbackTarget?.segmentId : decision.feedbackTarget?.segmentId === segmentId);
@@ -98,6 +155,7 @@ function revisionPanel(context, sequence, render, comparison = false, chapterHos
     stage.append(createBrandArtwork(), node("h3", "Chưa có video"));
   } else stage.append(node("p", "Video không còn khả dụng.", "empty-note"));
   panel.append(stage);
+  if (render && video) panel.append(feedbackAnchorControl(context, sequence, render, video));
   if (comparison) panel.prepend(node("h3", "Bản " + sequence.revision, "comparison-caption"));
   const latest = feedbackForSegment(render).at(-1);
   if (latest?.note && ["changes_requested", "rejected"].includes(latest.outcome)) {

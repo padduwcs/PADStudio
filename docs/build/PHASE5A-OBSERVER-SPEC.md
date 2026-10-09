@@ -33,13 +33,19 @@ Endpoint full cũ vẫn được giữ để tương thích CLI/test nhưng work
 
 Danh sách project tiếp tục được kiểm tra mỗi hai giây bằng conditional request. Khi list trả `304`, không section nào render lại. Khi generation đổi, chỉ các section đã từng mở được cập nhật. `renderProduction` tiếp tục so signature nên playback không bị thay nếu production snapshot tương đương.
 
-Mỗi render có mốc phản hồi dạng:
+Mỗi video đang xem có nút “Sao chép mốc phản hồi” ngay dưới khung phát (với bản so sánh, mỗi khung có nút riêng). Mốc dạng:
 
 ```text
 project=<id> · result=<id> · artifact=<id> · revision=<n>
 ```
 
-Mỗi segment bổ sung `segment=<id> · time=<start>-<end>`. Nút sao chép chỉ đưa mốc này vào clipboard để người dùng gửi qua chat; nó không ghi decision/review và không ngụ ý approval.
+Khi video đã được tua/phát tới một vị trí, mốc lấy đúng vị trí đó và bổ sung đoạn chứa nó:
+
+```text
+project=<id> · result=<id> · artifact=<id> · revision=<n> · segment=<id> · time=<start>-<end> · at=<giây>
+```
+
+`time` là khoảng của đoạn trên timeline đã dựng, `at` là vị trí đang xem trong khoảng đó (làm tròn mili-giây, không vượt thời lượng sequence). Nút chỉ đưa mốc này vào clipboard để người dùng gửi qua chat; nó không ghi decision/review và không ngụ ý approval. Nếu trình duyệt không cho ghi clipboard, mốc hiện trong một ô chỉ đọc đã chọn sẵn để sao chép thủ công. (Đợt đại tu giao diện 2026-10-05 từng bỏ nút này ngoài ý muốn; nó được khôi phục ở dạng theo vị trí đang xem và có test cùng một kiểm tra trong browser smoke.)
 
 ## Đồng thời và revision
 

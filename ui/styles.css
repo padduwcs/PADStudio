@@ -1561,30 +1561,6 @@ details > summary::marker { color: var(--muted); }
   border: 1px dashed var(--border);
 }
 
-.feedback-anchor {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-}
-
-.feedback-anchor code {
-  overflow-wrap: anywhere;
-  color: var(--text-2);
-}
-
-.feedback-anchor button {
-  border: 1px solid var(--border);
-  background: var(--surface-1);
-  color: var(--text-1);
-  padding: 6px 9px;
-  cursor: pointer;
-}
-
 
 /* Component finishes, shared by light and dark themes. */
 .input-meta { font-size: var(--type-caption); line-height: 1.6; }
@@ -1631,9 +1607,6 @@ details > summary::marker { color: var(--muted); }
 .result-feedback { background: var(--warning-soft); border-color: var(--warning-soft); font-size: var(--type-caption); }
 .output-quality { border-radius: 10px; background: var(--page); }
 .output-quality h5, .output-quality p, .quality-checks { font-size: var(--type-caption); }
-.feedback-anchor { background: var(--page); border-radius: 8px; gap: 10px; }
-.feedback-anchor code { font-size: var(--type-caption); }
-.feedback-anchor button { padding: 6px 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; color: var(--accent); font-size: var(--type-caption); }
 .composition-timeline { margin: 12px 0; border-color: var(--line); background: var(--page); padding: 12px; }
 .composition-timeline h5 { font-size: var(--type-small); margin-bottom: 10px; }
 .composition-timeline output { font-size: var(--type-caption); color: var(--muted); }
@@ -1767,6 +1740,12 @@ details > summary::marker { color: var(--muted); }
 .screening-stage > p { padding: 30px; color: #c9c9c4; background: transparent; font-size: 14px; }
 .comparison-caption { font-size: 13px; font-weight: 500; color: var(--muted); margin: 0 0 10px; text-align: center; }
 .viewer-feedback { margin: 16px 0 0; padding: 14px 18px; border-left: 2px solid var(--warning); background: var(--warning-soft); font-size: 13px; }
+.feedback-anchor { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 12px; min-width: 0; }
+.anchor-button { min-height: 36px; padding: 6px 14px; border: 1px solid var(--line); border-radius: var(--radius-control); background: transparent; color: var(--text); font-size: var(--type-small); font-weight: 500; cursor: pointer; }
+.anchor-button:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.anchor-status { min-width: 0; color: var(--muted); font-size: var(--type-caption); overflow-wrap: anywhere; }
+.anchor-status:empty { display: none; }
+.anchor-fallback { flex: 1 1 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); color: var(--text); font: inherit; font-size: var(--type-caption); }
 .viewer-layout.is-comparing { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 40px; max-width: none; }
 .viewer-layout.is-comparing .sequence-panels { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .viewer-layout.is-wide { grid-template-columns: minmax(0, 1fr); gap: 24px; align-content: start; }

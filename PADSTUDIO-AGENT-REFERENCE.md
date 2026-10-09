@@ -576,6 +576,12 @@ Với `video.sequence-render`, luôn chuyển mốc người dùng sao chép tro
 }
 ```
 
+Mốc người dùng dán vào chat có dạng `project=… · result=… · artifact=… · revision=N` và, khi họ đã dừng ở một vị trí,
+thêm `· segment=<id> · time=<start>-<end> · at=<giây>`. Chuyển `result`, `artifact`, `revision` và `segment` thẳng
+vào Decision; `time` là khoảng của cả đoạn còn `at` là khoảnh khắc người dùng nói tới, nên `timeRange` nên là một
+cửa sổ hợp lý quanh `at` nằm trong khoảng `time` (hoặc chính khoảng `time` khi phản hồi áp dụng cho cả đoạn). Không
+suy ra độ chính xác mà mốc không có.
+
 `segmentId` và `timeRange` là tùy chọn nếu phản hồi áp dụng cho toàn Result, nhưng `artifactId` và `revision` là bắt buộc đối với sequence render. Store sẽ từ chối target không khớp exact Result, segment không tồn tại hoặc range ngoài biên; không tự đổi target sang revision hiện hành.
 
 Khi Result thay thế đã thực sự xử lý feedback đang chờ, Agent nêu các Decision ID cần resolve.
