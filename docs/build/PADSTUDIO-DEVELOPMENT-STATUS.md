@@ -279,7 +279,7 @@ root (được theo dõi nhưng không file nào dùng). Ghi checkpoint mới, t
 draft, checkpoint cũ hơn 19 hoạt động nên doctor báo `attention`); sau đó `padstudio:doctor` trả `ready`.
 `.cache/source-eval/models` (4,4 GB) là model ASR đang dùng, không phải rác.
 
-**Repo:** đã có remote `origin` (GitHub, private). Lịch sử cũ của repo (80 commit, web app Motion Canvas, không liên quan tới code này) giữ nguyên
+**Repo:** remote `origin` trên GitHub (public từ 2026-10-09). CI GitHub Actions (Windows, Node 24, FFmpeg) xanh từ commit `551e95e`; test hỏng hiện thành annotation trên trang run nhờ [`scripts/lib/github-test-reporter.mjs`](../../scripts/lib/github-test-reporter.mjs), vì log chỉ admin tải được. Lần đỏ ở `675b193` trùng thời điểm endpoint cài đặt còn cắt kết nối khi nhận nội dung quá lớn; sau khi sửa thì xanh, nhưng log lần đỏ không đọc được nên chưa xác nhận chắc nguyên nhân. Lịch sử cũ của repo (80 commit, web app Motion Canvas, không liên quan tới code này) giữ nguyên
 ở nhánh `legacy-v1` và tag `legacy-v1`; `main` là PADStudio hiện tại. Chỉ file được git theo dõi mới lên GitHub; project trong `.padstudio/`,
 `.cache/`, `.runtime-tools/` và `padstudio.local.json` đều ở ngoài repo.
 
