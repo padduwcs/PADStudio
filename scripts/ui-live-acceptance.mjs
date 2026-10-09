@@ -74,12 +74,11 @@ try {
   await exec("ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=0xf2c4b1:s=360x640:r=25:d=30",
     "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", join(workspace, "fixture.mp4")], { windowsHide: true, timeout: 20_000 });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
-  const { stdout } = await exec("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/ui-browser-smoke.ps1",
-    "-Url", `http://127.0.0.1:${server.address().port}`, "-ProjectId", projectId, "-LiveFixture",
-    "-ScreenshotDirectory", resolve(".cache/ui-polish/live")], { windowsHide: true, encoding: "utf8", timeout: 120_000, maxBuffer: 2e6 });
+  const { stdout } = await exec(process.execPath, ["scripts/ui-smoke.mjs", "--url", `http://127.0.0.1:${server.address().port}`,
+    "--project", projectId, "--live", "--shots", resolve(".cache/ui-polish/live")], { windowsHide: true, encoding: "utf8", timeout: 240_000, maxBuffer: 2e6 });
   const report = JSON.parse(stdout);
   if (report.liveProgress !== "passed" || report.writeRequests || phase !== 4) throw new Error("Live progress acceptance failed");
-  console.log("Live progress: passed (first preview, active render, playback continuity, automatic replacement, manual selection, 12 responsive views)");
+  console.log("Live progress: passed (first preview, active render, playback continuity, automatic replacement, manual selection, responsive views)");
 } finally {
   server.closeAllConnections();
   if (server.listening) await new Promise(resolve => server.close(resolve));

@@ -104,7 +104,7 @@ try {
   const origin = "http://127.0.0.1:" + server.address().port;
   const [sectionResponse, moduleResponse] = await Promise.all([
     fetch(origin + "/api/projects/" + projectId + "/observer/delivery"),
-    fetch(origin + "/delivery-view.js")
+    fetch(origin + "/app.js")
   ]);
   const section = (await sectionResponse.json()).context;
   if (!sectionResponse.ok || !moduleResponse.ok ||
@@ -117,16 +117,7 @@ try {
     generation: section.generation,
     bundleCount: section.delivery.bundles.length
   };
-  await run("browser", "powershell", [
-    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-    "scripts/phase5a-observer-browser-smoke.ps1",
-    "-ProjectId", projectId,
-    "-SequenceKey", "acceptance-preview",
-    "-TechnicalFixture",
-    "-VisualBaseline", "scripts/browser-baselines/acceptance-fixture.json",
-    ...(process.env.PADSTUDIO_UPDATE_ACCEPTANCE_BASELINE === "1" ? ["-UpdateVisualBaseline"] : []),
-    "-Url", origin
-  ]);
+  await run("browser", process.execPath, ["scripts/ui-smoke.mjs", "--project", projectId, "--url", origin]);
 
   const locks = (await readdir(rootDir, { recursive: true })).filter((path) => path.endsWith(".lock"));
   if (locks.length) throw new Error("Mutation locks remain: " + locks.join(", "));

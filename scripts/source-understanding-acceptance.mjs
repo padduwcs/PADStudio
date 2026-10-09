@@ -138,12 +138,7 @@ async function browserAcceptance(projectId) {
   server.stderr.on("data", (chunk) => { serverError += chunk.toString("utf8"); });
   try {
     await waitForServer(url, server);
-    const browser = requireSuccess("browser acceptance", await run("powershell.exe", [
-      "-NoProfile", "-ExecutionPolicy", "Bypass",
-      "-File", "scripts/source-observer-browser-smoke.ps1",
-      "-Url", url,
-      "-ProjectId", projectId
-    ]));
+    const browser = requireSuccess("browser acceptance", await run(process.execPath, ["scripts/ui-smoke.mjs", "--url", url, "--project", projectId]));
     return {
       status: "passed",
       durationMs: browser.durationMs,

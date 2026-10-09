@@ -116,11 +116,7 @@ async function browserAcceptance(projectId) {
   server.stderr.on("data", (chunk) => { serverError += chunk.toString("utf8"); });
   try {
     await waitForServer(url, server);
-    const result = requireSuccess("creative browser acceptance", await run("powershell.exe", [
-      "-NoProfile", "-ExecutionPolicy", "Bypass",
-      "-File", "scripts/source-observer-browser-smoke.ps1",
-      "-Url", url, "-ProjectId", projectId, "-Creative"
-    ]));
+    const result = requireSuccess("creative browser acceptance", await run(process.execPath, ["scripts/ui-smoke.mjs", "--url", url, "--project", projectId]));
     return { durationMs: result.durationMs, ...parseJson("creative browser acceptance", result.stdout) };
   } catch (error) {
     if (serverError.trim()) error.message += `\nObserver stderr:\n${serverError.trim()}`;

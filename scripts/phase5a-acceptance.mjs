@@ -91,12 +91,7 @@ try {
     bytes: { projectList: list.bytes, summary: summary.bytes, production: production.bytes, legacyFull: full.bytes },
     unchangedResponses: { projectList: list304.status, summary: summary304.status, production: production304.status },
   };
-  await run("browser", "powershell", [
-    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-    "scripts/phase5a-observer-browser-smoke.ps1",
-    "-ProjectId", pilot.projectId,
-    "-Url", origin,
-  ]);
+  await run("browser", process.execPath, ["scripts/ui-smoke.mjs", "--project", pilot.projectId, "--url", origin]);
   report.pilot = { projectId: pilot.projectId, artifactId: pilot.artifactId, resultId: pilot.resultId };
   report.status = "passed_with_documented_limits";
 } catch (error) {

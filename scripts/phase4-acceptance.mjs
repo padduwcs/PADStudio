@@ -81,7 +81,7 @@ try {
     currentSequenceCount: currentSequences.length, tailSilenceSeconds: audio.tailSilenceSeconds, providers: [graphic.tool.provider, narration.tool.provider, result.tool.provider] };
   server = createPadStudioServer({ reader });
   await new Promise((ok, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", ok); });
-  await run("browser", "powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/phase4-observer-browser-smoke.ps1", "-ProjectId", pilot.projectId, "-Url", `http://127.0.0.1:${server.address().port}`]);
+  await run("browser", process.execPath, ["scripts/ui-smoke.mjs", "--project", pilot.projectId, "--url", `http://127.0.0.1:${server.address().port}`]);
   report.pilot = { projectId: pilot.projectId, artifactId: pilot.artifactId, resultId: pilot.resultId,
     fixtureStore: fixture.name,
     sequenceKey: artifact.key, sequenceRevision: artifact.revision, durationSeconds: result.data.durationSeconds,

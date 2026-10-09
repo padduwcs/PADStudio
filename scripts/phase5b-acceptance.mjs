@@ -75,12 +75,7 @@ try {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", ok);
   });
-  await run("browser", "powershell", [
-    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-    "scripts/phase5a-observer-browser-smoke.ps1",
-    "-ProjectId", pilot.projectId,
-    "-Url", `http://127.0.0.1:${server.address().port}`
-  ]);
+  await run("browser", process.execPath, ["scripts/ui-smoke.mjs", "--project", pilot.projectId, "--url", `http://127.0.0.1:${server.address().port}`]);
   report.pilot = { projectId: pilot.projectId, artifactId: pilot.artifactId, resultId: pilot.resultId };
   report.status = "passed_with_documented_limits";
 } catch (error) {

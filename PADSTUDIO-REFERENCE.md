@@ -377,7 +377,7 @@ Có thể mở thẳng project bằng `http://127.0.0.1:7603/?project=<project-i
 đã có preview/timeline/transcript, chạy browser acceptance bằng:
 
 ```powershell
-npm run observer:browser-test -- -ProjectId <project-id>
+npm run observer:ui:test -- --url http://127.0.0.1:7603 --project <project-id>
 ```
 
 Để nghiệm thu snapshot/ETag, lazy loading, bảo toàn player, mốc phản hồi và race protection của Đợt 5A:

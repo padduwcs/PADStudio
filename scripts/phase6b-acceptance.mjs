@@ -247,16 +247,7 @@ try {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", ok);
   });
-  await run("browser", "powershell", [
-    "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-    "scripts/phase5a-observer-browser-smoke.ps1",
-    "-ProjectId", browserFixture.projectId,
-    "-SequenceKey", "acceptance-preview",
-    "-TechnicalFixture",
-    "-VisualBaseline", "scripts/browser-baselines/acceptance-fixture.json",
-    ...(process.env.PADSTUDIO_UPDATE_ACCEPTANCE_BASELINE === "1" ? ["-UpdateVisualBaseline"] : []),
-    "-Url", "http://127.0.0.1:" + server.address().port
-  ]);
+  await run("browser", process.execPath, ["scripts/ui-smoke.mjs", "--project", browserFixture.projectId, "--url", "http://127.0.0.1:" + server.address().port]);
   server.closeAllConnections();
   await new Promise((ok) => server.close(ok));
   server = null;

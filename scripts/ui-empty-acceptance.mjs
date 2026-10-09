@@ -17,13 +17,12 @@ await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 
 async function check(name, projectId = null) {
-  const args = ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "scripts/ui-browser-smoke.ps1", "-Url", origin,
-    "-ScreenshotDirectory", resolve(".cache/ui-focus-review", name)];
-  if (projectId) args.push("-ProjectId", projectId);
-  const { stdout } = await exec("powershell", args, { windowsHide: true, encoding: "utf8", timeout: 120_000, maxBuffer: 2e6 });
+  const args = ["scripts/ui-smoke.mjs", "--url", origin, "--empty", "--shots", resolve(".cache/ui-focus-review", name)];
+  if (projectId) args.push("--project", projectId);
+  const { stdout } = await exec(process.execPath, args, { windowsHide: true, encoding: "utf8", timeout: 180_000, maxBuffer: 2e6 });
   const report = JSON.parse(stdout);
-  if (report.ready.video || !report.ready.empty) throw new Error(`${name}: incorrect empty presentation`);
-  console.log(`${name}: passed (12 responsive views, keyboard, theme, offline recovery)`);
+  if (report.status !== "passed" || report.writeRequests) throw new Error(`${name}: incorrect empty presentation`);
+  console.log(`${name}: passed (${report.views} responsive views${projectId ? ", tabs, library, theme, offline recovery" : ", welcome screen"})`);
 }
 
 try {

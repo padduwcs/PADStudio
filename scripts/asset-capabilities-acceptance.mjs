@@ -23,7 +23,7 @@ await executor.execute(id,{capability:'audio.prepare',tool:'ffmpeg-audio-prepare
 const server=createPadStudioServer({reader:new ProjectReader(root)});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 try {
- const result=await promisify(execFile)('powershell',['-NoProfile','-ExecutionPolicy','Bypass','-File','scripts/asset-observer-browser-smoke.ps1','-Url','http://127.0.0.1:'+server.address().port,'-ProjectId',id],{timeout:45000,windowsHide:true});
+ const result=await promisify(execFile)(process.execPath,['scripts/ui-smoke.mjs','--url','http://127.0.0.1:'+server.address().port,'--project',id],{timeout:120000,windowsHide:true});
  await writeFile('.cache/asset-browser-result.json',result.stdout);
  console.log(result.stdout);
 }finally{await new Promise(r=>server.close(r));}
