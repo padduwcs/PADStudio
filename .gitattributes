@@ -1,0 +1,19 @@
+# Repository text files are stored and checked out with LF on every platform.
+* text=auto eol=lf
+
+# Binary assets must never be normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+*.mp4 binary
+*.mov binary
+*.webm binary
+*.wav binary
+*.mp3 binary
+*.onnx binary
