@@ -18,8 +18,15 @@ npm run padstudio:doctor
 npm run tool:list
 ```
 
-`tool:list` cho biết công cụ nào dùng được ngay và công cụ nào còn thiếu gì. Phần sau đều **tùy chọn**, Agent sẽ nói rõ khi
-một bước cần đến chúng:
+Cách dễ nhất: mở trang xem (mục 2) và bấm **Công cụ** trên thanh đầu, hoặc mở thẳng **http://127.0.0.1:7603/?panel=tools**. Trang này
+cho thấy công cụ nào đã sẵn sàng, cái nào còn thiếu và cách bật. Ở đó bạn cũng:
+
+- **dán khóa API** cho dịch vụ có tích hợp (hiện là ElevenLabs), bấm **Kiểm tra kết nối** để chắc khóa đúng;
+- **đánh dấu dịch vụ khác bạn có** (tạo ảnh, video, nhạc bằng AI, kho ảnh trả phí, Canva…) kèm ghi chú, để Agent đề xuất cách làm
+  hợp với những gì bạn có.
+
+Agent đọc cùng thông tin đó khi bắt đầu dự án. **Không dán khóa API vào cuộc trò chuyện**: Agent sẽ gửi bạn link trang Công cụ khi cần.
+Trong terminal, `tool:list` cho cùng danh sách ở dạng kỹ thuật. Phần sau đều **tùy chọn**, Agent sẽ nói rõ khi một bước cần đến chúng:
 
 - **Hiểu video/âm thanh có sẵn (cắt cảnh, phiên âm lời nói):** cần Python 3.12 và các model Whisper. Làm video từ đầu, không có
   tư liệu quay sẵn, thì không cần phần này; nhưng `padstudio:doctor` sẽ báo `attention` (kèm cách cài) cho đến khi bạn cài.
@@ -29,8 +36,9 @@ một bước cần đến chúng:
   `npm run analysis:doctor`.
 - **Giọng đọc miễn phí trên máy (Piper):** điền `piper.pythonCommand`, `piper.modelDirectory`, `piper.defaultModel` trong
   `padstudio.local.json` (mẫu: `padstudio.local.example.json`).
-- **Giọng đọc ElevenLabs (trả phí):** điền `elevenLabs.apiKey` cùng file đó. File này không được đưa lên Git. Mỗi lần dùng,
-  Agent cho bạn xem ước tính chi phí và chỉ chạy khi bạn đồng ý; bạn có thể đặt trần ngân sách cho từng dự án.
+- **Giọng đọc ElevenLabs (trả phí):** dán khóa ở trang Công cụ; khóa được lưu vào `padstudio.local.json`, không đưa lên Git và không
+  hiện lại trên trang. Mỗi lần dùng, Agent cho bạn xem ước tính chi phí và chỉ chạy khi bạn đồng ý; bạn có thể đặt trần ngân sách cho
+  từng dự án.
 - **Hoạt họa bằng code:** Manim, Remotion hoặc HyperFrames. Nếu máy chưa có, Agent sẽ báo và hướng dẫn thiết lập thay vì tự cài.
 
 ## 2. Mỗi lần bắt đầu
@@ -80,6 +88,8 @@ nằm trong `.padstudio/projects/<tên-dự-án>`. Việc dọn không hoàn tá
 | --- | --- |
 | Trang web không mở | Chạy `npm run observer:ensure`, rồi mở lại địa chỉ ở mục 2. |
 | Trang báo "Mất kết nối" | Bấm **Thử lại**; nếu vẫn lỗi thì làm như dòng trên. |
+| Agent nói thiếu khóa API, hoặc một công cụ "Cần cài thêm" | Bấm **Công cụ** trên thanh đầu: dán khóa rồi **Kiểm tra kết nối**, hoặc đọc dòng hướng dẫn dưới công cụ đó và nhờ Agent cài. |
+| Trang thiếu nút **Công cụ** hay vẫn như bản cũ | Chạy `npm run observer:ensure`: lệnh tự thay trang đang chạy code cũ. Nếu nó báo phải tắt tay (server mở từ trước bản cập nhật 2026-10-09), đóng cửa sổ đang chạy `npm start` rồi chạy lại lệnh. |
 | Agent làm dở thì máy tắt | Mở lại và nói "tiếp tục dự án X". Agent đọc trạng thái đã lưu và tiếp tục, kể cả khi một lần dựng bị đứt giữa chừng. |
 | Ổ đĩa đầy | `npm run project:usage -- --all` để xem dự án nào chiếm chỗ. |
 | Muốn kiểm tra sức khỏe hệ thống | `npm run padstudio:doctor` (thêm `-- --deep` để kiểm tra checksum). |

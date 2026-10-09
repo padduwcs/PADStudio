@@ -100,7 +100,7 @@ src/
 ├── execution/   # Danh mục công cụ, Bộ thực thi, authorization và budget
 ├── tools/       # Logic của từng công cụ cụ thể
 ├── cli/         # Các lệnh để Agent thao tác với project
-└── web/         # Observer API và web server chỉ đọc (GET-only)
+└── web/         # Observer API (chỉ đọc project) và trang Công cụ (ghi duy nhất padstudio.local.json)
 ui/              # Observer vanilla ES module, không có build step
 runtime/analysis # Python helper có khóa phiên bản cho ASR và scene detection
 ```
@@ -193,7 +193,7 @@ npm run project:prune -- <project-id> | --all [--apply]  # xóa scratch không t
 npm run project:finish -- <project-id> | --all [--apply] # sau khi chốt: chỉ giữ Delivery mới nhất và Result nguồn (mặc định chỉ lập kế hoạch)
 npm run project:run:abandon -- coffee-video run-... "<lý do>" --confirm-stopped
 npm run project:archive -- list | archive <id> "<lý do>" --confirm-stopped | restore <id> --confirm-stopped
-npm run observer:ensure -- [project-id] [--port 7603]   # tái dùng hoặc khởi động observer local
+npm run observer:ensure -- [project-id] [--port 7603] [--no-restart]   # tái dùng, thay bản cũ hoặc khởi động observer local
 ```
 
 Chấp nhận video và hoạt họa bằng code:

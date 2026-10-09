@@ -19,12 +19,13 @@ Không tự đổi backend/model và không tự gửi lại request cloud.
 
 ## Cấu hình local và bí mật
 
-Sao chép `padstudio.local.example.json` thành `padstudio.local.json`. File đích nằm trong
+Người dùng dán khóa ElevenLabs ở trang Công cụ của observer (`/?panel=tools`); trang ghi vào `padstudio.local.json` ở thư mục
+repository. Cũng có thể sao chép `padstudio.local.example.json` thành `padstudio.local.json` rồi sửa tay. File đích nằm trong
 `.gitignore`; có thể dùng file khác qua `PADSTUDIO_LOCAL_CONFIG`. Mẫu để key rỗng, vì vậy sao
 chép nguyên mẫu không làm ElevenLabs xuất hiện như đã cấu hình.
 
 Chỉ loader local đọc `elevenLabs.apiKey`. Key không thuộc input tool và không được ghi vào
-project, Run, Result, authorization, log hay output CLI. Không đặt key trong request/checkpoint
+project, Run, Result, authorization, log hay output CLI; trang Công cụ chỉ hiện "đã lưu" cùng bốn ký tự cuối. Không đặt key trong request/checkpoint
 hoặc tài liệu được commit. Nên tạo key ElevenLabs có scope tối thiểu và giới hạn credit ở provider.
 
 ## Cài Piper và model tiếng Việt
@@ -77,7 +78,7 @@ Chạy bằng `npm run tool:run -- <project-id> <request.json>`.
 
 ## ElevenLabs: kiểm tra kết nối và chọn tiếng Việt
 
-Điền `elevenLabs.apiKey` trong file local rồi chạy:
+Lưu khóa (trang Công cụ có nút **Kiểm tra kết nối** gọi đúng phép kiểm tra này) hoặc chạy:
 
 ```powershell
 npm run tts:inspect -- vi

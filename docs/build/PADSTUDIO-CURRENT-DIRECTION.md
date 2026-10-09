@@ -21,7 +21,7 @@ Hai bề mặt cùng dùng kho project làm nguồn sự thật. Observer không
 
 Chat trong Agent host bên ngoài là kênh duy nhất để điều khiển công việc trong project. Người dùng đưa yêu cầu, thay đổi hướng và phê duyệt tại đó. Agent hiểu phản hồi, chọn việc sáng tạo cần làm tiếp và cập nhật project qua CLI/contract.
 
-Web chỉ phục vụ xem và điều hướng: mở project khác, xem trạng thái, phát preview hoặc đổi cách xem. Nó không gửi lệnh và không tự thay đổi lựa chọn, quyết định, kết quả hay checkpoint. Khi Agent cần người dùng quyết định, web hiển thị rõ điều đang chờ và bằng chứng cần xem; người dùng phản hồi trong chat.
+Web chỉ phục vụ xem và điều hướng: mở project khác, xem trạng thái, phát preview hoặc đổi cách xem. Nó không gửi lệnh và không tự thay đổi lựa chọn, quyết định, kết quả hay checkpoint. Ngoại lệ duy nhất, chốt ngày 2026-10-09 (mục cuối tài liệu): trang Công cụ được ghi cài đặt của máy, không bao giờ ghi project. Khi Agent cần người dùng quyết định, web hiển thị rõ điều đang chờ và bằng chứng cần xem; người dùng phản hồi trong chat.
 
 Tư liệu người dùng upload trực tiếp trong chat được giữ như đầu vào gốc của project. Với path hoặc URL bên ngoài, Agent xem rồi chỉ đưa phần cần thiết vào project. Web chỉ hiển thị các tư liệu đã có trong project; nó không upload, import, xóa hay đổi chúng.
 
@@ -331,7 +331,7 @@ Chi tiết tại [Gói B](./history/CREATIVE-DIRECTION-PACKAGE-B.md),
 
 ## Kiến trúc giao diện đã chốt
 
-Người dùng mở project bằng Agent host họ đang dùng và chat trong chính cửa sổ Agent đó; Agent đọc và cập nhật project qua CLI/contract. Web PADStudio là cửa sổ local chỉ quan sát project.
+Người dùng mở project bằng Agent host họ đang dùng và chat trong chính cửa sổ Agent đó; Agent đọc và cập nhật project qua CLI/contract. Web PADStudio là cửa sổ local chỉ quan sát project; trang Công cụ là nơi duy nhất nó ghi, và chỉ ghi cài đặt máy (mục 2026-10-09).
 
 Đây là kiến trúc chính thức, không phải giải pháp tạm thời. Chat tích hợp, cơ chế đăng nhập và connector riêng không thuộc roadmap hiện hành. Chỉ xem xét lại khi người phụ trách thay đổi ranh giới sản phẩm bằng một quyết định mới.
 
@@ -584,3 +584,24 @@ QA sâu và profile vẫn có giá trị khi chạy trước lúc trình ngườ
 bắt buộc hoặc khi làm release evaluation rộng. Chúng không còn được dùng để phủ quyết local exact-output
 acceptance. Đây là phân bổ lại thời điểm và trách nhiệm, không bỏ Result bất biến, checksum, provenance,
 feedback binding hay quyền quyết định cuối của người dùng.
+
+## Trang Công cụ: web được ghi cài đặt của máy — 2026-10-09
+
+Trước đây người dùng chỉ có thể cho Agent biết mình có gì bằng cách nói trong chat, và khóa API phải sửa tay trong
+`padstudio.local.json`. Người phụ trách chọn cho người dùng làm việc này ngay trên web. Quyết định:
+
+- Observer có trang **Công cụ** (`/?panel=tools`, mở từ thanh đầu). Trang gom tool trong registry thành các mục người dùng hiểu được
+  (giọng đọc, hoạt họa, hiểu tư liệu, ảnh và tư liệu, dựng và xuất), mỗi mục có trạng thái, chi phí và cách bật. Trạng thái lấy từ chính
+  availability mà Agent thấy qua `tool:list`/`project:resume`, không có nguồn sự thật thứ hai.
+- Web được **ghi duy nhất cài đặt của máy**: khóa API của provider đã tích hợp (hiện là ElevenLabs) và danh sách dịch vụ bên ngoài người
+  dùng có kèm ghi chú. Web vẫn không ghi project, không chạy tool, không gửi lệnh cho Agent. Runtime path (Python, model Piper, đường dẫn
+  Manim/Remotion/HyperFrames) không sửa được từ web, vì chúng là chương trình PADStudio sẽ thực thi.
+- Ghi chỉ nhận từ chính trang PADStudio: Host localhost, Origin trùng, `Content-Type: application/json` và header
+  `X-PADStudio-Intent: settings`; trang web khác không qua được CORS preflight. Khóa không bao giờ được trả lại (chỉ "đã lưu" và bốn ký tự
+  cuối), không vào project, log hay context của Agent.
+- Agent đọc `environment.userServices` trong `project:resume`. Agent gửi link trang Công cụ khi cần khóa hoặc khi chưa biết người dùng
+  có gì, và không bao giờ hỏi hay nhận khóa trong chat. Dịch vụ khai báo không phải tool của PADStudio: file chúng tạo ra phải đi qua
+  `media.register-generated`.
+- Doctor xếp cắt cảnh và ASR (cần Python cài riêng) vào nhóm khuyến nghị: thiếu chỉ là `attention`.
+
+Các quyết định khác về observer giữ nguyên: chat ở Agent host vẫn là kênh điều khiển duy nhất, project chỉ thay đổi qua CLI/contract.

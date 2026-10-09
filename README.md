@@ -20,8 +20,10 @@ npm run project:resume -- demo
 npm start
 ```
 
-Observer chạy tại `http://127.0.0.1:7603/?project=demo` (chỉ bind localhost, chỉ phục vụ `GET`).
-`npm run observer:ensure -- [project-id]` tái dùng server đang chạy hoặc khởi động một server mới.
+Observer chạy tại `http://127.0.0.1:7603/?project=demo` (chỉ bind localhost). Nó chỉ đọc project; thứ duy nhất nó ghi là cài đặt
+của máy trên trang **Công cụ** (`/?panel=tools`): khóa API và các dịch vụ bên ngoài người dùng có, lưu vào `padstudio.local.json`.
+`npm run observer:ensure -- [project-id]` tái dùng server đang chạy đúng code hiện tại, tự thay server còn chạy code cũ, hoặc khởi động
+một server mới.
 
 Các nhóm khả năng chính gồm phân tích source, transcript/scene/frame/audio, creative artifact và workflow, tìm/nhập/chuẩn bị asset, graphic, TTS local/cloud, hoạt họa project-native bằng Manim/Remotion/HyperFrames, trim/concat/reformat/subtitle/audio overlay, image-to-video, sequence composition, exact-output QA và delivery có checksum. Xem tool thực tế trên máy bằng:
 
@@ -58,6 +60,7 @@ npm run check                     # cú pháp, import thừa/thiếu, link tài 
 npm test
 npm run observer:ui:empty-test    # observer trên kho trống/project mới (Node, kho tạm)
 npm run observer:ui:live-test     # tiến độ trực tiếp: preview đầu tiên, giữ player (Node, kho tạm)
+npm run observer:ui:tools-test    # trang Công cụ: lưu khóa và dịch vụ qua trình duyệt (kho và cấu hình tạm)
 npm run observer:ui:test -- --url http://127.0.0.1:7603 --project <project-id>   # browser smoke nhiều viewport (Node, cần Chrome/Edge)
 npm run assets:acceptance
 npm run production:acceptance

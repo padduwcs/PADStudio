@@ -25,8 +25,10 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 ## Baseline kiểm chứng
 
-Lần chạy full gần nhất, ngày **2026-10-09** (sau đợt sửa lỗi và dọn dẹp bên dưới, Node v24.18.1): `npm test`
-**381 tests: 380 pass, 1 skipped**; `npm run check` sạch. Trên bản clone sạch (không có runtime Python, `.cache`, `.padstudio`,
+Lần chạy full gần nhất, ngày **2026-10-09** (sau trang Công cụ bên dưới, Node v24.18.1): `npm test`
+**397 tests: 396 pass, 1 skipped**; `npm run check` sạch. Browser: `observer:ui:tools-test`, `observer:ui:empty-test`,
+`observer:ui:live-test` và `observer:ui:test` trên project thật `dijkstra-20261001-vertical` passed, không request ghi.
+Trước trang Công cụ: 381 tests, 380 pass; Trên bản clone sạch (không có runtime Python, `.cache`, `.padstudio`,
 `padstudio.local.json`; giống CI): 381 tests, 375 pass, 0 fail, 6 skipped vì thiếu runtime. Browser: `observer:ui:empty-test` và `observer:ui:live-test` passed;
 `observer:acceptance`, `feedback:acceptance`, `production:acceptance` (browser smoke trên project pilot trong archive),
 `delivery:acceptance`, `operations:acceptance` và `release:acceptance` passed (các lệnh ghi đè file trong `reports/`; xem
@@ -219,6 +221,32 @@ nguyên vì là bằng chứng của từng thời điểm.
 - `ProjectStore.addResult` đọc toàn bộ Result của project. Đo ngày 2026-10-09 trên project thật lớn nhất (190 Result): `readResults` ~0,13 s,
   `readContext` ~0,18 s. **Chưa là vấn đề**; đo lại nếu một project vượt vài nghìn Result.
 
+## Trang Công cụ — 2026-10-09
+
+Người dùng xem công cụ trên máy, dán khóa API và khai báo dịch vụ mình có ngay trên web, thay vì nói trong chat hay sửa file tay.
+Quyết định và ranh giới ghi tại mục cuối của [`PADSTUDIO-CURRENT-DIRECTION.md`](PADSTUDIO-CURRENT-DIRECTION.md): web được ghi **duy nhất**
+cài đặt máy, không bao giờ ghi project.
+
+- **Giao diện:** nút **Công cụ** trên thanh đầu, nút trên màn hình chào, và link `/?panel=tools` mà Agent gửi. Sheet ([`ui/tools-view.js`](../../ui/tools-view.js))
+  gom 37 tool thành 15 mục theo năm nhóm, mỗi mục có chi phí, trạng thái (Sẵn sàng / Dùng được một phần / Cần khóa API / Cần cài thêm),
+  cách bật và chi tiết kỹ thuật thu gọn. ElevenLabs có ô dán khóa, **Kiểm tra kết nối** và **Xóa khóa**; mục “Dịch vụ khác bạn dùng được”
+  có sáu loại dịch vụ và ghi chú.
+- **Server:** `GET /api/tools` (cache 60 giây, `?refresh=1`), `GET|PUT /api/settings`, `POST /api/settings/elevenlabs/check`
+  ([`settings-service.js`](../../src/web/settings-service.js), [`tools-overview.js`](../../src/web/tools-overview.js)). Ghi đòi Origin trùng,
+  JSON, header `X-PADStudio-Intent: settings`, thân ≤ 16 KiB; khóa không bao giờ được trả lại.
+- **Cấu hình:** [`local-config.js`](../../src/config/local-config.js) thêm mục `services`, `updateLocalConfig` (chỉ đổi khóa và dịch vụ,
+  giữ runtime path, không ghi đè file hỏng, xếp hàng các lần ghi) và mặc định đọc `padstudio.local.json` ở thư mục repository thay vì
+  thư mục đang chạy lệnh.
+- **Agent:** `project:resume` có `environment.userServices`; hướng dẫn trong runtime doc, agent reference và skill `tool-selection`.
+  Hướng dẫn cài ElevenLabs trỏ tới trang Công cụ và cấm hỏi khóa trong chat.
+- **Observer cũ:** server báo `GET /api/observer` (pid, thời điểm khởi động, build = hash nội dung `src/` và `ui/`). `observer:ensure`
+  dùng lại server cùng build, tự dừng và thay server chạy code cũ (`restarted: true`), `--no-restart` chỉ báo; trả thêm `toolsUrl`.
+  Server mở từ trước thay đổi này không tự nhận diện được nên phải tắt tay một lần. Đã thử thật trên Windows: khởi động, dùng lại,
+  thay server sau khi code đổi.
+- **Test:** `local-config`, `tools-overview` (kể cả mọi tool của registry mặc định đều có nhóm), `settings-api` (chặn Origin lạ, cổng
+  khác, cross-site, thiếu header, form post, JSON hỏng, thân quá lớn, runtime path; khóa không lộ; không đụng project), planning
+  environment, browser `observer:ui:tools-test` (lưu khóa và dịch vụ qua trang thật với file cấu hình tạm) và bước Công cụ trong `ui-smoke`.
+
 ## Đợt sửa lỗi và dọn dẹp — 2026-10-09 (lượt 2)
 
 Một lượt rà soát tài liệu, code, test và script, rồi sửa những gì lệch. Không đổi contract project, tool, workflow, approval hay delivery.
@@ -297,7 +325,8 @@ Ghi chú trung thực: 17 project đã dọn ngày 2026-10-09 được dọn **t
 
 ## Đợt giao diện hiện tại
 
-Giao diện chỉ giữ những gì người dùng cần: chọn dự án, xem video, nghe/xem tư liệu. Hai tab: **Video** và **Tư liệu**. Không còn tab Chi
+Giao diện chỉ giữ những gì người dùng cần: chọn dự án, xem video, nghe/xem tư liệu, xem và cài đặt công cụ. Hai tab: **Video** và **Tư liệu**;
+sheet **Công cụ** (mục trên). Không còn tab Chi
 tiết, kế hoạch hoạt họa, run, kho kết quả, sức khỏe dự án hay bảng phân tích nguồn; những thứ đó vẫn đọc được qua CLI
 (`project:resume`, `padstudio:doctor`) và API quan sát.
 
@@ -313,7 +342,8 @@ tiết, kế hoạch hoạt họa, run, kho kết quả, sức khỏe dự án h
   ba request đồng thời, cache theo generation. Có tìm kiếm, phím mũi tên, focus trap và Esc.
 - **Tư liệu** chỉ liệt kê media phát được (ảnh, video, lời đọc, nhạc); chỉ có ô tìm kiếm khi có từ 9 mục trở lên.
 - Điều hướng ghi nhớ dự án và giao diện sáng/tối (mặc định theo hệ thống). Polling 2 giây dừng khi tab
-  bị ẩn. Web vẫn chỉ đọc: mọi thao tác là GET, phát media, điều hướng và giữ tùy chọn UI; mất kết nối
+  bị ẩn. Web vẫn chỉ đọc project: mọi thao tác trên project là GET, phát media, điều hướng và giữ tùy chọn UI (cài đặt máy trên trang
+  Công cụ là ngoại lệ duy nhất, xem mục 2026-10-09 bên trên); mất kết nối
   hiện thông báo có nút thử lại.
 
 Diện mạo: nền ấm trung tính, một điểm nhấn cyan theo logo, Manrope, thanh đầu mờ kính, vài vòng tròn
@@ -321,7 +351,7 @@ rất mảnh ở rìa (không bao giờ vào video). Tên đầy đủ **Precise
 hiển thị, kể cả điện thoại. Logo dùng bản WebP/PNG nhỏ sinh từ ảnh trong suốt gốc (xem
 [`ui/brand/README.md`](../../ui/brand/README.md)); ảnh gốc giữ nguyên byte.
 
-Mã: `ui/app.js` điều phối; `production-view.js` (rạp), `library-view.js`, `sources-view.js`; `dom.js` giữ hàm dùng chung; `styles.css` là một
+Mã: `ui/app.js` điều phối; `production-view.js` (rạp), `library-view.js`, `sources-view.js`, `tools-view.js`; `dom.js` giữ hàm dùng chung; `styles.css` là một
 design system duy nhất. Các view Chi tiết, hoạt họa, creative, health, phân tích nguồn cùng `creative:acceptance` (phụ thuộc vào chúng) đã được gỡ.
 `src/web/static-assets.js` phục vụ theo allowlist chính xác tính lúc khởi động (không phục vụ thư
 mục tùy ý). Đợt này không đổi API quan sát hiện có ngoài vùng `card` và `modifiedAt` trong danh sách

@@ -24,6 +24,15 @@ Resume còn có `environment`: hồ sơ máy/capability cô đọng được đo
 phù hợp để cân nhắc và cảnh báo thực sự liên quan. Không dump toàn bộ menu, không khoe thông số không
 liên quan và không tự cài theo `setupOffers`. Resource profile là ước lượng lập kế hoạch, không phải
 benchmark; exact tool vẫn phải qua availability/preflight trước việc dài hoặc tốn tiền.
+
+**Công cụ, khóa API và dịch vụ của người dùng.** `environment.userServices` liệt kê các dịch vụ bên ngoài người dùng đã khai báo
+(tạo ảnh/video/nhạc bằng AI, kho ảnh trả phí, công cụ thiết kế…) cùng ghi chú của họ. Với project mới, hoặc khi việc sắp làm cần một
+tool đang thiếu khóa (ví dụ ElevenLabs), chạy `npm run observer:ensure` rồi gửi người dùng link trang Công cụ
+`http://127.0.0.1:7603/?panel=tools`: ở đó họ dán khóa, kiểm tra kết nối và đánh dấu dịch vụ mình có. Đọc lại `project:resume` sau
+khi họ nói đã xong. Không bao giờ hỏi, nhận, nhắc lại hay ghi khóa API vào chat, lệnh, checkpoint hay artifact; nếu người dùng lỡ dán
+khóa vào chat, không dùng nó, mời họ dán ở trang Công cụ và đổi khóa ở nhà cung cấp. Dịch vụ đã khai báo không phải tool của
+PADStudio: chỉ dùng khi hợp brief, thống nhất ai thao tác (Agent host hay người dùng), và đăng ký mọi file tạo ra bằng
+`media.register-generated` kèm provider, prompt và quyền sử dụng.
 Nếu `checkpointFreshness.authority` là `advisory`, `checkpoint.pending` và `checkpoint.next` chỉ là lịch sử;
 không chạy lại chúng trước khi đối chiếu trạng thái bền vững hiện tại trong `work`, `production`, `animation`,
 decision và review. Sau khi người dùng nói đã tự chạy một lệnh acceptance, luôn đọc lại
@@ -103,7 +112,8 @@ kiểm tra cả câu cuối. Freeze/QA kỹ thuật không tự kết luận nh�
 
 Với composition Remotion, `npm run animation:preview-range -- <project-id> <composition-id-or-key> <start-seconds> <end-seconds>`
 tạo preview chuyển động cho một khoảng (tối đa 30 giây) từ preflight đã pass đúng revision. Để mở web quan sát
-mà không nhân đôi server, dùng `npm run observer:ensure -- [project-id]`.
+mà không nhân đôi server, dùng `npm run observer:ensure -- [project-id]`. Lệnh dùng lại server đang chạy đúng code hiện tại, tự thay
+server còn chạy code cũ, và trả `url` cùng `toolsUrl`; nếu kết quả có `stale: true` kèm `message`, chuyển lời nhắn đó cho người dùng.
 
 Mỗi lần byte source đổi phải tạo source Result mới, validate lại và preflight lại đúng revision trước
 khi preview/render. Agent tự lặp vòng này đến khi có bản xem được; không biến lỗi compile thành câu hỏi

@@ -13,7 +13,10 @@ Từ thư mục repository:
     npm run system:profile
     npm start
 
-Mở `http://127.0.0.1:7603`. Server chỉ bind localhost và Observer không có mutation endpoint.
+Mở `http://127.0.0.1:7603`. Server chỉ bind localhost và không có endpoint nào ghi vào project. Trang **Công cụ**
+(`/?panel=tools`) là chỗ duy nhất web ghi: khóa API và dịch vụ người dùng khai báo, vào `padstudio.local.json`. Nó chỉ nhận request
+từ chính trang đó (cùng Origin, JSON, header `X-PADStudio-Intent`) và không bao giờ trả lại khóa. File này chứa khóa API: khi sao lưu,
+giữ nó riêng tư; đổi khóa ở nhà cung cấp nếu file bị lộ.
 
 Doctor nhanh kiểm runtime, disk, capability và health metadata. Khi nghi file Result bị đổi hoặc trước bàn giao quan trọng:
 

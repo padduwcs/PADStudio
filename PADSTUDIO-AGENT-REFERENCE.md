@@ -285,6 +285,32 @@ $recommendation | npm run tool:recommend -- -
 `system:profile` trả hồ sơ máy và planning envelope không chứa secret. `project:resume` đã nhúng bản
 cô đọng trong `environment`; chỉ gọi lệnh riêng khi cần chẩn đoán hoặc xem toàn bộ capability menu.
 
+### Trang Công cụ, khóa API và dịch vụ người dùng khai báo
+
+Người dùng xem và cài đặt công cụ ở trang Công cụ của observer: `http://127.0.0.1:7603/?panel=tools` (chạy
+`npm run observer:ensure` trước nếu observer chưa chạy). Trang gom tool theo nhóm (giọng đọc, hoạt họa, hiểu tư liệu, ảnh và tư
+liệu, dựng và xuất), cho dán khóa ElevenLabs, kiểm tra kết nối và đánh dấu dịch vụ bên ngoài. Mọi thứ lưu vào `padstudio.local.json`;
+runtime path (Python, model Piper) chỉ sửa trong file.
+
+`environment.userServices` trong `project:resume`:
+
+```json
+{
+  "declared": [{ "id": "image-generation", "label": "Tạo ảnh bằng AI" }],
+  "note": "ChatGPT Plus, Suno",
+  "settingsPage": "/?panel=tools",
+  "guidance": "…"
+}
+```
+
+Mã dịch vụ: `image-generation`, `video-generation`, `music-generation`, `voice-generation`, `stock-media`, `design-tools`.
+PADStudio không gọi các dịch vụ này; file tạo ra phải đi qua `media.register-generated`. Agent chỉ biết một khóa đã có hay chưa qua
+availability của tool (`credentialConfigured`), không bao giờ thấy giá trị. Không hỏi hay nhận khóa trong chat.
+
+API của trang (dành cho UI, không phải cho Agent): `GET /api/tools[?refresh=1]`, `GET|PUT /api/settings`,
+`POST /api/settings/elevenlabs/check`. Thao tác ghi chỉ nhận từ chính trang PADStudio (cùng Origin, JSON và header
+`X-PADStudio-Intent: settings`) và không bao giờ ghi vào project.
+
 Đọc best-for, limitation, setup, cost, alternatives và skill trước khi chọn.
 Recommendation chỉ advisory; request chạy luôn nêu exact capability/tool và không
 được fallback ngầm. Với project có chi phí, xem hoặc đặt budget:
@@ -700,8 +726,12 @@ Chỉ dùng khi resume báo `health.status` khác `ready` hoặc khi chuẩn b�
 npm run padstudio:doctor -- [--deep] [project-id]
 npm run project:recover -- <project-id> [--apply]
 npm run project:run:abandon -- <project-id> <run-id> "<lý do>" --confirm-stopped
-npm run observer:ensure -- [project-id] [--port 7603]
+npm run observer:ensure -- [project-id] [--port 7603] [--no-restart]
 ```
+
+`observer:ensure` so build của server đang chạy (`GET /api/observer`) với code trên đĩa: trùng thì dùng lại, khác thì dừng server cũ và
+khởi động server mới (`restarted: true`), `--no-restart` chỉ báo `stale: true`. Server khởi động trước khi có `/api/observer` không tự
+nhận diện được: lệnh trả `stale: true` và `message` hướng dẫn người dùng tắt nó một lần.
 
 `npm run project:usage -- <project-id>` cho biết dung lượng theo vùng và theo Run; `npm run project:prune -- <project-id>`
 chỉ lập kế hoạch xóa scratch không thuộc Result nào. Chỉ chạy `--apply` khi người dùng yêu cầu dọn dung lượng; không tự dọn.
@@ -718,8 +748,8 @@ hoàn tất các Run đã chứng minh recoverable, không chạy lại tool hay
 ## Ranh giới
 
 Agent dùng CLI để thay đổi project. Web chỉ đọc project, preview tư liệu và
-hiển thị checkpoint, kết quả và lần chạy. Agent không dùng web để gửi lệnh,
-import hay cập nhật checkpoint.
+hiển thị checkpoint, kết quả và lần chạy; thứ duy nhất web ghi là cài đặt máy do người dùng nhập ở trang Công cụ.
+Agent không dùng web để gửi lệnh, import, cập nhật checkpoint hay lưu khóa thay người dùng.
 
 ## Đợt 3 — gói nguyên liệu dùng chung
 
