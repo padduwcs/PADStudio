@@ -11,8 +11,21 @@ import { ProjectStore } from "../src/project/project-store.js";
 import { importProjectInput } from "../src/resources/project-importer.js";
 import { assertSelfContainedMediaPath, probeSource, runProcess, selectStream } from "../src/tools/source-analysis-common.js";
 import { sampledCoverageIntervals } from "../src/tools/ffmpeg-source-frames.js";
+import { createPyscenedetectScenes } from "../src/tools/pyscenedetect-scenes.js";
 
 const execFileAsync = promisify(execFile);
+
+// Several end-to-end tests run the full probe -> scenes -> frames plan. They need the locked Python
+// analysis runtime (.runtime-tools, git-ignored). On a machine without it they are reported as
+// skipped with the reason instead of failing; set PADSTUDIO_REQUIRE_ANALYSIS_RUNTIME=1 to make a
+// missing runtime a failure (for the owner machine or a prepared CI image).
+const sceneRuntime = await createPyscenedetectScenes().checkAvailability().catch((error) => ({
+  status: "unavailable", reason: error.message
+}));
+const requireSceneRuntime = process.env.PADSTUDIO_REQUIRE_ANALYSIS_RUNTIME === "1";
+const sceneRuntimeSkip = sceneRuntime.status === "available" || requireSceneRuntime
+  ? false
+  : `analysis runtime unavailable: ${sceneRuntime.reason ?? "scene detection is not installed"}`;
 
 test("sampled frame coverage clamps negative container PTS to the requested media range", () => {
   assert.deepEqual(sampledCoverageIntervals([
@@ -170,7 +183,7 @@ test("analysis rejects local playlists before FFmpeg can follow referenced files
   );
 });
 
-test("package-C adapters run through lifecycle and preserve a real video source", async (t) => {
+test("package-C adapters run through lifecycle and preserve a real video source", { skip: sceneRuntimeSkip }, async (t) => {
   const { directory, rootDir } = await workspace(t);
   const sourcePath = join(directory, "source.mp4");
   await makeVideo(sourcePath);
@@ -244,7 +257,7 @@ test("package-C adapters run through lifecycle and preserve a real video source"
   assert.equal(await sha256File(sourcePath), before);
 });
 
-test("frame extraction decodes through a long GOP and binds output pixels to recorded PTS", async (t) => {
+test("frame extraction decodes through a long GOP and binds output pixels to recorded PTS", { skip: sceneRuntimeSkip }, async (t) => {
   const { directory, rootDir } = await workspace(t);
   const sourcePath = join(directory, "long-gop.mp4");
   const referencePath = join(directory, "reference.png");
@@ -292,7 +305,7 @@ test("frame extraction decodes through a long GOP and binds output pixels to rec
   assert.equal(await sha256File(sourcePath), before);
 });
 
-test("frame budget records every omitted shot range in a checksum-bound dataset", async (t) => {
+test("frame budget records every omitted shot range in a checksum-bound dataset", { skip: sceneRuntimeSkip }, async (t) => {
   const { directory, rootDir } = await workspace(t);
   const sourcePath = join(directory, "budget.mp4");
   await makeVideo(sourcePath);
@@ -326,7 +339,7 @@ test("frame budget records every omitted shot range in a checksum-bound dataset"
   });
 });
 
-test("image evidence succeeds while scene/audio units are explicitly not applicable", async (t) => {
+test("image evidence succeeds while scene/audio units are explicitly not applicable", { skip: sceneRuntimeSkip }, async (t) => {
   const { directory, rootDir } = await workspace(t);
   const sourcePath = join(directory, "source.png");
   await makeImage(sourcePath);
@@ -344,7 +357,7 @@ test("image evidence succeeds while scene/audio units are explicitly not applica
   assert.equal(results.find((result) => result.type === "source.preview").files[0].mediaType, "image/png");
 });
 
-test("animated images are sampled over time and previewed as video", async (t) => {
+test("animated images are sampled over time and previewed as video", { skip: sceneRuntimeSkip }, async (t) => {
   const { directory, rootDir } = await workspace(t);
   const sourcePath = join(directory, "animated.gif");
   await makeAnimatedImage(sourcePath);
