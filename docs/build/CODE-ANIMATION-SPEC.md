@@ -126,6 +126,11 @@ validate and preflight the new revision before it executes. Historical `animatio
 decisions remain readable for old projects but are ignored and cannot be newly recorded. The retired
 `project:approve-code` command is not part of the runtime contract.
 
+The temporary workspace lives in the Run's output while the tool executes; before the output is committed the Executor removes
+everything the Result does not register (the copied sources and assets, the Manim media tree, the home directory and bundler caches such as
+Remotion's webpack cache), so a finished Run keeps only its registered video, poster and report. Runs completed before 2026-10-09 still carry
+this scratch; `npm run project:prune` removes it.
+
 Each preflight, preview or render copies verified source, props and declared assets into a temporary Run workspace and passes an
 allowlisted environment. It does not expose provider secrets. The current host process does not
 enforce OS/container network isolation; render evidence states `networkIsolation:

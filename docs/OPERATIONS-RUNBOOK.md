@@ -29,6 +29,31 @@ trị secret và không thay thế exact availability/preflight của tool đư�
 
 Agent đọc context và điều khiển công việc; web chỉ quan sát. Không đặt raw path vào artifact/tool input: luôn dùng resource/result/artifact ID đã đăng ký.
 
+### Thư mục dữ liệu
+
+Mặc định mọi project nằm ở `.padstudio/projects` cạnh mã nguồn và archive ở `.padstudio/archive/projects`. Đặt biến môi trường
+`PADSTUDIO_PROJECT_ROOT` (tuyệt đối, hoặc tương đối so với thư mục đang chạy) để dùng kho khác; archive mặc định nằm cạnh đó
+(`<root>/../archive/projects`) hoặc đặt riêng bằng `PADSTUDIO_ARCHIVE_ROOT`. Mọi lệnh CLI và observer dùng cùng cấu hình này; giá trị
+rỗng bị từ chối thay vì lặng lẽ dùng mặc định. Các script acceptance lịch sử trong `scripts/` vẫn dùng đường dẫn mặc định.
+
+## 2.1 Dung lượng
+
+Output của một Run đã hoàn tất chỉ nên chứa file mà Result của nó đăng ký. Executor tự xóa phần còn lại (thư mục làm việc tạm, cache
+của bundler) trước khi lưu output, nhưng các Run cũ trước thay đổi này đã để lại hàng chục GB scratch (tại 2026-10-09: 42,9 GB trong tổng 53,4 GB
+của 26 project). Hai lệnh dưới đây xử lý phần đó; cả hai chỉ lập kế hoạch/đo mặc định:
+
+    npm run project:usage -- --all                 # tổng dung lượng và phần có thể thu hồi theo từng project
+    npm run project:usage -- <project-id> [--full] # phân tích một project, theo Run
+    npm run project:prune -- <project-id>          # kế hoạch dọn, không xóa gì
+    npm run project:prune -- <project-id> --apply  # thực sự xóa
+    npm run project:prune -- --all [--apply]       # mọi project
+    npm run project:prune -- <project-id> --run <run-id,...> [--apply]
+
+Chỉ file nằm trong output của Run **đã hoàn tất** mà không Result nào đăng ký mới bị xóa. File đã đăng ký, `inputs/`, bản ghi JSON, Run
+đang chạy hoặc đã lỗi, thư mục không có bản ghi Run và thư mục tạm `.run-*` không bao giờ bị chạm tới. Apply lập lại kế hoạch bên trong
+khóa project, ghi một bản ghi append-only vào `prunes/` và kiểm tra mọi file đăng ký của các Result bị ảnh hưởng vẫn còn nguyên (nếu không,
+trạng thái là `integrity_failure` và lệnh thoát với mã 2). Chạy lại là idempotent. Sau khi dọn, `padstudio:doctor --deep` xác minh lại checksum.
+
 ## 3. Phục hồi
 
 Đầu tiên chỉ lập kế hoạch:

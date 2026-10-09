@@ -299,6 +299,7 @@ export class ToolExecutor {
       }
       throwIfAborted(internal.signal);
       if (outputWorkspace) {
+        await this.#sweepUnregistered(outputWorkspace, resultValue);
         await this.store.commitRunOutputWorkspace(outputWorkspace);
         outputCommitted = true;
       }
@@ -350,6 +351,7 @@ export class ToolExecutor {
       if (paidResultStaged) {
         try {
           if (outputWorkspace && !outputCommitted) {
+            await this.#sweepUnregistered(outputWorkspace, resultValue);
             await this.store.commitRunOutputWorkspace(outputWorkspace);
             outputCommitted = true;
           }
@@ -406,6 +408,17 @@ export class ToolExecutor {
         });
       }
       throw failure;
+    }
+  }
+
+  // Keep a Run's output to exactly what its Result registers, so scratch such as a copied source
+  // workspace or a bundler cache never becomes permanent project data. This is best effort: a file
+  // that cannot be removed now stays visible to `project:usage` and can be removed by `project:prune`.
+  async #sweepUnregistered(outputWorkspace, resultValue) {
+    try {
+      await this.store.sweepRunOutputWorkspace(outputWorkspace, resultValue?.files);
+    } catch {
+      // Never let cleanup turn a verified Result into a failed Run.
     }
   }
 

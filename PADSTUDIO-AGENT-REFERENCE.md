@@ -698,6 +698,9 @@ npm run project:run:abandon -- <project-id> <run-id> "<lý do>" --confirm-stoppe
 npm run observer:ensure -- [project-id] [--port 7603]
 ```
 
+`npm run project:usage -- <project-id>` cho biết dung lượng theo vùng và theo Run; `npm run project:prune -- <project-id>`
+chỉ lập kế hoạch xóa scratch không thuộc Result nào. Chỉ chạy `--apply` khi người dùng yêu cầu dọn dung lượng; không tự dọn.
+
 Doctor không sửa gì (exit 2 chỉ khi hệ thống `blocked`). Recover mặc định chỉ lập plan và `--apply` chỉ
 hoàn tất các Run đã chứng minh recoverable, không chạy lại tool hay provider. `run:abandon` không dùng
 được cho Run đã có output, pending Result hoặc authorization.

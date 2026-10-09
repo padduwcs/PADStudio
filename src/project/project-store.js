@@ -13,7 +13,8 @@ import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { readJson, writeJsonAtomic, writeTextAtomic } from "./atomic-files.js";
 import { withFileLock } from "./file-lock.js";
-import { createHumanConfirmation, requireHumanConfirmation, validHumanConfirmation } from "./human-confirmation.js";
+import { removeOutputEntries, scanOutputDirectory } from "./output-sweep.js";
+import { requireHumanConfirmation, validHumanConfirmation } from "./human-confirmation.js";
 import { compositionTimeline, sequenceDuration } from "../production/sequence-composition.js";
 import {
   isPathInside,
@@ -906,6 +907,31 @@ export class ProjectStore {
     await pruneEmptyChildDirectories(registered.temporaryDirectory);
     await renameAtomicWithRetry(registered.temporaryDirectory, registered.finalDirectory);
     registered.committed = true;
+  }
+
+  /**
+   * Remove everything in a Run's temporary output that the Result does not register (a copied source
+   * workspace, bundler caches, intermediate files). Registered files are never touched. If any
+   * registered path cannot be mapped into this workspace the sweep is skipped entirely.
+   */
+  async sweepRunOutputWorkspace(workspace, files) {
+    const registered = this.#registeredOutputWorkspace(workspace);
+    const prefix = "outputs/" + registered.runId + "/";
+    const relativePaths = [];
+    for (const file of Array.isArray(files) ? files : []) {
+      const path = typeof file?.path === "string" ? file.path.replaceAll("\\", "/") : "";
+      if (!path.startsWith(prefix)) return { skipped: true, removedBytes: 0, removedEntries: 0, failed: [] };
+      relativePaths.push(path.slice(prefix.length));
+    }
+    if (relativePaths.length === 0) return { skipped: true, removedBytes: 0, removedEntries: 0, failed: [] };
+    const scan = await scanOutputDirectory(registered.temporaryDirectory, relativePaths);
+    const outcome = await removeOutputEntries(registered.temporaryDirectory, scan.unregistered.entries);
+    return {
+      skipped: false,
+      removedBytes: outcome.removed.reduce((sum, entry) => sum + entry.bytes, 0),
+      removedEntries: outcome.removed.length,
+      failed: outcome.failed
+    };
   }
 
   async discardRunOutputWorkspace(workspace) {

@@ -46,6 +46,9 @@ npm run project:archive -- list
 npm run project:archive -- restore <project-id> --confirm-stopped
 ```
 
+`npm run project:usage -- <project-id>` đo dung lượng; `npm run project:prune -- <project-id>` chỉ lập kế hoạch xóa scratch không thuộc Result nào.
+Chỉ thêm `--apply` khi người dùng yêu cầu dọn dung lượng.
+
 Archive di chuyển nguyên project và ghi manifest; không xóa lịch sử. Không archive project đang được một Agent khác sử dụng.
 Run local bị ngắt chỉ được đánh dấu thất bại bằng
 `npm run project:run:abandon -- <project-id> <run-id> "<lý do>" --confirm-stopped`
