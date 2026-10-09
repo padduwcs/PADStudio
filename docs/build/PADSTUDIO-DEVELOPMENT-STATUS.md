@@ -26,7 +26,7 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 ## Baseline kiểm chứng
 
 Lần chạy full gần nhất, ngày **2026-10-09** (sau thiết kế lại giao diện, Node v24.18.1): `npm test`
-**377 tests: 376 pass, 1 skipped** (test cần runtime phân tích Python tùy chọn); `npm run check` sạch. Browser:
+**386 tests: 385 pass, 1 skipped** (test cần runtime phân tích Python tùy chọn); `npm run check` sạch. Browser:
 `observer:ui:test` trên project thật (6 chế độ xem, sáng/tối), `observer:ui:empty-test` và
 `observer:ui:live-test` đều passed. Các số 326/332 trong các mục cũ bên dưới là ảnh chụp trước đợt này.
 
@@ -231,6 +231,19 @@ Khi các tài liệu có vẻ mâu thuẫn, dùng thứ tự sau:
 
 Không suy ra trạng thái hiện tại chỉ từ tên file, từ chữ `current`, `next`, `completion`, hoặc từ
 số test nằm trong một báo cáo cũ.
+
+## Chốt xong thì chỉ giữ bản cuối — 2026-10-09
+
+Người dùng không cần các bản nháp sau khi đã chốt. `npm run project:finish -- <project-id> | --all [--apply]`
+([`src/operations/project-finish.js`](../../src/operations/project-finish.js)) giữ nguyên Delivery mới nhất cùng Result nguồn của nó và
+phát hành file của mọi Result khác. Bản ghi (Result, Run, decision, artifact, review) và `inputs/` không bị chạm tới. Điều kiện: Delivery
+nguyên vẹn theo SHA-256, quyết định duyệt gắn với nó, không còn Run đang chạy; nếu không, lệnh từ chối và không xóa gì.
+
+Hợp đồng lưu trữ thay đổi đúng một điểm: `releases/<id>.json` (append-only, ghi **trước** khi xóa) cho biết file nào được phát hành cố ý.
+`ProjectStore` đánh dấu chúng `released: true, available: false`; health, production dependency và `padstudio:doctor --deep` không coi đó là
+hỏng. Observer, với project đã dọn, ẩn các phiên bản/Result chỉ còn vỏ (xem `finishedView` trong `src/web/project-reader.js`) nên người
+dùng chỉ thấy bản đã chốt. Luồng của Agent (`PADSTUDIO-AGENT-RUNTIME.md`, bước 7) chạy lệnh này ngay sau `video.export-delivery`.
+Test: `test/project-finish.test.js`. Đã kiểm tra trên bản sao project thật (dijkstra: 262 MB → 78 MB, doctor --deep 20 xác minh/849 phát hành/0 hỏng).
 
 ## Đợt giao diện hiện tại
 

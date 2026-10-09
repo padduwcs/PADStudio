@@ -107,7 +107,7 @@ export async function applyProjectPrune(store, projectId, { runIds = null, now =
       for (const run of plan.runs) {
         for (const resultId of run.resultIds) {
           const result = await store.readResult(projectId, resultId);
-          for (const file of result.files) if (!file.available) damaged.push(`${resultId}/${file.id}`);
+          for (const file of result.files) if (!file.available && !file.released) damaged.push(`${resultId}/${file.id}`);
         }
       }
 

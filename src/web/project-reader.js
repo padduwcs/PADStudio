@@ -67,7 +67,34 @@ function compactReview(review) {
   return { id, target, round, perspective, verdict, summary, reviewer, inspection, attestation, exactResult, createdAt };
 }
 
-function observerSection(context, section, generation) {
+const hasPlayable = (files) => files?.some((file) => file.available && (file.id === "primary" || String(file.mediaType).startsWith("video")));
+
+/**
+ * After a project is finished only the final Delivery and the Result it came from still have their files.
+ * Earlier versions would show as empty shells, so the observer leaves them out; their records stay in the
+ * project and in the Details activity.
+ */
+function finishedView(context) {
+  const finished = context.results.some((result) => result.files.some((file) => file.released));
+  if (!finished) return context;
+  const sequences = context.production.sequences.filter((sequence) => sequence.renders.some((render) => hasPlayable(render.files)));
+  const compositions = (context.animation?.compositions ?? []).filter((composition) =>
+    [...(composition.renders ?? []), ...(composition.previews ?? [])].some((result) => result.files?.some((file) => file.available)));
+  const referenced = new Set(compositions.map((composition) => composition.choreography?.artifactId).filter(Boolean));
+  return {
+    ...context,
+    results: context.results.filter((result) => !result.files.length || result.files.some((file) => !file.released)),
+    production: { ...context.production, sequences: sequences.length ? sequences : context.production.sequences },
+    animation: context.animation && {
+      ...context.animation,
+      compositions,
+      choreographies: (context.animation.choreographies ?? []).filter((choreography) => referenced.has(choreography.artifactId))
+    }
+  };
+}
+
+function observerSection(source, section, generation) {
+  const context = finishedView(source);
   const base = { version: "1.0", view: `observer-${section}`, generation, project: context.project };
   if (section === "card") return { ...base, card: buildProjectCard(context) };
   if (section === "summary") {

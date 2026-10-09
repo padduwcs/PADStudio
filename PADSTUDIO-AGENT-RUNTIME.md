@@ -47,7 +47,8 @@ npm run project:archive -- restore <project-id> --confirm-stopped
 ```
 
 `npm run project:usage -- <project-id>` đo dung lượng; `npm run project:prune -- <project-id>` chỉ lập kế hoạch xóa scratch không thuộc Result nào.
-Chỉ thêm `--apply` khi người dùng yêu cầu dọn dung lượng.
+Chỉ thêm `--apply` khi người dùng yêu cầu dọn dung lượng. Ngoại lệ là bước 7 của luồng sản xuất bên dưới: người dùng đã yêu cầu
+mặc định “chốt xong thì chỉ giữ bản cuối”, nên `project:finish --apply` sau Delivery không cần hỏi lại.
 
 Archive di chuyển nguyên project và ghi manifest; không xóa lịch sử. Không archive project đang được một Agent khác sử dụng.
 Run local bị ngắt chỉ được đánh dấu thất bại bằng
@@ -129,6 +130,11 @@ phát triển codebase khi phạm vi đó đã được xác nhận.
    không đổi codec và không ép profile. QA, delivery profile, loudness, tail silence, dependency freshness và review
    trước đó được giữ như bằng chứng/cảnh báo nếu có, không phải blocker hậu duyệt. Chỉ làm lại video khi file exact
    bị thiếu/hỏng hoặc người dùng yêu cầu một biến thể/chuẩn xuất khác.
+7. Ngay khi Delivery đã được tạo, chạy `npm run project:finish -- <project-id>` (kế hoạch, thường không cần đọc kỹ) rồi
+   `npm run project:finish -- <project-id> --apply`. Lệnh giữ nguyên Delivery mới nhất cùng Result nguồn của nó và giải phóng
+   file của mọi Result khác (bản nháp, preview, frame, audio trung gian); bản ghi, quyết định và `inputs/` giữ nguyên. Lệnh tự từ chối
+   khi chưa có Delivery nguyên vẹn, thiếu quyết định duyệt hoặc còn Run đang chạy. Sau đó báo người dùng exact Delivery Result.
+   Nếu người dùng muốn sửa tiếp, làm từ Delivery và tư liệu nhập; các Result trung gian không còn để render lại.
 
 `project:decide` vẫn dùng cho feedback, rejection và quyết định không thuộc final acceptance gate.
 `project:attest` dạng JSON đã ngừng nhận human attestation. Một yêu cầu kiểu “cứ làm đi” ở trước đó

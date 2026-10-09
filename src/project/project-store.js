@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isAnalysisResultType, validateAnalysisResultData } from "../analysis/contracts.js";
+import { readReleasedFiles, releasedKey } from "./release-ledger.js";
 import { sha256File } from "../analysis/source-identity.js";
 import { ProjectIntelligenceStore } from "../intelligence/project-intelligence-store.js";
 import { createDefaultSkillCatalog } from "../intelligence/skill-catalog.js";
@@ -217,7 +218,7 @@ function validateRun(run, projectId) {
   return run;
 }
 
-async function resultWithAvailability(projectRoot, result) {
+async function resultWithAvailability(projectRoot, result, released = new Set()) {
   const runOutputRoot = join(projectRoot, "outputs", result.createdByRun);
   return {
     ...result,
@@ -231,7 +232,10 @@ async function resultWithAvailability(projectRoot, result) {
       } catch {
         available = false;
       }
-      return { ...file, available };
+      // A file the user released on purpose (project finish) is absent by design, not damaged.
+      return !available && released.has(releasedKey(result.id, file.id))
+        ? { ...file, available: false, released: true }
+        : { ...file, available };
     }))
   };
 }
@@ -1218,7 +1222,7 @@ export class ProjectStore {
         ),
         projectId
       );
-      return resultWithAvailability(projectRoot, result);
+      return resultWithAvailability(projectRoot, result, await readReleasedFiles(projectRoot));
     } catch (error) {
       if (error?.code === "ENOENT") {
         throw new ProjectStoreError("Không tìm thấy result trong project: " + normalizedResultId);
@@ -1234,7 +1238,8 @@ export class ProjectStore {
     const validated = results
       .map((result) => validateResult(result, projectId))
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
-    return Promise.all(validated.map((result) => resultWithAvailability(projectRoot, result)));
+    const released = await readReleasedFiles(projectRoot);
+    return Promise.all(validated.map((result) => resultWithAvailability(projectRoot, result, released)));
   }
 
   async #normalizeFeedbackTarget(projectId, result, value) {

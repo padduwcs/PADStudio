@@ -24,7 +24,7 @@ export function buildProductionContext(context) {
       }
     } else {
       const file = results.get(source.id)?.files.find((candidate) => candidate.id === source.file);
-      if (!file || file.available === false) return [{ ...source, reason: "missing_media" }];
+      if (!file || (file.available === false && !file.released)) return [{ ...source, reason: "missing_media" }];
     }
     return [];
   }
@@ -51,7 +51,8 @@ export function buildProductionContext(context) {
     } else if (ref.kind === "result") {
       const r = results.get(ref.id);
       if (!r) return [{ ...ref, reason: "missing" }];
-      if (r.files.some((file) => file.available === false)) found.push({ ...ref, reason: "missing_media" });
+      // Files released when the project was finished are gone on purpose; they are not damage.
+      if (r.files.some((file) => file.available === false && !file.released)) found.push({ ...ref, reason: "missing_media" });
       const sourceState = r.data?.sourceKey ? analysisSources.get(r.data.sourceKey) : null;
       if (sourceState && ["stale", "missing"].includes(sourceState.freshness)) {
         found.push({ ...ref, reason: "source_evidence_" + sourceState.freshness, sourceKey: r.data.sourceKey });

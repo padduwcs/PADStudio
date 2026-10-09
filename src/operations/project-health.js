@@ -15,7 +15,7 @@ export function buildProjectHealth({ context, production, checkpointFreshness, p
     ));
   }
   const missingResults = context.results.filter((result) =>
-    result.files?.some((file) => file.available === false)
+    result.files?.some((file) => file.available === false && !file.released)
   ).map((result) => result.id);
   if (missingResults.length) {
     issues.push(issue(

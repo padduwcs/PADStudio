@@ -50,6 +50,7 @@ Trạng thái bàn giao V1: [PADSTUDIO-V1-COMPLETION.md](docs/build/history/PADS
 ├── authorizations/        # credit authorization của tool trả phí
 ├── budget.json            # chính sách ngân sách USD (nếu đã đặt)
 ├── prunes/                # bản ghi append-only của mỗi lần project:prune --apply
+├── releases/              # bản ghi append-only của project:finish --apply: file nào đã được phát hành
 ├── skills/
 ├── .locks/                # khóa mutation tạm thời, không phải dữ liệu project
 └── runs/
@@ -189,6 +190,7 @@ npm run system:profile                              # hồ sơ máy + capability
 npm run project:recover -- coffee-video [--apply]   # mặc định chỉ lập plan
 npm run project:usage -- --all | <project-id> [--full]   # dung lượng và phần thu hồi được, chỉ đọc
 npm run project:prune -- <project-id> | --all [--apply]  # xóa scratch không thuộc Result nào (mặc định chỉ lập kế hoạch)
+npm run project:finish -- <project-id> | --all [--apply] # sau khi chốt: chỉ giữ Delivery mới nhất và Result nguồn (mặc định chỉ lập kế hoạch)
 npm run project:run:abandon -- coffee-video run-... "<lý do>" --confirm-stopped
 npm run project:archive -- list | archive <id> "<lý do>" --confirm-stopped | restore <id> --confirm-stopped
 npm run observer:ensure -- [project-id] [--port 7603]   # tái dùng hoặc khởi động observer local

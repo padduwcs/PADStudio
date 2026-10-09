@@ -25,6 +25,10 @@ async function deepIntegrity(store, projectId, context) {
   const files = [];
   for (const result of context.results) {
     for (const file of result.files) {
+      if (file.released) {
+        files.push({ resultId: result.id, fileId: file.id, status: "released" });
+        continue;
+      }
       try {
         const verified = await store.verifyResultFile(
           projectId, result.id, file.id, { requireChecksum: false }
@@ -52,6 +56,7 @@ async function deepIntegrity(store, projectId, context) {
     legacyUnchecked: files.filter((file) => file.status === "legacy_unchecked").length,
     // Compatibility alias retained for existing operational reports.
     unchecked: files.filter((file) => file.status === "legacy_unchecked").length,
+    released: files.filter((file) => file.status === "released").length,
     failed: files.filter((file) => file.status === "failed").length,
     files
   };

@@ -54,6 +54,17 @@ Chỉ file nằm trong output của Run **đã hoàn tất** mà không Result n
 khóa project, ghi một bản ghi append-only vào `prunes/` và kiểm tra mọi file đăng ký của các Result bị ảnh hưởng vẫn còn nguyên (nếu không,
 trạng thái là `integrity_failure` và lệnh thoát với mã 2). Chạy lại là idempotent. Sau khi dọn, `padstudio:doctor --deep` xác minh lại checksum.
 
+### Sau khi chốt: chỉ giữ bản cuối
+
+    npm run project:finish -- <project-id> | --all           # kế hoạch: giữ gì, phát hành gì
+    npm run project:finish -- <project-id> | --all --apply   # thực sự phát hành
+
+Với project đã có Delivery và quyết định duyệt, giữ nguyên Delivery mới nhất và Result nguồn của nó, phát hành toàn bộ file của mọi Result
+khác. Không bao giờ chạm tới bản ghi (Result/Run/decision/artifact/review), `inputs/` hay Delivery. Lệnh ghi `releases/<id>.json` **trước khi**
+xóa, nên một file vắng mặt sau đó được biết là cố ý (`released`) chứ không phải hỏng; `padstudio:doctor` và health không báo nó. Từ chối
+khi chưa có Delivery nguyên vẹn (SHA-256), thiếu quyết định duyệt hoặc còn Run đang chạy. Không hoàn tác được: bản đã phát hành chỉ còn
+trong Delivery.
+
 ## 3. Phục hồi
 
 Đầu tiên chỉ lập kế hoạch:
