@@ -72,7 +72,7 @@ const hasPlayable = (files) => files?.some((file) => file.available && (file.id 
 /**
  * After a project is finished only the final Delivery and the Result it came from still have their files.
  * Earlier versions would show as empty shells, so the observer leaves them out; their records stay in the
- * project and in the Details activity.
+ * project and remain readable through the CLI (`project:resume`, `project:context`).
  */
 function finishedView(context) {
   const finished = context.results.some((result) => result.files.some((file) => file.released));
@@ -188,7 +188,12 @@ export class ProjectReader {
   }
 
   async generation(projectId) {
-    await this.store.readProject(projectId);
+    try {
+      await this.store.readProject(projectId);
+    } catch (error) {
+      if (error instanceof StoredProjectNotFoundError) throw new ProjectNotFoundError(projectId);
+      throw error;
+    }
     return projectGeneration(this.rootDir, projectId);
   }
 

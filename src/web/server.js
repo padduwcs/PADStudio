@@ -50,6 +50,16 @@ function sendNotModified(response, etag) {
   response.end();
 }
 
+// The observer only ever serves the local browser. Refusing other Host headers stops a web page on another origin
+// from reading project data through DNS rebinding (the name resolves to 127.0.0.1 but the Host stays the attacker's).
+const LOCAL_HOST_NAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+export function isLocalHostHeader(header) {
+  const host = String(header ?? "").trim().toLowerCase();
+  const name = host.startsWith("[") ? host.slice(0, host.indexOf("]") + 1) : host.split(":")[0];
+  return LOCAL_HOST_NAMES.has(name);
+}
+
 function contentType(filePath) {
   return previewContentTypes[extname(filePath).toLowerCase()] || "application/octet-stream";
 }
@@ -117,6 +127,9 @@ export function createPadStudioServer({ reader, staticDirectory = uiDirectory })
   const staticAssets = buildStaticAssets(staticDirectory);
   const server = createServer(async (request, response) => {
     try {
+      if (!isLocalHostHeader(request.headers.host)) {
+        return sendJson(response, 403, { error: "Observer chỉ phục vụ địa chỉ localhost." });
+      }
       const url = new URL(request.url, "http://127.0.0.1");
 
       if (request.method === "GET" && url.pathname === "/api/projects") {
@@ -202,6 +215,9 @@ export function createPadStudioServer({ reader, staticDirectory = uiDirectory })
 
       return sendJson(response, 404, { error: "Không tìm thấy." });
     } catch (error) {
+      if (error instanceof URIError) {
+        return sendJson(response, 400, { error: "Địa chỉ yêu cầu không hợp lệ." });
+      }
       if (
         error instanceof AnalysisValidationError
       ) {

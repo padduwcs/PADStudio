@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { request as httpRequest } from "node:http";
 import test from "node:test";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -226,3 +227,50 @@ test("web server exposes no project mutation or chat endpoint", async (t) => {
   }
 });
 
+
+test("web server answers unknown projects with 404 and malformed addresses with 400", async (t) => {
+  const rootDir = await temporaryDirectory(t);
+  await new ProjectStore(rootDir).createProject({ projectId: "known", title: "Known" });
+  const server = createPadStudioServer({ reader: new ProjectReader(rootDir) });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+
+  for (const path of [
+    "/api/projects/missing",
+    "/api/projects/missing?view=summary",
+    "/api/projects/missing/observer/card",
+    "/api/projects/missing/observer/production",
+    "/api/projects/missing/analysis",
+    "/project-inputs/missing/a.png",
+    "/project-results/missing/result-x/primary"
+  ]) {
+    const response = await fetch(origin + path);
+    assert.equal(response.status, 404, path);
+    assert.match((await response.json()).error, /project/i, path);
+  }
+  assert.equal((await fetch(`${origin}/api/projects/known/observer/card`)).status, 200);
+  assert.equal((await fetch(`${origin}/api/projects/%E0%A4%A`)).status, 400);
+  assert.equal((await fetch(`${origin}/project-inputs/known/%E0%A4%A`)).status, 400);
+});
+
+test("web server only answers requests addressed to localhost", async (t) => {
+  const rootDir = await temporaryDirectory(t);
+  const server = createPadStudioServer({ reader: new ProjectReader(rootDir) });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const { port } = server.address();
+
+  const statusFor = (host) => new Promise((resolve, reject) => {
+    const request = httpRequest({ host: "127.0.0.1", port, path: "/api/projects", headers: { Host: host } },
+      (response) => { response.resume(); response.on("end", () => resolve(response.statusCode)); });
+    request.on("error", reject);
+    request.end();
+  });
+  for (const host of ["127.0.0.1", `127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`, `LOCALHOST:${port}`]) {
+    assert.equal(await statusFor(host), 200, host);
+  }
+  for (const host of ["evil.example.com", `evil.example.com:${port}`, "127.0.0.1.evil.example.com", "localhost.evil.example.com"]) {
+    assert.equal(await statusFor(host), 403, `Host: "${host}"`);
+  }
+});

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -29,6 +29,17 @@ test("human attestation binds full review to exact render bytes and revision", a
   const reopenedReview = (await new ProjectStore(root).readReviews("demo")).at(-1);
   assert.equal(reopenedReview.id, review.id);
   assert.equal(reopenedReview.attestation.version, "1.0");
+
+  // A review written before attestations carried a version still opens; an unknown version does not.
+  const reviewFile = join(root, "demo", "reviews", `${review.id}.json`);
+  const stored = JSON.parse(await readFile(reviewFile, "utf8"));
+  const { version: _version, ...legacyAttestation } = stored.attestation;
+  await writeFile(reviewFile, JSON.stringify({ ...stored, attestation: legacyAttestation }, null, 2));
+  const legacyReview = (await new ProjectStore(root).readReviews("demo")).find((item) => item.id === review.id);
+  assert.equal(legacyReview.attestation.watchedFull, true);
+  await writeFile(reviewFile, JSON.stringify({ ...stored, attestation: { ...stored.attestation, version: "9.9" } }, null, 2));
+  await assert.rejects(new ProjectStore(root).readReviews("demo"), /attestation version is invalid/);
+  await writeFile(reviewFile, JSON.stringify(stored, null, 2));
   await assert.rejects(store.recordReview("demo", { target: { kind: "result", id: result.id }, perspective: "human", reviewer: "user", verdict: "passed", summary: "Agent-authored claim",
     criteria: [{ id: "full-review", criterion: "Full human review", status: "passed", evidence: "Opaque JSON" }],
     attestation: { watchedFull: true, listenedFull: true, device: "Unknown", context: "Agent payload", findings: [] } }),

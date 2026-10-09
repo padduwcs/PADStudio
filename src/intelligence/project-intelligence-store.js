@@ -657,7 +657,8 @@ export class ProjectIntelligenceStore {
     }
     if (value.perspective === "human") {
       const { version: attestationVersion, ...storedAttestation } = value.attestation ?? {};
-      if (attestationVersion !== VERSION) {
+      // Reviews recorded before the attestation carried a version (September 2026) have none and stay readable.
+      if (attestationVersion !== undefined && attestationVersion !== VERSION) {
         throw new IntelligenceValidationError("Stored human attestation version is invalid.");
       }
       normalizeHumanAttestation(storedAttestation);
