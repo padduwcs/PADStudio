@@ -1,0 +1,35 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # PADStudio targets Windows, and several tests drive real FFmpeg and a local browser.
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Tests render and probe real media. The optional Python analysis runtime (scene detection,
+      # ASR) is not installed here, so the tests that need it are reported as skipped with a reason.
+      - name: Install FFmpeg
+        run: choco install ffmpeg --no-progress -y
+
+      - name: Show tool versions
+        run: |
+          node --version
+          ffmpeg -version | Select-Object -First 1
+          ffprobe -version | Select-Object -First 1
+
+      - name: Run tests
+        run: npm test
