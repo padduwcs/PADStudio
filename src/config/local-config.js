@@ -1,11 +1,42 @@
 import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { writeJsonAtomic } from "../project/atomic-files.js";
+
+// padstudio.local.json holds what belongs to this machine and this user, never to a project: local runtime
+// paths, provider API keys and the outside services the user can use. Git ignores it.
+export const LOCAL_CONFIG_ENV = "PADSTUDIO_LOCAL_CONFIG";
+const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 export class LocalConfigError extends Error {
   constructor(message) {
     super(message);
     this.name = "LocalConfigError";
   }
+}
+
+/**
+ * Services a user can say they have outside PADStudio. PADStudio never calls them: the Agent uses them through
+ * its own host (or asks the user to), then registers each file with media.register-generated.
+ */
+export const USER_SERVICE_CATEGORIES = Object.freeze([
+  { id: "image-generation", label: "Tạo ảnh bằng AI", examples: "ChatGPT, Gemini, Midjourney, Ideogram" },
+  { id: "video-generation", label: "Tạo video bằng AI", examples: "Sora, Veo, Kling, Runway" },
+  { id: "music-generation", label: "Tạo nhạc bằng AI", examples: "Suno, Udio" },
+  { id: "voice-generation", label: "Giọng đọc AI khác", examples: "dịch vụ giọng đọc PADStudio chưa tích hợp" },
+  { id: "stock-media", label: "Kho ảnh, video trả phí", examples: "Shutterstock, Envato, Storyblocks" },
+  { id: "design-tools", label: "Công cụ thiết kế", examples: "Canva, Figma, Photoshop" }
+].map((category) => Object.freeze(category)));
+const SERVICE_IDS = USER_SERVICE_CATEGORIES.map((category) => category.id);
+const MAX_NOTE_LENGTH = 500;
+const SECTIONS = Object.freeze({
+  piper: ["pythonCommand", "modelDirectory", "defaultModel"],
+  elevenLabs: ["apiKey"],
+  services: ["available", "note"]
+});
+
+export function localConfigPath({ env = process.env } = {}) {
+  return env[LOCAL_CONFIG_ENV]?.trim() || join(repositoryRoot, "padstudio.local.json");
 }
 
 function optionalText(value, label) {
@@ -26,33 +57,110 @@ function section(value, label, allowed) {
   return value;
 }
 
-export async function loadLocalConfig({
-  path = process.env.PADSTUDIO_LOCAL_CONFIG?.trim() || resolve("padstudio.local.json")
-} = {}) {
-  let value;
-  try {
-    value = JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    if (error?.code === "ENOENT") return { path, piper: {}, elevenLabs: {} };
-    if (error instanceof SyntaxError) throw new LocalConfigError("padstudio.local.json is not valid JSON.");
-    throw error;
+function apiKey(value, label) {
+  const key = optionalText(value, label);
+  if (key !== null && (key.length < 8 || key.length > 256 || !/^[\x21-\x7e]+$/.test(key))) {
+    throw new LocalConfigError(`Khóa API (${label}) phải dài 8–256 ký tự và không có khoảng trắng.`);
   }
+  return key;
+}
+
+function services(value) {
+  const raw = section(value, "services", SECTIONS.services);
+  const available = raw.available ?? [];
+  if (!Array.isArray(available) || available.some((id) => !SERVICE_IDS.includes(id))) {
+    throw new LocalConfigError("services.available may only list: " + SERVICE_IDS.join(", ") + ".");
+  }
+  if (new Set(available).size !== available.length) throw new LocalConfigError("services.available lists a service twice.");
+  const note = optionalText(raw.note, "services.note");
+  // Newlines are fine in a note; other control characters are not.
+  if (note !== null && (note.length > MAX_NOTE_LENGTH || /[\u0000-\u0009\u000b-\u001f\u007f]/.test(note))) {
+    throw new LocalConfigError(`Ghi chú (services.note) tối đa ${MAX_NOTE_LENGTH} ký tự, chỉ gồm chữ và xuống dòng.`);
+  }
+  return { available: SERVICE_IDS.filter((id) => available.includes(id)), note };
+}
+
+function normalize(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new LocalConfigError("Local configuration must be an object.");
   }
-  const unknown = Object.keys(value).filter((key) => !["piper", "elevenLabs"].includes(key));
+  const unknown = Object.keys(value).filter((key) => !Object.hasOwn(SECTIONS, key));
   if (unknown.length) throw new LocalConfigError("Local configuration has unsupported sections: " + unknown.join(", "));
-  const piper = section(value.piper, "piper", ["pythonCommand", "modelDirectory", "defaultModel"]);
-  const elevenLabs = section(value.elevenLabs, "elevenLabs", ["apiKey"]);
+  const piper = section(value.piper, "piper", SECTIONS.piper);
+  const elevenLabs = section(value.elevenLabs, "elevenLabs", SECTIONS.elevenLabs);
   return {
-    path,
     piper: {
       pythonCommand: optionalText(piper.pythonCommand, "piper.pythonCommand"),
       modelDirectory: optionalText(piper.modelDirectory, "piper.modelDirectory"),
       defaultModel: optionalText(piper.defaultModel, "piper.defaultModel")
     },
-    elevenLabs: {
-      apiKey: optionalText(elevenLabs.apiKey, "elevenLabs.apiKey")
+    elevenLabs: { apiKey: apiKey(elevenLabs.apiKey, "elevenLabs.apiKey") },
+    services: services(value.services)
+  };
+}
+
+async function readRaw(path) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (error?.code === "ENOENT") return null;
+    if (error instanceof SyntaxError) throw new LocalConfigError("padstudio.local.json không phải JSON hợp lệ; sửa file rồi tải lại trang.");
+    throw error;
+  }
+}
+
+export async function loadLocalConfig({ path = localConfigPath() } = {}) {
+  const raw = await readRaw(path);
+  return { path, ...normalize(raw ?? {}) };
+}
+
+// Writes are queued so two quick saves from the web page cannot interleave their read-modify-write.
+let writeQueue = Promise.resolve();
+
+/**
+ * Change only the API keys and the declared services. Runtime paths (Piper's Python, model directories) are
+ * left exactly as they are: they name programs PADStudio executes, so only the file itself may set them.
+ * An existing file that does not validate is never overwritten.
+ */
+export function updateLocalConfig(patch, { path = localConfigPath() } = {}) {
+  const run = writeQueue.then(async () => {
+    const changes = section(patch, "settings", ["elevenLabs", "services"]);
+    const raw = (await readRaw(path)) ?? {};
+    normalize(raw);
+    const next = structuredClone(raw);
+    if (changes.elevenLabs !== undefined) {
+      const { apiKey: key } = section(changes.elevenLabs, "elevenLabs", ["apiKey"]);
+      if (key !== undefined) next.elevenLabs = { ...(next.elevenLabs ?? {}), apiKey: key === null ? "" : key };
+    }
+    if (changes.services !== undefined) {
+      const requested = section(changes.services, "services", SECTIONS.services);
+      next.services = { ...(next.services ?? {}), ...requested };
+      if (next.services.note === null) delete next.services.note;
+    }
+    const normalized = normalize(next);
+    if (next.elevenLabs?.apiKey) next.elevenLabs.apiKey = normalized.elevenLabs.apiKey;
+    if (next.services) next.services = { available: normalized.services.available, ...(normalized.services.note ? { note: normalized.services.note } : {}) };
+    await writeJsonAtomic(path, next);
+    return { path, ...normalized };
+  });
+  writeQueue = run.catch(() => {});
+  return run;
+}
+
+/** A key is shown only as "configured" plus its last four characters, so the user can tell which one is saved. */
+export function maskSecret(value) {
+  if (!value) return { configured: false, hint: null };
+  return { configured: true, hint: value.length >= 12 ? "…" + value.slice(-4) : null };
+}
+
+/** What a settings page may show: never a secret, never a runtime path. */
+export function publicLocalSettings(config) {
+  return {
+    elevenLabs: { apiKey: maskSecret(config.elevenLabs?.apiKey) },
+    services: {
+      available: [...(config.services?.available ?? [])],
+      note: config.services?.note ?? null,
+      categories: USER_SERVICE_CATEGORIES.map((category) => ({ ...category }))
     }
   };
 }

@@ -1,3 +1,27 @@
+import { USER_SERVICE_CATEGORIES } from "../config/local-config.js";
+
+export const TOOLS_PAGE_PATH = "/?panel=tools";
+
+// What the user said they can use outside PADStudio, from the observer's Tools page. The Agent never sees an
+// API key; it only learns which integrated providers are configured through the normal tool availability.
+function userServices(localSettings) {
+  const guidance = "Ask the user to open the observer Tools page (" + TOOLS_PAGE_PATH + ", e.g. http://127.0.0.1:7603" + TOOLS_PAGE_PATH +
+    ") to add API keys or say which outside services they have. Never ask for, accept or repeat an API key in chat.";
+  if (!localSettings) return { declared: [], note: null, settingsPage: TOOLS_PAGE_PATH, guidance };
+  if (localSettings.error) return { declared: [], note: null, settingsPage: TOOLS_PAGE_PATH, error: localSettings.error, guidance };
+  const declared = USER_SERVICE_CATEGORIES
+    .filter((category) => localSettings.services?.available?.includes(category.id))
+    .map((category) => ({ id: category.id, label: category.label }));
+  return {
+    declared,
+    note: localSettings.services?.note ?? null,
+    settingsPage: TOOLS_PAGE_PATH,
+    guidance: guidance + (declared.length
+      ? " PADStudio does not call these services: use one only when it fits the brief, agree with the user who operates it (the Agent host or the user), and register every file it produces with media.register-generated, including provider, prompt and rights."
+      : "")
+  };
+}
+
 function toolStatus(tool) {
   return tool?.availability?.status === "available";
 }
@@ -55,7 +79,7 @@ function resourceRisks(machine, tools) {
   return risks.slice(0, 10);
 }
 
-export function buildPlanningEnvironment({ machine, capabilityDescription, onboarding = false }) {
+export function buildPlanningEnvironment({ machine, capabilityDescription, onboarding = false, localSettings = null }) {
   const capabilities = capabilityDescription?.capabilities ?? [];
   const tools = capabilities.flatMap((capability) => capability.tools ?? []);
   const unavailable = capabilities.filter((capability) => !capability.available).map((capability) => capability.id);
@@ -102,6 +126,7 @@ export function buildPlanningEnvironment({ machine, capabilityDescription, onboa
     })),
     compositionRuntimes,
     setupOffers: setupOffers(capabilities),
+    userServices: userServices(localSettings),
     resourceRisks: resourceRisks(machine, tools),
     warnings,
     planningHints: [

@@ -24,6 +24,10 @@
         </span>
       </a>
       <div class="topbar-actions">
+        <button id="tools-button" type="button" class="button button-ghost" aria-haspopup="dialog" aria-expanded="false" aria-label="Mở công cụ và cài đặt">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8M16 5v4M10 15v4" /></svg>
+          <span class="button-label">Công cụ</span>
+        </button>
         <button id="library-button" type="button" class="button button-ghost" aria-haspopup="dialog" aria-expanded="false" aria-label="Mở danh sách dự án">
           <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" /></svg>
           <span class="button-label">Dự án</span>
@@ -43,12 +47,13 @@
       <section id="welcome" class="welcome" hidden>
         <img class="brand-art" src="/brand/padstudio-mark-large.webp" width="640" height="335" alt="" />
         <h1>Chào mừng đến PADStudio</h1>
-        <p>Trang này để xem. Mọi yêu cầu bạn nói với Agent.</p>
+        <p>Trang này để xem video và cài đặt công cụ. Mọi yêu cầu khác bạn nói với Agent.</p>
         <ol class="welcome-steps">
           <li>Nói với Agent video bạn muốn làm (có tài liệu hay chưa đều được).</li>
           <li>Xem bản dựng ở đây, rồi góp ý với Agent ngay trong cuộc trò chuyện.</li>
           <li>Khi hài lòng, nói “chốt”. Tải video ở đây.</li>
         </ol>
+        <button id="welcome-tools" type="button" class="button button-soft">Xem công cụ và thêm khóa API</button>
         <p class="welcome-name">Precise Animated Demonstration Studio</p>
       </section>
 
@@ -88,6 +93,25 @@
           <input id="library-search" type="search" placeholder="Tìm dự án…" aria-label="Tìm dự án" autocomplete="off" />
         </label>
         <div id="library-grid" class="library-grid"></div>
+      </div>
+    </div>
+
+    <div id="tools" class="library tools" role="dialog" aria-modal="true" aria-labelledby="tools-title" hidden>
+      <div class="library-backdrop" data-tools-backdrop></div>
+      <div class="library-sheet tools-sheet">
+        <header class="library-head tools-head">
+          <div>
+            <h2 id="tools-title">Công cụ</h2>
+            <p class="tools-lede">Những gì PADStudio dùng được trên máy này. Agent đọc cùng thông tin này để chọn cách làm hợp với bạn.</p>
+          </div>
+          <div class="tools-head-actions">
+            <button id="tools-refresh" type="button" class="button button-quiet">Kiểm tra lại</button>
+            <button type="button" class="icon-button" data-tools-close aria-label="Đóng công cụ">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+            </button>
+          </div>
+        </header>
+        <div id="tools-body" class="tools-body" aria-live="polite"></div>
       </div>
     </div>
 

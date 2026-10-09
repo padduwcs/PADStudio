@@ -97,3 +97,26 @@ test("a fresh project resume receives onboarding environment automatically", asy
   assert.equal(resume.environment.mode, "onboarding");
   assert.equal(resume.environment.machine.cpuLogicalCores, 8);
 });
+
+test("the planning environment tells the Agent which outside services the user has, never a key", () => {
+  const machine = { checkedAt: "2026-10-09T00:00:00.000Z", operatingSystem: { platform: "win32", architecture: "x64" },
+    cpu: { logicalCores: 8, models: [] }, memory: { totalBytes: 16 * 1024 ** 3, freeBytes: 8 * 1024 ** 3 },
+    storage: { freeBytes: 100 * 1024 ** 3 }, gpu: { status: "unavailable", adapters: [] }, mediaAcceleration: { ffmpegDetected: true, ffmpegEncoderCandidates: [] },
+    privacy: { secretsRead: false } };
+  const none = buildPlanningEnvironment({ machine, capabilityDescription: { capabilities: [] } });
+  assert.deepEqual(none.userServices.declared, []);
+  assert.equal(none.userServices.settingsPage, "/?panel=tools");
+  assert.match(none.userServices.guidance, /Never ask for, accept or repeat an API key in chat/);
+
+  const declared = buildPlanningEnvironment({ machine, capabilityDescription: { capabilities: [] }, localSettings: {
+    elevenLabs: { apiKey: "sk_should_never_appear_1234" },
+    services: { available: ["music-generation", "image-generation"], note: "ChatGPT Plus, Suno" }
+  } });
+  assert.deepEqual(declared.userServices.declared.map((entry) => entry.id), ["image-generation", "music-generation"]);
+  assert.equal(declared.userServices.note, "ChatGPT Plus, Suno");
+  assert.match(declared.userServices.guidance, /media\.register-generated/);
+  assert.equal(JSON.stringify(declared).includes("sk_should_never_appear"), false);
+
+  const broken = buildPlanningEnvironment({ machine, capabilityDescription: { capabilities: [] }, localSettings: { error: "padstudio.local.json could not be read: bad" } });
+  assert.match(broken.userServices.error, /could not be read/);
+});

@@ -15,6 +15,8 @@ import { AnalysisValidationError } from "../analysis/contracts.js";
 import { etagMatches, quotedEtag } from "./project-generation.js";
 import { resolveProjectRoot } from "../config/project-root.js";
 import { buildStaticAssets, sendStaticAsset } from "./static-assets.js";
+import { LocalConfigError } from "../config/local-config.js";
+import { createSettingsService } from "./settings-service.js";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const applicationRoot = join(currentDirectory, "..", "..");
@@ -58,6 +60,48 @@ export function isLocalHostHeader(header) {
   const host = String(header ?? "").trim().toLowerCase();
   const name = host.startsWith("[") ? host.slice(0, host.indexOf("]") + 1) : host.split(":")[0];
   return LOCAL_HOST_NAMES.has(name);
+}
+
+// The web never changes a project. The one thing it may change is this machine's settings (API keys and the
+// services the user has), and only from the PADStudio page itself: the browser must send our own Origin, a JSON
+// body and a custom header. A page on another site can do none of these without a CORS preflight, which this
+// server never answers, so it cannot write settings even while the user has PADStudio open.
+const SETTINGS_INTENT = "settings";
+const MAX_SETTINGS_BODY = 16 * 1024;
+
+class RequestError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function assertSettingsWrite(request) {
+  const origin = String(request.headers.origin ?? "").toLowerCase();
+  if (!origin || origin !== "http://" + String(request.headers.host ?? "").toLowerCase()) {
+    throw new RequestError(403, "Chỉ trang PADStudio trên máy này mới được đổi cài đặt.");
+  }
+  const site = request.headers["sec-fetch-site"];
+  if (site && site !== "same-origin") throw new RequestError(403, "Chỉ trang PADStudio trên máy này mới được đổi cài đặt.");
+  if (request.headers["x-padstudio-intent"] !== SETTINGS_INTENT) throw new RequestError(403, "Thiếu xác nhận thao tác cài đặt.");
+  if (!String(request.headers["content-type"] ?? "").toLowerCase().startsWith("application/json")) {
+    throw new RequestError(415, "Cài đặt phải gửi dạng JSON.");
+  }
+}
+
+async function readJsonBody(request) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of request) {
+    size += chunk.length;
+    if (size > MAX_SETTINGS_BODY) throw new RequestError(413, "Nội dung cài đặt quá lớn.");
+    chunks.push(chunk);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+  } catch {
+    throw new RequestError(400, "Nội dung cài đặt không phải JSON hợp lệ.");
+  }
 }
 
 function contentType(filePath) {
@@ -123,7 +167,7 @@ function sendMediaFile(request, response, input) {
   stream.pipe(response);
 }
 
-export function createPadStudioServer({ reader, staticDirectory = uiDirectory }) {
+export function createPadStudioServer({ reader, staticDirectory = uiDirectory, settings = createSettingsService() }) {
   const staticAssets = buildStaticAssets(staticDirectory);
   const server = createServer(async (request, response) => {
     try {
@@ -138,6 +182,26 @@ export function createPadStudioServer({ reader, staticDirectory = uiDirectory })
         const etag = quotedEtag(`projects-${digest}`);
         if (etagMatches(request.headers["if-none-match"], etag)) return sendNotModified(response, etag);
         return sendJson(response, 200, { projects }, { ETag: etag, "Cache-Control": "no-cache" });
+      }
+
+      if (url.pathname === "/api/tools" && request.method === "GET") {
+        const overview = await settings.overview({ refresh: url.searchParams.get("refresh") === "1" });
+        return sendJson(response, 200, overview, { "Cache-Control": "no-store" });
+      }
+
+      if (url.pathname === "/api/settings") {
+        if (request.method === "GET") return sendJson(response, 200, { settings: await settings.settings() }, { "Cache-Control": "no-store" });
+        if (request.method === "PUT") {
+          assertSettingsWrite(request);
+          const updated = await settings.update(await readJsonBody(request));
+          return sendJson(response, 200, { settings: updated }, { "Cache-Control": "no-store" });
+        }
+      }
+
+      if (url.pathname === "/api/settings/elevenlabs/check" && request.method === "POST") {
+        assertSettingsWrite(request);
+        await readJsonBody(request);
+        return sendJson(response, 200, await settings.checkElevenLabs(), { "Cache-Control": "no-store" });
       }
 
       const observerMatch = /^\/api\/projects\/([^/]+)\/observer\/(card|summary|source|creative|animation|production|delivery|health|activity)$/.exec(url.pathname);
@@ -215,6 +279,8 @@ export function createPadStudioServer({ reader, staticDirectory = uiDirectory })
 
       return sendJson(response, 404, { error: "Không tìm thấy." });
     } catch (error) {
+      if (error instanceof RequestError) return sendJson(response, error.status, { error: error.message });
+      if (error instanceof LocalConfigError) return sendJson(response, 400, { error: error.message });
       if (error instanceof URIError) {
         return sendJson(response, 400, { error: "Địa chỉ yêu cầu không hợp lệ." });
       }

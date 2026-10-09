@@ -42,6 +42,7 @@
     "observer:ui:test": "node scripts/ui-smoke.mjs",
     "observer:ui:empty-test": "node scripts/ui-empty-acceptance.mjs",
     "observer:ui:live-test": "node scripts/ui-live-acceptance.mjs",
+    "observer:ui:tools-test": "node scripts/ui-tools-acceptance.mjs",
     "project:sequence": "node src/cli/write-video-sequence.js",
     "project:choreography": "node src/cli/write-animation-choreography.js",
     "project:animation": "node src/cli/write-animation-composition.js",

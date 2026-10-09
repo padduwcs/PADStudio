@@ -2,6 +2,7 @@ import { ICONS, clock, node, orientationLabel, relativeTime, statusChip, svgIcon
 import { renderTheatre, clearTheatre } from "./production-view.js";
 import { renderSources, clearSources } from "./sources-view.js";
 import { createLibrary } from "./library-view.js";
+import { createToolsPanel } from "./tools-view.js";
 
 const $ = (selector) => document.querySelector(selector);
 const elements = {
@@ -9,7 +10,8 @@ const elements = {
   title: $("#project-title"), meta: $("#project-meta"), tabs: $("#tabs"),
   theatre: $("#theatre"), sources: $("#sources"),
   error: $("#app-error"), errorText: $("#app-error-text"), connection: $("#connection-status"),
-  libraryButton: $("#library-button"), libraryCount: $("#library-count"), themeToggle: $("#theme-toggle")
+  libraryButton: $("#library-button"), libraryCount: $("#library-count"), themeToggle: $("#theme-toggle"),
+  toolsButton: $("#tools-button")
 };
 
 const VIEWS = Object.freeze({ video: "Video", sources: "Tư liệu" });
@@ -42,6 +44,8 @@ const library = createLibrary({
   root: $("#library"), grid: $("#library-grid"), search: $("#library-search"), count: elements.libraryCount,
   onSelect: (projectId) => selectProject(projectId)
 });
+
+const tools = createToolsPanel({ root: $("#tools"), body: $("#tools-body"), refreshButton: $("#tools-refresh") });
 
 /* ------------------------------------------------------------------------------------------------ */
 /* Small UI pieces                                                                                   */
@@ -304,6 +308,11 @@ $("#library").addEventListener("librarychange", (event) => {
   elements.libraryButton.setAttribute("aria-expanded", String(event.detail.open));
 });
 document.querySelector(".brand").addEventListener("click", (event) => { event.preventDefault(); library.open(); });
+elements.toolsButton.addEventListener("click", () => tools.open());
+$("#welcome-tools").addEventListener("click", () => tools.open());
+$("#tools").addEventListener("toolschange", (event) => {
+  elements.toolsButton.setAttribute("aria-expanded", String(event.detail.open));
+});
 document.querySelector("#retry-button").addEventListener("click", () => {
   elements.error.hidden = true;
   projectsEtag = null;
@@ -321,6 +330,8 @@ document.addEventListener("visibilitychange", () => {
 applyTheme(initialTheme());
 setView(currentView, { updateUrl: false });
 loadProjects().catch(showError);
+// The Agent sends the user to /?panel=tools to add a key or say which services they have.
+if (parameters.get("panel") === "tools") tools.open();
 window.setInterval(() => {
   if (document.hidden) return;
   loadProjects().catch((error) => { if (error.name !== "AbortError") showError(error); });
