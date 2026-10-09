@@ -134,14 +134,17 @@ Trước khi dùng một kết quả cho việc tiếp theo, cần có kiểm tr
 
 ## 6. Giao diện cho người dùng
 
-Board là giao diện đầu tiên có thể làm, không phải quy trình bắt buộc. Giao diện cần giúp người dùng:
+Giao diện không phải quy trình bắt buộc. Theo hướng đã chốt trong
+[`PADSTUDIO-CURRENT-DIRECTION.md`](PADSTUDIO-CURRENT-DIRECTION.md), web PADStudio là **cửa sổ quan sát chỉ đọc**; chat với Agent
+host bên ngoài là kênh duy nhất để ra lệnh, phản hồi và phê duyệt. Giao diện cần giúp người dùng:
 
 - thấy dự án đang có những gì và kết quả nào đang được chọn;
 - mở bản xem trước, so sánh các bản kết quả và xem lỗi khi có;
-- đưa phản hồi, đổi yêu cầu hoặc phê duyệt một kết quả;
+- biết điều đang chờ mình quyết định và lấy được mốc chính xác (Result, revision, đoạn, giây) để dán vào chat khi góp ý;
 - biết trước khi hệ thống chạy việc có chi phí, rủi ro hoặc cần chờ lâu.
 
-Giao diện đọc và ghi thông tin vào kho dự án. Nó không tự giữ một trạng thái chính khác với dự án.
+Giao diện chỉ đọc kho dự án. Nó không ghi, không giữ trạng thái chính khác với dự án; phản hồi và phê duyệt được Agent ghi vào
+dự án qua CLI.
 
 ## 7. Vòng chỉnh sửa
 

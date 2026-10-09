@@ -21,6 +21,12 @@ npm run tool:list
 `tool:list` cho biết công cụ nào dùng được ngay và công cụ nào còn thiếu gì. Phần sau đều **tùy chọn**, Agent sẽ nói rõ khi
 một bước cần đến chúng:
 
+- **Hiểu video/âm thanh có sẵn (cắt cảnh, phiên âm lời nói):** cần Python 3.12 và các model Whisper. Làm video từ đầu, không có
+  tư liệu quay sẵn, thì không cần phần này; nhưng `padstudio:doctor` sẽ báo `attention` (kèm cách cài) cho đến khi bạn cài.
+  Đó chỉ là lời nhắc, không chặn việc dựng. Cài một lần theo mục “Cài môi trường” của
+  [`eval/source-understanding/README.md`](../eval/source-understanding/README.md): tạo `.runtime-tools/source-eval`, cài gói theo
+  file khóa, rồi `npm run analysis:eval -- setup-model --model large-v3` (khoảng 5 GB cho hai model). Kiểm tra bằng
+  `npm run analysis:doctor`.
 - **Giọng đọc miễn phí trên máy (Piper):** điền `piper.pythonCommand`, `piper.modelDirectory`, `piper.defaultModel` trong
   `padstudio.local.json` (mẫu: `padstudio.local.example.json`).
 - **Giọng đọc ElevenLabs (trả phí):** điền `elevenLabs.apiKey` cùng file đó. File này không được đưa lên Git. Mỗi lần dùng,

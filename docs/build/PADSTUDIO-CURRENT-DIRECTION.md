@@ -104,6 +104,10 @@ giữ kết quả hiểu và sáng tạo; workflow giữ kế hoạch hiện hà
 
 ### Biên đạo thị giác theo nghĩa — 2026-09-18
 
+> **Lưu ý về giao diện (đợt 2026-10):** các câu dưới đây nói observer “hiển thị” continuity metrics, footprint chữ hay timeline. Web nay
+> chỉ có hai tab Video và Tư liệu nên không còn vẽ các phần đó. Dữ liệu vẫn nằm trong artifact và đọc được qua `project:context`,
+> `project:resume` hoặc khu `animation` của API observer.
+
 PADStudio bổ sung artifact tùy chọn `animation.choreography` cho video giải thích theo lời thoại,
 thuật toán, biến đổi và thao tác sản phẩm. Artifact giữ đối tượng có identity, semantic beat, trạng
 thái trước/sau, hành động frame-aligned và deliberate hold trước khi Agent viết source. Composition
@@ -386,6 +390,9 @@ Bộ 16 broad-release gate đã thành checklist thực thi fail-closed. Accepta
 
 ## Lượt 4 hardening — automated output QA, 2026-09-13
 
+> **Đã thay đổi (xem mục 2026-09-22 ở cuối):** QA máy không còn chặn local delivery sau acceptance; nó là bằng chứng trước khi
+> trình người dùng và được đóng gói ở trạng thái advisory.
+
 Mỗi exact `video.sequence-render` nay có thể được kiểm tra bằng capability
 `video.inspect-output` và lưu một Result `video.output-quality` bất biến. Hai profile
 `spoken-video-v1` và `nonverbal-video-v1` tái sử dụng evidence probe/frame/contact
@@ -397,6 +404,9 @@ khác; bundle mang theo `metadata/quality.json`.
 Observer chỉ đọc hiển thị gate, check, metrics, contact sheet và giới hạn review.
 
 ## Hardening promise-driven final review — 2026-09-13
+
+> **Đã thay đổi (xem mục 2026-09-22 ở cuối):** review theo delivery promise, dependency freshness và `video.inspect-output` không còn
+> chặn delivery; doctor không còn coi `video.inspect-output` là dependency bắt buộc. Chúng vẫn là evidence advisory.
 
 PADStudio đã học có chọn lọc nguyên tắc delivery promise của OpenMontage mà không sao chép
 pipeline enum hay ngưỡng motion cứng. `creative.direction` có optional `deliveryPromise`
@@ -472,7 +482,9 @@ cố định của OpenMontage. Receipt tương tác làm thất bại đường
 tuyên bố là xác thực mật mã trước một process có toàn quyền trên host.
 
 Phần code-execution approval trong quyết định ngày 2026-09-15 là lịch sử và đã được quyết định
-2026-09-17 bên dưới thay thế. Gate `project:accept` cho exact final render vẫn giữ nguyên.
+2026-09-17 bên dưới thay thế. Gate `project:accept` cho exact final render vẫn giữ nguyên, riêng yêu cầu terminal tương tác
+đã được nới ở mục 2026-09-22 ở cuối: người dùng chốt trong chat và Agent ghi bằng `--from-agent-host`; terminal tương tác chỉ còn
+dành cho attestation đã xem/nghe toàn bộ khi người dùng muốn lưu nó.
 
 ## Hardening vòng code-animation thật — 2026-09-17
 
@@ -512,6 +524,9 @@ vẫn đọc được để tương thích, nhưng Decision đó bị bỏ qua v
 phân bổ trách nhiệm, không phải tuyên bố rằng generated code đã trở nên an toàn tuyệt đối.
 
 ## Chặn lỗi delivery trước human acceptance — 2026-09-21
+
+> **Đã thay đổi (xem mục 2026-09-22 ở cuối):** acceptance không còn đòi một output profile tương thích và không còn là lệnh
+> terminal tương tác mặc định; Agent ghi bằng `project:accept --from-agent-host`. Phần tự resolve feedback cùng sequence vẫn giữ.
 
 Pilot recursion cho thấy exact Result có thể vượt QA nhưng vẫn không khớp delivery profile, khiến người
 dùng đã xem và xác nhận xong mới nhận lỗi `pixel_format`; cùng lúc, feedback của đúng sequence chỉ được

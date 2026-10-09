@@ -16,7 +16,7 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
   các lát cắt đã dùng được trong phạm vi đã kiểm chứng; chúng không đồng nghĩa với một studio đã
   bao phủ mọi loại video, provider hoặc môi trường.
 - Workflow mẫu là điểm bắt đầu tùy chọn. Không có pipeline chung bắt buộc cho mọi project.
-- Intake và creative direction hướng Agent tự quyết định từ brief ngắn sau khi xem tư liệu liên quan; Agent phải nêu rõ các lựa chọn lớn khi bỏ qua nguồn đáng kể. Agent review sáng tạo trên exact video mới phải khai phạm vi xem chuyển động và nghe tiếng; review mẫu không được trình bày như đã xem/nghe toàn bộ. Observer hiển thị phạm vi này. Review cũ vẫn đọc được.
+- Intake và creative direction hướng Agent tự quyết định từ brief ngắn sau khi xem tư liệu liên quan; Agent phải nêu rõ các lựa chọn lớn khi bỏ qua nguồn đáng kể. Agent review sáng tạo trên exact video mới phải khai phạm vi xem chuyển động và nghe tiếng; review mẫu không được trình bày như đã xem/nghe toàn bộ. Phạm vi này nằm trong review và đọc qua `project:context`; web không còn vẽ nó (giao diện chỉ có tab Video và Tư liệu). Review cũ vẫn đọc được, kể cả attestation ghi trước khi có trường `version`.
 - Choreography 1.3 là nhánh tùy chọn cho giải thích bằng hoạt họa: giữ lập luận thị giác do Agent
   đạo diễn, lưu minh chứng bằng hình và footprint chữ chính xác cho review; không tự đảm bảo chất
   lượng hình ảnh khi chưa preview/xem một video thật.
@@ -25,10 +25,12 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 ## Baseline kiểm chứng
 
-Lần chạy full gần nhất, ngày **2026-10-09** (sau thiết kế lại giao diện, Node v24.18.1): `npm test`
-**374 tests: 373 pass, 1 skipped** (test cần runtime phân tích Python tùy chọn); `npm run check` sạch. Browser:
-`observer:ui:test` trên project thật (6 chế độ xem, sáng/tối), `observer:ui:empty-test` và
-`observer:ui:live-test` đều passed. Các số 326/332 trong các mục cũ bên dưới là ảnh chụp trước đợt này.
+Lần chạy full gần nhất, ngày **2026-10-09** (sau đợt sửa lỗi và dọn dẹp bên dưới, Node v24.18.1): `npm test`
+**381 tests: 380 pass, 1 skipped**; `npm run check` sạch. Trên bản clone sạch (không có runtime Python, `.cache`, `.padstudio`,
+`padstudio.local.json`; giống CI): 381 tests, 375 pass, 0 fail, 6 skipped vì thiếu runtime. Browser: `observer:ui:empty-test` và `observer:ui:live-test` passed;
+`observer:acceptance`, `feedback:acceptance`, `production:acceptance` (browser smoke trên project pilot trong archive),
+`delivery:acceptance`, `operations:acceptance` và `release:acceptance` passed (các lệnh ghi đè file trong `reports/`; xem
+[`PADSTUDIO-REFERENCE.md`](../../PADSTUDIO-REFERENCE.md)). Các số 326/332/374 trong các mục cũ bên dưới là ảnh chụp trước đợt này.
 
 Vòng tinh giản khung và phân vùng bằng đường kẻ ngày **2026-10-05**:
 
@@ -209,12 +211,56 @@ nguyên vì là bằng chứng của từng thời điểm.
 - Đường dẫn `.padstudio/projects` ghép cứng ở 36 file CLI và server → **đã sửa**: `src/config/project-root.js` với
   `PADSTUDIO_PROJECT_ROOT` / `PADSTUDIO_ARCHIVE_ROOT`. Các script acceptance lịch sử trong `scripts/` vẫn dùng đường dẫn mặc định.
 - `generation` của observer duyệt toàn bộ cây file của mọi project mỗi lần poll (2 giây): ~300 ms trên 26 project /
-  ~33.700 file ngày 2026-10-09. **Còn lại**, nhưng số file giảm mạnh sau khi dọn scratch (xem mục dung lượng bên dưới).
+  ~33.700 file ngày 2026-10-09; đo lại sau khi dọn scratch: ~160 ms cho 26 project (song song, máy rảnh). **Chấp nhận được**, chưa cần đổi.
 - `--from-agent-host` là lời khai của Agent host được ghi lại, không phải xác thực. **Giữ nguyên** theo quyết định của chủ dự án
   (dùng cá nhân).
-- BOM thừa ở `ffmpeg-sequence-renderer.js` và vài file `.md`/`.js` → **đã xóa** (BOM đầu file `.ps1` được giữ vì Windows PowerShell 5.1 cần).
+- BOM thừa ở `ffmpeg-sequence-renderer.js` và vài file `.md`/`.js` → **đã xóa** (repo không còn file `.ps1` nào sau khi các browser smoke chuyển sang Node).
 - `pilot:real` (script pilot một lần gắn cứng một project đã archive) → **đã xóa**; `observer:phase6b:test` (bí danh trùng) → **đã xóa**.
-- Chưa đo chi phí đọc toàn bộ record của `ProjectStore.addResult` trên project rất lớn. **Còn lại.**
+- `ProjectStore.addResult` đọc toàn bộ Result của project. Đo ngày 2026-10-09 trên project thật lớn nhất (190 Result): `readResults` ~0,13 s,
+  `readContext` ~0,18 s. **Chưa là vấn đề**; đo lại nếu một project vượt vài nghìn Result.
+
+## Đợt sửa lỗi và dọn dẹp — 2026-10-09 (lượt 2)
+
+Một lượt rà soát tài liệu, code, test và script, rồi sửa những gì lệch. Không đổi contract project, tool, workflow, approval hay delivery.
+
+**Code (đều có test):**
+
+- Observer API trả 404 (không còn 500 kèm stack trace) cho project không tồn tại ở `/api/projects/:id` và `/observer/*`
+  ([`project-reader.js`](../../src/web/project-reader.js)), và 400 cho địa chỉ mã hóa sai ([`server.js`](../../src/web/server.js)).
+- Server từ chối request có `Host` không phải `127.0.0.1`/`localhost`/`[::1]` (403) để một trang web khác không đọc được project qua DNS
+  rebinding. Vẫn chỉ bind localhost và chỉ GET.
+- Review ghi trước khi attestation có trường `version` (project archive `triangle-180`) đọc lại được; version lạ vẫn bị từ chối.
+- Doctor xếp cắt cảnh và ASR (cần Python + Whisper cài riêng) vào nhóm “khuyến nghị” `PRACTICAL_RECOMMENDED_CAPABILITIES`: thiếu thì
+  `attention` kèm cách cài, không còn `blocked`. Máy chỉ có Node + FFmpeg dựng được video từ đầu mà không bị báo chặn.
+- Gỡ năm export không còn ai gọi (`createAnalysisReader`, `defaultAnalysisOperationDefinitions`, `verifySourceSnapshot`, `mediaDuration`,
+  `directoryOf`).
+- `observer:acceptance`, `feedback:acceptance`, `production:acceptance` tìm project pilot ở kho active rồi archive
+  ([`scripts/lib/pilot-fixture.mjs`](../../scripts/lib/pilot-fixture.mjs)); trước đó hai lệnh đầu thất bại vì pilot đã archive.
+- `test/cli-contract.test.js` chạy CLI thật trên kho tạm: `project:accept` (kênh agent-host, tự resolve feedback, từ chối pipe/tùy chọn lạ),
+  `project:decide` (từ chối final acceptance và category đã gỡ), `project:attest`, `project:finish` (chỉ lập kế hoạch mặc định, từ chối khi
+  chưa có Delivery), `tool:run`, `project:resume`.
+- `npm run check` nay còn kiểm mọi đường dẫn trong dấu backtick (`src/…`, `ui/…`, `skills/…`) có file thật; trước đó chỉ kiểm link và tên script.
+
+**Tài liệu và skill:** skill `human-release-review` (không còn bảo dùng terminal tương tác hay coi QA là điều kiện tiên quyết) và
+`video-sequence-planning` (không còn nhắc timeline đã bỏ); BUILD-OUTLINE §6 (web chỉ đọc); ghi chú thay thế trong CURRENT-DIRECTION
+cho các mục 2026-09-13/15/18/21; ghi chú giao diện ở PHASE4/PHASE5A/SOURCE-UNDERSTANDING; HUONG-DAN và OPERATIONS-RUNBOOK chỉ rõ cách cài
+runtime phân tích (Python + Whisper).
+
+**Dọn dẹp và dữ liệu:** xóa `tmp/` (85 MB) và `.agent-work/` (67 MB) là scratch đã ignore bởi git, cùng ba thư mục rỗng; gỡ `watermark.png` ở
+root (được theo dõi nhưng không file nào dùng). Ghi checkpoint mới, trung thực, cho `gradient-descent-vn-3min` (project đang chờ người dùng xem
+draft, checkpoint cũ hơn 19 hoạt động nên doctor báo `attention`); sau đó `padstudio:doctor` trả `ready`.
+`.cache/source-eval/models` (4,4 GB) là model ASR đang dùng, không phải rác.
+
+**Repo:** đã có remote `origin` (GitHub, private). Lịch sử cũ của repo (80 commit, web app Motion Canvas, không liên quan tới code này) giữ nguyên
+ở nhánh `legacy-v1` và tag `legacy-v1`; `main` là PADStudio hiện tại. Chỉ file được git theo dõi mới lên GitHub; project trong `.padstudio/`,
+`.cache/`, `.runtime-tools/` và `padstudio.local.json` đều ở ngoài repo.
+
+**Còn lại (không phải lỗi):**
+
+- Chín project chưa có Delivery nên chưa `project:finish` (≥ 3,8 GB). Chúng được giữ nguyên theo ý chủ dự án; chạy `project:usage -- --all` để xem dung lượng.
+- Bốn section observer `summary`, `source`, `creative`, `health` không còn giao diện nào dùng; giữ lại như API.
+- `engines` ghi Node 20 trở lên nhưng mới chạy test trên Node 24 (cả máy này lẫn workflow CI). Không dùng API nào mới hơn Node 20, nhưng chưa kiểm.
+- Test e2e phân tích video (cắt cảnh, ASR) tự skip khi không có runtime Python, nên CI không phủ chúng.
 
 ## Thứ tự nguồn sự thật
 

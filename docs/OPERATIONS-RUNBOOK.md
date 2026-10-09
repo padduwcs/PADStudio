@@ -3,6 +3,9 @@
 ## 1. Điều kiện và khởi động
 
 Yêu cầu nền: Windows, Node.js 20+, FFmpeg/ffprobe, Python/profile phân tích đã khóa và Chrome cho graphic/browser acceptance. Không cần ElevenLabs nếu dùng Piper local.
+Python phân tích (cắt cảnh, ASR) và model Whisper được cài một lần theo [`eval/source-understanding/README.md`](../eval/source-understanding/README.md),
+mục “Cài môi trường”; sau đó `npm run analysis:doctor` phải báo `ready`. Doctor xếp cắt cảnh và ASR vào nhóm “khuyến nghị”: máy chưa cài
+chỉ báo `attention` kèm cách cài, không `blocked`, vì việc dựng video từ đầu không cần chúng.
 
 Từ thư mục repository:
 

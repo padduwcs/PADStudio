@@ -5,6 +5,9 @@ animation cơ bản, chuyển cảnh, timeline quan sát, sửa cục bộ và p
 Chat điều khiển; web chỉ quan sát. Không thêm provider, raw media path, timeline
 kéo thả, keyframe tổng quát hoặc thay đổi kho project.
 
+> **Cập nhật giao diện (2026-10):** “timeline quan sát” là phần của giao diện cũ. Web nay chỉ có hai tab Video và Tư liệu; việc
+> nhảy tới từng đoạn nằm trong danh sách “Các đoạn” cạnh video. Hợp đồng `video.sequence` bên dưới không đổi.
+
 ## Hợp đồng triển khai
 
 `video.sequence` 1.0 tiếp tục được đọc. Phiên bản 1.1 thêm:

@@ -371,8 +371,8 @@ npm start
 
 Mở `http://127.0.0.1:7603`.
 
-Có thể mở thẳng project bằng `http://127.0.0.1:7603/?project=<project-id>`. Với một project
-đã có preview/timeline/transcript, chạy browser acceptance bằng:
+Có thể mở thẳng project bằng `http://127.0.0.1:7603/?project=<project-id>`. Server chỉ nhận request có Host là
+`127.0.0.1`, `localhost` hoặc `[::1]`. Với một project đã có video, chạy browser smoke bằng:
 
 ```powershell
 npm run observer:ui:test -- --url http://127.0.0.1:7603 --project <project-id>
@@ -389,6 +389,10 @@ npm run observer:acceptance
 ```powershell
 npm run feedback:acceptance
 ```
+
+Hai lệnh trên (cùng `production:acceptance`) đọc project pilot `phase3-vd04-asset-pilot` ghi trong `reports/phase4-pilot.json`,
+tìm ở kho active rồi ở archive; chúng chỉ đọc project nhưng **ghi đè** file report tương ứng trong `reports/`, kể cả khi thất bại.
+Chạy xong nếu không muốn đổi evidence lịch sử thì `git checkout -- reports/`.
 
 ## Kiểm tra
 

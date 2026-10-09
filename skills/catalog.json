@@ -174,7 +174,7 @@
     },
     {
       "id": "human-release-review", "version": "1.0", "name": "Human release review",
-      "description": "Run full viewing and listening review against an exact render before release evidence is accepted.",
+      "description": "Optional: store a full viewing and listening review of one exact render when the user wants that attestation.",
       "appliesTo": ["review", "verify"], "artifactTypes": ["review.findings"],
       "reviewCriteria": ["the exact render is watched in full", "audio is listened to in full when applicable", "findings and device context are durable"],
       "instructions": "human-release-review.md"

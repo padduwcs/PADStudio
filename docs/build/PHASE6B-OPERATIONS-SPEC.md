@@ -15,7 +15,7 @@ Cập nhật: **2026-09-13**. Đây là lát cắt đóng Đợt 6 ở mức pra
 `padstudio:doctor` trả JSON có version, status, runtime, machine profile, disk, capability requirements, project health và remediation. Mặc định không hash toàn bộ media; `--deep` xác minh checksum mọi Result file có checksum đã biết. Doctor:
 
 - không cài package, tải model, sửa project hay tự fallback provider;
-- tách capability bắt buộc của vòng practical hiện tại khỏi capability tùy chọn;
+- tách capability bắt buộc của vòng practical hiện tại khỏi capability khuyến nghị (cắt cảnh và ASR cần runtime Python cài riêng; thiếu chỉ làm trạng thái `attention`) và capability tùy chọn;
 - chỉ dùng `blocked` cho thiếu điều kiện hệ thống bắt buộc; project issue làm trạng thái `attention`;
 - giữ rõ `releaseDefault: null` và các gate phát hành rộng chưa đo.
 

@@ -36,6 +36,6 @@ Explicit narration.durationSeconds trims audio deliberately; absent duration kee
 remaining source and rejects overflow. Do not overlap two spoken voices unless requested.
 Music is mixed after segment rendering; a music-only change can reuse segment video.
 Transition overlap shortens the final sequence and shifts subsequent segments and music alignment.
-Review the observer timeline and full preview. It is read-only and does not update the project.
+Ask the user to watch the full preview in the observer (read-only; it never updates the project).
 Graphic typography and caption typography use explicit supported local font families. Never
 claim font portability or artistic approval from technical layout checks alone.

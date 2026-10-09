@@ -2,6 +2,12 @@
 
 Cập nhật: **2026-09-12**. Trạng thái: **đã triển khai và nghiệm thu practical trên pilot hiện hành**.
 
+> **Giao diện đã được thiết kế lại (2026-10).** Phần API snapshot/ETag dưới đây vẫn đúng và còn được dùng. Phần mô tả workspace
+> nhiều khu vực, timeline và chi tiết trên web thì không: web nay chỉ có hai tab Video và Tư liệu, đọc các section `card`,
+> `production`, `animation`, `delivery` và `activity`. Các section `summary`, `source`, `creative` và `health` còn trong API cho
+> công cụ khác nhưng giao diện không dùng. Xem mục “Đợt giao diện hiện tại” của
+> [`PADSTUDIO-DEVELOPMENT-STATUS.md`](PADSTUDIO-DEVELOPMENT-STATUS.md).
+
 ## Kết quả cần giữ
 
 Observer vẫn chỉ đọc và Agent host vẫn là nơi nhận yêu cầu. Người dùng có thể theo dõi project mà polling không thay DOM/player khi dữ liệu không đổi, mở phần chi tiết khi cần, so sánh các revision sequence và sao chép một mốc phản hồi trỏ đúng Result, artifact, revision, segment và khoảng thời gian.
