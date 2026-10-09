@@ -1,4 +1,3 @@
-﻿import { dirname, join } from "node:path";
 import { ProjectStore } from "../project/project-store.js";
 import { readJsonInput } from "./json-input.js";
 import { SEQUENCE_TYPE } from "../production/video-sequence.js";

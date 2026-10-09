@@ -1,4 +1,4 @@
-﻿# Video sequence planning and revision
+# Video sequence planning and revision
 
 Use when a project needs a concrete, editable video arrangement. A sequence is an optional
 product artifact, not a workflow or a required pipeline. Keep tiny media tasks simple.

@@ -13,10 +13,9 @@ import {
   normalizeReviewCriteria,
   normalizeStringList,
   normalizeWorkItems,
-  optionalText,
   requireId,
   requireObject,
-  requireText,
+  requireText
 } from "./contracts.js";
 
 import { SEQUENCE_TYPE, normalizeSequence, sequenceReferences } from "../production/video-sequence.js";
@@ -31,7 +30,7 @@ import {
   validateCreativeArtifactReferences,
 } from "./creative-artifacts.js";
 import { normalizeHumanAttestation } from "./human-attestation.js";
-import { createHumanConfirmation, requireHumanConfirmation, validHumanConfirmation } from "../project/human-confirmation.js";
+import { requireHumanConfirmation, validHumanConfirmation } from "../project/human-confirmation.js";
 import {
   ANIMATION_COMPOSITION_TYPE,
   normalizeAnimationComposition,

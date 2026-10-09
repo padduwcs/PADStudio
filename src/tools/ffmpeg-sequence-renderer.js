@@ -1,5 +1,5 @@
 import { renderComposedSegment, finishComposition } from "./sequence-compositor.js";
-﻿import { execFile } from "node:child_process";
+import { execFile } from "node:child_process";
 import { createReadStream } from "node:fs";
 import { copyFile, lstat, unlink, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";

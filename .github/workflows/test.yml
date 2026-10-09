@@ -31,5 +31,8 @@ jobs:
           ffmpeg -version | Select-Object -First 1
           ffprobe -version | Select-Object -First 1
 
+      - name: Static checks
+        run: npm run check
+
       - name: Run tests
         run: npm test

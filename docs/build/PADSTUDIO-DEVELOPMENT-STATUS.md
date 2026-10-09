@@ -201,24 +201,19 @@ và `HISTORICAL-DOCUMENTS.md` (không còn viết như chưa triển khai; liên
 văn bản thường). `reports/`, `history/` và các mục có ngày trong `PADSTUDIO-CURRENT-DIRECTION.md` được giữ
 nguyên vì là bằng chứng của từng thời điểm.
 
-**Quan sát về code, chưa sửa (nằm ngoài phạm vi tài liệu):**
+**Quan sát về code ghi lại lúc đối chiếu và trạng thái hiện nay:**
 
-- `matchingDeliveryProfiles` / `deliveryProfilesForAcceptance` (`src/production/delivery-readiness.js`,
-  `acceptance-readiness.js`) chỉ còn được test gọi; cả `project:accept` lẫn delivery không dùng chúng nữa.
-  Có thể giữ cho kiểm tra trước duyệt hoặc xóa khi chốt hướng.
-- Đường dẫn `.padstudio/projects` được ghép cứng ở 36 file CLI và `src/web/server.js`; không có biến
-  môi trường để đổi gốc dữ liệu (test và script acceptance phải tự dựng store/server riêng).
-- `generation` của observer duyệt toàn bộ cây file của mọi project mỗi lần poll (2 giây). Đo ngày
-  2026-10-09 trên 26 project / ~33.700 file: ~300 ms mỗi lần. Chi phí tăng theo tổng số file, không theo
-  mức thay đổi.
-- `--from-agent-host` là lời khai của Agent host được ghi lại, không phải xác thực; tài liệu đã nói rõ
-  điều này, nhưng code không thể phân biệt người dùng thật với Agent tự chạy lệnh.
-- `src/tools/ffmpeg-sequence-renderer.js` có một ký tự BOM ở đầu dòng 2 (Node vẫn chạy bình thường).
-- `pilot:real` (`scripts/real-project-pilot.mjs`) là script pilot một lần, gắn cứng project
-  `real-pilot-longest-substring` và nguồn `vid15_*.mp4`; project đó không còn trong kho local, nên script
-  không chạy được nếu không dựng lại. `observer:phase6b:test` chỉ là bí danh của smoke Phase 5A. Cả hai
-  cố ý không được quảng bá trong tài liệu vận hành.
-- Chưa đo chi phí đọc toàn bộ record của `ProjectStore.addResult` trên project rất lớn.
+- `matchingDeliveryProfiles` / `deliveryProfilesForAcceptance` chỉ còn test gọi → **đã xóa** (cùng `describeDeliveryMedia`
+  và `deliveryProfileMismatches`); `parseDeliveryProbe` và các hàm resolve feedback được giữ.
+- Đường dẫn `.padstudio/projects` ghép cứng ở 36 file CLI và server → **đã sửa**: `src/config/project-root.js` với
+  `PADSTUDIO_PROJECT_ROOT` / `PADSTUDIO_ARCHIVE_ROOT`. Các script acceptance lịch sử trong `scripts/` vẫn dùng đường dẫn mặc định.
+- `generation` của observer duyệt toàn bộ cây file của mọi project mỗi lần poll (2 giây): ~300 ms trên 26 project /
+  ~33.700 file ngày 2026-10-09. **Còn lại**, nhưng số file giảm mạnh sau khi dọn scratch (xem mục dung lượng bên dưới).
+- `--from-agent-host` là lời khai của Agent host được ghi lại, không phải xác thực. **Giữ nguyên** theo quyết định của chủ dự án
+  (dùng cá nhân).
+- BOM thừa ở `ffmpeg-sequence-renderer.js` và vài file `.md`/`.js` → **đã xóa** (BOM đầu file `.ps1` được giữ vì Windows PowerShell 5.1 cần).
+- `pilot:real` (script pilot một lần gắn cứng một project đã archive) → **đã xóa**; `observer:phase6b:test` (bí danh trùng) → **đã xóa**.
+- Chưa đo chi phí đọc toàn bộ record của `ProjectStore.addResult` trên project rất lớn. **Còn lại.**
 
 ## Thứ tự nguồn sự thật
 

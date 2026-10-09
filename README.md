@@ -52,6 +52,7 @@ phân biệt tài liệu hiện hành với snapshot lịch sử nằm tại
 [`docs/build/PADSTUDIO-DEVELOPMENT-STATUS.md`](docs/build/PADSTUDIO-DEVELOPMENT-STATUS.md).
 
 ```powershell
+npm run check                     # cú pháp, import thừa/thiếu, link tài liệu và tên script (vài giây)
 npm test
 npm run observer:ui:empty-test    # observer trên kho trống/project mới (Node, kho tạm)
 npm run observer:ui:live-test     # tiến độ trực tiếp: preview đầu tiên, giữ player (Node, kho tạm)

@@ -1,4 +1,4 @@
-﻿# Dựng video theo từng đoạn — phần đã triển khai
+# Dựng video theo từng đoạn — phần đã triển khai
 
 ## 1. Bạn đã có gì?
 

@@ -1,4 +1,4 @@
-﻿# Đợt 3 — nguyên liệu dùng chung, gói đầu
+# Đợt 3 — nguyên liệu dùng chung, gói đầu
 
 Gói đầu bổ sung ba capability dùng lại được qua Registry → Executor → Run/Result.
 Không phụ thuộc pilot, loại video hoặc workflow cố định. Đây là phạm vi đầu của Đợt 3,
