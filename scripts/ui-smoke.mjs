@@ -11,7 +11,7 @@ import { launchBrowser } from "./lib/browser.mjs";
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const VIEWPORTS = [[390, 844, true], [768, 1000, false], [1440, 900, false]];
-const TABS = ["video", "sources", "details"];
+const TABS = ["video", "sources"];
 
 function parseArguments(args) {
   const options = { url: "http://127.0.0.1:7603", projectId: null, empty: false, live: false, shots: null, browser: null };
@@ -60,7 +60,7 @@ async function checkTabs(page, options, label, shots) {
   for (const view of TABS) {
     await page.evaluate(`document.querySelector('#tab-${view}').click()`);
     await page.waitFor(`document.querySelector('#tab-${view}').getAttribute('aria-selected') === 'true' && !document.querySelector('#view-${view}').hidden`, { label: `${label} ${view} tab` });
-    await page.waitFor(`document.querySelector('#view-${view}').querySelector('.theatre, .theatre-empty, .theatre-skeleton, .sources, #details > *, .empty-note') && !document.querySelector('#view-${view} .theatre-skeleton')`,
+    await page.waitFor(`document.querySelector('#view-${view}').querySelector('.theatre, .theatre-empty, .theatre-skeleton, .sources, .empty-note') && !document.querySelector('#view-${view} .theatre-skeleton')`,
       { timeout: 20_000, label: `${label} ${view} content` });
     expect(await overflow(page) <= 1, `${label}/${view}: page scrolls sideways`);
     if (shots) await page.screenshot(`${shots}/${label}-${view}.png`);
@@ -109,7 +109,6 @@ async function liveStory(page, options) {
 
   await advance();
   await page.waitFor("(() => { const v = document.querySelector('video[data-ui=video]'); return v && v.readyState >= 2 && !document.querySelector('#project-meta .chip-working'); })()", { timeout: 15_000, label: "first preview appears" });
-  expect((await page.evaluate(selected)).startsWith("Bản 1"), "first preview is not Bản 1");
   await page.evaluate("(async () => { const v = document.querySelector('video[data-ui=video]'); window.__firstPlayer = v; v.muted = true; v.currentTime = 0.75; await v.play(); })()");
 
   await advance();

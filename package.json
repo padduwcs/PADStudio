@@ -53,7 +53,6 @@
     "padstudio:doctor": "node src/cli/padstudio-doctor.js",
     "system:profile": "node src/cli/read-system-profile.js",
     "analysis:acceptance": "node scripts/source-understanding-acceptance.mjs",
-    "creative:acceptance": "node scripts/creative-direction-acceptance.mjs",
     "analysis:test": "node scripts/source-eval.mjs test",
     "analysis:read": "node src/cli/read-analysis.js",
     "analysis:verify": "node src/cli/verify-analysis.js",

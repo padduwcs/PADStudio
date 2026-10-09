@@ -502,9 +502,6 @@ test("managed validation and preflight gate render without code approval; sequen
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const origin = `http://127.0.0.1:${server.address().port}`;
   assert.equal((await fetch(`${origin}/api/projects/demo/observer/animation`)).status, 200);
-  const moduleResponse = await fetch(`${origin}/animation-view.js`);
-  assert.equal(moduleResponse.status, 200);
-  assert.match(await moduleResponse.text(), /renderAnimation/);
 });
 
 test("renderer availability is honest and never auto-installs", async (t) => {

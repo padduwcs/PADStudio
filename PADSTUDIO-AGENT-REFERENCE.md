@@ -706,8 +706,8 @@ npm run observer:ensure -- [project-id] [--port 7603]
 `npm run project:usage -- <project-id>` cho biết dung lượng theo vùng và theo Run; `npm run project:prune -- <project-id>`
 chỉ lập kế hoạch xóa scratch không thuộc Result nào. Chỉ chạy `--apply` khi người dùng yêu cầu dọn dung lượng; không tự dọn.
 
-`npm run project:finish -- <project-id> [--apply]` là bước cuối sau khi người dùng chốt và Delivery đã tạo: giữ Delivery mới nhất cùng Result nguồn,
-phát hành file của mọi Result khác và ghi `releases/<id>.json` trước khi xóa. Bản ghi Result không đổi; file đã phát hành hiện
+`npm run project:finish -- <project-id> [--apply]` là bước cuối sau khi người dùng chốt và Delivery đã tạo: giữ Delivery mới nhất cùng Result nguồn
+và các file audio/văn bản của mọi thứ bản cuối được làm từ đó, phát hành file còn lại và ghi `releases/<id>.json` trước khi xóa. Bản ghi Result không đổi; file đã phát hành hiện
 `released: true, available: false` và không bị tính là hỏng. Mặc định chỉ lập kế hoạch; từ chối khi `no_delivery`, `delivery_not_intact`,
 `source_missing`, `not_accepted` hoặc `run_in_progress`. Idempotent; `--all` áp dụng cho mọi project đủ điều kiện.
 

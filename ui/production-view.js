@@ -1,11 +1,22 @@
-import { ICONS, clock, formatDateTime, formatSize, node, orientationLabel, relativeTime, resultFileUrl, svgIcon } from "./dom.js";
-import { previewClipDescription } from "./animation-view.js";
+import { ICONS, clock, formatDateTime, formatSize, node, relativeTime, resultFileUrl, svgIcon } from "./dom.js";
 
 // Which revision/render the viewer chose for each film, remembered while the page stays open.
 const choices = new Map();
 const selectedFilm = new Map();
 const chapterListeners = new WeakMap();
 let lastSignature = null;
+
+const seconds = (value) => `${Math.round(value * 1000) / 1000}s`;
+
+// What a short motion-preview clip covers, shown under a code-animation preview.
+export function previewClipDescription(preview) {
+  const range = preview?.range;
+  const frameRate = preview?.clip?.frameRate;
+  if (!range || !Number.isInteger(range.startFrame) || !Number.isInteger(range.endFrame)) return "Đoạn preview ngắn";
+  const frames = `frame ${range.startFrame}–${range.endFrame}`;
+  if (!Number.isFinite(frameRate) || frameRate <= 0) return frames;
+  return `${seconds(range.startFrame / frameRate)}–${seconds((range.endFrame + 1) / frameRate)} · ${frames}`;
+}
 
 export function createBrandArtwork() {
   const image = node("img", undefined, "brand-art");
@@ -92,7 +103,7 @@ const OUTCOME_LABELS = Object.freeze({ accepted: "Đã duyệt", changes_request
 export function feedbackItems(sequences, render) {
   const resolved = new Set(sequences.flatMap((sequence) => sequence.renders)
     .flatMap((candidate) => candidate.decisions ?? []).flatMap((decision) => decision.resolvesDecisionIds ?? []));
-  return [...(render?.decisions ?? [])].reverse().map((decision) => ({
+  return [...(render?.decisions ?? [])].filter((decision) => decision.outcome !== "accepted").reverse().map((decision) => ({
     id: decision.id,
     outcome: decision.outcome,
     label: OUTCOME_LABELS[decision.outcome] ?? decision.outcome,
@@ -420,44 +431,37 @@ function filmTheatre(container, context, extras) {
       compare.addEventListener("change", () => { saved.compareResultId = compare.value || null; choices.set(storageKey, saved); draw("compare"); });
       versions.append(compare);
     }
-    side.append(rail("Phiên bản", versions));
+    if (revisions.length > 1 || revision.renders.length > 1 || options.length > 1) side.append(rail("Phiên bản", versions));
 
-    // Status and download ------------------------------------------------------------------------
-    const state = node("div", undefined, "state");
+    // Download of the approved version ---------------------------------------------------------------
     const latest = [...(render?.decisions ?? [])].at(-1) ?? null;
-    const meta = [clock(revision.durationSeconds), orientationLabel(revision.format.width, revision.format.height)].filter(Boolean).join(" · ");
-    state.append(node("p", meta, "rail-line"));
-    if (latest) {
-      const verdict = node("p", undefined, "verdict is-" + latest.outcome);
-      verdict.append(node("strong", OUTCOME_LABELS[latest.outcome] ?? latest.outcome), node("span", " · " + relativeTime(latest.createdAt)));
-      state.append(verdict);
-    } else if (render) {
-      state.append(node("p", "Chưa có phản hồi cho bản này.", "rail-note"));
+    if (downloads.length) {
+      const state = node("div", undefined, "state");
+      for (const entry of downloads) {
+        const link = node("a", undefined, "button button-primary");
+        link.dataset.ui = "download";
+        link.href = entry.url; link.download = entry.name;
+        link.append(svgIcon(ICONS.download, { size: 17 }), node("span", entry.label));
+        if (entry.sizeBytes) link.append(node("span", formatSize(entry.sizeBytes), "button-meta"));
+        link.title = entry.sourceResultId && entry.sourceResultId !== render?.resultId
+          ? "Bản đã duyệt thuộc một lần dựng khác của video này" : "Bản đã được bạn duyệt";
+        state.append(link);
+      }
+      side.append(rail(null, state));
     }
-    for (const entry of downloads) {
-      const link = node("a", undefined, "button button-primary");
-      link.dataset.ui = "download";
-      link.href = entry.url; link.download = entry.name;
-      link.append(svgIcon(ICONS.download, { size: 17 }), node("span", entry.label));
-      if (entry.sizeBytes) link.append(node("span", formatSize(entry.sizeBytes), "button-meta"));
-      link.title = entry.sourceResultId && entry.sourceResultId !== render?.resultId
-        ? "Bản đã duyệt thuộc một lần dựng khác của video này" : "Bản đã được bạn duyệt";
-      state.append(link);
-    }
-    side.append(rail("Trạng thái", state));
 
     // Chapters -----------------------------------------------------------------------------------
     if (main.video && revision.segments.length > 1) side.append(rail("Các đoạn", chapterList(context, revision, render, main.video)));
 
-    // Feedback -----------------------------------------------------------------------------------
-    const feedback = rail("Phản hồi");
+    // Feedback: only while there is still something to change ---------------------------------------
     const items = feedbackItems(sequences, render);
-    if (main.video && !baselineRender) feedback.append(anchorControl(context, revision, render, main.video));
-    if (items.length) feedback.append(feedbackList(items, main.video));
-    else feedback.append(node("p", main.video
-      ? "Dừng video ở đúng chỗ cần sửa, bấm “Sao chép mốc phản hồi” rồi dán vào cuộc trò chuyện với Agent."
-      : "Phản hồi sẽ hiện ở đây khi video có bản dựng.", "rail-note"));
-    side.append(feedback);
+    if (latest?.outcome !== "accepted" && (main.video || items.length)) {
+      const feedback = rail("Phản hồi");
+      if (main.video && !baselineRender) feedback.append(anchorControl(context, revision, render, main.video));
+      if (items.length) feedback.append(feedbackList(items, main.video));
+      else feedback.append(node("p", "Dừng video ở chỗ cần sửa, sao chép mốc rồi dán cho Agent.", "rail-note"));
+      side.append(feedback);
+    }
 
     theatre.append(stages, side);
     container.replaceChildren(theatre);

@@ -59,6 +59,8 @@ for (const file of tracked.filter((name) => name.endsWith(".md") && !name.starts
     const path = decodeURIComponent(target.split("#")[0]);
     if (path && !existsSync(resolve(dirname(file), path))) problems.push(`${file}: broken link ${target}`);
   }
+  // History records the commands of their own time; only current documents must name existing scripts.
+  if (file.startsWith("docs/build/history/")) continue;
   for (const match of text.matchAll(/npm run ([a-z0-9:.-]+)/gi)) {
     if (!packageScripts.has(match[1])) problems.push(`${file}: unknown npm script "${match[1]}"`);
   }

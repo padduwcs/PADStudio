@@ -1,26 +1,21 @@
 import { ICONS, clock, node, orientationLabel, relativeTime, statusChip, svgIcon } from "./dom.js";
 import { renderTheatre, clearTheatre } from "./production-view.js";
 import { renderSources, clearSources } from "./sources-view.js";
-import { renderSourceAnalysis, clearSourceAnalysis } from "./source-analysis-view.js";
-import { createDetails } from "./details-view.js";
 import { createLibrary } from "./library-view.js";
 
 const $ = (selector) => document.querySelector(selector);
 const elements = {
   topbar: $("#topbar"), main: $("#main"), welcome: $("#welcome"), project: $("#project"),
   title: $("#project-title"), meta: $("#project-meta"), tabs: $("#tabs"),
-  theatre: $("#theatre"), sources: $("#sources"), sourceInsights: $("#source-insights"), sourceAnalysis: $("#source-analysis-view"),
-  details: $("#details"), error: $("#app-error"), errorText: $("#app-error-text"), connection: $("#connection-status"),
+  theatre: $("#theatre"), sources: $("#sources"),
+  error: $("#app-error"), errorText: $("#app-error-text"), connection: $("#connection-status"),
   libraryButton: $("#library-button"), libraryCount: $("#library-count"), themeToggle: $("#theme-toggle")
 };
 
-const VIEWS = Object.freeze({ video: "Video", sources: "Tư liệu", details: "Chi tiết" });
-// Older links used other names for what is now the Details tab.
-const VIEW_ALIASES = Object.freeze({ content: "details", activity: "details" });
+const VIEWS = Object.freeze({ video: "Video", sources: "Tư liệu" });
 const VIEW_SECTIONS = Object.freeze({
   video: ["production", "animation", "delivery"],
-  sources: ["activity", "production", "source"],
-  details: ["summary", "activity", "creative", "animation", "health"]
+  sources: ["activity", "production"]
 });
 
 const parameters = new URLSearchParams(window.location.search);
@@ -28,7 +23,7 @@ let selectedProjectId = parameters.get("project");
 if (!selectedProjectId) {
   try { selectedProjectId = localStorage.getItem("padstudio-project"); } catch { /* Optional preference. */ }
 }
-let currentView = VIEW_ALIASES[parameters.get("view")] ?? parameters.get("view") ?? "video";
+let currentView = parameters.get("view") ?? "video";
 if (!VIEWS[currentView]) currentView = "video";
 
 let projectsById = new Map();
@@ -43,7 +38,6 @@ const sectionControllers = new Map();
 const loadedSections = new Set();
 let contexts = {};
 
-const details = createDetails(elements.details);
 const library = createLibrary({
   root: $("#library"), grid: $("#library-grid"), search: $("#library-search"), count: elements.libraryCount,
   onSelect: (projectId) => selectProject(projectId)
@@ -96,7 +90,7 @@ function renderHeader() {
   elements.meta.append(statusChip(card.status));
   const facts = [
     card.video ? [Number.isFinite(card.video.durationSeconds) ? clock(card.video.durationSeconds) : null,
-      orientationLabel(card.video.width, card.video.height)].filter(Boolean).join(" · ") : null,
+      orientationLabel(card.video.width, card.video.height).split(" ")[0]].filter(Boolean).join(" · ") : null,
     card.lastActivityAt ? "Cập nhật " + relativeTime(card.lastActivityAt).toLocaleLowerCase("vi") : null
   ].filter(Boolean);
   for (const fact of facts) elements.meta.append(node("span", fact, "project-meta-item"));
@@ -136,17 +130,8 @@ function renderSection(section, context) {
     if (section === "production") drawSources();
   } else if (section === "animation") {
     drawTheatre();
-    details.update({ animation: context });
   } else if (section === "activity") {
     drawSources();
-    details.update({ activity: context });
-  } else if (section === "summary") {
-    details.update({ summary: context });
-  } else if (section === "creative" || section === "health") {
-    details.update({ [section]: context });
-  } else if (section === "source") {
-    renderSourceAnalysis(elements.sourceAnalysis, context);
-    elements.sourceInsights.hidden = !context.analysis?.sources?.length;
   }
 }
 
@@ -201,9 +186,6 @@ function resetProject() {
   contexts = {};
   clearTheatre(elements.theatre);
   clearSources(elements.sources);
-  clearSourceAnalysis(elements.sourceAnalysis);
-  elements.sourceInsights.hidden = true;
-  details.clear();
   const skeleton = node("div", undefined, "theatre-skeleton");
   skeleton.setAttribute("aria-hidden", "true");
   skeleton.append(node("div", undefined, "skeleton-stage"), node("div", undefined, "skeleton-rail"));

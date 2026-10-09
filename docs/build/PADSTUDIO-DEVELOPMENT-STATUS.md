@@ -26,7 +26,7 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 ## Baseline kiểm chứng
 
 Lần chạy full gần nhất, ngày **2026-10-09** (sau thiết kế lại giao diện, Node v24.18.1): `npm test`
-**386 tests: 385 pass, 1 skipped** (test cần runtime phân tích Python tùy chọn); `npm run check` sạch. Browser:
+**374 tests: 373 pass, 1 skipped** (test cần runtime phân tích Python tùy chọn); `npm run check` sạch. Browser:
 `observer:ui:test` trên project thật (6 chế độ xem, sáng/tối), `observer:ui:empty-test` và
 `observer:ui:live-test` đều passed. Các số 326/332 trong các mục cũ bên dưới là ảnh chụp trước đợt này.
 
@@ -235,8 +235,9 @@ số test nằm trong một báo cáo cũ.
 ## Chốt xong thì chỉ giữ bản cuối — 2026-10-09
 
 Người dùng không cần các bản nháp sau khi đã chốt. `npm run project:finish -- <project-id> | --all [--apply]`
-([`src/operations/project-finish.js`](../../src/operations/project-finish.js)) giữ nguyên Delivery mới nhất cùng Result nguồn của nó và
-phát hành file của mọi Result khác. Bản ghi (Result, Run, decision, artifact, review) và `inputs/` không bị chạm tới. Điều kiện: Delivery
+([`src/operations/project-finish.js`](../../src/operations/project-finish.js)) giữ nguyên Delivery mới nhất cùng Result nguồn của nó; từ mọi Result mà bản cuối được làm ra (input, tham chiếu của sequence/composition,
+theo bao đóng) giữ thêm file **audio và văn bản** (lời đọc, nhạc, kịch bản, mã nguồn hoạt họa); phát hành file còn lại (video và ảnh trung gian,
+frame, QA, phân tích). Bản ghi (Result, Run, decision, artifact, review) và `inputs/` không bị chạm tới. Điều kiện: Delivery
 nguyên vẹn theo SHA-256, quyết định duyệt gắn với nó, không còn Run đang chạy; nếu không, lệnh từ chối và không xóa gì.
 
 Hợp đồng lưu trữ thay đổi đúng một điểm: `releases/<id>.json` (append-only, ghi **trước** khi xóa) cho biết file nào được phát hành cố ý.
@@ -245,26 +246,26 @@ hỏng. Observer, với project đã dọn, ẩn các phiên bản/Result chỉ 
 dùng chỉ thấy bản đã chốt. Luồng của Agent (`PADSTUDIO-AGENT-RUNTIME.md`, bước 7) chạy lệnh này ngay sau `video.export-delivery`.
 Test: `test/project-finish.test.js`. Đã kiểm tra trên bản sao project thật (dijkstra: 262 MB → 78 MB, doctor --deep 20 xác minh/849 phát hành/0 hỏng).
 
+Ghi chú trung thực: 17 project đã dọn ngày 2026-10-09 được dọn **trước** quy tắc giữ audio/văn bản, nên mã nguồn hoạt họa của chúng đã bị phát hành
+(khoảng 5 MB; audio của bản cuối vốn nằm trong `inputs/` và không bị chạm). Chúng không khôi phục được.
+
 ## Đợt giao diện hiện tại
 
-Giao diện được thiết kế lại quanh ba việc người dùng thật sự làm: chọn dự án, xem video, tìm tư liệu.
-Chỉ có ba tab: **Video**, **Tư liệu**, **Chi tiết**. Mọi thứ kỹ thuật (kế hoạch hoạt họa, run, kho kết
-quả, tài liệu/đánh giá, sức khỏe dự án) nằm trong các mục thu gọn ở Chi tiết và chỉ được dựng khi mở.
+Giao diện chỉ giữ những gì người dùng cần: chọn dự án, xem video, nghe/xem tư liệu. Hai tab: **Video** và **Tư liệu**. Không còn tab Chi
+tiết, kế hoạch hoạt họa, run, kho kết quả, sức khỏe dự án hay bảng phân tích nguồn; những thứ đó vẫn đọc được qua CLI
+(`project:resume`, `padstudio:doctor`) và API quan sát.
 
-- **Video** là một “rạp”: khung video đúng tỷ lệ gốc (dọc, ngang hoặc vuông) cạnh một cột phụ gồm
-  phiên bản, so sánh hai bản, trạng thái + tải bản đã duyệt, các đoạn có ảnh (đoạn đang phát có
-  `aria-current`) và phản hồi đã ghi. Nút “Sao chép mốc phản hồi” tạo đúng chuỗi
-  `project=… · result=… · artifact=… · revision=N [· segment=… · time=a-b · at=t]` để dán cho Agent.
-  Project chỉ có code animation dùng render/preview tốt nhất làm video; chưa có gì thì hiện trạng
-  thái chờ. Player đang phát được giữ qua polling; bản mới chưa có video không đẩy người xem khỏi bản
+- **Video** là một “rạp”: khung video đúng tỷ lệ gốc cạnh cột phụ. Cột phụ chỉ có những gì đang dùng được: nút tải bản đã duyệt, phiên bản và so sánh
+  (chỉ khi có hơn một bản), các đoạn có ảnh (khi có hơn một đoạn), và phản hồi với nút “Sao chép mốc phản hồi” (chỉ khi còn gì để sửa; ẩn sau khi duyệt).
+  Chuỗi mốc là `project=… · result=… · artifact=… · revision=N [· segment=… · time=a-b · at=t]` để dán cho Agent. Project chỉ có code animation dùng
+  render/preview tốt nhất làm video; chưa có gì thì hiện trạng thái chờ. Player đang phát được giữ qua polling; bản mới chưa có video không đẩy người xem khỏi bản
   đang xem, và bản người xem chọn tay không bị thay.
 - **Thư viện dự án** là một sheet mở từ thanh đầu (hoặc bấm logo): lưới thẻ có khung hình thật của
   video, thời lượng/hướng, trạng thái (Đang dựng, Chờ bạn xem, Cần sửa, Bản nháp, Đã duyệt, Đã
   giao) và thời điểm hoạt động gần nhất. Thẻ lấy dữ liệu từ vùng nhẹ `card` của observer
   ([`src/web/observer-card.js`](../../src/web/observer-card.js)), tải lười khi thẻ vào màn hình, tối đa
   ba request đồng thời, cache theo generation. Có tìm kiếm, phím mũi tên, focus trap và Esc.
-- **Tư liệu** xếp media trước, ẩn tệp kỹ thuật sau một công tắc; xem trước ảnh/video/âm thanh/tài liệu
-  ngay tại chỗ. Phân tích nguồn và lời thoại nằm trong một mục thu gọn bên dưới.
+- **Tư liệu** chỉ liệt kê media phát được (ảnh, video, lời đọc, nhạc); chỉ có ô tìm kiếm khi có từ 9 mục trở lên.
 - Điều hướng ghi nhớ dự án và giao diện sáng/tối (mặc định theo hệ thống). Polling 2 giây dừng khi tab
   bị ẩn. Web vẫn chỉ đọc: mọi thao tác là GET, phát media, điều hướng và giữ tùy chọn UI; mất kết nối
   hiện thông báo có nút thử lại.
@@ -274,16 +275,15 @@ rất mảnh ở rìa (không bao giờ vào video). Tên đầy đủ **Precise
 hiển thị, kể cả điện thoại. Logo dùng bản WebP/PNG nhỏ sinh từ ảnh trong suốt gốc (xem
 [`ui/brand/README.md`](../../ui/brand/README.md)); ảnh gốc giữ nguyên byte.
 
-Mã: `ui/app.js` điều phối; `production-view.js` (rạp), `library-view.js`, `sources-view.js`,
-`details-view.js`, cùng `animation-view.js`, `creative-direction-view.js`, `health-view.js`,
-`source-analysis-view.js`; `dom.js` giữ hàm dùng chung; `styles.css` là một design system duy nhất.
+Mã: `ui/app.js` điều phối; `production-view.js` (rạp), `library-view.js`, `sources-view.js`; `dom.js` giữ hàm dùng chung; `styles.css` là một
+design system duy nhất. Các view Chi tiết, hoạt họa, creative, health, phân tích nguồn cùng `creative:acceptance` (phụ thuộc vào chúng) đã được gỡ.
 `src/web/static-assets.js` phục vụ theo allowlist chính xác tính lúc khởi động (không phục vụ thư
 mục tùy ý). Đợt này không đổi API quan sát hiện có ngoài vùng `card` và `modifiedAt` trong danh sách
 dự án, và không đổi project store, CLI, tool, workflow, approval hoặc delivery.
 
 Kiểm chứng: `npm run observer:ui:test -- --url <origin> --project <id>` điều khiển trình duyệt thật
 bằng [`scripts/lib/browser.mjs`](../../scripts/lib/browser.mjs) (CDP, không phụ thuộc gói ngoài) ở 390/768/1440
-px, sáng/tối: không cuộn ngang, tên đầy đủ không bị cắt, ba tab, thư viện (focus, inert, Esc), đổi
+px, sáng/tối: không cuộn ngang, tên đầy đủ không bị cắt, hai tab, thư viện (focus, inert, Esc), đổi
 giao diện, mất/khôi phục kết nối, không lỗi JS và không request ghi. `observer:ui:empty-test` kiểm
 thư viện trống và project mới; `observer:ui:live-test` kiểm câu chuyện live (chờ → bản 1 → bản 2 đang
 dựng không ngắt player → thay thế tự động → lựa chọn tay được giữ).

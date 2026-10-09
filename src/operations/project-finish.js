@@ -30,14 +30,60 @@ function refusal(code, detail = null) {
   return { reason: code, message: REASONS[code] + (detail ? ` (${detail})` : "") };
 }
 
+const RESULT_ID = /^result-[a-z0-9-]+$/;
+
+// Audio and text (scripts, subtitles, animation source) are worth keeping; video and image intermediates are not.
+function isValuableFile(file) {
+  const kind = String(file.mediaType ?? "").split("/")[0];
+  return kind === "audio" || kind === "text" || file.mediaType === "application/json" || file.mediaType === "document";
+}
+
+function collectReferences(value, found = { results: new Set(), artifacts: new Set() }) {
+  if (typeof value === "string") {
+    if (RESULT_ID.test(value)) found.results.add(value);
+  } else if (Array.isArray(value)) {
+    for (const item of value) collectReferences(item, found);
+  } else if (value && typeof value === "object") {
+    if (value.kind === "artifact" && typeof value.id === "string") found.artifacts.add(value.id);
+    for (const item of Object.values(value)) collectReferences(item, found);
+  }
+  return found;
+}
+
+/** Every Result the final render was made from: its inputs, what its sequence and compositions point to, transitively. */
+function dependencyClosure(rootResult, resultsById, artifactsById) {
+  const seenResults = new Set();
+  const seenArtifacts = new Set();
+  const queue = [rootResult.id];
+  while (queue.length) {
+    const result = resultsById.get(queue.pop());
+    if (!result || seenResults.has(result.id)) continue;
+    seenResults.add(result.id);
+    const found = collectReferences([result.inputResults, result.data]);
+    for (const id of result.inputArtifacts ?? []) found.artifacts.add(id);
+    const artifactQueue = [...found.artifacts];
+    while (artifactQueue.length) {
+      const artifact = artifactsById.get(artifactQueue.pop());
+      if (!artifact || seenArtifacts.has(artifact.id)) continue;
+      seenArtifacts.add(artifact.id);
+      const inner = collectReferences([artifact.data, artifact.references]);
+      inner.results.forEach((id) => found.results.add(id));
+      inner.artifacts.forEach((id) => artifactQueue.push(id));
+    }
+    for (const id of found.results) if (!seenResults.has(id)) queue.push(id);
+  }
+  return seenResults;
+}
+
 /**
- * What finishing would do. The newest Delivery bundle and the Result it was exported from are kept in full;
- * every file of every other Result is released. Result, Run, decision, artifact and review records are never
+ * What finishing would do. The newest Delivery bundle and the Result it was exported from are kept in full.
+ * From everything the final render was made from, audio and text files (narration, music, scripts, animation
+ * source) are kept too; every other file of every other Result is released. Result, Run, decision, artifact and review records are never
  * touched, and neither are the project's imported inputs. Changes nothing.
  */
 export async function planProjectFinish(store, projectId) {
-  const [results, decisions, runs] = await Promise.all([
-    store.readResults(projectId), store.readDecisions(projectId), store.readRuns(projectId)
+  const [results, decisions, runs, artifacts] = await Promise.all([
+    store.readResults(projectId), store.readDecisions(projectId), store.readRuns(projectId), store.readArtifacts(projectId)
   ]);
   const base = { version: FINISH_VERSION, projectId, mode: "plan" };
   const bundles = results.filter((result) => result.type === "delivery.bundle")
@@ -58,8 +104,10 @@ export async function planProjectFinish(store, projectId) {
   if (!approved) return { ...base, status: "not_finishable", ...refusal("not_accepted") };
 
   const keep = new Set([final.id, source.id]);
+  const dependencies = dependencyClosure(source, new Map(results.map((result) => [result.id, result])), new Map(artifacts.map((artifact) => [artifact.id, artifact])));
+  const keepFile = (result, file) => dependencies.has(result.id) && result.type !== "delivery.bundle" && isValuableFile(file);
   const files = results.filter((result) => !keep.has(result.id)).flatMap((result) => result.files
-    .filter((file) => file.available)
+    .filter((file) => file.available && !keepFile(result, file))
     .map((file) => ({ resultId: result.id, fileId: file.id, runId: result.createdByRun, path: file.path,
       sizeBytes: file.sizeBytes, sha256: file.sha256 ?? null })));
   return {
@@ -69,7 +117,9 @@ export async function planProjectFinish(store, projectId) {
       deliveryResultId: final.id,
       sourceResultId: source.id,
       files: [...final.files, ...source.files].filter((file) => file.available).length,
-      bytes: [...final.files, ...source.files].filter((file) => file.available).reduce((total, file) => total + file.sizeBytes, 0)
+      bytes: [...final.files, ...source.files].filter((file) => file.available).reduce((total, file) => total + file.sizeBytes, 0),
+      assets: results.filter((result) => !keep.has(result.id)).flatMap((result) => result.files
+        .filter((file) => file.available && keepFile(result, file)).map((file) => ({ resultId: result.id, fileId: file.id, name: file.name, sizeBytes: file.sizeBytes })))
     },
     release: {
       results: new Set(files.map((file) => file.resultId)).size,

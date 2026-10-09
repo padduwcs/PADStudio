@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   creativeReviewStatus, feedbackAnchorText, feedbackForSegment, productionRenderOptions, segmentAtTime,
-  defaultVideoRevision, defaultVideoRender
+  defaultVideoRevision, defaultVideoRender, previewClipDescription
 } from "../ui/production-view.js";
 import { readFile } from "node:fs/promises";
 
@@ -125,4 +125,13 @@ test("missing media does not hide an older available preview or invent a playabl
     { resultId: "available", files: [{ id: "primary", available: true }] },
     { resultId: "missing", files: [{ id: "primary", available: false }] }
   ] }).resultId, "available");
+});
+
+test("animation preview labels the exact source interval and frame range", () => {
+  assert.equal(previewClipDescription({ range: { startFrame: 48, endFrame: 95 }, clip: { frameRate: 24 } }), "2s–4s · frame 48–95");
+});
+
+test("animation preview remains honest when timing metadata is incomplete", () => {
+  assert.equal(previewClipDescription({ range: { startFrame: 12, endFrame: 23 } }), "frame 12–23");
+  assert.equal(previewClipDescription({}), "Đoạn preview ngắn");
 });

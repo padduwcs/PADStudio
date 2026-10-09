@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -31,7 +31,7 @@ async function completedRun(store, { type = "media.metadata", files = { "clip.mp
     await mkdir(join(path, ".."), { recursive: true });
     await writeFile(path, content);
     registered.push({ id: name.replace(/[^a-z0-9]/gi, "-"), role: "primary", path: `outputs/${run.id}/${name}`,
-      name, mediaType: "video", sizeBytes: Buffer.byteLength(content) });
+      name, mediaType: /.wav$/.test(name) ? "audio" : /.tsx$/.test(name) ? "text/tsx" : "video", sizeBytes: Buffer.byteLength(content) });
   }
   await store.commitRunOutputWorkspace(output);
   const result = await store.addResult("demo", {
@@ -162,4 +162,30 @@ test("after finishing, the observer shows only what still exists and reports a h
   assert.ok(ids.includes(final.result.id) && ids.includes(delivery.result.id));
   const health = (await reader.readObserverSection("demo", "health")).health;
   assert.ok(!health.issues.some((issue) => ["missing_result_files", "blocked_active_production"].includes(issue.code)));
+});
+
+test("audio and text the final render was made from survive; video and image intermediates do not", async (t) => {
+  const { store, root } = await fixture(t);
+  const narration = await completedRun(store, { type: "audio.tts", files: { "narration.wav": "voice" } });
+  const script = await completedRun(store, { type: "animation.source-package", files: { "Scene.tsx": "code" } });
+  const clip = await completedRun(store, { type: "animation.render", files: { "clip.mp4": "clip-bytes" },
+    data: { sourceResultId: script.result.id } });
+  const unrelated = await completedRun(store, { type: "audio.tts", files: { "old-take.wav": "old-voice" } });
+  const final = await completedRun(store, { files: { "final.mp4": "final-bytes" }, data: { narrationResultId: narration.result.id } });
+  const decision = await store.recordDecision("demo", { resultId: final.result.id, outcome: "accepted" });
+  await completedRun(store, { type: "delivery.bundle", files: { "video/output.mp4": "final-bytes" },
+    data: { sourceResultId: final.result.id, approvalDecisionId: decision.id } });
+  // The final render also used the animation clip.
+  const finalRecord = JSON.parse(await readFile(join(root, "results", final.result.id + ".json"), "utf8"));
+  finalRecord.inputResults = [clip.result.id];
+  await writeFile(join(root, "results", final.result.id + ".json"), JSON.stringify(finalRecord));
+
+  const plan = await planProjectFinish(store, "demo");
+  assert.deepEqual(plan.keep.assets.map((asset) => asset.name).sort(), ["Scene.tsx", "narration.wav"]);
+  await applyProjectFinish(store, "demo");
+  const byId = new Map((await store.readResults("demo")).map((result) => [result.id, result]));
+  assert.ok(byId.get(narration.result.id).files.every((file) => file.available), "narration is kept");
+  assert.ok(byId.get(script.result.id).files.every((file) => file.available), "animation source is kept");
+  assert.ok(byId.get(clip.result.id).files.every((file) => file.released), "the intermediate clip is released");
+  assert.ok(byId.get(unrelated.result.id).files.every((file) => file.released), "audio the final never used is released");
 });

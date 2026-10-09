@@ -90,8 +90,6 @@ test("observer endpoints expose context and serve registered byte ranges", async
   const { port } = server.address();
   const pageResponse = await fetch(`http://127.0.0.1:${port}/`);
   const appResponse = await fetch(`http://127.0.0.1:${port}/app.js`);
-  const reviewInspectionResponse = await fetch(`http://127.0.0.1:${port}/review-inspection.js`);
-  const sourceViewResponse = await fetch(`http://127.0.0.1:${port}/source-analysis-view.js`);
   const stylesResponse = await fetch(`http://127.0.0.1:${port}/styles.css`);
   const listResponse = await fetch(`http://127.0.0.1:${port}/api/projects`);
   const listBody = await listResponse.json();
@@ -103,23 +101,18 @@ test("observer endpoints expose context and serve registered byte ranges", async
   });
 
   assert.equal(pageResponse.status, 200);
-  assert.equal(reviewInspectionResponse.status, 200);
-  assert.match(await reviewInspectionResponse.text(), /reviewInspectionLabel/);
   const pageBody = await pageResponse.text();
   assert.match(pageBody, /id="theatre"/);
-  assert.match(pageBody, /id="source-analysis-view"/);
+  assert.match(pageBody, /id="sources"/);
   assert.match(pageBody, /id="library-grid"/);
   assert.equal(appResponse.status, 200);
   const appBody = await appResponse.text();
   assert.match(appBody, /renderTheatre/);
   assert.match(appBody, /createLibrary/);
-  assert.match(appBody, /createDetails/);
-  assert.equal(sourceViewResponse.status, 200);
-  assert.match(await sourceViewResponse.text(), /renderSourceAnalysis/);
   assert.equal(stylesResponse.status, 200);
   const stylesBody = await stylesResponse.text();
   assert.match(stylesBody, /\.theatre\b/);
-  assert.match(stylesBody, /\.result-decision/);
+  assert.match(stylesBody, /\.chapter\b/);
   assert.equal(listResponse.status, 200);
   assert.deepEqual(listBody.projects.map((project) => project.id), ["coffee-video"]);
   assert.equal(contextResponse.status, 200);
@@ -233,14 +226,3 @@ test("web server exposes no project mutation or chat endpoint", async (t) => {
   }
 });
 
-test("observer serves the creative direction module as JavaScript", async (t) => {
-  const workspace = await temporaryDirectory(t);
-  const rootDir = join(workspace, "projects");
-  const server = createPadStudioServer({ reader: new ProjectReader(rootDir) });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  t.after(() => new Promise((resolve) => server.close(resolve)));
-  const response = await fetch(`http://127.0.0.1:${server.address().port}/creative-direction-view.js`);
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type"), /^text\/javascript/);
-  assert.match(await response.text(), /buildCreativeObserverModel/);
-});

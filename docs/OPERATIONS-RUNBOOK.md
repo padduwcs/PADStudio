@@ -59,8 +59,8 @@ trạng thái là `integrity_failure` và lệnh thoát với mã 2). Chạy l�
     npm run project:finish -- <project-id> | --all           # kế hoạch: giữ gì, phát hành gì
     npm run project:finish -- <project-id> | --all --apply   # thực sự phát hành
 
-Với project đã có Delivery và quyết định duyệt, giữ nguyên Delivery mới nhất và Result nguồn của nó, phát hành toàn bộ file của mọi Result
-khác. Không bao giờ chạm tới bản ghi (Result/Run/decision/artifact/review), `inputs/` hay Delivery. Lệnh ghi `releases/<id>.json` **trước khi**
+Với project đã có Delivery và quyết định duyệt, giữ nguyên Delivery mới nhất và Result nguồn của nó, cùng audio và văn bản (lời đọc, nhạc, kịch bản, mã nguồn hoạt họa)
+của mọi thứ bản cuối được làm từ đó; phát hành file còn lại (video/ảnh trung gian, frame, QA, phân tích). Không bao giờ chạm tới bản ghi (Result/Run/decision/artifact/review), `inputs/` hay Delivery. Lệnh ghi `releases/<id>.json` **trước khi**
 xóa, nên một file vắng mặt sau đó được biết là cố ý (`released`) chứ không phải hỏng; `padstudio:doctor` và health không báo nó. Từ chối
 khi chưa có Delivery nguyên vẹn (SHA-256), thiếu quyết định duyệt hoặc còn Run đang chạy. Không hoàn tác được: bản đã phát hành chỉ còn
 trong Delivery.

@@ -132,7 +132,8 @@ phát triển codebase khi phạm vi đó đã được xác nhận.
    bị thiếu/hỏng hoặc người dùng yêu cầu một biến thể/chuẩn xuất khác.
 7. Ngay khi Delivery đã được tạo, chạy `npm run project:finish -- <project-id>` (kế hoạch, thường không cần đọc kỹ) rồi
    `npm run project:finish -- <project-id> --apply`. Lệnh giữ nguyên Delivery mới nhất cùng Result nguồn của nó và giải phóng
-   file của mọi Result khác (bản nháp, preview, frame, audio trung gian); bản ghi, quyết định và `inputs/` giữ nguyên. Lệnh tự từ chối
+   file của mọi Result khác (bản nháp, preview, video và ảnh trung gian); vẫn giữ audio và văn bản mà bản cuối được làm ra (lời đọc, nhạc, mã nguồn
+   hoạt họa). Bản ghi, quyết định và `inputs/` giữ nguyên. Lệnh tự từ chối
    khi chưa có Delivery nguyên vẹn, thiếu quyết định duyệt hoặc còn Run đang chạy. Sau đó báo người dùng exact Delivery Result.
    Nếu người dùng muốn sửa tiếp, làm từ Delivery và tư liệu nhập; các Result trung gian không còn để render lại.
 

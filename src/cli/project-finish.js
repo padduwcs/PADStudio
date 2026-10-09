@@ -22,7 +22,7 @@ function brief(result) {
   if (result.status === "not_finishable") return result;
   const { files: _files, ...rest } = result;
   return { ...rest, release: { ...result.release, size: formatBytes(result.release.bytes) },
-    keep: { ...result.keep, size: formatBytes(result.keep.bytes) } };
+    keep: { ...result.keep, assets: result.keep.assets.length, size: formatBytes(result.keep.bytes) } };
 }
 
 async function runOne(store, projectId, apply) {

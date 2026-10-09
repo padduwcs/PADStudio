@@ -285,11 +285,7 @@ mẫu r2 có reuse 6/7 đoạn, exact user approval và workspace observer chỉ
 creative. Mốc Đợt 2 đạt 138/138 tại thời điểm đó; số test hiện hành nằm ở
 [PADSTUDIO-DEVELOPMENT-STATUS.md](docs/build/PADSTUDIO-DEVELOPMENT-STATUS.md).
 
-```powershell
-npm run creative:acceptance -- --project phase2-brute-force-pilot --report reports/phase2-creative-direction-acceptance.json
-```
-
-Kết quả và giới hạn: [Gói D](docs/build/history/CREATIVE-DIRECTION-PACKAGE-D.md) và
+Lệnh nghiệm thu Đợt 2 (`creative:acceptance`) đã được gỡ cùng giao diện creative cũ; kết quả và giới hạn: [Gói D](docs/build/history/CREATIVE-DIRECTION-PACKAGE-D.md) và
 [Gói E](docs/build/history/CREATIVE-DIRECTION-PACKAGE-E.md).
 
 ## Source Understanding — gói B–F
@@ -430,7 +426,6 @@ render/review, không gọi provider trả phí. Trạng thái và kế hoạch 
 ```powershell
 npm run tts:acceptance
 npm run assets:acceptance
-npm run creative:acceptance
 ```
 
 ## Đợt 4 — composition
