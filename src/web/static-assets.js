@@ -1,5 +1,5 @@
 import { readdirSync, statSync } from "node:fs";
-import { createReadStream } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { extname, join, relative, sep } from "node:path";
 
 const CONTENT_TYPES = Object.freeze({
@@ -45,8 +45,12 @@ export function buildStaticAssets(uiDirectory) {
   return assets;
 }
 
-/** Send one listed asset with a validator, so reloads of unchanged files cost a 304. */
-export function sendStaticAsset(request, response, asset) {
+/**
+ * Send one listed asset with a validator, so reloads of unchanged files cost a 304. Assets are small
+ * (the interface has no bundles or media), so the file is read whole and written once: a slow reader
+ * can never leave a half-sent stream behind.
+ */
+export async function sendStaticAsset(request, response, asset) {
   const info = statSync(asset.path);
   const etag = `W/"${info.size.toString(16)}-${Math.floor(info.mtimeMs).toString(16)}"`;
   const headers = {
@@ -59,8 +63,7 @@ export function sendStaticAsset(request, response, asset) {
     response.writeHead(304, headers);
     return response.end();
   }
-  response.writeHead(200, { ...headers, "Content-Length": info.size });
-  const stream = createReadStream(asset.path);
-  stream.on("error", () => response.destroy());
-  stream.pipe(response);
+  const content = await readFile(asset.path);
+  response.writeHead(200, { ...headers, "Content-Length": content.length });
+  response.end(content);
 }

@@ -115,7 +115,7 @@ function sendMediaFile(request, response, input) {
 
 export function createPadStudioServer({ reader, staticDirectory = uiDirectory }) {
   const staticAssets = buildStaticAssets(staticDirectory);
-  return createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, "http://127.0.0.1");
 
@@ -197,7 +197,7 @@ export function createPadStudioServer({ reader, staticDirectory = uiDirectory })
       }
 
       if (request.method === "GET" && staticAssets.has(url.pathname)) {
-        return sendStaticAsset(request, response, staticAssets.get(url.pathname));
+        return await sendStaticAsset(request, response, staticAssets.get(url.pathname));
       }
 
       return sendJson(response, 404, { error: "Không tìm thấy." });
@@ -225,6 +225,10 @@ export function createPadStudioServer({ reader, staticDirectory = uiDirectory })
       return sendJson(response, 500, { error: error.message || "Đã có lỗi không xác định." });
     }
   });
+  // The observer only talks to the local browser, which polls every couple of seconds. A longer idle window than
+  // Node's 5 s default stops a slow client from reusing a connection the server is just closing.
+  server.keepAliveTimeout = 30_000;
+  return server;
 }
 
 async function main() {
