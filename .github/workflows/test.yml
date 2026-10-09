@@ -14,9 +14,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
 
@@ -34,5 +34,7 @@ jobs:
       - name: Static checks
         run: npm run check
 
+      # The spec reporter writes the usual log; the GitHub reporter turns each failing test into an annotation,
+      # which the run page and the public API show without the admin-only log download.
       - name: Run tests
-        run: npm test
+        run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./scripts/lib/github-test-reporter.mjs --test-reporter-destination=stdout

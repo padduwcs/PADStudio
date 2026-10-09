@@ -90,14 +90,20 @@ function assertSettingsWrite(request) {
   }
 }
 
+// A body over the limit is still read to the end before answering 413. Stopping early would destroy the socket
+// while the browser is still sending, and on Windows the reset can arrive before the 413 does. Only a body far
+// beyond any settings payload is cut off.
+const MAX_DRAINED_BODY = 1024 * 1024;
+
 async function readJsonBody(request) {
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > MAX_SETTINGS_BODY) throw new RequestError(413, "Nội dung cài đặt quá lớn.");
-    chunks.push(chunk);
+    if (size > MAX_DRAINED_BODY) throw new RequestError(413, "Nội dung cài đặt quá lớn.");
+    if (size <= MAX_SETTINGS_BODY) chunks.push(chunk);
   }
+  if (size > MAX_SETTINGS_BODY) throw new RequestError(413, "Nội dung cài đặt quá lớn.");
   try {
     return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
   } catch {
