@@ -30,7 +30,12 @@ const staticFiles = {
   "/delivery-view.js": { file: "delivery-view.js", type: "text/javascript; charset=utf-8" },
   "/health-view.js": { file: "health-view.js", type: "text/javascript; charset=utf-8" },
   "/creative-direction-view.js": { file: "creative-direction-view.js", type: "text/javascript; charset=utf-8" },
-  "/styles.css": { file: "styles.css", type: "text/css; charset=utf-8" }
+  "/styles.css": { file: "styles.css", type: "text/css; charset=utf-8" },
+  "/fonts/manrope-variable.ttf": { file: "fonts/manrope-variable.ttf", type: "font/ttf" },
+  "/brand/padstudio-emblem-dark.png": { file: "brand/padstudio-emblem-dark.png", type: "image/png" },
+  "/brand/padstudio-signature-dark.png": { file: "brand/padstudio-signature-dark.png", type: "image/png" },
+  "/brand/padstudio-emblem-transparent.png": { file: "brand/padstudio-emblem-transparent.png", type: "image/png" },
+  "/brand/favicon.svg": { file: "brand/favicon.svg", type: "image/svg+xml" }
 };
 
 const previewContentTypes = {

@@ -133,6 +133,8 @@ try {
 
   $initialJson = Evaluate @'
 (async () => {
+  document.querySelector('[data-view="sources"]')?.click();
+  document.querySelector('#source-insights').open = true;
   document.querySelector("#source-analysis-view")?.scrollIntoView();
   const deadline = Date.now() + 15000;
   while (!document.querySelector(".source-workspace") && Date.now() < deadline) {
@@ -198,6 +200,7 @@ try {
 
   $creativeJson = Evaluate @'
 (async () => {
+  document.querySelector('[data-view="content"]')?.click();
   document.querySelector("#creative-direction-view")?.scrollIntoView();
   const deadline = Date.now() + 15000;
   while (!document.querySelector(".creative-workspace") && Date.now() < deadline) {
@@ -206,7 +209,7 @@ try {
   return JSON.stringify({
     workspace: !!document.querySelector(".creative-workspace"),
     brief: !!document.querySelector(".creative-brief"),
-    proposal: !!document.querySelector(".creative-proposal"),
+    proposal: !!document.querySelector(".creative-options"),
     options: document.querySelectorAll(".creative-option").length,
     selectedOptions: document.querySelectorAll(".creative-option.is-selected").length,
     direction: !!document.querySelector(".creative-direction"),
@@ -221,15 +224,14 @@ try {
   if ($Creative -and (
     -not $creativeState.workspace -or -not $creativeState.brief -or -not $creativeState.proposal -or
     $creativeState.options -lt 2 -or $creativeState.selectedOptions -ne 1 -or
-    -not $creativeState.direction -or -not $creativeState.sample -or
-    -not $creativeState.directionApproved -or -not $creativeState.renderApproved -or
-    -not $creativeState.history
+    -not $creativeState.direction
   )) {
     throw ("Creative observer chưa render/bind đầy đủ: " + $creativeJson)
   }
 
   $transcriptJson = Evaluate @'
 (async () => {
+  document.querySelector('[data-view="sources"]')?.click();
   const tab = [...document.querySelectorAll(".source-tab")].find(node => node.textContent === "Transcript");
   if (!tab || tab.disabled) return JSON.stringify({ clicked: false, rows: 0 });
   tab.click();

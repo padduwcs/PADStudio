@@ -27,7 +27,9 @@ function Invoke-BrowserSmokeEvaluation {
       }
       return $response.result.value
     } catch {
-      $contextPending = $_.Exception.Message -like "*Cannot find default execution context*"
+      $contextPending =
+        $_.Exception.Message -like "*Cannot find default execution context*" -or
+        $_.Exception.Message -like "*Execution context was destroyed*"
       if (-not $contextPending -or [DateTime]::UtcNow -ge $deadline) { throw }
       Start-Sleep -Milliseconds 100
     }

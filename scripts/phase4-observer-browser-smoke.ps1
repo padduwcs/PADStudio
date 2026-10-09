@@ -115,29 +115,30 @@ try {
   $result = Evaluate @'
 (async()=>{
  const end=Date.now()+15000;
- while(!document.querySelector('.composition-timeline')&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
- const panel=[...document.querySelectorAll('.sequence-group')].find(p=>p.querySelector('strong')?.textContent==='pilot-preview')?.querySelector('.sequence-panel');
+ while(!document.querySelector('.chapter-strip')&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
+ const panel=[...document.querySelectorAll('.sequence-group')].find(p=>p.dataset.sequenceKey==='pilot-preview')?.querySelector('.sequence-panel');
  if(!panel)throw new Error('Missing current pilot panel');
- const timeline=panel.querySelector('.composition-timeline'), video=panel.querySelector('video'), slider=timeline?.querySelector('input');
- if(!timeline||!video||!slider||timeline.querySelectorAll('.timeline-bar').length<3)throw new Error('Missing timeline/media');
+ const timeline=[...document.querySelectorAll('.sequence-chapters')].find(p=>p.dataset.sequenceKey==='pilot-preview')?.querySelector('.chapter-strip'), video=panel.querySelector('video');
+ if(!timeline||!video||timeline.querySelectorAll('.chapter-button').length<3)throw new Error('Missing chapters/media');
+ timeline.closest('details').open=true;
  while(video.readyState<1&&Date.now()<end)await new Promise(r=>setTimeout(r,100));
- slider.value='2';slider.dispatchEvent(new Event('input',{bubbles:true}));
+ video.currentTime=2;
  await new Promise(r=>setTimeout(r,300));
  if(Math.abs(video.currentTime-2)>0.2)throw new Error('Timeline seek failed');
- const imageBars=timeline.querySelector('.timeline-row').querySelectorAll('button');
+ const imageBars=timeline.querySelectorAll('.chapter-button');
  imageBars[1].click();await new Promise(r=>setTimeout(r,300));
  if(Math.abs(video.currentTime-8)>0.2)throw new Error('Segment seek failed');
  video.dataset.phase4='preserved';await new Promise(r=>setTimeout(r,3500));
  if(!document.querySelector('video[data-phase4="preserved"]'))throw new Error('Polling replaced player');
  if(timeline.querySelector('[draggable="true"]'))throw new Error('Timeline must be read-only');
- if(timeline.textContent.includes('?')||!timeline.querySelector('h5').textContent.includes('ch\u1ec9 quan s\u00e1t'))throw new Error('Timeline Vietnamese text is corrupted');
+ if(!timeline.getAttribute('aria-label').includes('Các đoạn'))throw new Error('Chapter label is missing');
  return true;
 })()
 '@
  foreach($width in @(390,768,1440)) {
    Send-Cdp "Emulation.setDeviceMetricsOverride" @{width=$width;height=900;deviceScaleFactor=1;mobile=$false} | Out-Null
    if (Evaluate 'document.documentElement.scrollWidth > document.documentElement.clientWidth') {throw "Overflow at $width"}
-   Evaluate "[...document.querySelectorAll('.sequence-group')].find(p=>p.querySelector('strong')?.textContent==='pilot-preview')?.querySelector('.composition-timeline')?.scrollIntoView({block:'center'})" | Out-Null
+   Evaluate "[...document.querySelectorAll('.sequence-chapters')].find(p=>p.dataset.sequenceKey==='pilot-preview')?.querySelector('.chapter-strip')?.scrollIntoView({block:'center'})" | Out-Null
    $capture = Send-Cdp "Page.captureScreenshot" @{format="png"}
    $captureDirectory = Join-Path $workspace ".cache/phase4-acceptance"
    [IO.Directory]::CreateDirectory($captureDirectory) | Out-Null

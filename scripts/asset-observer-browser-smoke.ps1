@@ -114,6 +114,9 @@ try {
 
   $result = Evaluate @'
 (async()=>{
+ document.querySelector('[data-view="activity"]')?.click();
+ const archive=document.querySelector('#result-details');
+ if(archive)archive.open=true;
  document.querySelector("#result-list")?.scrollIntoView({block:"center"});
  const end=Date.now()+15000;
  while((!document.querySelector(".result-audio")||!document.querySelector(".result-image"))&&Date.now()<end)await new Promise(r=>setTimeout(r,100));

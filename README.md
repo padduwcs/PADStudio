@@ -1,6 +1,12 @@
 # PADStudio
 
+<p><img src="ui/brand/padstudio-emblem-transparent.png" alt="PADStudio" width="280" /></p>
+
+**Precise Animated Demonstration Studio**
+
 PADStudio là kho project và bộ thực thi local cho quy trình làm video do Agent dẫn dắt. Người dùng chat với Agent ở host bên ngoài; web PADStudio là observer chỉ đọc. Project giữ input, artifact có revision, workflow, Run/Result, quyết định, feedback, QA và provenance để có thể mở lại và tiếp tục.
+
+[Bộ nhận diện PADStudio](ui/brand/README.md) dùng chung cho web và tài liệu của dự án.
 
 ## Dùng PADStudio
 

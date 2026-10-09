@@ -1,13 +1,21 @@
-import { renderProduction, clearProduction } from "./production-view.js";
+import { renderProduction, clearProduction, viewerProjectState, createBrandArtwork } from "./production-view.js";
 import { renderSourceAnalysis, clearSourceAnalysis } from "./source-analysis-view.js";
 import { renderCreativeDirection, clearCreativeDirection } from "./creative-direction-view.js";
 import { renderDelivery, clearDelivery } from "./delivery-view.js";
 import { renderHealth, clearHealth } from "./health-view.js";
-import { renderAnimation, clearAnimation } from "./animation-view.js";
+import { renderAnimation, clearAnimation, previewClipDescription } from "./animation-view.js";
 import { reviewInspectionLabel } from "./review-inspection.js";
 
 const elements = {
+  search: document.querySelector("#project-search"),
+  projectCount: document.querySelector("#project-count"),
+  projectState: document.querySelector("#project-state"),
+  featuredVideo: document.querySelector("#video-overview"),
+  connection: document.querySelector("#connection-status"),
+  error: document.querySelector("#app-error"),
   production: document.querySelector("#production-view"),
+  videoControls: document.querySelector("#video-controls"),
+  videoChapters: document.querySelector("#video-chapters"),
   animation: document.querySelector("#animation-view"),
   delivery: document.querySelector("#delivery-view"),
   health: document.querySelector("#health-view"),
@@ -27,30 +35,240 @@ const elements = {
 };
 
 let selectedProjectId = new URLSearchParams(window.location.search).get("project");
+if (!selectedProjectId) {
+  try { selectedProjectId = localStorage.getItem("padstudio-project"); } catch { /* Optional UI preference. */ }
+}
 let selectedItemPath = null;
 let renderedPreviewKey = null;
 let renderedResultsKey = null;
+const viewLabels = { video: "Video", sources: "Tư liệu", content: "Nội dung", activity: "Chi tiết dự án" };
+const viewSections = { video: ["animation", "production", "delivery"], sources: ["source", "activity"], content: ["creative", "animation"], activity: ["activity", "health"] };
+let currentView = new URLSearchParams(window.location.search).get("view") || "video";
+if (!viewLabels[currentView]) currentView = "video";
+let featuredSignature = null;
+let animationContext = null;
+let productionContext = null;
+let activityContext = null;
+let summaryContext = null;
+
+function node(tag, text, className) {
+  const element = document.createElement(tag);
+  if (text !== undefined) element.textContent = text;
+  if (className) element.className = className;
+  return element;
+}
+
+function setConnection(connected) {
+  elements.connection.classList.toggle("is-connected", connected);
+  elements.connection.classList.toggle("is-disconnected", !connected);
+  elements.connection.lastElementChild.textContent = connected ? "Đã đồng bộ" : "Mất kết nối";
+}
+
+function closeSidebar({ restoreFocus = false } = {}) {
+  document.body.classList.remove("sidebar-open");
+  document.querySelector("#sidebar-backdrop").hidden = true;
+  document.querySelector("#sidebar-toggle").setAttribute("aria-expanded", "false");
+  document.querySelector("#main-content").inert = false;
+  document.querySelector("#project-pane").inert = true;
+  document.querySelector("#project-pane").hidden = true;
+  if (restoreFocus) document.querySelector("#sidebar-toggle").focus();
+}
+
+function setView(view, { updateUrl = true, focus = false } = {}) {
+  if (!viewLabels[view]) view = "video";
+  currentView = view;
+  document.body.dataset.workspaceView = view;
+  document.querySelector(view === "video" ? "#video-heading-slot" : "#page-heading-slot")
+    .append(document.querySelector(".project-heading"));
+  for (const button of document.querySelectorAll(".workspace-tab")) {
+    const selected = button.dataset.view === view;
+    button.classList.toggle("is-active", selected);
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected || (["activity", "content"].includes(view) && button.dataset.view === "video") ? 0 : -1;
+    if (selected && focus) button.focus();
+  }
+  for (const panel of document.querySelectorAll(".view-panel")) panel.hidden = panel.id !== "view-" + view;
+  document.querySelector("#project-menu").open = false;
+  if (view === "activity") document.querySelector("#project-details-heading").focus();
+  if (view === "content") elements.title.focus();
+  document.querySelector("#view-label").textContent = viewLabels[view];
+  for (const media of document.querySelectorAll(".view-panel[hidden] video, .view-panel[hidden] audio")) media.pause();
+  if (view === "sources" && activityContext) {
+    clearSectionPlaceholder(elements.resourceList);
+    renderResources(activityContext);
+  }
+  if (view === "activity" && activityContext) renderRuns(activityContext);
+  if (updateUrl) {
+    const location = new URL(window.location.href);
+    location.searchParams.set("view", view);
+    window.history.replaceState(null, "", location);
+  }
+  if (selectedProjectId) {
+    const generation = projectsById.get(selectedProjectId)?.generation;
+    if (generation) Promise.all(viewSections[view].map((section) => loadSection(section, generation))).catch((error) => {
+      if (error.name !== "AbortError") showError(error);
+    });
+  }
+}
+
+const watchedPlayers = new WeakSet();
+function activeViewer() {
+  return document.querySelector('#production-view .sequence-group:not([hidden]) video') ??
+    document.querySelector('#video-overview:not([hidden]) video');
+}
+function syncViewer() {
+  const player = activeViewer();
+  const button = document.querySelector("#watch-button");
+  button.disabled = !player || !!player.error;
+  const playing = player && !player.paused && !player.ended;
+  button.querySelector("span").textContent = playing ? "Tạm dừng" : "Phát video";
+  button.querySelector("path").setAttribute("d", playing ? "M8 5v14M16 5v14" : "m9 5 11 7-11 7z");
+  button.classList.toggle("is-playing", !!playing);
+  const layout = document.querySelector(".viewer-layout");
+  layout.classList.toggle("is-empty", !player);
+  layout.classList.toggle("is-wide", !!player && !player.closest(".screening-stage")?.classList.contains("is-portrait"));
+  layout.classList.toggle("is-comparing", document.querySelectorAll('.sequence-group:not([hidden]) .sequence-panel').length > 1);
+  document.querySelector("#video-versions").hidden = !elements.videoControls.childElementCount;
+  const revision = elements.videoControls.querySelector('.sequence-controls:not([hidden]) select[aria-label="Chọn bản video"]');
+  const label = revision?.selectedOptions[0]?.textContent ?? elements.videoControls.querySelector(".featured-caption > div > span")?.textContent ?? "";
+  document.querySelector("#video-version-label").textContent = label;
+  syncProjectState();
+  if (player && !watchedPlayers.has(player)) {
+    watchedPlayers.add(player);
+    for (const event of ["play", "pause", "ended", "error"]) player.addEventListener(event, syncViewer);
+  }
+}
+
+function syncProjectState() {
+  const state = viewerProjectState(summaryContext, activityContext);
+  const label = state?.label ?? "";
+  elements.projectState.hidden = !state;
+  elements.projectState.dataset.state = state?.kind ?? "";
+  if (elements.projectState.textContent !== label) elements.projectState.textContent = label;
+  if (!selectedProjectId) return;
+  const working = state?.kind === "working";
+  for (const empty of document.querySelectorAll("#view-video .screening-empty")) {
+    empty.classList.toggle("is-working", working);
+    empty.querySelector("h3").textContent = working ? "Video đang thành hình" : "Chưa có video";
+    let message = empty.querySelector(".screening-message");
+    if (working && !message) {
+      message = node("p", "Bản xem thử sẽ xuất hiện ở đây.", "screening-message");
+      empty.querySelector("h3").after(message);
+    }
+    if (message) message.hidden = !working;
+  }
+}
+document.querySelector("#production-view").addEventListener("viewerchange", syncViewer);
+document.querySelector("#watch-button").addEventListener("click", async () => {
+  const player = activeViewer();
+  if (!player) return;
+  if (!player.paused && !player.ended) player.pause();
+  else { try { await player.play(); } catch { showError(new Error("Không thể phát video. Hãy thử mở lại dự án.")); } }
+});
+
+function renderFeaturedVideo() {
+  const sequences = productionContext?.production?.sequences ?? [];
+  elements.production.hidden = sequences.length === 0;
+  elements.featuredVideo.hidden = sequences.length > 0;
+  if (sequences.length) { syncViewer(); return; }
+  const compositions = animationContext?.animation?.compositions ?? [];
+  const ordered = [...compositions].sort((a, b) =>
+    Number(b.role === "current") - Number(a.role === "current") || b.revision - a.revision);
+  let selection = null;
+  for (const composition of ordered) {
+    const render = [...(composition.renders ?? [])].reverse().find((result) => result.files.some((file) => file.id === "primary" && file.available));
+    const preview = [...(composition.previews ?? [])].reverse().find((result) => result.files.some((file) => file.available && file.mediaType === "video"));
+    const result = render ?? preview;
+    const file = result?.files.find((file) => file.available && (file.id === "primary" || file.mediaType === "video"));
+    if (file) { selection = { composition, result, file, preview: !render }; break; }
+  }
+  const signature = JSON.stringify([selectedProjectId, selection?.result.resultId, selection?.file.id]);
+  if (signature === featuredSignature) return;
+  featuredSignature = signature;
+  elements.featuredVideo.replaceChildren();
+  elements.videoControls.replaceChildren();
+  if (!selection) {
+    const empty = node("div", undefined, "screening-empty");
+    empty.append(createBrandArtwork(), node("h3", selectedProjectId ? "Chưa có video" : "Chưa có dự án"));
+    if (!selectedProjectId) empty.append(node("p", "Tạo dự án trong cuộc trò chuyện để bắt đầu."));
+    const browse = node("button", "Xem tư liệu", "soft-button");
+    browse.type = "button";
+    browse.addEventListener("click", () => setView("sources", { focus: true }));
+    if (selectedProjectId) empty.append(browse);
+    elements.featuredVideo.append(empty);
+    syncViewer();
+    return;
+  }
+  const { composition, result, file, preview } = selection;
+  const card = node("article", undefined, "featured-film");
+  const stage = node("div", undefined, "screening-stage");
+  stage.style.setProperty("--video-ratio", composition.format.width / composition.format.height);
+  stage.classList.toggle("is-portrait", composition.format.height > composition.format.width);
+  const video = node("video", undefined, "featured-player");
+  video.controls = true;
+  video.playsInline = true;
+  video.preload = "metadata";
+  video.style.aspectRatio = composition.format.width + " / " + composition.format.height;
+  video.setAttribute("aria-label", composition.name);
+  video.src = resultFileUrl(selectedProjectId, result.resultId, file.id);
+  const poster = result.files.find((file) => file.available && file.mediaType?.split("/")[0] === "image");
+  if (poster) video.poster = resultFileUrl(selectedProjectId, result.resultId, poster.id);
+  stage.append(video);
+  card.append(stage);
+  const caption = node("div", undefined, "featured-caption");
+  const title = node("div");
+  title.append(node("span", "Bản " + composition.revision));
+  if (preview) title.append(node("p", previewClipDescription(result), "input-meta"));
+  caption.append(title);
+  elements.videoControls.replaceChildren(caption);
+  if (preview) {
+    const loopLabel = node("label", undefined, "animation-loop-control");
+    const loop = node("input"); loop.type = "checkbox";
+    loop.addEventListener("change", () => { video.loop = loop.checked; });
+    loopLabel.append(loop, document.createTextNode(" Lặp đoạn xem thử"));
+    caption.append(loopLabel);
+  }
+  elements.featuredVideo.append(card);
+  syncViewer();
+}
 
 function renderProjectList(projects) {
+  elements.projectCount.textContent = projects.length;
+  const searchKey = (value) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d").toLocaleLowerCase("vi");
+  const query = searchKey(elements.search.value);
+  const filtered = projects.filter((project) => searchKey(project.title).includes(query)).sort((left, right) =>
+    Number(right.id === selectedProjectId) - Number(left.id === selectedProjectId) ||
+    (Date.parse(right.updatedAt ?? right.createdAt) || 0) - (Date.parse(left.updatedAt ?? left.createdAt) || 0) ||
+    left.title.localeCompare(right.title, "vi")
+  );
   elements.projectList.replaceChildren(
-    ...projects.map((project) => {
+    ...filtered.map((project) => {
       const button = document.createElement("button");
       button.type = "button";
       button.className = project.id === selectedProjectId ? "project-button is-active" : "project-button";
+      button.dataset.projectId = project.id;
+      if (project.id === selectedProjectId) button.setAttribute("aria-current", "true");
+      button.title = project.title;
+      const mark = node("span", undefined, "project-cover");
+      mark.setAttribute("aria-hidden", "true");
+      mark.append(node("span", project.title.slice(0, 1).toUpperCase(), "cover-letter"));
+      const cover = projectCovers.get(project.id);
+      if (cover?.generation === project.generation && cover.url) appendCover(mark, cover.url);
+      const info = node("span", undefined, "project-button-info");
       const title = document.createElement("span");
       title.textContent = project.title;
-      const id = document.createElement("span");
-      id.className = "input-meta";
-      id.textContent = project.id;
-      button.append(title, id);
+      info.append(title);
+      button.append(mark, info);
       button.addEventListener("click", () => {
-        if (project.id === selectedProjectId) return;
+        if (project.id === selectedProjectId) { closeSidebar({ restoreFocus: true }); return; }
         selectedProjectId = project.id;
+        try { localStorage.setItem("padstudio-project", selectedProjectId); } catch { /* Optional UI preference. */ }
         const location = new URL(window.location.href);
         location.searchParams.set("project", project.id);
         window.history.replaceState(null, "", location);
         selectedItemPath = null;
         renderedPreviewKey = null;
+        closeSidebar({ restoreFocus: true });
         renderProjectList([...projectsById.values()]);
         loadSelectedProject(project.generation).catch((error) => {
           if (error.name !== "AbortError") showError(error);
@@ -59,10 +277,76 @@ function renderProjectList(projects) {
       return button;
     })
   );
+  coverObserver.disconnect();
+  for (const button of elements.projectList.querySelectorAll(".project-button")) coverObserver.observe(button);
+  if (!filtered.length) elements.projectList.append(node("p", projects.length ? "Không tìm thấy dự án." : "Chưa có dự án.", "sidebar-empty"));
 }
 
+const projectCovers = new Map();
+const coverQueue = [];
+const queuedCovers = new Set();
+let coverRequests = 0;
+function appendCover(host, url) {
+  if (host.querySelector("img")) return;
+  const image = node("img"); image.alt = ""; image.loading = "lazy"; image.src = url;
+  image.addEventListener("error", () => image.remove(), {once: true});
+  host.append(image);
+}
+async function projectCover(project) {
+  const read = async section => {
+    const response = await fetch(`/api/projects/${encodeURIComponent(project.id)}/observer/${section}`);
+    if (!response.ok) return null;
+    return (await response.json()).context;
+  };
+  const production = await read("production");
+  const sequences = [...(production?.production?.sequences ?? [])].sort((a, b) =>
+    Number(b.active) - Number(a.active) || b.revision - a.revision);
+  for (const sequence of sequences) for (const render of [...sequence.renders].reverse()) {
+    const mainSegment = [...sequence.segments].sort((a, b) => b.durationSeconds - a.durationSeconds)
+      .find(segment => render.segments?.some(frame => frame.id === segment.id && frame.frameFileId));
+    const frameId = render.segments?.find(frame => frame.id === mainSegment?.id)?.frameFileId;
+    const file = render.files.find(file => file.available && file.id === frameId) ??
+      render.files.find(file => file.available && file.mediaType?.split("/")[0] === "image");
+    if (file) return resultFileUrl(project.id, render.resultId, file.id);
+  }
+  const animation = await read("animation");
+  const compositions = [...(animation?.animation?.compositions ?? [])].sort((a, b) =>
+    Number(b.role === "current") - Number(a.role === "current") || b.revision - a.revision);
+  for (const composition of compositions) for (const result of [...(composition.renders ?? []), ...(composition.previews ?? [])].reverse()) {
+    const file = result.files.find(file => file.available && file.mediaType?.split("/")[0] === "image");
+    if (file) return resultFileUrl(project.id, result.resultId, file.id);
+  }
+  return null;
+}
+function drainCoverQueue() {
+  while (coverRequests < 2 && coverQueue.length && document.body.classList.contains("sidebar-open")) {
+    const project = coverQueue.shift();
+    coverRequests++;
+    projectCover(project).then(url => {
+      projectCovers.set(project.id, {generation: project.generation, url});
+      if (projectsById.get(project.id)?.generation !== project.generation) return;
+      for (const button of elements.projectList.querySelectorAll(".project-button")) {
+        if (button.dataset.projectId === project.id && url) appendCover(button.querySelector(".project-cover"), url);
+      }
+    }).catch(() => {}).finally(() => {
+      coverRequests--; queuedCovers.delete(project.id); drainCoverQueue();
+    });
+  }
+}
+const coverObserver = new IntersectionObserver(entries => {
+  for (const entry of entries) {
+    if (!entry.isIntersecting) continue;
+    const project = projectsById.get(entry.target.dataset.projectId);
+    if (!project || queuedCovers.has(project.id) || projectCovers.get(project.id)?.generation === project.generation) continue;
+    queuedCovers.add(project.id); coverQueue.push(project);
+  }
+  drainCoverQueue();
+}, {root: elements.projectList, rootMargin: "100px"});
+
 function showError(error) {
-  elements.checkpoint.textContent = error.message;
+  elements.error.hidden = false;
+  elements.error.querySelector("span").textContent = error.message;
+  setConnection(false);
 }
 
 function inputUrl(projectId, item) {
@@ -130,78 +414,96 @@ function renderPreview(projectId, item) {
   renderedPreviewKey = previewKey;
   elements.inputPreview.replaceChildren();
   if (!item) {
-    elements.inputPreview.textContent = "Chọn một file để xem preview.";
+    elements.inputPreview.append(node("p", "Chưa có tư liệu.", "empty-note"));
     return;
   }
 
-  const url = inputUrl(projectId, item);
-  if (item.mediaType === "image") {
+  const url = item.resultId ? resultFileUrl(projectId, item.resultId, item.fileId) : inputUrl(projectId, item);
+  const heading = node("header", undefined, "asset-heading");
+  const download = node("a", "Tải tư liệu", "asset-download");
+  download.href = url; download.download = item.name;
+  heading.append(node("h2", item.displayName ?? item.name), download);
+  const host = node("div", undefined, "asset-media");
+  elements.inputPreview.append(heading, host);
+  const kind = item.mediaType?.split("/")[0];
+  if (kind === "image") {
     const image = document.createElement("img");
     image.src = url;
     image.alt = item.name;
-    elements.inputPreview.append(image);
+    host.append(image);
     return;
   }
-  if (item.mediaType === "video" || item.mediaType === "audio") {
-    const media = document.createElement(item.mediaType === "video" ? "video" : "audio");
+  if (kind === "video" || kind === "audio") {
+    const media = document.createElement(kind);
     media.src = url;
     media.controls = true;
     media.preload = "metadata";
-    elements.inputPreview.append(media);
+    media.playsInline = true;
+    host.append(media);
     return;
   }
-  elements.inputPreview.textContent = "Trình duyệt chưa có preview cho loại file này.";
+  if (/\.(txt|md|srt|vtt)$/i.test(item.name)) {
+    host.classList.add("asset-document");
+    fetch(url).then(response => { if (!response.ok) throw new Error(); return response.text(); }).then(text => {
+      if (renderedPreviewKey === previewKey) host.append(node("pre", text));
+    }).catch(() => { if (renderedPreviewKey === previewKey) host.append(node("p", "Không thể mở file này.")); });
+  } else if (/\.pdf$/i.test(item.name)) {
+    const frame = node("iframe"); frame.src = url; frame.title = item.name; host.append(frame);
+  } else host.append(node("span", item.name.split(".").at(-1).toUpperCase(), "asset-file-symbol"));
 }
 
 function renderCheckpoint(context) {
   const checkpoint = context.checkpoint;
+  const expanded = elements.checkpoint.querySelector(".project-overview")?.open ?? false;
   elements.checkpoint.replaceChildren();
-  if (!checkpoint) {
-    elements.checkpoint.textContent = "Agent chưa ghi checkpoint cho project này.";
-    return;
+  const current = context.intelligence?.currentWorkItems ?? [];
+  const active = current.find((item) => item.status === "in_progress") ?? current.find((item) => item.status === "awaiting_approval");
+  const summary = node("div", undefined, "context-summary");
+  summary.append(node("span", active ? "Đang thực hiện" : "Mục tiêu dự án", "context-label"), node("p", active?.title ?? checkpoint?.goal ?? "Ý tưởng, tư liệu và bản dựng được lưu cùng dự án của bạn.", "context-goal"));
+  const pending = checkpoint?.pending ?? [];
+  const next = node("div", undefined, "context-next");
+  const stale = context.checkpointFreshness?.status === "stale";
+  const approvals = context.intelligence?.pendingApprovals ?? [];
+  if (approvals.length || (!stale && pending.length)) {
+    next.append(node("span", "Cần bạn xem", "context-label"), node("p", !stale && pending[0] ? pending[0] : `${approvals.length} nội dung đang chờ quyết định.`));
+    next.classList.add("is-waiting");
+  } else if (checkpoint?.next && !stale) {
+    next.append(node("span", "Tiếp theo", "context-label"), node("p", checkpoint.next));
+  } else {
+    next.append(node("span", "Không gian của bạn", "context-label"), node("p", "Xem bản dựng, khám phá tư liệu và theo dõi tiến độ."));
   }
-
-  if (context.checkpointFreshness?.status === "stale") {
-    const warning = document.createElement("div");
-    warning.className = "checkpoint-warning";
-    const kinds = context.checkpointFreshness.newerActivityKinds.join(", ");
-    warning.textContent =
-      `Checkpoint có thể đã cũ: có ${context.checkpointFreshness.newerActivityCount} ` +
-      `hoạt động mới hơn${kinds ? ` (${kinds})` : ""}. Agent cần đọc lại context trước khi tiếp tục.`;
-    elements.checkpoint.append(warning);
+  if (checkpoint) {
+    const details = node("details", undefined, "context-details");
+    details.append(node("summary", "Xem tổng quan"));
+    if (stale) details.append(node("p", "Dự án đã có hoạt động mới sau bản tổng quan này.", "checkpoint-warning"));
+    if (checkpoint.goal) details.append(node("p", checkpoint.goal));
+    for (const [label, values] of [["Ràng buộc", checkpoint.constraints ?? []], ["Đang chờ", pending], ["Tiếp theo", checkpoint.next ? [checkpoint.next] : []]]) {
+      if (!values.length) continue;
+      const group = node("div", undefined, "context-group");
+      const list = node("ul");
+      list.append(...values.map((value) => node("li", value)));
+      group.append(node("strong", label), list);
+      details.append(group);
+    }
+    next.append(details);
   }
-
-  const goal = document.createElement("p");
-  goal.className = "context-goal";
-  goal.textContent = checkpoint.goal;
-  elements.checkpoint.append(goal);
-
-  const groups = [
-    ["Ràng buộc", checkpoint.constraints],
-    ["Đang chờ", checkpoint.pending],
-    ["Tiếp theo", checkpoint.next ? [checkpoint.next] : []]
-  ];
-  for (const [label, values] of groups) {
-    if (!values.length) continue;
-    const group = document.createElement("div");
-    group.className = "context-group";
-    const heading = document.createElement("strong");
-    heading.textContent = label;
-    const list = document.createElement("ul");
-    list.replaceChildren(...values.map((value) => {
-      const item = document.createElement("li");
-      item.textContent = value;
-      return item;
-    }));
-    group.append(heading, list);
-    elements.checkpoint.append(group);
-  }
+  const overview = node("details", undefined, "project-overview");
+  overview.open = expanded;
+  const heading = node("summary");
+  const preview = node("span", approvals.length ? `${approvals.length} nội dung đang chờ bạn xem` : active?.title ?? checkpoint?.goal ?? "Ý tưởng, tư liệu và bản dựng của bạn.", "overview-preview");
+  heading.append(node("strong", "Tổng quan dự án"), preview);
+  overview.append(heading);
+  const body = node("div", undefined, "overview-body");
+  body.append(summary, next);
+  overview.append(body);
+  elements.checkpoint.append(overview);
 }
 
 function renderWorkflow(context) {
   const workflow = context.intelligence?.activeWorkflow;
+  elements.workflow.closest("section").hidden = !workflow;
   if (!workflow) {
-    elements.workflow.textContent = "No active workflow yet.";
+    elements.workflow.textContent = "Chưa có kế hoạch công việc.";
     return;
   }
 
@@ -212,7 +514,8 @@ function renderWorkflow(context) {
   name.textContent = workflow.name;
   const meta = document.createElement("span");
   meta.className = "input-meta";
-  meta.textContent = `revision ${workflow.revision} · ${workflow.status} · ${workflow.changeReason}`;
+  meta.textContent = `Phiên bản ${workflow.revision}`;
+  meta.title = workflow.changeReason;
   identity.append(name, meta);
   const purpose = document.createElement("p");
   purpose.textContent = workflow.purpose;
@@ -228,7 +531,7 @@ function renderWorkflow(context) {
     title.textContent = item.title;
     const status = document.createElement("span");
     status.className = "work-status";
-    status.textContent = item.status.replaceAll("_", " ");
+    status.textContent = { planned: "Dự kiến", ready: "Sẵn sàng", in_progress: "Đang làm", completed: "Hoàn tất", blocked: "Đang chờ", awaiting_approval: "Chờ duyệt", skipped: "Bỏ qua", cancelled: "Đã hủy" }[item.status] ?? item.status;
     top.append(title, status);
     const detail = document.createElement("p");
     detail.textContent = item.purpose;
@@ -240,7 +543,9 @@ function renderWorkflow(context) {
       item.review.required ? `${item.review.perspective} review` : null,
       item.approval !== "auto" ? `approval: ${item.approval}` : null
     ].filter(Boolean).join(" · ");
-    card.append(top, detail, flags);
+    const technical = node("details", undefined, "work-details");
+    technical.append(node("summary", "Chi tiết"), flags);
+    card.append(top, detail, technical);
     return card;
   }));
   elements.workflow.replaceChildren(header, items);
@@ -249,7 +554,7 @@ function renderWorkflow(context) {
 function renderIntelligence(context) {
   const artifacts = context.intelligence?.activeArtifacts ?? [];
   if (!artifacts.length) {
-    elements.artifactList.textContent = "No active understanding artifact yet.";
+    elements.artifactList.textContent = "Chưa có tài liệu.";
   } else {
     elements.artifactList.replaceChildren(...artifacts.map((artifact) => {
       const card = document.createElement("article");
@@ -258,7 +563,8 @@ function renderIntelligence(context) {
       name.textContent = artifact.name;
       const type = document.createElement("span");
       type.className = "input-meta";
-      type.textContent = `${artifact.type} · revision ${artifact.revision}`;
+      type.textContent = `Phiên bản ${artifact.revision}`;
+      type.title = artifact.type;
       const summary = document.createElement("p");
       summary.textContent = artifact.summary;
       card.append(name, type, summary);
@@ -266,13 +572,12 @@ function renderIntelligence(context) {
     }));
   }
   const reviews = context.intelligence?.latestReviews ?? [];
-  const skills = context.intelligence?.relevantSkills ?? [];
   const blocks = [];
   if (reviews.length) {
     const block = document.createElement("div");
     block.className = "intelligence-card";
     const heading = document.createElement("strong");
-    heading.textContent = "Latest reviews";
+    heading.textContent = "Đánh giá gần nhất";
     const list = document.createElement("ul");
     list.replaceChildren(...reviews.map((review) => {
       const item = document.createElement("li");
@@ -283,74 +588,75 @@ function renderIntelligence(context) {
     block.append(heading, list);
     blocks.push(block);
   }
-  if (skills.length) {
-    const block = document.createElement("div");
-    block.className = "intelligence-card";
-    const heading = document.createElement("strong");
-    heading.textContent = "Skills relevant now";
-    const text = document.createElement("p");
-    text.textContent = skills.map((skill) => skill.name).join(" · ");
-    block.append(heading, text);
-    blocks.push(block);
-  }
   elements.reviewList.replaceChildren(...blocks);
 }
 
 function renderResources(context) {
-  const allItems = context.resources.flatMap((resource) => resource.items);
-  if (!allItems.some((item) => item.path === selectedItemPath)) selectedItemPath = null;
-  if (!context.resources.length) {
-    elements.resourceList.textContent = "Chưa có tư liệu.";
-    renderPreview(context.project.id, null);
-    return;
-  }
-
-  elements.resourceList.replaceChildren(...context.resources.map((resource) => {
-    const card = document.createElement("article");
-    card.className = "resource-card";
-    const header = document.createElement("header");
-    const name = document.createElement("strong");
-    name.textContent = resource.name;
-    const meta = document.createElement("span");
-    meta.className = "input-meta";
-    meta.textContent = `${resource.kind} · nguồn: ${resource.source.name} · ${resource.items.length} file${resource.available ? "" : " · thiếu dữ liệu"}`;
-    header.append(name, meta);
-    card.append(header);
-
-    if (!resource.items.length) {
-      const empty = document.createElement("p");
-      empty.className = "empty-note";
-      empty.textContent = "Folder rỗng.";
-      card.append(empty);
-      return card;
+  const allItems = context.resources.flatMap(resource => resource.items.map(item => ({...item,
+    displayName: resource.items.length === 1 ? resource.name : item.name
+  })));
+  const usedResults = new Map();
+  const collect = (value, title) => {
+    if (!value || typeof value !== "object") return;
+    if (value.kind === "result" && typeof value.id === "string") usedResults.set(value.id, title);
+    else for (const child of Object.values(value)) collect(child, title);
+  };
+  if (productionContext?.project.id === context.project.id) {
+    for (const sequence of productionContext.production?.sequences ?? []) {
+      if (!sequence.active) continue;
+      for (const segment of sequence.segments) collect(segment, segment.title);
+      collect(sequence.music, "Nhạc nền"); collect(sequence.audio, "Âm thanh");
     }
-
-    const items = document.createElement("div");
-    items.className = "resource-items";
-    items.replaceChildren(...resource.items.map((item) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = item.path === selectedItemPath ? "input-button is-active" : "input-button";
-      const path = document.createElement("span");
-      path.className = "input-name";
-      path.textContent = item.relativePath;
-      const itemMeta = document.createElement("span");
-      itemMeta.className = "input-meta";
-      itemMeta.textContent = `${item.mediaType} · ${formatSize(item.sizeBytes)}${item.available ? "" : " · thiếu file"}`;
-      button.disabled = !item.available;
-      button.append(path, itemMeta);
-      button.addEventListener("click", () => {
-        selectedItemPath = item.path;
-        renderedPreviewKey = null;
-        renderResources(context);
-      });
-      return button;
-    }));
-    card.append(items);
-    return card;
-  }));
-
-  renderPreview(context.project.id, allItems.find((item) => item.path === selectedItemPath));
+  }
+  for (const result of context.results ?? []) {
+    if (result.type !== "media.acquired" && !usedResults.has(result.id)) continue;
+    if (result.type === "audio.tts") continue;
+    const file = result.files?.find(file => file.id === "primary");
+    const kind = file?.mediaType?.split("/")[0];
+    if (!file || !["image", "video", "audio"].includes(kind)) continue;
+    allItems.push({path: "result:" + result.id + ":" + file.id, name: file.name,
+      displayName: result.type === "audio.tts" ? usedResults.get(result.id) + " — lời đọc" : result.name,
+      mediaType: kind, available: file.available !== false, modifiedAt: result.createdAt,
+      resultId: result.id, fileId: file.id});
+  }
+  if (!allItems.some(item => item.path === selectedItemPath && item.available)) {
+    selectedItemPath = (allItems.find(item => item.available && ["video", "image", "audio"].includes(item.mediaType?.split("/")[0]))
+      ?? allItems.find(item => item.available))?.path ?? null;
+  }
+  document.querySelector("#all-resources").classList.toggle("is-empty", !allItems.length);
+  elements.resourceList.replaceChildren();
+  for (const item of allItems) {
+    const button = node("button", undefined, "input-button");
+    button.type = "button"; button.disabled = !item.available;
+    button.dataset.path = item.path; button.dataset.searchText = item.displayName;
+    const mark = node("span", {video: "▶", audio: "♪", image: "▧"}[item.mediaType?.split("/")[0]] ?? "≡", "asset-thumb");
+    mark.setAttribute("aria-hidden", "true");
+    if (item.available && item.mediaType?.split("/")[0] === "image") {
+      const image = node("img"); image.alt = ""; image.loading = "lazy";
+      image.src = item.resultId ? resultFileUrl(context.project.id, item.resultId, item.fileId) : inputUrl(context.project.id, item);
+      mark.replaceChildren(image);
+    }
+    button.append(mark, node("span", item.displayName, "input-name"));
+    if (!item.available) button.append(node("span", "Thiếu file", "input-meta"));
+    button.classList.toggle("is-active", item.path === selectedItemPath);
+    button.addEventListener("click", () => {
+      selectedItemPath = item.path;
+      for (const candidate of elements.resourceList.querySelectorAll("button")) candidate.classList.toggle("is-active", candidate === button);
+      renderPreview(context.project.id, item);
+    });
+    elements.resourceList.append(button);
+  }
+  const empty = node("p", "Không tìm thấy tư liệu.", "asset-filter-empty");
+  elements.resourceList.append(empty);
+  const search = document.querySelector("#asset-search");
+  const normalize = value => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d").toLocaleLowerCase("vi");
+  search.oninput = () => {
+    const query = normalize(search.value);
+    for (const button of elements.resourceList.querySelectorAll("button")) button.hidden = !normalize(button.dataset.searchText).includes(query);
+    empty.hidden = !!elements.resourceList.querySelector("button:not([hidden])");
+  };
+  search.oninput();
+  renderPreview(context.project.id, allItems.find(item => item.path === selectedItemPath));
 }
 
 function streamSummary(stream) {
@@ -655,28 +961,26 @@ function renderRuns(context) {
   const pendingFinalizations = new Map(
     (context.runRecovery?.pendingFinalizations ?? []).map((entry) => [entry.runId, entry])
   );
-  elements.runList.replaceChildren(...context.runs.slice(0, 20).map((run) => {
+  const cards = context.runs.slice(0, 20).map((run) => {
     const card = document.createElement("article");
     card.className = "run-card";
     const top = document.createElement("div");
     const capability = document.createElement("strong");
-    capability.textContent = run.capability;
+    capability.textContent = run.purpose || run.capability;
+    capability.title = run.capability;
     const status = document.createElement("span");
     const recovery = pendingFinalizations.get(run.id);
     const displayedStatus = recovery?.recoverable ? "finalization_pending" : run.status;
     status.className = `run-status status-${displayedStatus}`;
-    status.textContent = displayedStatus;
+    status.textContent = { completed: "Hoàn tất", succeeded: "Hoàn tất", failed: "Có lỗi", running: "Đang chạy", in_progress: "Đang chạy", queued: "Đang chờ", cancelled: "Đã hủy", finalization_pending: "Chờ hoàn tất" }[displayedStatus] ?? displayedStatus;
     top.append(capability, status);
     const time = document.createElement("span");
     time.className = "input-meta";
-    time.textContent = `${formatDate(run.startedAt)} → ${formatDate(run.finishedAt)}`;
+    time.textContent = formatDate(run.startedAt);
     card.append(top);
-    if (run.purpose) {
-      const purpose = document.createElement("p");
-      purpose.className = "run-purpose";
-      purpose.textContent = run.purpose;
-      card.append(purpose);
-    }
+    card.append(time);
+    const technical = node("details", undefined, "run-details");
+    technical.append(node("summary", "Chi tiết lần chạy"));
     const detailParts = [
       run.tool ? [run.tool.provider, run.tool.name, run.tool.version].filter(Boolean).join(" · ") : null,
       formatRunDuration(run.durationMs),
@@ -687,36 +991,47 @@ function renderRuns(context) {
       const details = document.createElement("span");
       details.className = "input-meta";
       details.textContent = detailParts.join(" · ");
-      card.append(details);
+      technical.append(details);
     }
-    card.append(time);
+    technical.append(node("p", `${formatDate(run.startedAt)} → ${formatDate(run.finishedAt)}`, "input-meta"));
     if (recovery?.recoverable) {
       const recoveryNote = document.createElement("p");
       recoveryNote.className = "run-warning";
       recoveryNote.textContent =
-        "Kết quả đã được bảo toàn; cần hoàn tất lại dấu vết run bằng CLI phục hồi.";
+        "Kết quả đã được bảo toàn; lần chạy đang chờ hoàn tất.";
       card.append(recoveryNote);
     }
     if (run.error) {
       const error = document.createElement("p");
       error.className = "run-error";
       error.textContent = run.error;
-      card.append(error);
+      technical.append(error);
     }
+    card.append(technical);
     return card;
-  }));
+  });
+  elements.runList.replaceChildren(...cards.slice(0, 5));
+  if (cards.length > 5) {
+    const history = node("details", undefined, "run-history");
+    history.append(node("summary", "Hoạt động trước đó · " + (cards.length - 5)), ...cards.slice(5));
+    elements.runList.append(history);
+  }
 }
 
 function renderSummary(context) {
+  summaryContext = context;
   elements.title.textContent = context.project.title;
-  elements.projectId.textContent = context.project.id;
+  document.title = context.project.title + " · PADStudio";
+  elements.projectId.textContent = context.project.updatedAt ? "Cập nhật " + formatDate(context.project.updatedAt) : "";
+  elements.projectId.title = context.project.id;
+  syncProjectState();
   renderCheckpoint(context);
   renderWorkflow(context);
   renderIntelligence(context);
 }
 
 function sectionPlaceholder(element, label) {
-  element.textContent = `Đang chờ tải ${label} khi cần xem.`;
+  element.textContent = "Đang tải…";
   element.classList.add("observer-placeholder");
 }
 
@@ -728,46 +1043,68 @@ function renderObserverSection(section, context) {
   if (section === "source") {
     clearSectionPlaceholder(elements.sourceAnalysis);
     renderSourceAnalysis(elements.sourceAnalysis, context);
+    document.querySelector("#source-insights").hidden = !context.analysis?.sources?.length;
   } else if (section === "creative") {
     clearSectionPlaceholder(elements.creativeDirection);
     renderCreativeDirection(elements.creativeDirection, context);
   } else if (section === "production") {
+    productionContext = context;
     clearSectionPlaceholder(elements.production);
-    renderProduction(elements.production, context);
+    renderProduction(elements.production, context, elements.videoControls, elements.videoChapters);
+    renderFeaturedVideo();
+    if (currentView === "sources" && activityContext?.project.id === context.project.id) renderResources(activityContext);
   } else if (section === "animation") {
+    animationContext = context;
     clearSectionPlaceholder(elements.animation);
     renderAnimation(elements.animation, context);
+    renderFeaturedVideo();
   } else if (section === "delivery") {
     clearSectionPlaceholder(elements.delivery);
     renderDelivery(elements.delivery, context);
+    document.querySelector("#delivery-section").hidden = !(context.delivery?.bundles?.length);
   } else if (section === "health") {
     clearSectionPlaceholder(elements.health);
     renderHealth(elements.health, context);
   } else if (section === "activity") {
-    clearSectionPlaceholder(elements.resourceList);
-    renderResources(context);
-    renderResults(context);
-    renderRuns(context);
+    activityContext = context;
+    syncProjectState();
+    if (currentView === "sources") {
+      clearSectionPlaceholder(elements.resourceList);
+      renderResources(context);
+    }
+    if (document.querySelector("#result-details").open) renderResults(context);
+    if (currentView === "activity") renderRuns(context);
   }
 }
 
 function renderEmpty() {
-  clearProduction(elements.production);
+  clearProduction(elements.production, elements.videoControls, elements.videoChapters);
   clearDelivery(elements.delivery);
   clearHealth(elements.health);
   clearSourceAnalysis(elements.sourceAnalysis);
   clearCreativeDirection(elements.creativeDirection);
   clearAnimation(elements.animation);
-  elements.title.textContent = "Chưa chọn project";
+  elements.title.textContent = "Chào mừng đến PADStudio";
+  document.title = "PADStudio";
   elements.projectId.textContent = "";
-  elements.checkpoint.textContent = "Chưa có project nào để quan sát.";
-  elements.workflow.textContent = "No active workflow yet.";
-  elements.artifactList.textContent = "No active understanding artifact yet.";
+  elements.projectState.hidden = true;
+  elements.checkpoint.textContent = "Bắt đầu một dự án trong cuộc trò chuyện của bạn. Tư liệu và bản dựng sẽ có mặt ở đây.";
+  elements.workflow.textContent = "Chưa có kế hoạch công việc.";
+  elements.artifactList.textContent = "Chưa có tài liệu.";
   elements.reviewList.replaceChildren();
   elements.resourceList.textContent = "Chưa có tư liệu.";
+  document.querySelector("#all-resources").classList.add("is-empty");
+  document.querySelector("#source-insights").hidden = true;
   elements.resultList.textContent = "Chưa có kết quả nào.";
   elements.runList.textContent = "Chưa có lần chạy nào.";
   renderPreview("", null);
+  document.querySelector("#delivery-section").hidden = true;
+  animationContext = null;
+  productionContext = null;
+  activityContext = null;
+  summaryContext = null;
+  featuredSignature = null;
+  renderFeaturedVideo();
 }
 
 let projectsEtag = null;
@@ -779,15 +1116,34 @@ const sectionEtags = new Map();
 const sectionGenerations = new Map();
 const sectionLoads = new Map();
 const sectionControllers = new Map();
-const loadedSections = new Set(["production", "delivery", "health"]);
+const loadedSections = new Set();
 
 function resetProjectSections() {
+  document.querySelector("#asset-search").value = "";
+  loadedSections.clear();
+  animationContext = null;
+  productionContext = null;
+  activityContext = null;
+  summaryContext = null;
+  featuredSignature = null;
+  elements.featuredVideo.replaceChildren();
+  elements.featuredVideo.hidden = false;
+  elements.production.hidden = false;
+  elements.title.textContent = projectsById.get(selectedProjectId)?.title ?? "Đang mở dự án…";
+  elements.projectId.textContent = "";
+  elements.projectState.hidden = true;
+  elements.checkpoint.replaceChildren();
+  elements.workflow.replaceChildren();
+  elements.artifactList.replaceChildren();
+  elements.reviewList.replaceChildren();
+  renderedResultsKey = null;
+  document.querySelector("#delivery-section").hidden = true;
   for (const controller of sectionControllers.values()) controller.abort();
   sectionControllers.clear();
   sectionEtags.clear();
   sectionGenerations.clear();
   sectionLoads.clear();
-  clearProduction(elements.production);
+  clearProduction(elements.production, elements.videoControls, elements.videoChapters);
   clearDelivery(elements.delivery);
   clearHealth(elements.health);
   clearSourceAnalysis(elements.sourceAnalysis);
@@ -800,8 +1156,9 @@ function resetProjectSections() {
   sectionPlaceholder(elements.delivery, "các bundle giao");
   sectionPlaceholder(elements.health, "trạng thái vận hành");
   sectionPlaceholder(elements.resourceList, "resources, results và runs");
-  elements.resultList.textContent = "Dữ liệu chi tiết sẽ được tải cùng khu vực Resources.";
-  elements.runList.textContent = "Dữ liệu chi tiết sẽ được tải cùng khu vực Resources.";
+  elements.resultList.textContent = "Đang tải…";
+  elements.runList.textContent = "Đang tải…";
+  elements.inputPreview.replaceChildren();
 }
 
 async function loadSection(section, requestedGeneration = null) {
@@ -858,7 +1215,7 @@ async function loadSelectedProject(generation) {
     renderedGeneration = null;
     resetProjectSections();
   }
-  const sections = new Set(["summary", "animation", "production", "delivery", "health", ...loadedSections]);
+  const sections = new Set(["summary", "animation", "production", "delivery", "activity", ...viewSections[currentView], ...loadedSections]);
   await Promise.all([...sections].map((section) => loadSection(section, generation)));
 }
 
@@ -869,42 +1226,119 @@ async function loadProjects() {
     const headers = {};
     if (projectsEtag) headers["If-None-Match"] = projectsEtag;
     const response = await fetch("/api/projects", { headers });
-    if (response.status === 304) return;
+    if (response.status === 304) { setConnection(true); return; }
     const body = await response.json();
     if (!response.ok) throw new Error(body.error || "Không thể đọc danh sách project.");
+    setConnection(true);
+    elements.error.hidden = true;
     projectsEtag = response.headers.get("etag");
     projectsById = new Map(body.projects.map((project) => [project.id, project]));
     if (!projectsById.has(selectedProjectId)) {
-      selectedProjectId = body.projects[0]?.id ?? null;
+      selectedProjectId = [...body.projects].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0]?.id ?? null;
       selectedItemPath = null;
       renderedPreviewKey = null;
     }
     renderProjectList(body.projects);
     if (!selectedProjectId) return renderEmpty();
+    try { localStorage.setItem("padstudio-project", selectedProjectId); } catch { /* Optional UI preference. */ }
     await loadSelectedProject(projectsById.get(selectedProjectId).generation);
   } finally {
     listRequestRunning = false;
   }
 }
 
-const lazySections = [
-  ["source", elements.sourceAnalysis.closest(".inputs-section")],
-  ["creative", elements.creativeDirection.closest(".inputs-section")],
-  ["activity", elements.resourceList.closest(".inputs-section")],
-];
-const lazyObserver = new IntersectionObserver((entries) => {
-  for (const entry of entries) {
-    if (!entry.isIntersecting || !selectedProjectId) continue;
-    const generation = projectsById.get(selectedProjectId)?.generation;
-    if (!generation) continue;
-    const match = lazySections.find(([, target]) => target === entry.target);
-    if (!match) continue;
-    loadSection(match[0], generation).catch((error) => {
-      if (error.name !== "AbortError") showError(error);
-    });
+elements.search.addEventListener("input", () => renderProjectList([...projectsById.values()]));
+for (const button of document.querySelectorAll("[data-view]")) {
+  button.addEventListener("click", () => setView(button.dataset.view));
+  button.addEventListener("keydown", (event) => {
+    const views = [...document.querySelectorAll(".workspace-tab")].map(tab => tab.dataset.view);
+    const index = views.indexOf(currentView);
+    let next;
+    if (event.key === "ArrowRight") next = views[(index + 1) % views.length];
+    if (event.key === "ArrowLeft") next = views[(index + views.length - 1) % views.length];
+    if (event.key === "Home") next = views[0];
+    if (event.key === "End") next = views.at(-1);
+    if (next) { event.preventDefault(); setView(next, { focus: true }); }
+  });
+}
+document.querySelector("#sidebar-toggle").addEventListener("click", () => {
+  if (document.body.classList.contains("sidebar-open")) { closeSidebar(); return; }
+  document.body.classList.add("sidebar-open");
+  document.querySelector("#main-content").inert = true;
+  document.querySelector("#project-pane").inert = false;
+  document.querySelector("#project-pane").hidden = false;
+  document.querySelector("#sidebar-backdrop").hidden = false;
+  document.querySelector("#sidebar-toggle").setAttribute("aria-expanded", "true");
+  elements.search.focus();
+  drainCoverQueue();
+});
+document.querySelector(".brand").addEventListener("click", event => {
+  event.preventDefault(); document.querySelector("#sidebar-toggle").click();
+});
+document.querySelector("#sidebar-backdrop").addEventListener("click", () => {
+  closeSidebar({ restoreFocus: true });
+});
+document.querySelector("#project-picker-close").addEventListener("click", () => closeSidebar({ restoreFocus: true }));
+document.addEventListener("click", event => {
+  const menu = document.querySelector("#project-menu");
+  if (!menu.contains(event.target)) menu.open = false;
+});
+document.querySelector("#result-details").addEventListener("toggle", (event) => {
+  if (event.target.open && activityContext) renderResults(activityContext);
+});
+document.addEventListener("toggle", (event) => {
+  if (event.target instanceof HTMLDetailsElement && !event.target.open) {
+    for (const media of event.target.querySelectorAll("video, audio")) media.pause();
   }
-}, { rootMargin: "300px 0px" });
-loadProjects().then(() => {
-  for (const [, target] of lazySections) lazyObserver.observe(target);
-  window.setInterval(() => loadProjects().catch(() => {}), 2_000);
-}).catch(showError);
+}, true);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && document.querySelector("#project-menu").open) {
+    document.querySelector("#project-menu").open = false;
+    document.querySelector("#project-menu summary").focus();
+  }
+  if (event.key === "Escape" && document.body.classList.contains("sidebar-open")) {
+    closeSidebar({ restoreFocus: true });
+  }
+  if (event.key === "Tab" && document.body.classList.contains("sidebar-open")) {
+    const focusable = [...document.querySelectorAll('#project-pane button:not(:disabled), #project-pane input')];
+    const first = focusable[0], last = focusable.at(-1);
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  }
+});
+closeSidebar();
+const themeButton = document.querySelector("#theme-toggle");
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  themeButton.setAttribute("aria-pressed", String(theme === "dark"));
+  themeButton.setAttribute("aria-label", theme === "dark" ? "Chuyển sang giao diện sáng" : "Chuyển sang giao diện tối");
+  document.querySelector('meta[name="theme-color"]').content = theme === "dark" ? "#171817" : "#f7f7f5";
+}
+try { applyTheme(localStorage.getItem("padstudio-theme") === "dark" ? "dark" : "light"); }
+catch { applyTheme("light"); }
+themeButton.addEventListener("click", () => {
+  const theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  applyTheme(theme);
+  try { localStorage.setItem("padstudio-theme", theme); } catch { /* Optional browser preference. */ }
+});
+async function refresh() {
+  const button = document.querySelector("#refresh-button");
+  if (button.disabled) return;
+  button.disabled = true;
+  button.classList.add("is-refreshing");
+  elements.error.hidden = true;
+  try {
+    await loadProjects();
+    if (selectedProjectId) await Promise.all(["summary", "activity", ...new Set([...viewSections.video, ...viewSections[currentView]])].map((section) => {
+      sectionGenerations.delete(`${selectedProjectId}:${section}`);
+      return loadSection(section);
+    }));
+    setConnection(true);
+  } catch (error) { if (error.name !== "AbortError") showError(error); }
+  finally { button.disabled = false; button.classList.remove("is-refreshing"); }
+}
+document.querySelector("#refresh-button").addEventListener("click", refresh);
+document.querySelector("#retry-button").addEventListener("click", refresh);
+setView(currentView, { updateUrl: false });
+loadProjects().catch(showError);
+window.setInterval(() => loadProjects().catch((error) => { if (error.name !== "AbortError") showError(error); }), 2_000);

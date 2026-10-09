@@ -104,7 +104,11 @@ function sourceName(context, source) {
 
 function sourceKind(context, source) {
   const resource = resourceFor(context, source.source);
-  return itemFor(resource, source.source)?.mediaType ?? "unknown";
+  const item = itemFor(resource, source.source);
+  if (item) return item.mediaType;
+  const result = source.source?.kind === "result" ? resultById(context, source.source.id) : null;
+  const primary = result?.files?.find((file) => file.id === "primary");
+  return primary?.mediaType?.split("/")[0] ?? "unknown";
 }
 
 function freshnessLabel(status) {
@@ -125,15 +129,13 @@ function inputUrl(projectId, item) {
   return `/project-inputs/${encodeURIComponent(projectId)}/${path.split("/").map(encodeURIComponent).join("/")}`;
 }
 
-function mediaDescriptor(context, source) {
+export function sourceMediaDescriptor(context, source) {
   const preview = resultById(context, source.operations?.preview?.id);
   const primary = preview?.files?.find((file) => file.id === "primary" && file.available)
     ?? preview?.files?.find((file) => file.available);
   if (preview && primary) {
-    const kind = primary.mediaType?.startsWith("video/") ? "video"
-      : primary.mediaType?.startsWith("audio/") ? "audio"
-        : primary.mediaType?.startsWith("image/") ? "image" : null;
-    if (kind) {
+    const kind = primary.mediaType?.split("/")[0];
+    if (["video", "audio", "image"].includes(kind)) {
       return {
         kind,
         url: resultFileUrl(context.project.id, preview.id, primary.id),
@@ -154,6 +156,15 @@ function mediaDescriptor(context, source) {
       sourceStart: 0,
       sourceEnd: null,
       derivative: false
+    };
+  }
+  if (source.source?.kind === "result") {
+    const result = resultById(context, source.source.id);
+    const file = result?.files?.find((file) => file.id === "primary" && file.available);
+    const kind = file?.mediaType?.split("/")[0];
+    if (["video", "audio", "image"].includes(kind)) return {
+      kind, url: resultFileUrl(context.project.id, result.id, file.id),
+      key: result.id + ":" + file.id, sourceStart: 0, sourceEnd: null, derivative: false
     };
   }
   return null;
@@ -207,6 +218,7 @@ function pill(text, modifier = "") {
 }
 
 function renderSourceList(state) {
+  const browser = element("aside", "source-browser");
   const list = element("nav", "source-browser-list");
   list.setAttribute("aria-label", "Nguồn đã phân tích");
   for (const source of state.context.analysis.sources) {
@@ -215,9 +227,9 @@ function renderSourceList(state) {
     button.type = "button";
     button.append(
       element("strong", "", sourceName(state.context, source)),
-      element("span", "input-meta", `${sourceKind(state.context, source)} · ${source.resultSets.length} tập bằng chứng`),
-      pill(freshnessLabel(source.freshness), "freshness-" + source.freshness)
+      element("span", "input-meta", { video: "Video", audio: "Âm thanh", image: "Hình ảnh", unknown: "Tư liệu" }[sourceKind(state.context, source)] ?? "Tư liệu")
     );
+    if (source.freshness === "stale") button.append(pill(freshnessLabel(source.freshness), "freshness-stale"));
     button.addEventListener("click", () => {
       if (source.sourceKey === state.selectedSourceKey) return;
       state.viewController?.abort();
@@ -231,7 +243,26 @@ function renderSourceList(state) {
     });
     list.append(button);
   }
-  return list;
+  if (state.context.analysis.sources.length > 5) {
+    const filter = element("input", "source-filter");
+    filter.type = "search";
+    filter.placeholder = "Tìm tư liệu…";
+    filter.setAttribute("aria-label", "Tìm theo tên tư liệu");
+    filter.value = state.sourceQuery ?? "";
+    const empty = element("p", "source-filter-empty", "Không tìm thấy tư liệu.");
+    const normalize = value => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[đĐ]/g, "d").toLocaleLowerCase("vi");
+    const applyFilter = () => {
+      state.sourceQuery = filter.value;
+      const query = normalize(filter.value);
+      for (const button of list.querySelectorAll("button")) button.hidden = !normalize(button.querySelector("strong").textContent).includes(query);
+      empty.hidden = !!list.querySelector("button:not([hidden])");
+    };
+    filter.addEventListener("input", applyFilter);
+    applyFilter();
+    browser.append(filter, empty);
+  }
+  browser.append(list);
+  return browser;
 }
 
 function seekSourceTime(state, sourceTime) {
@@ -261,13 +292,13 @@ function updatePlayback(state) {
 }
 
 function renderMedia(state, source, host) {
-  const descriptor = mediaDescriptor(state.context, source);
+  const descriptor = sourceMediaDescriptor(state.context, source);
   state.playerDescriptor = descriptor;
   const mediaBox = element("div", "source-media");
   state.mediaNote = element("p", "source-media-note");
   if (!descriptor) {
-    mediaBox.append(element("div", "source-empty", "Chưa có file hoặc proxy trình duyệt có thể phát."));
-    state.mediaNote.textContent = "Web không tự tạo preview. Hãy yêu cầu Agent chạy source.preview nếu cần.";
+    mediaBox.append(element("div", "source-empty", "Chưa có bản xem trước."));
+    state.mediaNote.textContent = "Yêu cầu bản xem trước trong cuộc trò chuyện của bạn.";
     host.append(mediaBox, state.mediaNote);
     return;
   }
@@ -300,9 +331,7 @@ function renderMedia(state, source, host) {
     state.player = media;
     mediaBox.append(media);
   }
-  state.mediaNote.textContent = descriptor.derivative
-    ? "Đang xem proxy; mốc thời gian bên dưới luôn quy đổi về nguồn gốc."
-    : "Đang xem file nguồn trong project.";
+  state.mediaNote.textContent = descriptor.derivative ? "Bản xem trước · mốc thời gian theo tư liệu gốc" : "";
   host.append(mediaBox, state.mediaNote);
 }
 
@@ -329,7 +358,7 @@ function renderTimeline(state, source, host) {
     const result = source.operations?.[view];
     if (!result) continue;
     const lane = element("div", "coverage-lane");
-    lane.append(element("span", "coverage-label", view));
+    lane.append(element("span", "coverage-label", { preview: "Xem thử", transcript: "Lời thoại", scenes: "Cảnh", frames: "Khung hình", audio: "Âm thanh" }[view]));
     const track = element("div", "coverage-track");
     for (const interval of coverageIntervals(result.coverage)) {
       const bar = element("span", "coverage-bar coverage-" + result.coverage.mode);
@@ -767,7 +796,9 @@ function renderEvidencePanel(state, source, host) {
   controls.append(state.viewControls);
   panel.append(controls);
   state.datasetMeta = element("p", "input-meta source-dataset-meta");
-  panel.append(state.datasetMeta);
+  const metadata = element("details", "source-dataset-details");
+  metadata.append(element("summary", "", "Thông tin phân tích"), state.datasetMeta);
+  panel.append(metadata);
   state.evidenceHost = element("div", "source-evidence-body");
   state.body = state.evidenceHost;
   panel.append(state.evidenceHost);
@@ -788,7 +819,7 @@ function renderSearch(state, host) {
   const button = element("button", "", "Tìm");
   button.type = "submit";
   form.append(input, button);
-  state.searchStatus = element("p", "input-meta source-search-status", "Tìm kiếm dùng index đã được Agent xác minh.");
+  state.searchStatus = element("p", "input-meta source-search-status");
   state.searchResults = element("div", "source-search-results");
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -805,7 +836,7 @@ function renderWorkspace(state) {
   state.player = null;
   state.evidenceRows = [];
   if (!source) {
-    state.container.append(element("div", "source-state", "Project chưa có Result phân tích nguồn."));
+    state.container.append(element("div", "source-state", "Chưa có dữ liệu phân tích."));
     return;
   }
   const layout = element("div", "source-workspace");
@@ -814,15 +845,13 @@ function renderWorkspace(state) {
   const heading = element("header", "source-current-head");
   const identity = element("div", "");
   identity.append(
-    element("p", "eyebrow", sourceKind(state.context, source).toUpperCase()),
+    element("p", "eyebrow", { video: "VIDEO", audio: "ÂM THANH", image: "HÌNH ẢNH", unknown: "TƯ LIỆU" }[sourceKind(state.context, source)] ?? "TƯ LIỆU"),
     element("h4", "", sourceName(state.context, source))
   );
   const badges = element("div", "source-badges");
   const profile = sourceProfile(state.context, source.sourceKey);
-  badges.append(
-    pill(profile?.data?.usage ?? "chưa phân loại"),
-    pill(freshnessLabel(source.freshness), "freshness-" + source.freshness)
-  );
+    if (profile?.data?.usage) badges.append(pill(profile.data.usage));
+    badges.append(pill(freshnessLabel(source.freshness), "freshness-" + source.freshness));
   heading.append(identity, badges);
   main.append(heading);
   renderMedia(state, source, main);
@@ -838,7 +867,7 @@ export function renderSourceAnalysis(container, context) {
   const sources = context.analysis?.sources ?? [];
   if (!sources.length) {
     clearSourceAnalysis(container);
-    container.append(element("div", "source-state", "Project chưa có dữ liệu phân tích nguồn."));
+    container.append(element("div", "source-state", "Chưa có dữ liệu phân tích. Bạn vẫn có thể xem các file tư liệu bên dưới."));
     return;
   }
   const signature = contextSignature(context);

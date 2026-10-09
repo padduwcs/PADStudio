@@ -1,71 +1,26 @@
 let lastSignature = null;
-
-function node(tag, text, className) {
-  const element = document.createElement(tag);
-  if (text !== undefined) element.textContent = text;
-  if (className) element.className = className;
-  return element;
-}
-
-function fileUrl(projectId, resultId, fileId) {
-  return "/project-results/" + [projectId, resultId, fileId].map(encodeURIComponent).join("/");
-}
-
 export function renderDelivery(container, context) {
   const signature = JSON.stringify([context.project.id, context.delivery]);
   if (lastSignature === signature) return;
   lastSignature = signature;
   container.replaceChildren();
-  const bundles = context.delivery?.bundles ?? [];
-  if (!bundles.length) {
-    container.append(node(
-      "p",
-      "Chưa có bundle giao. Agent chỉ có thể xuất khi exact Result hiện hành đã được duyệt và vượt toàn bộ kiểm tra.",
-      "empty-note"
-    ));
-    return;
-  }
-  for (const bundle of [...bundles].reverse()) {
-    const card = node("article", undefined, "delivery-card");
-    const header = node("header");
-    const title = node("div");
-    title.append(
-      node("h4", bundle.name),
-      node("p", bundle.id + " · " + new Date(bundle.createdAt).toLocaleString("vi-VN"), "input-meta")
-    );
-    header.append(title, node("span", bundle.verification?.status === "passed" ? "Đã kiểm chứng" : "Cần kiểm tra", "result-verification"));
-    card.append(header);
-    const media = bundle.data?.media;
-    card.append(node(
-      "p",
-      [
-        "Nguồn: " + bundle.data?.sourceResultId,
-        "Duyệt: " + bundle.data?.approvalDecisionId,
-        "QA: " + (bundle.data?.outputQualityResultId ?? "thiếu"),
-        "Profile: " + bundle.data?.profileId
-      ].join(" · "),
-      "input-meta"
-    ));
-    if (media) {
-      card.append(node(
-        "p",
-        `${media.width}×${media.height} · ${media.fps} fps · ${media.videoCodec}/${media.audioCodec} · ${media.durationSeconds}s · ${media.integratedLufs} LUFS`
-      ));
-    }
-    const files = node("div", undefined, "delivery-files");
-    for (const file of bundle.files) {
-      const link = node("a", file.name);
-      link.href = fileUrl(context.project.id, bundle.id, file.id);
-      link.download = file.name;
-      link.title = file.sha256 ? "SHA-256: " + file.sha256 : "";
-      files.append(link);
-    }
-    card.append(files);
-    container.append(card);
+  const bundle = [...(context.delivery?.bundles ?? [])].sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))[0];
+  if (!bundle) return;
+  const files = bundle.files.filter(file => file.available !== false &&
+    (["video", "audio"].includes(file.mediaType?.split("/")[0]) || /\.(mp4|webm|mov|m4v|mp3|wav)$/i.test(file.name)));
+  for (const file of files) {
+    const link = document.createElement("a");
+    link.className = "download-button";
+    link.textContent = /\.(mp3|wav)$/i.test(file.name) || file.mediaType?.startsWith("audio") ? "Tải âm thanh đã duyệt" : "Tải bản đã duyệt";
+    link.title = "Bản đã được bạn duyệt";
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("viewBox", "0 0 24 24"); icon.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4");
+    icon.append(path); link.prepend(icon);
+    link.href = "/project-results/" + [context.project.id, bundle.id, file.id].map(encodeURIComponent).join("/");
+    link.download = file.name;
+    container.append(link);
   }
 }
-
-export function clearDelivery(container) {
-  lastSignature = null;
-  container.replaceChildren();
-}
+export function clearDelivery(container) { lastSignature = null; container.replaceChildren(); }

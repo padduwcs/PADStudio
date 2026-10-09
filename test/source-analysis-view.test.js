@@ -4,7 +4,8 @@ import {
   analysisQueryUrl,
   analysisResultSets,
   coverageIntervals,
-  formatAnalysisTime
+  formatAnalysisTime,
+  sourceMediaDescriptor
 } from "../ui/source-analysis-view.js";
 
 test("source workspace formats source time including long media", () => {
@@ -14,6 +15,31 @@ test("source workspace formats source time including long media", () => {
   assert.equal(formatAnalysisTime(59.6), "0:59.6");
   assert.equal(formatAnalysisTime(59.96), "1:00.0");
   assert.equal(formatAnalysisTime(Number.NaN), "—");
+});
+
+test("source preview accepts registered media kinds and MIME types with exact proxy timing", () => {
+  for (const mediaType of ["video", "video/mp4"]) {
+    const context = { project: { id: "demo project" }, resources: [], results: [{
+      id: "preview-1", files: [{ id: "primary", available: true, mediaType }],
+      data: { details: { sourceStartSeconds: 12, sourceEndSeconds: 24 } }
+    }] };
+    const source = { source: { kind: "result", id: "original" }, operations: { preview: { id: "preview-1" } } };
+    assert.deepEqual(sourceMediaDescriptor(context, source), {
+      kind: "video", url: "/project-results/demo%20project/preview-1/primary",
+      key: "preview-1:primary", sourceStart: 12, sourceEnd: 24, derivative: true
+    });
+  }
+});
+
+test("analyzed Result media can be viewed without a separate source preview", () => {
+  const context = { project: { id: "demo" }, resources: [], results: [{
+    id: "render-1", files: [{ id: "primary", available: true, mediaType: "video" }]
+  }] };
+  const source = { source: { kind: "result", id: "render-1" }, operations: {} };
+  assert.equal(sourceMediaDescriptor(context, source)?.url, "/project-results/demo/render-1/primary");
+  assert.equal(sourceMediaDescriptor(context, source)?.derivative, false);
+  context.results[0].files[0].available = false;
+  assert.equal(sourceMediaDescriptor(context, source), null);
 });
 
 test("source workspace expands continuous coverage but preserves sampled intervals", () => {
