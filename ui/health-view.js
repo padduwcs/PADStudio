@@ -27,7 +27,7 @@ export function renderHealth(container, context) {
         health.counts.deliveries + " bundle · " +
         health.counts.pendingFinalizations + " finalization chờ · " +
         health.counts.pendingFeedback + " feedback chờ",
-      "input-meta"
+      "rail-note"
     )
   );
   container.append(summary);
@@ -41,7 +41,7 @@ export function renderHealth(container, context) {
     card.append(
       node("h4", issue.code),
       node("p", issue.message),
-      node("p", issue.remediation, "input-meta")
+      node("p", issue.remediation, "rail-note")
     );
     if (issue.ids.length) card.append(node("code", issue.ids.join(", ")));
     list.append(card);

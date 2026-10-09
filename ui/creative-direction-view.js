@@ -58,6 +58,11 @@ export function buildCreativeObserverModel(context) {
   };
 }
 
+export function hasCreativeContent(context) {
+  const model = buildCreativeObserverModel(context);
+  return !(model.empty && !(model.sequence?.segments ?? []).some((segment) => segment.narration?.text?.trim()));
+}
+
 function node(tag, text, className) {
   const element = document.createElement(tag);
   if (text !== undefined) element.textContent = text;

@@ -25,9 +25,10 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 ## Baseline kiểm chứng
 
-Lần chạy full gần nhất, ngày **2026-10-09** (sau toàn bộ các vòng giao diện bên dưới, Node v24.18.1):
-`npm test` **332/332 pass**. Các số 326/326 ghi trong các mục ngày 2026-10-04/05 là ảnh chụp trước
-các vòng giao diện cuối; browser smoke không được chạy lại trong lần này.
+Lần chạy full gần nhất, ngày **2026-10-09** (sau thiết kế lại giao diện, Node v24.18.1): `npm test`
+**377 tests: 376 pass, 1 skipped** (test cần runtime phân tích Python tùy chọn); `npm run check` sạch. Browser:
+`observer:ui:test` trên project thật (6 chế độ xem, sáng/tối), `observer:ui:empty-test` và
+`observer:ui:live-test` đều passed. Các số 326/332 trong các mục cũ bên dưới là ảnh chụp trước đợt này.
 
 Vòng tinh giản khung và phân vùng bằng đường kẻ ngày **2026-10-05**:
 
@@ -143,9 +144,9 @@ Vòng chọn logo tách nền ngày **2026-10-05**:
   bộ chọn dự án desktop/mobile (focus, vòng Tab, chọn lại dự án hiện tại), sáng/tối và mất kết nối/thử lại.
   Không có uncaught JavaScript error hay request ghi.
 - `npm run observer:ui:empty-test`: **passed** trên thư viện trống và project mới trong kho tạm độc lập.
-- `npm run observer:browser-test -- -ProjectId priority-queue-visual-20260920 -StructureOnly`:
+- (lệnh PowerShell cũ, đã thay bằng `observer:ui:test`) kiểm tra cấu trúc `priority-queue-visual-20260920`:
   **passed** tại 390, 768 và 1440 px.
-- `npm run observer:phase5a:test -- -ProjectId bfs-visual-explainer-20260929 -SequenceKey bfs-review-sequence`:
+- (lệnh PowerShell cũ, đã thay bằng `observer:ui:test`) viewer `bfs-visual-explainer-20260929`:
   **passed** với viewer hiện hành; kiểm tra tên ID phục vụ accessibility, exact Result chọn xem
   và link tải đúng Delivery. Timeline visual baseline cũ không còn áp dụng.
 - Đã xem ảnh chụp desktop/mobile và sáng/tối. Evidence của browser nằm trong
@@ -163,7 +164,7 @@ Các mốc kiểm chứng trước đợt giao diện, ghi ngày **2026-09-22**:
 
 - Lần chạy full gần nhất, `npm test`: **317/317 pass**;
 - Vòng sửa chữa preview/review/Observer hiện tại: **34/34 targeted tests pass**; chưa chạy lại toàn bộ suite;
-- `npm run observer:browser-test -- -ProjectId priority-queue-visual-20260920 -StructureOnly`: **passed** với observer server đang chạy, tại 390, 768 và 1440 px;
+- lệnh PowerShell cũ (đã bị thay bằng `observer:ui:test`) trên `priority-queue-visual-20260920`: **passed** với observer server đang chạy, tại 390, 768 và 1440 px;
 - `npm run animation:acceptance`: **passed** (local Remotion preflight, preview và render một fixture
   độc lập trong thư mục tạm; không phải pilot sáng tạo của người dùng);
 - Lần đo coverage gần nhất (trước đợt 1.3): `node --test --experimental-test-coverage`:
@@ -233,46 +234,46 @@ số test nằm trong một báo cáo cũ.
 
 ## Đợt giao diện hiện tại
 
-Web observer ưu tiên việc mở dự án, xem video và xem tư liệu. Điều hướng chính còn Video/Tư liệu;
-Nội dung và Chi tiết dự án nằm trong menu. Video dọc giữ đúng tỷ lệ, nằm cạnh tên dự án lớn và
-thao tác phát/tạm dừng, tải bản đã duyệt. Video ngang dùng bố cục trải rộng. Mobile xếp tên/video
-thành một cột, giữ native media controls. Phiên bản và các đoạn nằm trong disclosure đóng mặc định;
-exact Result, so sánh và tua theo đoạn vẫn hoạt động. Đoạn đang phát dùng `aria-current`.
+Giao diện được thiết kế lại quanh ba việc người dùng thật sự làm: chọn dự án, xem video, tìm tư liệu.
+Chỉ có ba tab: **Video**, **Tư liệu**, **Chi tiết**. Mọi thứ kỹ thuật (kế hoạch hoạt họa, run, kho kết
+quả, tài liệu/đánh giá, sức khỏe dự án) nằm trong các mục thu gọn ở Chi tiết và chỉ được dựng khi mở.
 
-Thanh điều hướng được căn giữa; tiêu đề dùng toàn bộ chiều rộng có sẵn và xuống dòng tự nhiên
-khi không đủ chỗ, cỡ chữ thích ứng với chiều rộng vùng tên thay vì cân dòng sớm.
-Disclosure Phiên bản cho biết bản đang xem
-khi còn đóng. Trạng thái ngắn cạnh tiêu đề lấy từ Run/work item và approval đã lưu; Run có output
-chờ recovery hiển thị đang chờ, không giả lập đang render. Không dựng phần trăm tiến độ hoặc suy
-ra hoạt động từ một công việc chỉ ở trạng thái ready. Web đọc activity cùng các vùng nền qua GET
-và chỉ tải thumbnail thư viện khi mở Tư liệu. Preview có thể xem trước acceptance/Delivery. Nếu
-revision mới chưa có video, mặc định giữ bản khả dụng gần nhất; có video mới thì tự cập nhật,
-trừ khi người xem đã chọn bản/lần dựng thủ công. Cập nhật giữ player khi URL video không đổi.
-Tên dự án lấy nguyên từ metadata lúc tạo; giao diện không sinh hoặc đổi tên. Hoạt động/suy nghĩ
-bên ngoài project của Agent host không phải dữ liệu web có thể quan sát.
+- **Video** là một “rạp”: khung video đúng tỷ lệ gốc (dọc, ngang hoặc vuông) cạnh một cột phụ gồm
+  phiên bản, so sánh hai bản, trạng thái + tải bản đã duyệt, các đoạn có ảnh (đoạn đang phát có
+  `aria-current`) và phản hồi đã ghi. Nút “Sao chép mốc phản hồi” tạo đúng chuỗi
+  `project=… · result=… · artifact=… · revision=N [· segment=… · time=a-b · at=t]` để dán cho Agent.
+  Project chỉ có code animation dùng render/preview tốt nhất làm video; chưa có gì thì hiện trạng
+  thái chờ. Player đang phát được giữ qua polling; bản mới chưa có video không đẩy người xem khỏi bản
+  đang xem, và bản người xem chọn tay không bị thay.
+- **Thư viện dự án** là một sheet mở từ thanh đầu (hoặc bấm logo): lưới thẻ có khung hình thật của
+  video, thời lượng/hướng, trạng thái (Đang dựng, Chờ bạn xem, Cần sửa, Bản nháp, Đã duyệt, Đã
+  giao) và thời điểm hoạt động gần nhất. Thẻ lấy dữ liệu từ vùng nhẹ `card` của observer
+  ([`src/web/observer-card.js`](../../src/web/observer-card.js)), tải lười khi thẻ vào màn hình, tối đa
+  ba request đồng thời, cache theo generation. Có tìm kiếm, phím mũi tên, focus trap và Esc.
+- **Tư liệu** xếp media trước, ẩn tệp kỹ thuật sau một công tắc; xem trước ảnh/video/âm thanh/tài liệu
+  ngay tại chỗ. Phân tích nguồn và lời thoại nằm trong một mục thu gọn bên dưới.
+- Điều hướng ghi nhớ dự án và giao diện sáng/tối (mặc định theo hệ thống). Polling 2 giây dừng khi tab
+  bị ẩn. Web vẫn chỉ đọc: mọi thao tác là GET, phát media, điều hướng và giữ tùy chọn UI; mất kết nối
+  hiện thông báo có nút thử lại.
 
-Bộ chọn dự án là gallery có ảnh bìa thật từ Result, chỉ đọc ảnh khi card gần viewport, giới hạn
-hai request đồng thời và cache theo generation. Project không có ảnh dùng một ô chữ. Web nhớ
-dự án vừa mở trong localStorage; khi không có lựa chọn còn hợp lệ, mở dự án mới nhất. Thư viện
-ưu tiên thumbnail của tư liệu gốc và media nhập; không đưa audio.tts trung gian của từng segment
-lên thư viện chính. File đó vẫn nằm trong kho kết quả và project, không bị sửa hoặc xóa. Phân tích
-nguồn/lời thoại nằm trong disclosure. Phần Nội dung ưu tiên lời thoại thật khi có, ý tưởng/brief/các
-phương án chỉ mở khi cần. Kho kết quả, QA, provenance, run/workflow/health ở Chi tiết dự án.
+Diện mạo: nền ấm trung tính, một điểm nhấn cyan theo logo, Manrope, thanh đầu mờ kính, vài vòng tròn
+rất mảnh ở rìa (không bao giờ vào video). Tên đầy đủ **Precise Animated Demonstration Studio** luôn
+hiển thị, kể cả điện thoại. Logo dùng bản WebP/PNG nhỏ sinh từ ảnh trong suốt gốc (xem
+[`ui/brand/README.md`](../../ui/brand/README.md)); ảnh gốc giữ nguyên byte.
 
-Diện mạo dùng nền trung tính, điểm nhấn cyan theo logo PADStudio, typography sans lớn ở chủ thể, hạn chế khung card
-và nhãn. Có chế độ sáng/tối, focus bàn phím và `prefers-reduced-motion`. Download trỏ đúng file của
-Delivery mới nhất, không tạo hoặc thay đổi acceptance/delivery. Các thao tác trên web vẫn chỉ đọc,
-phát media, điều hướng và giữ tùy chọn UI; lỗi kết nối hiện để thử lại.
+Mã: `ui/app.js` điều phối; `production-view.js` (rạp), `library-view.js`, `sources-view.js`,
+`details-view.js`, cùng `animation-view.js`, `creative-direction-view.js`, `health-view.js`,
+`source-analysis-view.js`; `dom.js` giữ hàm dùng chung; `styles.css` là một design system duy nhất.
+`src/web/static-assets.js` phục vụ theo allowlist chính xác tính lúc khởi động (không phục vụ thư
+mục tùy ý). Đợt này không đổi API quan sát hiện có ngoài vùng `card` và `modifiedAt` trong danh sách
+dự án, và không đổi project store, CLI, tool, workflow, approval hoặc delivery.
 
-Ảnh thương hiệu giữ nguyên trong [`ui/brand/`](../../ui/brand/README.md); bản trong suốt được
-hiển thị qua SVG viewport để bỏ khoảng trống quanh logo mà không sửa PNG. Logo chữ đầy đủ và
-tagline dùng trong README; header dùng biểu tượng PAD + Studio. `src/web/server.js` chỉ bổ sung
-bốn static asset vào allowlist hiện có, không mở phục vụ thư mục tùy ý.
-
-Đợt này sửa `ui/`, static asset allowlist, browser test và tài liệu trạng thái; không thay đổi API, project store,
-CLI, tool, workflow, approval hoặc delivery. UI tư liệu được sửa để phát được file đã đăng ký
-dưới dạng media kind hoặc MIME, và phát Result nguồn trực tiếp khi chưa có proxy riêng.
-Thời gian proxy vẫn được quy đổi về đúng nguồn; test regression kiểm tra các trường hợp này.
+Kiểm chứng: `npm run observer:ui:test -- --url <origin> --project <id>` điều khiển trình duyệt thật
+bằng [`scripts/lib/browser.mjs`](../../scripts/lib/browser.mjs) (CDP, không phụ thuộc gói ngoài) ở 390/768/1440
+px, sáng/tối: không cuộn ngang, tên đầy đủ không bị cắt, ba tab, thư viện (focus, inert, Esc), đổi
+giao diện, mất/khôi phục kết nối, không lỗi JS và không request ghi. `observer:ui:empty-test` kiểm
+thư viện trống và project mới; `observer:ui:live-test` kiểm câu chuyện live (chờ → bản 1 → bản 2 đang
+dựng không ngắt player → thay thế tự động → lựa chọn tay được giữ).
 
 ## Các lát cắt trước đợt giao diện
 

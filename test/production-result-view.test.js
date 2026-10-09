@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   creativeReviewStatus, feedbackAnchorText, feedbackForSegment, productionRenderOptions, segmentAtTime,
-  viewerProjectState, defaultVideoRevision, defaultVideoRender
+  defaultVideoRevision, defaultVideoRender
 } from "../ui/production-view.js";
 import { readFile } from "node:fs/promises";
 
@@ -55,11 +55,11 @@ test("an anchor never points past the end and tolerates a sequence without a tim
 
 test("the viewer keeps the feedback-anchor control wired to the playable video", async () => {
   const source = await readFile(new URL("../ui/production-view.js", import.meta.url), "utf8");
-  assert.match(source, /feedbackAnchorControl\(context, sequence, render, video\)/);
+  assert.match(source, /function anchorControl\(context, sequence, render, video\)/);
   assert.match(source, /navigator\.clipboard\.writeText/);
   assert.match(source, /Sao chép mốc phản hồi/);
   const css = await readFile(new URL("../ui/styles.css", import.meta.url), "utf8");
-  assert.match(css, /\.anchor-button\b/);
+  assert.match(css, /\.anchor-status\b/);
 });
 
 test("technical review alone does not imply creative review of the exact render", () => {
@@ -102,34 +102,6 @@ test("structured feedback is projected only onto its exact segment", () => {
   assert.deepEqual(feedbackForSegment(render).map((item) => item.id), ["decision-whole"]);
   assert.deepEqual(feedbackForSegment(render, "opening").map((item) => item.id), ["decision-opening"]);
   assert.deepEqual(feedbackForSegment(render, "ending").map((item) => item.id), ["decision-ending"]);
-});
-
-test("planned work and completed or failed historical runs never imply ongoing activity", () => {
-  assert.equal(viewerProjectState({ intelligence: { currentWorkItems: [{ status: "ready" }] } }, {
-    runs: [{ status: "failed" }, { status: "completed" }]
-  }), null);
-});
-
-test("a running render remains visible while another item awaits user approval", () => {
-  assert.deepEqual(viewerProjectState({ intelligence: { pendingApprovals: [{}] } }, {
-    runs: [{ id: "render", status: "in_progress", capability: "video.render-sequence" }]
-  }), { kind: "working", label: "Đang dựng video" });
-  assert.deepEqual(viewerProjectState(null, { runs: [{ status: "in_progress", capability: "tts.synthesize" }] }),
-    { kind: "working", label: "Đang tạo giọng đọc" });
-});
-
-test("durable output awaiting run recovery is waiting rather than an active render", () => {
-  assert.deepEqual(viewerProjectState(null, {
-    runs: [{ id: "render", status: "in_progress", capability: "video.render-sequence" }],
-    runRecovery: { pendingFinalizations: [{ runId: "render", recoverable: true }] }
-  }), { kind: "waiting", label: "Chờ tiếp tục" });
-});
-
-test("workflow progress and user approval work without a running tool", () => {
-  assert.deepEqual(viewerProjectState({ intelligence: { currentWorkItems: [{ status: "in_progress" }] } }),
-    { kind: "working", label: "Đang thực hiện" });
-  assert.deepEqual(viewerProjectState({ intelligence: { pendingApprovals: [{}] } }),
-    { kind: "waiting", label: "Chờ bạn xem" });
 });
 
 test("a new revision without video keeps the most recent playable preview", () => {

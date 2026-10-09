@@ -3,75 +3,98 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f7f7f5" />
+    <meta name="theme-color" content="#f6f6f2" />
     <meta name="application-name" content="PADStudio" />
     <meta name="apple-mobile-web-app-title" content="PADStudio" />
-    <link rel="icon" type="image/svg+xml" href="/brand/favicon.svg?v=3" />
-    <link rel="apple-touch-icon" href="/brand/padstudio-emblem-transparent.png" />
+    <link rel="icon" type="image/png" href="/brand/favicon-64.png" />
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
     <title>PADStudio</title>
     <link rel="preload" href="/fonts/manrope-variable.ttf" as="font" type="font/ttf" crossorigin />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <a class="skip-link" href="#project-title">Đến nội dung</a>
-    <div class="app-shell">
-      <aside id="project-pane" class="project-pane" role="dialog" aria-modal="true" aria-labelledby="project-picker-heading" hidden>
-        <div class="sidebar-heading"><div><h2 id="project-picker-heading">Chọn dự án</h2></div><span id="project-count" class="count-badge">0</span><button id="project-picker-close" type="button" class="icon-button" aria-label="Đóng danh sách dự án"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
-        <label class="project-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg><input id="project-search" type="search" placeholder="Tìm dự án…" aria-label="Tìm dự án" autocomplete="off" /></label>
-        <nav id="project-list" class="project-list" aria-label="Chọn dự án"></nav>
-      </aside>
-      <button id="sidebar-backdrop" class="sidebar-backdrop" type="button" aria-label="Đóng danh sách dự án" hidden></button>
-      <main class="observer-pane" id="main-content">
-        <header class="topbar">
-          <div class="topbar-identity">
-          <a class="brand" href="/" aria-label="PADStudio — Precise Animated Demonstration Studio — Chọn dự án"><span class="brand-mark" aria-hidden="true"><svg viewBox="55 322 1145 600" width="64" height="34"><image href="/brand/padstudio-emblem-transparent.png" width="1254" height="1254" /></svg></span><span class="brand-copy"><span class="brand-name">PAD<span>Studio</span></span><span class="brand-tagline">Precise Animated Demonstration Studio</span></span></a>
-          </div>
-          <nav class="workspace-tabs" role="tablist" aria-label="Nội dung dự án">
-            <button id="tab-video" type="button" role="tab" class="workspace-tab is-active" data-view="video" aria-selected="true" aria-controls="view-video"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3z"/></svg>Video</button>
-            <button id="tab-sources" type="button" role="tab" class="workspace-tab" data-view="sources" aria-selected="false" tabindex="-1" aria-controls="view-sources"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="8" cy="9" r="1"/><path d="m4 17 5-5 4 4 3-3 5 5"/></svg>Tư liệu</button>
-          </nav>
-          <div class="topbar-actions"><button id="sidebar-toggle" type="button" class="project-switcher" aria-label="Mở danh sách dự án" aria-controls="project-pane" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Dự án</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg></button><span id="connection-status" class="sr-only" role="status"><span></span><span>Đang kết nối</span></span><button id="theme-toggle" type="button" class="icon-button" aria-label="Chuyển sang giao diện tối" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 13a8.5 8.5 0 1 1-9.5-9.5A6.5 6.5 0 0 0 20.5 13Z"/></svg></button><details id="project-menu" class="project-menu"><summary aria-label="Tùy chọn dự án"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></summary><div class="project-menu-items"><button id="tab-content" type="button" data-view="content" aria-controls="view-content">Nội dung</button><button id="tab-activity" type="button" data-view="activity" aria-controls="view-activity">Chi tiết dự án</button><button id="refresh-button" type="button">Làm mới</button></div></details></div>
-        </header>
-        <div class="workspace-content">
-          <div id="app-error" class="app-error" role="alert" hidden><span></span><button type="button" id="retry-button">Thử lại</button></div>
-          <div id="page-heading-slot"></div>
-          <strong id="view-label" hidden>Video</strong>
+    <a class="skip-link" href="#main">Đến nội dung</a>
 
-          <section id="view-video" class="view-panel" role="tabpanel" aria-labelledby="tab-video">
-            <div class="viewer-layout">
-              <section class="screening-section" aria-label="Video"><h2 id="production-heading" class="sr-only">Video</h2><div id="video-overview"></div><div id="production-view"></div></section>
-              <aside class="viewer-side">
-                <div class="viewer-intro">
-                <div id="video-heading-slot"><header class="project-heading"><div><h1 id="project-title" tabindex="-1">Đang mở không gian của bạn…</h1><p id="project-id" class="project-id"></p></div><span id="project-state" class="project-state" role="status" aria-live="polite" hidden></span></header></div>
-                <div class="viewer-actions"><button id="watch-button" class="watch-button" type="button" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 11 7-11 7z"/></svg><span>Phát video</span></button><div id="delivery-section" aria-label="Tải xuống"><div id="delivery-view"></div></div></div>
-                </div>
-                <div class="viewer-options">
-                <details id="video-versions" class="viewer-disclosure"><summary><span>Phiên bản</span><span id="video-version-label" class="version-label"></span></summary><div id="video-controls"></div></details>
-                <div id="video-chapters"></div>
-                </div>
-              </aside>
-            </div>
-          </section>
-          <section id="view-sources" class="view-panel" role="tabpanel" aria-labelledby="tab-sources" hidden>
-            <section id="all-resources" class="asset-library" aria-label="Tư liệu"><div class="asset-sidebar"><label class="sr-only" for="asset-search">Tìm tư liệu</label><input id="asset-search" class="asset-search" type="search" placeholder="Tìm tư liệu…" /><nav id="resource-list" class="resource-list" aria-label="Chọn tư liệu"></nav></div><div id="input-preview" class="input-preview"></div></section>
-            <details class="disclosure inputs-section" id="source-insights"><summary id="source-analysis-heading">Lời thoại & phân tích</summary><div id="source-analysis-view"></div></details>
-          </section>
-          <section id="view-content" class="view-panel" role="region" aria-labelledby="tab-content" hidden>
-            <section class="inputs-section creative-direction-section" aria-label="Nội dung"><div id="creative-direction-view"></div></section>
-          </section>
-          <section id="view-activity" class="view-panel" role="region" aria-labelledby="project-details-heading" hidden>
-            <h2 id="project-details-heading" tabindex="-1">Chi tiết dự án</h2>
-            <section id="checkpoint" class="context-card" aria-label="Tổng quan dự án" aria-live="polite"></section>
-            <section class="inputs-section" aria-labelledby="workflow-heading"><header class="section-heading"><h2 id="workflow-heading">Tiến độ công việc</h2></header><div id="workflow-view" class="workflow-view"></div></section>
-            <section class="inputs-section" aria-labelledby="runs-heading"><header class="section-heading"><h2 id="runs-heading">Hoạt động gần đây</h2></header><div id="run-list" class="run-list"></div></section>
-            <details class="disclosure inputs-section" id="result-details"><summary id="results-heading">Kho kết quả</summary><div id="result-list" class="result-list"></div></details>
-            <details class="disclosure inputs-section" id="animation-details"><summary id="animation-heading">Kế hoạch hoạt họa</summary><div id="animation-view"></div></details>
-            <details class="disclosure inputs-section"><summary id="intelligence-heading">Tài liệu & đánh giá</summary><div id="artifact-list" class="intelligence-grid"></div><div id="review-list" class="review-list"></div></details>
-            <details class="disclosure inputs-section"><summary id="health-heading">Chi tiết vận hành</summary><div id="health-view"></div></details>
-          </section>
+    <header id="topbar" class="topbar">
+      <a class="brand" href="/" aria-label="PADStudio — Precise Animated Demonstration Studio">
+        <img class="brand-mark" src="/brand/padstudio-mark.webp" width="64" height="34" alt="" />
+        <span class="brand-copy">
+          <span class="brand-name">PAD<span>Studio</span></span>
+          <span class="brand-tagline">Precise Animated Demonstration Studio</span>
+        </span>
+      </a>
+      <div class="topbar-actions">
+        <button id="library-button" type="button" class="button button-ghost" aria-haspopup="dialog" aria-expanded="false" aria-label="Mở danh sách dự án">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" /></svg>
+          <span class="button-label">Dự án</span>
+          <span id="library-count" class="count" aria-hidden="true">0</span>
+        </button>
+        <button id="theme-toggle" type="button" class="icon-button" aria-label="Chuyển sang giao diện tối" aria-pressed="false"></button>
+      </div>
+    </header>
+
+    <main id="main" class="page" tabindex="-1">
+      <div id="app-error" class="toast" role="alert" hidden>
+        <span id="app-error-text"></span>
+        <button id="retry-button" type="button" class="button button-quiet">Thử lại</button>
+      </div>
+      <span id="connection-status" class="sr-only" role="status">Đang kết nối</span>
+
+      <section id="welcome" class="welcome" hidden>
+        <img class="brand-art" src="/brand/padstudio-mark-large.webp" width="640" height="335" alt="" />
+        <h1>Chào mừng đến PADStudio</h1>
+        <p>Bắt đầu một dự án trong cuộc trò chuyện với Agent. Tư liệu, bản dựng và phản hồi của bạn sẽ xuất hiện ở đây.</p>
+        <p class="welcome-name">Precise Animated Demonstration Studio</p>
+      </section>
+
+      <div id="project" hidden>
+        <div class="project-bar">
+          <div class="project-heading">
+            <h1 id="project-title" tabindex="-1">Đang mở dự án…</h1>
+            <p id="project-meta" class="project-meta"></p>
+          </div>
+          <div id="tabs" class="tabs" role="tablist" aria-label="Nội dung dự án">
+            <button id="tab-video" type="button" role="tab" class="tab is-active" data-view="video" aria-selected="true" aria-controls="view-video">Video</button>
+            <button id="tab-sources" type="button" role="tab" class="tab" data-view="sources" aria-selected="false" tabindex="-1" aria-controls="view-sources">Tư liệu</button>
+            <button id="tab-details" type="button" role="tab" class="tab" data-view="details" aria-selected="false" tabindex="-1" aria-controls="view-details">Chi tiết</button>
+          </div>
         </div>
-      </main>
+
+        <section id="view-video" class="view" role="tabpanel" aria-labelledby="tab-video">
+          <div id="theatre"></div>
+        </section>
+
+        <section id="view-sources" class="view" role="tabpanel" aria-labelledby="tab-sources" hidden>
+          <div id="sources"></div>
+          <details class="panel" id="source-insights" hidden>
+            <summary><span class="panel-title">Lời thoại và phân tích</span><span class="panel-meta"></span><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m8 10 4 4 4-4" /></svg></summary>
+            <div class="panel-body"><div id="source-analysis-view"></div></div>
+          </details>
+        </section>
+
+        <section id="view-details" class="view" role="tabpanel" aria-labelledby="tab-details" hidden>
+          <div id="details"></div>
+        </section>
+      </div>
+    </main>
+
+    <div id="library" class="library" role="dialog" aria-modal="true" aria-labelledby="library-title" hidden>
+      <div class="library-backdrop" data-library-backdrop></div>
+      <div class="library-sheet">
+        <header class="library-head">
+          <h2 id="library-title">Dự án</h2>
+          <button type="button" class="icon-button" data-library-close aria-label="Đóng danh sách dự án">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
+          </button>
+        </header>
+        <label class="search library-search">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16l4 4M10.5 17a6.5 6.5 0 1 1 0-13 6.5 6.5 0 0 1 0 13z" /></svg>
+          <input id="library-search" type="search" placeholder="Tìm dự án…" aria-label="Tìm dự án" autocomplete="off" />
+        </label>
+        <div id="library-grid" class="library-grid"></div>
+      </div>
     </div>
+
     <script type="module" src="/app.js"></script>
   </body>
 </html>

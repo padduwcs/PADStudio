@@ -227,7 +227,7 @@ function renderSourceList(state) {
     button.type = "button";
     button.append(
       element("strong", "", sourceName(state.context, source)),
-      element("span", "input-meta", { video: "Video", audio: "Âm thanh", image: "Hình ảnh", unknown: "Tư liệu" }[sourceKind(state.context, source)] ?? "Tư liệu")
+      element("span", "rail-note", { video: "Video", audio: "Âm thanh", image: "Hình ảnh", unknown: "Tư liệu" }[sourceKind(state.context, source)] ?? "Tư liệu")
     );
     if (source.freshness === "stale") button.append(pill(freshnessLabel(source.freshness), "freshness-stale"));
     button.addEventListener("click", () => {
@@ -441,7 +441,7 @@ function showQueryError(state, error) {
   const box = element("div", "source-state source-state-error");
   box.append(element("strong", "", "Không đọc được dữ liệu"), element("p", "", error.message));
   if (error.code === "index_not_ready") {
-    box.append(element("p", "input-meta", "Hãy yêu cầu Agent chạy analysis:verify; web không tự tạo index."));
+    box.append(element("p", "rail-note", "Hãy yêu cầu Agent chạy analysis:verify; web không tự tạo index."));
   }
   state.evidenceHost.append(box);
 }
@@ -473,7 +473,7 @@ function renderTranscript(state, rows) {
     text.append(element("p", "", row.text || row.correctedText || "Đoạn không có chữ."));
     const meta = [formatAnalysisTime(row.endSeconds), row.language, row.correction ? "đã hiệu chỉnh" : "raw"]
       .filter(Boolean).join(" · ");
-    text.append(element("span", "input-meta", meta));
+    text.append(element("span", "rail-note", meta));
     if (row.rawText && row.rawText !== row.text) {
       const raw = element("details", "transcript-raw");
       raw.append(element("summary", "", "Xem ASR gốc"), element("p", "", row.rawText));
@@ -493,7 +493,7 @@ function renderScenes(state, rows) {
     card.append(
       seekButton(state, row, "Phát cảnh"),
       element("strong", "", row.id),
-      element("span", "input-meta", `${formatAnalysisTime(row.startSeconds)}–${formatAnalysisTime(row.endSeconds)} · ${row.boundaryKind}`)
+      element("span", "rail-note", `${formatAnalysisTime(row.startSeconds)}–${formatAnalysisTime(row.endSeconds)} · ${row.boundaryKind}`)
     );
     registerEvidenceRow(state, card, row);
     list.append(card);
@@ -541,7 +541,7 @@ function renderAudio(state, rows) {
     line.append(
       seekButton(state, row, "Phát sự kiện âm thanh"),
       element("strong", "", row.kind.replaceAll("_", " ")),
-      element("span", "input-meta", `${formatAnalysisTime(row.startSeconds)}–${formatAnalysisTime(row.endSeconds)}`)
+      element("span", "rail-note", `${formatAnalysisTime(row.startSeconds)}–${formatAnalysisTime(row.endSeconds)}`)
     );
     registerEvidenceRow(state, line, row);
     wrap.append(line);
@@ -571,7 +571,7 @@ function renderAssessments(state, rows) {
       line.append(
         pill(finding.basis === "observation" ? "Quan sát" : "Suy luận", "basis-" + finding.basis),
         element("span", "", finding.statement),
-        element("small", "input-meta", "Độ chắc chắn: " + finding.certainty)
+        element("small", "rail-note", "Độ chắc chắn: " + finding.certainty)
       );
       card.append(line);
     }
@@ -622,7 +622,7 @@ function renderOverview(state, source) {
     card.append(
       element("strong", "", VIEW_LABELS[view] ?? view),
       pill(result.outcome),
-      element("span", "input-meta", `${result.method.profileId} · ${result.coverage.mode}`)
+      element("span", "rail-note", `${result.method.profileId} · ${result.coverage.mode}`)
     );
     operations.append(card);
   }
@@ -725,7 +725,7 @@ async function runSearch(state, text) {
       card.append(
         element("span", "search-result-kind", row.kind),
         element("strong", "", row.snippet),
-        element("span", "input-meta", [
+        element("span", "rail-note", [
           Number.isFinite(row.startSeconds) ? formatAnalysisTime(row.startSeconds) : null,
           freshnessLabel(row.freshness)
         ].filter(Boolean).join(" · "))
@@ -795,7 +795,7 @@ function renderEvidencePanel(state, source, host) {
   state.viewControls = element("div", "source-view-options");
   controls.append(state.viewControls);
   panel.append(controls);
-  state.datasetMeta = element("p", "input-meta source-dataset-meta");
+  state.datasetMeta = element("p", "rail-note source-dataset-meta");
   const metadata = element("details", "source-dataset-details");
   metadata.append(element("summary", "", "Thông tin phân tích"), state.datasetMeta);
   panel.append(metadata);
@@ -819,7 +819,7 @@ function renderSearch(state, host) {
   const button = element("button", "", "Tìm");
   button.type = "submit";
   form.append(input, button);
-  state.searchStatus = element("p", "input-meta source-search-status");
+  state.searchStatus = element("p", "rail-note source-search-status");
   state.searchResults = element("div", "source-search-results");
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -845,7 +845,7 @@ function renderWorkspace(state) {
   const heading = element("header", "source-current-head");
   const identity = element("div", "");
   identity.append(
-    element("p", "eyebrow", { video: "VIDEO", audio: "ÂM THANH", image: "HÌNH ẢNH", unknown: "TƯ LIỆU" }[sourceKind(state.context, source)] ?? "TƯ LIỆU"),
+    element("p", "kicker", { video: "VIDEO", audio: "ÂM THANH", image: "HÌNH ẢNH", unknown: "TƯ LIỆU" }[sourceKind(state.context, source)] ?? "TƯ LIỆU"),
     element("h4", "", sourceName(state.context, source))
   );
   const badges = element("div", "source-badges");

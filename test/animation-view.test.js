@@ -68,11 +68,11 @@ test("type-led narration repetition is not flagged as a visual-first warning", (
   try {
     renderAnimation(container, context("type-led", 1));
     const communication = descendants(container).find((item) => item.textContent.startsWith("Giao tiếp type-led"));
-    assert.equal(communication?.className, "result-verification");
+    assert.equal(communication?.className, "tone-ok");
     clearAnimation(container);
     renderAnimation(container, context("visual-first", 1));
     const visualFirst = descendants(container).find((item) => item.textContent.startsWith("Giao tiếp visual-first"));
-    assert.equal(visualFirst?.className, "sequence-warning");
+    assert.equal(visualFirst?.className, "tone-warn");
   } finally {
     clearAnimation(container);
     globalThis.document = originalDocument;
