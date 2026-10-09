@@ -1,9 +1,9 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { access, mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createPadStudioServer } from "../src/web/server.js";
 import { ProjectReader } from "../src/web/project-reader.js";
-import { validateProjectId } from "../src/project/project-paths.js";
+import { locatePilotFixture } from "./lib/pilot-fixture.mjs";
 import { resolve } from "node:path";
 const exec = promisify(execFile);
 const report = { version: "1.0", phase: 4, checkedAt: new Date().toISOString(), status: "incomplete", checks: {}, limits: ["User approval applies only to the exact recorded Result.", "Animation is preset-based; no general keyframe editor.", "Local fonts can differ between machines.", "Synthetic media tests do not certify arbitrary long or complex productions."] };
@@ -19,24 +19,12 @@ async function run(name, command, args) {
     report.checks[name] = { status: "failed", error: e.message }; throw e;
   }
 }
-async function fixtureRoot(projectId) {
-  validateProjectId(projectId);
-  const choices = [
-    { name: "active", root: resolve(".padstudio/projects") },
-    { name: "archive", root: resolve(".padstudio/archive/projects") }
-  ];
-  for (const choice of choices) {
-    try { await access(resolve(choice.root, projectId, "project.json")); return choice; }
-    catch (error) { if (error?.code !== "ENOENT") throw error; }
-  }
-  throw new Error(`Không tìm thấy production fixture ở active hoặc archive: ${projectId}`);
-}
 let server;
 try {
   await run("repository", process.execPath, ["--test"]);
   await run("analysis-harness", process.execPath, ["scripts/source-eval.mjs", "test"]);
   const pilot = JSON.parse(await readFile("reports/phase4-pilot.json", "utf8"));
-  const fixture = await fixtureRoot(pilot.projectId);
+  const fixture = await locatePilotFixture(pilot.projectId);
   const reader = new ProjectReader(fixture.root);
   const context = await reader.readProject(pilot.projectId);
   const result = context.results.find((entry) => entry.id === pilot.resultId);

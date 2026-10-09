@@ -1,7 +1,8 @@
 // Fast static checks that need no dependencies: `npm run check`.
 //   1. every tracked JavaScript file parses (node --check)
 //   2. no unused imports and no node:path/url helper used without an import
-//   3. every relative Markdown link resolves and every `npm run <script>` in the docs exists
+//   3. every relative Markdown link resolves, every `npm run <script>` in the docs exists and every
+//      backticked repository path (`src/...`, `ui/...`) names a file that is still there
 // The checks are deliberately simple; they exist to catch mechanical mistakes, not to replace review.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -50,6 +51,9 @@ for (const file of scripts.filter((name) => !name.startsWith("ui/") || true)) {
 }
 
 // 3. documentation --------------------------------------------------------------------------------------
+// A path in backticks that starts at a top-level source folder, e.g. `ui/app.js`. Links catch moved targets;
+// this catches prose that still names a file that was deleted.
+const REPOSITORY_PATH = /`((?:src|ui|scripts|test|skills|docs|runtime|workflow-templates|production-catalogs)\/[A-Za-z0-9_./-]+\.[a-z]+)`/g;
 const packageScripts = new Set(Object.keys(JSON.parse(readFileSync("package.json", "utf8")).scripts));
 for (const file of tracked.filter((name) => name.endsWith(".md") && !name.startsWith("reports/") && !name.startsWith("eval/"))) {
   const text = readFileSync(file, "utf8");
@@ -59,8 +63,12 @@ for (const file of tracked.filter((name) => name.endsWith(".md") && !name.starts
     const path = decodeURIComponent(target.split("#")[0]);
     if (path && !existsSync(resolve(dirname(file), path))) problems.push(`${file}: broken link ${target}`);
   }
-  // History records the commands of their own time; only current documents must name existing scripts.
+  // History records the commands of their own time; only current documents must name existing scripts and files.
   if (file.startsWith("docs/build/history/")) continue;
+  for (const match of text.matchAll(REPOSITORY_PATH)) {
+    const path = match[1];
+    if (!existsSync(path) && !existsSync(resolve(dirname(file), path))) problems.push(`${file}: names missing file \`${path}\``);
+  }
   for (const match of text.matchAll(/npm run ([a-z0-9:.-]+)/gi)) {
     if (!packageScripts.has(match[1])) problems.push(`${file}: unknown npm script "${match[1]}"`);
   }

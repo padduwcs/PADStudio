@@ -7,6 +7,7 @@ import { ProjectContextAssembler } from "../src/intelligence/project-context-ass
 import { createDefaultToolRegistry } from "../src/execution/default-tool-registry.js";
 import { ProjectReader } from "../src/web/project-reader.js";
 import { createPadStudioServer } from "../src/web/server.js";
+import { locatePilotFixture } from "./lib/pilot-fixture.mjs";
 
 const exec = promisify(execFile);
 const logDir = resolve(".cache/phase5b-acceptance");
@@ -45,7 +46,7 @@ try {
   await run("analysis-harness", process.execPath, ["scripts/source-eval.mjs", "test"]);
 
   const pilot = JSON.parse(await readFile("reports/phase4-pilot.json", "utf8"));
-  const rootDir = resolve(".padstudio/projects");
+  const rootDir = (await locatePilotFixture(pilot.projectId)).root;
   const assembler = new ProjectContextAssembler({
     projectStore: new ProjectStore(rootDir),
     toolRegistry: createDefaultToolRegistry()

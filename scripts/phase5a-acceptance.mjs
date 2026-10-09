@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { ProjectReader } from "../src/web/project-reader.js";
 import { createPadStudioServer } from "../src/web/server.js";
+import { locatePilotFixture } from "./lib/pilot-fixture.mjs";
 
 const exec = promisify(execFile);
 const report = {
@@ -57,7 +58,8 @@ try {
   await run("repository", process.execPath, ["--test"]);
   await run("analysis-harness", process.execPath, ["scripts/source-eval.mjs", "test"]);
   const pilot = JSON.parse(await readFile("reports/phase4-pilot.json", "utf8"));
-  const reader = new ProjectReader(resolve(".padstudio/projects"));
+  const fixture = await locatePilotFixture(pilot.projectId);
+  const reader = new ProjectReader(fixture.root);
   server = createPadStudioServer({ reader });
   await new Promise((ok, reject) => {
     server.once("error", reject);

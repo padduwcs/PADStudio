@@ -440,7 +440,7 @@ Tên file mới là cấu trúc đề xuất, có thể điều chỉnh khi tri�
 | `src/execution/tool-executor.js` | Hook đăng ký Run và hủy có phạm vi; giữ rollback/finalization semantics |
 | `src/intelligence/` | Validate ba artifact mới; summary context và freshness |
 | `src/production/production-context.js` | Lan truyền cảnh báo evidence/assessment stale, không đổi sequence |
-| `src/web/`, `ui/source-analysis-view.js` | Query API, route specificity, source workspace và lazy loading |
+| `src/web/` | Query API, route specificity và lazy loading. Workspace phân tích nguồn trên web (view riêng của nó) đã được gỡ trong đợt giao diện 2026-10; đọc qua CLI `analysis:read` hoặc API |
 | `src/cli/`, `package.json` | Lệnh §10, summary view, doctor/setup helpers |
 | `skills/source-understanding.md`, runtime guide | Cách thu thập bằng chứng, đọc coverage, ghi assessment/correction |
 | `test/`, `eval/source-understanding/` | Unit/integration/browser, corpus manifest, benchmark report |
@@ -515,6 +515,7 @@ evidence validation, reader/search/summary, verify freshness, context và observ
 Gói E — workspace observer — đã được triển khai sau gói D. Chọn nguồn/Result set, media theo
 source time, coverage/freshness, lazy-load evidence/search và browser acceptance được ghi tại
 [`SOURCE-UNDERSTANDING-PACKAGE-E.md`](history/SOURCE-UNDERSTANDING-PACKAGE-E.md).
+**Cập nhật 2026-10:** giao diện web chỉ còn hai tab Video và Tư liệu; workspace phân tích nguồn của gói E đã được gỡ khỏi web. Dữ liệu và API đọc (`/api/projects/<id>/analysis`) giữ nguyên; Agent đọc bằng `npm run analysis:read`.
 
 Gói F — nghiệm thu phân hệ — đã hoàn thành sau gói E trong phạm vi sử dụng thực dụng trên máy
 owner. Acceptance runner, ma trận bằng chứng, browser gate mở rộng, kết quả và giới hạn được ghi tại
