@@ -233,7 +233,12 @@ Contract đầy đủ:
    `npm run animation:preview-range -- <project-id> <composition-id-or-key> <start-seconds> <end-seconds>`
    tự tìm preflight đã pass đúng revision rồi tạo preview một khoảng thời gian;
 5. `animation.render` với exact tool `manim-ce`, `remotion-local` hoặc `hyperframes-local`,
-   truyền `artifactId`, `artifactRevision`, `validationResultId`, `preflightResultId`.
+   truyền `artifactId`, `artifactRevision`, `validationResultId`, `preflightResultId`;
+6. Khi render bind choreography có `narrationCueMap`, chạy `animation.verify-sync / local-sync-verifier`
+   với `{ "resultId": "<animation.render>" }` (thêm `transcriptResultId` của transcript tạo từ chính render đó để đo cả
+   thời điểm lời nói; `toleranceSeconds` tùy chọn, mặc định 0.35). Báo cáo từng cue là `aligned`, `late`,
+   `no_visible_change` hoặc `ambiguous_ongoing_motion` (và `held`/`moving_during_hold` với khoảng giữ hình);
+   thay đổi nhỏ hoặc chậm có thể nằm dưới ngưỡng chuyển động, nên xem preview quanh cue bị đánh dấu trước khi kết luận lỗi.
 
 `animation.composition.durationSeconds` là thời lượng mục tiêu căn frame. `timing.mode` mặc định là
 `measured` cho Manim và `exact` cho Remotion/HyperFrames. Chế độ measured chỉ chấp nhận sai số nhỏ có

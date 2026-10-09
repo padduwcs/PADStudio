@@ -22,6 +22,7 @@ import { createPiperTts } from "../tools/piper-tts.js";
 import { createElevenLabsTts } from "../tools/elevenlabs-tts.js";
 import { createLocalDeliveryExporter } from "../tools/local-delivery-exporter.js";
 import { createLocalOutputQuality } from "../tools/local-output-quality.js";
+import { createLocalSyncVerifier } from "../tools/local-sync-verifier.js";
 import { createWikimediaStockSearch } from "../tools/wikimedia-stock-search.js";
 import { createExternalGeneratedMedia } from "../tools/external-generated-media.js";
 import { createCodeAnimationSource } from "../tools/code-animation-source.js";
@@ -77,6 +78,7 @@ export function createDefaultToolRegistry(options = {}) {
     createManimAnimationRenderer(options.manimAnimation),
     createRemotionAnimationRenderer(options.remotionAnimation),
     createHyperframesAnimationRenderer(options.hyperframesAnimation),
+    createLocalSyncVerifier(options.syncVerifier),
     createLocalDeliveryExporter(options.localDelivery)
   ].map(applyToolGuidance));
 }

@@ -25,6 +25,14 @@ judgment without imposing a fixed production pipeline.
    short intervals across cue boundaries and record whether speech leads, follows or matches the
    image. A valid `narrationCueMap` is a plan, not render evidence. Check the ending against the
    final spoken point.
+   For a render bound to a choreography that has a `narrationCueMap`, run
+   `animation.verify-sync / local-sync-verifier` on the exact `animation.render` Result (add
+   `transcriptResultId` of a transcript made from that same render to also measure when words are spoken).
+   It reports, per cue, the first frame whose pixels change relative to the planned action start (aligned,
+   late, no visible change or ambiguous ongoing motion), whether a deliberate hold really stays still, and
+   whether speech arrives on cue. Treat it as a way to choose where to look: subtle changes can stay below
+   its motion threshold, so open a preview around every cue it flags before calling it a defect, and never
+   present it as proof that the motion means the right thing.
    Watch once as a first-time learner: at every important change, ask what the viewer is meant to
    notice, what visible cause produces the change and what state is carried forward. For an arrow,
    connector, highlight or cursor action, verify that the target exists before the cue, the motion

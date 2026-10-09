@@ -55,6 +55,7 @@ export function buildAnimationContext(context) {
   const preflights = context.results.filter((result) => result.type === "animation.preflight");
   const previews = context.results.filter((result) => result.type === "animation.preview");
   const renders = context.results.filter((result) => result.type === "animation.render");
+  const syncReports = context.results.filter((result) => result.type === "animation.sync-report");
   const compositions = artifacts.map((artifact) => {
     const sourceResultId = artifact.data.sourceResultId;
     const exactValidations = validations.filter((result) => result.data?.sourceResultId === sourceResultId);
@@ -86,7 +87,10 @@ export function buildAnimationContext(context) {
       renders: exactRenders.map((result) => ({ resultId: result.id, createdAt: result.createdAt,
         files: result.files, verification: result.verification, durationSeconds: result.data.durationSeconds,
         timing: result.data.timing ?? null, video: result.data.video,
-        hasAudio: result.data.hasAudio, reviews: context.reviews.filter((review) => review.target?.kind === "result" && review.target.id === result.id) })),
+        hasAudio: result.data.hasAudio, reviews: context.reviews.filter((review) => review.target?.kind === "result" && review.target.id === result.id),
+        syncReports: syncReports.filter((report) => report.data?.sourceResultId === result.id).map((report) => ({
+          resultId: report.id, createdAt: report.createdAt, toleranceSeconds: report.data.toleranceSeconds,
+          transcriptSupplied: report.data.transcriptSupplied, summary: report.data.summary, files: report.files })) })),
     };
   });
   return {

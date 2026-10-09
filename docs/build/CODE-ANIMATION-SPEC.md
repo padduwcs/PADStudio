@@ -62,6 +62,7 @@ The renderer records the exact source, validation, composition, props and prefli
 | `animation.preview` | `remotion-preview` | Render selected still frames and/or a clip of at most 30 seconds after passed preflight. |
 | `animation.preview` | `hyperframes-preview` | Capture selected exact frames and a contact sheet after passed preflight. |
 | `animation.preview` | `hyperframes-motion-preview` | Inspect one selector and preserve a bounded onion-skin path/strip plus JSON keyframe diagnostics. |
+| `animation.verify-sync` | `local-sync-verifier` | Compare the bound choreography's `narrationCueMap` with an exact render: when pixels first change against the planned action start, whether holds stay still and, with a transcript of the same bytes, when words are spoken. Creates an `animation.sync-report` Result (evidence, not a verdict). |
 | `animation.render` | `manim-ce` | Render a validated Manim `Scene`. |
 | `animation.render` | `remotion-local` | Render a validated Remotion composition frame-accurately. |
 | `animation.render` | `hyperframes-local` | Run strict HyperFrames check, then render authored `index.html`. |

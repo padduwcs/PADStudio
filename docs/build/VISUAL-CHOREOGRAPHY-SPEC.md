@@ -131,6 +131,16 @@ chronology, references and gross action-duration mismatches. The observer expose
 is an authored synchronization plan, not audiovisual recognition; the Agent still inspects the
 render against the actual voice. Existing 1.3 artifacts without a map remain valid.
 
+After rendering, `animation.verify-sync / local-sync-verifier` turns the plan into evidence for review. For each cue it
+measures the per-frame mean absolute luma difference of the exact render (FFmpeg `signalstats` YDIF at 160 px width) and
+reports whether the first frame above a noise-relative threshold (`max(0.03, 4 × median motion)`) falls within the
+tolerance (default 0.35 s, never below two frames) of the cue's planned action start: `aligned`, `late`,
+`no_visible_change` or `ambiguous_ongoing_motion` when motion was already running as the window opened. A cue that
+declares a `holdReason` is checked for stillness (`held` / `moving_during_hold`). With a `source.transcript` Result made
+from the same render bytes it also reports whether words arrive on cue (`on_cue`, `late_voice`, `early_voice`,
+`absent`). Pixel change cannot say what moved or whether it explains the narration, and subtle changes can stay below
+the threshold, so the report is a guide to where to look, never a verdict.
+
 Versions 1.0–1.2 remain readable. New narrated explanatory work should use 1.3. Existing 1.2 plans
 do not become invalid merely because their text inventory was not recorded under the older contract.
 

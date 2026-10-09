@@ -180,7 +180,7 @@ dashboard trạng thái.
 Một lượt đọc code và đối chiếu có hệ thống, chỉ sửa tài liệu (không đổi `src/`, `test/`, `ui/`).
 
 **Đã kiểm tra bằng máy:** 65 file `.md` (liên kết tương đối, mọi `npm run <script>` có trong `package.json`,
-mọi script trỏ tới file tồn tại); registry mặc định chạy thật cho ra 29 capability / 36 tool; tên tool và field của mọi ví dụ trong
+mọi script trỏ tới file tồn tại); registry mặc định chạy thật cho ra 29 capability / 36 tool (sau đó thêm `animation.verify-sync`: 30 / 37); tên tool và field của mọi ví dụ trong
 reference được so với `inputSchema`, còn enum/giới hạn của trim, concat, reformat, thumbnail, audio overlay,
 image-to-video và quality được so thêm với code; cú pháp CLI
 (`tool:list`, `padstudio:doctor`, `project:archive`, `project:recover`, `project:accept`,

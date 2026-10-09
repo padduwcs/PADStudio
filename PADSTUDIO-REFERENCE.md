@@ -204,7 +204,7 @@ npm run animation:preview-range -- coffee-video <composition-id-or-key> <start-s
 `animation:preview-range` là lối tắt cho composition Remotion đang active: nó tìm preflight đã pass đúng
 revision rồi gọi `animation.preview` / `remotion-preview` với một khoảng tối đa 30 giây.
 
-Registry mặc định hiện có 29 capability do 36 tool cung cấp (số thực tế lấy từ `npm run tool:list`;
+Registry mặc định hiện có 30 capability do 37 tool cung cấp (số thực tế lấy từ `npm run tool:list`;
 availability phụ thuộc máy). 23 capability media/asset/analysis/delivery:
 
 - `media.inspect` / `ffprobe`: đọc metadata audio/video, không tạo file.
@@ -240,7 +240,7 @@ availability phụ thuộc máy). 23 capability media/asset/analysis/delivery:
 - `video.inspect-output` / `local-output-quality`: full decode, evidence, timeline samples, black/freeze, audio và ASR trên exact render. Dùng trước khi trình người dùng; sau acceptance nó chỉ là bằng chứng advisory.
 - `video.export-delivery` / `local-delivery`: đóng gói nguyên byte exact Result đã được người dùng chấp nhận (probe tối thiểu, copy, kiểm checksum). Không render lại, không ép profile.
 
-Sáu capability hoạt họa project-native (xem [CODE-ANIMATION-SPEC.md](docs/build/CODE-ANIMATION-SPEC.md)):
+Bảy capability hoạt họa project-native (xem [CODE-ANIMATION-SPEC.md](docs/build/CODE-ANIMATION-SPEC.md)):
 
 - `animation.source` / `code-animation-source`: tạo hoặc revise source package bất biến, không chạy code.
 - `animation.props` / `code-animation-props`: tạo hoặc revise JSON props bất biến.
@@ -248,6 +248,7 @@ Sáu capability hoạt họa project-native (xem [CODE-ANIMATION-SPEC.md](docs/b
 - `animation.preflight` / `manim-ce-preflight`, `remotion-local-preflight`, `hyperframes-local-preflight`.
 - `animation.preview` / `remotion-preview`, `hyperframes-preview`, `hyperframes-motion-preview`.
 - `animation.render` / `manim-ce`, `remotion-local`, `hyperframes-local`: tạo Result video dùng trực tiếp trong `video.sequence`.
+- `animation.verify-sync` / `local-sync-verifier`: đối chiếu `narrationCueMap` của choreography đã bind với exact `animation.render` (khung hình đầu tiên đổi so với kế hoạch, khoảng giữ hình, và lời nói nếu có `transcriptResultId`); tạo `animation.sync-report`, chỉ là bằng chứng để review.
 
 Ghi Decision sau khi người dùng phản hồi rõ về một Result:
 
