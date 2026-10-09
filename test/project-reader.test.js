@@ -274,3 +274,17 @@ test("web server only answers requests addressed to localhost", async (t) => {
     assert.equal(await statusFor(host), 403, `Host: "${host}"`);
   }
 });
+
+test("the observer reports who it is and which code it started with", async (t) => {
+  const rootDir = await temporaryDirectory(t);
+  const server = createPadStudioServer({ reader: new ProjectReader(rootDir), build: "build-under-test" });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/api/observer`);
+  assert.equal(response.status, 200);
+  const identity = await response.json();
+  assert.equal(identity.app, "padstudio-observer");
+  assert.equal(identity.pid, process.pid);
+  assert.equal(identity.build, "build-under-test");
+  assert.ok(Number.isFinite(Date.parse(identity.startedAt)));
+});

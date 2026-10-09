@@ -17,6 +17,7 @@ import { resolveProjectRoot } from "../config/project-root.js";
 import { buildStaticAssets, sendStaticAsset } from "./static-assets.js";
 import { LocalConfigError } from "../config/local-config.js";
 import { createSettingsService } from "./settings-service.js";
+import { observerBuild } from "./observer-build.js";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const applicationRoot = join(currentDirectory, "..", "..");
@@ -167,8 +168,11 @@ function sendMediaFile(request, response, input) {
   stream.pipe(response);
 }
 
-export function createPadStudioServer({ reader, staticDirectory = uiDirectory, settings = createSettingsService() }) {
+export function createPadStudioServer({ reader, staticDirectory = uiDirectory, settings = createSettingsService(), build = observerBuild() }) {
   const staticAssets = buildStaticAssets(staticDirectory);
+  // Who this server is and which code it started with, so observer:ensure can replace a server left running
+  // from before an update instead of silently reusing it.
+  const identity = { app: "padstudio-observer", pid: process.pid, startedAt: new Date().toISOString(), build };
   const server = createServer(async (request, response) => {
     try {
       if (!isLocalHostHeader(request.headers.host)) {
@@ -182,6 +186,10 @@ export function createPadStudioServer({ reader, staticDirectory = uiDirectory, s
         const etag = quotedEtag(`projects-${digest}`);
         if (etagMatches(request.headers["if-none-match"], etag)) return sendNotModified(response, etag);
         return sendJson(response, 200, { projects }, { ETag: etag, "Cache-Control": "no-cache" });
+      }
+
+      if (url.pathname === "/api/observer" && request.method === "GET") {
+        return sendJson(response, 200, identity, { "Cache-Control": "no-store" });
       }
 
       if (url.pathname === "/api/tools" && request.method === "GET") {
