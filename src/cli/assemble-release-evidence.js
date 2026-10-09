@@ -1,10 +1,9 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { ProjectStore } from "../project/project-store.js";
 import { readJsonInput } from "./json-input.js";
 import { assembleReleaseEvidence, selectLatestHumanAttestation } from "../release/release-evidence-assembler.js";
+import { resolveProjectRoot } from "../config/project-root.js";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".padstudio", "projects");
+const root = resolveProjectRoot();
 async function main(args) {
   const [projectId, baseSource, holdoutSource, resultId] = args;
   if (!projectId || !baseSource || !holdoutSource || args.length > 4) throw new Error("Usage: npm run release:evidence:assemble -- <project-id> <base-evidence-json|file|-> <locked-holdout-json|file> [result-id]");

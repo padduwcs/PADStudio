@@ -1,10 +1,8 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { recoverProject } from "../operations/project-recovery.js";
 import { ProjectStore } from "../project/project-store.js";
+import { resolveProjectRoot } from "../config/project-root.js";
 
-const currentDirectory = dirname(fileURLToPath(import.meta.url));
-const projectRoot = join(currentDirectory, "..", "..", ".padstudio", "projects");
+const projectRoot = resolveProjectRoot();
 const args = process.argv.slice(2);
 const projectIds = args.filter((arg) => !arg.startsWith("-"));
 const unknown = args.filter((arg) => arg.startsWith("-") && arg !== "--apply");

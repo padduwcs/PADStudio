@@ -1,5 +1,3 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { analysisFingerprint } from "../analysis/source-identity.js";
 import { ProjectStore } from "../project/project-store.js";
 import {
@@ -8,9 +6,9 @@ import {
   TRANSCRIPT_EDIT_TYPE
 } from "../intelligence/source-artifacts.js";
 import { readJsonInput } from "./json-input.js";
+import { resolveProjectRoot } from "../config/project-root.js";
 
-const currentDirectory = dirname(fileURLToPath(import.meta.url));
-const projectRoot = join(currentDirectory, "..", "..", ".padstudio", "projects");
+const projectRoot = resolveProjectRoot();
 const TYPES = new Set([SOURCE_PROFILE_TYPE, SOURCE_ASSESSMENT_TYPE, TRANSCRIPT_EDIT_TYPE]);
 
 function defaultKey(type, data) {

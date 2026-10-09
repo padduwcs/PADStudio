@@ -1,10 +1,8 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { createDefaultToolRegistry } from "../execution/default-tool-registry.js";
 import { inspectMachineProfile } from "../operations/machine-profile.js";
 import { buildPlanningEnvironment } from "../operations/planning-environment.js";
+import { resolveProjectRoot } from "../config/project-root.js";
 
-const applicationRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 if (process.argv.length !== 2) {
   process.stderr.write("Usage: npm run system:profile\n");
@@ -12,7 +10,7 @@ if (process.argv.length !== 2) {
 } else {
   try {
     const [machine, capabilities] = await Promise.all([
-      inspectMachineProfile({ rootDir: join(applicationRoot, ".padstudio", "projects") }),
+      inspectMachineProfile({ rootDir: resolveProjectRoot() }),
       createDefaultToolRegistry().describeCapabilities(),
     ]);
     process.stdout.write(JSON.stringify({

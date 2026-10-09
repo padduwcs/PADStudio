@@ -1,5 +1,4 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { ProjectStore } from "../project/project-store.js";
 import {
   AGENT_HOST_CONFIRMATION_CHANNEL,
@@ -7,8 +6,9 @@ import {
 } from "../project/human-confirmation.js";
 import { acceptanceResolutionIds } from "../production/acceptance-readiness.js";
 import { confirmExactPhrase, requireInteractiveTerminal } from "./interactive-confirmation.js";
+import { resolveProjectRoot } from "../config/project-root.js";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".padstudio", "projects");
+const root = resolveProjectRoot();
 
 async function main(args) {
   const [projectId, resultId, ...options] = args;

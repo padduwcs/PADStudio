@@ -1,11 +1,9 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { createDefaultAnalysisService } from "../analysis/default-analysis-service.js";
 import { analysisExitCode } from "./analysis-exit-code.js";
 import { readJsonInput } from "./json-input.js";
+import { resolveProjectRoot } from "../config/project-root.js";
 
-const currentDirectory = dirname(fileURLToPath(import.meta.url));
-const projectRoot = join(currentDirectory, "..", "..", ".padstudio", "projects");
+const projectRoot = resolveProjectRoot();
 
 async function main(args) {
   const [projectId, requestSource] = args;

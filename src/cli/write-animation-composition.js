@@ -1,10 +1,9 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { ANIMATION_COMPOSITION_TYPE } from "../animation/animation-composition.js";
 import { ProjectStore } from "../project/project-store.js";
 import { readJsonInput } from "./json-input.js";
+import { resolveProjectRoot } from "../config/project-root.js";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".padstudio", "projects");
+const root = resolveProjectRoot();
 
 async function main(args) {
   if (args.length !== 2) throw new Error("Usage: npm run project:animation -- <project-id> <json-file|->");

@@ -1,11 +1,9 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { ProjectStore } from "../project/project-store.js";
 import { ProjectContextAssembler } from "../intelligence/project-context-assembler.js";
 import { createDefaultToolRegistry } from "../execution/default-tool-registry.js";
+import { resolveProjectRoot } from "../config/project-root.js";
 
-const currentDirectory = dirname(fileURLToPath(import.meta.url));
-const projectRoot = join(currentDirectory, "..", "..", ".padstudio", "projects");
+const projectRoot = resolveProjectRoot();
 
 async function main(args) {
   const [projectId, option, view] = args;

@@ -1,9 +1,7 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { inspectPadStudio } from "../operations/system-doctor.js";
+import { resolveProjectRoot } from "../config/project-root.js";
 
-const currentDirectory = dirname(fileURLToPath(import.meta.url));
-const projectRoot = join(currentDirectory, "..", "..", ".padstudio", "projects");
+const projectRoot = resolveProjectRoot();
 const args = process.argv.slice(2);
 const unknown = args.filter((arg) => arg.startsWith("-") && arg !== "--deep");
 if (unknown.length || args.filter((arg) => !arg.startsWith("-")).length > 1) {

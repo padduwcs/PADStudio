@@ -1,10 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { loadSourcePackage, safeSourcePath } from "../animation/source-package.js";
 import { ProjectStore } from "../project/project-store.js";
+import { resolveProjectRoot } from "../config/project-root.js";
 
-const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".padstudio", "projects");
+const root = resolveProjectRoot();
 
 async function main(args) {
   if (args.length < 2 || args.length > 3) {

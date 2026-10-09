@@ -14,11 +14,12 @@ import { ProjectPathError } from "../project/project-paths.js";
 import { AnalysisReaderError } from "../analysis/analysis-reader.js";
 import { AnalysisValidationError } from "../analysis/contracts.js";
 import { etagMatches, quotedEtag } from "./project-generation.js";
+import { resolveProjectRoot } from "../config/project-root.js";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const applicationRoot = join(currentDirectory, "..", "..");
 const uiDirectory = join(applicationRoot, "ui");
-const projectRoot = join(applicationRoot, ".padstudio", "projects");
+const projectRoot = resolveProjectRoot();
 
 const staticFiles = {
   "/": { file: "index.html", type: "text/html; charset=utf-8" },

@@ -1,12 +1,10 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { createDefaultToolRegistry } from "../execution/default-tool-registry.js";
 import { ToolExecutor } from "../execution/tool-executor.js";
 import { ProjectStore } from "../project/project-store.js";
 import { readJsonInput } from "./json-input.js";
+import { resolveProjectRoot } from "../config/project-root.js";
 
-const currentDirectory = dirname(fileURLToPath(import.meta.url));
-const projectRoot = join(currentDirectory, "..", "..", ".padstudio", "projects");
+const projectRoot = resolveProjectRoot();
 
 async function main(args) {
   const [projectId, requestSource] = args;

@@ -1,10 +1,8 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { archiveProject, listArchivedProjects, restoreProject } from "../project/project-archive.js";
+import { resolveArchiveRoot, resolveProjectRoot } from "../config/project-root.js";
 
-const applicationRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const activeRoot = join(applicationRoot, ".padstudio", "projects");
-const archiveRoot = join(applicationRoot, ".padstudio", "archive", "projects");
+const activeRoot = resolveProjectRoot();
+const archiveRoot = resolveArchiveRoot({ projectRoot: activeRoot });
 
 async function main(args) {
   const [action, projectId, ...rest] = args;
