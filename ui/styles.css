@@ -150,6 +150,9 @@ body::after { width: 640px; height: 640px; left: -340px; bottom: -200px; }
 .welcome { display: grid; justify-items: center; gap: 14px; max-width: 520px; margin: clamp(48px, 12vh, 120px) auto 0; text-align: center; }
 .welcome h1 { font-size: clamp(1.5rem, 1.2rem + 1.2vw, 2rem); }
 .welcome p { color: var(--ink-2); }
+.welcome-steps { display: grid; gap: 10px; margin: 6px 0 2px; padding: 0; counter-reset: step; text-align: left; }
+.welcome-steps li { counter-increment: step; display: grid; grid-template-columns: 28px 1fr; align-items: start; gap: 12px; color: var(--ink-2); }
+.welcome-steps li::before { content: counter(step); display: grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink); font-size: var(--text-sm); font-weight: 650; }
 .welcome-name { color: var(--muted) !important; font-size: var(--text-sm); letter-spacing: 0.06em; }
 .brand-art { display: block; width: min(300px, 70%); height: auto; opacity: 0.95; }
 

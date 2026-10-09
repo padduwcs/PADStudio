@@ -6,6 +6,8 @@
 
 PADStudio là kho project và bộ thực thi local cho quy trình làm video do Agent dẫn dắt. Người dùng chat với Agent ở host bên ngoài; web PADStudio là observer chỉ đọc. Project giữ input, artifact có revision, workflow, Run/Result, quyết định, feedback, QA và provenance để có thể mở lại và tiếp tục.
 
+**Mới bắt đầu?** Đọc [`docs/HUONG-DAN.md`](docs/HUONG-DAN.md): chuẩn bị máy, làm video đầu tiên, góp ý, chốt và nhận file.
+
 [Bộ nhận diện PADStudio](ui/brand/README.md) dùng chung cho web và tài liệu của dự án.
 
 ## Dùng PADStudio
@@ -56,7 +58,7 @@ npm run check                     # cú pháp, import thừa/thiếu, link tài 
 npm test
 npm run observer:ui:empty-test    # observer trên kho trống/project mới (Node, kho tạm)
 npm run observer:ui:live-test     # tiến độ trực tiếp: preview đầu tiên, giữ player (Node, kho tạm)
-npm run observer:ui:test -- -ProjectId <project-id>   # browser smoke nhiều viewport (PowerShell, cần Chrome/Edge)
+npm run observer:ui:test -- --url http://127.0.0.1:7603 --project <project-id>   # browser smoke nhiều viewport (Node, cần Chrome/Edge)
 npm run assets:acceptance
 npm run production:acceptance
 npm run operations:acceptance
