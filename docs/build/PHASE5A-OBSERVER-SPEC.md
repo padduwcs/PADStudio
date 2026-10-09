@@ -20,6 +20,11 @@ Các endpoint chỉ đọc theo khu vực:
 - `/api/projects/:id/observer/production`: sequence, render, timeline, segment và dependency state;
 - `/api/projects/:id/observer/activity`: resource, Result, Run, artifact và review chi tiết.
 
+Về sau server bổ sung ba section cùng cơ chế generation/ETag: `animation` (composition, choreography,
+preflight/preview/render), `delivery` (bundle `delivery.bundle` cùng Decision chấp nhận) và `health`
+(project health, run recovery). Tập hợp lệ hiện nay do regex trong `src/web/server.js` quyết định:
+`summary|source|creative|animation|production|delivery|health|activity`.
+
 Mọi snapshot có `generation`, `view` và ETag. Client gửi `If-None-Match`; project không đổi nhận `304` không body. Summary và production được tải khi chọn project; source, creative và activity dùng `IntersectionObserver` để tải khi tiến gần viewport. Các section cùng generation dùng chung một lần dựng context phía server.
 
 Endpoint full cũ vẫn được giữ để tương thích CLI/test nhưng workspace không dùng nó.

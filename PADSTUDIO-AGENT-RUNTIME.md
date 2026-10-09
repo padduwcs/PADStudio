@@ -97,6 +97,10 @@ ghi `narrationCueMap` để nối lời với hành động hoặc một khoản
 kế hoạch thời gian; khi review phải xem chuyển động đúng các mốc lời nói, nghe đoạn tương ứng và
 kiểm tra cả câu cuối. Freeze/QA kỹ thuật không tự kết luận nhịp kể hay chất lượng hình.
 
+Với composition Remotion, `npm run animation:preview-range -- <project-id> <composition-id-or-key> <start-seconds> <end-seconds>`
+tạo preview chuyển động cho một khoảng (tối đa 30 giây) từ preflight đã pass đúng revision. Để mở web quan sát
+mà không nhân đôi server, dùng `npm run observer:ensure -- [project-id]`.
+
 Mỗi lần byte source đổi phải tạo source Result mới, validate lại và preflight lại đúng revision trước
 khi preview/render. Agent tự lặp vòng này đến khi có bản xem được; không biến lỗi compile thành câu hỏi
 cho người dùng. Motion preview chỉ dùng có chọn lọc cho selector/đoạn khó đánh giá, không phải gate bắt

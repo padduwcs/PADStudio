@@ -1,6 +1,8 @@
 # Code Animation — project-native extension
 
-Status: authoring loop implemented with deterministic adapter tests, 2026-09-16.
+Status: authoring loop implemented with deterministic adapter tests, 2026-09-16. Updated through
+2026-10-09 to reflect choreography 1.3, the Remotion range-preview shortcut and the post-acceptance
+delivery decision of 2026-09-22.
 
 ## Purpose
 
@@ -152,6 +154,13 @@ full coverage. A matching `*.motion.json` may be included in the immutable sourc
 motion has useful testable promises; it remains optional. Preview is an authoring aid, not technical
 or creative acceptance. PADStudio does not pretend that all runtimes expose the same preview contract.
 
+`npm run animation:preview-range -- <project-id> <composition-id-or-key> <start-seconds> <end-seconds>`
+is a Remotion-only shortcut. It resolves the one active composition revision, requires a passed exact
+preflight (same source, props and composition revision), then runs `animation.preview` /
+`remotion-preview` through the Executor for a range of at most 30 seconds that must lie inside the
+composition duration. It adds no approval and falls back to nothing: an unknown, ambiguous, non-Remotion
+or un-preflighted composition fails with a specific message.
+
 When a composition binds choreography, Remotion and HyperFrames preview may use
 `useChoreographyFrames: true`. PADStudio selects bounded exact frames from beat starts, semantic
 action results and deliberate holds, and records `frameSelection: choreography` in the preview.
@@ -176,7 +185,8 @@ heuristics, not fixed stages or automatic creative decisions.
 
 An `animation.render` primary file has media type `video`, so the existing `video.sequence` source
 contract consumes it without conversion or duplication. Final delivery remains governed by exact
-sequence render acceptance, output QA and `video.export-delivery`.
+sequence render acceptance and `video.export-delivery`, which copies the accepted bytes. Output QA is
+pre-acceptance evidence and, if present, is bundled as advisory; it no longer blocks delivery.
 
 ## Runtime setup
 

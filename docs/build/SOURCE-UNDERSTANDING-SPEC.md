@@ -53,7 +53,7 @@ Chọn Node.js giữ lõi, CLI, HTTP và quản lý file. Python là tiến trì
 
 Giữ kho project và quản lý input/output hiện có. Mở rộng có chủ đích thư mục `analysis/` cho kế hoạch thực thi và trạng thái tiếp tục, không lưu bản sao Result hoặc một workflow sáng tạo thứ hai.
 
-Các ràng buộc cũ về “chưa xây resume/chạy dài” được điều chỉnh đúng nhu cầu phân tích media dài của đợt này. Đây là thiết kế mới được đề xuất trong đặc tả, không phải khẳng định code đã hỗ trợ. Web vẫn chỉ đọc trong phạm vi đợt 1; không cần thay quyền UI để đạt mục tiêu phân hệ.
+Các ràng buộc cũ về “chưa xây resume/chạy dài” được điều chỉnh đúng nhu cầu phân tích media dài của đợt này. Văn bản gốc của đặc tả viết ở thể đề xuất (ngày 2026-09-08); phân hệ này sau đó đã được xây qua các gói B–F (xem `history/SOURCE-UNDERSTANDING-PACKAGE-*.md`) nên các tên “đề xuất” bên dưới nay là tên thật trong code, còn các ngưỡng benchmark §13 vẫn `not_measured`. Web vẫn chỉ đọc trong phạm vi đợt 1; không cần thay quyền UI để đạt mục tiêu phân hệ.
 
 ## 3. Kiến trúc triển khai
 
@@ -113,7 +113,7 @@ Mục tiêu kiểm chứng: nguồn đến 2 giờ, video đến 4K, project 100
 
 ## 5. Bộ capability bắt buộc
 
-Tên sau là tên đề xuất để triển khai. Mọi tool tiếp tục có `checkAvailability/prepare/execute/createResult`, schema strict và version.
+Tên sau là tên đã triển khai (khớp Registry hiện tại). Mọi tool tiếp tục có `checkAvailability/prepare/execute/createResult`, schema strict và version.
 
 | Capability / tool | Input chính | Result type / bằng chứng |
 | --- | --- | --- |
@@ -297,7 +297,7 @@ Fingerprint gồm sourceKey/sourceVersion, track, range/ownership, options chu�
 
 ## 10. Giao diện Agent và API
 
-### 10.1 CLI đề xuất
+### 10.1 CLI (đã triển khai; ngoài ra còn `analysis:eval`/`analysis:test` cho harness)
 
 ```text
 analysis:doctor                                  Kiểm tra môi trường, không tải model
@@ -473,12 +473,13 @@ Các thay đổi phạm vi lớn như cloud ASR, UI mutation, model vision thư�
 
 ## 17. Tham khảo và tài liệu liên quan
 
-Các đường dẫn OpenMontage dưới đây là bản local được khảo sát; chỉ học cơ chế, không coi toàn bộ nội dung là yêu cầu bắt buộc hoặc kết quả đã kiểm chứng cho PADStudio:
+Các đường dẫn OpenMontage dưới đây là bản checkout local nằm ngoài repository này (không có trong máy
+hiện tại, nên không còn là liên kết bấm được); chỉ học cơ chế, không coi toàn bộ nội dung là yêu cầu bắt buộc hoặc kết quả đã kiểm chứng cho PADStudio:
 
-- [Phân tích video tham khảo](../../../../OpenMontage/tools/analysis/video_analyzer.py): kết hợp transcript, shot và frame; Agent diễn giải hình ảnh.
-- [Source media review](../../../../OpenMontage/lib/source_media_review.py): học gói bằng chứng; PADStudio tách rõ reviewed/coverage và phép đo thất bại.
-- [Transcriber](../../../../OpenMontage/tools/analysis/transcriber.py): tham khảo adapter; không sao chép mặc định model nhỏ hoặc đánh đồng package installed với runtime usable.
-- [Visual QA](../../../../OpenMontage/tools/analysis/visual_qa.py): trích bằng chứng theo thời gian để xem lại.
+- `OpenMontage/tools/analysis/video_analyzer.py`: kết hợp transcript, shot và frame; Agent diễn giải hình ảnh.
+- `OpenMontage/lib/source_media_review.py`: học gói bằng chứng; PADStudio tách rõ reviewed/coverage và phép đo thất bại.
+- `OpenMontage/tools/analysis/transcriber.py`: tham khảo adapter; không sao chép mặc định model nhỏ hoặc đánh đồng package installed với runtime usable.
+- `OpenMontage/tools/analysis/visual_qa.py`: trích bằng chứng theo thời gian để xem lại.
 - PADStudio: [thiết kế](PADSTUDIO-DESIGN.md), [định hướng hiện tại](PADSTUDIO-CURRENT-DIRECTION.md), [intelligence/workflow](PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md), [video sequence](VIDEO-SEQUENCE-PRODUCTION.md), [protocol](DEVELOPMENT-PROTOCOL.md).
 
 Tài liệu thư viện chính thức được kiểm tra ngày 2026-09-08 tại §6. Các ngưỡng, cấu trúc và kế hoạch trong đặc tả là đề xuất thiết kế PADStudio; không phải benchmark được trích từ OpenMontage hay thư viện bên ngoài.

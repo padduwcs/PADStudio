@@ -1,6 +1,6 @@
 # PADStudio — trạng thái phát triển
 
-Cập nhật: **2026-10-05**.
+Cập nhật: **2026-10-09** (đối chiếu tài liệu với code; xem mục “Đối chiếu tài liệu với code”).
 
 Đây là điểm vào ngắn để biết codebase đang ở đâu. PADStudio vẫn đang được xây dựng và chỉnh
 chu; các báo cáo có chữ `completion`, tên đợt hoặc số phiên bản ghi lại một mốc nghiệm thu kỹ
@@ -174,6 +174,51 @@ Các số trên là ảnh chụp tại ngày ghi nhận, không phải giá tr�
 lệnh đang chạy, ưu tiên kết quả từ code và test hiện tại rồi cập nhật lại trang này. Acceptance
 report trong `reports/` và `eval/**/reports/` là bằng chứng của lần chạy đã ghi ngày, không phải
 dashboard trạng thái.
+
+## Đối chiếu tài liệu với code — 2026-10-09
+
+Một lượt đọc code và đối chiếu có hệ thống, chỉ sửa tài liệu (không đổi `src/`, `test/`, `ui/`).
+
+**Đã kiểm tra bằng máy:** 65 file `.md` (liên kết tương đối, mọi `npm run <script>` có trong `package.json`,
+mọi script trỏ tới file tồn tại); registry mặc định chạy thật cho ra 29 capability / 36 tool; tên tool và field của mọi ví dụ trong
+reference được so với `inputSchema`, còn enum/giới hạn của trim, concat, reformat, thumbnail, audio overlay,
+image-to-video và quality được so thêm với code; cú pháp CLI
+(`tool:list`, `padstudio:doctor`, `project:archive`, `project:recover`, `project:accept`,
+`animation:preview-range`, `observer:ensure`); các thư mục project do code tạo; 8 section observer;
+4 output profile; 19 skill; danh sách file của delivery bundle; `npm test` 332/332.
+
+**Đã sửa vì lệch code:** `PADSTUDIO-REFERENCE.md` (số capability, mô tả delivery/QA gate đã lỗi thời, lệnh
+`project:attest` đã ngừng, `project:accept`, cấu trúc project và mã nguồn, lệnh vận hành thiếu, số test cũ);
+`PADSTUDIO-AGENT-REFERENCE.md` (tool preview/props/preflight hoạt họa, `animation:preview-range`,
+`tool:plan`/`tool:authorize`, exit code của `quality:inspect`, ví dụ `video.export-delivery`, mục chẩn đoán);
+`PADSTUDIO-AGENT-RUNTIME.md` và `README.md` (lệnh thiếu); `OPERATIONS-RUNBOOK.md` và
+`PHASE6A-LOCAL-DELIVERY-SPEC.md` (điều kiện delivery hiện hành, thêm `quality.json`);
+`OUTPUT-PROFILES-AND-STYLE-PLAYBOOKS.md` (4 profile, `profileId` tùy chọn); `CODE-ANIMATION-SPEC.md`
+(delivery không còn bị QA chặn, preview-range); `ASSET-CAPABILITIES-SPEC.md` (stock search và
+register-generated); `PROJECT-INTELLIGENCE-ADAPTIVE-WORKFLOW.md` (19 skill); `VIDEO-SEQUENCE-PRODUCTION.md`
+(phân biệt sequence 1.0/1.1); `PHASE5A-OBSERVER-SPEC.md` (đủ 8 section); `SOURCE-UNDERSTANDING-SPEC.md`
+và `HISTORICAL-DOCUMENTS.md` (không còn viết như chưa triển khai; liên kết OpenMontage ngoài repo thành
+văn bản thường). `reports/`, `history/` và các mục có ngày trong `PADSTUDIO-CURRENT-DIRECTION.md` được giữ
+nguyên vì là bằng chứng của từng thời điểm.
+
+**Quan sát về code, chưa sửa (nằm ngoài phạm vi tài liệu):**
+
+- `matchingDeliveryProfiles` / `deliveryProfilesForAcceptance` (`src/production/delivery-readiness.js`,
+  `acceptance-readiness.js`) chỉ còn được test gọi; cả `project:accept` lẫn delivery không dùng chúng nữa.
+  Có thể giữ cho kiểm tra trước duyệt hoặc xóa khi chốt hướng.
+- Đường dẫn `.padstudio/projects` được ghép cứng ở 36 file CLI và `src/web/server.js`; không có biến
+  môi trường để đổi gốc dữ liệu (test và script acceptance phải tự dựng store/server riêng).
+- `generation` của observer duyệt toàn bộ cây file của mọi project mỗi lần poll (2 giây). Đo ngày
+  2026-10-09 trên 26 project / ~33.700 file: ~300 ms mỗi lần. Chi phí tăng theo tổng số file, không theo
+  mức thay đổi.
+- `--from-agent-host` là lời khai của Agent host được ghi lại, không phải xác thực; tài liệu đã nói rõ
+  điều này, nhưng code không thể phân biệt người dùng thật với Agent tự chạy lệnh.
+- `src/tools/ffmpeg-sequence-renderer.js` có một ký tự BOM ở đầu dòng 2 (Node vẫn chạy bình thường).
+- `pilot:real` (`scripts/real-project-pilot.mjs`) là script pilot một lần, gắn cứng project
+  `real-pilot-longest-substring` và nguồn `vid15_*.mp4`; project đó không còn trong kho local, nên script
+  không chạy được nếu không dựng lại. `observer:phase6b:test` chỉ là bí danh của smoke Phase 5A. Cả hai
+  cố ý không được quảng bá trong tài liệu vận hành.
+- Chưa đo chi phí đọc toàn bộ record của `ProjectStore.addResult` trên project rất lớn.
 
 ## Thứ tự nguồn sự thật
 

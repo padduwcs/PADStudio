@@ -47,10 +47,16 @@ Trạng thái bàn giao V1: [PADSTUDIO-V1-COMPLETION.md](docs/build/history/PADS
 │   ├── indexes/
 │   ├── cancellations/
 │   └── leases/
+├── authorizations/        # credit authorization của tool trả phí
+├── budget.json            # chính sách ngân sách USD (nếu đã đặt)
 ├── skills/
+├── .locks/                # khóa mutation tạm thời, không phải dữ liệu project
 └── runs/
     └── run-*.json
 ```
+
+Project mới chỉ có `project.json`; các thư mục con được tạo khi lần đầu có dữ liệu để ghi, nên một
+project cụ thể thường chỉ có một phần cây trên.
 
 - `project.json`: danh tính ổn định của project.
 - `resources/`: tư liệu đã được nhập thành công và các file thuộc mỗi resource.
@@ -64,7 +70,9 @@ Trạng thái bàn giao V1: [PADSTUDIO-V1-COMPLETION.md](docs/build/history/PADS
 - `reviews/`: đánh giá creative/technical có tiêu chí và bằng chứng.
 - `analysis/`: job phân tích kỹ thuật có thể resume, source snapshot, lease và cache/index dẫn
   xuất. Project cũ chưa có thư mục này vẫn mở bình thường.
-- `skills/`: catalog skill riêng của project khi cần; skill hệ thống nằm ở `skills/`.
+- `authorizations/`: bản ghi phê duyệt credit dùng một lần, gắn SHA-256 của đúng request.
+- `budget.json`: chính sách `observe`/`cap`, reserve và ngưỡng cần authorization.
+- `skills/`: catalog skill riêng của project khi cần; skill hệ thống nằm ở `skills/` cạnh `src/`.
 - `runs/`: dấu vết từng thao tác import hoặc chạy công cụ, gồm cả lỗi, thời lượng
   và chi phí khi có.
 - `checkpoint.json`: phần bối cảnh có ý nghĩa do Agent chắt lọc.
@@ -77,14 +85,22 @@ không có `project.json` không được coi là project hợp lệ.
 
 ```text
 src/
-├── analysis/    # Source identity/timebase, contract Result, job/lease/resume/cancel
-├── project/     # Lưu trữ, đường dẫn và tính toàn vẹn của project
+├── analysis/    # Source identity/timebase, contract Result, job/lease/resume/cancel, reader
+├── animation/   # animation.composition, animation.choreography, source package, preview range
+├── config/      # Đọc padstudio.local.json (Piper, ElevenLabs)
+├── project/     # Lưu trữ, đường dẫn, khóa file, archive và tính toàn vẹn của project
 ├── intelligence/# Artifact, adaptive workflow, review, skill và context assembler
+├── operations/  # Doctor, project health, recovery, machine profile
+├── production/  # Hợp đồng video.sequence, dependency/stale, visual quality, policy catalog
+├── quality/     # Điều phối automated output QA
+├── release/     # Gate phát hành rộng, holdout, release evidence
 ├── resources/   # Nhập và lập chỉ mục tài nguyên
-├── execution/   # Danh mục công cụ và Bộ thực thi dùng chung
+├── execution/   # Danh mục công cụ, Bộ thực thi, authorization và budget
 ├── tools/       # Logic của từng công cụ cụ thể
 ├── cli/         # Các lệnh để Agent thao tác với project
-└── web/         # Observer API và web server chỉ đọc
+└── web/         # Observer API và web server chỉ đọc (GET-only)
+ui/              # Observer vanilla ES module, không có build step
+runtime/analysis # Python helper có khóa phiên bản cho ASR và scene detection
 ```
 
 Agent quyết định mục tiêu, tài nguyên cần dùng và nội dung checkpoint.
@@ -143,9 +159,11 @@ npm run project:budget -- coffee-video show
 npm run project:budget -- coffee-video set '{"mode":"cap","totalUsd":25,"reserveUsd":2,"singleActionApprovalUsd":3}'
 ```
 
-Catalog production ở `production-catalogs/` cung cấp 3 output profile generic và 5 style playbook.
-Việc dùng policy luôn **optional-explicit**: delivery vẫn cần `profileId` cụ thể; bỏ `playbookId`
-thì không playbook nào được chọn, và PADStudio không suy ra profile/playbook từ tỷ lệ khung hình hay provider.
+Catalog production ở `production-catalogs/` cung cấp 4 output profile local (`local-portrait-h264-v1`,
+`local-portrait-720p24-h264-v1`, `local-landscape-h264-v1`, `local-square-h264-v1`) và 5 style playbook.
+Việc dùng policy luôn **optional-explicit**: `profileId` của delivery là tùy chọn và chỉ ghi ý định/advisory
+(không ép chuyển mã sau acceptance); bỏ `playbookId` thì không playbook nào được chọn, và PADStudio không
+suy ra profile/playbook từ tỷ lệ khung hình hay provider.
 
 Chạy một công cụ bằng request JSON từ standard input hoặc từ file:
 
@@ -162,7 +180,29 @@ không chạy lại tool hoặc provider trả phí:
 npm run project:run:recover -- coffee-video run-...
 ```
 
-Prototype hiện có 23 capability thật:
+Vận hành, chẩn đoán và phục hồi (chi tiết ở [OPERATIONS-RUNBOOK.md](docs/OPERATIONS-RUNBOOK.md)):
+
+```powershell
+npm run padstudio:doctor -- [--deep] [project-id]   # exit 0 ready/attention, 2 blocked, 1 lỗi gọi
+npm run system:profile                              # hồ sơ máy + capability menu, read-only
+npm run project:recover -- coffee-video [--apply]   # mặc định chỉ lập plan
+npm run project:run:abandon -- coffee-video run-... "<lý do>" --confirm-stopped
+npm run project:archive -- list | archive <id> "<lý do>" --confirm-stopped | restore <id> --confirm-stopped
+npm run observer:ensure -- [project-id] [--port 7603]   # tái dùng hoặc khởi động observer local
+```
+
+Chấp nhận video và hoạt họa bằng code:
+
+```powershell
+npm run project:accept -- coffee-video result-... --from-agent-host [--resolves decision-...]
+npm run animation:preview-range -- coffee-video <composition-id-or-key> <start-seconds> <end-seconds>
+```
+
+`animation:preview-range` là lối tắt cho composition Remotion đang active: nó tìm preflight đã pass đúng
+revision rồi gọi `animation.preview` / `remotion-preview` với một khoảng tối đa 30 giây.
+
+Registry mặc định hiện có 29 capability do 36 tool cung cấp (số thực tế lấy từ `npm run tool:list`;
+availability phụ thuộc máy). 23 capability media/asset/analysis/delivery:
 
 - `media.inspect` / `ffprobe`: đọc metadata audio/video, không tạo file.
 - `video.trim` / `ffmpeg-trim`: cắt chính xác video bằng re-encode và tạo `video.clip`.
@@ -194,8 +234,17 @@ Prototype hiện có 23 capability thật:
 - `media.search-stock` / `wikimedia-stock`: tìm image/video/audio candidate, giữ creator, license và source page; chưa tự nhập asset.
 - `media.register-generated` / `external-generated-media`: đăng ký exact asset do Agent/provider ngoài tạo với provider, model, prompt, rights và cost provenance.
 - `tts.synthesize` / `piper-local`, `elevenlabs`: cùng contract giọng đọc, lựa chọn provider tường minh và không fallback ngầm.
-- `video.inspect-output` / `local-output-quality`: full decode, evidence, timeline samples, black/freeze, audio và ASR gate trên exact render.
-- `video.export-delivery` / `local-delivery`: xuất nguyên byte Result đã duyệt khi mọi gate exact-output đều đạt.
+- `video.inspect-output` / `local-output-quality`: full decode, evidence, timeline samples, black/freeze, audio và ASR trên exact render. Dùng trước khi trình người dùng; sau acceptance nó chỉ là bằng chứng advisory.
+- `video.export-delivery` / `local-delivery`: đóng gói nguyên byte exact Result đã được người dùng chấp nhận (probe tối thiểu, copy, kiểm checksum). Không render lại, không ép profile.
+
+Sáu capability hoạt họa project-native (xem [CODE-ANIMATION-SPEC.md](docs/build/CODE-ANIMATION-SPEC.md)):
+
+- `animation.source` / `code-animation-source`: tạo hoặc revise source package bất biến, không chạy code.
+- `animation.props` / `code-animation-props`: tạo hoặc revise JSON props bất biến.
+- `animation.validate` / `code-animation-validator`: kiểm tra tĩnh đúng package (không phải sandbox).
+- `animation.preflight` / `manim-ce-preflight`, `remotion-local-preflight`, `hyperframes-local-preflight`.
+- `animation.preview` / `remotion-preview`, `hyperframes-preview`, `hyperframes-motion-preview`.
+- `animation.render` / `manim-ce`, `remotion-local`, `hyperframes-local`: tạo Result video dùng trực tiếp trong `video.sequence`.
 
 Ghi Decision sau khi người dùng phản hồi rõ về một Result:
 
@@ -227,8 +276,8 @@ Chi tiết contract và cách Agent dùng các lệnh nằm trong
 
 Đợt 2 đã hoàn thành ở phạm vi practical: hợp đồng brief/proposal/direction, pilot `keys-first`,
 mẫu r2 có reuse 6/7 đoạn, exact user approval và workspace observer chỉ đọc cho toàn bộ mạch
-creative. Mốc Đợt 2 đạt 138/138; bộ repository hiện tại đạt 160/160, freshness và browser vẫn đạt
-ở 390/768/1440 px.
+creative. Mốc Đợt 2 đạt 138/138 tại thời điểm đó; số test hiện hành nằm ở
+[PADSTUDIO-DEVELOPMENT-STATUS.md](docs/build/PADSTUDIO-DEVELOPMENT-STATUS.md).
 
 ```powershell
 npm run creative:acceptance -- --project phase2-brute-force-pilot --report reports/phase2-creative-direction-acceptance.json
@@ -293,12 +342,15 @@ Khóa corpus holdout, ghi review xem/nghe đầy đủ và ráp evidence thật:
 
 ```powershell
 npm run release:holdout:lock -- holdout-source.json D:\Corpora\padstudio
-npm run project:attest -- coffee-video human-attestation.json
+# Người dùng tự chạy trong terminal tương tác (không thêm --from-agent-host);
+# lệnh hiển thị exact Result/SHA-256 và ghi human review xem/nghe đầy đủ cùng acceptance:
+npm run project:accept -- coffee-video result-...
 npm run release:evidence:assemble -- coffee-video benchmark-evidence.json locked-holdout.json result-...
 ```
 
 Các lệnh này fail-closed: chúng không tự tạo gold label, không tự nhận đã xem/nghe và không
-biến fixture thành release candidate.
+biến fixture thành release candidate. `project:attest` dạng JSON đã ngừng nhận dữ liệu; human
+attestation chỉ được tạo qua `project:accept` tương tác.
 
 ## Cấu trúc video và sửa từng phần
 
@@ -349,8 +401,10 @@ $qa = '{"resultId":"result-...","profileId":"spoken-video-v1","language":"vi","r
 $qa | npm run quality:inspect -- <project-id> -
 ```
 
-Lệnh trả exit code 2 khi report được tạo hợp lệ nhưng gate chất lượng không đạt.
-Local delivery chỉ nhận exact render có QA đạt và cùng checksum.
+Lệnh trả exit code 2 khi report được tạo hợp lệ nhưng gate chất lượng không đạt
+(`data.gate.deliveryEligible !== true`). QA là bằng chứng cho Agent trước khi xin duyệt: sau khi người
+dùng đã chấp nhận exact render, local delivery chỉ yêu cầu acceptance, SHA-256 nguồn còn khớp, media probe
+tối thiểu và checksum bản copy; QA có sẵn được đóng gói trong `metadata/quality.json` ở trạng thái advisory.
 
 Test bao phủ persistence, import thành công/thất bại, path safety, context khi
 mở lại, danh mục công cụ, Bộ thực thi, ffprobe/ffmpeg thật, output rollback,

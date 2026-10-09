@@ -10,7 +10,12 @@ PADStudio đã có thể lưu cấu trúc video theo phiên bản, dựng đúng
 | Mới có ý tưởng | Mục đích từng đoạn, lời dẫn, phần còn thiếu tư liệu | Ngữ cảnh chỉ rõ chỗ thiếu; chưa đủ nguồn thì không dựng |
 | Sửa bản đã duyệt | Phiên bản mới, giữ bản dựng và quyết định cũ | Dựng lại đoạn thay đổi, dùng lại đoạn khớp; bản mới cần đánh giá riêng |
 
-Đây là một phần dựng video local đã hoàn thành. Tự hiểu tư liệu, bố cục nhiều lớp và dịch vụ tạo nội dung trả phí là các khả năng riêng; chat nằm ở Agent host bên ngoài theo kiến trúc đã chốt, không phải capability cần triển khai trong PADStudio.
+Đây là một phần dựng video local đã hoàn thành. Tài liệu này mô tả contract `video.sequence` **1.0** và
+cơ chế dựng/dùng lại đoạn, vẫn áp dụng cho mọi phiên bản. Bố cục nhiều lớp (lời đọc đặt trễ, chữ có style,
+overlay, chuyển cảnh, nhạc, loudness) là `video.sequence` **1.1**, mô tả ở
+[PHASE4-PRODUCTION-SPEC.md](PHASE4-PRODUCTION-SPEC.md); phân tích tư liệu nằm ở
+[SOURCE-UNDERSTANDING-SPEC.md](SOURCE-UNDERSTANDING-SPEC.md). Dịch vụ tạo nội dung trả phí là khả năng riêng;
+chat nằm ở Agent host bên ngoài theo kiến trúc đã chốt, không phải capability cần triển khai trong PADStudio.
 
 ## 2. Mô hình hoạt động
 
@@ -106,7 +111,7 @@ Thay ID mẫu bằng ID đã đăng ký. Nếu dùng một kết quả làm ngu�
 
 **Khi mới có ý tưởng:** `visual` có thể là `null`; lời dẫn có thể có `text` nhưng `source: null`. Renderer báo `missing_narration_audio` nếu chưa có âm thanh lời dẫn, không âm thầm bỏ lời nói.
 
-**Khi đã có lời dẫn thu âm:** `narration` gồm `text`, `source`, tùy chọn `startSeconds` (vị trí lấy trong nguồn) và `volume` (mặc định 1). Lời dẫn phát từ đầu đoạn. Muốn đặt lời dẫn muộn hơn phải chuẩn bị nguồn có sẵn phần căn thời gian. Âm thanh nguồn hình giữ mức `visual.volume`, mặc định 1. Chưa tự hạ âm nền khi có lời nói hoặc đánh giá độ lớn âm thanh.
+**Khi đã có lời dẫn thu âm:** `narration` gồm `text`, `source`, tùy chọn `startSeconds` (vị trí lấy trong nguồn) và `volume` (mặc định 1). Với sequence 1.0, lời dẫn phát từ đầu đoạn; muốn đặt muộn hơn phải chuẩn bị nguồn có sẵn phần căn thời gian (sequence 1.1 có `offsetSeconds`/`durationSeconds` riêng). Âm thanh nguồn hình giữ mức `visual.volume`, mặc định 1. Sequence 1.0 không tự hạ âm nền; ducking cho nhạc và `volumeRanges` thuộc sequence 1.1.
 
 **Giới hạn dữ liệu:**
 

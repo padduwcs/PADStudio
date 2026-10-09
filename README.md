@@ -18,7 +18,8 @@ npm run project:resume -- demo
 npm start
 ```
 
-Observer chạy tại `http://127.0.0.1:7603/?project=demo`.
+Observer chạy tại `http://127.0.0.1:7603/?project=demo` (chỉ bind localhost, chỉ phục vụ `GET`).
+`npm run observer:ensure -- [project-id]` tái dùng server đang chạy hoặc khởi động một server mới.
 
 Các nhóm khả năng chính gồm phân tích source, transcript/scene/frame/audio, creative artifact và workflow, tìm/nhập/chuẩn bị asset, graphic, TTS local/cloud, hoạt họa project-native bằng Manim/Remotion/HyperFrames, trim/concat/reformat/subtitle/audio overlay, image-to-video, sequence composition, exact-output QA và delivery có checksum. Xem tool thực tế trên máy bằng:
 
@@ -52,6 +53,9 @@ phân biệt tài liệu hiện hành với snapshot lịch sử nằm tại
 
 ```powershell
 npm test
+npm run observer:ui:empty-test    # observer trên kho trống/project mới (Node, kho tạm)
+npm run observer:ui:live-test     # tiến độ trực tiếp: preview đầu tiên, giữ player (Node, kho tạm)
+npm run observer:ui:test -- -ProjectId <project-id>   # browser smoke nhiều viewport (PowerShell, cần Chrome/Edge)
 npm run assets:acceptance
 npm run production:acceptance
 npm run operations:acceptance

@@ -25,8 +25,8 @@ Bản thiết kế chỉ giữ mục tiêu và cách các phần phối hợp. C
 Phần cấu trúc video, bản dựng có phiên bản và vòng sửa cục bộ:
 [VIDEO-SEQUENCE-PRODUCTION.md](VIDEO-SEQUENCE-PRODUCTION.md).
 
-Đặc tả đề xuất cho đợt 1, hoàn thiện phân hệ phân tích và hiểu tư liệu theo chiều ngang:
-[SOURCE-UNDERSTANDING-SPEC.md](SOURCE-UNDERSTANDING-SPEC.md). Tài liệu xác định phạm vi, hợp đồng, cách triển khai và nghiệm thu; không mô tả tính năng đã hoàn thành.
+Đặc tả cho đợt 1, hoàn thiện phân hệ phân tích và hiểu tư liệu theo chiều ngang:
+[SOURCE-UNDERSTANDING-SPEC.md](SOURCE-UNDERSTANDING-SPEC.md). Văn bản viết ở thể đề xuất ngày 2026-09-08 và xác định phạm vi, hợp đồng, cách triển khai và nghiệm thu; phân hệ đã được xây ở phạm vi practical (gói B–F), còn các gate release rộng §13 vẫn `not_measured`.
 
 Đặc tả đã hoàn thành practical cho đợt 2 — định hướng sáng tạo và duyệt mẫu:
 [CREATIVE-DIRECTION-SPEC.md](CREATIVE-DIRECTION-SPEC.md). Các gói A–E đã hoàn tất từ hợp đồng, pilot, dựng mẫu đến observer và nghiệm thu.

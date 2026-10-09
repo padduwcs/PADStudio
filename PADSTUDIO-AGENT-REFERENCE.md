@@ -220,10 +220,18 @@ Contract đầy đủ:
 
 Đọc `npm run skill:read -- code-animation <project-id>`. Luồng contract là:
 
-1. `animation.source / code-animation-source` tạo hoặc revise source package bất biến;
+1. `animation.source / code-animation-source` tạo hoặc revise source package bất biến
+   (tùy chọn `animation.props / code-animation-props` cho JSON props bất biến);
 2. `animation.validate / code-animation-validator` kiểm tra đúng package mà không chạy code;
-3. `npm run project:animation -- <project-id> <json-file|->` lưu `animation.composition`;
-4. Agent chạy matching `animation.preflight`, preview có chọn lọc, sửa/validate/preflight lại nếu cần;
+3. `npm run project:animation -- <project-id> <json-file|->` lưu `animation.composition`
+   (với kế hoạch hình ảnh theo lời đọc, ghi trước `animation.choreography` bằng
+   `npm run project:choreography -- <project-id> <json-file|->`; composition 1.1 bind đúng revision đó);
+4. Agent chạy matching `animation.preflight` (`manim-ce-preflight`, `remotion-local-preflight` hoặc
+   `hyperframes-local-preflight`), preview có chọn lọc, sửa/validate/preflight lại nếu cần.
+   `animation.preview` có `remotion-preview` (frame và/hoặc clip tối đa 30 giây), `hyperframes-preview`
+   (exact frame + contact sheet) và `hyperframes-motion-preview` (onion-skin theo selector). Với Remotion,
+   `npm run animation:preview-range -- <project-id> <composition-id-or-key> <start-seconds> <end-seconds>`
+   tự tìm preflight đã pass đúng revision rồi tạo preview một khoảng thời gian;
 5. `animation.render` với exact tool `manim-ce`, `remotion-local` hoặc `hyperframes-local`,
    truyền `artifactId`, `artifactRevision`, `validationResultId`, `preflightResultId`.
 
@@ -283,6 +291,11 @@ npm run project:budget -- <project-id> set <budget-json|file|->
 
 Mode cap giữ reserve cho Run đang chạy và chặn vượt trần; action qua ngưỡng vẫn cần
 authorization chính xác. Mode observe chỉ đo, không giả làm cap.
+
+Tool trả phí (hiện là `elevenlabs`) cần ba bước: `npm run tool:plan -- <project-id> <request.json>`
+để xem estimate, `npm run tool:authorize -- <project-id> <authorization.json>` sau khi người dùng đồng ý
+đúng request đó, rồi thêm `authorizationId` vào request của `tool:run`. Authorization bind SHA-256 của
+toàn bộ request và chỉ dùng một lần; xem [TTS-CAPABILITY.md](docs/build/TTS-CAPABILITY.md).
 
 Để chạy một công cụ, chuẩn bị request JSON:
 
@@ -602,7 +615,10 @@ $qa = @{
 $qa | npm run quality:inspect -- <project-id> -
 ```
 
-Dùng `nonverbal-video-v1` khi sản phẩm không kỳ vọng lời nói. Không tự sửa report, không dùng QA của
+Dùng `nonverbal-video-v1` khi sản phẩm không kỳ vọng lời nói. Với video có lời, có thể thêm
+`expectedSpeech: { "text": "...", "terms": ["..."] }` để đối chiếu ASR với kịch bản. Lệnh thoát với mã 2
+khi report hợp lệ nhưng `gate.deliveryEligible` không đạt; đó là tín hiệu để sửa trước khi trình người dùng,
+không phải điều kiện chặn delivery sau acceptance. Không tự sửa report, không dùng QA của
 render khác và không mô tả contact sheet/ASR là human viewing/listening. QA giúp Agent phát hiện lỗi
 trước khi xin duyệt; sau khi người dùng đã chốt, kết quả QA được đóng gói ở trạng thái advisory và
 không ép sửa/render lại.
@@ -614,7 +630,21 @@ npm run project:accept -- <project-id> <render-result-id> --from-agent-host
 ```
 
 Lệnh bind approval vào exact Result và SHA-256, tự resolve feedback cùng sequence rồi cho phép
-`video.export-delivery` copy nguyên byte. Không suy diễn acceptance từ im lặng, yêu cầu xem thử hoặc
+`video.export-delivery` copy nguyên byte:
+
+```json
+{
+  "capability": "video.export-delivery",
+  "tool": "local-delivery",
+  "purpose": "Đóng gói bản đã được người dùng chấp nhận",
+  "inputs": { "resultId": "result-..." }
+}
+```
+
+`profileId` là tùy chọn (một trong `local-portrait-h264-v1`, `local-portrait-720p24-h264-v1`,
+`local-landscape-h264-v1`, `local-square-h264-v1`) và chỉ ghi ý định vào manifest; delivery không ép
+chuẩn hóa theo profile. Bundle gồm `video/output.mp4` và `metadata/` (`manifest`, `provenance`,
+`reviews`, `approval`, `quality`, `checksums.sha256`). Không suy diễn acceptance từ im lặng, yêu cầu xem thử hoặc
 phản hồi mơ hồ; không tái dùng xác nhận cho Result mới. Chế độ terminal không có `--from-agent-host`
 vẫn tồn tại như lựa chọn để lưu full-view/full-listen attestation. `project:attest` dạng JSON đã ngừng
 nhận attestation. Holdout/release evidence dùng
@@ -649,6 +679,22 @@ file này thay cho checkpoint.
 
 Checkpoint giữ các sự thật còn hiệu lực, không giữ full transcript, chuỗi
 approve/reject, suy nghĩ nội bộ hay một pipeline cố định.
+
+## Chẩn đoán và vận hành
+
+Chỉ dùng khi resume báo `health.status` khác `ready` hoặc khi chuẩn bị bàn giao. Chi tiết ở
+[OPERATIONS-RUNBOOK.md](docs/OPERATIONS-RUNBOOK.md).
+
+```powershell
+npm run padstudio:doctor -- [--deep] [project-id]
+npm run project:recover -- <project-id> [--apply]
+npm run project:run:abandon -- <project-id> <run-id> "<lý do>" --confirm-stopped
+npm run observer:ensure -- [project-id] [--port 7603]
+```
+
+Doctor không sửa gì (exit 2 chỉ khi hệ thống `blocked`). Recover mặc định chỉ lập plan và `--apply` chỉ
+hoàn tất các Run đã chứng minh recoverable, không chạy lại tool hay provider. `run:abandon` không dùng
+được cho Run đã có output, pending Result hoặc authorization.
 
 ## Ranh giới
 

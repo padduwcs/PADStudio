@@ -4,12 +4,14 @@ Cập nhật: **2026-09-13**. Phạm vi này hoàn thiện đường bàn giao c
 
 ## Mục tiêu và ranh giới
 
-Agent chọn một 'video.sequence-render' cụ thể. PADStudio chỉ xuất khi chính Result đó đã được user 'accepted', run đã finalization, sequence/dependency còn current, không còn feedback chưa resolve và byte nguồn khớp SHA-256 đã lưu. Export không render lại, không đổi codec và không sửa nội dung: nó sao chép nguyên byte đã duyệt vào một run output mới.
+Agent chọn một 'video.sequence-render' cụ thể. Contract hiện hành (từ 2026-09-22): PADStudio chỉ xuất khi quyết định mới nhất của chính Result đó là 'accepted' với confirmation hợp lệ và byte nguồn khớp SHA-256 đã lưu. Export không render lại, không đổi codec và không sửa nội dung: nó sao chép nguyên byte đã duyệt vào một run output mới. Việc sequence còn current, feedback đã resolve và run đã finalization là điều kiện của lúc *chấp nhận* (`project:accept` tự resolve feedback cùng sequence), không phải gate chạy lại ở delivery; bản ban đầu của các gate này được giữ ở mục lịch sử bên dưới.
 
 Input công cụ ban đầu gồm `{ resultId, profileId }`; không nhận raw path. Theo quyết định UX ngày
 2026-09-22, `profileId` là tùy chọn và chỉ ghi ý định/advisory, không ép chuyển mã sau acceptance.
-Capability là `video.export-delivery`, tool local là `local-delivery`. Profile đầu tiên
-`local-portrait-h264-v1` cố ý hẹp:
+Capability là `video.export-delivery`, tool local là `local-delivery`. Catalog hiện có bốn profile
+(`local-portrait-h264-v1`, `local-portrait-720p24-h264-v1`, `local-landscape-h264-v1`,
+`local-square-h264-v1`; xem [OUTPUT-PROFILES-AND-STYLE-PLAYBOOKS.md](OUTPUT-PROFILES-AND-STYLE-PLAYBOOKS.md)).
+Profile đầu tiên `local-portrait-h264-v1` cố ý hẹp:
 
 - MP4, H.264, 'yuv420p', 1080×1920, 30 fps;
 - AAC stereo 48 kHz;
@@ -37,6 +39,7 @@ Mỗi lần xuất tạo thư mục bất biến trong output của run:
     metadata/provenance.json
     metadata/reviews.json
     metadata/approval.json
+    metadata/quality.json        (thêm ở Lượt 4: bằng chứng QA advisory, hoặc status "not_run")
     metadata/checksums.sha256
 
 'delivery.bundle' tham chiếu Result nguồn, artifact và resources; lưu profile, media measurement, approval Decision và source/output SHA-256. Observer có section Delivery chỉ đọc và link tải từng file.

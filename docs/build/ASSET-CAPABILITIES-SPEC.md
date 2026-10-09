@@ -13,8 +13,18 @@ chưa phải toàn bộ hệ thống sinh nội dung.
 
 Ưu tiên dựa trên tính dùng chung, kết hợp được với tool hiện có và có đường chạy local.
 TTS đã được bổ sung ở gói kế tiếp với Piper local và ElevenLabs cloud, dùng chung contract và
-gate authorization credit. Ảnh AI và tìm kiếm stock tự động vẫn chưa triển khai. Không có dịch
-vụ tính phí được gọi trong nghiệm thu do chưa có API key người dùng; xem [TTS-CAPABILITY.md](TTS-CAPABILITY.md).
+gate authorization credit. Không có dịch vụ tính phí được gọi trong nghiệm thu do chưa có API key
+người dùng; xem [TTS-CAPABILITY.md](TTS-CAPABILITY.md).
+
+Hai capability bổ sung sau đó, không nằm trong bảng gói đầu ở trên:
+
+| Khả năng | Công cụ | Công dụng |
+| --- | --- | --- |
+| media.search-stock | wikimedia-stock | Tìm candidate ảnh/video/audio trên Wikimedia Commons (`query`, `mediaType`, `limit`), giữ creator, license, source page; chưa nhập asset nào. Cần HTTPS, không cần key. |
+| media.register-generated | external-generated-media | Đăng ký file do Agent/provider ngoài tạo (đã import vào project) kèm provider, model, prompt, rightsBasis và cost provenance; không gọi provider và không biến rights/content review thành passed. |
+
+Ảnh AI tự sinh bởi PADStudio vẫn chưa có: ảnh/audio/video do provider ngoài tạo đi vào project qua
+`media.register-generated`. Skill tương ứng: `stock-sourcing`, `asset-preparation`, `tool-selection`.
 
 ## Hợp đồng và ví dụ
 
@@ -86,9 +96,9 @@ Không mang raw path, silent fallback hoặc pipeline stage vào lõi.
 
 ## Kết quả nghiệm thu gói đầu
 
-Mốc nghiệm thu ban đầu của gói là 144/144. Sau khi tích hợp TTS và pilot, repository hiện đạt
-160/160; browser vẫn đạt PNG/audio, attribution, giữ player qua polling và viewport
-390/768/1440. Báo cáo gói: [phase3-asset-capabilities-acceptance.json](../../reports/phase3-asset-capabilities-acceptance.json).
+Mốc nghiệm thu ban đầu của gói là 144/144 và 160/160 sau khi tích hợp TTS và pilot (số liệu của các
+ngày đó; số hiện hành nằm ở [PADSTUDIO-DEVELOPMENT-STATUS.md](PADSTUDIO-DEVELOPMENT-STATUS.md)); browser
+khi ấy đạt PNG/audio, attribution, giữ player qua polling và viewport 390/768/1440. Báo cáo gói: [phase3-asset-capabilities-acceptance.json](../../reports/phase3-asset-capabilities-acceptance.json).
 Chạy lại bằng `npm test` và `npm run assets:acceptance` (Windows, Chrome/Edge). Runner tạo project
 fixture riêng dưới `.cache/asset-browser-projects`; không dùng project owner. Không coi fixture
 transport là kiểm chứng mạng ngoài. Bằng chứng kết hợp asset + Piper + sequence thật nằm trong

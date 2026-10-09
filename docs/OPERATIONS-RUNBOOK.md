@@ -71,13 +71,14 @@ Lệnh từ chối ghi đè project active/archive cùng ID và từ chối arch
 
 ## 5. Bàn giao video
 
-Delivery chỉ dùng exact `video.sequence-render` có latest user Decision là `accepted`, dependency current, feedback đã resolve và run đã finalization. Bundle gồm:
+Delivery chỉ dùng exact `video.sequence-render` có Decision mới nhất là `accepted` (ghi bởi `project:accept`, hợp lệ với đúng Result đó) và byte nguồn còn khớp SHA-256 đã lưu. Delivery không render lại, không đổi codec và không chặn vì QA, profile, loudness hay dependency freshness; các bằng chứng đó, nếu có, được đóng gói ở trạng thái advisory. Bundle gồm:
 
     video/output.mp4
     metadata/manifest.json
     metadata/provenance.json
     metadata/reviews.json
     metadata/approval.json
+    metadata/quality.json
     metadata/checksums.sha256
 
 Tải qua khu vực Delivery trong Observer. Kiểm `checksums.sha256` sau khi chép bundle sang nơi nhận.
