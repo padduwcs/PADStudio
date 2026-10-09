@@ -8,13 +8,19 @@ import { inspectMachineProfile } from "./machine-profile.js";
 export const PRACTICAL_REQUIRED_CAPABILITIES = Object.freeze([
   "media.inspect",
   "source.probe",
-  "video.detect-scenes",
   "source.extract-frames",
   "audio.analyze",
-  "audio.transcribe",
   "source.preview",
   "video.render-sequence",
   "video.export-delivery"
+]);
+
+// Scene detection and speech recognition need the locked Python runtime and Whisper models, which are installed
+// separately (eval/source-understanding/README.md). Making a video from scratch does not use them, so a machine
+// without them is reported as needing attention rather than as blocked.
+export const PRACTICAL_RECOMMENDED_CAPABILITIES = Object.freeze([
+  "video.detect-scenes",
+  "audio.transcribe"
 ]);
 
 function remediation(code, message) {
@@ -117,9 +123,10 @@ export async function inspectPadStudio({
 
   const [machine, described] = await Promise.all([machinePromise, registry.describeCapabilities()]);
   const required = new Set(PRACTICAL_REQUIRED_CAPABILITIES);
+  const recommended = new Set(PRACTICAL_RECOMMENDED_CAPABILITIES);
   const capabilities = described.capabilities.map((capability) => ({
     id: capability.id,
-    requirement: required.has(capability.id) ? "required" : "optional",
+    requirement: required.has(capability.id) ? "required" : recommended.has(capability.id) ? "recommended" : "optional",
     available: capability.available,
     tools: capability.tools.map((tool) => ({
       name: tool.name,
@@ -135,6 +142,16 @@ export async function inspectPadStudio({
     remediations.push(remediation(
       "capability:" + id,
       "Khôi phục runtime/profile của capability " + id + "; doctor không tự fallback."
+    ));
+  }
+  const missingRecommended = PRACTICAL_RECOMMENDED_CAPABILITIES.filter((id) =>
+    !capabilities.some((capability) => capability.id === id && capability.available)
+  );
+  for (const id of missingRecommended) {
+    remediations.push(remediation(
+      "capability:" + id,
+      "Capability " + id + " cần runtime phân tích (Python + model Whisper) chưa sẵn sàng. Chỉ cần khi làm việc với tư liệu quay sẵn; " +
+        "cài theo eval/source-understanding/README.md (mục “Cài môi trường”), rồi chạy npm run analysis:doctor."
     ));
   }
 
@@ -197,7 +214,7 @@ export async function inspectPadStudio({
   const projectBlocked = projects.some((project) => project.status === "blocked");
   const systemBlocked = !runtime.nodeReady || !storage.ready || missingRequired.length > 0 || projectBlocked;
   const projectAttention = projects.some((project) => project.status === "attention") ||
-    Boolean(projectId && !projects.length);
+    Boolean(projectId && !projects.length) || missingRecommended.length > 0;
   return {
     version: "1.0",
     checkedAt: new Date().toISOString(),
@@ -208,6 +225,7 @@ export async function inspectPadStudio({
     storage,
     capabilities,
     missingRequiredCapabilities: missingRequired,
+    missingRecommendedCapabilities: missingRecommended,
     projects,
     remediations,
     release: {

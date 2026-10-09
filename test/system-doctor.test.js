@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   inspectPadStudio,
+  PRACTICAL_RECOMMENDED_CAPABILITIES,
   PRACTICAL_REQUIRED_CAPABILITIES
 } from "../src/operations/system-doctor.js";
 import { ProjectStore } from "../src/project/project-store.js";
@@ -14,12 +15,12 @@ test("delivery export readiness does not require optional deep output inspection
   assert.equal(PRACTICAL_REQUIRED_CAPABILITIES.includes("video.inspect-output"), false);
 });
 
-function registryWithout(missing = null) {
+function registryWithout(missing = null, { without = [] } = {}) {
   return {
     describeCapabilities: async () => ({
       capabilities: [
-        ...PRACTICAL_REQUIRED_CAPABILITIES
-          .filter((id) => id !== missing)
+        ...[...PRACTICAL_REQUIRED_CAPABILITIES, ...PRACTICAL_RECOMMENDED_CAPABILITIES]
+          .filter((id) => id !== missing && !without.includes(id))
           .map((id) => ({
             id, available: true,
             tools: [{ name: id, provider: "fixture", availability: { status: "available" } }]
@@ -71,6 +72,35 @@ test("system doctor blocks when a required practical capability is missing", asy
   assert.equal(result.status, "blocked");
   assert.deepEqual(result.missingRequiredCapabilities, [missing]);
   assert.ok(result.remediations.some((entry) => entry.code === "capability:" + missing));
+});
+
+test("system doctor asks for attention, not a block, when only the Python analysis runtime is missing", async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), "padstudio-doctor-recommended-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const rootDir = join(workspace, "projects");
+  await mkdir(rootDir, { recursive: true });
+  assert.deepEqual([...PRACTICAL_RECOMMENDED_CAPABILITIES].sort(), ["audio.transcribe", "video.detect-scenes"]);
+  assert.equal(PRACTICAL_REQUIRED_CAPABILITIES.some((id) => PRACTICAL_RECOMMENDED_CAPABILITIES.includes(id)), false);
+  const result = await inspectPadStudio({
+    rootDir,
+    registry: registryWithout(null, { without: PRACTICAL_RECOMMENDED_CAPABILITIES }),
+    store: new ProjectStore(rootDir),
+    minimumFreeBytes: 0
+  });
+  assert.equal(result.status, "attention");
+  assert.deepEqual(result.missingRequiredCapabilities, []);
+  assert.deepEqual([...result.missingRecommendedCapabilities].sort(), ["audio.transcribe", "video.detect-scenes"]);
+  assert.deepEqual(result.capabilities.map((entry) => entry.requirement).filter((value) => value === "recommended"), []);
+  for (const id of PRACTICAL_RECOMMENDED_CAPABILITIES) {
+    assert.ok(result.remediations.some((entry) => entry.code === "capability:" + id && entry.message.includes("eval/source-understanding/README.md")));
+  }
+
+  const complete = await inspectPadStudio({
+    rootDir, registry: registryWithout(), store: new ProjectStore(rootDir), minimumFreeBytes: 0
+  });
+  assert.equal(complete.status, "ready");
+  assert.deepEqual(complete.missingRecommendedCapabilities, []);
+  assert.equal(complete.capabilities.find((entry) => entry.id === "audio.transcribe").requirement, "recommended");
 });
 
 async function resultFixture(rootDir, projectId = "demo") {
