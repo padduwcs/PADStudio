@@ -1,0 +1,16 @@
+{
+  "dependencies": {
+    "@remotion/cli": "4.0.524",
+    "hyperframes": "0.8.42",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "remotion": "4.0.524"
+  },
+  "allowScripts": {
+    "@google/genai@1.52.0": true,
+    "esbuild@0.28.1": true,
+    "esbuild@0.25.12": true,
+    "onnxruntime-node@1.21.1": true,
+    "protobufjs@7.6.6": true
+  }
+}
