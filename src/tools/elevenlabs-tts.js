@@ -103,7 +103,7 @@ export function createElevenLabsTts({
         return {
           status: "unavailable",
           credentialConfigured: false,
-          reason: "No ElevenLabs API key yet. The user adds it on the observer Tools page (/?panel=tools), which saves it to the git-ignored padstudio.local.json; the key is never read from project inputs."
+          reason: "No ElevenLabs API key yet. The user adds it on the observer Tools page, Giọng đọc tab (/?panel=tools&tab=voice), which saves it to the git-ignored padstudio.local.json; the key is never read from project inputs."
         };
       }
       try {

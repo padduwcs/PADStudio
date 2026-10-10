@@ -331,7 +331,7 @@ applyTheme(initialTheme());
 setView(currentView, { updateUrl: false });
 loadProjects().catch(showError);
 // The Agent sends the user to /?panel=tools to add a key or say which services they have.
-if (parameters.get("panel") === "tools") tools.open();
+if (parameters.get("panel") === "tools") tools.open({ tab: parameters.get("tab") });
 window.setInterval(() => {
   if (document.hidden) return;
   loadProjects().catch((error) => { if (error.name !== "AbortError") showError(error); });

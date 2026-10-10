@@ -10,7 +10,7 @@ function group(capability) {
 }
 
 function setup(tool) {
-  if (tool.name === "elevenlabs") return { kind: "provider_account", instructions: "Ask the user to paste their ElevenLabs API key on the observer Tools page (/?panel=tools, e.g. http://127.0.0.1:7603/?panel=tools); it is saved to padstudio.local.json. Never ask for or accept the key in chat.", configKeys: ["elevenLabs.apiKey"] };
+  if (tool.name === "elevenlabs") return { kind: "provider_account", instructions: "Ask the user to paste their ElevenLabs API key on the observer Tools page, Giọng đọc tab (/?panel=tools&tab=voice, e.g. http://127.0.0.1:7603/?panel=tools&tab=voice); it is saved to padstudio.local.json. Never ask for or accept the key in chat.", configKeys: ["elevenLabs.apiKey"] };
   if (tool.name === "piper-local") return { kind: "local_model", instructions: "Install the pinned Piper model and configure its directory when needed.", configKeys: ["piper.modelDirectory", "piper.defaultModel"] };
   if (tool.name === "wikimedia-stock") return { kind: "network", instructions: "Requires HTTPS access to Wikimedia Commons; no API key.", configKeys: [] };
   if (tool.name.startsWith("manim-")) return { kind: "local_runtime", instructions: "Install and pin Manim Community plus FFmpeg, or configure PADSTUDIO_MANIM_PATH.", configKeys: ["PADSTUDIO_MANIM_PATH"] };

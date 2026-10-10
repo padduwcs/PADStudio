@@ -101,18 +101,23 @@
       <div class="library-backdrop" data-tools-backdrop></div>
       <div class="library-sheet tools-sheet">
         <header class="library-head tools-head">
-          <div>
+          <div class="tools-title">
             <h2 id="tools-title">Công cụ</h2>
-            <p class="tools-lede">Những gì PADStudio dùng được trên máy này. Agent đọc cùng thông tin này để chọn cách làm hợp với bạn.</p>
+            <p class="tools-lede">Những gì PADStudio dùng được trên máy này.</p>
           </div>
           <div class="tools-head-actions">
-            <button id="tools-refresh" type="button" class="button button-quiet">Kiểm tra lại</button>
+            <button id="tools-refresh" type="button" class="button button-ghost">Kiểm tra lại</button>
             <button type="button" class="icon-button" data-tools-close aria-label="Đóng công cụ">
               <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 6 12 12M18 6 6 18" /></svg>
             </button>
           </div>
         </header>
-        <div id="tools-body" class="tools-body" aria-live="polite"></div>
+        <div id="tools-tabs" class="tabs tools-tabs" role="tablist" aria-label="Các phần của trang Công cụ">
+          <button id="tools-tab-overview" type="button" role="tab" class="tab is-active" data-tab="overview" aria-selected="true" aria-controls="tools-panel-overview">Tổng quan</button>
+          <button id="tools-tab-voice" type="button" role="tab" class="tab" data-tab="voice" aria-selected="false" tabindex="-1" aria-controls="tools-panel-voice">Giọng đọc</button>
+          <button id="tools-tab-services" type="button" role="tab" class="tab" data-tab="services" aria-selected="false" tabindex="-1" aria-controls="tools-panel-services">Dịch vụ của bạn</button>
+        </div>
+        <div id="tools-body" class="tools-body"></div>
       </div>
     </div>
 

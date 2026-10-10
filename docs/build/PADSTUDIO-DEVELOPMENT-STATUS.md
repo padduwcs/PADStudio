@@ -228,9 +228,10 @@ Quyết định và ranh giới ghi tại mục cuối của [`PADSTUDIO-CURRENT
 cài đặt máy, không bao giờ ghi project.
 
 - **Giao diện:** nút **Công cụ** trên thanh đầu, nút trên màn hình chào, và link `/?panel=tools` mà Agent gửi. Sheet ([`ui/tools-view.js`](../../ui/tools-view.js))
-  gom 37 tool thành 15 mục theo năm nhóm, mỗi mục có chi phí, trạng thái (Sẵn sàng / Dùng được một phần / Cần khóa API / Cần cài thêm),
-  cách bật và chi tiết kỹ thuật thu gọn. ElevenLabs có ô dán khóa, **Kiểm tra kết nối** và **Xóa khóa**; mục “Dịch vụ khác bạn dùng được”
-  có sáu loại dịch vụ và ghi chú.
+  gom 37 tool thành 15 mục và chia ba tab, mỗi tab một việc (khung cao cố định nên các tab không nhảy): **Tổng quan** (đầu trang là việc cần bạn làm,
+  mỗi việc một thẻ có nút đi thẳng tới chỗ xử lý; các công cụ đã sẵn sàng thu thành nhãn gọn theo nhóm), **Giọng đọc** (ba bước: khóa, model, giọng; Piper
+  ở cuối) và **Dịch vụ của bạn** (sáu loại dịch vụ và ghi chú). `/?panel=tools&tab=voice` hoặc `&tab=services` mở thẳng đúng tab. Khóa đã lưu hiện
+  “Đã lưu khóa …1234” cùng **Kiểm tra kết nối** và **Xóa khóa**; ô thay khóa gập trong “Thay bằng khóa khác”.
 - **Server:** `GET /api/tools` (cache 60 giây, `?refresh=1`), `GET|PUT /api/settings`, `POST /api/settings/elevenlabs/check`
   ([`settings-service.js`](../../src/web/settings-service.js), [`tools-overview.js`](../../src/web/tools-overview.js)). Ghi đòi Origin trùng,
   JSON, header `X-PADStudio-Intent: settings`, thân ≤ 16 KiB; khóa không bao giờ được trả lại.
@@ -239,7 +240,7 @@ cài đặt máy, không bao giờ ghi project.
   thư mục đang chạy lệnh.
 - **Agent:** `project:resume` có `environment.userServices`; hướng dẫn trong runtime doc, agent reference và skill `tool-selection`.
   Hướng dẫn cài ElevenLabs trỏ tới trang Công cụ và cấm hỏi khóa trong chat.
-- **Giọng và model (ElevenLabs):** [`ui/voice-picker.js`](../../ui/voice-picker.js) trong mục ElevenLabs sau khi có khóa: chọn model từ danh sách thật
+- **Giọng và model (ElevenLabs):** [`ui/voice-picker.js`](../../ui/voice-picker.js) ở tab Giọng đọc sau khi có khóa: chọn model từ danh sách thật
   của tài khoản (chỉ model hỗ trợ tiếng Việt và có hệ số credit mới dùng được), tìm giọng theo tên (gõ là tìm, 30 giọng một trang, “Tải thêm”),
   nghe thử miễn phí, dán mã giọng đã dùng, “Dùng giọng này”. Lưu `elevenLabs.voiceId/voiceName/modelId`; `project:resume` có `environment.voice`.
   Ba endpoint tra cứu chỉ đọc là POST sau cùng lớp bảo vệ (xem [`TTS-CAPABILITY.md`](TTS-CAPABILITY.md)); `previewUrl` chỉ chuyển tiếp khi là

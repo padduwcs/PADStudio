@@ -86,16 +86,16 @@ async function checkLibrary(page, label) {
 
 async function checkTools(page, label) {
   await page.evaluate("document.querySelector('#tools-button').focus(); document.querySelector('#tools-button').click()");
-  await page.waitFor("!document.querySelector('#tools').hidden && document.querySelector('#tools .tool-item')", { timeout: 60_000, label: `${label} tools sheet lists tools` });
+  await page.waitFor("!document.querySelector('#tools').hidden && document.querySelector('#tools .tool-pill, #tools .tool-card')", { timeout: 60_000, label: `${label} tools sheet lists tools` });
   const state = await page.evaluate(`(() => ({
     inert: document.querySelector('#main').hasAttribute('inert'),
     focusInside: document.querySelector('#tools').contains(document.activeElement),
-    groups: document.querySelectorAll('#tools .tools-group').length,
+    tabs: document.querySelectorAll('#tools .tools-tabs .tab').length,
     services: document.querySelectorAll('#tools input[name=service]').length,
     overflow: document.documentElement.scrollWidth - window.innerWidth,
     sheetOverflow: document.querySelector('#tools .tools-body').scrollWidth - document.querySelector('#tools .tools-body').clientWidth
   }))()`);
-  expect(state.inert && state.focusInside && state.groups >= 2 && state.services > 0 && state.overflow <= 1 && state.sheetOverflow <= 1,
+  expect(state.inert && state.focusInside && state.tabs === 3 && state.services > 0 && state.overflow <= 1 && state.sheetOverflow <= 1,
     `${label}: tools sheet is not usable (${JSON.stringify(state)})`);
   await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
   await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });

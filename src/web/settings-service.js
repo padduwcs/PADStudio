@@ -8,6 +8,9 @@ import {
 import { ElevenLabsClient, ElevenLabsError } from "../tools/elevenlabs-client.js";
 import { buildToolsOverview } from "./tools-overview.js";
 
+// The picker shows a dozen voices at a time; "Tải thêm" fetches the next page.
+const VOICES_PER_PAGE = 12;
+
 export class SettingsError extends Error {
   constructor(status, message) {
     super(message);
@@ -155,7 +158,7 @@ export function createSettingsService({
   }
 
   async function elevenLabsVoices({ language = "vi", search = "", pageToken = null } = {}) {
-    const page = await withProvider((client, signal) => client.searchVoices({ language, search, pageToken, signal }));
+    const page = await withProvider((client, signal) => client.searchVoices({ language, search, pageToken, pageSize: VOICES_PER_PAGE, signal }));
     return { language, search: String(search ?? "").trim(), voices: page.voices.map(publicVoice), nextPageToken: page.nextPageToken, totalCount: page.totalCount };
   }
 

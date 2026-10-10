@@ -6,7 +6,7 @@ The goal is the right voice on the first full pass: no wasted credits, no surpri
 ## Choose the engine and the voice
 1. Read `project:resume` → `environment.voice` and `budget.credits`. Piper is free and local; ElevenLabs sounds better but spends the user's credits.
    If the user has not said which, ask once. Never pick the paid engine silently.
-2. ElevenLabs without a saved key: send the user to the Tools page (`http://127.0.0.1:7603/?panel=tools`, start the observer with
+2. ElevenLabs without a saved key: send the user to the Tools page, Giọng đọc tab (`http://127.0.0.1:7603/?panel=tools&tab=voice`, start the observer with
    `npm run observer:ensure` if needed). Never ask for, accept or repeat an API key in chat; if one is pasted, do not use it.
 3. ElevenLabs voice and model: propose `defaultVoice` and `defaultModelId` from `environment.voice` ("Dùng giọng Minh Anh, model Eleven v3?").
    None saved: tell the user the Tools page lets them search their voices, listen to previews, paste the id of a voice they used before

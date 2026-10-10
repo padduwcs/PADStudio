@@ -19,11 +19,14 @@ npm run tool:list
 ```
 
 Cách dễ nhất: mở trang xem (mục 2) và bấm **Công cụ** trên thanh đầu, hoặc mở thẳng **http://127.0.0.1:7603/?panel=tools**. Trang này
-cho thấy công cụ nào đã sẵn sàng, cái nào còn thiếu và cách bật. Ở đó bạn cũng:
+có ba tab:
 
-- **dán khóa API** cho dịch vụ có tích hợp (hiện là ElevenLabs), bấm **Kiểm tra kết nối** để chắc khóa đúng;
-- **đánh dấu dịch vụ khác bạn có** (tạo ảnh, video, nhạc bằng AI, kho ảnh trả phí, Canva…) kèm ghi chú, để Agent đề xuất cách làm
+- **Tổng quan:** công cụ nào đã sẵn sàng; chỉ những gì cần bạn mới được nói rõ (thiếu khóa, cần cài thêm) kèm nút đi thẳng tới chỗ xử lý;
+- **Giọng đọc:** dán khóa API ElevenLabs, chọn model, tìm và nghe thử giọng, hoặc dán mã giọng bạn đã dùng;
+- **Dịch vụ của bạn:** đánh dấu dịch vụ khác bạn có (tạo ảnh, video, nhạc bằng AI, kho ảnh trả phí, Canva…) kèm ghi chú, để Agent đề xuất cách làm
   hợp với những gì bạn có.
+
+Muốn mở thẳng một tab: `?panel=tools&tab=voice` hoặc `?panel=tools&tab=services`.
 
 Agent đọc cùng thông tin đó khi bắt đầu dự án. **Không dán khóa API vào cuộc trò chuyện**: Agent sẽ gửi bạn link trang Công cụ khi cần.
 Trong terminal, `tool:list` cho cùng danh sách ở dạng kỹ thuật. Phần sau đều **tùy chọn**, Agent sẽ nói rõ khi một bước cần đến chúng:
@@ -36,11 +39,11 @@ Trong terminal, `tool:list` cho cùng danh sách ở dạng kỹ thuật. Phần
   `npm run analysis:doctor`.
 - **Giọng đọc miễn phí trên máy (Piper):** điền `piper.pythonCommand`, `piper.modelDirectory`, `piper.defaultModel` trong
   `padstudio.local.json` (mẫu: `padstudio.local.example.json`).
-- **Giọng đọc ElevenLabs (trả phí):** dán khóa ở trang Công cụ; khóa được lưu vào `padstudio.local.json`, không đưa lên Git và không
-  hiện lại trên trang. Sau khi lưu khóa, bấm **Chọn giọng và model** ngay dưới đó:
+- **Giọng đọc ElevenLabs (trả phí):** dán khóa ở tab **Giọng đọc**; khóa được lưu vào `padstudio.local.json`, không đưa lên Git và không
+  hiện lại trên trang. Sau khi lưu khóa, cùng tab đó hiện thêm hai bước:
   - **Model:** chọn trong danh sách của chính tài khoản bạn (ví dụ Eleven v3). Model nào hỗ trợ tiếng Việt mới dùng được; model khác bị tắt.
   - **Giọng:** gõ tên để tìm trong các giọng của tài khoản, bấm ▶ nghe thử (miễn phí), bấm **Dùng giọng này** để chọn.
-  - **Giọng bạn đã dùng trước đó:** dán mã giọng (voice ID) rồi bấm **Tìm theo mã**. Giọng phải nằm trong My Voices của tài khoản;
+  - **Giọng bạn đã dùng trước đó:** mở dòng “Đã dùng một giọng trước đó?”, dán mã giọng (voice ID) rồi bấm **Tìm theo mã**. Giọng phải nằm trong My Voices của tài khoản;
     giọng ở Voice Library cần được thêm vào My Voices trước. Giọng tính credit theo hệ số riêng không dùng được vì không đặt được trần credit.
   Giọng và model bạn chọn là **mặc định Agent đề xuất**; Agent vẫn ghi rõ giọng và model trong mỗi lần tạo, tạo thử một câu cho bạn nghe
   trước khi tạo cả bài, và chỉ tạo khi bạn đồng ý đúng văn bản đó. Muốn đổi giọng cho một đoạn, nói với Agent.

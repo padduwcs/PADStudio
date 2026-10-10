@@ -28,7 +28,7 @@ benchmark; exact tool vẫn phải qua availability/preflight trước việc d�
 **Công cụ, khóa API và dịch vụ của người dùng.** `environment.userServices` liệt kê các dịch vụ bên ngoài người dùng đã khai báo
 (tạo ảnh/video/nhạc bằng AI, kho ảnh trả phí, công cụ thiết kế…) cùng ghi chú của họ. Với project mới, hoặc khi việc sắp làm cần một
 tool đang thiếu khóa (ví dụ ElevenLabs), chạy `npm run observer:ensure` rồi gửi người dùng link trang Công cụ
-`http://127.0.0.1:7603/?panel=tools`: ở đó họ dán khóa, kiểm tra kết nối và đánh dấu dịch vụ mình có. Đọc lại `project:resume` sau
+`http://127.0.0.1:7603/?panel=tools&tab=voice` (khóa, model, giọng; `&tab=services` cho dịch vụ khác): ở đó họ dán khóa, kiểm tra kết nối và đánh dấu dịch vụ mình có. Đọc lại `project:resume` sau
 khi họ nói đã xong. Không bao giờ hỏi, nhận, nhắc lại hay ghi khóa API vào chat, lệnh, checkpoint hay artifact; nếu người dùng lỡ dán
 khóa vào chat, không dùng nó, mời họ dán ở trang Công cụ và đổi khóa ở nhà cung cấp. Dịch vụ đã khai báo không phải tool của
 PADStudio: chỉ dùng khi hợp brief, thống nhất ai thao tác (Agent host hay người dùng), và đăng ký mọi file tạo ra bằng

@@ -1,7 +1,7 @@
 // Browser acceptance for the Tools page, against a throwaway project store, a throwaway padstudio.local.json and a
-// fake ElevenLabs: the sheet opens from the top bar and from /?panel=tools, lists the real tools of this machine,
-// saves an ElevenLabs key, picks a model and a voice (by search and by voice id) and declares services through the
-// page, never shows the key again and never touches a project.
+// fake ElevenLabs: the sheet opens from the top bar and from /?panel=tools (optionally &tab=voice), shows the real tools
+// of this machine on its Tổng quan tab, saves an ElevenLabs key, picks a model and a voice (by search and by voice id) on
+// the Giọng đọc tab and declares services on the Dịch vụ của bạn tab, never shows the key again and never touches a project.
 //
 //   node scripts/ui-tools-acceptance.mjs [--shots <dir>]
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -68,7 +68,11 @@ await new Promise((ok) => server.listen(0, "127.0.0.1", ok));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const { page, close } = await launchBrowser();
 
-const itemStatus = (id) => page.evaluate(`document.querySelector('#tools [data-tool="${id}"] .chip')?.textContent ?? ''`);
+const chipText = (selector) => page.evaluate(`document.querySelector(${JSON.stringify(selector)})?.textContent ?? ''`);
+const openTab = async (id) => {
+  await page.evaluate(`document.querySelector('#tools-tab-${id}').click()`);
+  await page.waitFor(`document.querySelector('#tools-tab-${id}').getAttribute('aria-selected') === 'true' && !document.querySelector('#tools-panel-${id}').hidden`, { label: `${id} tab opens` });
+};
 const settled = () => page.waitFor("document.getAnimations().every((animation) => animation.playState !== 'running')", { label: "animations settle" });
 const storedElevenLabs = async () => JSON.parse(await readFile(configPath, "utf8")).elevenLabs;
 const card = (id) => `document.querySelector('#tools .voice-card[data-voice="${id}"]')`;
@@ -81,40 +85,55 @@ try {
     await page.goto(`${origin}/?project=tools-demo`);
     await page.waitFor("!document.querySelector('#project').hidden", { label: "project opens" });
     await page.evaluate("document.querySelector('#tools-button').focus(); document.querySelector('#tools-button').click()");
-    await page.waitFor("!document.querySelector('#tools').hidden && document.querySelector('#tools .tool-item')", { timeout: 60_000, label: "tools listed" });
+    await page.waitFor("!document.querySelector('#tools').hidden && document.querySelector('#tools .tool-pill, #tools .tool-card')", { timeout: 60_000, label: "tools listed" });
     const state = await page.evaluate(`(() => ({
       url: location.search, inert: document.querySelector('#main').hasAttribute('inert'),
-      groups: document.querySelectorAll('#tools .tools-group').length,
+      tabs: document.querySelectorAll('#tools .tools-tabs .tab').length,
+      active: document.querySelector('#tools .tab.is-active')?.dataset.tab,
+      attention: document.querySelectorAll('#tools-panel-overview .tool-card').length,
+      ready: document.querySelectorAll('#tools-panel-overview .tool-pill').length,
       overflow: document.documentElement.scrollWidth - window.innerWidth,
       sheetOverflow: document.querySelector('#tools .tools-body').scrollWidth - document.querySelector('#tools .tools-body').clientWidth,
       password: document.querySelector('#elevenlabs-key')?.type
     }))()`);
-    expect(state.url.includes("panel=tools") && state.inert && state.groups >= 5 && state.overflow <= 1 && state.sheetOverflow <= 1 && state.password === "password",
+    expect(state.url.includes("panel=tools") && !state.url.includes("tab=") && state.inert && state.tabs === 3 && state.active === "overview" && state.ready >= 8
+      && state.attention >= 1 && state.overflow <= 1 && state.sheetOverflow <= 1 && state.password === "password",
       `${width}: tools sheet is not usable (${JSON.stringify(state)})`);
     await settled();
     if (shots) await page.screenshot(`${shots}/tools-${width}.png`);
+    for (const id of ["voice", "services"]) {
+      await openTab(id);
+      expect(await page.evaluate("document.documentElement.scrollWidth - window.innerWidth") <= 1, `${width}/${id}: the page scrolls sideways`);
+      expect(await page.evaluate("document.querySelector('#tools-body').scrollWidth - document.querySelector('#tools-body').clientWidth") <= 1, `${width}/${id}: the sheet scrolls sideways`);
+      expect(await page.evaluate("new URL(location.href).searchParams.get('tab')") === id, `${width}: the tab is not kept in the link`);
+      await settled();
+      if (shots) await page.screenshot(`${shots}/tools-${width}-${id}.png`);
+    }
+    await openTab("overview");
     await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
     await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27 });
     await page.waitFor("document.querySelector('#tools').hidden && !location.search.includes('panel=tools')", { label: "Escape closes and clears the link" });
     expect(await page.evaluate("document.activeElement?.id === 'tools-button'"), `${width}: focus did not return to the Tools button`);
   }
 
-  // The link the Agent sends opens the sheet directly; save a key through the form.
+  // The link the Agent sends opens the sheet directly, on the tab it names; the overview card leads to the key.
   await page.goto(`${origin}/?panel=tools`);
-  await page.waitFor("!document.querySelector('#tools').hidden && document.querySelector('#elevenlabs-key')", { timeout: 60_000, label: "deep link opens the tools" });
-  expect((await itemStatus("elevenlabs")).includes("Cần khóa API"), "ElevenLabs should ask for a key first");
-  expect(!await page.evaluate("document.querySelector('#tools .voice-picker')"), "the voice picker must wait for a key");
+  await page.waitFor("!document.querySelector('#tools').hidden && document.querySelector('#tools-panel-overview .tool-card')", { timeout: 60_000, label: "deep link opens the tools" });
+  expect((await chipText("#tools-panel-overview [data-tool=elevenlabs] .chip")).includes("Cần khóa API"), "ElevenLabs should ask for a key first");
+  await page.evaluate("document.querySelector('#tools-panel-overview [data-tool=elevenlabs] [data-control=goto-voice]').click()");
+  await page.waitFor("document.querySelector('#tools-tab-voice').getAttribute('aria-selected') === 'true' && document.activeElement?.id === 'elevenlabs-key'", { label: "the card leads to the key field" });
+  await page.goto(`${origin}/?panel=tools&tab=voice`);
+  await page.waitFor("!document.querySelector('#tools').hidden && document.querySelector('#tools-tab-voice').getAttribute('aria-selected') === 'true' && document.querySelector('#elevenlabs-key')", { timeout: 60_000, label: "the tab named in the link opens" });
+  expect(!await page.evaluate("document.querySelector('#tools #elevenlabs-model')"), "the model and voice steps must wait for a key");
   await page.evaluate(`(() => { const input = document.querySelector('#elevenlabs-key'); input.value = ${JSON.stringify(KEY)};
     input.closest('form').requestSubmit(); })()`);
-  await page.waitFor("document.querySelector('#tools [data-tool=elevenlabs] .key-block .form-message')?.textContent.includes('Đã lưu khóa')", { timeout: 60_000, label: "key saved" });
-  await page.waitFor("document.querySelector('#tools [data-tool=elevenlabs] .chip')?.textContent.includes('Sẵn sàng')", { timeout: 60_000, label: "ElevenLabs becomes available" });
+  expect(providerRequests.length === 0, "nothing should be requested from ElevenLabs before a key is saved");
+  await page.waitFor("document.querySelector('#tools-panel-voice .key-block .form-message')?.textContent.includes('Đã lưu khóa')", { timeout: 60_000, label: "key saved" });
+  await page.waitFor("document.querySelector('#tools-panel-voice [data-tool=elevenlabs] .chip')?.textContent.includes('Sẵn sàng')", { timeout: 60_000, label: "ElevenLabs becomes available" });
   expect(!(await page.evaluate("document.documentElement.outerHTML")).includes(KEY), "the page shows the saved key");
-  expect((await page.evaluate("document.querySelector('#tools [data-tool=elevenlabs] .key-saved')?.textContent ?? ''")).includes("…4d2e"), "the saved key hint is missing");
+  expect((await chipText("#tools-panel-voice .key-state")).includes("…4d2e"), "the saved key hint is missing");
 
   // Pick a model, then a voice by search, then a voice used before by its id.
-  expect(await page.evaluate("document.querySelector('#tools .voice-panel').hidden"), "the picker should start collapsed");
-  expect(providerRequests.length === 0, "nothing should be requested from ElevenLabs before the picker opens");
-  await page.evaluate("document.querySelector('#tools [data-control=voice-toggle]').click()");
   await page.waitFor(`${LIST_CARDS}.length === 2 && document.querySelector('#elevenlabs-model').options.length >= 3`, { timeout: 30_000, label: "voices and models load" });
   const listing = await page.evaluate(`(() => ({
     options: [...document.querySelector('#elevenlabs-model').options].map((option) => [option.value, option.disabled]),
@@ -124,11 +143,11 @@ try {
   expect(JSON.stringify(listing.options) === JSON.stringify([["", false], ["eleven_v3", false], ["eleven_multilingual_v2", true]]), `model list is wrong: ${JSON.stringify(listing.options)}`);
   expect(JSON.stringify(listing.play) === JSON.stringify([["v_minh_anh", false], ["v_quang", true]]) && listing.more, `voice list is wrong: ${JSON.stringify(listing)}`);
   // Choosing something rebuilds the sheet; the reader must stay where they were.
-  await page.evaluate("(() => { const body = document.querySelector('#tools-body'); body.scrollTop = 120; window.__before = body.scrollTop; })()");
+  await page.evaluate("(() => { const body = document.querySelector('#tools-body'); body.scrollTop = 40; window.__before = body.scrollTop; window.__scrollable = body.scrollHeight > body.clientHeight + 40; })()");
   await page.evaluate("(() => { const select = document.querySelector('#elevenlabs-model'); select.focus(); select.value = 'eleven_v3'; select.dispatchEvent(new Event('change', { bubbles: true })); })()");
   await page.waitFor("document.querySelector('#tools .voice-flash')?.textContent.includes('model mặc định')", { label: "model saved" });
-  const kept = await page.evaluate("({ before: window.__before, after: document.querySelector('#tools-body').scrollTop, focus: document.activeElement?.id })");
-  expect(kept.before > 0 && Math.abs(kept.after - kept.before) <= 2, `the sheet lost its scroll position after saving: ${JSON.stringify(kept)}`);
+  const kept = await page.evaluate("({ before: window.__before, scrollable: window.__scrollable, after: document.querySelector('#tools-body').scrollTop, focus: document.activeElement?.id })");
+  expect(!kept.scrollable || (kept.before > 0 && Math.abs(kept.after - kept.before) <= 2), `the sheet lost its scroll position after saving: ${JSON.stringify(kept)}`);
   expect(kept.focus === "elevenlabs-model", `focus was lost after saving: ${JSON.stringify(kept)}`);
   expect((await storedElevenLabs()).modelId === "eleven_v3", "the model was not saved");
 
@@ -140,12 +159,12 @@ try {
   await page.waitFor(`(() => { const cards = ${LIST_CARDS}; return cards.length === 1 && cards[0].dataset.voice === 'v_quang'; })()`, { label: "search narrows the list" });
   if (shots) {
     await page.media([{ name: "prefers-color-scheme", value: "light" }]);
-    await page.evaluate("document.documentElement.dataset.theme = 'light'; document.querySelector('#tools .voice-picker').scrollIntoView({ block: 'start' })");
+    await page.evaluate("document.documentElement.dataset.theme = 'light'; document.querySelector('#elevenlabs-model').scrollIntoView({ block: 'start' })");
     await settled();
     await page.screenshot(`${shots}/tools-voices-light.png`);
   }
   await page.evaluate(`${card("v_quang")}.querySelector('[data-control=use-voice]').click()`);
-  await page.waitFor("document.querySelector('#tools .voice-current-text')?.textContent.includes('Quang') && document.querySelector('#tools .voice-card.is-current')", { label: "voice chosen from search" });
+  await page.waitFor("document.querySelector('#tools .voice-summary-name')?.textContent.includes('Quang') && document.querySelector('#tools .voice-card.is-current')", { label: "voice chosen from search" });
   let chosen = await storedElevenLabs();
   expect(chosen.voiceId === "v_quang" && chosen.voiceName === "Quang" && chosen.modelId === "eleven_v3" && chosen.apiKey === KEY,
     `the default voice was not saved: ${JSON.stringify({ ...chosen, apiKey: "…" })}`);
@@ -155,13 +174,13 @@ try {
   await page.evaluate("(() => { document.querySelector('[data-control=voice-id]').value = ' v_minh_anh '; document.querySelector('.voice-lookup').requestSubmit(); })()");
   await page.waitFor("document.querySelector('.voice-found .voice-card[data-voice=v_minh_anh]')", { label: "voice found by id" });
   await page.evaluate("document.querySelector('.voice-found .voice-card [data-control=use-voice]').click()");
-  await page.waitFor("document.querySelector('#tools .voice-current-text')?.textContent.includes('Minh Anh')", { label: "voice chosen by id" });
+  await page.waitFor("document.querySelector('#tools .voice-summary-name')?.textContent.includes('Minh Anh')", { label: "voice chosen by id" });
   chosen = await storedElevenLabs();
   expect(chosen.voiceId === "v_minh_anh" && chosen.voiceName === "Minh Anh", "the voice found by id was not saved");
   expect(providerRequests.every((request) => request.startsWith("GET ")), "the pickers must only read from ElevenLabs");
   if (shots) {
     await page.viewport(390, 900, { mobile: true });
-    await page.evaluate("document.querySelector('#tools .voice-picker').scrollIntoView({ block: 'start' })");
+    await page.evaluate("document.querySelector('#elevenlabs-model').scrollIntoView({ block: 'start' })");
     await settled();
     await page.screenshot(`${shots}/tools-voices-mobile.png`);
     expect(await page.evaluate("document.documentElement.scrollWidth - window.innerWidth") <= 1, "the voice picker scrolls sideways on a phone");
@@ -169,12 +188,13 @@ try {
   }
 
   // Declare outside services.
+  await openTab("services");
   await page.evaluate(`(() => {
     for (const box of document.querySelectorAll('#tools input[name=service]')) box.checked = ['image-generation', 'music-generation'].includes(box.value);
     document.querySelector('#services-note').value = 'ChatGPT Plus, Suno';
-    document.querySelector('#tools .services-form').requestSubmit();
+    document.querySelector('#tools-panel-services .services-form').requestSubmit();
   })()`);
-  await page.waitFor("document.querySelector('#tools .tools-services .form-message')?.textContent.includes('Đã lưu')", { label: "services saved" });
+  await page.waitFor("document.querySelector('#tools-panel-services .form-message')?.textContent.includes('Đã lưu')", { label: "services saved" });
 
   const stored = JSON.parse(await readFile(configPath, "utf8"));
   expect(stored.elevenLabs?.apiKey === KEY, "the key did not reach padstudio.local.json");

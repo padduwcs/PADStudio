@@ -21,7 +21,7 @@ const ITEMS = Object.freeze([
     setup: "Cần Python, gói piper-tts và một model giọng; đường dẫn khai báo ở mục piper trong padstudio.local.json. " + ASK_AGENT },
   { id: "elevenlabs", group: "voice", name: "ElevenLabs", cost: "paid", match: ["elevenlabs"], setting: "elevenLabs.apiKey",
     summary: "Giọng đọc chất lượng cao qua mạng, tính phí theo ký tự. Agent luôn hỏi bạn trước mỗi lần tốn tiền.",
-    setup: "Dán khóa API ElevenLabs (elevenlabs.io → Profile → API Keys) vào ô bên dưới." },
+    setup: "Lấy khóa ở elevenlabs.io → Profile → API Keys, rồi dán ở tab Giọng đọc." },
   { id: "manim", group: "animation", name: "Manim", cost: "local", match: ["manim-"],
     summary: "Hoạt họa toán học: công thức, đồ thị, hình học, sơ đồ thuật toán.",
     setup: "Cần cài Manim Community (Python) và FFmpeg. " + ASK_AGENT },

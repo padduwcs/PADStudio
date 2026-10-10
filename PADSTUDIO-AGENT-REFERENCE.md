@@ -287,7 +287,7 @@ cô đọng trong `environment`; chỉ gọi lệnh riêng khi cần chẩn đo�
 
 ### Trang Công cụ, khóa API và dịch vụ người dùng khai báo
 
-Người dùng xem và cài đặt công cụ ở trang Công cụ của observer: `http://127.0.0.1:7603/?panel=tools` (chạy
+Người dùng xem và cài đặt công cụ ở trang Công cụ của observer: `http://127.0.0.1:7603/?panel=tools` (thêm `&tab=voice` hoặc `&tab=services` để mở đúng tab; chạy
 `npm run observer:ensure` trước nếu observer chưa chạy). Trang gom tool theo nhóm (giọng đọc, hoạt họa, hiểu tư liệu, ảnh và tư
 liệu, dựng và xuất), cho dán khóa ElevenLabs, kiểm tra kết nối và đánh dấu dịch vụ bên ngoài. Mọi thứ lưu vào `padstudio.local.json`;
 runtime path (Python, model Piper) chỉ sửa trong file.
