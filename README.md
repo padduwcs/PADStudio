@@ -8,7 +8,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="Giấy phép MIT" /></a>
   <img src="https://img.shields.io/badge/node-%E2%89%A520-339933.svg" alt="Node.js 20 trở lên" />
   <img src="https://img.shields.io/badge/platform-Windows-0078D6.svg" alt="Windows" />
-  <img src="https://img.shields.io/badge/status-0.1%20(early)-orange.svg" alt="Phiên bản 0.1" />
+  <a href="https://github.com/padduwcs/PADStudio/releases"><img src="https://img.shields.io/github/v/release/padduwcs/PADStudio?include_prereleases&label=release" alt="Bản phát hành mới nhất" /></a>
 </p>
 
 <p align="center"><a href="README.en.md">English</a> · <a href="docs/HUONG-DAN.md">Hướng dẫn sử dụng</a> · <a href="docs/CAI-DAT-RUNTIME.md">Cài đặt runtime</a> · <a href="CHANGELOG.md">Lịch sử thay đổi</a></p>
@@ -110,7 +110,7 @@ PADStudio ở **phiên bản 0.1**, đang phát triển. Hãy biết trước:
 - **Máy không chứng nhận chất lượng sáng tạo.** Kiểm tra tự động bắt lỗi kỹ thuật; hình ảnh và giọng đọc cần bạn xem và nghe.
 - **Bộ chọn giọng ElevenLabs mới được thử với ElevenLabs giả**, chưa với tài khoản thật. Nếu bạn gặp sai khác, hãy mở issue.
 - **Mã hoạt họa do Agent sinh ra chạy trên máy bạn, không trong sandbox.** Xem [`SECURITY.md`](SECURITY.md).
-- Chưa có bản phát hành chính thức; hãy dùng nhánh `main`.
+- [Phiên bản 0.1.0](https://github.com/padduwcs/PADStudio/releases/tag/v0.1.0) là bản **pre-release** đầu tiên; nhánh `main` luôn là bản mới nhất.
 
 ## Tài liệu
 

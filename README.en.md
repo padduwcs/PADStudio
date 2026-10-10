@@ -88,7 +88,7 @@ Version **0.1**, in active development.
 - The ElevenLabs voice picker has so far been tested against a fake ElevenLabs only, not a real account.
 - **Animation code written by the Agent runs on your machine without a sandbox.** See [`SECURITY.md`](SECURITY.md) (Vietnamese; the
   short version: the observer listens on localhost only, API keys live in a git-ignored `padstudio.local.json`, and generated code is not isolated).
-- There is no official release yet; use the `main` branch.
+- [0.1.0](https://github.com/padduwcs/PADStudio/releases/tag/v0.1.0) is the first **pre-release**; `main` is always the newest.
 
 ## Contributing and license
 
