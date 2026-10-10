@@ -236,6 +236,33 @@ test("source packages are immutable, revisioned and reject traversal", async (t)
   })), /safe relative path/);
 });
 
+test("a source revision continues its base package without restating the runtime or entry", async (t) => {
+  const { executor } = await fixture(t);
+  const { source } = await sourceAndValidation(executor);
+  const revised = await executor.execute("demo", request("animation.source", "code-animation-source", "Revise without restating the base", {
+    operation: "revise", name: "Kinetic title source r2", changeSummary: "Adjust title timing", baseResultId: source.id,
+    changes: [{ path: "src/index.tsx", content: "export const Demo = () => null; // Composition revised\n" }],
+  }));
+  assert.equal(revised.result.data.runtime, "remotion");
+  assert.equal(revised.result.data.entryFile, "src/index.tsx");
+  assert.equal(revised.result.data.entrySymbol, "Demo");
+  assert.equal(revised.result.data.parentSourceResultId, source.id);
+
+  // A new package must still say what it is, and a runtime that is stated must still match the base.
+  await assert.rejects(executor.execute("demo", request("animation.source", "code-animation-source", "Create without runtime", {
+    operation: "create", name: "No runtime", entryFile: "src/index.tsx", entrySymbol: "Demo", changeSummary: "Missing runtime",
+    files: [{ path: "src/index.tsx", content: "export const Demo = () => null; // Composition\n" }],
+  })), /runtime must be manim, remotion or hyperframes/);
+  await assert.rejects(executor.execute("demo", request("animation.source", "code-animation-source", "Wrong runtime", {
+    operation: "revise", runtime: "manim", name: "Wrong", changeSummary: "Wrong runtime", baseResultId: source.id,
+    changes: [{ path: "src/index.tsx", content: "export const Demo = () => null; // Composition other\n" }],
+  })), /runtime does not match the source package/);
+  await assert.rejects(executor.execute("demo", request("animation.source", "code-animation-source", "Bad runtime value", {
+    operation: "revise", runtime: "flash", name: "Bad", changeSummary: "Bad runtime", baseResultId: source.id,
+    changes: [{ path: "src/index.tsx", content: "export const Demo = () => null; // Composition other\n" }],
+  })), /runtime must be manim, remotion or hyperframes/);
+});
+
 test("static validation fails closed on host and network APIs", async (t) => {
   const { executor } = await fixture(t);
   const created = await executor.execute("demo", request("animation.source", "code-animation-source", "Create unsafe source", {

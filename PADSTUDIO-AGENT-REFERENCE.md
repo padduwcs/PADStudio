@@ -63,6 +63,18 @@ npm run project:context -- <project-id> --view summary
 npm run analysis:read -- <project-id> '{"view":"summary"}'
 ```
 
+Chạy phân tích (probe, cảnh, khung hình, âm thanh, transcript, preview) bằng `project:analyze`, không bằng `tool:run`. Dịch vụ
+phân tích cấp danh tính nguồn, lưu job và Result; `tool:run` trực tiếp cho `audio.transcribe` và các tool cùng nhóm bị từ chối
+ngay vì không lưu được Result. Request chọn nguồn, operation và tùy chọn từng operation:
+
+```powershell
+npm run project:analyze -- <project-id> '{"version":"1.0","sources":[{"kind":"result","id":"result-...","file":"primary"}],"operations":["transcript"],"profiles":{"asr":"large-v3-gpu-fp16"},"language":"vi","options":{"transcript":{"glossary":["Binary Exponentiation","đệ quy"],"glossaryVersion":"v1"}}}'
+```
+
+`glossary` (tối đa 100 cụm) chỉ gợi ý cho nhận dạng, đi kèm `glossaryVersion` để vào provenance; ASR không có glossary vẫn so được
+toàn bộ lời với kịch bản. `analysis:resume` tiếp tục unit chưa xong, `analysis:cancel` dừng job, `analysis:doctor` kiểm môi trường
+phân tích mà không tải model.
+
 Reader hỗ trợ các view `transcript`, `scenes`, `frames`, `audio`, `assessment`,
 `search` và `job`. View dataset cần `sourceKey` hoặc `resultId`, có thể thêm `range`,
 `limit`, `cursor`; transcript có `transcriptMode` là `raw`, `corrected` hoặc `both`.

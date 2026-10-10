@@ -53,6 +53,18 @@ def finite(value):
     return number if math.isfinite(number) else None
 
 
+def configure_streams():
+    """Read the request and write the response as UTF-8, whatever the console code page is.
+
+    The Node adapter sends UTF-8. On Windows a piped stdin is decoded with the ANSI code page instead, so every
+    accented letter of a Vietnamese glossary or path became mojibake, and a byte the code page leaves undefined
+    (0x9D in "ờ") became a lone surrogate that the tokenizer rejects with "TextInputSequence must be str".
+    """
+    sys.stdin.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
+
 def require_request(command: str):
     value = json.load(sys.stdin)
     if not isinstance(value, dict) or value.get("protocolVersion") != PROTOCOL_VERSION:
@@ -463,8 +475,7 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
+    configure_streams()
     try:
         raise SystemExit(main())
     except Exception as error:

@@ -45,7 +45,10 @@ export function createCodeAnimationSource() {
     sideEffects: ["Writes a new immutable source-package Result inside the current Run output."],
     cost: { currency: "USD", estimated: 0 },
     outputDescription: "animation.source-package containing normalized source files, manifest, dependency declarations and revision provenance.",
-    inputSchema: { type: "object", required: ["operation", "runtime", "name", "entryFile", "entrySymbol", "changeSummary"], additionalProperties: false, properties: {
+    // A revision continues its base package, so only a new package has to name the runtime and entry again.
+    inputSchema: { type: "object", required: ["operation", "name", "changeSummary"], additionalProperties: false,
+      allOf: [{ if: { properties: { operation: { const: "create" } } }, then: { required: ["runtime", "entryFile", "entrySymbol"] } }],
+      properties: {
       operation: { enum: ["create", "revise"] }, runtime: { enum: [...ANIMATION_RUNTIMES] }, name: { type: "string", maxLength: 240 },
       entryFile: { type: "string", maxLength: 300 }, entrySymbol: { type: "string", maxLength: 240 }, changeSummary: { type: "string", maxLength: 2000 },
       files: { type: "array", maxItems: MAX_SOURCE_FILES, items: { type: "object", required: ["path", "content"] } },
@@ -57,12 +60,12 @@ export function createCodeAnimationSource() {
     async checkAvailability() { return { status: "available", note: "Source packaging does not execute generated code." }; },
     async prepare({ store, projectId, inputs, outputWorkspace }) {
       object(inputs, ["operation", "runtime", "name", "entryFile", "entrySymbol", "changeSummary", "files", "baseResultId", "changes", "dependencies"]);
-      if (!ANIMATION_RUNTIMES.includes(inputs.runtime)) fail("runtime must be manim, remotion or hyperframes.");
       const operation = inputs.operation;
+      // Only a revision may leave the runtime out: it is taken from the base package it continues.
+      if ((operation !== "revise" || inputs.runtime !== undefined) && !ANIMATION_RUNTIMES.includes(inputs.runtime)) {
+        fail("runtime must be manim, remotion or hyperframes.");
+      }
       if (!["create", "revise"].includes(operation)) fail("operation must be create or revise.");
-      const entryFile = safeSourcePath(inputs.entryFile, "entryFile");
-      const entrySymbol = text(inputs.entrySymbol, "entrySymbol", 128);
-      if (!/^[A-Za-z][A-Za-z0-9_-]{0,127}$/u.test(entrySymbol)) fail("entrySymbol must be a safe runtime identifier.");
       const output = workspace(outputWorkspace);
       let base = null;
       let sourceFiles;
@@ -72,7 +75,7 @@ export function createCodeAnimationSource() {
         sourceFiles = inputs.files.map((file, index) => normalizeTextFile(file, `files[${index}]`));
       } else {
         if (inputs.files !== undefined) fail("revise accepts changes, not files.");
-        base = await loadSourcePackage(store, projectId, text(inputs.baseResultId, "baseResultId", 150), inputs.runtime);
+        base = await loadSourcePackage(store, projectId, text(inputs.baseResultId, "baseResultId", 150), inputs.runtime ?? null);
         if (!Array.isArray(inputs.changes) || !inputs.changes.length) fail("revise requires at least one change.");
         const byPath = new Map();
         for (const file of base.files) byPath.set(file.path, { path: file.path, filePath: file.filePath, bytes: file.sizeBytes });
@@ -85,6 +88,10 @@ export function createCodeAnimationSource() {
         }
         sourceFiles = [...byPath.values()];
       }
+      const runtimeName = inputs.runtime ?? base.data.runtime;
+      const entryFile = safeSourcePath(inputs.entryFile ?? base?.data.entryFile, "entryFile");
+      const entrySymbol = text(inputs.entrySymbol ?? base?.data.entrySymbol, "entrySymbol", 128);
+      if (!/^[A-Za-z][A-Za-z0-9_-]{0,127}$/u.test(entrySymbol)) fail("entrySymbol must be a safe runtime identifier.");
       if (!sourceFiles.length || sourceFiles.length > MAX_SOURCE_FILES) fail("Source package must contain 1-64 files.");
       if (new Set(sourceFiles.map((file) => file.path.toLowerCase())).size !== sourceFiles.length) fail("Source paths must be unique (case-insensitive).");
       if (!sourceFiles.some((file) => file.path === entryFile)) fail("entryFile must exist in the source package.");
@@ -92,7 +99,7 @@ export function createCodeAnimationSource() {
       if (totalBytes > MAX_SOURCE_PACKAGE_BYTES) fail(`Source package exceeds ${MAX_SOURCE_PACKAGE_BYTES} bytes.`);
       return {
         runtime: { directory: output.temporaryDirectory, sourceFiles, base },
-        trace: { directory: output.projectRelativeDirectory, operation, runtime: inputs.runtime,
+        trace: { directory: output.projectRelativeDirectory, operation, runtime: runtimeName,
           name: text(inputs.name, "name", 240), entryFile, entrySymbol,
           changeSummary: text(inputs.changeSummary, "changeSummary", 2000),
           dependencies: normalizeDependencies(inputs.dependencies ?? base?.data.dependencies ?? []) }

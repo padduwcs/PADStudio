@@ -17,6 +17,7 @@ Creative or technical decisions depend on media, documents, previous results, or
 8. Record the exact review action and coverage. A contact sheet is sampled visual evidence, not proof that the complete source was watched.
 9. Keep raw ASR immutable. Put verified corrections in `source.transcript-edit`, with listened evidence for the affected segment.
 10. Use `analysis:read` for bounded detail/search and `analysis:verify` before relying on evidence whose freshness is unknown or stale.
+11. Run analysis with `npm run project:analyze` (request format in `PADSTUDIO-AGENT-REFERENCE.md`), never with `tool:run`: the analysis service supplies the source identity a stored Result needs.
 
 ## Standard
 

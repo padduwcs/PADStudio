@@ -206,8 +206,26 @@ export function validateAnalysisInputs(inputs, operation) {
   const analysis = requireObject(inputs.analysis, `${operation}.analysis`);
   const unknown = Object.keys(analysis).filter((field) => !ANALYSIS_FIELDS.has(field));
   if (unknown.length) throw new SourceAnalysisToolError(`${operation}.analysis chứa field không hỗ trợ: ${unknown.join(", ")}.`, "invalid_input");
-  if (analysis.schemaVersion !== "1.0" || analysis.operation !== operation) {
-    throw new SourceAnalysisToolError(`${operation}.analysis không khớp schema/operation.`, "invalid_input");
+  const mismatches = [];
+  if (analysis.schemaVersion !== "1.0") {
+    mismatches.push(`schemaVersion phải là "1.0" (nhận ${JSON.stringify(analysis.schemaVersion) ?? "không có"})`);
+  }
+  if (analysis.operation !== operation) {
+    mismatches.push(`operation phải là "${operation}" (nhận ${JSON.stringify(analysis.operation) ?? "không có"})`);
+  }
+  if (mismatches.length) {
+    throw new SourceAnalysisToolError(`${operation}.analysis không khớp schema/operation: ${mismatches.join("; ")}.`, "invalid_input");
+  }
+  // The analysis service supplies the source identity and records the Result with it. A bare tool:run has neither,
+  // so the tool would finish its work and then be unable to store the Result; say so before doing the work.
+  const missingIdentity = ["sourceKey", "sourceVersion"].filter((field) => typeof analysis[field] !== "string" || !analysis[field]);
+  if (missingIdentity.length) {
+    throw new SourceAnalysisToolError(
+      `${operation}.analysis thiếu ${missingIdentity.join(", ")}. Tool phân tích không lưu được Result khi gọi trực tiếp bằng tool:run ` +
+        "vì danh tính nguồn do dịch vụ phân tích cấp; hãy chạy `npm run project:analyze -- <project-id> <yêu-cầu>` " +
+        "(xem PADSTUDIO-AGENT-REFERENCE.md, mục phân tích nguồn).",
+      "analysis_service_required"
+    );
   }
   const range = normalizeTimeRange(analysis.range, `${operation}.analysis.range`);
   const track = analysis.track;
