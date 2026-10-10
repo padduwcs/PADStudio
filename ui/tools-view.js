@@ -1,4 +1,5 @@
 import { node } from "./dom.js";
+import { createVoicePicker } from "./voice-picker.js";
 
 // The Tools sheet: what PADStudio can use on this machine, the ElevenLabs key and the outside services the user
 // has. It is the only part of the web that writes, and it only writes machine settings (never a project), through
@@ -32,6 +33,7 @@ export function createToolsPanel({ root, body, refreshButton }) {
   let data = null;
   let loading = null;
   let opener = null;
+  const picker = createVoicePicker({ post: (path, body) => send(path, "POST", body), save: (patch, text) => save(patch, text) });
 
   function isOpen() { return !root.hidden; }
 
@@ -97,7 +99,10 @@ export function createToolsPanel({ root, body, refreshButton }) {
     head.append(chip(entry.status, entry.statusLabel));
     row.append(head, node("p", entry.summary, "tool-summary"));
     if (entry.setup) row.append(node("p", entry.setup, "tool-setup"));
-    if (entry.setting === "elevenLabs.apiKey") row.append(keyForm(settings));
+    if (entry.setting === "elevenLabs.apiKey") {
+      row.append(keyForm(settings));
+      if (settings.elevenLabs.apiKey.configured) row.append(picker.element(settings));
+    }
     if (entry.missing.length) {
       const details = node("details", undefined, "tool-details");
       details.append(node("summary", "Chi tiết kỹ thuật"));
@@ -153,8 +158,29 @@ export function createToolsPanel({ root, body, refreshButton }) {
     return section;
   }
 
+  // The sheet is rebuilt after every save. Keep the reader's place and, above all, keyboard focus: the control they just
+  // used is replaced, and without this focus would fall back to the page.
+  function describeFocus() {
+    const active = document.activeElement;
+    if (!active || !body.contains(active)) return null;
+    return { id: active.id || null, control: active.dataset?.control ?? null, voice: active.closest("[data-voice]")?.dataset.voice ?? null,
+      tool: active.closest("[data-tool]")?.dataset.tool ?? null };
+  }
+
+  function restoreFocus(focus) {
+    if (!focus) return;
+    let target = focus.id ? body.querySelector("#" + CSS.escape(focus.id)) : null;
+    if (!target && focus.control) {
+      const scope = focus.voice ? `[data-voice="${CSS.escape(focus.voice)}"] ` : focus.tool ? `[data-tool="${CSS.escape(focus.tool)}"] ` : "";
+      target = body.querySelector(`${scope}[data-control="${focus.control}"]`);
+    }
+    target?.focus({ preventScroll: true });
+  }
+
   function render({ flash = null } = {}) {
     if (!data) return;
+    const scroll = body.scrollTop;
+    const focus = describeFocus();
     const { tools, settings } = data;
     const checked = Date.parse(tools.checkedAt);
     const parts = [node("p", `${tools.summary.ready}/${tools.summary.total} mục sẵn sàng` +
@@ -173,6 +199,8 @@ export function createToolsPanel({ root, body, refreshButton }) {
     parts.push(node("p", "Khóa API chỉ lưu trong padstudio.local.json trên máy này: không đưa lên Git, không gửi cho Agent, " +
       "không hiện lại trên trang. Đừng dán khóa vào cuộc trò chuyện với Agent.", "tools-privacy"));
     body.replaceChildren(...parts);
+    body.scrollTop = scroll;
+    restoreFocus(focus);
     if (flash) {
       const target = body.querySelector(flash.selector);
       if (target) message(target, flash.text, "ok");
@@ -200,9 +228,12 @@ export function createToolsPanel({ root, body, refreshButton }) {
   async function save(patch, text) {
     const result = await send("/api/settings", "PUT", patch);
     if (data) data.settings = result.settings;
-    const selector = patch.elevenLabs ? "[data-tool=elevenlabs] .form-message" : ".tools-services .form-message";
+    const changesKey = Boolean(patch.elevenLabs && "apiKey" in patch.elevenLabs);
+    if (changesKey) picker.reset();
+    const selector = !patch.elevenLabs ? ".tools-services .form-message"
+      : changesKey ? "[data-tool=elevenlabs] .key-block .form-message" : "[data-tool=elevenlabs] .voice-flash";
     render({ flash: { selector, text } });
-    if (patch.elevenLabs) {
+    if (changesKey) {
       await load({ refresh: true }).catch(() => {});
       render({ flash: { selector, text } });
     }
@@ -230,6 +261,7 @@ export function createToolsPanel({ root, body, refreshButton }) {
   function close() {
     if (!isOpen()) return;
     root.hidden = true;
+    picker.stop();
     document.body.classList.remove("library-open");
     document.querySelector("#main")?.removeAttribute("inert");
     document.querySelector("#topbar")?.removeAttribute("inert");

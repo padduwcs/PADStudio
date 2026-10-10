@@ -29,11 +29,15 @@ export const USER_SERVICE_CATEGORIES = Object.freeze([
 ].map((category) => Object.freeze(category)));
 const SERVICE_IDS = USER_SERVICE_CATEGORIES.map((category) => category.id);
 const MAX_NOTE_LENGTH = 500;
+// elevenLabs.voiceId/voiceName/modelId are the user's default narration choice, picked on the Tools page. They are guidance
+// for the Agent, not a hidden default: every tts.synthesize request still names its model and voice explicitly.
+const ELEVENLABS_FIELDS = Object.freeze(["apiKey", "voiceId", "voiceName", "modelId"]);
 const SECTIONS = Object.freeze({
   piper: ["pythonCommand", "modelDirectory", "defaultModel"],
-  elevenLabs: ["apiKey"],
+  elevenLabs: ELEVENLABS_FIELDS,
   services: ["available", "note"]
 });
+const PROVIDER_ID = /^[A-Za-z0-9._-]{1,100}$/;
 
 export function localConfigPath({ env = process.env } = {}) {
   return env[LOCAL_CONFIG_ENV]?.trim() || join(repositoryRoot, "padstudio.local.json");
@@ -65,6 +69,20 @@ function apiKey(value, label) {
   return key;
 }
 
+function providerId(value, label) {
+  const id = optionalText(value, label);
+  if (id !== null && !PROVIDER_ID.test(id)) throw new LocalConfigError(`${label} chỉ gồm chữ, số, dấu chấm, gạch dưới và gạch ngang (tối đa 100 ký tự).`);
+  return id;
+}
+
+function displayName(value, label) {
+  const name = optionalText(value, label);
+  if (name !== null && (name.length > 120 || /[\u0000-\u001f\u007f]/.test(name))) {
+    throw new LocalConfigError(`${label} tối đa 120 ký tự và không chứa ký tự điều khiển.`);
+  }
+  return name;
+}
+
 function services(value) {
   const raw = section(value, "services", SECTIONS.services);
   const available = raw.available ?? [];
@@ -94,7 +112,12 @@ function normalize(value) {
       modelDirectory: optionalText(piper.modelDirectory, "piper.modelDirectory"),
       defaultModel: optionalText(piper.defaultModel, "piper.defaultModel")
     },
-    elevenLabs: { apiKey: apiKey(elevenLabs.apiKey, "elevenLabs.apiKey") },
+    elevenLabs: {
+      apiKey: apiKey(elevenLabs.apiKey, "elevenLabs.apiKey"),
+      voiceId: providerId(elevenLabs.voiceId, "elevenLabs.voiceId"),
+      voiceName: displayName(elevenLabs.voiceName, "elevenLabs.voiceName"),
+      modelId: providerId(elevenLabs.modelId, "elevenLabs.modelId")
+    },
     services: services(value.services)
   };
 }
@@ -129,8 +152,17 @@ export function updateLocalConfig(patch, { path = localConfigPath() } = {}) {
     normalize(raw);
     const next = structuredClone(raw);
     if (changes.elevenLabs !== undefined) {
-      const { apiKey: key } = section(changes.elevenLabs, "elevenLabs", ["apiKey"]);
-      if (key !== undefined) next.elevenLabs = { ...(next.elevenLabs ?? {}), apiKey: key === null ? "" : key };
+      const requested = section(changes.elevenLabs, "elevenLabs", ELEVENLABS_FIELDS);
+      const merged = { ...(next.elevenLabs ?? {}) };
+      for (const [field, value] of Object.entries(requested)) {
+        if (value === null || value === "") {
+          if (field === "apiKey") merged.apiKey = "";
+          else delete merged[field];
+        } else {
+          merged[field] = value;
+        }
+      }
+      next.elevenLabs = merged;
     }
     if (changes.services !== undefined) {
       const requested = section(changes.services, "services", SECTIONS.services);
@@ -138,7 +170,11 @@ export function updateLocalConfig(patch, { path = localConfigPath() } = {}) {
       if (next.services.note === null) delete next.services.note;
     }
     const normalized = normalize(next);
-    if (next.elevenLabs?.apiKey) next.elevenLabs.apiKey = normalized.elevenLabs.apiKey;
+    if (next.elevenLabs) {
+      const { apiKey: key, voiceId, voiceName, modelId } = normalized.elevenLabs;
+      // A voice name without a voice is meaningless, so the pair is kept together (after both were validated).
+      next.elevenLabs = { apiKey: key ?? "", ...(voiceId ? { voiceId } : {}), ...(voiceId && voiceName ? { voiceName } : {}), ...(modelId ? { modelId } : {}) };
+    }
     if (next.services) next.services = { available: normalized.services.available, ...(normalized.services.note ? { note: normalized.services.note } : {}) };
     await writeJsonAtomic(path, next);
     return { path, ...normalized };
@@ -156,7 +192,13 @@ export function maskSecret(value) {
 /** What a settings page may show: never a secret, never a runtime path. */
 export function publicLocalSettings(config) {
   return {
-    elevenLabs: { apiKey: maskSecret(config.elevenLabs?.apiKey) },
+    elevenLabs: {
+      apiKey: maskSecret(config.elevenLabs?.apiKey),
+      voice: config.elevenLabs?.voiceId
+        ? { id: config.elevenLabs.voiceId, name: config.elevenLabs.voiceName ?? null }
+        : null,
+      modelId: config.elevenLabs?.modelId ?? null
+    },
     services: {
       available: [...(config.services?.available ?? [])],
       note: config.services?.note ?? null,

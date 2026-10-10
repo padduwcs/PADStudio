@@ -16,7 +16,7 @@ import { etagMatches, quotedEtag } from "./project-generation.js";
 import { resolveProjectRoot } from "../config/project-root.js";
 import { buildStaticAssets, sendStaticAsset } from "./static-assets.js";
 import { LocalConfigError } from "../config/local-config.js";
-import { createSettingsService } from "./settings-service.js";
+import { createSettingsService, SettingsError } from "./settings-service.js";
 import { observerBuild } from "./observer-build.js";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
@@ -212,6 +212,30 @@ export function createPadStudioServer({ reader, staticDirectory = uiDirectory, s
         }
       }
 
+      // Read-only lookups in the user's ElevenLabs account for the voice and model pickers. They are POSTs behind the
+      // same guard as settings writes, so no other page can make this server call ElevenLabs with the saved key.
+      const catalogMatch = /^\/api\/settings\/elevenlabs\/(models|voices|voice)$/.exec(url.pathname);
+      if (catalogMatch && request.method === "POST") {
+        assertSettingsWrite(request);
+        const body = await readJsonBody(request);
+        if (!body || typeof body !== "object" || Array.isArray(body)) throw new RequestError(400, "Yêu cầu không hợp lệ.");
+        const language = body.language === undefined ? "vi" : body.language;
+        if (typeof language !== "string" || !/^[a-z]{2}$/.test(language)) throw new RequestError(400, "Mã ngôn ngữ phải gồm hai chữ cái thường, ví dụ vi.");
+        if (catalogMatch[1] === "models") return sendJson(response, 200, await settings.elevenLabsModels({ language }), { "Cache-Control": "no-store" });
+        if (catalogMatch[1] === "voice") {
+          if (typeof body.voiceId !== "string" || !/^[A-Za-z0-9._-]{1,100}$/.test(body.voiceId.trim())) {
+            throw new RequestError(400, "Mã giọng không hợp lệ. Mã giọng chỉ gồm chữ, số, dấu chấm, gạch dưới và gạch ngang.");
+          }
+          return sendJson(response, 200, await settings.elevenLabsVoice({ voiceId: body.voiceId.trim() }), { "Cache-Control": "no-store" });
+        }
+        const search = body.search ?? "";
+        const pageToken = body.pageToken ?? null;
+        if (typeof search !== "string" || search.length > 100 || (pageToken !== null && (typeof pageToken !== "string" || pageToken.length > 500))) {
+          throw new RequestError(400, "Từ khóa tìm giọng tối đa 100 ký tự.");
+        }
+        return sendJson(response, 200, await settings.elevenLabsVoices({ language, search, pageToken }), { "Cache-Control": "no-store" });
+      }
+
       if (url.pathname === "/api/settings/elevenlabs/check" && request.method === "POST") {
         assertSettingsWrite(request);
         await readJsonBody(request);
@@ -295,6 +319,7 @@ export function createPadStudioServer({ reader, staticDirectory = uiDirectory, s
     } catch (error) {
       if (error instanceof RequestError) return sendJson(response, error.status, { error: error.message });
       if (error instanceof LocalConfigError) return sendJson(response, 400, { error: error.message });
+      if (error instanceof SettingsError) return sendJson(response, error.status, { error: error.message });
       if (error instanceof URIError) {
         return sendJson(response, 400, { error: "Địa chỉ yêu cầu không hợp lệ." });
       }

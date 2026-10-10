@@ -37,6 +37,36 @@ function submittedError(message, code = "provider_error") {
   return new ElevenLabsError(message, { code, requestSubmitted: true });
 }
 
+function mapModel(model, requestedLanguage) {
+  const languages = Array.isArray(model.languages) ? model.languages.map((entry) => ({
+    languageId: entry.language_id ?? entry.language_code ?? null, name: entry.name ?? null
+  })) : [];
+  return {
+    modelId: model.model_id, name: model.name, languages,
+    supportsRequestedLanguage: languages.length === 0 ? null :
+      languages.some((entry) => entry.languageId === requestedLanguage),
+    canUseStyle: model.can_use_style ?? null,
+    canUseSpeakerBoost: model.can_use_speaker_boost ?? null,
+    maximumTextLengthPerRequest: model.maximum_text_length_per_request ?? null,
+    maxCharactersRequestFreeUser: model.max_characters_request_free_user ?? null,
+    maxCharactersRequestSubscribedUser: model.max_characters_request_subscribed_user ?? null,
+    creditMultiplier: (() => {
+      const value = Number(model.model_rates?.character_cost_multiplier ?? model.token_cost_factor);
+      return Number.isFinite(value) && value > 0 ? value : null;
+    })()
+  };
+}
+
+function mapVoice(voice) {
+  const rate = Number(voice.sharing?.rate ?? voice.rate);
+  return {
+    voiceId: voice.voice_id, name: voice.name, category: voice.category ?? null,
+    description: voice.description ?? null, labels: voice.labels ?? {},
+    verifiedLanguages: voice.verified_languages ?? [], previewUrl: voice.preview_url ?? null,
+    customRate: Number.isFinite(rate) && rate > 0 ? rate : null
+  };
+}
+
 export class ElevenLabsClient {
   constructor({ apiKey, fetchImpl = globalThis.fetch, baseUrl = "https://api.elevenlabs.io" }) {
     if (typeof apiKey !== "string" || !apiKey.trim()) {
@@ -101,6 +131,40 @@ export class ElevenLabsClient {
     });
   }
 
+  /** Voices that can synthesize `language`, optionally narrowed by a name search, one page at a time. */
+  async searchVoices({ language = "vi", search = "", pageToken = null, pageSize = 30, signal } = {}) {
+    const query = new URLSearchParams({
+      language: languageCode(language),
+      page_size: String(Math.min(100, Math.max(1, Math.trunc(pageSize)))),
+      include_custom_rates: "false"
+    });
+    const text = String(search ?? "").trim().slice(0, 100);
+    if (text) query.set("search", text);
+    if (pageToken) query.set("next_page_token", String(pageToken).slice(0, 500));
+    const value = await this.responseJson(await this.request("/v2/voices?" + query, { signal }), "voice catalog");
+    return {
+      voices: (Array.isArray(value?.voices) ? value.voices : []).map(mapVoice),
+      hasMore: Boolean(value?.has_more),
+      nextPageToken: value?.has_more && typeof value.next_page_token === "string" ? value.next_page_token : null,
+      totalCount: Number.isFinite(value?.total_count) ? value.total_count : null
+    };
+  }
+
+  /** One voice by id, for a voice the user already used. It must belong to the account (My Voices). */
+  async getVoice(voiceId, { signal } = {}) {
+    const response = await this.request("/v1/voices/" + encodeURIComponent(safeId(voiceId, "voiceId")), { signal });
+    return mapVoice(await this.responseJson(response, "voice"));
+  }
+
+  /** Text-to-speech models, each marked with whether it advertises `language`. */
+  async listModels({ language = "vi", signal } = {}) {
+    const requested = languageCode(language);
+    const value = await this.responseJson(await this.request("/v1/models", { signal }), "model catalog");
+    return (Array.isArray(value) ? value : [])
+      .filter((model) => model.can_do_text_to_speech !== false)
+      .map((model) => mapModel(model, requested));
+  }
+
   async inspect({ language = "vi", signal } = {}) {
     const requestedLanguage = languageCode(language);
     const [subscriptionResponse, modelsResponse, voiceValues] = await Promise.all([
@@ -114,34 +178,8 @@ export class ElevenLabsClient {
     ]);
     const models = (Array.isArray(modelsValue) ? modelsValue : [])
       .filter((model) => model.can_do_text_to_speech !== false)
-      .map((model) => {
-        const languages = Array.isArray(model.languages) ? model.languages.map((entry) => ({
-          languageId: entry.language_id ?? entry.language_code ?? null, name: entry.name ?? null
-        })) : [];
-        return {
-          modelId: model.model_id, name: model.name, languages,
-          supportsRequestedLanguage: languages.length === 0 ? null :
-            languages.some((entry) => entry.languageId === requestedLanguage),
-          canUseStyle: model.can_use_style ?? null,
-          canUseSpeakerBoost: model.can_use_speaker_boost ?? null,
-          maximumTextLengthPerRequest: model.maximum_text_length_per_request ?? null,
-          maxCharactersRequestFreeUser: model.max_characters_request_free_user ?? null,
-          maxCharactersRequestSubscribedUser: model.max_characters_request_subscribed_user ?? null,
-          creditMultiplier: (() => {
-            const value = Number(model.model_rates?.character_cost_multiplier ?? model.token_cost_factor);
-            return Number.isFinite(value) && value > 0 ? value : null;
-          })()
-        };
-      });
-    const voices = voiceValues.map((voice) => {
-      const rate = Number(voice.sharing?.rate ?? voice.rate);
-      return {
-        voiceId: voice.voice_id, name: voice.name, category: voice.category ?? null,
-        description: voice.description ?? null, labels: voice.labels ?? {},
-        verifiedLanguages: voice.verified_languages ?? [], previewUrl: voice.preview_url ?? null,
-        customRate: Number.isFinite(rate) && rate > 0 ? rate : null
-      };
-    });
+      .map((model) => mapModel(model, requestedLanguage));
+    const voices = voiceValues.map(mapVoice);
     return {
       status: "connected", requestedLanguage,
       subscription: {
