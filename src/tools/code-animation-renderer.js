@@ -237,6 +237,25 @@ async function prepareAnimationWorkspace({ store, projectId, inputs, outputWorks
       allowHistorical: inputs.allowHistorical === true, inputResources: [...inputResources], inputResults: [...inputResults] } };
 }
 
+// Each runtime is offered as several tools (render, preflight, preview, motion preview) and every one of them checks
+// the same runtime. HyperFrames' check runs `doctor`, which takes seconds and, started four times at once, took about
+// twenty. Concurrent and immediately repeated checks of one runtime now share a single probe. The share is brief so a
+// runtime the user has just installed shows up on the next re-check. It is keyed by the command runner, so tests that
+// inject their own runner never see another test's answer.
+const AVAILABILITY_SHARE_MS = 10_000;
+const sharedAvailability = new WeakMap();
+
+function shareAvailability(executeCommand, key, probe) {
+  let entries = sharedAvailability.get(executeCommand);
+  if (!entries) sharedAvailability.set(executeCommand, entries = new Map());
+  const hit = entries.get(key);
+  if (hit && Date.now() - hit.at < AVAILABILITY_SHARE_MS) return hit.promise;
+  const promise = probe();
+  entries.set(key, { at: Date.now(), promise });
+  promise.catch(() => { if (entries.get(key)?.promise === promise) entries.delete(key); });
+  return promise;
+}
+
 export function createCodeAnimationRenderer(runtime, {
   runtimeCommand = process.env[RUNTIME_META[runtime]?.env]?.trim() || null,
   runtimePrefixArgs = [],
@@ -268,28 +287,31 @@ export function createCodeAnimationRenderer(runtime, {
       if (["remotion", "hyperframes"].includes(runtime) && isAbsolute(browserCommand) && !existsSync(browserCommand)) {
         return { status: "unavailable", reason: `Configured browser does not exist: ${browserCommand}. PADStudio will not download a browser automatically.` };
       }
-      try {
-        const versionArgs = runtime === "remotion" ? ["help", "render"] : ["--version"];
-        const checks = [
-          executeCommand(launch.executable, [...launch.prefixArgs, ...versionArgs], { timeout: 8_000 }),
-          executeCommand(ffmpegCommand, ["-version"], { timeout: 8_000 }),
-          executeCommand(ffprobeCommand, ["-version"], { timeout: 8_000 }),
-          ...(runtime === "hyperframes" ? [executeCommand(launch.executable, [...launch.prefixArgs, "doctor", "--json"], {
-            timeout: 20_000, env: availabilityEnvironment({ nodeModules: launch.nodeModules, browser: browserCommand }),
-          })] : []),
-        ];
-        const [runtimeVersion, ffmpegVersion, ffprobeVersion, doctorOutput] = await Promise.all(checks);
-        const doctor = runtime === "hyperframes" ? normalizeHyperframesDoctor(parseJsonOutput(doctorOutput?.stdout)) : null;
-        if (runtime === "hyperframes" && !doctor) throw new Error("HyperFrames doctor did not return valid JSON.");
-        if (doctor?.blockingFailedCount) throw new Error("HyperFrames doctor reported a required runtime failure.");
-        return { status: "available", runtime,
-          executableVersion: String(runtimeVersion.stdout || runtimeVersion.stderr || "").split(/\r?\n/u)[0].slice(0, 200),
-          ffmpegVersion: String(ffmpegVersion.stdout || "").split(/\r?\n/u)[0].slice(0, 200),
-          ffprobeVersion: String(ffprobeVersion.stdout || "").split(/\r?\n/u)[0].slice(0, 200),
-          ...(doctor ? { doctor } : {}) };
-      } catch (error) {
-        return { status: "unavailable", reason: `${meta.provider} runtime or FFmpeg is unavailable. Install it explicitly, pin its dependencies, or configure ${meta.env}; PADStudio will not auto-install or silently switch runtimes.` };
-      }
+      const key = [runtime, launch.executable, ...launch.prefixArgs, browserCommand ?? "", ffmpegCommand, ffprobeCommand].join("\u0000");
+      return shareAvailability(executeCommand, key, async () => {
+        try {
+          const versionArgs = runtime === "remotion" ? ["help", "render"] : ["--version"];
+          const checks = [
+            executeCommand(launch.executable, [...launch.prefixArgs, ...versionArgs], { timeout: 8_000 }),
+            executeCommand(ffmpegCommand, ["-version"], { timeout: 8_000 }),
+            executeCommand(ffprobeCommand, ["-version"], { timeout: 8_000 }),
+            ...(runtime === "hyperframes" ? [executeCommand(launch.executable, [...launch.prefixArgs, "doctor", "--json"], {
+              timeout: 20_000, env: availabilityEnvironment({ nodeModules: launch.nodeModules, browser: browserCommand }),
+            })] : []),
+          ];
+          const [runtimeVersion, ffmpegVersion, ffprobeVersion, doctorOutput] = await Promise.all(checks);
+          const doctor = runtime === "hyperframes" ? normalizeHyperframesDoctor(parseJsonOutput(doctorOutput?.stdout)) : null;
+          if (runtime === "hyperframes" && !doctor) throw new Error("HyperFrames doctor did not return valid JSON.");
+          if (doctor?.blockingFailedCount) throw new Error("HyperFrames doctor reported a required runtime failure.");
+          return { status: "available", runtime,
+            executableVersion: String(runtimeVersion.stdout || runtimeVersion.stderr || "").split(/\r?\n/u)[0].slice(0, 200),
+            ffmpegVersion: String(ffmpegVersion.stdout || "").split(/\r?\n/u)[0].slice(0, 200),
+            ffprobeVersion: String(ffprobeVersion.stdout || "").split(/\r?\n/u)[0].slice(0, 200),
+            ...(doctor ? { doctor } : {}) };
+        } catch (error) {
+          return { status: "unavailable", reason: `${meta.provider} runtime or FFmpeg is unavailable. Install it explicitly, pin its dependencies, or configure ${meta.env}; PADStudio will not auto-install or silently switch runtimes.` };
+        }
+      });
     },
     async prepare({ store, projectId, inputs, outputWorkspace }) {
       const prepared = await prepareAnimationWorkspace({ store, projectId, inputs, outputWorkspace, runtime, allowedFields: ["preflightResultId"] });

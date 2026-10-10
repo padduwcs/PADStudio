@@ -579,3 +579,32 @@ test("failed runtime preflight is preserved as evidence and cannot gate render",
     artifactId: artifact.id, artifactRevision: artifact.revision, validationResultId: exact.validation.id, preflightResultId: preflight.id,
   })), /not passed and bound/);
 });
+
+test("the tools of one runtime share a single availability probe, and a runner's answers are never shared with another", async () => {
+  const calls = [];
+  const runner = (label) => async (executable, args) => {
+    calls.push(`${label}:${executable}:${args[0]}`);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    if (args[0] === "doctor") return { stdout: JSON.stringify({ ok: true, checks: [{ name: "FFmpeg", ok: true, detail: "available" }], _meta: { version: "0.8.42" } }), stderr: "" };
+    return { stdout: `${executable} 1.0`, stderr: "" };
+  };
+  const options = (executeCommand) => ({
+    runtimeCommand: "fake-hyperframes", browserCommand: "fake-browser", ffmpegCommand: "fake-ffmpeg", ffprobeCommand: "fake-ffprobe", executeCommand
+  });
+  const first = runner("first");
+  const tools = [createCodeAnimationRenderer("hyperframes", options(first)), createCodeAnimationPreflight("hyperframes", options(first)),
+    createHyperframesAnimationPreview(options(first)), createHyperframesMotionPreview(options(first))];
+  const results = await Promise.all(tools.map((tool) => tool.checkAvailability()));
+  assert.deepEqual(results.map((result) => result.status), ["available", "available", "available", "available"]);
+  assert.equal(calls.filter((call) => call.endsWith(":doctor")).length, 1, "one doctor run serves all four tools");
+  assert.equal(calls.filter((call) => call.startsWith("first:fake-ffmpeg")).length, 1);
+
+  // Another runner (another test, another host) gets its own probe.
+  const second = runner("second");
+  assert.equal((await createCodeAnimationRenderer("hyperframes", options(second)).checkAvailability()).status, "available");
+  assert.equal(calls.filter((call) => call.startsWith("second:") && call.endsWith(":doctor")).length, 1);
+
+  // A different runtime or command is a different probe.
+  assert.equal((await createCodeAnimationRenderer("hyperframes", { ...options(first), runtimeCommand: "other-hyperframes" }).checkAvailability()).status, "available");
+  assert.equal(calls.filter((call) => call.startsWith("first:other-hyperframes")).length >= 1, true);
+});
