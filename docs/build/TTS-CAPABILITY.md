@@ -123,6 +123,61 @@ provider trả về, nhưng PADStudio không chứng minh được một trần 
 theo dự án chỉ chặn được *sau* lần tạo vượt mức, không chặn trước. Chỉ khi model catalog không có multiplier hữu hạn dương thì
 plan/estimate dừng với `approval_limit_unknown` và không gửi request trả phí.
 
+### Ước tính đo từ lần tạo trước (2026-10-10)
+
+Ước tính "số ký tự x hệ số model" có thể lệch rất xa với giọng có rate riêng. Project Binary Exponentiation: câu mẫu 154 ký tự tốn 34
+credit, bản đầy đủ 3269 ký tự tốn 718 credit (khoảng 0,22 credit/ký tự), trong khi ước tính niêm yết là 3269 và người dùng phải duyệt trần
+3269. Nên khi `estimateUsage` đã `uncertain`, `refineUsage` của tool đọc các lần tạo thật *trong cùng project* của đúng giọng và model đó
+(`audio.tts` Result có `textLength`, authorization `consumed` có `actualUsage`) và thay bằng số đo được
+([`credit-calibration.js`](../../src/execution/credit-calibration.js)):
+
+- mỗi lần tạo cho biết rate nằm trong khoảng `[(c - 1) / n, (c + 0,5) / n]` vì credit ghi nhận là số nguyên; nhiều lần thì lấy giao các
+  khoảng. Ước tính dùng cận trên để vẫn là trần hợp lý (34/154 ký tự cho 3269 ký tự là 733 credit; thực tế 718);
+- các lần tạo mâu thuẫn nhau (giao rỗng) nghĩa là credit/ký tự không cố định với giọng này, nên **không** ngoại suy và giữ ước tính niêm yết;
+- chỉ áp dụng khi giọng có rate riêng (`uncertain`); giọng đúng rate niêm yết không bị đổi;
+- kết quả mang `calibrated: true`, `uncertain: true` và `basis` ghi các lần đo (`observed_rate:34/154...`, `listed_estimate:3269`);
+- `executor.plan`, `authorize` và `execute` dùng *cùng một* con số, nếu không trần đã duyệt sẽ lệch với lúc chạy.
+
+Lần tạo đầu tiên của một giọng có rate riêng vẫn chỉ có ước tính tối thiểu. Một mẫu ngắn của đúng giọng và model vừa để người dùng nghe
+vừa đo rate cho các lần sau; chọn mẫu là đoạn có nhiều rủi ro phát âm nhất (xem skill `voice-narration`).
+
+Giới hạn trung thực: PADStudio dùng header `character-cost` làm "chi phí thực". Tài liệu chính thức của ElevenLabs không mô tả header này
+phản ánh rate riêng của giọng thế nào, và không có bằng chứng ở đây rằng nó bằng đúng số credit bị trừ khỏi tài khoản. Hãy đối chiếu một lần
+với số dư trên dashboard ElevenLabs trước khi tin hoàn toàn vào số đo.
+
+### Rà soát văn bản trước khi tạo (`inputReview`)
+
+Một request đã gửi không sửa được và tốn credit, nên `tool:plan` của cả `elevenlabs` và `piper-local` trả `inputReview` từ
+[`speech-text-review.js`](../../src/tools/speech-text-review.js): những chỗ trong lời mà giọng có thể đọc sai, kèm ví dụ, ngữ cảnh và cách
+sửa. Nhóm cảnh báo: chữ số, ký hiệu, chữ cái đứng riêng (biến), tên file/URL/mã, markup, văn bản hỏng mã hóa. Nhóm ghi chú: từ viết tắt,
+từ lặp liền nhau. Một đoạn văn bản chỉ được báo bởi một nhóm. Cơ sở: ElevenLabs khuyến nghị viết số, từ viết tắt, ngày và ký hiệu hoàn toàn
+bằng chữ; model v3 không hỗ trợ thẻ ngắt SSML.
+
+Rà soát chỉ để tham khảo, không bao giờ chặn, và luôn kèm `notChecked`: nó không kiểm chính tả (không phân biệt được từ tiếng Việt viết sai
+với viết đúng) và không biết một giọng cụ thể đọc từ đó ra sao; chữ `a`, `e`, `o`, `y` là từ tiếng Việt nên không bị báo dù đại diện biến.
+Kịch bản đã duyệt của project Binary Exponentiation (3269 ký tự, mọi số và công thức viết thành chữ) qua rà soát không có cảnh báo nào; bản
+nháp đầu viết bằng ký hiệu (`a^n`, `2^1000`) bị báo đúng các chỗ đó. Result lưu `data.textReview` (`clean`, số cảnh báo, số ghi chú) để về
+sau biết văn bản sạch hay không lúc gửi.
+
+### Thời điểm từng từ (`withTimestamps`, 2026-10-10)
+
+`elevenlabs` nhận `withTimestamps: true` (mặc định tắt). Khi bật, request đi tới endpoint `POST /v1/text-to-speech/{voice_id}/with-timestamps`
+của ElevenLabs, trả JSON `audio_base64` cùng `alignment` và `normalized_alignment` (theo từng ký tự: `characters`,
+`character_start_times_seconds`, `character_end_times_seconds`). Result thêm file `timing` (`timing.json`: alignment gốc, các từ suy ra
+với thời điểm bắt đầu/kết thúc, và các kiểm tra đã làm) và `data.timing`.
+
+[`speech-timing.js`](../../src/tools/speech-timing.js) chỉ tin alignment sau khi qua kiểm tra: mảng song song cùng độ dài, số hữu hạn không
+âm, thời điểm bắt đầu không giảm, và mốc kết thúc cuối cùng cách độ dài audio không quá 2 giây. Trường "end" được chấp nhận ở hai quy ước,
+mỗi quy ước chỉ khi số liệu chứng minh: *mốc kết thúc* (như tài liệu) hoặc *thời lượng từng ký tự* (như API history của ElevenLabs đã trả
+trong một phản hồi thật: mỗi lần bắt đầu kế tiếp đúng bằng bắt đầu cộng giá trị lưu). Dữ liệu không khớp quy ước nào bị từ chối, không đoán.
+Timing không đáng tin hoặc không ghi được **không bao giờ** làm mất audio đã trả tiền: Result vẫn được tạo, không có file `timing`, và
+`data.timing.reason` nói lý do. Test đối chiếu bộ tách từ với danh sách từ do một Agent dựng độc lập từ chính phản hồi thật đó (57 từ khớp
+trong 1,5 ms).
+
+Giới hạn trung thực: đường `with-timestamps` mới được kiểm bằng nhà cung cấp giả theo đúng schema trong tài liệu, **chưa gọi ElevenLabs thật**
+(tốn credit). Tài liệu endpoint không nêu các response header (kể cả `character-cost` và `request-id`); nếu chúng vắng, `actualUsage` là
+`null` và credit được tính theo ước tính. Vì vậy tùy chọn này tắt mặc định và đường gọi thường không đổi.
+
 `ffprobe` là dependency bắt buộc để xác minh file audio. Availability kiểm tra dependency này trước
 khi plan/authorize, và Executor kiểm tra lại ngay trước POST để không dùng credit nếu môi trường đã
 thay đổi giữa hai bước.

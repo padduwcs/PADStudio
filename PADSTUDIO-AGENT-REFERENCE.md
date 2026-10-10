@@ -357,6 +357,19 @@ Tool trả phí (hiện là `elevenlabs`) cần ba bước: `npm run tool:plan -
 đúng request đó, rồi thêm `authorizationId` vào request của `tool:run`. Authorization bind SHA-256 của
 toàn bộ request và chỉ dùng một lần; xem [TTS-CAPABILITY.md](docs/build/TTS-CAPABILITY.md).
 
+`tool:plan` của `tts.synthesize` còn trả hai thứ cần đọc trước khi xin người dùng đồng ý:
+
+- `inputReview`: những chỗ trong lời có thể bị đọc sai (chữ số, ký hiệu, chữ cái đứng riêng, tên file, markup, lỗi mã hóa, từ lặp), kèm ví dụ
+  và cách sửa; `notChecked` nói rõ điều nó không kiểm được (chính tả, cách một giọng cụ thể đọc từ). Chỉ để tham khảo, không chặn; sửa lời
+  rồi plan lại trước khi tốn credit, vì mỗi lần sửa sau khi tạo là một request trả phí mới.
+- `estimatedUsage`: với giọng có rate riêng, ước tính chỉ là mức tối thiểu (`uncertain`). Sau khi project có ít nhất một lần tạo thật của
+  đúng giọng và model đó, `calibrated: true` nghĩa là con số được đo từ chi phí thực của các lần trước (credit trên ký tự, đã cộng sai số
+  làm tròn) nên sát thực tế hơn nhiều; hai lần tạo trước mà tỉ lệ khác nhau thì không ngoại suy.
+
+Đặt `withTimestamps: true` trong request ElevenLabs để nhận thời điểm từng từ ngay trong lần tạo (file `timing` của Result, kèm
+`data.timing`), thay vì gọi API ngoài PADStudio. Mặc định tắt; nếu nhà cung cấp trả alignment không khớp độ dài audio hoặc sai cấu
+trúc thì không lưu file timing và `data.timing.reason` nói lý do, còn audio đã trả tiền vẫn được giữ.
+
 Để chạy một công cụ, chuẩn bị request JSON:
 
 ```json

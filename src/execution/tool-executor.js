@@ -139,13 +139,22 @@ export class ToolExecutor {
     if (availability?.status !== "available") {
       throw new ToolExecutorError(availability?.reason || "Tool is unavailable.", { code: "tool_unavailable" });
     }
-    const estimatedUsage = tool.approvalRequired ? await tool.estimateUsage({ inputs: request.inputs }) : null;
+    const estimatedUsage = tool.approvalRequired ? await this.#estimateUsage(projectId, tool, request.inputs) : null;
     const budget = await projectBudgetSnapshot(this.store, projectId);
     const creditBudget = tool.approvalRequired ? await creditBudgetSnapshot(this.store, projectId) : null;
     const budgetApprovalRequired = tool.cost.estimated !== null && tool.cost.estimated > (budget.policy?.singleActionApprovalUsd ?? Infinity);
+    // What looks risky in the request itself, shown before anything is spent. It never blocks; the Agent decides.
+    const inputReview = tool.reviewInputs ? await tool.reviewInputs({ inputs: request.inputs }) : null;
     return { projectId, requestHash: executionRequestHash(request), tool: toolReference(tool),
       approvalRequired: tool.approvalRequired, providerApprovalRequired: tool.approvalRequired,
-      budgetApprovalRequired, estimatedUsage, estimatedCostUsd: tool.cost.estimated, budget, creditBudget };
+      budgetApprovalRequired, estimatedUsage, estimatedCostUsd: tool.cost.estimated, budget, creditBudget, inputReview };
+  }
+
+  // The listed estimate, made more accurate by the tool when the project holds evidence for it. Planning and running
+  // must use the same figure, or an authorization approved at one number would be refused at the other.
+  async #estimateUsage(projectId, tool, inputs, signal) {
+    const listed = await tool.estimateUsage({ inputs, signal });
+    return tool.refineUsage ? tool.refineUsage({ store: this.store, projectId, inputs, usage: listed, signal }) : listed;
   }
 
   async authorize(projectId, requestValue, approval) {
@@ -230,7 +239,7 @@ export class ToolExecutor {
         if (!request.authorizationId) {
           throw new ToolExecutorError("Tool requires an exact, single-use credit authorization.", { code: "approval_required" });
         }
-        const currentUsage = await tool.estimateUsage({ inputs: request.inputs, signal: internal.signal });
+        const currentUsage = await this.#estimateUsage(projectId, tool, request.inputs, internal.signal);
         // The cap is checked and the authorization claimed under one lock, so two requests cannot both fit the same credits.
         authorization = await withCreditBudgetLock(this.store, projectId, async () => {
           try {

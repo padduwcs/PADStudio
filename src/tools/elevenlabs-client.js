@@ -240,12 +240,17 @@ export class ElevenLabsClient {
     };
   }
 
+  /**
+   * One text-to-speech request. With `withTimestamps` it goes to the documented `/with-timestamps` variant, which
+   * answers with JSON (`audio_base64` plus the spoken-time alignment) instead of the raw audio. The receipt is read
+   * from the response headers before any body, as before, so a cost already incurred is never lost to a bad body.
+   */
   async synthesize({
     voiceId, modelId, text, languageCode: language, voiceSettings, outputFormat, seed,
-    signal, onProviderResponse
+    withTimestamps = false, signal, onProviderResponse
   }) {
     const response = await this.request(
-      "/v1/text-to-speech/" + encodeURIComponent(safeId(voiceId, "voiceId")) +
+      "/v1/text-to-speech/" + encodeURIComponent(safeId(voiceId, "voiceId")) + (withTimestamps ? "/with-timestamps" : "") +
         "?output_format=" + encodeURIComponent(outputFormat),
       {
         method: "POST", signal, submitted: true,
@@ -271,6 +276,17 @@ export class ElevenLabsClient {
       }
     }
     try {
+      if (withTimestamps) {
+        const payload = await response.json();
+        const bytes = typeof payload?.audio_base64 === "string" ? Buffer.from(payload.audio_base64, "base64") : Buffer.alloc(0);
+        if (bytes.length === 0) throw submittedError("ElevenLabs returned no audio in the timestamped response.", "invalid_output");
+        return {
+          bytes,
+          alignment: payload.alignment ?? null,
+          normalizedAlignment: payload.normalized_alignment ?? null,
+          ...receipt
+        };
+      }
       const bytes = Buffer.from(await response.arrayBuffer());
       if (bytes.length === 0) throw submittedError("ElevenLabs returned an empty audio response.", "invalid_output");
       return {

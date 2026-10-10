@@ -2,6 +2,7 @@ import { access, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { loadLocalConfig } from "../config/local-config.js";
 import { command, fileEvidence, number, object, primaryFile, probe, text, workspace } from "./asset-tool-common.js";
+import { reviewSpeechInputs, reviewSpeechText, summarizeSpeechReview } from "./speech-text-review.js";
 
 const DEFAULT_MODEL = "vi_VN-vais1000-medium";
 
@@ -83,7 +84,7 @@ export function createPiperTts({
 
   return {
     name: "piper-local",
-    version: "1.1.0",
+    version: "1.2.0",
     provider: "Piper",
     capability: "tts.synthesize",
     description: "Generate local Vietnamese narration with Piper without network access or credits.",
@@ -128,6 +129,9 @@ export function createPiperTts({
         };
       }
     },
+    reviewInputs({ inputs }) {
+      return reviewSpeechInputs(inputs);
+    },
     async prepare({ inputs, outputWorkspace }) {
       const config = await configured();
       const spec = parseInputs(inputs, config.defaultModel);
@@ -143,7 +147,10 @@ export function createPiperTts({
           pythonCommand: config.pythonCommand, modelPath: voice.modelPath, metadata: voice.metadata, inputPath,
           outputPath: join(target.temporaryDirectory, "speech.wav"), spec
         },
-        trace: { directory: target.projectRelativeDirectory, spec, voice: voice.metadata }
+        trace: {
+          directory: target.projectRelativeDirectory, spec, voice: voice.metadata,
+          textReview: summarizeSpeechReview(reviewSpeechText(spec.text))
+        }
       };
     },
     async execute({ pythonCommand, modelPath, metadata: voice, inputPath, outputPath, spec, availability, signal }) {
@@ -185,6 +192,7 @@ export function createPiperTts({
           sentenceSilence: prepared.trace.spec.sentenceSilence,
           textLength: [...prepared.trace.spec.text].length,
           durationSeconds: execution.durationSeconds, sampleRate: execution.sampleRate,
+          textReview: prepared.trace.textReview,
           contentReview: "not_performed"
         },
         verification: execution.verification

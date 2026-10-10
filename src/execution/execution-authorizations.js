@@ -43,7 +43,8 @@ function usage(value, label) {
   }
   return {
     unit: "credits", amount: Math.ceil(value.amount), basis: typeof value.basis === "string" ? value.basis : null,
-    ...(value.uncertain === true ? { uncertain: true } : {})
+    ...(value.uncertain === true ? { uncertain: true } : {}),
+    ...(value.calibrated === true ? { calibrated: true } : {})
   };
 }
 

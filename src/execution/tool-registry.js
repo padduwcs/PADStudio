@@ -53,6 +53,16 @@ function validateTool(tool) {
   if (tool.approvalRequired && typeof tool.estimateUsage !== "function") {
     throw new ToolRegistryError("Paid tools must declare estimateUsage: " + tool.name);
   }
+  // reviewInputs shows the Agent what looks risky in a request before it is run; refineUsage replaces a listed
+  // estimate with a measured one. Both are optional and advisory in what they report.
+  for (const hook of ["reviewInputs", "refineUsage"]) {
+    if (tool[hook] !== undefined && typeof tool[hook] !== "function") {
+      throw new ToolRegistryError(hook + " của công cụ " + tool.name + " phải là function.");
+    }
+  }
+  if (tool.refineUsage && !tool.approvalRequired) {
+    throw new ToolRegistryError("Only paid tools can refine a usage estimate: " + tool.name);
+  }
   if (tool.cost.estimated > 0 && !tool.approvalRequired) {
     throw new ToolRegistryError("Tools with estimated USD cost must require exact approval: " + tool.name);
   }

@@ -107,3 +107,14 @@ test("registry removes optional VRAM demand when a tool is discovered in CPU mod
   assert.equal(reported.vramMb, 0);
   assert.equal(resourceProfile.vramMb, 6144);
 });
+
+test("registry checks the optional hooks that review a request and refine an estimate", () => {
+  assert.doesNotThrow(() => new ToolRegistry([fakeTool({ reviewInputs() { return null; } })]));
+  assert.throws(() => new ToolRegistry([fakeTool({ reviewInputs: "yes" })]), ToolRegistryError);
+  assert.throws(() => new ToolRegistry([fakeTool({ refineUsage: 1 })]), ToolRegistryError);
+  // Only a tool that charges has an estimate to refine.
+  assert.throws(() => new ToolRegistry([fakeTool({ refineUsage() {} })]), /Only paid tools can refine/);
+  assert.doesNotThrow(() => new ToolRegistry([fakeTool({
+    approvalRequired: true, estimateUsage() {}, refineUsage() {}
+  })]));
+});

@@ -1,0 +1,31 @@
+Ba mũ mười ba nghĩa là nhân mười ba thừa số ba với nhau. Nhưng nếu tách được hai phần giống hệt nhau, liệu ta có cần tính cả hai?
+
+Ta tách một thừa số ba ra ngoài, rồi chia phần còn lại thành hai khối sáu thừa số. Cả hai khối đều là ba mũ sáu. Vậy chỉ cần tính xong một khối, ta đã có kết quả để dùng cho khối kia: lấy nó nhân với chính nó, rồi nhân thêm số ba đã để riêng.
+
+Từ ba mũ mười ba, ta chỉ còn cần giải ba mũ sáu. Với sáu thừa số, ta lại chia thành hai khối ba thừa số. Lần này chia vừa hết, nên không có số ba nào phải để riêng. Tính ba mũ ba một lần rồi bình phương kết quả là đủ.
+
+Ba mũ ba tiếp tục tách thành hai khối một thừa số, cùng một số ba dư. Đến ba mũ một, ta biết ngay kết quả là ba. Bây giờ đã có điểm bắt đầu để ghép mọi thứ trở lại.
+
+Có kết quả ba rồi, ta quay lại phép tính ba mũ ba: ba nhân ba, rồi nhân thêm số ba còn dư, được hai mươi bảy. Kết quả này đi lên để tính ba mũ sáu bằng một phép bình phương. Sau đó, bình phương thêm một lần và nhân với số ba đã để riêng lúc đầu, ta tính xong ba mũ mười ba.
+
+Khi viết bằng đệ quy, ta lưu kết quả của một lần gọi bài toán nhỏ để dùng cho cả hai phần. Hàm dừng khi số mũ còn một và trả ngay cơ số; còn số mũ bằng không thì trả về một.
+
+Cách tính này gọi là Binary Exponentiation, hay lũy thừa nhị phân, dùng cho số mũ nguyên không âm. Ta vừa nhìn nó bằng đệ quy; giờ hãy xem cùng ý tưởng ấy chạy trong một vòng lặp.
+
+Quay lại mười ba ô ban đầu. Lần này, ta giữ một ô riêng và ghép mười hai ô còn lại thành sáu cặp. Mỗi cặp có giá trị chín. Vì các cặp giống nhau, ta chỉ tính ba nhân ba một lần rồi dùng lại giá trị ấy.
+
+Sáu cặp tiếp tục ghép thành ba nhóm lớn hơn, mỗi nhóm chứa bốn thừa số ba. Ba nhóm là số lẻ, nên ta giữ một nhóm, rồi ghép hai nhóm còn lại thành một nhóm tám thừa số. Nhóm cuối cùng cũng được giữ, và không còn gì phải xử lý.
+
+Nhìn lại phần đã giữ, ta có các nhóm một, bốn và tám thừa số: vẫn đủ mười ba thừa số ban đầu. Nhân giá trị của các nhóm này với nhau, ta nhận được cùng đáp án như cách đệ quy.
+
+Vòng lặp dùng số mũ để đếm số nhóm còn lại, và cơ số để lưu giá trị mỗi nhóm. Kết quả ban đầu bằng một. Khi số mũ lẻ, ta nhân cơ số vào kết quả để giữ nhóm dư. Sau đó, chia nguyên số mũ cho hai để lấy số cặp; nếu còn cặp, ta bình phương cơ số rồi tiếp tục. Số mũ về không là lúc tất cả các nhóm đã được giữ vào kết quả.
+
+Vòng lặp bình phương cơ số khi ghép nhóm, còn đệ quy giữ nguyên cơ số và bình phương kết quả khi quay lên. Vòng lặp chỉ cần ba giá trị vừa nêu; đệ quy còn phải lưu những tầng đang chờ trả kết quả.
+
+Tên gọi nhị phân cũng hiện ra từ những lần chia đôi ấy. Chia nguyên cho hai, số lẻ dư một, số chẵn dư không. Các phần dư chính là những chữ số nhị phân, được lấy từ phải sang trái.
+
+Mười ba viết trong hệ nhị phân là một, một, không, một. Các vị trí lần lượt là tám, bốn, hai và một. Chữ số một chọn nhóm tương ứng, chữ số không bỏ qua. Ta chọn tám, bốn và một, đúng với ba nhóm vừa giữ.
+
+Số mũ giảm một nửa sau mỗi bước, nên phép tính lớn thu nhỏ rất nhanh. Ở bản lặp, số mũ một triệu cũng chỉ cần hai mươi lượt để về không. Mỗi lượt có nhiều nhất hai phép nhân, vì vậy số phép nhân tăng theo lô ga rít của số mũ, thay vì tăng theo số thừa số như cách nhân lần lượt.
+
+Nếu bạn thích cách nhìn thuật toán bằng hình ảnh như thế này, hãy theo dõi kênh nhé.
