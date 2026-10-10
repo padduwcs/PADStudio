@@ -1,0 +1,35 @@
+name: Đề xuất tính năng / Feature request
+description: Một ý tưởng hoặc nhu cầu mới
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        PADStudio có một ranh giới sản phẩm rõ (Agent điều khiển, web chỉ đọc project, không pipeline bắt buộc, không tự cài).
+        Hãy đọc [CONTRIBUTING.md](https://github.com/padduwcs/PADStudio/blob/main/CONTRIBUTING.md) để đề xuất cho phù hợp.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Bạn đang gặp vấn đề gì?
+      description: Mô tả việc bạn muốn làm được mà hiện chưa làm được (hoặc làm quá khó), không cần nói giải pháp.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Bạn hình dung nó hoạt động thế nào?
+      description: Nếu có ý tưởng, hãy mô tả. Cho biết nó nằm ở đâu (lệnh, trang web, công cụ, nói với Agent).
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Cách bạn đang xoay xở hiện nay
+  - type: dropdown
+    id: help
+    attributes:
+      label: Bạn có muốn tự làm không?
+      options:
+        - Có, tôi sẽ gửi pull request
+        - Có thể, nếu được hướng dẫn
+        - Không, tôi chỉ đề xuất
+    validations:
+      required: true

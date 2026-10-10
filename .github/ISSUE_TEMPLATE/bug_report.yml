@@ -1,0 +1,64 @@
+name: Báo lỗi / Bug report
+description: Có điều gì đó hỏng hoặc khác với tài liệu
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Cảm ơn bạn đã báo lỗi. **Không dán khóa API, nội dung `padstudio.local.json` hay media riêng tư.**
+        Lỗ hổng bảo mật: xem [SECURITY.md](https://github.com/padduwcs/PADStudio/blob/main/SECURITY.md), đừng mở issue công khai.
+  - type: textarea
+    id: what
+    attributes:
+      label: Điều gì đã xảy ra
+      description: Bạn mong đợi gì, và thực tế thấy gì?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Các bước tái hiện
+      description: Lệnh đã chạy, yêu cầu bạn đã nói với Agent, hoặc thao tác trên trang. Càng cụ thể càng tốt.
+      placeholder: |
+        1. npm run observer:ensure
+        2. Mở /?panel=tools
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Thông báo lỗi / đầu ra
+      description: Dán đoạn lỗi (đã xóa thông tin riêng tư). Với lỗi môi trường, kết quả của `npm run padstudio:doctor` rất hữu ích.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Commit hoặc phiên bản
+      description: Chạy `git rev-parse --short HEAD`.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Môi trường
+      description: Hệ điều hành, phiên bản Node.js (`node --version`), FFmpeg (`ffmpeg -version`), trình duyệt nếu là lỗi giao diện.
+      placeholder: Windows 11, Node 24.18, FFmpeg 8.1, Chrome 153
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Khu vực
+      options:
+        - Web observer (giao diện xem)
+        - Trang Công cụ (khóa API, giọng, dịch vụ)
+        - Dựng video / render
+        - Hoạt họa bằng code (Manim, Remotion, HyperFrames)
+        - Giọng đọc (Piper, ElevenLabs)
+        - Phân tích tư liệu (cắt cảnh, phiên âm)
+        - CLI / project / delivery
+        - Tài liệu
+        - Khác / không rõ
+    validations:
+      required: true

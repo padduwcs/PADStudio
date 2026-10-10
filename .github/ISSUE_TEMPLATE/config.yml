@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Hướng dẫn sử dụng
+    url: https://github.com/padduwcs/PADStudio/blob/main/docs/HUONG-DAN.md
+    about: Cách làm video đầu tiên, góp ý, chốt và khắc phục sự cố thường gặp.
+  - name: Cài đặt runtime (Manim, Remotion, HyperFrames, Piper)
+    url: https://github.com/padduwcs/PADStudio/blob/main/docs/CAI-DAT-RUNTIME.md
+    about: Nếu công cụ báo "Cần cài thêm", đọc phần này trước.
+  - name: Báo lỗ hổng bảo mật
+    url: https://github.com/padduwcs/PADStudio/security/advisories/new
+    about: Báo riêng tư, đừng mở issue công khai.
