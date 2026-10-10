@@ -2,8 +2,34 @@
   "name": "padstudio",
   "version": "0.1.0",
   "private": true,
+  "description": "Precise Animated Demonstration Studio: a local studio where an Agent makes explainer and edited videos with you, and the project keeps every input, result and decision.",
+  "license": "MIT",
+  "author": "Anh-Duc Phan",
+  "homepage": "https://github.com/padduwcs/PADStudio#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/padduwcs/PADStudio.git"
+  },
+  "bugs": {
+    "url": "https://github.com/padduwcs/PADStudio/issues"
+  },
+  "keywords": [
+    "video",
+    "animation",
+    "agent",
+    "ai-agent",
+    "explainer-video",
+    "remotion",
+    "manim",
+    "hyperframes",
+    "ffmpeg",
+    "text-to-speech",
+    "vietnamese"
+  ],
   "type": "module",
-  "description": "A small, agent-led video project prototype.",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "node src/web/server.js",
     "start": "node src/web/server.js",
@@ -77,8 +103,5 @@
     "release:holdout:lock": "node src/cli/lock-holdout-corpus.js",
     "release:evidence:assemble": "node src/cli/assemble-release-evidence.js",
     "release:acceptance": "node scripts/release-gates-acceptance.mjs"
-  },
-  "engines": {
-    "node": ">=20"
   }
 }
