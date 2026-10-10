@@ -26,7 +26,7 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 ## Baseline kiểm chứng
 
 Lần chạy full gần nhất, ngày **2026-10-09** (sau trang Công cụ bên dưới, Node v24.18.1): `npm test`
-**409 tests: 408 pass, 1 skipped**; `npm run check` sạch. Browser: `observer:ui:tools-test`, `observer:ui:empty-test`,
+**410 tests: 409 pass, 1 skipped**; `npm run check` sạch. Browser: `observer:ui:tools-test`, `observer:ui:empty-test`,
 `observer:ui:live-test` và `observer:ui:test` trên project thật `dijkstra-20261001-vertical` passed, không request ghi.
 Trước trang Công cụ: 381 tests, 380 pass; Trên bản clone sạch (không có runtime Python, `.cache`, `.padstudio`,
 `padstudio.local.json`; giống CI): 381 tests, 375 pass, 0 fail, 6 skipped vì thiếu runtime. Browser: `observer:ui:empty-test` và `observer:ui:live-test` passed;
@@ -296,7 +296,7 @@ root (được theo dõi nhưng không file nào dùng). Ghi checkpoint mới, t
 draft, checkpoint cũ hơn 19 hoạt động nên doctor báo `attention`); sau đó `padstudio:doctor` trả `ready`.
 `.cache/source-eval/models` (4,4 GB) là model ASR đang dùng, không phải rác.
 
-**Repo:** remote `origin` trên GitHub (public từ 2026-10-09). CI GitHub Actions (Windows, Node 24, FFmpeg) xanh từ commit `551e95e`; test hỏng hiện thành annotation trên trang run nhờ [`scripts/lib/github-test-reporter.mjs`](../../scripts/lib/github-test-reporter.mjs), vì log chỉ admin tải được. Lần đỏ ở `675b193` trùng thời điểm endpoint cài đặt còn cắt kết nối khi nhận nội dung quá lớn; sau khi sửa thì xanh, nhưng log lần đỏ không đọc được nên chưa xác nhận chắc nguyên nhân. Lịch sử cũ của repo (80 commit, web app Motion Canvas, không liên quan tới code này) giữ nguyên
+**Repo:** remote `origin` trên GitHub (public từ 2026-10-09; giấy phép MIT, README tiếng Việt và tiếng Anh, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, mẫu issue và pull request, CHANGELOG, dependabot cho GitHub Actions, CODEOWNERS; hướng dẫn cài runtime ở [`docs/CAI-DAT-RUNTIME.md`](../CAI-DAT-RUNTIME.md) đã được chạy thử trên một bản clone sạch). CI GitHub Actions (Windows, Node 24, FFmpeg) xanh từ commit `551e95e`; test hỏng hiện thành annotation trên trang run nhờ [`scripts/lib/github-test-reporter.mjs`](../../scripts/lib/github-test-reporter.mjs), vì log chỉ admin tải được. Lần đỏ ở `675b193` trùng thời điểm endpoint cài đặt còn cắt kết nối khi nhận nội dung quá lớn; sau khi sửa thì xanh, nhưng log lần đỏ không đọc được nên chưa xác nhận chắc nguyên nhân. Lịch sử cũ của repo (80 commit, web app Motion Canvas, không liên quan tới code này) giữ nguyên
 ở nhánh `legacy-v1` và tag `legacy-v1`; `main` là PADStudio hiện tại. Chỉ file được git theo dõi mới lên GitHub; project trong `.padstudio/`,
 `.cache/`, `.runtime-tools/` và `padstudio.local.json` đều ở ngoài repo.
 
