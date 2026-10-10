@@ -3,17 +3,17 @@
   "skills": [
     {
       "id": "project-intake",
-      "version": "1.1",
+      "version": "1.2",
       "name": "Project intake",
       "description": "Turn a short request and supplied material into a useful brief without shifting production planning to the user.",
       "appliesTo": ["understand", "plan"],
       "artifactTypes": ["project.brief"],
-      "reviewCriteria": ["intent is explicit", "unknowns are separated from assumptions", "constraints are actionable"],
+      "reviewCriteria": ["intent is explicit", "the viewer and the one thing they should take away are named", "unknowns are separated from assumptions", "constraints are actionable"],
       "instructions": "project-intake.md"
     },
     {
       "id": "source-understanding",
-      "version": "1.1",
+      "version": "1.2",
       "name": "Source understanding",
       "description": "Inspect source material and preserve observations that should influence creative work.",
       "appliesTo": ["understand", "review"],
@@ -43,12 +43,12 @@
     },
     {
       "id": "result-review",
-      "version": "1.1",
+      "version": "1.2",
       "name": "Result review",
       "description": "Review creative intent and technical integrity as distinct but connected concerns.",
       "appliesTo": ["review", "verify"],
       "artifactTypes": ["review.findings"],
-      "reviewCriteria": ["verdict cites evidence", "failed checks propose action", "creative and technical findings are not conflated"],
+      "reviewCriteria": ["verdict cites evidence", "failed checks propose action", "creative and technical findings are not conflated", "a video is judged as the first-time viewer would experience it"],
       "instructions": "result-review.md"
     },
     {
@@ -92,10 +92,10 @@
       "instructions": "code-animation.md"
     },
     {
-      "id": "visual-choreography", "version": "1.3", "name": "Visual choreography",
+      "id": "visual-choreography", "version": "1.3.1", "name": "Visual choreography",
       "description": "Direct narration as a visual-first, frame-aligned argument with truthful operations, purposeful scene relationships and an inspectable text footprint.",
       "appliesTo": ["plan", "execute", "review"], "artifactTypes": ["animation.choreography", "animation.composition"],
-      "reviewCriteria": ["semantic claims cause visible state changes", "imagery proves the point without transcript dependence", "on-screen text is exact, necessary and subordinate unless type-led", "scene relationships are purposeful without forcing layout sameness", "composition serves the current explanatory question", "representative motion is previewed before full polish"],
+      "reviewCriteria": ["semantic claims cause visible state changes", "imagery proves the point without transcript dependence", "on-screen text is exact, necessary and subordinate unless type-led", "scene relationships are purposeful without forcing layout sameness", "composition serves the current explanatory question", "the viewer meets one new thing at a time, introduced before it is used", "representative motion is previewed before full polish"],
       "instructions": "visual-choreography.md"
     },
     {
@@ -106,10 +106,10 @@
       "instructions": "remotion-animation.md"
     },
     {
-      "id": "code-animation-review", "version": "1.4", "name": "Code animation review",
+      "id": "code-animation-review", "version": "1.5", "name": "Code animation review",
       "description": "Review complete code-animation timelines for technical, semantic and creative quality with concrete correction evidence.",
       "appliesTo": ["review", "verify"], "artifactTypes": ["animation.composition", "review.findings"],
-      "reviewCriteria": ["timeline coverage is explicit", "speech and visual meaning agree", "visual proof survives removal of prose", "declared and rendered text agree", "findings include timestamps and corrections", "distinctness and slideshow risk are assessed"],
+      "reviewCriteria": ["timeline coverage is explicit", "speech and visual meaning agree", "visual proof survives removal of prose", "declared and rendered text agree", "findings include timestamps and corrections", "distinctness and slideshow risk are assessed", "the first-time viewer's account of the video is recorded"],
       "instructions": "code-animation-review.md"
     },
     {
@@ -173,10 +173,10 @@
       "instructions": "stock-sourcing.md"
     },
     {
-      "id": "voice-narration", "version": "1.0", "name": "Voice and narration",
-      "description": "Choose the engine, voice and model with the user, test a sample, then synthesize narration without wasting credits.",
+      "id": "voice-narration", "version": "2.0", "name": "Voice and narration",
+      "description": "Write narration for a listener, make it hard to misread, then synthesize it in one paid request with as few samples as possible.",
       "appliesTo": ["plan", "execute"], "artifactTypes": [],
-      "reviewCriteria": ["voice and model are named explicitly and agreed with the user", "a short sample was heard before the full script", "each paid request has a go-ahead for its exact text", "unchanged passages reuse their audio"],
+      "reviewCriteria": ["the script explains why before how and its content was checked", "numbers, symbols and variables are written as they should sound and inputReview was read", "the narration is one request unless the model's length limit forces a split", "a sample, if any, is the riskiest passage of the real script", "voice and model are named explicitly and agreed with the user", "each paid request has a go-ahead for its exact text", "listening is not claimed until the user has listened"],
       "instructions": "voice-narration.md"
     },
     {

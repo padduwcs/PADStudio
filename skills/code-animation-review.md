@@ -4,7 +4,11 @@ Use this skill after an authored preview or render exists. It strengthens eviden
 judgment without imposing a fixed production pipeline.
 
 1. Review in two passes: first technical/semantic correctness, then audience experience. A clean
-   render is not evidence that the explanation is correct, engaging or distinctive.
+   render is not evidence that the explanation is correct, engaging or distinctive. Write the second
+   pass as the viewer's account (see `result-review`): in order, what a first-time viewer hears, sees
+   and wonders, and where they could get lost: more arriving than the voice can carry, an object
+   shown before it is named or long after, two things competing for the eye, layers that overlap.
+   The first pass can be all green while the second fails, and the second is the one that counts.
 2. Cover the complete timeline. Use automated QA samples at no more than five-second gaps for a
    three-minute video, plus exact beat and transition boundaries. Inspect contact sheets page by
    page and open targeted frames or short clips around anything suspicious. State plainly that

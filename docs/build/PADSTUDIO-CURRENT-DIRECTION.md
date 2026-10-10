@@ -614,7 +614,41 @@ Trước đây người dùng chỉ có thể cho Agent biết mình có gì b�
   USD không giới hạn được. Cộng theo authorization (thực tế, hoặc ước tính khi chưa rõ), kiểm lúc authorize và lại ngay trước khi claim,
   cùng một khóa. Không đặt trần thì hành vi không đổi.
 - Skill `voice-narration` hướng dẫn Agent chọn engine và giọng cùng người dùng, chốt kịch bản, tạo thử một câu, tạo theo đoạn và xin đồng ý
-  trước từng lần tốn credit. Authorization vẫn do Agent ghi (`approvedBy: "user"` là lời khai của Agent, như `--from-agent-host`): skill và
+  trước từng lần tốn credit *(đã thay đổi: phần tạo thử một câu và tạo theo đoạn được thay bằng tạo cả bài một lần, xem mục 2026-10-10 ở
+  cuối)*. Authorization vẫn do Agent ghi (`approvedBy: "user"` là lời khai của Agent, như `--from-agent-host`): skill và
   trần credit giảm rủi ro nhưng không thay được việc người dùng thực sự đồng ý trong chat.
 
 Các quyết định khác về observer giữ nguyên: chat ở Agent host vẫn là kênh điều khiển duy nhất, project chỉ thay đổi qua CLI/contract.
+
+## Bài học từ một project thật: người xem là thước đo, giọng đọc là chi phí không sửa được — 2026-10-10
+
+Project thử nghiệm Binary Exponentiation (video dọc, bốn phút, giọng ElevenLabs) được dùng để rút bài học cho PADStudio, không để sửa riêng
+nó. Dữ liệu của project cho thấy phần lớn công sức của người dùng nằm ở việc nhắc Agent những điều hệ thống nên mang sẵn:
+
+- **Agent làm đạt yêu cầu mà chưa đặt mình vào người xem.** Các review của Agent chủ yếu kiểm yêu cầu (nền đen, vùng an toàn, thứ tự, âm
+  thanh không clipping) và, ở các bản sau, xác nhận những điểm người dùng đã chỉ ra; không review nào ghi lại một người xem lần đầu sẽ nghe,
+  thấy và thắc mắc điều gì ở từng chỗ quan trọng. Lời dẫn mất năm bản mới đi đúng hướng (bản đầu mô tả cách làm mà thiếu lý do),
+  hình mất 18 revision composition, và hai lỗi quan trọng (quá nhiều chữ, hình chồng nhau) do người dùng tự bắt. Quyết định: thước đo của
+  mọi video là một người xem lần đầu; điều đó được nói ở tài liệu vận hành mà Agent luôn đọc, rồi lặp lại đúng chỗ công việc bắt đầu (brief:
+  người xem là ai, cần mang đi *một điều* gì), nơi lời được viết, nơi hình được dàn và nơi kết quả được đánh giá. Đây là cách *nghĩ*, không thêm
+  trường dữ liệu, biểu mẫu hay cổng kiểm tra.
+- **Giọng đọc không sửa được và mỗi lần gọi tốn tiền.** Skill `voice-narration` từng bảo tạo theo từng đoạn (mỗi đoạn một Result), ngược với
+  nhu cầu giọng liền mạch, và chỉ có một câu về phát âm. Quyết định: tạo cả bài trong một request (chỉ tách khi vượt giới hạn của model);
+  mẫu chỉ khi dạy được điều gì và là đoạn rủi ro nhất của kịch bản thật; viết lời thành cách đọc (số, ký hiệu, biến); `tool:plan` trả
+  `inputReview` để thấy chỗ có thể đọc sai trước khi tốn credit, chỉ khuyến nghị và luôn nói rõ điều nó không kiểm được (chính tả, cách một
+  giọng cụ thể đọc từ). Cơ sở là khuyến nghị của ElevenLabs viết số, ngày, ký hiệu và từ viết tắt hoàn toàn bằng chữ.
+- **Ước tính credit lệch gấp 4,5 lần** cho giọng có rate riêng (duyệt trần 3269, thực tế 718). Quyết định: đo lại từ chi phí thực của các lần
+  tạo trước cùng giọng và model trong project, có cận làm tròn, không ngoại suy khi các lần đó mâu thuẫn, và dùng cùng một con số ở plan,
+  authorize và execute. Header `character-cost` vẫn là nguồn "chi phí thực" duy nhất; chưa có bằng chứng nó khớp số bị trừ ở tài khoản, nên
+  người dùng nên đối chiếu một lần với dashboard ElevenLabs.
+- **Thời điểm từng từ nằm ngoài PADStudio.** Để đồng bộ hình với lời, Agent phải tự gọi API history của ElevenLabs rồi chép vào tư liệu,
+  không qua Executor. Quyết định: `withTimestamps` (tắt mặc định) dùng endpoint `with-timestamps` đã được tài liệu mô tả và lưu thời điểm từng
+  từ thành file của chính Result. Alignment chỉ được tin sau khi qua kiểm tra, vì API history của ElevenLabs đã trả *thời lượng* trong trường
+  tên là mốc kết thúc; cả hai quy ước được chấp nhận khi số liệu chứng minh được, còn lại bị từ chối. Đường này chưa được gọi với ElevenLabs
+  thật; đường gọi thường không đổi.
+- **Tài liệu cho Agent vận hành thiếu `project:analyze`.** Agent gọi `tool:run` cho `audio.transcribe` và chỉ nhận thông báo khó hiểu sau khi
+  công cụ đã làm xong việc. Nay tool phân tích từ chối ngay với hướng dẫn, và tài liệu mô tả lệnh đúng. Helper ASR đọc request bằng UTF-8: glossary
+  tiếng Việt từng hỏng ngầm vì mã hóa và làm công cụ dừng với từ "mười ba".
+
+Không đổi ranh giới: Agent vẫn chọn việc sáng tạo, web vẫn chỉ đọc, dọn dẹp sau khi chốt giữ nguyên, hợp đồng preflight hoạt họa không đổi
+(overlap vẫn chỉ là `info`; việc bắt lỗi bố cục dựa vào cách Agent xem khung hình tại các nhịp lời).

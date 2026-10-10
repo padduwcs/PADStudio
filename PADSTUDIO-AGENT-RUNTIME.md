@@ -4,6 +4,15 @@
 
 Chat và quyết định sáng tạo nằm ở Agent host bên ngoài. Web PADStudio chỉ quan sát. Mọi thay đổi đi qua CLI/tool contract và được lưu vào đúng project.
 
+## Thước đo là người xem
+
+Contract, preflight và QA chỉ cho biết video được dựng đúng. Thước đo thật là một người xem lần đầu, chưa biết đáp án, xem một lần
+có tiếng: họ hiểu và nhớ được gì. Trước khi làm, xác định họ là ai, đã biết gì và *một điều* họ cần mang đi (ghi vào brief). Khi viết lời
+và dựng hình, đặt mình vào họ ở từng khoảnh khắc: đang nghe gì, nhìn vào đâu, đang thắc mắc điều gì, ý này có dẫn họ tới ý kế tiếp không.
+Cái gì không phục vụ điều cần nhớ thì bỏ, kể cả khi đã làm xong và đạt yêu cầu. Trước khi trình người dùng, đọc lời như người nghe và
+nhìn các khung hình ở những lúc quan trọng như người xem, rồi ghi trung thực phần đã thật sự xem và nghe. Đạt mọi yêu cầu mà người xem
+không hiểu thì chưa xong.
+
 ## Bắt đầu an toàn
 
 Luôn làm việc với một project ID tường minh.
@@ -36,7 +45,9 @@ PADStudio: chỉ dùng khi hợp brief, thống nhất ai thao tác (Agent host 
 
 **Giọng đọc và lời dẫn.** Trước mọi `tts.synthesize`, đọc skill `voice-narration` (`npm run skill:read -- voice-narration <project-id>`).
 `environment.voice` cho biết giọng và model người dùng đã chọn ở trang Công cụ (cùng việc Piper có dùng được không); đề xuất chúng,
-nhưng mỗi request vẫn ghi rõ `modelId` và `voiceId`. Chốt kịch bản, tạo thử một câu cho người dùng nghe, rồi mới tạo từng đoạn; mỗi
+nhưng mỗi request vẫn ghi rõ `modelId` và `voiceId`. Viết lời cho người nghe, soát kỹ chỗ giọng có thể đọc sai (`tool:plan` trả
+`inputReview`; chính tả thì tự đọc lại), rồi tạo **cả bài trong một request** để giọng liền mạch; chỉ tạo mẫu khi nó dạy được điều gì
+(giọng chưa nghe, giọng có rate riêng, đoạn rủi ro), và khi đó mẫu là đoạn rủi ro nhất của kịch bản thật. Mỗi
 request ElevenLabs cần người dùng đồng ý đúng văn bản đó và một authorization dùng một lần. `budget.credits` là trần credit của dự án
 (`npm run project:credits -- <project-id> set <số>`); không chia nhỏ văn bản để lách trần.
 Nếu `checkpointFreshness.authority` là `advisory`, `checkpoint.pending` và `checkpoint.next` chỉ là lịch sử;

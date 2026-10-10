@@ -7,6 +7,16 @@ Theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/). Các bản phát 
 - Giọng ElevenLabs có hệ số giá riêng (thường là giọng từ Voice Library) giờ chọn và dùng được. Ước tính credit ghi rõ là mức tối thiểu,
   mỗi lần tạo vẫn cần phê duyệt riêng và số credit thực tế được ghi lại sau khi tạo. Với loại giọng này, trần credit của dự án chỉ chặn được
   sau lần vượt, không chặn trước.
+- **Tạo giọng ít tốn kém hơn, ít đọc sai hơn.** `tool:plan` của `tts.synthesize` trả `inputReview`: những chỗ lời có thể bị đọc sai (số,
+  ký hiệu, chữ cái lẻ, tên file, markup, lỗi mã hóa, từ viết tắt, từ lặp) trước khi tốn credit, chỉ để tham khảo. Ước tính credit của giọng có
+  rate riêng được đo lại từ chi phí thực của các lần tạo trước cùng giọng và model (`calibrated`), thay vì mức tối thiểu có thể lệch gấp
+  nhiều lần. `withTimestamps` (tắt mặc định) lấy thời điểm từng từ ngay trong lần tạo; chưa thử với ElevenLabs thật.
+- **Hướng dẫn Agent đặt mình vào người xem.** Tài liệu vận hành, skill intake, review, hình họa và lời dẫn nay lấy một người xem lần đầu làm
+  thước đo thay vì chỉ kiểm yêu cầu. Skill `voice-narration` viết lại: viết lời cho người nghe, giải thích vì sao trước cách làm, tạo cả
+  bài một lần, mẫu thử là đoạn rủi ro nhất.
+- Sửa: helper ASR đọc request bằng UTF-8 (glossary có "mười ba" từng làm công cụ dừng với `TextInputSequence must be str`);
+  `animation.source` ở chế độ `revise` tự lấy runtime và entry từ bản gốc; gọi trực tiếp tool phân tích bằng `tool:run` bị từ chối ngay với
+  hướng dẫn dùng `project:analyze` (tài liệu cho Agent trước đây không nhắc lệnh này).
 
 ## [0.1.0] - 2026-10-10
 

@@ -42,6 +42,26 @@ or a layout generator.
    for a heading, section label, transcript or decorative studio chrome. Labels, values and formulas
    should point into the model; they must not become a second script competing with it.
 
+## Keep the viewer's attention in one place
+
+The viewer is listening and looking at the same time. Plan the picture around what one person can take in at that
+moment, not around what the contract can describe; a plan can satisfy every field and still lose them.
+
+- **One new thing at a time.** When a cue introduces an idea, the picture introduces one object or one operation
+  for it. If the viewer has to read, decode or search for something while also following the sentence, one of the two
+  loses. Stage it across cues or remove it. Count what is new at each cue, not how much is on screen in total.
+- **Introduce, use, combine.** An object appears when the words need it: not earlier, which draws the eye away from the
+  sentence, and not later, which leaves the viewer hearing about something they cannot see. It is then used in an
+  operation that shows what it is for, and only after that does it join others. Do not show the result of an operation
+  before the viewer has seen what went into it.
+- **Keep what is understood recognisable.** When something comes back it keeps the colour, shape and place it had, so
+  the viewer recognises it instead of reading it again. When its meaning changes, the change is visible.
+- **Give the eye one subject.** Two things moving, or two dense regions, at once make the viewer pick one and miss the
+  other. Overlapping layers are the usual cause of a frame that feels tangled. Keep separate lines of reasoning (two ways
+  of computing, and the state each one keeps) in separate regions rather than stacked on each other.
+- **Sit in the first viewer's seat before you present.** At each cue: what is on screen, what have I just heard, what do
+  I expect next, where do I look? If you can only answer by already knowing the explanation, the viewer cannot either.
+
 ## Author and review
 
 8. Write `animation.choreography` version 1.3 with `project:choreography`. Keep frame-aligned beat
@@ -62,14 +82,19 @@ or a layout generator.
    sample feels like slides, a static dashboard or disconnected novelty.
 10. Create `animation.composition` version 1.1 and bind the exact choreography Artifact. Duration
     and FPS must match. Source may realize the argument creatively but must not silently drop,
-    reverse or falsify semantic operations.
+    reverse or falsify semantic operations. Write each revision's `changeReason` as what changed for the
+    viewer and why ("the formula is gone so the thirteen cells are the subject"), not "refine diagnostics":
+    a history of identical reasons hides what was tried and why.
 11. Use choreography frames for exact states and targeted range/motion previews for trajectories.
     One preview run is limited evidence; use additional targeted previews when the chosen sample or
     a difficult beat is not covered.
 12. After rendering, load `code-animation-review`. Review the full timeline for semantic truth and
     the sequence of audience insights, then inspect adjacent scenes for coherence without sameness.
     Compare rendered text against the declared inventory, perform a no-prose pass for every semantic
-    beat, record timestamped corrections and revise before presenting the review render.
+    beat, record timestamped corrections and revise before presenting the review render. Pick the
+    frames to open at the moments where the narration changes the idea, and look at each as the
+    first-time viewer would; keep that list of moments across revisions so successive previews are
+    compared like with like.
 
 ## Contract 1.3 shape
 

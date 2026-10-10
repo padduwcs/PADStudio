@@ -45,9 +45,12 @@ Trong terminal, `tool:list` cho cùng danh sách ở dạng kỹ thuật. Phần
   - **Giọng:** gõ tên để tìm trong các giọng của tài khoản, bấm ▶ nghe thử (miễn phí), bấm **Dùng giọng này** để chọn.
   - **Giọng bạn đã dùng trước đó:** mở dòng “Đã dùng một giọng trước đó?”, dán mã giọng (voice ID) rồi bấm **Tìm theo mã**. Giọng phải nằm trong My Voices của tài khoản;
     giọng ở Voice Library cần được thêm vào My Voices trước. Giọng tính credit theo hệ số riêng vẫn chọn được, nhưng số credit ước tính chỉ là mức tối thiểu (số thực tế ghi lại sau khi tạo), nên trần credit của dự án chỉ chặn được sau lần tạo vượt mức.
-  Giọng và model bạn chọn là **mặc định Agent đề xuất**; Agent vẫn ghi rõ giọng và model trong mỗi lần tạo, tạo thử một câu cho bạn nghe
-  trước khi tạo cả bài, và chỉ tạo khi bạn đồng ý đúng văn bản đó. Muốn đổi giọng cho một đoạn, nói với Agent.
-- **Giữ credit ElevenLabs trong tầm tay:** chốt kịch bản trước khi tạo giọng (sửa chữ là tạo lại và tốn thêm); dựng lại video hay đổi hình
+  Giọng và model bạn chọn là **mặc định Agent đề xuất**; Agent vẫn ghi rõ giọng và model trong mỗi lần tạo, tạo cả bài trong **một lần**
+  (để giọng liền mạch), và chỉ tạo khi bạn đồng ý đúng văn bản đó. Agent chỉ tạo mẫu khi cần, và khi đó mẫu là đoạn dễ đọc sai nhất của bài
+  thật. Mẫu nằm trong thư mục kết quả của dự án (tab Tư liệu chỉ hiện lời đọc mà video đang dùng).
+- **Giữ credit ElevenLabs trong tầm tay:** chốt kịch bản trước khi tạo giọng (sửa chữ là tạo lại và tốn thêm); trước đó Agent soát những chỗ
+  giọng có thể đọc sai (số, ký hiệu, chữ cái lẻ, từ viết tắt) và viết chúng thành lời. Ước tính credit của giọng có rate riêng chỉ là mức tối
+  thiểu cho đến khi dự án có một lần tạo thật của giọng đó; sau đó nó được đo lại từ chi phí thực. Dựng lại video hay đổi hình
   không tạo lại giọng. Đặt trần cho từng dự án bằng `npm run project:credits -- <tên-dự-án> set 5000`, hoặc nhờ Agent đặt giúp: PADStudio
   từ chối mọi lần tạo vượt trần. Bạn cũng nên đặt giới hạn credit hằng tháng ngay ở tài khoản ElevenLabs.
 - **Hoạt họa bằng code:** Manim, Remotion hoặc HyperFrames. Nếu máy chưa có, Agent sẽ báo và hướng dẫn thiết lập thay vì tự cài.

@@ -1,6 +1,7 @@
 # PADStudio — trạng thái phát triển
 
-Cập nhật: **2026-10-09** (đối chiếu tài liệu với code; xem mục “Đối chiếu tài liệu với code”).
+Cập nhật: **2026-10-10** (bài học từ một project thật; xem mục “Rút bài học từ project thật”). Lần đối chiếu tài liệu với code gần nhất
+là 2026-10-09.
 
 Đây là điểm vào ngắn để biết codebase đang ở đâu. PADStudio vẫn đang được xây dựng và chỉnh
 chu; các báo cáo có chữ `completion`, tên đợt hoặc số phiên bản ghi lại một mốc nghiệm thu kỹ
@@ -25,8 +26,11 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 ## Baseline kiểm chứng
 
-Lần chạy full gần nhất, ngày **2026-10-09** (sau trang Công cụ bên dưới, Node v24.18.1): `npm test`
-**410 tests: 409 pass, 1 skipped**; `npm run check` sạch. Browser: `observer:ui:tools-test`, `observer:ui:empty-test`,
+Lần chạy full gần nhất, ngày **2026-10-10** (sau đợt rút bài học bên dưới, Node v24.18.1, Windows): `npm test`
+**443 tests: 442 pass, 0 fail, 1 skipped** (test symlink, vì Windows không cấp quyền tạo symlink); `npm run check` sạch. Trước đợt này,
+đầu ngày: 411 tests, 410 pass (số 410/409 ghi bên dưới là của 2026-10-09). Không chạy lại browser acceptance vì đợt này không đổi giao diện.
+
+Lần chạy full ngày **2026-10-09** (sau trang Công cụ bên dưới): `npm test` **410 tests: 409 pass, 1 skipped**; `npm run check` sạch. Browser: `observer:ui:tools-test`, `observer:ui:empty-test`,
 `observer:ui:live-test` và `observer:ui:test` trên project thật `dijkstra-20261001-vertical` passed, không request ghi.
 Trước trang Công cụ: 381 tests, 380 pass; Trên bản clone sạch (không có runtime Python, `.cache`, `.padstudio`,
 `padstudio.local.json`; giống CI): 381 tests, 375 pass, 0 fail, 6 skipped vì thiếu runtime. Browser: `observer:ui:empty-test` và `observer:ui:live-test` passed;
@@ -179,6 +183,43 @@ Các số trên là ảnh chụp tại ngày ghi nhận, không phải giá tr�
 lệnh đang chạy, ưu tiên kết quả từ code và test hiện tại rồi cập nhật lại trang này. Acceptance
 report trong `reports/` và `eval/**/reports/` là bằng chứng của lần chạy đã ghi ngày, không phải
 dashboard trạng thái.
+
+## Rút bài học từ project thật — 2026-10-10
+
+Phân tích project thử nghiệm Binary Exponentiation (127 Run, 110 Result, 41 artifact, 752 credit) để cải thiện mặc định của PADStudio cho các
+project sau. Quyết định và lý do: mục cuối của [`PADSTUDIO-CURRENT-DIRECTION.md`](PADSTUDIO-CURRENT-DIRECTION.md). Không đổi ranh giới sản
+phẩm, hợp đồng project hay delivery.
+
+**Code (đều có test; 32 test mới):**
+
+- [`runtime/analysis/helper.py`](../../runtime/analysis/helper.py): `configure_streams()` đọc stdin bằng UTF-8. Trước đó glossary tiếng Việt bị
+  hỏng mã hóa, và chữ "ờ" (byte `0x9D`) thành ký tự surrogate lẻ khiến tokenizer báo `TextInputSequence must be str`. Đã tái hiện và xác nhận
+  bằng chính helper với runtime GPU thật trên ba request từng lỗi; test hồi quy (`analysis-helper-encoding`) thất bại khi bỏ bản sửa.
+- [`src/tools/code-animation-source.js`](../../src/tools/code-animation-source.js): `revise` tự lấy `runtime`, `entryFile`, `entrySymbol` từ bản gốc.
+- [`src/tools/source-analysis-common.js`](../../src/tools/source-analysis-common.js): tool phân tích gọi trực tiếp bằng `tool:run` bị từ chối ngay
+  (`analysis_service_required`) với hướng dẫn `project:analyze`; thông báo sai schema nói rõ trường nào sai.
+- [`src/tools/speech-text-review.js`](../../src/tools/speech-text-review.js): `inputReview` của `tool:plan` cho `elevenlabs` và `piper-local`.
+  Kịch bản đã duyệt của project (3269 ký tự) sạch; bản nháp viết bằng ký hiệu bị báo đúng chỗ.
+- [`src/execution/credit-calibration.js`](../../src/execution/credit-calibration.js) và `refineUsage`: ước tính credit đo từ các lần tạo thật trước
+  đó của đúng giọng và model; `ToolExecutor` dùng cùng một con số ở plan, authorize và execute (đột biến kiểm chứng: dùng ước tính niêm yết ở
+  `execute` làm test thất bại).
+- [`src/tools/speech-timing.js`](../../src/tools/speech-timing.js) và `withTimestamps` của `elevenlabs` (phiên bản 1.4.0): timing từng từ trong cùng request,
+  chấp nhận cả quy ước mốc kết thúc và thời lượng; đối chiếu chéo trên dữ liệu ElevenLabs thật với danh sách từ do Agent dựng độc lập (57 từ,
+  lệch dưới 1,5 ms).
+
+**Hướng dẫn Agent:** tài liệu vận hành thêm mục "Thước đo là người xem"; skill `project-intake`, `result-review`, `visual-choreography`,
+`code-animation-review`, `source-understanding` được bổ sung; `voice-narration` viết lại (2.0). `PADSTUDIO-AGENT-REFERENCE.md` mô tả lần đầu
+`project:analyze`, `inputReview`, `calibrated` và `withTimestamps`. Một khẳng định về IPA của v3 bị loại sau khi kiểm tra trang chính thức của
+ElevenLabs không nói vậy (IPA được nêu cho v4, phoneme tag cho `eleven_flash_v2`).
+
+**Chưa kiểm chứng (nói thẳng):**
+
+- `withTimestamps` chưa được gọi với ElevenLabs thật (tốn credit); tài liệu endpoint không nêu response header, nên chưa biết `character-cost` và
+  `request-id` có còn không. Vì vậy tùy chọn tắt mặc định.
+- Header `character-cost` là nguồn duy nhất của "chi phí thực"; chưa đối chiếu với số dư tài khoản.
+- Phần hướng dẫn "đặt mình vào người xem" và viết lời không kiểm được bằng test tự động; chỉ test rằng nội dung chính còn nằm đúng chỗ. Hiệu quả
+  chỉ biết được khi dùng cho project thật tiếp theo.
+- `inputReview` không kiểm chính tả và không biết một giọng cụ thể đọc từ ra sao; cảnh báo có thể báo thừa (ví dụ tên viết tắt chủ ý).
 
 ## Đối chiếu tài liệu với code — 2026-10-09
 
