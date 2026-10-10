@@ -45,6 +45,17 @@ test("a missing file reads as empty settings and declared services are normalise
   assert.equal(loaded.piper.pythonCommand, "C:/Python/python.exe");
 });
 
+test("a file saved with a byte-order mark (PowerShell 5.1, Notepad) is read and kept readable", async (t) => {
+  const path = await temporary(t);
+  await writeFile(path, "﻿" + JSON.stringify({ piper: { pythonCommand: "C:/Python/python.exe" }, services: { available: ["stock-media"] } }));
+  const loaded = await loadLocalConfig({ path });
+  assert.equal(loaded.piper.pythonCommand, "C:/Python/python.exe");
+  assert.deepEqual(loaded.services.available, ["stock-media"]);
+  await updateLocalConfig({ elevenLabs: { apiKey: "sk_bom_test_key_1234" } }, { path });
+  assert.equal((await loadLocalConfig({ path })).piper.pythonCommand, "C:/Python/python.exe");
+  assert.equal(JSON.parse(await readFile(path, "utf8")).elevenLabs.apiKey, "sk_bom_test_key_1234", "the rewritten file is plain JSON");
+});
+
 test("invalid settings are refused instead of guessed", async (t) => {
   const path = await temporary(t);
   for (const value of [

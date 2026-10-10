@@ -124,7 +124,8 @@ function normalize(value) {
 
 async function readRaw(path) {
   try {
-    return JSON.parse(await readFile(path, "utf8"));
+    // Windows PowerShell 5.1 and Notepad write a byte-order mark; JSON.parse rejects it.
+    return JSON.parse((await readFile(path, "utf8")).replace(/^﻿/, ""));
   } catch (error) {
     if (error?.code === "ENOENT") return null;
     if (error instanceof SyntaxError) throw new LocalConfigError("padstudio.local.json không phải JSON hợp lệ; sửa file rồi tải lại trang.");
