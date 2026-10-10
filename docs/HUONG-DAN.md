@@ -37,8 +37,16 @@ Trong terminal, `tool:list` cho cùng danh sách ở dạng kỹ thuật. Phần
 - **Giọng đọc miễn phí trên máy (Piper):** điền `piper.pythonCommand`, `piper.modelDirectory`, `piper.defaultModel` trong
   `padstudio.local.json` (mẫu: `padstudio.local.example.json`).
 - **Giọng đọc ElevenLabs (trả phí):** dán khóa ở trang Công cụ; khóa được lưu vào `padstudio.local.json`, không đưa lên Git và không
-  hiện lại trên trang. Mỗi lần dùng, Agent cho bạn xem ước tính chi phí và chỉ chạy khi bạn đồng ý; bạn có thể đặt trần ngân sách cho
-  từng dự án.
+  hiện lại trên trang. Sau khi lưu khóa, bấm **Chọn giọng và model** ngay dưới đó:
+  - **Model:** chọn trong danh sách của chính tài khoản bạn (ví dụ Eleven v3). Model nào hỗ trợ tiếng Việt mới dùng được; model khác bị tắt.
+  - **Giọng:** gõ tên để tìm trong các giọng của tài khoản, bấm ▶ nghe thử (miễn phí), bấm **Dùng giọng này** để chọn.
+  - **Giọng bạn đã dùng trước đó:** dán mã giọng (voice ID) rồi bấm **Tìm theo mã**. Giọng phải nằm trong My Voices của tài khoản;
+    giọng ở Voice Library cần được thêm vào My Voices trước. Giọng tính credit theo hệ số riêng không dùng được vì không đặt được trần credit.
+  Giọng và model bạn chọn là **mặc định Agent đề xuất**; Agent vẫn ghi rõ giọng và model trong mỗi lần tạo, tạo thử một câu cho bạn nghe
+  trước khi tạo cả bài, và chỉ tạo khi bạn đồng ý đúng văn bản đó. Muốn đổi giọng cho một đoạn, nói với Agent.
+- **Giữ credit ElevenLabs trong tầm tay:** chốt kịch bản trước khi tạo giọng (sửa chữ là tạo lại và tốn thêm); dựng lại video hay đổi hình
+  không tạo lại giọng. Đặt trần cho từng dự án bằng `npm run project:credits -- <tên-dự-án> set 5000`, hoặc nhờ Agent đặt giúp: PADStudio
+  từ chối mọi lần tạo vượt trần. Bạn cũng nên đặt giới hạn credit hằng tháng ngay ở tài khoản ElevenLabs.
 - **Hoạt họa bằng code:** Manim, Remotion hoặc HyperFrames. Nếu máy chưa có, Agent sẽ báo và hướng dẫn thiết lập thay vì tự cài.
 
 ## 2. Mỗi lần bắt đầu

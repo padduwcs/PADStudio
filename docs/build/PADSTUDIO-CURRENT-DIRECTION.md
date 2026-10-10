@@ -603,5 +603,16 @@ Trước đây người dùng chỉ có thể cho Agent biết mình có gì b�
   có gì, và không bao giờ hỏi hay nhận khóa trong chat. Dịch vụ khai báo không phải tool của PADStudio: file chúng tạo ra phải đi qua
   `media.register-generated`.
 - Doctor xếp cắt cảnh và ASR (cần Python cài riêng) vào nhóm khuyến nghị: thiếu chỉ là `attention`.
+- **Giọng đọc (cùng ngày):** sau khi có khóa, trang Công cụ cho tìm giọng theo tên trong tài khoản ElevenLabs, nghe thử, dán mã giọng đã
+  dùng, và chọn model từ danh sách thật của tài khoản. Lựa chọn lưu vào `padstudio.local.json` là mặc định Agent đề xuất
+  (`environment.voice`), không phải mặc định ngầm: mọi request `tts.synthesize` vẫn ghi rõ `modelId` và `voiceId`, và mỗi request
+  ElevenLabs vẫn cần người dùng đồng ý đúng văn bản đó cùng một authorization dùng một lần. Các tra cứu catalog là POST chỉ đọc sau cùng lớp
+  bảo vệ với việc ghi cài đặt. Giọng có custom rate vẫn bị loại vì không đặt được trần credit.
+- **Trần credit theo dự án (cùng ngày):** `project:credits` đặt tổng credit tối đa cho credit-priced provider trong một dự án, vì ngân sách
+  USD không giới hạn được. Cộng theo authorization (thực tế, hoặc ước tính khi chưa rõ), kiểm lúc authorize và lại ngay trước khi claim,
+  cùng một khóa. Không đặt trần thì hành vi không đổi.
+- Skill `voice-narration` hướng dẫn Agent chọn engine và giọng cùng người dùng, chốt kịch bản, tạo thử một câu, tạo theo đoạn và xin đồng ý
+  trước từng lần tốn credit. Authorization vẫn do Agent ghi (`approvedBy: "user"` là lời khai của Agent, như `--from-agent-host`): skill và
+  trần credit giảm rủi ro nhưng không thay được việc người dùng thực sự đồng ý trong chat.
 
 Các quyết định khác về observer giữ nguyên: chat ở Agent host vẫn là kênh điều khiển duy nhất, project chỉ thay đổi qua CLI/contract.

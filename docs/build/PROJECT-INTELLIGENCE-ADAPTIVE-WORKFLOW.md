@@ -103,10 +103,10 @@ Retired kết thúc artifact đang active. Mọi revision và provenance vẫn �
 ## Skill và tiêu chuẩn
 
 Catalog ban đầu gồm project-intake, source-understanding, creative-direction,
-adaptive-planning và result-review. Catalog hiện hành ở `skills/catalog.json` có 19 skill, thêm
+adaptive-planning và result-review. Catalog hiện hành ở `skills/catalog.json` có 20 skill, thêm
 video-editing-craft, video-sequence-planning, code-animation, visual-choreography, remotion-animation,
 hyperframes-animation, manim-animation, code-animation-review, asset-preparation, tool-selection,
-taste-direction, music-direction, stock-sourcing và human-release-review. Mỗi skill khai báo khi nào
+taste-direction, music-direction, stock-sourcing, voice-narration và human-release-review. Mỗi skill khai báo khi nào
 dùng, artifact liên quan, tiêu chí review và file hướng dẫn; `npm run skill:list` là nguồn đúng nhất.
 
 Có thể thêm catalog dưới .padstudio/projects/project-id/skills/. ID phải không

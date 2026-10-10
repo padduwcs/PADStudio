@@ -33,6 +33,12 @@ khi họ nói đã xong. Không bao giờ hỏi, nhận, nhắc lại hay ghi kh
 khóa vào chat, không dùng nó, mời họ dán ở trang Công cụ và đổi khóa ở nhà cung cấp. Dịch vụ đã khai báo không phải tool của
 PADStudio: chỉ dùng khi hợp brief, thống nhất ai thao tác (Agent host hay người dùng), và đăng ký mọi file tạo ra bằng
 `media.register-generated` kèm provider, prompt và quyền sử dụng.
+
+**Giọng đọc và lời dẫn.** Trước mọi `tts.synthesize`, đọc skill `voice-narration` (`npm run skill:read -- voice-narration <project-id>`).
+`environment.voice` cho biết giọng và model người dùng đã chọn ở trang Công cụ (cùng việc Piper có dùng được không); đề xuất chúng,
+nhưng mỗi request vẫn ghi rõ `modelId` và `voiceId`. Chốt kịch bản, tạo thử một câu cho người dùng nghe, rồi mới tạo từng đoạn; mỗi
+request ElevenLabs cần người dùng đồng ý đúng văn bản đó và một authorization dùng một lần. `budget.credits` là trần credit của dự án
+(`npm run project:credits -- <project-id> set <số>`); không chia nhỏ văn bản để lách trần.
 Nếu `checkpointFreshness.authority` là `advisory`, `checkpoint.pending` và `checkpoint.next` chỉ là lịch sử;
 không chạy lại chúng trước khi đối chiếu trạng thái bền vững hiện tại trong `work`, `production`, `animation`,
 decision và review. Sau khi người dùng nói đã tự chạy một lệnh acceptance, luôn đọc lại

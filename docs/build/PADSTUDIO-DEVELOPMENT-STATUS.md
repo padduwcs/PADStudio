@@ -26,7 +26,7 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 ## Baseline kiểm chứng
 
 Lần chạy full gần nhất, ngày **2026-10-09** (sau trang Công cụ bên dưới, Node v24.18.1): `npm test`
-**397 tests: 396 pass, 1 skipped**; `npm run check` sạch. Browser: `observer:ui:tools-test`, `observer:ui:empty-test`,
+**409 tests: 408 pass, 1 skipped**; `npm run check` sạch. Browser: `observer:ui:tools-test`, `observer:ui:empty-test`,
 `observer:ui:live-test` và `observer:ui:test` trên project thật `dijkstra-20261001-vertical` passed, không request ghi.
 Trước trang Công cụ: 381 tests, 380 pass; Trên bản clone sạch (không có runtime Python, `.cache`, `.padstudio`,
 `padstudio.local.json`; giống CI): 381 tests, 375 pass, 0 fail, 6 skipped vì thiếu runtime. Browser: `observer:ui:empty-test` và `observer:ui:live-test` passed;
@@ -239,10 +239,26 @@ cài đặt máy, không bao giờ ghi project.
   thư mục đang chạy lệnh.
 - **Agent:** `project:resume` có `environment.userServices`; hướng dẫn trong runtime doc, agent reference và skill `tool-selection`.
   Hướng dẫn cài ElevenLabs trỏ tới trang Công cụ và cấm hỏi khóa trong chat.
+- **Giọng và model (ElevenLabs):** [`ui/voice-picker.js`](../../ui/voice-picker.js) trong mục ElevenLabs sau khi có khóa: chọn model từ danh sách thật
+  của tài khoản (chỉ model hỗ trợ tiếng Việt và có hệ số credit mới dùng được), tìm giọng theo tên (gõ là tìm, 30 giọng một trang, “Tải thêm”),
+  nghe thử miễn phí, dán mã giọng đã dùng, “Dùng giọng này”. Lưu `elevenLabs.voiceId/voiceName/modelId`; `project:resume` có `environment.voice`.
+  Ba endpoint tra cứu chỉ đọc là POST sau cùng lớp bảo vệ (xem [`TTS-CAPABILITY.md`](TTS-CAPABILITY.md)); `previewUrl` chỉ chuyển tiếp khi là
+  https tới ElevenLabs.
+- **Trần credit:** [`credit-budget.js`](../../src/execution/credit-budget.js), `npm run project:credits`, kiểm lúc `tool:authorize` và lại trong khóa ngay trước khi
+  claim; `budget.credits` trong resume.
+- **Skill `voice-narration`** (skill thứ 20) và `tts.synthesize` trỏ tới nó trong catalog công cụ. Trước đó `tts:inspect` chỉ có trong tài liệu phát
+  triển, nơi Agent vận hành không đọc.
+- **`project:resume`, `tool:list` và trang Công cụ nhanh hơn ~8 lần** (20 s → 2,5 s trên máy này): bốn tool HyperFrames mỗi tool tự chạy
+  `hyperframes doctor` song song; nay chúng dùng chung một lần kiểm tra trong 10 giây ([`code-animation-renderer.js`](../../src/tools/code-animation-renderer.js)).
 - **Observer cũ:** server báo `GET /api/observer` (pid, thời điểm khởi động, build = hash nội dung `src/` và `ui/`). `observer:ensure`
   dùng lại server cùng build, tự dừng và thay server chạy code cũ (`restarted: true`), `--no-restart` chỉ báo; trả thêm `toolsUrl`.
   Server mở từ trước thay đổi này không tự nhận diện được nên phải tắt tay một lần. Đã thử thật trên Windows: khởi động, dùng lại,
   thay server sau khi code đổi.
+- **Test (giọng, model, trần credit):** `elevenlabs-catalog` (client tìm giọng/tra giọng/model bằng ElevenLabs giả; lọc link nghe thử; API cần khóa, cần lớp
+  bảo vệ, chỉ trả những gì trang được thấy; lưu giọng/model mặc định), `credit-budget` (trần cộng đúng `character-cost` thật, chặn ở authorize và lại ở
+  run, kết quả không chắc vẫn tính là đã tốn, bỏ trần thì không đổi), `project:credits` trong `cli-contract`, resume có `environment.voice`, chia sẻ một lần
+  kiểm tra runtime trong `code-animation`, và `observer:ui:tools-test` dẫn trình duyệt thật qua chọn model, tìm giọng, dùng giọng, tra theo mã,
+  giữ tiêu điểm sau khi lưu. Mọi thứ chạy với ElevenLabs giả; **chưa gọi ElevenLabs thật**.
 - **Test:** `local-config`, `tools-overview` (kể cả mọi tool của registry mặc định đều có nhóm), `settings-api` (chặn Origin lạ, cổng
   khác, cross-site, thiếu header, form post, JSON hỏng, thân quá lớn, runtime path; khóa không lộ; không đụng project), planning
   environment, browser `observer:ui:tools-test` (lưu khóa và dịch vụ qua trang thật với file cấu hình tạm) và bước Công cụ trong `ui-smoke`.

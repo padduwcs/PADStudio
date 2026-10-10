@@ -125,6 +125,34 @@ hoặc model catalog không có multiplier hữu hạn dương, bước plan/est
 khi plan/authorize, và Executor kiểm tra lại ngay trước POST để không dùng credit nếu môi trường đã
 thay đổi giữa hai bước.
 
+## Chọn giọng và model trên trang Công cụ
+
+Sau khi có khóa, mục ElevenLabs của trang Công cụ có bộ chọn giọng và model (`ui/voice-picker.js`). Nó gọi ba endpoint chỉ đọc của
+observer, đều là POST sau cùng lớp bảo vệ với việc lưu cài đặt (Host, Origin, JSON, `X-PADStudio-Intent`) để trang khác không bắt server
+gọi ElevenLabs bằng khóa đã lưu:
+
+- `POST /api/settings/elevenlabs/models` — model TTS của tài khoản, kèm hỗ trợ ngôn ngữ, hệ số credit và giới hạn ký tự. Chỉ model
+  hỗ trợ ngôn ngữ và có hệ số credit hữu hạn mới `usable`.
+- `POST /api/settings/elevenlabs/voices` — tìm giọng theo tên (`search` ≤ 100 ký tự), mỗi trang 30 giọng, `pageToken` để tải thêm.
+  Luôn gửi `include_custom_rates=false`; giọng provider vẫn trả mà có custom rate hiện ra nhưng `usable: false`.
+- `POST /api/settings/elevenlabs/voice` — tra một giọng theo mã (giọng người dùng đã dùng). Chỉ giọng nằm trong tài khoản; không thấy thì
+  trả 404 kèm gợi ý thêm giọng vào My Voices.
+
+Tất cả đều miễn phí (không tạo audio, không tốn credit). `previewUrl` chỉ được chuyển cho trang khi là https tới `elevenlabs.io`,
+`*.elevenlabs.io` hoặc `storage.googleapis.com/eleven-…`; trình duyệt tải bản nghe thử trực tiếp từ ElevenLabs khi người dùng bấm ▶.
+
+Lựa chọn lưu vào `elevenLabs.voiceId`, `elevenLabs.voiceName` và `elevenLabs.modelId` trong `padstudio.local.json`. Đó là mặc định để
+Agent đề xuất (`environment.voice` trong `project:resume`), không phải mặc định ngầm: `tts.synthesize` vẫn bắt buộc `modelId` và
+`voiceId` trong từng request. Danh sách model hiển thị là danh sách thật của tài khoản, nên model mới của ElevenLabs xuất hiện mà không cần đổi code.
+
+## Trần credit theo dự án
+
+Ngân sách USD (`project:budget`) không giới hạn được ElevenLabs vì tool này tính bằng credit. `npm run project:credits -- <project-id>
+[show | set <credit> | clear]` đặt trần credit cho một dự án (`credit-budget.json`). Mọi authorization được cộng: `consumed` theo
+`character-cost` thực tế của provider, `claimed` và `usage_unknown` theo ước tính (coi như đã tốn), `released` không tính, `approved` chưa
+chạy chưa tính. `tool:plan` trả `creditBudget`; `tool:authorize` từ chối khi ước tính vượt phần còn lại; `tool:run` kiểm tra lại ngay
+trước khi claim authorization, trong cùng một khóa với việc claim. Chưa đặt trần thì không kiểm tra gì thêm.
+
 ## Phê duyệt credit
 
 ElevenLabs bắt buộc ba bước:

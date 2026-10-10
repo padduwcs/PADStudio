@@ -303,6 +303,10 @@ runtime path (Python, model Piper) chỉ sửa trong file.
 }
 ```
 
+`environment.voice` cho biết Piper có dùng được không, khóa ElevenLabs đã có chưa (`keyConfigured`), giọng và model người dùng đã chọn
+(`defaultVoice`, `defaultModelId`). Đó là mặc định để **đề xuất**; mỗi request `tts.synthesize` vẫn ghi rõ `modelId` và `voiceId`. Đọc skill
+`voice-narration` trước khi tạo giọng. Người dùng chọn giọng ở trang Công cụ: tìm theo tên, nghe thử, dán mã giọng đã dùng, chọn model.
+
 Mã dịch vụ: `image-generation`, `video-generation`, `music-generation`, `voice-generation`, `stock-media`, `design-tools`.
 PADStudio không gọi các dịch vụ này; file tạo ra phải đi qua `media.register-generated`. Agent chỉ biết một khóa đã có hay chưa qua
 availability của tool (`credentialConfigured`), không bao giờ thấy giá trị. Không hỏi hay nhận khóa trong chat.
@@ -322,6 +326,19 @@ npm run project:budget -- <project-id> set <budget-json|file|->
 
 Mode cap giữ reserve cho Run đang chạy và chặn vượt trần; action qua ngưỡng vẫn cần
 authorization chính xác. Mode observe chỉ đo, không giả làm cap.
+
+Trần credit theo dự án (ElevenLabs tính bằng credit nên ngân sách USD không giới hạn được):
+
+```powershell
+npm run project:credits -- <project-id>                 # xem trần, đã dùng, còn lại
+npm run project:credits -- <project-id> set 5000        # đặt trần 5000 credit cho dự án
+npm run project:credits -- <project-id> clear           # bỏ trần
+```
+
+Trần đếm credit thực tế của mọi authorization: `consumed` theo `character-cost` của provider, `claimed` và `usage_unknown` theo ước tính
+(coi như đã tốn), `released` không tính, `approved` chưa chạy chưa tính. `tool:plan` trả `creditBudget`; `tool:authorize` từ chối
+(`credit_budget_exceeded`) khi ước tính vượt phần còn lại, và `tool:run` kiểm tra lại ngay trước khi claim authorization (trong cùng một khóa
+nên hai request không cùng lấy một phần credit). Chưa đặt trần thì không kiểm tra gì thêm.
 
 Tool trả phí (hiện là `elevenlabs`) cần ba bước: `npm run tool:plan -- <project-id> <request.json>`
 để xem estimate, `npm run tool:authorize -- <project-id> <authorization.json>` sau khi người dùng đồng ý
