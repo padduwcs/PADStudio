@@ -422,7 +422,6 @@ textarea.field { display: block; width: 100%; min-height: 84px; padding: 10px 14
 .voice-list:empty { display: none; }
 .voice-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
 .voice-card.is-current { border-color: var(--accent); background: var(--accent-soft); }
-.voice-card.is-unusable { opacity: 0.65; }
 .voice-play { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid var(--line-strong); border-radius: 50%; background: var(--surface); color: var(--ink-2); transition: background-color 0.15s, color 0.15s; }
 .voice-play:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent-ink); }
 .voice-play:disabled { opacity: 0.35; }
@@ -433,7 +432,7 @@ textarea.field { display: block; width: 100%; min-height: 84px; padding: 10px 14
 .voice-tag { padding: 0 8px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); font-size: var(--text-xs); line-height: 1.7; }
 .voice-tag.is-verified { background: var(--ok-soft); color: var(--ok); }
 .voice-desc { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: var(--muted); font-size: var(--text-xs); }
-.voice-desc.is-error { color: var(--danger); -webkit-line-clamp: unset; }
+.voice-desc.is-warn { color: var(--warn); -webkit-line-clamp: unset; }
 .voice-card .button { min-height: 34px; padding: 0 14px; }
 .voice-more { justify-self: start; }
 .voice-lookup-details { padding-top: 4px; }

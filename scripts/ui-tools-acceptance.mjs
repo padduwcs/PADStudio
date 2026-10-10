@@ -153,8 +153,8 @@ try {
 
   await page.evaluate("document.querySelector('[data-control=voice-more]').click()");
   await page.waitFor(`${LIST_CARDS}.length === 4`, { label: "more voices" });
-  expect(await page.evaluate(`${card("v_costly")}.querySelector('[data-control=use-voice]').disabled && ${card("v_costly")}.textContent.includes('trần credit')`),
-    "a voice with a custom rate must be unusable and say why");
+  expect(await page.evaluate(`!${card("v_costly")}.querySelector('[data-control=use-voice]').disabled && ${card("v_costly")}.textContent.includes('mức tối thiểu')`),
+    "a voice with a custom rate must stay choosable and say its estimate is only a minimum");
   await page.evaluate("(() => { const input = document.querySelector('[data-control=voice-search]'); input.value = 'quang'; input.dispatchEvent(new Event('input', { bubbles: true })); })()");
   await page.waitFor(`(() => { const cards = ${LIST_CARDS}; return cards.length === 1 && cards[0].dataset.voice === 'v_quang'; })()`, { label: "search narrows the list" });
   if (shots) {

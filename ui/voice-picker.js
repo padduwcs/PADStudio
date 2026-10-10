@@ -78,7 +78,7 @@ export function createVoicePicker({ post, save }) {
 
   function voiceCard(voice) {
     const isCurrent = voice.voiceId === currentVoiceId();
-    const card = node("li", undefined, "voice-card" + (isCurrent ? " is-current" : "") + (voice.usable ? "" : " is-unusable"));
+    const card = node("li", undefined, "voice-card" + (isCurrent ? " is-current" : ""));
     card.dataset.voice = voice.voiceId;
     const play = node("button", undefined, "voice-play");
     play.type = "button";
@@ -99,10 +99,10 @@ export function createVoicePicker({ post, save }) {
     head.append(node("span", voice.name, "voice-name"), tags);
     text.append(head);
     if (voice.description) text.append(node("span", voice.description, "voice-desc"));
-    if (!voice.usable && voice.unusableReason) text.append(node("span", voice.unusableReason, "voice-desc is-error"));
+    if (voice.costNote) text.append(node("span", voice.costNote, "voice-desc is-warn"));
 
     const use = node("button", isCurrent ? "Đang dùng" : "Dùng giọng này", "button " + (isCurrent ? "button-soft" : "button-quiet"));
-    use.type = "button"; use.disabled = isCurrent || !voice.usable;
+    use.type = "button"; use.disabled = isCurrent;
     use.dataset.control = "use-voice";
     use.addEventListener("click", () => chooseVoice(voice, use));
     card.append(play, text, use);

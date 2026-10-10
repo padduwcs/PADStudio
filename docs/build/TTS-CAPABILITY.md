@@ -115,11 +115,13 @@ Request mẫu:
 Model và voice khả dụng phụ thuộc tài khoản/provider tại thời điểm chạy; dùng output inspect thay
 vì hard-code một voice id.
 
-Catalog voice được lấy với `include_custom_rates=false`. Voice Library có custom rate bị loại khỏi
-lựa chọn vì hệ số thực tế còn phụ thuộc rate của voice và subscription, nên PADStudio không thể
-chứng minh một trần credit an toàn chỉ từ số ký tự. Nếu provider vẫn trả một voice có custom rate,
-hoặc model catalog không có multiplier hữu hạn dương, bước plan/estimate dừng với
-`approval_limit_unknown`; hệ thống không gửi request trả phí.
+Catalog voice được lấy với `include_custom_rates=false`. Voice có custom rate (thường là giọng từ Voice Library) vẫn dùng được nếu
+provider trả về, nhưng PADStudio không chứng minh được một trần credit chỉ từ số ký tự: hệ số thực tế còn phụ thuộc rate của voice. Khi đó
+`estimateUsage` trả mức ước tính thường (số ký tự x hệ số model) kèm `uncertain: true` và `basis` có `estimate_is_not_a_ceiling`;
+`executor.plan` và authorization lưu cờ này. Mỗi lần tạo vẫn cần phê duyệt dùng một lần đúng văn bản, và số credit thực tế (header
+`character-cost`) được ghi vào authorization (`exceededApprovedCeiling` nếu vượt mức đã duyệt). Hệ quả: với giọng như vậy, trần credit
+theo dự án chỉ chặn được *sau* lần tạo vượt mức, không chặn trước. Chỉ khi model catalog không có multiplier hữu hạn dương thì
+plan/estimate dừng với `approval_limit_unknown` và không gửi request trả phí.
 
 `ffprobe` là dependency bắt buộc để xác minh file audio. Availability kiểm tra dependency này trước
 khi plan/authorize, và Executor kiểm tra lại ngay trước POST để không dùng credit nếu môi trường đã
@@ -134,7 +136,7 @@ gọi ElevenLabs bằng khóa đã lưu:
 - `POST /api/settings/elevenlabs/models` — model TTS của tài khoản, kèm hỗ trợ ngôn ngữ, hệ số credit và giới hạn ký tự. Chỉ model
   hỗ trợ ngôn ngữ và có hệ số credit hữu hạn mới `usable`.
 - `POST /api/settings/elevenlabs/voices` — tìm giọng theo tên (`search` ≤ 100 ký tự), mỗi trang 30 giọng, `pageToken` để tải thêm.
-  Luôn gửi `include_custom_rates=false`; giọng provider vẫn trả mà có custom rate hiện ra nhưng `usable: false`.
+  Luôn gửi `include_custom_rates=false`; giọng provider vẫn trả mà có custom rate hiện ra, chọn được, kèm `costNote` cảnh báo ước tính chỉ là mức tối thiểu.
 - `POST /api/settings/elevenlabs/voice` — tra một giọng theo mã (giọng người dùng đã dùng). Chỉ giọng nằm trong tài khoản; không thấy thì
   trả 404 kèm gợi ý thêm giọng vào My Voices.
 

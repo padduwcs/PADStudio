@@ -4,7 +4,9 @@ Theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/). Các bản phát 
 
 ## [Chưa phát hành]
 
-Chưa có thay đổi nào sau 0.1.0.
+- Giọng ElevenLabs có hệ số giá riêng (thường là giọng từ Voice Library) giờ chọn và dùng được. Ước tính credit ghi rõ là mức tối thiểu,
+  mỗi lần tạo vẫn cần phê duyệt riêng và số credit thực tế được ghi lại sau khi tạo. Với loại giọng này, trần credit của dự án chỉ chặn được
+  sau lần vượt, không chặn trước.
 
 ## [0.1.0] - 2026-10-10
 

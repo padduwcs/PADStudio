@@ -44,7 +44,7 @@ Trong terminal, `tool:list` cho cùng danh sách ở dạng kỹ thuật. Phần
   - **Model:** chọn trong danh sách của chính tài khoản bạn (ví dụ Eleven v3). Model nào hỗ trợ tiếng Việt mới dùng được; model khác bị tắt.
   - **Giọng:** gõ tên để tìm trong các giọng của tài khoản, bấm ▶ nghe thử (miễn phí), bấm **Dùng giọng này** để chọn.
   - **Giọng bạn đã dùng trước đó:** mở dòng “Đã dùng một giọng trước đó?”, dán mã giọng (voice ID) rồi bấm **Tìm theo mã**. Giọng phải nằm trong My Voices của tài khoản;
-    giọng ở Voice Library cần được thêm vào My Voices trước. Giọng tính credit theo hệ số riêng không dùng được vì không đặt được trần credit.
+    giọng ở Voice Library cần được thêm vào My Voices trước. Giọng tính credit theo hệ số riêng vẫn chọn được, nhưng số credit ước tính chỉ là mức tối thiểu (số thực tế ghi lại sau khi tạo), nên trần credit của dự án chỉ chặn được sau lần tạo vượt mức.
   Giọng và model bạn chọn là **mặc định Agent đề xuất**; Agent vẫn ghi rõ giọng và model trong mỗi lần tạo, tạo thử một câu cho bạn nghe
   trước khi tạo cả bài, và chỉ tạo khi bạn đồng ý đúng văn bản đó. Muốn đổi giọng cho một đoạn, nói với Agent.
 - **Giữ credit ElevenLabs trong tầm tay:** chốt kịch bản trước khi tạo giọng (sửa chữ là tạo lại và tốn thêm); dựng lại video hay đổi hình

@@ -607,7 +607,9 @@ Trước đây người dùng chỉ có thể cho Agent biết mình có gì b�
   dùng, và chọn model từ danh sách thật của tài khoản. Lựa chọn lưu vào `padstudio.local.json` là mặc định Agent đề xuất
   (`environment.voice`), không phải mặc định ngầm: mọi request `tts.synthesize` vẫn ghi rõ `modelId` và `voiceId`, và mỗi request
   ElevenLabs vẫn cần người dùng đồng ý đúng văn bản đó cùng một authorization dùng một lần. Các tra cứu catalog là POST chỉ đọc sau cùng lớp
-  bảo vệ với việc ghi cài đặt. Giọng có custom rate vẫn bị loại vì không đặt được trần credit.
+  bảo vệ với việc ghi cài đặt. Giọng có custom rate (Voice Library) chọn được theo quyết định của chủ dự án
+  (2026-10-10): ước tính ghi `uncertain: true`, vẫn phê duyệt từng lần, credit thực tế được ghi lại sau khi tạo, nên trần credit theo
+  dự án chỉ chặn sau lần vượt, không chặn trước.
 - **Trần credit theo dự án (cùng ngày):** `project:credits` đặt tổng credit tối đa cho credit-priced provider trong một dự án, vì ngân sách
   USD không giới hạn được. Cộng theo authorization (thực tế, hoặc ước tính khi chưa rõ), kiểm lúc authorize và lại ngay trước khi claim,
   cùng một khóa. Không đặt trần thì hành vi không đổi.

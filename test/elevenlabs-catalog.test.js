@@ -164,8 +164,9 @@ test("the pickers need a saved key, the page guard and valid input, and return o
   const page2 = await post("/api/settings/elevenlabs/voices", { pageToken: "2" });
   assert.equal(page2.json.voices.find((voice) => voice.voiceId === "v_ha_my").previewUrl, null, "a foreign host is dropped");
   const costly = page2.json.voices.find((voice) => voice.voiceId === "v_costly");
-  assert.equal(costly.usable, false);
-  assert.match(costly.unusableReason, /trần credit/);
+  assert.equal(costly.usable, true, "a voice with its own rate can still be chosen");
+  assert.match(costly.costNote, /ước tính chỉ là mức tối thiểu/);
+  assert.equal(page2.json.voices.find((voice) => voice.voiceId === "v_ha_my").costNote, null);
 
   assert.deepEqual((await post("/api/settings/elevenlabs/voices", { search: "quang" })).json.voices.map((voice) => voice.voiceId), ["v_quang"]);
   assert.equal(provider.calls.every((call) => call.key === KEY && call.method === "GET"), true, "only read-only requests, always with the saved key");

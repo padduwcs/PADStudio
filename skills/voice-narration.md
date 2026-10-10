@@ -11,7 +11,9 @@ The goal is the right voice on the first full pass: no wasted credits, no surpri
 3. ElevenLabs voice and model: propose `defaultVoice` and `defaultModelId` from `environment.voice` ("Dùng giọng Minh Anh, model Eleven v3?").
    None saved: tell the user the Tools page lets them search their voices, listen to previews, paste the id of a voice they used before
    and choose the model. Or run `npm run tts:inspect -- vi` and offer a short list with `previewUrl` links. Never invent a voice id from memory.
-   Only voices without a custom rate and models that advertise Vietnamese pass planning.
+   Only models that advertise Vietnamese and a credit multiplier pass planning. A voice with its own rate (often a Voice Library voice) is allowed,
+   but its plan carries `estimatedUsage.uncertain: true`: tell the user the estimate is only a minimum, keep the sample short, and read the real
+   cost from the authorization afterwards. The project credit cap cannot stop such a voice in advance.
 4. Every request names `modelId` and `voiceId` explicitly, even when they equal the saved defaults. A different voice for one passage is fine when the user asks.
 
 ## Script first, then a sample, then the rest

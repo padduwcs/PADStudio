@@ -45,9 +45,9 @@ function publicVoice(voice) {
     verifiedLanguages: (Array.isArray(voice.verifiedLanguages) ? voice.verifiedLanguages : [])
       .map((entry) => text(entry?.language ?? entry?.locale ?? entry, 20)).filter(Boolean).slice(0, 12),
     previewUrl: safePreviewUrl(voice.previewUrl),
-    usable: voice.customRate === null,
-    unusableReason: voice.customRate === null ? null
-      : "Giọng này tính credit theo hệ số riêng nên PADStudio không đặt được trần credit an toàn."
+    usable: true,
+    costNote: voice.customRate === null ? null
+      : "Giọng này có hệ số giá riêng nên số credit ước tính chỉ là mức tối thiểu; số thực tế được ghi lại sau khi tạo."
   };
 }
 

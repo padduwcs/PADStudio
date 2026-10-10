@@ -177,6 +177,47 @@ test("ElevenLabs inspects Vietnamese choices and consumes one exact credit autho
   assert.equal(persisted.includes(secret), false);
 });
 
+test("a voice with its own rate is approved as an uncertain estimate and settled from the provider's real cost", async (t) => {
+  const { store } = await fixture(t);
+  const fetchImpl = async (url) => {
+    if (String(url).endsWith("/v1/user/subscription")) return Response.json({ status: "active" });
+    if (String(url).endsWith("/v1/models")) {
+      return Response.json([{ model_id: "eleven_v3", can_do_text_to_speech: true,
+        languages: [{ language_id: "vi" }], model_rates: { character_cost_multiplier: 1 } }]);
+    }
+    if (String(url).includes("/v2/voices?")) {
+      return Response.json({ voices: [{ voice_id: "voice_rate", name: "Library voice", sharing: { rate: 0.5 } }] });
+    }
+    if (String(url).includes("/v1/text-to-speech/voice_rate")) {
+      return new Response(silentWav(), { status: 200, headers: { "character-cost": "34", "request-id": "req-rate" } });
+    }
+    return new Response(null, { status: 404 });
+  };
+  const tool = createElevenLabsTts({
+    loadConfig: async () => ({ piper: {}, elevenLabs: { apiKey: "test-key" } }),
+    fetchImpl, baseUrl: "https://example.test", executeCommand: async () => ({ stdout: probeOutput("mp3"), stderr: "" })
+  });
+  const executor = new ToolExecutor({ store, registry: new ToolRegistry([tool]) });
+  const request = {
+    capability: "tts.synthesize", tool: "elevenlabs", purpose: "Narration with a library voice",
+    inputs: { text: "Xin chào Việt Nam", modelId: "eleven_v3", voiceId: "voice_rate" }
+  };
+
+  const plan = await executor.plan("tts-demo", request);
+  assert.equal(plan.estimatedUsage.amount, 17);
+  assert.equal(plan.estimatedUsage.uncertain, true, "the plan tells the agent the estimate is not a ceiling");
+  const authorization = await executor.authorize("tts-demo", request, {
+    approvedBy: "user", maxCredits: 17, reason: "Approve this narration only"
+  });
+  assert.equal(authorization.estimatedUsage.uncertain, true, "the stored authorization keeps the warning");
+  const response = await executor.execute("tts-demo", { ...request, authorizationId: authorization.id });
+  const settled = (await store.readContext("tts-demo")).authorizations.find((entry) => entry.id === authorization.id);
+  assert.equal(settled.status, "consumed");
+  assert.equal(settled.actualUsage.amount, 34, "the provider's real character-cost is what gets recorded");
+  assert.equal(settled.exceededApprovedCeiling, true);
+  assert.equal(response.result.data.voiceId, "voice_rate");
+});
+
 test("ElevenLabs never submits without approval and preserves uncertain credit state", async (t) => {
   const { store } = await fixture(t);
   let posts = 0;
@@ -427,7 +468,7 @@ test("Piper rejects an out-of-range speaker and output sample-rate drift", async
 });
 
 
-test("ElevenLabs excludes custom-rate voices and refuses one returned contrary to the filter", async () => {
+test("ElevenLabs asks for no custom-rate voices but still flags one that comes back", async () => {
   const voiceUrls = [];
   const tool = createElevenLabsTts({
     loadConfig: async () => ({ piper: {}, elevenLabs: { apiKey: "test-key" } }),
@@ -457,12 +498,12 @@ test("ElevenLabs excludes custom-rate voices and refuses one returned contrary t
   const catalog = await tool.inspect({ language: "vi" });
   assert.match(voiceUrls[0], /include_custom_rates=false/);
   assert.equal(catalog.voices[0].customRate, 0.05);
-  await assert.rejects(
-    tool.estimateUsage({ inputs: {
-      text: "Xin chào", modelId: "eleven_v3", voiceId: "custom_voice"
-    }}),
-    (error) => error.code === "approval_limit_unknown"
-  );
+  const usage = await tool.estimateUsage({ inputs: {
+    text: "Xin chào", modelId: "eleven_v3", voiceId: "custom_voice"
+  }});
+  assert.equal(usage.amount, 8, "a custom-rate voice is still estimated from characters x model multiplier");
+  assert.equal(usage.uncertain, true, "and the estimate is flagged as not being a ceiling");
+  assert.match(usage.basis, /voice_custom_rate:0\.05;estimate_is_not_a_ceiling/);
 });
 
 test("ElevenLabs refuses to plan or POST when ffprobe is unavailable", async (t) => {

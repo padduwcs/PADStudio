@@ -41,7 +41,10 @@ function usage(value, label) {
   if (!value || value.unit !== "credits" || !Number.isFinite(value.amount) || value.amount < 0) {
     throw new ExecutionAuthorizationError(label + " is invalid.");
   }
-  return { unit: "credits", amount: Math.ceil(value.amount), basis: typeof value.basis === "string" ? value.basis : null };
+  return {
+    unit: "credits", amount: Math.ceil(value.amount), basis: typeof value.basis === "string" ? value.basis : null,
+    ...(value.uncertain === true ? { uncertain: true } : {})
+  };
 }
 
 function validateRecord(record, projectId) {

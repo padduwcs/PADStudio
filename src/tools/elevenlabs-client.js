@@ -203,11 +203,6 @@ export class ElevenLabsClient {
         code: "invalid_input"
       });
     }
-    if (voice.customRate !== null) {
-      throw new ElevenLabsError("Selected ElevenLabs voice has a custom rate that cannot be bounded safely.", {
-        code: "approval_limit_unknown"
-      });
-    }
     if (model.supportsRequestedLanguage === false) {
       throw new ElevenLabsError("Selected ElevenLabs model does not advertise support for " + requestedLanguage + ".", {
         code: "invalid_input"
@@ -230,11 +225,16 @@ export class ElevenLabsClient {
       });
     }
     const multiplier = model.creditMultiplier;
+    // A voice with its own rate can cost more than characters x model multiplier. It stays usable, but the
+    // estimate is flagged as not being a ceiling; the provider's real character-cost is recorded after the call.
+    const uncertain = voice.customRate !== null;
     return {
       usage: {
         unit: "credits",
         amount: Math.ceil(textLength * multiplier),
-        basis: `unicode_characters:${textLength};model_multiplier:${multiplier}`
+        basis: `unicode_characters:${textLength};model_multiplier:${multiplier}` +
+          (uncertain ? `;voice_custom_rate:${voice.customRate};estimate_is_not_a_ceiling` : ""),
+        ...(uncertain ? { uncertain: true } : {})
       },
       catalog
     };
