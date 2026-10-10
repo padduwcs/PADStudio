@@ -25,6 +25,7 @@
     "project:prune": "node src/cli/project-prune.js",
     "project:finish": "node src/cli/project-finish.js",
     "project:budget": "node src/cli/project-budget.js",
+    "project:credits": "node src/cli/project-credits.js",
     "project:run:recover": "node src/cli/recover-run-finalization.js",
     "project:run:abandon": "node src/cli/abandon-run.js",
     "project:recover": "node src/cli/recover-project.js",

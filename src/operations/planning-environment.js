@@ -22,6 +22,25 @@ function userServices(localSettings) {
   };
 }
 
+// The narration choices the user saved on the Tools page. They are what the Agent proposes first, not a silent default:
+// every tts.synthesize request still names its model and voice, and every ElevenLabs request needs its own go-ahead.
+function voiceSetup(localSettings, tools) {
+  const elevenLabs = localSettings?.elevenLabs;
+  const piper = tools.filter((tool) => tool.name === "piper-local");
+  return {
+    piper: { available: piper.some((tool) => tool?.availability?.status === "available") },
+    elevenLabs: {
+      keyConfigured: Boolean(elevenLabs?.apiKey),
+      defaultVoice: elevenLabs?.voiceId ? { id: elevenLabs.voiceId, name: elevenLabs.voiceName ?? null } : null,
+      defaultModelId: elevenLabs?.modelId ?? null,
+      language: "vi"
+    },
+    ...(localSettings?.error ? { error: localSettings.error } : {}),
+    guidance: "Read the voice-narration skill before any tts.synthesize. Propose defaultVoice and defaultModelId, but name modelId and voiceId in every request. " +
+      "Each ElevenLabs request needs the user's go-ahead for that exact text, then a single-use authorization. Never ask for or accept an API key in chat."
+  };
+}
+
 function toolStatus(tool) {
   return tool?.availability?.status === "available";
 }
@@ -127,6 +146,7 @@ export function buildPlanningEnvironment({ machine, capabilityDescription, onboa
     compositionRuntimes,
     setupOffers: setupOffers(capabilities),
     userServices: userServices(localSettings),
+    voice: voiceSetup(localSettings, tools),
     resourceRisks: resourceRisks(machine, tools),
     warnings,
     planningHints: [

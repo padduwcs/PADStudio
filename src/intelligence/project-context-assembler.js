@@ -5,6 +5,7 @@ import { buildAnimationContext } from "../animation/animation-context.js";
 import { inspectMachineProfile } from "../operations/machine-profile.js";
 import { buildPlanningEnvironment } from "../operations/planning-environment.js";
 import { loadLocalConfig } from "../config/local-config.js";
+import { creditBudgetSnapshot } from "../execution/credit-budget.js";
 
 function activity(kind, id, value) {
   if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) return null;
@@ -359,16 +360,22 @@ export class ProjectContextAssembler {
   }
 
   async buildResume(projectId) {
-    const [summary, machine, capabilities, localSettings] = await Promise.all([
+    const [summary, machine, capabilities, localSettings, credits] = await Promise.all([
       this.buildSummary(projectId), this.#machineProfile(), this.#capabilities(),
       Promise.resolve().then(() => this.localSettingsReader())
         .catch((error) => ({ error: "padstudio.local.json could not be read: " + error.message })),
+      creditBudgetSnapshot(this.projectStore, projectId).catch(() => null),
     ]);
     const onboarding = summary.activeArtifacts.length === 0 &&
       !(summary.production?.activeSequences?.length) && !(summary.analysis?.sources?.length);
-    return compactResumeContext(summary, buildPlanningEnvironment({
+    const resume = compactResumeContext(summary, buildPlanningEnvironment({
       machine, capabilityDescription: capabilities, onboarding, localSettings,
     }));
+    // Credit-priced providers (ElevenLabs) are capped in credits, not dollars; show the cap and the use so far.
+    return credits && (credits.maxCredits !== null || credits.usedCredits > 0)
+      ? { ...resume, budget: { ...resume.budget, credits: {
+        maxCredits: credits.maxCredits, usedCredits: credits.usedCredits, remainingCredits: credits.remainingCredits } } }
+      : resume;
   }
 
   async #machineProfile() {

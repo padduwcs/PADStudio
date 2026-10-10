@@ -41,7 +41,8 @@ export function applyToolGuidance(tool) {
     : tool.name.startsWith("hyperframes-") ? "hyperframes-animation"
       : tool.name.startsWith("manim-") ? "manim-animation" : null;
   const animationReview = ["animation.preview", "animation.render", "animation.verify-sync"].includes(tool.capability) ? ["code-animation-review"] : [];
-  const skillIds = tool.capability.startsWith("animation.") ? ["code-animation", ...(runtimeSkill ? [runtimeSkill] : []), ...animationReview]
+  const skillIds = tool.capability === "tts.synthesize" ? ["voice-narration", "asset-preparation"]
+    : tool.capability.startsWith("animation.") ? ["code-animation", ...(runtimeSkill ? [runtimeSkill] : []), ...animationReview]
     : tool.name === "wikimedia-stock" ? ["stock-sourcing", "asset-preparation"]
     : tool.name === "external-generated-media" ? ["asset-preparation", "tool-selection"]
     : tool.name === "local-output-quality" ? ["result-review", "human-release-review"]

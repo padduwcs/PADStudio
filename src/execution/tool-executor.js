@@ -6,6 +6,13 @@ import {
   settleExecutionAuthorization
 } from "./execution-authorizations.js";
 import { projectBudgetSnapshot, startBudgetedRun } from "./project-budget.js";
+import { assertCreditBudget, CreditBudgetError, creditBudgetSnapshot, withCreditBudgetLock } from "./credit-budget.js";
+
+function creditBudgetFailure(error) {
+  return error instanceof CreditBudgetError
+    ? new ToolExecutorError(error.message, { code: error.code === "credit_budget_exceeded" ? "credit_budget_exceeded" : "invalid_request", cause: error })
+    : error;
+}
 
 export class ToolExecutorError extends Error {
   constructor(message, { code = "execution_failed", cause } = {}) {
@@ -134,16 +141,22 @@ export class ToolExecutor {
     }
     const estimatedUsage = tool.approvalRequired ? await tool.estimateUsage({ inputs: request.inputs }) : null;
     const budget = await projectBudgetSnapshot(this.store, projectId);
+    const creditBudget = tool.approvalRequired ? await creditBudgetSnapshot(this.store, projectId) : null;
     const budgetApprovalRequired = tool.cost.estimated !== null && tool.cost.estimated > (budget.policy?.singleActionApprovalUsd ?? Infinity);
     return { projectId, requestHash: executionRequestHash(request), tool: toolReference(tool),
       approvalRequired: tool.approvalRequired, providerApprovalRequired: tool.approvalRequired,
-      budgetApprovalRequired, estimatedUsage, estimatedCostUsd: tool.cost.estimated, budget };
+      budgetApprovalRequired, estimatedUsage, estimatedCostUsd: tool.cost.estimated, budget, creditBudget };
   }
 
   async authorize(projectId, requestValue, approval) {
     const plan = await this.plan(projectId, requestValue);
     if (!plan.approvalRequired) {
       throw new ToolExecutorError("This tool does not require credit approval.", { code: "approval_not_required" });
+    }
+    try {
+      assertCreditBudget(plan.creditBudget, plan.estimatedUsage.amount);
+    } catch (error) {
+      throw creditBudgetFailure(error);
     }
     if (!approval || typeof approval !== "object" || Array.isArray(approval)) {
       throw new ToolExecutorError("Approval must be an object.", { code: "invalid_request" });
@@ -218,8 +231,16 @@ export class ToolExecutor {
           throw new ToolExecutorError("Tool requires an exact, single-use credit authorization.", { code: "approval_required" });
         }
         const currentUsage = await tool.estimateUsage({ inputs: request.inputs, signal: internal.signal });
-        authorization = await claimExecutionAuthorization(this.store, projectId, request.authorizationId, {
-          requestHash: executionRequestHash(request), tool: reference, runId: run.id, currentUsage
+        // The cap is checked and the authorization claimed under one lock, so two requests cannot both fit the same credits.
+        authorization = await withCreditBudgetLock(this.store, projectId, async () => {
+          try {
+            assertCreditBudget(await creditBudgetSnapshot(this.store, projectId), currentUsage.amount);
+          } catch (error) {
+            throw creditBudgetFailure(error);
+          }
+          return claimExecutionAuthorization(this.store, projectId, request.authorizationId, {
+            requestHash: executionRequestHash(request), tool: reference, runId: run.id, currentUsage
+          });
         });
       }
       if (tool.producesFiles) {

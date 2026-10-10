@@ -526,8 +526,11 @@ test("skill and workflow template catalogs expose method, standards, and optiona
   const skills = await createDefaultSkillCatalog().listPublic();
   assert.deepEqual(
     skills.map((skill) => skill.id),
-    ["adaptive-planning", "asset-preparation", "code-animation", "code-animation-review", "creative-direction", "human-release-review", "hyperframes-animation", "manim-animation", "music-direction", "project-intake", "remotion-animation", "result-review", "source-understanding", "stock-sourcing", "taste-direction", "tool-selection", "video-editing-craft", "video-sequence-planning", "visual-choreography"]
+    ["adaptive-planning", "asset-preparation", "code-animation", "code-animation-review", "creative-direction", "human-release-review", "hyperframes-animation", "manim-animation", "music-direction", "project-intake", "remotion-animation", "result-review", "source-understanding", "stock-sourcing", "taste-direction", "tool-selection", "video-editing-craft", "video-sequence-planning", "visual-choreography", "voice-narration"]
   );
+  const narration = await createDefaultSkillCatalog().read("voice-narration");
+  assert.match(narration.instructionsText, /Never ask for, accept or repeat an API key in chat/);
+  assert.match(narration.instructionsText, /one authorization covers one request/i);
   const reviewSkill = await createDefaultSkillCatalog().read("result-review");
   assert.match(reviewSkill.instructionsText, /technical integrity and creative effectiveness separately/i);
   const animationReview = await createDefaultSkillCatalog().read("code-animation-review");

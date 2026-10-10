@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { ProjectContextAssembler } from "../src/intelligence/project-context-assembler.js";
 import { ProjectStore } from "../src/project/project-store.js";
+import { configureCreditBudget } from "../src/execution/credit-budget.js";
 import {
   inspectMachineProfile,
   parseFfmpegHardwareEncoders,
@@ -119,4 +120,33 @@ test("the planning environment tells the Agent which outside services the user h
 
   const broken = buildPlanningEnvironment({ machine, capabilityDescription: { capabilities: [] }, localSettings: { error: "padstudio.local.json could not be read: bad" } });
   assert.match(broken.userServices.error, /could not be read/);
+});
+
+test("resume tells the Agent the saved voice choice and the project's credit cap, never a key", async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), "padstudio-resume-voice-"));
+  t.after(() => rm(workspace, { recursive: true, force: true }));
+  const rootDir = join(workspace, "projects");
+  const store = new ProjectStore(rootDir);
+  await store.createProject({ projectId: "demo", title: "Demo" });
+  const secret = "sk_resume_must_not_appear_77";
+  const settings = { elevenLabs: { apiKey: secret, voiceId: "v_minh_anh", voiceName: "Minh Anh", modelId: "eleven_v3" },
+    services: { available: [], note: null } };
+  const assembler = (localSettings) => new ProjectContextAssembler({
+    projectStore: store, toolRegistry: { describeCapabilities: async () => ({ capabilities: [] }) },
+    machineProfileReader: async () => ({ checkedAt: "2026-10-09T00:00:00.000Z", operatingSystem: { platform: "win32", architecture: "x64" },
+      cpu: { logicalCores: 4, models: [] }, memory: { totalBytes: 8 * 1024 ** 3, freeBytes: 4 * 1024 ** 3 }, storage: { freeBytes: 10 * 1024 ** 3 },
+      gpu: { status: "unavailable", adapters: [] }, mediaAcceleration: { ffmpegDetected: true, ffmpegEncoderCandidates: [] }, privacy: { secretsRead: false } }),
+    localSettingsReader: async () => localSettings
+  });
+
+  const resume = await assembler(settings).buildResume("demo");
+  assert.deepEqual(resume.environment.voice.elevenLabs, { keyConfigured: true, defaultVoice: { id: "v_minh_anh", name: "Minh Anh" }, defaultModelId: "eleven_v3", language: "vi" });
+  assert.match(resume.environment.voice.guidance, /voice-narration/);
+  assert.equal(JSON.stringify(resume).includes(secret), false);
+  assert.equal(resume.budget?.credits, undefined, "no cap and no use means nothing to report");
+
+  await configureCreditBudget(store, "demo", { maxCredits: 800 });
+  const capped = await assembler({ elevenLabs: {}, services: {} }).buildResume("demo");
+  assert.deepEqual(capped.budget.credits, { maxCredits: 800, usedCredits: 0, remainingCredits: 800 });
+  assert.deepEqual(capped.environment.voice.elevenLabs, { keyConfigured: false, defaultVoice: null, defaultModelId: null, language: "vi" });
 });

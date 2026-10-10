@@ -144,6 +144,30 @@ test("project:finish only plans by default, refuses a project without Delivery a
   assert.equal((await store.readResult("demo", result.id)).files[0].available, true);
 });
 
+test("project:credits shows, sets and clears the project's credit cap and rejects bad input", async (t) => {
+  const { root } = await fixture(t);
+  const show = await runCli(root, "project-credits.js", ["demo"]);
+  assert.equal(show.code, 0, show.stderr);
+  assert.deepEqual([JSON.parse(show.stdout).maxCredits, JSON.parse(show.stdout).remainingCredits], [null, null]);
+
+  const set = await runCli(root, "project-credits.js", ["demo", "set", "2500"]);
+  assert.equal(set.code, 0, set.stderr);
+  assert.deepEqual([JSON.parse(set.stdout).maxCredits, JSON.parse(set.stdout).usedCredits, JSON.parse(set.stdout).remainingCredits], [2500, 0, 2500]);
+  assert.equal(JSON.parse((await runCli(root, "project-credits.js", ["demo", "show"])).stdout).maxCredits, 2500);
+
+  for (const args of [[], ["demo", "set"], ["demo", "set", "-5"], ["demo", "set", "1.5"], ["demo", "set", "abc"], ["demo", "set", "10", "extra"], ["demo", "clear", "5"], ["demo", "wipe"]]) {
+    const failed = await runCli(root, "project-credits.js", args);
+    assert.equal(failed.code, 1, args.join(" "));
+    assert.match(failed.stderr, /Cách dùng: npm run project:credits/, args.join(" "));
+  }
+  assert.equal(JSON.parse((await runCli(root, "project-credits.js", ["demo", "show"])).stdout).maxCredits, 2500, "bad calls change nothing");
+  const missing = await runCli(root, "project-credits.js", ["no-such-project", "set", "10"]);
+  assert.equal(missing.code, 1);
+
+  const cleared = await runCli(root, "project-credits.js", ["demo", "clear"]);
+  assert.equal(JSON.parse(cleared.stdout).maxCredits, null);
+});
+
 test("run, resume and workflow CLIs fail with a message and exit code 1 on bad input", async (t) => {
   const { root } = await fixture(t);
 

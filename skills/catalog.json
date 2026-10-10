@@ -173,6 +173,13 @@
       "instructions": "stock-sourcing.md"
     },
     {
+      "id": "voice-narration", "version": "1.0", "name": "Voice and narration",
+      "description": "Choose the engine, voice and model with the user, test a sample, then synthesize narration without wasting credits.",
+      "appliesTo": ["plan", "execute"], "artifactTypes": [],
+      "reviewCriteria": ["voice and model are named explicitly and agreed with the user", "a short sample was heard before the full script", "each paid request has a go-ahead for its exact text", "unchanged passages reuse their audio"],
+      "instructions": "voice-narration.md"
+    },
+    {
       "id": "human-release-review", "version": "1.0", "name": "Human release review",
       "description": "Optional: store a full viewing and listening review of one exact render when the user wants that attestation.",
       "appliesTo": ["review", "verify"], "artifactTypes": ["review.findings"],
