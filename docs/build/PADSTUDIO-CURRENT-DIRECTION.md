@@ -652,3 +652,26 @@ nó. Dữ liệu của project cho thấy phần lớn công sức của ngườ
 
 Không đổi ranh giới: Agent vẫn chọn việc sáng tạo, web vẫn chỉ đọc, dọn dẹp sau khi chốt giữ nguyên, hợp đồng preflight hoạt họa không đổi
 (overlap vẫn chỉ là `info`; việc bắt lỗi bố cục dựa vào cách Agent xem khung hình tại các nhịp lời).
+
+## Bài học từ project số nguyên tố: trọng tâm có hai chiều, mạch kể phải được viết cho từng beat — 2026-10-12
+
+Project thử nghiệm Số nguyên tố (video dọc, khoảng 250 giây) chưa chốt, được dùng để rút bài học cho PADStudio. Bốn lần góp ý
+`changes_requested` của người dùng đều về phong cách thể hiện; các review của Agent trước đó không bắt được vấn đề nào trong số này:
+
+- **Nhiều thứ cùng đòi chú ý** (số, công thức, hình ngang hàng), rồi sau khi sửa thì **tinh giản quá tay** (cảnh trống, mô hình nhỏ, kết
+  luận mất bằng chứng). Hướng dẫn "một chủ thể cho mắt" thêm ngày 2026-10-10 chỉ chặn một chiều; Agent đọc nó thành "một vật". Quyết định:
+  chủ thể là *quan hệ hoặc thao tác* đang được giải thích; phần hỗ trợ ở lại và lùi về; bằng chứng ở lại đến hết câu kết luận. Mỗi cue
+  hỏi bốn câu (chủ thể, phần hỗ trợ, phần thừa, phần lời còn dựa vào) để bắt cả hai lỗi. Review soi phân cấp theo cả hai chiều.
+- **Các cảnh như minh họa riêng lẻ.** Ở revision 1–7 của choreography, `continuityCue` là cùng một câu chung chung cho 10–11/11 beat,
+  `compositionIntent` cùng một câu cho cả 11 beat; `relationToPrevious` không đổi qua 10 revision. Contract chỉ đòi text khác rỗng nên
+  kế hoạch vẫn hợp lệ, và review đối chiếu với chính lời khai báo đó. Quét các project local: 9/19 project có plan 1.2/1.3 lặp như vậy ở
+  revision mới nhất. Quyết định: `repeatedBeatText` trong context và một ghi chú trên stderr của `project:choreography` khi một trường theo
+  từng beat trùng nguyên văn ở nhiều beat. **Chỉ là thông tin**, không chặn và không chấm điểm: trùng chữ có thể là chủ ý, và khác chữ
+  không chứng minh Agent đã nghĩ. Skill yêu cầu `continuityCue` nêu vật gì được giữ, biến đổi hoặc đưa trở lại; câu đúng cho mọi beat
+  thuộc về `direction`/`presentation`. Review chấm handoff trên hình đã render, không chấm nhãn khai báo.
+- **Chuyển động chưa chỉn chu** (nhãn nhảy, ô va nhau, thông tin đổi giữa lúc chuyển). Trước đây skill chỉ nói về chồng lấn tĩnh. Quyết
+  định: vật tới và đứng yên rồi thông tin mới xuất hiện; nhãn đi theo vật; đường đi của các vật cùng xếp lại được tính chung. Review mở
+  khung ở giữa chuyển động, không chỉ trước và sau.
+
+Không đổi: không thêm điểm số chú ý, phần trăm diện tích hay ngưỡng "đủ lớn" (đúng tinh thần contract 1.2); contract choreography và
+composition không đổi phiên bản; project cũ đọc như trước.

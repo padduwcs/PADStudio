@@ -83,19 +83,19 @@
     },
     {
       "id": "code-animation",
-      "version": "1.1",
+      "version": "1.2",
       "name": "Code animation",
       "description": "Author, revise, validate and render project-native Manim, Remotion and HyperFrames compositions.",
       "appliesTo": ["ideate", "plan", "execute", "review"],
       "artifactTypes": ["animation.composition"],
-      "reviewCriteria": ["runtime serves the visual idea", "source and render bind to exact revisions", "motion is legible and intentional", "host execution follows managed validation and preflight"],
+      "reviewCriteria": ["runtime serves the visual idea", "source and render bind to exact revisions", "motion is legible and intentional", "objects settle before new information appears", "host execution follows managed validation and preflight"],
       "instructions": "code-animation.md"
     },
     {
-      "id": "visual-choreography", "version": "1.3.1", "name": "Visual choreography",
+      "id": "visual-choreography", "version": "1.3.2", "name": "Visual choreography",
       "description": "Direct narration as a visual-first, frame-aligned argument with truthful operations, purposeful scene relationships and an inspectable text footprint.",
       "appliesTo": ["plan", "execute", "review"], "artifactTypes": ["animation.choreography", "animation.composition"],
-      "reviewCriteria": ["semantic claims cause visible state changes", "imagery proves the point without transcript dependence", "on-screen text is exact, necessary and subordinate unless type-led", "scene relationships are purposeful without forcing layout sameness", "composition serves the current explanatory question", "the viewer meets one new thing at a time, introduced before it is used", "representative motion is previewed before full polish"],
+      "reviewCriteria": ["semantic claims cause visible state changes", "imagery proves the point without transcript dependence", "on-screen text is exact, necessary and subordinate unless type-led", "scene relationships are purposeful without forcing layout sameness", "composition serves the current explanatory question", "the viewer meets one new thing at a time, introduced before it is used", "each cue has one subject with visible support and keeps the evidence its words rely on", "each beat says what it carries from the previous one", "representative motion is previewed before full polish"],
       "instructions": "visual-choreography.md"
     },
     {
@@ -106,10 +106,10 @@
       "instructions": "remotion-animation.md"
     },
     {
-      "id": "code-animation-review", "version": "1.5", "name": "Code animation review",
+      "id": "code-animation-review", "version": "1.6", "name": "Code animation review",
       "description": "Review complete code-animation timelines for technical, semantic and creative quality with concrete correction evidence.",
       "appliesTo": ["review", "verify"], "artifactTypes": ["animation.composition", "review.findings"],
-      "reviewCriteria": ["timeline coverage is explicit", "speech and visual meaning agree", "visual proof survives removal of prose", "declared and rendered text agree", "findings include timestamps and corrections", "distinctness and slideshow risk are assessed", "the first-time viewer's account of the video is recorded"],
+      "reviewCriteria": ["timeline coverage is explicit", "speech and visual meaning agree", "visual proof survives removal of prose", "declared and rendered text agree", "findings include timestamps and corrections", "distinctness and slideshow risk are assessed", "the first-time viewer's account of the video is recorded", "hierarchy is checked for both competing and emptied frames", "transitions are inspected mid-motion"],
       "instructions": "code-animation-review.md"
     },
     {

@@ -19,6 +19,12 @@ Code animation is an optional production branch, not a required pipeline stage.
    modules, reusable visual primitives, and timing/data/theme concerns. Share mechanics, not a stock
    scene grammar. A single file remains valid when it is genuinely the clearest unit; file count is
    not a quality score.
+   Order motion so the eye has one job at a time: an object arrives and settles, then the next label,
+   value or state appears. Do not change a number, label or colour while its object is still moving,
+   resizing or being replaced. A label belongs to its object and travels with it instead of jumping to
+   a new place. When objects reflow (a row reorders, cells split, a box grows), plan their paths and
+   final positions together so they never pass through or land on each other. These defects are small
+   in a still and obvious in playback, so author them deliberately rather than leaving them to review.
 3. Put changeable JSON data in an immutable `animation.props` Result when useful, then create or
    revise `animation.composition` with exact source/props Results, entry symbol,
    frame-aligned target duration, output format, local asset mappings, style principles and

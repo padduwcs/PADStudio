@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +9,7 @@ import {
   choreographyCommunicationMetrics,
   choreographyNarrationCueMetrics,
   choreographyContinuityMetrics,
+  choreographyRepeatedBeatText,
   choreographyReviewPoints,
   normalizeVisualChoreography,
   selectChoreographyPreviewFrames,
@@ -318,6 +320,48 @@ test("visual choreography 1.3 makes visual proof and exact text intent inspectab
   assert.doesNotThrow(() => normalizeVisualChoreography(typeLed));
 });
 
+test("one sentence pasted into every beat is reported, not rejected", () => {
+  assert.deepEqual(choreographyRepeatedBeatText(visualFirstChoreography()), []);
+  assert.equal(choreographyRepeatedBeatText(choreography()), null);
+
+  // Real projects pasted one generic continuity and composition sentence into every beat; the plan validated and the
+  // renders came out as disconnected illustrations. Whitespace and case do not hide the repeat.
+  const pasted = visualFirstChoreography();
+  pasted.beats[0].continuityCue = "Reuse the same labels, positions and mechanism.";
+  pasted.beats[1].continuityCue = "  reuse the same labels,   positions and mechanism. ";
+  pasted.beats[0].compositionIntent = "One large model; supporting context stays small.";
+  pasted.beats[1].compositionIntent = "One large model; supporting context stays small.";
+  assert.doesNotThrow(() => normalizeVisualChoreography(pasted));
+  assert.deepEqual(choreographyRepeatedBeatText(pasted), [
+    { field: "continuityCue", beatIds: ["select-cells", "accumulate"], text: "Reuse the same labels, positions and mechanism." },
+    { field: "compositionIntent", beatIds: ["select-cells", "accumulate"], text: "One large model; supporting context stays small." },
+  ]);
+});
+
+test("project:choreography records a pasted plan and names the repeated fields on stderr", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "padstudio-choreography-cli-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await new ProjectStore(root).createProject({ projectId: "demo", title: "Choreography CLI" });
+  const run = (data, extra = {}) => new Promise((resolveRun) => {
+    const child = execFile(process.execPath, [join("src", "cli", "write-animation-choreography.js"), "demo", "-"], {
+      env: { ...process.env, PADSTUDIO_PROJECT_ROOT: root }, windowsHide: true,
+    }, (error, stdout, stderr) => resolveRun({ code: error ? error.code ?? 1 : 0, stdout, stderr }));
+    child.stdin.end(JSON.stringify({ key: "plan", name: "Plan", summary: "Plan.", data, ...extra }));
+  });
+
+  const clean = await run(visualFirstChoreography());
+  assert.equal(clean.code, 0, clean.stderr);
+  assert.equal(clean.stderr, "");
+
+  const pasted = visualFirstChoreography();
+  pasted.beats[1].continuityCue = pasted.beats[0].continuityCue;
+  const noted = await run(pasted, { expectedRevision: 1 });
+  assert.equal(noted.code, 0, noted.stderr);
+  assert.equal(JSON.parse(noted.stdout).revision, 2);
+  assert.match(noted.stderr, /continuityCue is the same sentence in 2 beats \(select-cells, accumulate\)/);
+  assert.doesNotMatch(noted.stderr, /compositionIntent/);
+});
+
 test("optional narration cue map checks visual responses against spoken cue timing", () => {
   const value = visualFirstChoreography();
   value.narrationCueMap = {
@@ -443,6 +487,8 @@ test("composition 1.1 binds exact choreography provenance and observer context",
   assert.equal(summary.animation.activeChoreographies[0].presentation.stageIntent,
     "Let the active evidence determine framing and scale from beat to beat.");
   assert.equal(summary.animation.activeChoreographies[0].communication.communicationMode, "visual-first");
+  assert.deepEqual(summary.animation.activeChoreographies[0].repeatedBeatText, []);
+  assert.equal(legacyObserver.repeatedBeatText, null);
 
   const revisedData = visualFirstChoreography();
   revisedData.changeReason = "Clarify the accumulation action.";

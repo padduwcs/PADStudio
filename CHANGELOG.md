@@ -4,6 +4,11 @@ Theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/). Các bản phát 
 
 ## [Chưa phát hành]
 
+- **Hình có một trọng tâm mà không trống.** Skill hình họa nói rõ trọng tâm là một quan hệ hoặc thao tác, phần hỗ trợ ở lại và lùi về,
+  bằng chứng ở lại đến hết câu kết luận; review soi cả cảnh tranh nhau lẫn cảnh bị làm trống. Chuyển động: vật tới và đứng yên rồi thông tin
+  mới hiện, nhãn đi theo vật; review mở khung ở giữa chuyển động.
+- `project:choreography` in ghi chú (không chặn) khi `continuityCue`, `compositionIntent` hay trường theo beat khác là cùng một câu ở nhiều
+  beat; context có `repeatedBeatText`. Gần một nửa số project thử nghiệm từng dán một câu cho mọi beat.
 - Giọng ElevenLabs có hệ số giá riêng (thường là giọng từ Voice Library) giờ chọn và dùng được. Ước tính credit ghi rõ là mức tối thiểu,
   mỗi lần tạo vẫn cần phê duyệt riêng và số credit thực tế được ghi lại sau khi tạo. Với loại giọng này, trần credit của dự án chỉ chặn được
   sau lần vượt, không chặn trước.

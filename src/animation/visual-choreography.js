@@ -581,6 +581,29 @@ export function choreographyCommunicationMetrics(choreography) {
   };
 }
 
+// Per-beat direction fields exist so the Agent decides each beat; the same sentence pasted into several beats decides none
+// of them. Advisory only: identical wording can be deliberate, and different wording does not prove a decision was made.
+const PER_BEAT_DIRECTION_FIELDS = ["visualQuestion", "audienceInsight", "continuityCue", "compositionIntent", "visualProof"];
+
+export function choreographyRepeatedBeatText(choreography) {
+  const normalized = normalizeVisualChoreography(choreography);
+  if (!["1.2", "1.3"].includes(normalized.version)) return null;
+  const repeats = [];
+  for (const field of PER_BEAT_DIRECTION_FIELDS) {
+    const beatsByText = new Map();
+    for (const beat of normalized.beats) {
+      if (typeof beat[field] !== "string") continue;
+      const key = beat[field].trim().replace(/\s+/gu, " ").toLocaleLowerCase();
+      if (!beatsByText.has(key)) beatsByText.set(key, { text: beat[field].trim(), beatIds: [] });
+      beatsByText.get(key).beatIds.push(beat.id);
+    }
+    for (const { text, beatIds } of beatsByText.values()) {
+      if (beatIds.length > 1) repeats.push({ field, beatIds, text });
+    }
+  }
+  return repeats;
+}
+
 export function choreographyReviewPoints(choreography) {
   const normalized = normalizeVisualChoreography(choreography);
   const points = [];

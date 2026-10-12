@@ -1,7 +1,7 @@
 # PADStudio — trạng thái phát triển
 
-Cập nhật: **2026-10-10** (bài học từ một project thật; xem mục “Rút bài học từ project thật”). Lần đối chiếu tài liệu với code gần nhất
-là 2026-10-09.
+Cập nhật: **2026-10-12** (bài học từ project số nguyên tố; xem mục “Trọng tâm hai chiều và mạch kể theo beat”). Lần đối chiếu tài liệu
+với code gần nhất là 2026-10-09.
 
 Đây là điểm vào ngắn để biết codebase đang ở đâu. PADStudio vẫn đang được xây dựng và chỉnh
 chu; các báo cáo có chữ `completion`, tên đợt hoặc số phiên bản ghi lại một mốc nghiệm thu kỹ
@@ -26,7 +26,11 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 ## Baseline kiểm chứng
 
-Lần chạy full gần nhất, ngày **2026-10-10** (sau đợt rút bài học bên dưới, Node v24.18.1, Windows): `npm test`
+Lần chạy full gần nhất, ngày **2026-10-12** (sau đợt trọng tâm hai chiều bên dưới, Node v24.18.1, Windows): `npm test`
+**446 tests: 445 pass, 0 fail, 1 skipped** (test symlink); `npm run check` sạch (276 scripts, 81 documents). Không chạy lại browser
+acceptance vì đợt này không đổi giao diện.
+
+Lần chạy full ngày **2026-10-10** (sau đợt rút bài học bên dưới, Node v24.18.1, Windows): `npm test`
 **443 tests: 442 pass, 0 fail, 1 skipped** (test symlink, vì Windows không cấp quyền tạo symlink); `npm run check` sạch. Trước đợt này,
 đầu ngày: 411 tests, 410 pass (số 410/409 ghi bên dưới là của 2026-10-09). Không chạy lại browser acceptance vì đợt này không đổi giao diện.
 
@@ -183,6 +187,29 @@ Các số trên là ảnh chụp tại ngày ghi nhận, không phải giá tr�
 lệnh đang chạy, ưu tiên kết quả từ code và test hiện tại rồi cập nhật lại trang này. Acceptance
 report trong `reports/` và `eval/**/reports/` là bằng chứng của lần chạy đã ghi ngày, không phải
 dashboard trạng thái.
+
+## Trọng tâm hai chiều và mạch kể theo beat — 2026-10-12
+
+Rút từ project thử nghiệm Số nguyên tố (chưa chốt; 4 góp ý `changes_requested`, choreography 10 revision, composition 13 revision). Quyết
+định và lý do: mục cuối của [`PADSTUDIO-CURRENT-DIRECTION.md`](PADSTUDIO-CURRENT-DIRECTION.md). Không đổi ranh giới, phiên bản contract hay
+project nào.
+
+**Code (3 test mới):**
+
+- [`src/animation/visual-choreography.js`](../../src/animation/visual-choreography.js): `choreographyRepeatedBeatText` liệt kê các trường
+  theo beat (`visualQuestion`, `audienceInsight`, `continuityCue`, `compositionIntent`, `visualProof`) trùng nguyên văn ở từ hai beat, bỏ qua
+  khoảng trắng và hoa thường; `null` cho contract 1.0/1.1. Đưa vào context và summary (`repeatedBeatText`).
+- [`src/cli/write-animation-choreography.js`](../../src/cli/write-animation-choreography.js): sau khi ghi artifact, in một ghi chú cho mỗi
+  trường bị lặp lên stderr; stdout và exit code không đổi. Đột biến kiểm chứng: bỏ vòng in làm test CLI thất bại.
+- Chạy hàm trên dữ liệu thật (chỉ đọc): project số nguyên tố bị báo `continuityCue` ở r1–r7 và hết từ r8, đúng với lúc người dùng góp ý
+  "rời rạc" và lúc sửa; `compositionIntent` vẫn lặp đến r10. Revision mới nhất của 9/19 project local có plan 1.2/1.3 bị báo.
+
+**Hướng dẫn Agent:** `visual-choreography` 1.3.2 (chủ thể là quan hệ/thao tác, không làm trống sân khấu, bốn câu hỏi mỗi cue, cảnh sau mọc
+từ cảnh trước, `continuityCue` cụ thể), `code-animation` 1.2 (vật đứng yên rồi mới hiện thông tin, nhãn đi theo vật), `code-animation-review`
+1.6 (phân cấp hai chiều, chấm handoff đã render thay vì nhãn khai báo, mở khung giữa chuyển động).
+
+**Chưa kiểm chứng:** hiệu quả của hướng dẫn chỉ biết được ở project thật tiếp theo; test chỉ giữ nội dung chính ở đúng chỗ. Ghi chú lặp
+câu không bắt được mẫu câu chỉ đổi một chữ, và không nói gì về chất lượng của câu khác nhau.
 
 ## Rút bài học từ project thật — 2026-10-10
 

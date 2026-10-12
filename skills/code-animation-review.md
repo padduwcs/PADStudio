@@ -17,6 +17,9 @@ judgment without imposing a fixed production pipeline.
    Select risky intervals from the work itself: first object appearances, transformations, selections,
    joins/splits, pointer interactions, scene handoffs, dense compositions and the final claim. Do not
    confuse evenly spaced samples with evidence for those events.
+   Inside each transition, open frames in the middle of the motion and not only before and after it:
+   labels that jump instead of travelling, objects that pass through or land on each other, and a
+   value or label that changes while its object is still moving are visible only there.
 3. For spoken work, compare ASR with the intended script. Supply important names, English terms,
    symbols and abbreviations as `expectedSpeech.terms`; treat failed recognition as a cue to listen
    and revise pronunciation, wording or TTS—not as proof of the exact phonetic cause.
@@ -50,8 +53,15 @@ judgment without imposing a fixed production pipeline.
    must show cause, reframing must preserve orientation, contrasts and analogies must have a readable
    mapping, and cutaways/resets must earn their place in the argument. For legacy 1.1, check its hero
    and state-ID promises as declared. Do not penalize a purposeful cut merely because an object or
-   layout changes; do flag unexplained loss of evidence or repeated re-entry.
+   layout changes; do flag unexplained loss of evidence or repeated re-entry. Judge the rendered
+   handoff, not the declared label: a beat marked `transform` whose old picture simply vanishes is a
+   cut. When the choreography's `repeatedBeatText` is not empty, the plan never said what each handoff
+   carries, so check every one of those handoffs on screen.
 7. Run a composition-usage pass. The primary explanatory subject should receive the frame it needs.
+   Check hierarchy in both directions at each cue: flag frames where numbers, formula and picture
+   compete as equals, and flag frames simplified until the model is small, the context it relied on
+   is gone or a conclusion is spoken after its evidence has left. Fixing one by causing the other is a
+   regression, not a revision.
    Flag persistent empty regions, repeated dashboard chrome, narration
    paragraphs that duplicate the voice, and layouts where the real operation occupies a small card.
    Short labels and selective captions are acceptable when they point into the model.

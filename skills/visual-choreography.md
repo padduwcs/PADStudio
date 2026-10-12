@@ -56,9 +56,22 @@ moment, not around what the contract can describe; a plan can satisfy every fiel
   before the viewer has seen what went into it.
 - **Keep what is understood recognisable.** When something comes back it keeps the colour, shape and place it had, so
   the viewer recognises it instead of reading it again. When its meaning changes, the change is visible.
-- **Give the eye one subject.** Two things moving, or two dense regions, at once make the viewer pick one and miss the
-  other. Overlapping layers are the usual cause of a frame that feels tangled. Keep separate lines of reasoning (two ways
-  of computing, and the state each one keeps) in separate regions rather than stacked on each other.
+- **Give the eye one subject.** The subject is the relationship or operation the sentence is explaining (this number
+  divided by that candidate, this side compared with that ruler), not a single object. Two things moving, or two dense
+  regions, at once make the viewer pick one and miss the other; numbers, formula and picture shown as equals leave them
+  not knowing where to look. Overlapping layers are the usual cause of a frame that feels tangled. Keep separate lines of
+  reasoning (two ways of computing, and the state each one keeps) in separate regions rather than stacked on each other.
+- **Do not empty the stage to get there.** One subject does not mean one thing on screen. The elements the subject needs
+  stay: labels and values attached to the model, the context it came from, the evidence the conclusion rests on. They
+  recede (smaller, quieter, still) instead of disappearing. Give the model the space it needs to be read; keep the
+  evidence on screen until the sentence that concludes from it has finished. A sparse frame with a small model and a
+  conclusion whose proof has gone is the opposite failure, and fixing one by causing the other is common.
+- **Ask four questions at each cue.** What is the subject? What supports it, and is it visibly secondary? What is on
+  screen that serves neither? What did the viewer just see that the words still rely on, and is it still there? The first
+  two catch a frame where everything competes; the last two catch a frame that was simplified until it lost its argument.
+- **Let each scene grow out of the last.** When the old picture vanishes and a new one appears, the viewer starts over.
+  Prefer turning the object on screen into the next step, or bringing back a familiar row, ruler or example, unless the
+  idea genuinely changes. A cut is a choice to make, not the default between sentences.
 - **Sit in the first viewer's seat before you present.** At each cue: what is on screen, what have I just heard, what do
   I expect next, where do I look? If you can only answer by already knowing the explanation, the viewer cannot either.
 
@@ -72,6 +85,13 @@ moment, not around what the contract can describe; a plan can satisfy every fiel
    role and purpose. If text has no indispensable pointing, naming, numeric, symbolic or subject role,
    remove it before source authoring. Do not invent chapters, hero quotas, state-ID chains, reset
    budgets or screen-area percentages.
+   Write each beat's `visualQuestion`, `audienceInsight`, `continuityCue`, `compositionIntent` and
+   `visualProof` for that beat. `continuityCue` names what is carried, transformed or brought back
+   from the previous beat ("the three groups of five stay while the remainder is named"), not a rule
+   such as "reuse labels and positions". A sentence that is true of every beat is a rule for the whole
+   film: put it in `direction` or `presentation.stageIntent`. `project:choreography` prints a note and
+   the context lists `repeatedBeatText` when a field is the same sentence in several beats; in a real
+   project that was the plan behind scenes the user found disconnected.
    If timed voice is available, map each meaningful spoken cue to a visual action or a deliberate
    hold using the optional `narrationCueMap`. Split long sections into the source's thought units.
    Compare source timestamps with the plan before authoring; the map cannot prove the rendered

@@ -52,3 +52,18 @@ test("the narration skill asks for one request and for a script that cannot be m
   // A claim about the provider that could not be confirmed in its documentation must not come back.
   assert.doesNotMatch(skill, /80-90/);
 });
+
+test("the picture skills guard both sides of one subject and ask motion to settle before it informs", async () => {
+  const [choreography, authoring, review] = await Promise.all([
+    "visual-choreography", "code-animation", "code-animation-review"
+  ].map((id) => readFile(`skills/${id}.md`, "utf8")));
+  // One subject alone pushed a real project from competing elements to empty scenes; the counterweight must stay.
+  assert.match(choreography, /The subject is the relationship or operation/);
+  assert.match(choreography, /Do not empty the stage to get there/);
+  assert.match(choreography, /keep the\s+evidence on screen until the sentence that concludes from it has finished/);
+  assert.match(choreography, /`continuityCue` names what is carried, transformed or brought back/);
+  assert.match(choreography, /repeatedBeatText/);
+  assert.match(authoring, /an object arrives and settles, then the next label,\s+value or state appears/);
+  assert.match(review, /Check hierarchy in both directions at each cue/);
+  assert.match(review, /open frames in the middle of the motion/);
+});

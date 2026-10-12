@@ -237,7 +237,9 @@ Contract đầy đủ:
 2. `animation.validate / code-animation-validator` kiểm tra đúng package mà không chạy code;
 3. `npm run project:animation -- <project-id> <json-file|->` lưu `animation.composition`
    (với kế hoạch hình ảnh theo lời đọc, ghi trước `animation.choreography` bằng
-   `npm run project:choreography -- <project-id> <json-file|->`; composition 1.1 bind đúng revision đó);
+   `npm run project:choreography -- <project-id> <json-file|->`; composition 1.1 bind đúng revision đó. Lệnh in
+   ghi chú lên stderr, không chặn, khi một trường theo beat như `continuityCue` là cùng một câu ở nhiều beat;
+   context ghi cùng thông tin ở `repeatedBeatText`);
 4. Agent chạy matching `animation.preflight` (`manim-ce-preflight`, `remotion-local-preflight` hoặc
    `hyperframes-local-preflight`), preview có chọn lọc, sửa/validate/preflight lại nếu cần.
    `animation.preview` có `remotion-preview` (frame và/hoặc clip tối đa 30 giây), `hyperframes-preview`

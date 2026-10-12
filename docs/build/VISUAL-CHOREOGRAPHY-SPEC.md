@@ -102,6 +102,18 @@ layout targets. Continuity may live in evidence, color roles, values, spatial or
 mapping or the logic of the argument. A purposeful cut or analogy is valid when it advances the
 viewer; keeping one layout is not evidence of coherence.
 
+The per-beat prose fields (`visualQuestion`, `audienceInsight`, `continuityCue`,
+`compositionIntent` and, in 1.3, `visualProof`) only require non-empty text. For 1.2 and 1.3,
+`repeatedBeatText` in the animation context lists every field whose text is identical in two or more
+beats after trimming, collapsing whitespace and ignoring case, and `project:choreography` prints one
+note per repeat on stderr after recording the artifact. It is advisory: the artifact is recorded,
+earlier revisions stay readable, nothing is blocked, and a near-identical template with one word
+changed is not detected. It exists because on 2026-10-12, in nine of the nineteen local projects with
+a 1.2/1.3 plan, the latest revision of a plan repeated one sentence for at least one field in all or
+all but one of its beats, and in the project where
+that was traced the pasted `continuityCue` coincided with renders the user called disconnected
+illustrations. It is `null` for 1.0/1.1.
+
 ## Contract 1.3 — visual-first communication
 
 Version 1.3 keeps the directorial freedom of 1.2 and makes dependence on on-screen prose

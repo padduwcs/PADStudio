@@ -1,4 +1,4 @@
-import { ANIMATION_CHOREOGRAPHY_TYPE } from "../animation/visual-choreography.js";
+import { ANIMATION_CHOREOGRAPHY_TYPE, choreographyRepeatedBeatText } from "../animation/visual-choreography.js";
 import { ProjectStore } from "../project/project-store.js";
 import { readJsonInput } from "./json-input.js";
 import { resolveProjectRoot } from "../config/project-root.js";
@@ -13,6 +13,10 @@ async function main(args) {
   }
   const artifact = await new ProjectStore(root).recordArtifact(args[0], { ...value, type: ANIMATION_CHOREOGRAPHY_TYPE });
   process.stdout.write(JSON.stringify(artifact, null, 2) + "\n");
+  for (const repeat of choreographyRepeatedBeatText(artifact.data) ?? []) {
+    process.stderr.write(`Note: ${repeat.field} is the same sentence in ${repeat.beatIds.length} beats (${repeat.beatIds.join(", ")}). `
+      + "Say what each beat carries, changes or frames; a rule for every beat belongs in direction or presentation.\n");
+  }
 }
 
 main(process.argv.slice(2)).catch((error) => { process.stderr.write(error.message + "\n"); process.exitCode = 1; });
