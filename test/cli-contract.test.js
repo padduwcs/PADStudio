@@ -85,6 +85,50 @@ test("project:accept records the agent-host channel, resolves same-sequence feed
   assert.equal(decisions.at(-1).resultId, result.id);
 });
 
+test("project:accept resolves feedback given on a pilot sequence only when it is named", async (t) => {
+  const { root, store, artifact, result } = await fixture(t);
+  const pilot = await store.recordArtifact("demo", {
+    key: "pilot", type: "video.sequence", name: "Pilot", summary: "Three-scene trial", status: "draft", createdBy: "agent",
+    data: {
+      version: "1.0", changeReason: "test", format: { width: 320, height: 180, fps: 25 },
+      segments: [{ id: "trial", title: "Trial", intent: "Test", durationSeconds: 1, visual: null, narration: null, captions: [], references: [] }]
+    }
+  });
+  const run = await store.startRun("demo", { capability: "video.render-sequence", purpose: "pilot", tool: { name: "fixture", version: "1", provider: "test" } });
+  const workspace = await store.createRunOutputWorkspace("demo", run.id);
+  await writeFile(join(workspace.temporaryDirectory, "pilot.mp4"), "pilot-render");
+  await store.commitRunOutputWorkspace(workspace);
+  const pilotRender = await store.addResult("demo", {
+    runId: run.id, capability: "video.render-sequence", tool: run.tool, type: "video.sequence-render", name: "Pilot preview",
+    inputArtifacts: [pilot.id],
+    files: [{ id: "primary", role: "primary", path: `${workspace.projectRelativeDirectory}/pilot.mp4`, name: "pilot.mp4", mediaType: "video", sizeBytes: 12 }],
+    data: { sequence: { artifactId: pilot.id, revision: pilot.revision, key: "pilot" }, durationSeconds: 1 },
+    verification: { status: "passed", checks: ["fixture"] }
+  });
+  // "Better; apply this to the whole film and polish it" is given on the pilot and carried out in the main film.
+  const pilotFeedback = await store.recordDecision("demo", {
+    resultId: pilotRender.id, outcome: "changes_requested", note: "Apply the pilot direction to the whole film.",
+    feedbackTarget: { artifactId: pilot.id, revision: pilot.revision }
+  });
+
+  const first = JSON.parse((await runCli(root, "confirm-video-acceptance.js", ["demo", result.id, "--from-agent-host"])).stdout);
+  assert.deepEqual(first.decision.resolvesDecisionIds, [], "another sequence's feedback is never resolved by default");
+
+  const unknown = await runCli(root, "confirm-video-acceptance.js", ["demo", result.id, "--from-agent-host", "--resolves", "decision-missing"]);
+  assert.equal(unknown.code, 1);
+  assert.match(unknown.stderr, /pending changes_requested feedback/);
+
+  const named = await runCli(root, "confirm-video-acceptance.js", ["demo", result.id, "--from-agent-host", "--resolves", pilotFeedback.id]);
+  assert.equal(named.code, 0, named.stderr);
+  const decision = JSON.parse(named.stdout).decision;
+  assert.deepEqual(decision.resolvesDecisionIds, [pilotFeedback.id]);
+  assert.match(decision.note, new RegExp(`another sequence and carried out in this video: ${pilotFeedback.id}`));
+  assert.equal(decision.feedbackTarget.artifactId, artifact.id);
+
+  const again = await runCli(root, "confirm-video-acceptance.js", ["demo", result.id, "--from-agent-host", "--resolves", pilotFeedback.id]);
+  assert.equal(again.code, 1, "resolved feedback cannot be resolved twice");
+});
+
 test("project:decide refuses privileged and retired decisions; project:attest takes no claims", async (t) => {
   const { root, store, artifact, result } = await fixture(t);
   const decide = (value) => runCli(root, "record-project-decision.js", ["demo", "-"], { input: JSON.stringify(value) });

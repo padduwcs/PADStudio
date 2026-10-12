@@ -4,6 +4,9 @@ Theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/). Các bản phát 
 
 ## [Chưa phát hành]
 
+- Sửa: project đã giao vẫn hiện "Chờ chỉnh theo phản hồi" khi còn sót feedback cũ hơn bản giao (ví dụ feedback của bản pilot). Web nay
+  hiện "Đã giao" trong trường hợp đó; feedback mới hơn bản giao vẫn được hiện. `project:accept --resolves` đóng được feedback của một
+  sequence khác (như pilot) khi được nêu ID; mặc định vẫn chỉ đóng feedback cùng sequence.
 - **Hình có một trọng tâm mà không trống.** Skill hình họa nói rõ trọng tâm là một quan hệ hoặc thao tác, phần hỗ trợ ở lại và lùi về,
   bằng chứng ở lại đến hết câu kết luận; review soi cả cảnh tranh nhau lẫn cảnh bị làm trống. Chuyển động: vật tới và đứng yên rồi thông tin
   mới hiện, nhãn đi theo vật; review mở khung ở giữa chuyển động.

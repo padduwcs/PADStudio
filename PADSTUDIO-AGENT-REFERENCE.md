@@ -711,7 +711,11 @@ npm run project:accept -- <project-id> <render-result-id> --from-agent-host
 ```
 
 Lệnh bind approval vào exact Result và SHA-256, tự resolve feedback cùng sequence rồi cho phép
-`video.export-delivery` copy nguyên byte:
+`video.export-delivery` copy nguyên byte. Feedback ghi trên một sequence khác (thường là pilot mà hướng của nó đã
+được áp vào phim chính) không bao giờ tự resolve; khi phim được chốt đã thực sự xử lý nó, nêu ID bằng `--resolves`.
+Note của acceptance ghi rõ các ID đến từ sequence khác. Nếu phim đã được chốt và giao trước khi feedback đó được đóng,
+người dùng xác nhận trong chat rằng bản đã chốt xử lý feedback đó, rồi Agent chạy lại `project:accept` cho đúng
+Result đã chốt với `--resolves`; delivery cũ giữ nguyên.
 
 ```json
 {

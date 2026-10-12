@@ -14,16 +14,24 @@ export function pendingFeedbackForResult(context, result) {
 }
 
 /**
- * The feedback an acceptance resolves: every pending item of the same sequence. A caller may name the
- * ones it expects; naming a decision from another sequence is an error.
+ * The feedback an acceptance resolves: every pending item of the same sequence, plus pending items of
+ * another sequence that the caller names. Feedback given on a pilot or an earlier cut is often carried
+ * out in the film that is finally accepted; only an explicit name resolves it, never a default.
  */
 export function acceptanceResolutionIds(context, result, requestedIds = []) {
-  const applicable = pendingFeedbackForResult(context, result).map((decision) => decision.id);
-  const unsupported = requestedIds.filter((id) => !applicable.includes(id));
+  const sameSequence = pendingFeedbackForResult(context, result).map((decision) => decision.id);
+  const pending = new Set(pendingResultFeedback(context.decisions).map((decision) => decision.id));
+  const unsupported = requestedIds.filter((id) => !pending.has(id));
   if (unsupported.length) {
     throw new Error(
-      "Acceptance can only resolve pending feedback for the same sequence: " + unsupported.join(", ")
+      "Acceptance can only resolve pending changes_requested feedback of this project: " + unsupported.join(", ")
     );
   }
-  return applicable;
+  return [...sameSequence, ...requestedIds.filter((id) => !sameSequence.includes(id))];
+}
+
+/** The resolved feedback that belongs to another sequence than `result`, so callers can say so. */
+export function carriedFeedbackIds(context, result, resolutionIds) {
+  const sameSequence = new Set(pendingFeedbackForResult(context, result).map((decision) => decision.id));
+  return resolutionIds.filter((id) => !sameSequence.has(id));
 }

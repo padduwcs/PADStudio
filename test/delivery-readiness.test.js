@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { parseDeliveryProbe } from "../src/production/delivery-readiness.js";
-import { acceptanceResolutionIds, pendingFeedbackForResult } from "../src/production/acceptance-readiness.js";
+import { acceptanceResolutionIds, carriedFeedbackIds, pendingFeedbackForResult } from "../src/production/acceptance-readiness.js";
 
 test("delivery probe parsing exposes the video and audio streams, duration and frame rate", () => {
   const media = parseDeliveryProbe({
@@ -24,7 +24,7 @@ test("delivery probe parsing exposes the video and audio streams, duration and f
   assert.throws(() => parseDeliveryProbe(null), /invalid media description/);
 });
 
-test("acceptance resolves pending feedback for the same sequence and rejects feedback from another one", () => {
+test("acceptance resolves same-sequence feedback by default and another sequence's only when named", () => {
   const result = { id: "result-new", data: { durationSeconds: 12, sequence: { key: "film" } } };
   const pending = { id: "decision-pending", resultId: "result-old", outcome: "changes_requested" };
   const unrelated = { id: "decision-other", resultId: "result-other", outcome: "changes_requested" };
@@ -35,6 +35,15 @@ test("acceptance resolves pending feedback for the same sequence and rejects fee
   assert.deepEqual(pendingFeedbackForResult(context, result), [pending]);
   assert.deepEqual(acceptanceResolutionIds(context, result), [pending.id]);
   assert.deepEqual(acceptanceResolutionIds(context, result, [pending.id]), [pending.id]);
-  assert.throws(() => acceptanceResolutionIds(context, result, [unrelated.id]), /same sequence/);
+  // Feedback on a pilot is often carried out in the film that is finally accepted. It is never resolved by default,
+  // only when named, and the acceptance can say which items came from elsewhere.
+  const both = acceptanceResolutionIds(context, result, [unrelated.id]);
+  assert.deepEqual(both, [pending.id, unrelated.id]);
+  assert.deepEqual(carriedFeedbackIds(context, result, both), [unrelated.id]);
+  assert.deepEqual(carriedFeedbackIds(context, result, [pending.id]), []);
+  assert.throws(() => acceptanceResolutionIds(context, result, ["decision-missing"]), /pending changes_requested feedback/);
+  const resolved = { ...context, decisions: [...context.decisions, { id: "decision-ok", outcome: "accepted", resolvesDecisionIds: [unrelated.id] }] };
+  assert.throws(() => acceptanceResolutionIds(resolved, result, [unrelated.id]), /pending changes_requested feedback/,
+    "feedback that is already resolved cannot be resolved again");
   assert.deepEqual(pendingFeedbackForResult(context, { id: "x", data: {} }), [], "a Result outside any sequence has no pending feedback");
 });

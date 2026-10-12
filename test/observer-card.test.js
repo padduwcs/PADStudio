@@ -79,6 +79,19 @@ test("a finished project is draft, accepted or delivered, in that order of progr
   assert.deepEqual(projectStatus(accepted), { kind: "accepted", label: "Đã duyệt" });
   const delivered = context({ ...withVideo, decisions: accepted.decisions, results: [{ id: "bundle", type: "delivery.bundle", files: [] }] });
   assert.deepEqual(projectStatus(delivered), { kind: "delivered", label: "Đã giao" });
+
+  // Feedback left open from before the Delivery (a pilot's, carried out in the accepted film) does not hide it; feedback
+  // given afterwards, or with no readable time, does.
+  const bundle = { id: "bundle", type: "delivery.bundle", files: [], createdAt: "2026-10-12T02:03:00.000Z" };
+  const withFeedback = (feedback) => context({ ...withVideo, decisions: accepted.decisions, results: [bundle], pendingFeedback: [feedback] });
+  assert.deepEqual(projectStatus(withFeedback({ id: "decision-pilot", createdAt: "2026-10-12T00:33:53.425Z" })),
+    { kind: "delivered", label: "Đã giao" });
+  assert.deepEqual(projectStatus(withFeedback({ id: "decision-after", createdAt: "2026-10-13T08:00:00.000Z" })),
+    { kind: "feedback", label: "Chờ chỉnh theo phản hồi" });
+  assert.equal(projectStatus(withFeedback({ id: "decision-undated" })).kind, "feedback");
+  assert.equal(buildProjectCard(withFeedback({ id: "decision-pilot", createdAt: "2026-10-12T00:33:53.425Z" })).pendingFeedback, 1,
+    "the card still counts the open item");
+
   const projectDecision = context({ decisions: [{ id: "d", kind: "project_decision", outcome: "accepted" }] });
   assert.equal(projectStatus(projectDecision).kind, "empty", "a project-level choice is not an accepted video");
 });

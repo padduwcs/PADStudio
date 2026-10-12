@@ -4,7 +4,7 @@ import {
   AGENT_HOST_CONFIRMATION_CHANNEL,
   createHumanConfirmation
 } from "../project/human-confirmation.js";
-import { acceptanceResolutionIds } from "../production/acceptance-readiness.js";
+import { acceptanceResolutionIds, carriedFeedbackIds } from "../production/acceptance-readiness.js";
 import { confirmExactPhrase, requireInteractiveTerminal } from "./interactive-confirmation.js";
 import { resolveProjectRoot } from "../config/project-root.js";
 
@@ -40,6 +40,7 @@ async function main(args) {
     candidate.data?.sourceResultId === result.id && candidate.inputResults.includes(result.id)).at(-1);
   const file = await store.verifyResultFile(projectId, result.id, "primary");
   const resolvesDecisionIds = acceptanceResolutionIds(context, result, requestedResolutionIds);
+  const carriedIds = carriedFeedbackIds(context, result, resolvesDecisionIds);
   const hasAudio = result.data?.hasAudio !== false;
   let review = null;
   if (!fromAgentHost) {
@@ -55,6 +56,7 @@ async function main(args) {
       `Automated QA: ${quality?.data?.gate?.status ?? "not run (not required for source-preserving delivery)"}`,
       "Delivery mode: preserve this exact file without re-rendering or profile conversion",
       `Feedback decisions resolved: ${resolvesDecisionIds.length ? resolvesDecisionIds.join(", ") : "none"}`,
+      ...(carriedIds.length ? [`Of these, given on another sequence and carried out in this video: ${carriedIds.join(", ")}`] : []),
       hasAudio
         ? "By continuing, you attest that you personally watched AND listened to the entire exact video and accept it for delivery."
         : "By continuing, you attest that you personally watched the entire exact video and accept it for delivery.",
@@ -77,9 +79,10 @@ async function main(args) {
     : undefined);
   const decision = await store.recordDecision(projectId, {
     resultId: result.id, outcome: "accepted",
-    note: fromAgentHost
+    note: (fromAgentHost
       ? "Accepted by the user in the external Agent host and recorded against this exact Result."
-      : "Accepted through the PADStudio interactive exact-output confirmation.",
+      : "Accepted through the PADStudio interactive exact-output confirmation.")
+      + (carriedIds.length ? ` Also resolves feedback given on another sequence and carried out in this video: ${carriedIds.join(", ")}.` : ""),
     feedbackTarget: { artifactId: result.data.sequence.artifactId, revision: result.data.sequence.revision },
     resolvesDecisionIds
   }, { humanConfirmation: acceptanceConfirmation });

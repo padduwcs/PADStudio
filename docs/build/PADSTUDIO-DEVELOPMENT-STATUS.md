@@ -1,6 +1,6 @@
 # PADStudio — trạng thái phát triển
 
-Cập nhật: **2026-10-12** (bài học từ project số nguyên tố; xem mục “Trọng tâm hai chiều và mạch kể theo beat”). Lần đối chiếu tài liệu
+Cập nhật: **2026-10-12** (bài học từ project số nguyên tố và kiểm tra tổng thể; xem mục “Feedback của pilot và kiểm tra tổng thể”). Lần đối chiếu tài liệu
 với code gần nhất là 2026-10-09.
 
 Đây là điểm vào ngắn để biết codebase đang ở đâu. PADStudio vẫn đang được xây dựng và chỉnh
@@ -26,9 +26,10 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 ## Baseline kiểm chứng
 
-Lần chạy full gần nhất, ngày **2026-10-12** (sau đợt trọng tâm hai chiều bên dưới, Node v24.18.1, Windows): `npm test`
-**446 tests: 445 pass, 0 fail, 1 skipped** (test symlink); `npm run check` sạch (276 scripts, 81 documents). Không chạy lại browser
-acceptance vì đợt này không đổi giao diện.
+Lần chạy full gần nhất, ngày **2026-10-12** (sau đợt feedback của pilot bên dưới, Node v24.18.1, Windows): `npm test`
+**447 tests: 446 pass, 0 fail, 1 skipped** (test symlink); `npm run check` sạch. Browser: `observer:ui:empty-test`,
+`observer:ui:live-test`, `observer:ui:tools-test` passed; `observer:ui:test` passed trên project thật `dijkstra-20261001-vertical` và
+`so-nguyen-to-20261010-visual` (không request ghi). Trước đó cùng ngày, sau đợt trọng tâm hai chiều: 446 tests, 445 pass.
 
 Lần chạy full ngày **2026-10-10** (sau đợt rút bài học bên dưới, Node v24.18.1, Windows): `npm test`
 **443 tests: 442 pass, 0 fail, 1 skipped** (test symlink, vì Windows không cấp quyền tạo symlink); `npm run check` sạch. Trước đợt này,
@@ -187,6 +188,29 @@ Các số trên là ảnh chụp tại ngày ghi nhận, không phải giá tr�
 lệnh đang chạy, ưu tiên kết quả từ code và test hiện tại rồi cập nhật lại trang này. Acceptance
 report trong `reports/` và `eval/**/reports/` là bằng chứng của lần chạy đã ghi ngày, không phải
 dashboard trạng thái.
+
+## Feedback của pilot và kiểm tra tổng thể — 2026-10-12
+
+Project Số nguyên tố đã chốt và giao nhưng web hiện "Chờ chỉnh theo phản hồi": feedback của sequence pilot không đóng được khi chốt phim
+chính, và luật "còn feedback" che "Đã giao". Quyết định: mục cuối của [`PADSTUDIO-CURRENT-DIRECTION.md`](PADSTUDIO-CURRENT-DIRECTION.md).
+Nguyên nhân có từ trước (luật trạng thái từ `42de3d7`, luật cùng sequence từ đợt delivery), không do đợt trọng tâm hai chiều.
+
+**Code (2 test mới, 2 test mở rộng):**
+
+- [`src/production/acceptance-readiness.js`](../../src/production/acceptance-readiness.js): `--resolves` nhận feedback mở của sequence
+  khác khi được nêu ID; mặc định không đổi; ID không phải feedback mở (hoặc đã resolve) bị từ chối. `carriedFeedbackIds` cho biết ID
+  nào đến từ sequence khác. [`confirm-video-acceptance.js`](../../src/cli/confirm-video-acceptance.js) ghi chúng vào note và lời nhắc.
+- [`src/web/observer-card.js`](../../src/web/observer-card.js): feedback cũ hơn Delivery mới nhất không che "Đã giao".
+- Đã kiểm: chạy lại `project:accept` cho Result đã giao không đổi kết quả của exporter (decision mới nhất của Result vẫn là `accepted`)
+  hay `project:finish` (đọc `approvalDecisionId` của Delivery).
+
+**Kiểm tra tổng thể trên dữ liệu thật (chỉ đọc), 28 project local:** context đầy đủ và mọi observer section (`card`, `summary`, `source`,
+`creative`, `production`, `animation`, `health`, `delivery`, `activity`) đọc được; 19 Delivery của 19 project đã giao khớp SHA-256, có
+Result nguồn và acceptance hợp lệ; trạng thái thẻ khớp dữ liệu (19 "Đã giao", 9 "Bản nháp"). `padstudio:doctor` chỉ báo project Số
+nguyên tố (feedback pilot còn mở cho đến khi được đóng). `priority-queue-rebuild-20260918` không có `checkpoint.json` vì tạo trước khi
+có checkpoint; không phải lỗi mới. Lần chạy `observer:ui:test` đầu tiên trên project Số nguyên tố timeout ở "first render" ngay sau khi
+observer khởi động lại; ba lần sau đều pass và server mới trả `/api/projects` trong khoảng 0,14 giây, nên ghi nhận là khởi động nguội của
+trình duyệt, chưa tái hiện lại được.
 
 ## Trọng tâm hai chiều và mạch kể theo beat — 2026-10-12
 

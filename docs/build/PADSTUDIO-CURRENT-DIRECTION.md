@@ -675,3 +675,21 @@ Project thử nghiệm Số nguyên tố (video dọc, khoảng 250 giây) chưa
 
 Không đổi: không thêm điểm số chú ý, phần trăm diện tích hay ngưỡng "đủ lớn" (đúng tinh thần contract 1.2); contract choreography và
 composition không đổi phiên bản; project cũ đọc như trước.
+
+## Feedback của pilot được đóng khi phim chốt đã xử lý nó; trạng thái "Đã giao" không bị feedback cũ che — 2026-10-12
+
+Project Số nguyên tố đã được chốt và giao (Delivery khớp SHA-256), nhưng web vẫn hiện "Chờ chỉnh theo phản hồi". Feedback còn mở là
+câu "ok hơn rồi, hoàn thiện đi" ghi trên bản dựng của **sequence pilot**, còn người dùng chốt **sequence phim chính**. Acceptance chỉ tự
+resolve feedback cùng sequence và từ chối cả `--resolves` cho sequence khác; cách đóng duy nhất còn lại là "chốt" bản pilot cũ, tức ghi
+sai sự thật. Trên web, luật "còn feedback" đứng trước luật "đã giao" nên một feedback sót lại che cả Delivery.
+
+Quyết định:
+
+- `project:accept --resolves` nhận feedback `changes_requested` còn mở của bất kỳ sequence nào trong project khi được nêu ID; feedback
+  của sequence khác vẫn **không bao giờ tự resolve**. Note của acceptance và lời nhắc xác nhận tương tác ghi rõ ID nào đến từ sequence
+  khác. Nếu phim đã được chốt và giao trước khi đóng feedback, Agent chạy lại `project:accept` cho đúng Result đã chốt; delivery,
+  `project:finish` và exporter vẫn đọc đúng như trước (đã kiểm: exporter lấy decision mới nhất của Result, finish lấy
+  `approvalDecisionId` của Delivery).
+- Thẻ project trên web: feedback tạo **trước** Delivery mới nhất không che "Đã giao"; feedback tạo sau Delivery, hoặc không đọc được
+  thời điểm, vẫn hiện "Chờ chỉnh theo phản hồi". Health cho Agent không đổi: feedback mở vẫn là `pending_feedback` để Agent đóng nó
+  đúng cách.

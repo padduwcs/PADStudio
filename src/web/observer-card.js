@@ -110,11 +110,16 @@ export function projectStatus(context) {
     return { kind: "waiting", label: "Chờ tiếp tục" };
   }
   if (items.some((item) => item.status === "awaiting_review")) return { kind: "waiting", label: "Chờ kiểm tra" };
-  if (context.pendingFeedback?.length) return { kind: "feedback", label: "Chờ chỉnh theo phản hồi" };
+
+  // A Delivery exists only after the user accepted an exact video, so feedback left open from before it (for example
+  // on a pilot whose direction went into the accepted film) does not undo it. Feedback given after it does.
+  const deliveries = context.results.filter((result) => result.type === "delivery.bundle");
+  const deliveredAt = Math.max(-Infinity, ...deliveries.map((result) => Date.parse(result.createdAt)).filter(Number.isFinite));
+  const openFeedback = (context.pendingFeedback ?? []).filter((decision) => !(Date.parse(decision.createdAt) < deliveredAt));
+  if (openFeedback.length) return { kind: "feedback", label: "Chờ chỉnh theo phản hồi" };
 
   const accepted = context.decisions.filter((decision) => decision.kind !== "project_decision" && decision.outcome === "accepted");
-  const delivered = context.results.some((result) => result.type === "delivery.bundle");
-  if (delivered) return { kind: "delivered", label: "Đã giao" };
+  if (deliveries.length) return { kind: "delivered", label: "Đã giao" };
   if (accepted.length) return { kind: "accepted", label: "Đã duyệt" };
   if (pickVideo(context)) return { kind: "draft", label: "Bản nháp" };
   return { kind: "empty", label: "Chưa có video" };
