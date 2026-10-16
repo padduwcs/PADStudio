@@ -5,7 +5,7 @@
 
 <p align="center"><a href="README.md">Tiếng Việt</a> · <a href="CONTRIBUTING.md#english-summary">Contributing</a> · <a href="CHANGELOG.md">Changelog</a></p>
 
-<p align="center"><img src="docs/images/library.png" alt="The PADStudio project library: every card is a video made with PADStudio" width="860" /></p>
+<p align="center"><img src="docs/images/library-dark.png" alt="The PADStudio project library: every card is a video made with PADStudio" width="860" /></p>
 
 > **Language note.** PADStudio's interface and in-depth guides are in Vietnamese, and its narration, transcription and quality checks are
 > tuned for Vietnamese. This page is a short English guide to what it is and how to get it running.
@@ -49,7 +49,7 @@ PADStudio. Then ask for what you want:
 **Sao chép mốc phản hồi** (*copy feedback anchor*) and paste it into the chat with what you want changed. When you are happy, say
 "accept" (in Vietnamese: "chốt") and download the accepted video.
 
-<p align="center"><img src="docs/images/video.png" alt="Observer page: play the video, download the accepted version and jump to each segment" width="760" /></p>
+<p align="center"><img src="docs/images/video-dark.png" alt="Observer page: play the video, download the accepted version and jump to each segment" width="760" /></p>
 
 ## What it can make
 
@@ -80,7 +80,7 @@ are checksum-verified):
 PADStudio never installs anything by itself. The **Tools** page (*Công cụ*, top of the observer page) shows what is ready and how to
 enable what is missing.
 
-<p align="center"><img src="docs/images/tools.png" alt="Tools page: the status of each tool on this machine" width="760" /></p>
+<p align="center"><img src="docs/images/tools-dark.png" alt="Tools page: the status of each tool on this machine" width="760" /></p>
 
 ## How it works
 

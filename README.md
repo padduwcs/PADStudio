@@ -13,7 +13,7 @@
 
 <p align="center"><a href="README.en.md">English</a> · <a href="docs/HUONG-DAN.md">Hướng dẫn sử dụng</a> · <a href="docs/CAI-DAT-RUNTIME.md">Cài đặt runtime</a> · <a href="CHANGELOG.md">Lịch sử thay đổi</a></p>
 
-<p align="center"><img src="docs/images/library.png" alt="Thư viện dự án của PADStudio, mỗi thẻ là một video đã làm bằng PADStudio" width="860" /></p>
+<p align="center"><img src="docs/images/library-dark.png" alt="Thư viện dự án của PADStudio, mỗi thẻ là một video đã làm bằng PADStudio" width="860" /></p>
 
 ## Giới thiệu
 
@@ -52,7 +52,7 @@ nói điều bạn muốn:
 **4. Xem, góp ý, chốt.** Bản dựng hiện trên trang xem. Muốn sửa một chỗ, dừng video tại đó, bấm **Sao chép mốc phản hồi**, dán vào
 chat kèm điều bạn muốn đổi. Khi hài lòng, nói "chốt" rồi tải bản đã duyệt.
 
-<p align="center"><img src="docs/images/video.png" alt="Trang xem: phát video, tải bản đã duyệt và nhảy tới từng đoạn" width="760" /></p>
+<p align="center"><img src="docs/images/video-dark.png" alt="Trang xem: phát video, tải bản đã duyệt và nhảy tới từng đoạn" width="760" /></p>
 
 Hướng dẫn chi tiết từng bước và cách khắc phục sự cố: [`docs/HUONG-DAN.md`](docs/HUONG-DAN.md).
 
@@ -83,7 +83,7 @@ FFmpeg đủ để dựng, ghép, phụ đề và xuất video. Các công cụ 
 
 PADStudio không tự cài gì. Trang **Công cụ** (nút ở góc trên trang xem) cho biết công cụ nào đã sẵn sàng và cách bật công cụ còn thiếu.
 
-<p align="center"><img src="docs/images/tools.png" alt="Trang Công cụ: trạng thái từng công cụ trên máy" width="760" /></p>
+<p align="center"><img src="docs/images/tools-dark.png" alt="Trang Công cụ: trạng thái từng công cụ trên máy" width="760" /></p>
 
 ## Cách hoạt động
 
