@@ -58,10 +58,11 @@ PADStudio. Then ask for what you want:
 | **Animated explainers** (main strength) | Algorithms, maths, science, technology; 1–3 minutes; vertical 9:16, landscape 16:9 or square; narration and subtitles |
 | Edits of existing footage | Cut, join, summarize, subtitles, music; automatic transcription and scene detection |
 | Video from images and graphics | Gentle zoom and pan, title cards, charts, step diagrams |
-| Short social videos, product demos | Five built-in styles for the Agent to choose from |
+| Short social videos, product demos | For social media or product introductions |
 
-**Animation:** Manim (formulas, geometry), Remotion (kinetic text, UI, charts), HyperFrames (frame-exact HTML/CSS).
-**Narration:** Piper (free, local) or ElevenLabs (paid; voice and model are chosen on the observer page).
+- **Animation:** Manim (formulas, geometry), Remotion (kinetic text, UI, charts), HyperFrames (frame-exact HTML/CSS).
+- **Built-in styles (optional):** educational code, talking head, short form, product demo, minimal editorial.
+- **Narration:** Piper (free, local) or ElevenLabs (paid; voice and model are chosen on the observer page).
 
 ## Optional tools
 

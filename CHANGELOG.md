@@ -1,6 +1,6 @@
 # Lịch sử thay đổi
 
-Theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/). Các bản phát hành nằm ở [Releases](https://github.com/padduwcs/PADStudio/releases). Chi tiết kỹ thuật và số liệu kiểm thử từng mốc: [`docs/build/PADSTUDIO-DEVELOPMENT-STATUS.md`](docs/build/PADSTUDIO-DEVELOPMENT-STATUS.md).
+Theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Các bản phát hành nằm ở [Releases](https://github.com/padduwcs/PADStudio/releases). Chi tiết kỹ thuật và số liệu kiểm thử từng mốc: [`docs/build/PADSTUDIO-DEVELOPMENT-STATUS.md`](docs/build/PADSTUDIO-DEVELOPMENT-STATUS.md).
 
 ## [Chưa phát hành]
 

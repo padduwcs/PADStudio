@@ -63,10 +63,11 @@ Hướng dẫn chi tiết từng bước và cách khắc phục sự cố: [`do
 | **Giải thích bằng hoạt họa** (thế mạnh chính) | Thuật toán, toán, khoa học, công nghệ; 1–3 phút; dọc 9:16, ngang 16:9 hoặc vuông; lời đọc tiếng Việt và phụ đề |
 | Dựng từ video quay sẵn | Cắt, ghép, tóm tắt, phụ đề, nhạc nền; tự phiên âm và tìm điểm cắt cảnh |
 | Video từ ảnh và đồ họa | Zoom, di chuyển nhẹ, thẻ chữ, biểu đồ, sơ đồ các bước |
-| Video ngắn, demo sản phẩm | Năm phong cách có sẵn để Agent chọn |
+| Video ngắn, demo sản phẩm | Cho mạng xã hội hoặc giới thiệu sản phẩm |
 
-**Hoạt họa:** Manim (công thức, hình học), Remotion (chữ động, giao diện, biểu đồ), HyperFrames (HTML/CSS chính xác từng khung hình).
-**Giọng đọc:** Piper (miễn phí, chạy trên máy) hoặc ElevenLabs (trả phí, chọn giọng và model trên trang xem).
+- **Hoạt họa:** Manim (công thức, hình học), Remotion (chữ động, giao diện, biểu đồ), HyperFrames (HTML/CSS chính xác từng khung hình).
+- **Phong cách có sẵn (tùy chọn):** giáo dục bằng code, người nói trước camera, video ngắn, demo sản phẩm, biên tập tối giản.
+- **Giọng đọc:** Piper (miễn phí, chạy trên máy) hoặc ElevenLabs (trả phí, chọn giọng và model trên trang xem).
 
 ## Cài thêm công cụ
 
