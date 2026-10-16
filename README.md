@@ -84,7 +84,7 @@ FFmpeg đủ để dựng, ghép, phụ đề và xuất video. Các công cụ 
 
 PADStudio không tự cài gì. Trang **Công cụ** (nút ở góc trên trang xem) cho biết công cụ nào đã sẵn sàng và cách bật công cụ còn thiếu.
 
-<p align="center"><img src="docs/images/tools-dark.png" alt="Trang Công cụ: trạng thái từng công cụ trên máy" width="760" /></p>
+<p align="center"><img src="docs/images/tools-overview-dark.png" alt="Trang Công cụ: trạng thái từng công cụ trên máy" width="760" /></p>
 
 ## Cách hoạt động
 

@@ -81,7 +81,7 @@ are checksum-verified):
 PADStudio never installs anything by itself. The **Tools** page (*Công cụ*, top of the observer page) shows what is ready and how to
 enable what is missing.
 
-<p align="center"><img src="docs/images/tools-dark.png" alt="Tools page: the status of each tool on this machine" width="760" /></p>
+<p align="center"><img src="docs/images/tools-overview-dark.png" alt="Tools page: the status of each tool on this machine" width="760" /></p>
 
 ## How it works
 
