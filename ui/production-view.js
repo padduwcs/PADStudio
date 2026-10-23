@@ -4,6 +4,7 @@ import { ICONS, clock, formatDateTime, formatSize, node, relativeTime, resultFil
 const choices = new Map();
 const selectedFilm = new Map();
 const chapterListeners = new WeakMap();
+const chatTargets = new WeakMap();
 let lastSignature = null;
 
 const seconds = (value) => `${Math.round(value * 1000) / 1000}s`;
@@ -170,6 +171,8 @@ function stageFor(sequence, render, context, { players, caption = null, working 
     players.delete(url);
     video.controls = true; video.preload = "metadata"; video.playsInline = true;
     video.dataset.ui = "video";
+    chatTargets.set(video, () => ({ resultId: render.resultId,
+      text: feedbackAnchorText({ projectId: context.projectId, sequence, render, currentTime: video.currentTime }) }));
     video.setAttribute("aria-label", `${sequence.name} · Bản ${sequence.revision}`);
     if (video.getAttribute("src") !== url) video.src = url;
     const poster = render.files.find((file) => file.id === render.segments?.[0]?.frameFileId && file.available);
@@ -188,6 +191,12 @@ function stageFor(sequence, render, context, { players, caption = null, working 
   return { holder, video };
 }
 
+export function currentVideoChatTarget(container) {
+  if (container.closest("[hidden]")) return null;
+  const video = container.querySelector("video.stage-video");
+  return video ? chatTargets.get(video)?.() ?? null : null;
+}
+
 function anchorControl(context, sequence, render, video) {
   const box = node("div", undefined, "anchor");
   const copy = button("Sao chép mốc phản hồi", "button button-quiet", ICONS.copy);
@@ -197,6 +206,15 @@ function anchorControl(context, sequence, render, video) {
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
   box.append(copy, status);
+  const chat = button("Góp ý trong chat", "button button-soft");
+  chat.dataset.ui = "chat-anchor";
+  chat.addEventListener("click", () => {
+    document.dispatchEvent(new CustomEvent("padstudio-feedback", { detail: {
+      projectId: context.projectId, resultId: render.resultId,
+      text: feedbackAnchorText({ projectId: context.projectId, sequence, render, currentTime: video.currentTime })
+    } }));
+  });
+  box.prepend(chat);
   copy.addEventListener("click", async () => {
     const at = video.currentTime;
     const value = feedbackAnchorText({ projectId: context.projectId, sequence, render, currentTime: at });
@@ -459,7 +477,7 @@ function filmTheatre(container, context, extras) {
       const feedback = rail("Phản hồi");
       if (main.video && !baselineRender) feedback.append(anchorControl(context, revision, render, main.video));
       if (items.length) feedback.append(feedbackList(items, main.video));
-      else feedback.append(node("p", "Dừng video ở chỗ cần sửa, sao chép mốc rồi dán cho Agent.", "rail-note"));
+      else feedback.append(node("p", "Dừng video ở chỗ cần sửa rồi góp ý trong chat.", "rail-note"));
       side.append(feedback);
     }
 

@@ -44,13 +44,17 @@ npm run padstudio:doctor
 npm run observer:ensure
 ```
 
-**3. Mở Agent trong thư mục này** (với Claude Code: `claude`). Agent tự đọc [`AGENTS.md`](AGENTS.md) để biết cách vận hành. Sau đó
-nói điều bạn muốn:
+**3. Bấm Trò chuyện trên trang PADStudio.** Chat tích hợp dùng Codex CLI trên máy; cài Codex và đăng nhập tài khoản ChatGPT nếu được hỏi.
+Nếu máy đã dùng Codex, PADStudio dùng tài khoản hiện có. Nhập yêu cầu để bắt đầu dự án mới, hoặc chọn một dự án đang làm rồi trao đổi tiếp:
 
 > Làm video dọc 90 giây giải thích vì sao trời có màu xanh, giọng đọc tiếng Việt, cho học sinh cấp 2.
 
-**4. Xem, góp ý, chốt.** Bản dựng hiện trên trang xem. Muốn sửa một chỗ, dừng video tại đó, bấm **Sao chép mốc phản hồi**, dán vào
-chat kèm điều bạn muốn đổi. Khi hài lòng, nói "chốt" rồi tải bản đã duyệt.
+**4. Xem, góp ý, chốt.** Bản dựng hiện cạnh chat. Muốn sửa một chỗ, dừng video tại đó, bấm **Góp ý trong chat** rồi nói điều muốn đổi.
+Tin nhắn kèm đúng bản video và thời điểm đang xem. Khi hài lòng, nói "chốt" rồi tải bản đã duyệt.
+
+Chat hỗ trợ thêm/kéo thả file (100 MB/file), chọn model, gửi bổ sung khi Agent đang làm, dừng lượt và mở lại lịch sử theo từng dự án.
+Đóng khung chat hoặc mất kết nối không tự gửi lại yêu cầu. Lượt chat dùng hạn mức tài khoản Codex đang kết nối. Host ngoài như Claude Code
+vẫn dùng được: mở trong thư mục này để Agent đọc [`AGENTS.md`](AGENTS.md); khi đó dùng **Sao chép mốc phản hồi** để dán mốc vào host ngoài.
 
 <p align="center"><img src="docs/images/video-dark.png" alt="Trang xem: phát video, tải bản đã duyệt và nhảy tới từng đoạn" width="760" /></p>
 
@@ -90,7 +94,7 @@ PADStudio không tự cài gì. Trang **Công cụ** (nút ở góc trên trang 
 
 ```mermaid
 flowchart LR
-    U([Bạn]) <-->|trò chuyện, góp ý, chốt| A[Agent<br/>Claude Code hoặc tương đương]
+    U([Bạn]) <-->|Chat trong PADStudio hoặc host ngoài| A[Agent<br/>Codex hoặc agent bên ngoài]
     A -->|lệnh dòng lệnh PADStudio| P[PADStudio<br/>kho dự án + bộ thực thi]
     P --> T[FFmpeg · Manim · Remotion<br/>HyperFrames · giọng đọc]
     P --- S[(.padstudio/projects<br/>đầu vào, kết quả, quyết định)]
@@ -99,8 +103,8 @@ flowchart LR
 ```
 
 - **Agent** là kênh ra lệnh duy nhất: hiểu yêu cầu, chọn việc và công cụ.
-- **PADStudio** lưu dự án, chạy công cụ và giữ dấu vết. Nó không có chat riêng và không tự quyết định nội dung.
-- **Trang xem** để xem video, tải bản đã chốt và chỉnh cài đặt máy (khóa API, giọng). Nó không bao giờ ghi vào dự án.
+- **PADStudio** lưu dự án, chạy công cụ và giữ dấu vết. Chat là giao diện cho Agent có sẵn, không tự quyết định nội dung.
+- **Giao diện** để trò chuyện, xem video, tải bản đã chốt và chỉnh cài đặt máy. Tạo dự án và đính kèm dùng contract có sẵn; Agent vẫn làm video qua CLI.
 
 ## Giới hạn hiện tại
 

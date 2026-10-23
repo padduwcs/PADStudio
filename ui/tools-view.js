@@ -5,7 +5,7 @@ import { createVoicePicker } from "./voice-picker.js";
 //   Tổng quan        what PADStudio can use on this machine; only what needs the user is spelled out
 //   Giọng đọc        the ElevenLabs key, model and voice (and the free local voice)
 //   Dịch vụ của bạn  the outside services the user has
-// It is the only part of the web that writes, and it only writes machine settings (never a project), through
+// This panel only writes machine settings (never a project), through
 // PUT /api/settings with the headers the server requires.
 
 const TABS = Object.freeze([

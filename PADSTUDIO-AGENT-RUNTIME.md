@@ -2,7 +2,9 @@
 
 Đây là tài liệu mặc định khi **dùng PADStudio để làm video**. Không đọc tài liệu build, test, report hay project khác để bắt đầu một project.
 
-Chat và quyết định sáng tạo nằm ở Agent host bên ngoài. Web PADStudio chỉ quan sát. Mọi thay đổi đi qua CLI/tool contract và được lưu vào đúng project.
+Agent nhận yêu cầu qua host bên ngoài hoặc cửa sổ chat Codex trong PADStudio. Cửa sổ chat chỉ là client của Agent; Agent vẫn đọc repo, chọn việc và dùng CLI/tool contract để lưu thay đổi vào đúng project. Các view video/tư liệu tiếp tục quan sát project.
+
+Trong chat tích hợp, project đã được chọn/tạo và tư liệu đính kèm đã được import thành Resource; không tạo lại project hoặc import lại tư liệu đó. Mốc video kèm tin nhắn xác định exact Result đang xem. Người dùng chốt trong cửa sổ này cũng là kênh `agent_host`; không tự suy diễn sự đồng ý. PADStudio đã chạy, không khởi động lại observer đang phục vụ chính hội thoại.
 
 ## Thước đo là người xem
 
@@ -36,7 +38,7 @@ benchmark; exact tool vẫn phải qua availability/preflight trước việc d�
 
 **Công cụ, khóa API và dịch vụ của người dùng.** `environment.userServices` liệt kê các dịch vụ bên ngoài người dùng đã khai báo
 (tạo ảnh/video/nhạc bằng AI, kho ảnh trả phí, công cụ thiết kế…) cùng ghi chú của họ. Với project mới, hoặc khi việc sắp làm cần một
-tool đang thiếu khóa (ví dụ ElevenLabs), chạy `npm run observer:ensure` rồi gửi người dùng link trang Công cụ
+tool đang thiếu khóa (ví dụ ElevenLabs), nếu đang ở host ngoài thì chạy `npm run observer:ensure`, rồi gửi người dùng link trang Công cụ
 `http://127.0.0.1:7603/?panel=tools&tab=voice` (khóa, model, giọng; `&tab=services` cho dịch vụ khác): ở đó họ dán khóa, kiểm tra kết nối và đánh dấu dịch vụ mình có. Đọc lại `project:resume` sau
 khi họ nói đã xong. Không bao giờ hỏi, nhận, nhắc lại hay ghi khóa API vào chat, lệnh, checkpoint hay artifact; nếu người dùng lỡ dán
 khóa vào chat, không dùng nó, mời họ dán ở trang Công cụ và đổi khóa ở nhà cung cấp. Dịch vụ đã khai báo không phải tool của

@@ -8,22 +8,25 @@ Tài liệu này ghi các định hướng đã chốt để làm rõ [`PADSTUDI
 > [`PADSTUDIO-DEVELOPMENT-STATUS.md`](./PADSTUDIO-DEVELOPMENT-STATUS.md) để biết baseline code/test
 > gần nhất. Không suy ra sản phẩm đã hoàn chỉnh chỉ từ một mục có chữ “hoàn thành”.
 
-## Agent bên ngoài, một project, observer chỉ đọc
+## Cửa sổ chat là client của Agent — 2026-10-23
 
-PADStudio là nơi Agent và người dùng cùng làm video mà không ép mọi project theo một pipeline cố định. Kiến trúc sản phẩm đã chốt không xây chat tích hợp:
+Theo yêu cầu mới của người phụ trách, PADStudio tích hợp cửa sổ chat kiểu IDE extension. Quyết định này thay thế ranh giới cũ “không xây chat tích hợp” và “chat ngoài là kênh duy nhất”; các mục có ngày trước 2026-10-23 giữ bối cảnh lịch sử của chúng.
 
-- **Agent host bên ngoài:** là nơi người dùng chat với Agent thật, đưa mục tiêu, tư liệu, phản hồi và phê duyệt. Agent dùng CLI/contract của PADStudio để đọc và cập nhật project.
-- **Web observer:** là cửa sổ local chỉ đọc để quan sát project, trạng thái, tư liệu, kết quả, bằng chứng và preview.
+- **Agent:** vẫn là chương trình đọc repo, hướng dẫn và skill, chọn việc sáng tạo, rồi gọi CLI/contract PADStudio. Host bên ngoài vẫn dùng được.
+- **Chat tích hợp:** là client của Codex App Server chạy nền qua stdio, gửi/nhận tin nhắn, tiến độ, câu hỏi và xác nhận quyền. Không tự xây agent loop hoặc buộc một pipeline video.
+- **Video và Tư liệu:** tiếp tục là các view quan sát cùng kho project. Người dùng gửi góp ý từ exact bản đang xem ngay vào chat.
 
-Hai bề mặt cùng dùng kho project làm nguồn sự thật. Observer không giữ trạng thái project riêng và PADStudio không xây chat client, đăng nhập hay connector để bắt chước Agent host.
+Kho project giữ nguồn sự thật về công việc và kết quả. Codex giữ transcript; PADStudio chỉ lưu liên kết project/thread và biên nhận gửi tin trong `.padstudio/chat/` (phân vùng theo gốc project), không chép transcript vào core project store. MCP không bắt buộc cho lớp chat này. Bản đầu hỗ trợ Codex; không tự đổi sang agent/provider khác.
 
-## Agent host bên ngoài điều khiển, web quan sát
+Contract, vòng đời và cách kiểm chứng: [CHAT-CLIENT.md](CHAT-CLIENT.md).
 
-Chat trong Agent host bên ngoài là kênh duy nhất để điều khiển công việc trong project. Người dùng đưa yêu cầu, thay đổi hướng và phê duyệt tại đó. Agent hiểu phản hồi, chọn việc sáng tạo cần làm tiếp và cập nhật project qua CLI/contract.
+## Agent điều khiển, UI chuyển lời và hiển thị
 
-Web chỉ phục vụ xem và điều hướng: mở project khác, xem trạng thái, phát preview hoặc đổi cách xem. Nó không gửi lệnh và không tự thay đổi lựa chọn, quyết định, kết quả hay checkpoint. Ngoại lệ duy nhất, chốt ngày 2026-10-09 (mục cuối tài liệu): trang Công cụ được ghi cài đặt của máy, không bao giờ ghi project. Khi Agent cần người dùng quyết định, web hiển thị rõ điều đang chờ và bằng chứng cần xem; người dùng phản hồi trong chat.
+Người dùng đưa yêu cầu, thay đổi hướng và phê duyệt trong host ngoài hoặc chat tích hợp. Agent hiểu phản hồi, chọn việc sáng tạo cần làm tiếp và cập nhật project qua CLI/contract. Acceptance trong chat tích hợp dùng cùng kênh `agent_host`, bind exact Result/revision/checksum, không tự tạo full-view/full-listen attestation.
 
-Tư liệu người dùng upload trực tiếp trong chat được giữ như đầu vào gốc của project. Với path hoặc URL bên ngoài, Agent xem rồi chỉ đưa phần cần thiết vào project. Web chỉ hiển thị các tư liệu đã có trong project; nó không upload, import, xóa hay đổi chúng.
+UI không tự chọn workflow, thay lựa chọn sáng tạo, quyết định duyệt, kết quả hay checkpoint. Các thao tác mới là chuyển tin tới Agent, tạo project qua ProjectStore và nhập file qua contract import hiện có; trang Công cụ vẫn chỉ ghi cài đặt của máy. Mọi route chat có ranh giới riêng, không cung cấp endpoint RPC hay shell tùy ý. Ghi chỉ nhận cùng Origin với header intent; server vẫn chỉ nghe localhost.
+
+Tư liệu đính kèm trong chat được nhập thành Resource/Run trước khi gửi cho Agent (tối đa 100 MB/file, 12 file/tin). Với path hoặc URL bên ngoài, Agent xem rồi chỉ đưa phần cần thiết vào project. Đổi project không chuyển nhầm hội thoại; mất kết nối không tự gửi lại một lượt. Dừng agent không được mô tả là hoàn tác kết quả hoặc hoàn tiền công cụ đã chạy.
 
 ## Agent làm việc, người dùng kiểm soát hướng
 
@@ -41,7 +44,7 @@ kế hoạch, kết quả và quyết định đó tồn tại bền vững ngo�
 ```mermaid
 flowchart TB
     U[Người dùng<br/>Mục tiêu, tư liệu, phản hồi và phê duyệt]
-    W[Hai bề mặt chung project<br/>Agent host ngoài và observer chỉ đọc]
+    W[Cùng một project<br/>Chat tích hợp hoặc host ngoài và các view quan sát]
     A[Agent<br/>Hiểu project, sáng tạo và chọn việc tiếp theo]
     I[Trí tuệ project<br/>Brief, hiểu tư liệu, hướng sáng tạo và tiêu chí review]
     F[Workflow thích nghi<br/>Kế hoạch hiện hành có thể thay đổi]

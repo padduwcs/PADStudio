@@ -210,7 +210,7 @@ test("observer API exposes a result with its input, tool, run and decision trace
   assert.deepEqual(body.context.decisions[0], decision);
 });
 
-test("web server exposes no project mutation or chat endpoint", async (t) => {
+test("observer routes expose no direct project mutation or unscoped chat endpoint", async (t) => {
   const rootDir = await temporaryDirectory(t);
   const server = createPadStudioServer({ reader: new ProjectReader(rootDir) });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));

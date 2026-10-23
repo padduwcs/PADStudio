@@ -80,7 +80,7 @@ async function main(args) {
   const decision = await store.recordDecision(projectId, {
     resultId: result.id, outcome: "accepted",
     note: (fromAgentHost
-      ? "Accepted by the user in the external Agent host and recorded against this exact Result."
+      ? "Accepted by the user in the Agent host conversation and recorded against this exact Result."
       : "Accepted through the PADStudio interactive exact-output confirmation.")
       + (carriedIds.length ? ` Also resolves feedback given on another sequence and carried out in this video: ${carriedIds.join(", ")}.` : ""),
     feedbackTarget: { artifactId: result.data.sequence.artifactId, revision: result.data.sequence.revision },

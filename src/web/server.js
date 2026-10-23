@@ -18,6 +18,8 @@ import { buildStaticAssets, sendStaticAsset } from "./static-assets.js";
 import { LocalConfigError } from "../config/local-config.js";
 import { createSettingsService, SettingsError } from "./settings-service.js";
 import { observerBuild } from "./observer-build.js";
+import { ChatService } from "../chat/chat-service.js";
+import { handleChatRequest } from "./chat-api.js";
 
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const applicationRoot = join(currentDirectory, "..", "..");
@@ -63,8 +65,8 @@ export function isLocalHostHeader(header) {
   return LOCAL_HOST_NAMES.has(name);
 }
 
-// The web never changes a project. The one thing it may change is this machine's settings (API keys and the
-// services the user has), and only from the PADStudio page itself: the browser must send our own Origin, a JSON
+// Settings writes change only this machine's configuration. Chat has its own guarded routes; video/project
+// observation stays read-only. The browser must send our own Origin, a JSON
 // body and a custom header. A page on another site can do none of these without a CORS preflight, which this
 // server never answers, so it cannot write settings even while the user has PADStudio open.
 const SETTINGS_INTENT = "settings";
@@ -174,17 +176,23 @@ function sendMediaFile(request, response, input) {
   stream.pipe(response);
 }
 
-export function createPadStudioServer({ reader, staticDirectory = uiDirectory, settings = createSettingsService(), build = observerBuild() }) {
+export function createPadStudioServer({ reader, staticDirectory = uiDirectory, settings = createSettingsService(), build = observerBuild(),
+  chat = new ChatService({ projectRoot: reader.rootDir }) }) {
   const staticAssets = buildStaticAssets(staticDirectory);
   // Who this server is and which code it started with, so observer:ensure can replace a server left running
   // from before an update instead of silently reusing it.
   const identity = { app: "padstudio-observer", pid: process.pid, startedAt: new Date().toISOString(), build };
   const server = createServer(async (request, response) => {
+    // A foreign page must not embed the local chat and trick the user into clicking a permission prompt.
+    response.setHeader("X-Frame-Options", "DENY");
+    response.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
     try {
       if (!isLocalHostHeader(request.headers.host)) {
         return sendJson(response, 403, { error: "Observer chỉ phục vụ địa chỉ localhost." });
       }
       const url = new URL(request.url, "http://127.0.0.1");
+
+      if (await handleChatRequest(request, response, url, chat)) return;
 
       if (request.method === "GET" && url.pathname === "/api/projects") {
         const projects = await reader.listObserverProjects();
@@ -349,6 +357,8 @@ export function createPadStudioServer({ reader, staticDirectory = uiDirectory, s
   // The observer only talks to the local browser, which polls every couple of seconds. A longer idle window than
   // Node's 5 s default stops a slow client from reusing a connection the server is just closing.
   server.keepAliveTimeout = 30_000;
+  server.once("close", () => { chat.close().catch(() => {}); });
+  server.chat = chat;
   return server;
 }
 

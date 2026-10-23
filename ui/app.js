@@ -1,8 +1,9 @@
 import { ICONS, clock, node, orientationLabel, relativeTime, statusChip, svgIcon } from "./dom.js";
-import { renderTheatre, clearTheatre } from "./production-view.js";
+import { renderTheatre, clearTheatre, currentVideoChatTarget } from "./production-view.js";
 import { renderSources, clearSources } from "./sources-view.js";
 import { createLibrary } from "./library-view.js";
 import { createToolsPanel } from "./tools-view.js";
+import { createChatPanel } from "./chat-view.js";
 
 const $ = (selector) => document.querySelector(selector);
 const elements = {
@@ -46,6 +47,16 @@ const library = createLibrary({
 });
 
 const tools = createToolsPanel({ root: $("#tools"), body: $("#tools-body"), refreshButton: $("#tools-refresh") });
+const chat = createChatPanel({
+  root: $("#chat"), toggle: $("#chat-button"),
+  getVideoTarget: () => currentVideoChatTarget(elements.theatre),
+  onProjectCreated: async (project) => {
+    projectsById.set(project.id, project);
+    projectsEtag = null;
+    selectProject(project.id);
+    await loadProjects();
+  }
+});
 
 /* ------------------------------------------------------------------------------------------------ */
 /* Small UI pieces                                                                                   */
@@ -88,6 +99,7 @@ function renderHeader() {
   const card = contexts.card?.card;
   const title = card?.project.title ?? project?.title ?? "Đang mở dự án…";
   elements.title.textContent = title;
+  chat.setProject(selectedProjectId, title);
   document.title = title + " · PADStudio";
   elements.meta.replaceChildren();
   if (!card) return;
@@ -113,6 +125,7 @@ function drawTheatre() {
     hasSources: (card?.counts?.sources ?? 0) > 0,
     onOpenSources: () => setView("sources", { focus: true })
   });
+  chat.refreshVideoTarget();
 }
 
 function drawSources() {
@@ -156,6 +169,7 @@ function setView(view, { updateUrl = true, focus = false } = {}) {
   }
   for (const panel of document.querySelectorAll(".view")) panel.hidden = panel.id !== "view-" + view;
   for (const media of document.querySelectorAll(".view[hidden] video, .view[hidden] audio")) media.pause();
+  chat.refreshVideoTarget();
   if (updateUrl) {
     const location = new URL(window.location.href);
     location.searchParams.set("view", view);
@@ -288,6 +302,7 @@ async function loadProjects() {
     library.update(body.projects, selectedProjectId);
     if (!selectedProjectId) {
       showWorkspace(false);
+      chat.setProject(null);
       document.title = "PADStudio";
       return;
     }
@@ -310,6 +325,10 @@ $("#library").addEventListener("librarychange", (event) => {
 document.querySelector(".brand").addEventListener("click", (event) => { event.preventDefault(); library.open(); });
 elements.toolsButton.addEventListener("click", () => tools.open());
 $("#welcome-tools").addEventListener("click", () => tools.open());
+$("#welcome-chat").addEventListener("click", () => chat.open());
+for (const [id, name] of [["library", "librarychange"], ["tools", "toolschange"]]) {
+  $("#" + id).addEventListener(name, () => chat.syncModal());
+}
 $("#tools").addEventListener("toolschange", (event) => {
   elements.toolsButton.setAttribute("aria-expanded", String(event.detail.open));
 });
@@ -332,6 +351,7 @@ setView(currentView, { updateUrl: false });
 loadProjects().catch(showError);
 // The Agent sends the user to /?panel=tools to add a key or say which services they have.
 if (parameters.get("panel") === "tools") tools.open({ tab: parameters.get("tab") });
+else if (parameters.get("chat") === "1") chat.open();
 window.setInterval(() => {
   if (document.hidden) return;
   loadProjects().catch((error) => { if (error.name !== "AbortError") showError(error); });

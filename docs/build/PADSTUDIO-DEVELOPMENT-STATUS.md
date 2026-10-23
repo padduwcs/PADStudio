@@ -1,7 +1,6 @@
 # PADStudio — trạng thái phát triển
 
-Cập nhật: **2026-10-12** (bài học từ project số nguyên tố và kiểm tra tổng thể; xem mục “Feedback của pilot và kiểm tra tổng thể”). Lần đối chiếu tài liệu
-với code gần nhất là 2026-10-09.
+Cập nhật: **2026-10-23** (cửa sổ chat Codex local; xem mục “Chat trong PADStudio”). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
 
 Đây là điểm vào ngắn để biết codebase đang ở đâu. PADStudio vẫn đang được xây dựng và chỉnh
 chu; các báo cáo có chữ `completion`, tên đợt hoặc số phiên bản ghi lại một mốc nghiệm thu kỹ
@@ -9,8 +8,8 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 ## Trạng thái hiện tại
 
-- Ranh giới sản phẩm hiện hành vẫn là Agent host bên ngoài điều khiển, project local giữ nguồn
-  sự thật và web observer chỉ đọc.
+- Agent điều khiển qua host ngoài hoặc cửa sổ chat Codex trong PADStudio. Project local giữ nguồn sự thật; các view video/tư liệu chỉ quan sát.
+  Chat là client của runtime có sẵn, không tự xây agent loop. Tạo project và upload dùng contract hiện có.
 - Kho project, Resource/Run/Result, artifact có revision, workflow thích nghi, review, decision,
   checkpoint, recovery, QA và local delivery đã có đường triển khai và test.
 - Source understanding, sequence composition, asset preparation, TTS và code animation local là
@@ -25,6 +24,27 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
   corpus, phép đo và human evidence độc lập.
 
 ## Baseline kiểm chứng
+
+Ngày **2026-10-23**, Node v24.18.1, Windows: `npm test` **465 tests: 464 pass, 0 fail, 1 skipped** (symlink, thiếu quyền Windows).
+`npm run check` sạch. `chat:ui:test`, `observer:ui:empty-test`, `observer:ui:live-test`, `observer:ui:tools-test` passed.
+Live Codex CLI 0.163.0: gửi/nhận, đọc lại hội thoại sau khi đóng/mở process, và đọc đúng nonce trong checkpoint qua `project:resume` đã pass
+(hai xác nhận cho đúng lệnh chỉ đọc trong project tạm). Các test tự động không gọi model.
+Các baseline cũ sau đây là lịch sử tại ngày ghi nhận.
+
+## Chat trong PADStudio — 2026-10-23
+
+- Khung chat Codex là client cho App Server có sẵn, không xây agent loop hay MCP server mới. Agent tiếp tục đọc repo, runtime và skill rồi
+  làm video bằng CLI. Các view video/tư liệu giữ project làm nguồn sự thật; host ngoài vẫn dùng được.
+- Tin nhắn theo thời gian thực, lịch sử theo từng project, hội thoại mới/mở lại, model, file import, góp ý kèm exact Result/playhead,
+  câu hỏi và xác nhận quyền, gửi bổ sung, dừng, khôi phục kết nối. Bản đầu chỉ hỗ trợ Codex; tài khoản và hạn mức do Codex quản lý.
+- Chống gửi trùng bằng biên nhận lưu trước RPC; không tự replay sau reload/restart. Transcript do Codex giữ; liên kết và biên nhận nằm
+  ngoài core project store, phân vùng theo gốc project. Mọi thao tác HTTP có guard riêng; không có gateway shell/RPC tùy ý.
+- 18 test mới cho peer stdio thật, lifecycle, lỗi, HTTP/SSE, approvals, lịch sử và upload. Browser dùng protocol peer giả, ProjectStore,
+  import và video FFmpeg thật; đã kiểm 320/390/768/1024/1440 px, sáng/tối, bàn phím, chọn project, offline, đăng nhập và lỗi kết nối.
+- Đã sửa hồi quy tên đầy đủ của studio ở 768 px; đóng protocol child đợi process thật kết thúc trên Windows. Full suite đã chạy lại sạch.
+- Contract và giới hạn: [`CHAT-CLIENT.md`](CHAT-CLIENT.md). Không gọi provider media trả phí hoặc dựng một pilot sáng tạo mới để nghiệm thu chat.
+
+## Baseline trước đợt chat
 
 Lần chạy full gần nhất, ngày **2026-10-12** (sau đợt feedback của pilot bên dưới, Node v24.18.1, Windows): `npm test`
 **447 tests: 446 pass, 0 fail, 1 skipped** (test symlink); `npm run check` sạch. Browser: `observer:ui:empty-test`,
@@ -432,7 +452,7 @@ Test: `test/project-finish.test.js`. Đã kiểm tra trên bản sao project th�
 Ghi chú trung thực: 17 project đã dọn ngày 2026-10-09 được dọn **trước** quy tắc giữ audio/văn bản, nên mã nguồn hoạt họa của chúng đã bị phát hành
 (khoảng 5 MB; audio của bản cuối vốn nằm trong `inputs/` và không bị chạm). Chúng không khôi phục được.
 
-## Đợt giao diện hiện tại
+## Đợt giao diện trước chat (2026-10-04–12)
 
 Giao diện chỉ giữ những gì người dùng cần: chọn dự án, xem video, nghe/xem tư liệu, xem và cài đặt công cụ. Hai tab: **Video** và **Tư liệu**;
 sheet **Công cụ** (mục trên). Không còn tab Chi

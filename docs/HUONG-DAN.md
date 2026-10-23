@@ -1,8 +1,7 @@
 # PADStudio — hướng dẫn cho người dùng
 
-PADStudio là xưởng làm video chạy trên máy bạn. **Bạn trò chuyện với một Agent** (ví dụ Claude Code) và Agent dùng
-PADStudio để dựng video. **Trang web của PADStudio chỉ để xem**: duyệt dự án, xem video, tải bản đã chốt. Mọi yêu cầu và
-chỉnh sửa đều nói với Agent trong cuộc trò chuyện.
+PADStudio là xưởng làm video chạy trên máy bạn. **Bạn trò chuyện với Agent ngay trong PADStudio**, xem video bên cạnh rồi yêu cầu chỉnh tiếp.
+Chat tích hợp dùng Codex trên máy. Bạn vẫn có thể dùng một Agent bên ngoài (ví dụ Claude Code) trong thư mục PADStudio.
 
 ## 1. Chuẩn bị (làm một lần)
 
@@ -10,6 +9,7 @@ chỉnh sửa đều nói với Agent trong cuộc trò chuyện.
 | --- | --- |
 | Node.js 20 trở lên | Không cần cài thêm gói npm. |
 | FFmpeg và ffprobe trong `PATH` | Nền tảng để ghép, cắt và xuất video. |
+| Codex CLI, để dùng chat tích hợp | Dùng tài khoản Codex hiện có; nếu chưa có đăng nhập, khung chat hiện nút đăng nhập ChatGPT. |
 
 Kiểm tra máy đã sẵn sàng chưa:
 
@@ -57,9 +57,16 @@ Trong terminal, `tool:list` cho cùng danh sách ở dạng kỹ thuật. Phần
 
 ## 2. Mỗi lần bắt đầu
 
-1. Mở Agent trong thư mục PADStudio. Nó tự đọc hướng dẫn vận hành của PADStudio.
-2. Mở trang xem: **http://127.0.0.1:7603**. Sau khi khởi động lại máy trang này không tự chạy; Agent sẽ khởi động nó khi cần, hoặc bạn
-   tự chạy `npm run observer:ensure`.
+1. Mở PADStudio: chạy `npm run observer:ensure`, rồi vào **http://127.0.0.1:7603**.
+2. Bấm **Trò chuyện** trên thanh đầu. Khung chat tự kết nối Codex; nếu cần, bấm **Đăng nhập ChatGPT** rồi mở trang đăng nhập được cung cấp.
+3. Chọn dự án để tiếp tục, hoặc mô tả ý tưởng để bắt đầu dự án mới. Nút **Dự án mới** cho đặt tên trước khi bắt đầu.
+
+Trên máy tính, chat nằm cạnh video; trên điện thoại, chat mở toàn màn hình và có nút đóng để quay lại video. Enter gửi tin,
+Shift + Enter xuống dòng. Có thể gửi yêu cầu bổ sung khi Agent đang làm hoặc bấm **Dừng**; dừng không hoàn tác công việc đã làm và
+không hoàn lại chi phí công cụ đã dùng. Agent cần ý kiến hoặc quyền bổ sung sẽ hiện câu hỏi/nút cho bạn trả lời; không có lựa chọn tự đồng ý.
+
+Mỗi dự án có lịch sử riêng; tải lại trang không gửi lại tin nhắn. Nút **Hội thoại mới** giữ hội thoại cũ trong danh sách để mở lại.
+Lượt chat dùng hạn mức tài khoản Codex đang kết nối. Nếu dùng Agent ngoài, mở Agent trong thư mục PADStudio như trước.
 
 ## 3. Làm video đầu tiên
 
@@ -69,7 +76,7 @@ Chỉ cần nói với Agent điều bạn muốn, càng cụ thể về ngườ
 
 > Đây là video quay buổi họp của tôi (gửi file). Cắt thành bản tóm tắt 1 phút có phụ đề.
 
-- **Có tài liệu:** gửi file, thư mục hoặc đường link cho Agent. Agent nhập chúng vào dự án.
+- **Có tài liệu:** bấm **Thêm tư liệu**, kéo thả hoặc dán file vào chat (100 MB/file, tối đa 12 file/tin nhắn); file được lưu vào đúng dự án trước khi gửi cho Agent. Thư mục cần nhập qua Agent ngoài/CLI. Bạn cũng có thể gửi đường link.
 - **Chưa có tài liệu:** không sao. Agent tự viết kịch bản, tìm ảnh miễn phí có ghi nguồn, dựng hoạt họa và đọc giọng.
 - **Có dịch vụ khác** (tạo ảnh, tạo nhạc, ứng dụng dựng hình): nếu Agent của bạn dùng được chúng, file tạo ra được nhập vào dự án
   kèm nhà cung cấp, prompt và bản quyền. PADStudio không tự gọi dịch vụ đó thay bạn.
@@ -80,7 +87,7 @@ tiên tự hiện ở tab **Video** khi xong.
 ## 4. Xem và góp ý
 
 - Xem ở tab **Video**. Có nhiều bản thì đổi hoặc so sánh được; mục **Các đoạn** cho nhảy tới từng đoạn.
-- Muốn sửa đúng một chỗ: **dừng video ở chỗ đó, bấm "Sao chép mốc phản hồi", dán vào cuộc trò chuyện** rồi nói bạn muốn đổi gì.
+- Muốn sửa đúng một chỗ: **dừng video ở chỗ đó, bấm "Góp ý trong chat"** rồi nói bạn muốn đổi gì. Khi tab Video đang mở, tin nhắn cũng tự kèm bản đang xem; có thể bỏ mốc khỏi tin nhắn bằng nút ×. Với Agent ngoài, dùng **Sao chép mốc phản hồi** như trước.
   Mốc ghi chính xác bản video, đoạn và giây, nên Agent không hiểu nhầm.
 - Tab **Tư liệu** liệt kê ảnh, video, lời đọc và nhạc của dự án, nghe và xem ngay được.
 

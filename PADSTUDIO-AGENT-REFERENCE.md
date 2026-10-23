@@ -1,10 +1,11 @@
-# PADStudio — reference đầy đủ cho Agent host bên ngoài
+# PADStudio — reference đầy đủ cho Agent
 
 > Tài liệu tra cứu dài, không phải bootstrap. Bắt đầu bằng [`PADSTUDIO-AGENT-RUNTIME.md`](PADSTUDIO-AGENT-RUNTIME.md) và chỉ mở đúng mục cần thiết trong file này.
 
-Chat nằm trong Agent host mà người dùng đang dùng. Đây là kiến trúc V1 đã chốt,
-không phải giải pháp tạm thời. Web PADStudio chỉ quan sát project local; nó không
-gửi lệnh cho Agent.
+Chat có thể nằm trong host bên ngoài hoặc cửa sổ Codex của PADStudio. Cửa sổ tích hợp
+chuyển tin nhắn, tiến độ và câu hỏi qua Codex App Server; Agent tiếp tục dùng CLI/contract
+trong tài liệu này. Các view video/tư liệu đọc project local. Tư liệu đính kèm trong chat
+tích hợp đã được import qua contract và không cần nhập lần nữa.
 
 ## Bắt đầu hoặc tiếp tục project
 

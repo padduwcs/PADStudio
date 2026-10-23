@@ -40,14 +40,18 @@ npm run padstudio:doctor
 npm run observer:ensure
 ```
 
-**3. Start your Agent in this folder** (Claude Code: `claude`). It reads [`AGENTS.md`](AGENTS.md) by itself and knows how to operate
-PADStudio. Then ask for what you want:
+**3. Click Trò chuyện (Chat) in PADStudio.** The built-in client uses Codex CLI on your machine. Install Codex and sign in with ChatGPT
+when prompted; an existing Codex login is reused. Describe your video to start a new project, or select an existing project and continue:
 
 > Make a 90-second vertical video explaining why the sky is blue, narrated in Vietnamese, for middle-school students.
 
-**4. Watch, give feedback, accept.** Each build appears on the observer page. To change one spot, pause there, click
-**Sao chép mốc phản hồi** (*copy feedback anchor*) and paste it into the chat with what you want changed. When you are happy, say
+**4. Watch, give feedback, accept.** Builds appear beside the chat. To change one spot, pause there, click
+**Góp ý trong chat** (*give feedback in chat*) and describe the change. The message includes the exact video and playhead. When you are happy, say
 "accept" (in Vietnamese: "chốt") and download the accepted video.
+
+Chat supports file uploads (100 MB each), model selection, steering, interruption and per-project conversation history. Reopening the
+page never automatically resends an agent turn. Chat uses the connected Codex account's allowance. External hosts such as Claude Code
+remain supported: open them in this folder, let them read [`AGENTS.md`](AGENTS.md), and use **Sao chép mốc phản hồi** to copy feedback anchors.
 
 <p align="center"><img src="docs/images/video-dark.png" alt="Observer page: play the video, download the accepted version and jump to each segment" width="760" /></p>
 
@@ -87,7 +91,7 @@ enable what is missing.
 
 ```mermaid
 flowchart LR
-    U([You]) <-->|chat, feedback, accept| A[Agent<br/>Claude Code or similar]
+    U([You]) <-->|PADStudio chat or external host| A[Agent<br/>Codex or an external agent]
     A -->|PADStudio command line| P[PADStudio<br/>project store + executor]
     P --> T[FFmpeg · Manim · Remotion<br/>HyperFrames · narration]
     P --- S[(.padstudio/projects<br/>inputs, results, decisions)]
@@ -96,9 +100,8 @@ flowchart LR
 ```
 
 - **The Agent** is the only channel for commands: it understands the request and chooses the work and the tools.
-- **PADStudio** stores projects, runs tools and keeps the trail. It has no chat of its own and makes no content decisions.
-- **The observer page** is for watching videos, downloading the accepted one and editing machine settings (API keys, voice). It never
-  writes to a project.
+- **PADStudio** stores projects, runs tools and keeps the trail. Its chat is a client for an existing agent and makes no content decisions.
+- **The interface** supports chat, viewing, downloads and machine settings. Project creation and uploads use existing contracts; the Agent still makes videos through the CLI.
 
 ## Current limits
 

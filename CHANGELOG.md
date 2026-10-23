@@ -4,6 +4,10 @@ Theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Các bản phát 
 
 ## [Chưa phát hành]
 
+- **Trò chuyện với Codex ngay trong PADStudio.** Gửi/nhận theo thời gian thực, lịch sử theo dự án, model, tư liệu đính kèm qua contract import,
+  câu hỏi/xác nhận quyền, gửi bổ sung, dừng và nối lại sau mất kết nối. Góp ý kèm exact video đang xem. Agent tiếp tục đọc repo và làm video
+  bằng CLI; không xây agent loop mới. Host ngoài vẫn dùng được. Lượt chat dùng hạn mức tài khoản Codex trên máy.
+
 - Sửa: project đã giao vẫn hiện "Chờ chỉnh theo phản hồi" khi còn sót feedback cũ hơn bản giao (ví dụ feedback của bản pilot). Web nay
   hiện "Đã giao" trong trường hợp đó; feedback mới hơn bản giao vẫn được hiện. `project:accept --resolves` đóng được feedback của một
   sequence khác (như pilot) khi được nêu ID; mặc định vẫn chỉ đóng feedback cùng sequence.

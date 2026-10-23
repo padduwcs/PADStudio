@@ -19,7 +19,11 @@ Chỉ nhánh `main` được sửa lỗi bảo mật. Dự án ở phiên bản 
 PADStudio là công cụ **chạy cục bộ cho một người dùng**, không phải dịch vụ cho nhiều người. Hãy hiểu rõ các điểm sau trước khi dùng.
 
 - **Web observer chỉ nghe trên `127.0.0.1`**, từ chối mọi request có `Host` không phải localhost, và chỉ nhận ghi cài đặt từ chính
-  trang PADStudio (cùng Origin, JSON và header riêng). Đừng đưa nó ra mạng bằng reverse proxy hoặc tunnel: nó không có đăng nhập.
+  trang PADStudio (cùng Origin, JSON và header riêng). Chat cũng chỉ nhận thao tác từ cùng trang, dùng intent riêng; upload nhận byte stream có giới hạn. Đừng đưa nó ra mạng bằng reverse proxy hoặc tunnel: nó không có đăng nhập cho truy cập web.
+- **Chat là client của Codex trên máy.** Backend chạy Codex App Server qua stdio với workspace-write và xác nhận quyền theo từng yêu cầu;
+  không có endpoint RPC hoặc shell tùy ý cho trình duyệt. Token đăng nhập do Codex quản lý, không trả về UI. Hội thoại và nội dung Agent đọc
+  được gửi đến nhà cung cấp model theo tài khoản/cấu hình Codex; chúng không phải xử lý AI hoàn toàn offline. Transcript do Codex lưu,
+  liên kết project/thread và biên nhận chống gửi trùng nằm trong `.padstudio/chat/`, bản nháp tin nhắn ở sessionStorage của trình duyệt.
 - **Khóa API** (ví dụ ElevenLabs) lưu dạng văn bản thường (không mã hóa) trong `padstudio.local.json` ở thư mục dự án, bị Git bỏ qua. Ai đọc được file
   đó là dùng được khóa. Web không bao giờ trả lại khóa và PADStudio không đưa giá trị khóa vào context của Agent; tuy nhiên một Agent có quyền đọc file trên máy bạn vẫn đọc được `padstudio.local.json`. Đừng dán khóa vào chat. Hãy đặt
   giới hạn credit ngay ở nhà cung cấp, và đổi khóa nếu nghi ngờ lộ.
@@ -28,8 +32,8 @@ PADStudio là công cụ **chạy cục bộ cho một người dùng**, không 
   lại nội dung nếu nó đến từ nguồn bên ngoài.
 - **Phê duyệt chi phí và "chốt" video do Agent ghi lại theo lời bạn nói trong chat**, không phải xác thực mật mã. Chúng ngăn lỗi vô
   ý, không ngăn một Agent cố tình làm sai.
-- **Dữ liệu dự án** (video, âm thanh, kịch bản, tư liệu bạn đưa vào) nằm trong `.padstudio/` trên máy bạn và không bao giờ được gửi đi
-  trừ khi bạn dùng một dịch vụ bên ngoài (ví dụ gửi văn bản tới ElevenLabs để tạo giọng).
+- **Dữ liệu dự án** (video, âm thanh, kịch bản, tư liệu bạn đưa vào) lưu trong `.padstudio/` trên máy bạn. Agent/model và dịch vụ bên ngoài
+  có thể nhận nội dung cần cho công việc (ví dụ tư liệu được Agent đọc hoặc văn bản gửi tới ElevenLabs để tạo giọng).
 
 ## Phạm vi
 

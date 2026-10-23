@@ -135,16 +135,14 @@ Trước khi dùng một kết quả cho việc tiếp theo, cần có kiểm tr
 ## 6. Giao diện cho người dùng
 
 Giao diện không phải quy trình bắt buộc. Theo hướng đã chốt trong
-[`PADSTUDIO-CURRENT-DIRECTION.md`](PADSTUDIO-CURRENT-DIRECTION.md), web PADStudio là **cửa sổ quan sát chỉ đọc**; chat với Agent
-host bên ngoài là kênh duy nhất để ra lệnh, phản hồi và phê duyệt. Giao diện cần giúp người dùng:
+[`PADSTUDIO-CURRENT-DIRECTION.md`](PADSTUDIO-CURRENT-DIRECTION.md), web có **chat làm client của Agent** (từ 2026-10-23) và các view quan sát video/tư liệu. Host ngoài vẫn dùng được. Giao diện cần giúp người dùng:
 
 - thấy dự án đang có những gì và kết quả nào đang được chọn;
 - mở bản xem trước, so sánh các bản kết quả và xem lỗi khi có;
-- biết điều đang chờ mình quyết định và lấy được mốc chính xác (Result, revision, đoạn, giây) để dán vào chat khi góp ý;
+- biết điều đang chờ mình quyết định và gửi mốc chính xác (Result, revision, đoạn, giây) vào chat khi góp ý;
 - biết trước khi hệ thống chạy việc có chi phí, rủi ro hoặc cần chờ lâu.
 
-Giao diện chỉ đọc kho dự án. Nó không ghi, không giữ trạng thái chính khác với dự án; phản hồi và phê duyệt được Agent ghi vào
-dự án qua CLI.
+Các view video/tư liệu chỉ đọc kho dự án. Chat chuyển tin, tiến độ và xác nhận qua giao thức của Agent; tạo project và nhập tư liệu dùng contract hiện có. Phản hồi, phê duyệt và kết quả vẫn được Agent ghi qua CLI. Lịch sử chat thuộc runtime Agent, không thay thế trạng thái chính của project.
 
 ## 7. Vòng chỉnh sửa
 
