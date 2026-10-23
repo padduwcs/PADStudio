@@ -52,7 +52,8 @@ Nếu máy đã dùng Codex, PADStudio dùng tài khoản hiện có. Nhập yê
 **4. Xem, góp ý, chốt.** Bản dựng hiện cạnh chat. Muốn sửa một chỗ, dừng video tại đó, bấm **Góp ý trong chat** rồi nói điều muốn đổi.
 Tin nhắn kèm đúng bản video và thời điểm đang xem. Khi hài lòng, nói "chốt" rồi tải bản đã duyệt.
 
-Chat hỗ trợ thêm/kéo thả file (100 MB/file), chọn model, gửi bổ sung khi Agent đang làm, dừng lượt và mở lại lịch sử theo từng dự án.
+Chat mở được nhiều tab cùng lúc: bấm **+** để trò chuyện mới, **×** để đóng tab, nút lịch sử để mở lại. Mỗi tab giữ riêng bản nháp;
+chuyển hoặc đóng tab không dừng Agent. Chọn model và đính kèm file (100 MB/file) nằm gọn trong ô nhập.
 Đóng khung chat hoặc mất kết nối không tự gửi lại yêu cầu. Lượt chat dùng hạn mức tài khoản Codex đang kết nối. Host ngoài như Claude Code
 vẫn dùng được: mở trong thư mục này để Agent đọc [`AGENTS.md`](AGENTS.md); khi đó dùng **Sao chép mốc phản hồi** để dán mốc vào host ngoài.
 

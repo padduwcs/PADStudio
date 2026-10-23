@@ -49,7 +49,8 @@ when prompted; an existing Codex login is reused. Describe your video to start a
 **Góp ý trong chat** (*give feedback in chat*) and describe the change. The message includes the exact video and playhead. When you are happy, say
 "accept" (in Vietnamese: "chốt") and download the accepted video.
 
-Chat supports file uploads (100 MB each), model selection, steering, interruption and per-project conversation history. Reopening the
+Open several conversations at once: **+** creates a tab, **×** closes it, and history reopens it. Each tab keeps its own draft;
+switching or closing tabs leaves agents running. Model selection and attachments (100 MB each) sit in the composer. Reopening the
 page never automatically resends an agent turn. Chat uses the connected Codex account's allowance. External hosts such as Claude Code
 remain supported: open them in this folder, let them read [`AGENTS.md`](AGENTS.md), and use **Sao chép mốc phản hồi** to copy feedback anchors.
 

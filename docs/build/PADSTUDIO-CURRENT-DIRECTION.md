@@ -20,6 +20,10 @@ Kho project giữ nguồn sự thật về công việc và kết quả. Codex g
 
 Contract, vòng đời và cách kiểm chứng: [CHAT-CLIENT.md](CHAT-CLIENT.md).
 
+Theo phản hồi tiếp theo cùng ngày, chat được tinh giản về kiểu cửa sổ hội thoại IDE: thanh tab mở nhiều cuộc trò chuyện đồng thời,
+tin nhắn và ô nhập là nội dung chính. Mỗi tab giữ bản nháp và trạng thái riêng; đóng tab chỉ đóng cách xem, lịch sử vẫn mở lại được.
+Các tùy chọn phụ thu gọn vào ô nhập/menu. Mốc video chỉ đính kèm khi người dùng chủ động bấm **Góp ý trong chat**.
+
 ## Agent điều khiển, UI chuyển lời và hiển thị
 
 Người dùng đưa yêu cầu, thay đổi hướng và phê duyệt trong host ngoài hoặc chat tích hợp. Agent hiểu phản hồi, chọn việc sáng tạo cần làm tiếp và cập nhật project qua CLI/contract. Acceptance trong chat tích hợp dùng cùng kênh `agent_host`, bind exact Result/revision/checksum, không tự tạo full-view/full-listen attestation.

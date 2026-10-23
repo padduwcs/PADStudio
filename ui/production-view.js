@@ -4,7 +4,6 @@ import { ICONS, clock, formatDateTime, formatSize, node, relativeTime, resultFil
 const choices = new Map();
 const selectedFilm = new Map();
 const chapterListeners = new WeakMap();
-const chatTargets = new WeakMap();
 let lastSignature = null;
 
 const seconds = (value) => `${Math.round(value * 1000) / 1000}s`;
@@ -171,8 +170,6 @@ function stageFor(sequence, render, context, { players, caption = null, working 
     players.delete(url);
     video.controls = true; video.preload = "metadata"; video.playsInline = true;
     video.dataset.ui = "video";
-    chatTargets.set(video, () => ({ resultId: render.resultId,
-      text: feedbackAnchorText({ projectId: context.projectId, sequence, render, currentTime: video.currentTime }) }));
     video.setAttribute("aria-label", `${sequence.name} · Bản ${sequence.revision}`);
     if (video.getAttribute("src") !== url) video.src = url;
     const poster = render.files.find((file) => file.id === render.segments?.[0]?.frameFileId && file.available);
@@ -189,12 +186,6 @@ function stageFor(sequence, render, context, { players, caption = null, working 
   holder.append(stage);
   if (caption) holder.append(node("figcaption", caption, "stage-caption"));
   return { holder, video };
-}
-
-export function currentVideoChatTarget(container) {
-  if (container.closest("[hidden]")) return null;
-  const video = container.querySelector("video.stage-video");
-  return video ? chatTargets.get(video)?.() ?? null : null;
 }
 
 function anchorControl(context, sequence, render, video) {

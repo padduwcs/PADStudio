@@ -34,7 +34,7 @@ export class ChatService extends EventEmitter {
     });
     this.client.on("disconnect", (error) => {
       this.connected = false; this.connecting = null; this.error = safeError(error);
-      for (const session of this.sessions.values()) {
+      for (const project of this.sessions.values()) for (const session of project.conversations.values()) {
         session.loaded = false;
         if (session.active) session.error = "Kết nối Codex đã mất. Kiểm tra lịch sử và trạng thái project trước khi yêu cầu chạy lại.";
         session.active = false; session.turnId = null; session.requests.clear();
@@ -93,54 +93,89 @@ export class ChatService extends EventEmitter {
 
   #path(projectId) { return join(this.sessionRoot, createHash("sha256").update(projectId).digest("hex") + ".json"); }
 
-  async session(projectId) {
+  async #project(projectId) {
     validateProjectId(projectId);
     await this.store.readProject(projectId).catch((error) => {
       if (error instanceof StoredProjectNotFoundError) throw new ChatError(404, "Không tìm thấy dự án.", "project_not_found");
       throw error;
     });
-    if (this.sessions.has(projectId)) return this.sessions.get(projectId);
     if (this.loading.has(projectId)) return this.loading.get(projectId);
+    if (this.sessions.has(projectId)) return this.sessions.get(projectId);
     const load = (async () => {
       let saved = null;
       try { saved = JSON.parse(await readFile(this.#path(projectId), "utf8")); } catch (error) { if (error.code !== "ENOENT") throw new ChatError(500, "Không đọc được liên kết hội thoại đã lưu. Dữ liệu cũ được giữ nguyên.", "session_read_failed"); }
-      if (saved && (saved.version !== "1.0" || saved.projectId !== projectId || (saved.threadId !== null && typeof saved.threadId !== "string"))) {
+      if (saved && (saved.projectId !== projectId || !["1.0", "2.0"].includes(saved.version)
+        || (saved.version === "1.0" && saved.threadId !== null && typeof saved.threadId !== "string")
+        || (saved.version === "2.0" && (!Array.isArray(saved.conversations) || !saved.conversations.length
+          || saved.conversations.some((entry) => !entry || typeof entry.id !== "string" || (entry.threadId !== null && typeof entry.threadId !== "string"))
+          || new Set(saved.conversations.map((entry) => entry.id)).size !== saved.conversations.length)))) {
         throw new ChatError(500, "Liên kết hội thoại không đúng định dạng. Dữ liệu cũ được giữ nguyên.", "session_read_failed");
       }
-      const session = { projectId, threadId: saved?.threadId ?? null, model: saved?.model ?? null,
-        receipts: saved?.receipts ?? [], previousThreads: (saved?.previousThreads ?? []).map((entry) => typeof entry === "string" ? { id: entry, title: "Hội thoại trước" } : entry),
-        title: saved?.title ?? "", startedAt: saved?.startedAt ?? null,
-        items: [], requests: new Map(), active: false, turnId: null, loaded: false, busy: false, error: null, truncated: false };
-      this.sessions.set(projectId, session);
-      return session;
+      // Version 1 kept a mutable current thread. Migrate every linked thread, without copying transcripts.
+      const entries = saved?.version === "2.0" ? saved.conversations : [
+        { id: saved?.threadId ?? randomUUID(), threadId: saved?.threadId ?? null, model: saved?.model,
+          title: saved?.title, startedAt: saved?.startedAt, receipts: (saved?.receipts ?? []).filter((receipt) => receipt.threadId === saved?.threadId) },
+        ...(saved?.previousThreads ?? []).map((entry) => ({ id: typeof entry === "string" ? entry : entry.id,
+          threadId: typeof entry === "string" ? entry : entry.id, title: entry.title, startedAt: entry.at,
+          receipts: (saved?.receipts ?? []).filter((receipt) => receipt.threadId === (entry.id ?? entry)) }))
+      ];
+      const project = { projectId, currentId: saved?.currentId ?? entries[0].id, conversations: new Map(), saving: Promise.resolve() };
+      for (const entry of entries) {
+        if (project.conversations.has(entry.id)) continue;
+        project.conversations.set(entry.id, this.#conversation(projectId, entry));
+      }
+      if (!project.conversations.has(project.currentId)) project.currentId = entries[0].id;
+      this.sessions.set(projectId, project);
+      // Even a blank tab needs a durable ID: browser tabs may outlive a server restart.
+      if (saved?.version !== "2.0") await this.#save(project.conversations.get(project.currentId));
+      return project;
     })();
     this.loading.set(projectId, load);
-    try { return await load; } finally { this.loading.delete(projectId); }
+    try { return await load; }
+    catch (error) { this.sessions.delete(projectId); throw error; }
+    finally { this.loading.delete(projectId); }
+  }
+
+  #conversation(projectId, entry = {}) {
+    return { projectId, id: entry.id ?? randomUUID(), threadId: entry.threadId ?? null, model: entry.model ?? null,
+      title: entry.title ?? "", startedAt: entry.startedAt ?? null, receipts: entry.receipts ?? [],
+      items: [], requests: new Map(), active: false, turnId: null, loaded: false, busy: false, error: null, truncated: false };
+  }
+
+  async session(projectId, conversationId = null) {
+    const project = await this.#project(projectId);
+    if (conversationId !== null && (typeof conversationId !== "string" || !conversationId)) throw new ChatError(400, "Mã hội thoại không hợp lệ.");
+    const session = conversationId ? project.conversations.get(conversationId)
+      ?? [...project.conversations.values()].find((entry) => entry.threadId === conversationId) : project.conversations.get(project.currentId);
+    if (!session) throw new ChatError(404, "Hội thoại không thuộc dự án này.");
+    return session;
   }
 
   async #save(session) {
-    await mkdir(this.sessionRoot, { recursive: true });
+    const project = this.sessions.get(session.projectId);
     session.receipts = session.receipts.slice(-200);
-    session.previousThreads = session.previousThreads.slice(-20);
-    await writeJsonAtomic(this.#path(session.projectId), {
-      version: "1.0", projectId: session.projectId, threadId: session.threadId, model: session.model,
-      title: session.title, startedAt: session.startedAt,
-      receipts: session.receipts.slice(-200), previousThreads: session.previousThreads.slice(-20)
-    });
+    await mkdir(this.sessionRoot, { recursive: true });
+    // Independent tabs can save concurrently. Serialize the metadata write, taking a fresh snapshot each time.
+    project.saving = project.saving.catch(() => {}).then(() => writeJsonAtomic(this.#path(session.projectId), {
+      version: "2.0", projectId: session.projectId, currentId: project.currentId,
+      conversations: [...project.conversations.values()].map((entry) => ({ id: entry.id, threadId: entry.threadId,
+        model: entry.model, title: entry.title, startedAt: entry.startedAt, receipts: entry.receipts.slice(-200) }))
+    }));
+    await project.saving;
   }
 
   snapshot(session) {
-    return { projectId: session.projectId, hasConversation: Boolean(session.threadId), model: session.model, active: session.active,
+    return { projectId: session.projectId, conversationId: session.id, hasConversation: Boolean(session.threadId), model: session.model, active: session.active,
       items: session.items.slice(-MAX_ITEMS), requests: [...session.requests.values()].map((entry) => entry.view), error: session.error,
       truncated: session.truncated || session.items.length > MAX_ITEMS,
-      conversations: [
-        ...(session.threadId ? [{ id: session.threadId, title: session.title || "Cuộc trò chuyện hiện tại", current: true }] : []),
-        ...session.previousThreads.map((entry) => ({ id: entry.id, title: entry.title || "Hội thoại trước", current: false }))
-      ] };
+      conversations: [...this.sessions.get(session.projectId).conversations.values()].map((entry) => ({
+        id: entry.id, title: entry.title || "Chat mới", current: entry.id === session.id,
+        active: entry.active, waiting: entry.requests.size > 0, hasConversation: Boolean(entry.threadId), startedAt: entry.startedAt
+      })) };
   }
 
-  async read(projectId) {
-    const session = await this.session(projectId);
+  async read(projectId, conversationId = null) {
+    const session = await this.session(projectId, conversationId);
     if (session.threadId && this.connected && !session.loaded && !session.busy) {
       session.busy = true;
       try { await this.#load(session); }
@@ -170,12 +205,12 @@ export class ChatService extends EventEmitter {
     this.emit("change", session.projectId);
   }
 
-  async send(projectId, { message, clientId, model = null, attachments = [], anchor = null } = {}) {
+  async send(projectId, { message, clientId, conversationId = null, model = null, attachments = [], anchor = null } = {}) {
     if (!Array.isArray(attachments) || attachments.length > 12 || attachments.some((id) => typeof id !== "string")) throw new ChatError(400, "Danh sách tư liệu không hợp lệ.");
     if (typeof message !== "string" || message.length > 32_000 || (!message.trim() && !attachments.length)) throw new ChatError(400, "Nhập tin nhắn tối đa 32.000 ký tự hoặc đính kèm tư liệu.");
     if (typeof clientId !== "string" || !/^[A-Za-z0-9-]{8,100}$/.test(clientId)) throw new ChatError(400, "Mã tin nhắn không hợp lệ.");
     if (model !== null && (typeof model !== "string" || !this.models.some((entry) => entry.id === model))) throw new ChatError(400, "Model này chưa có trong danh sách Codex.");
-    const session = await this.session(projectId);
+    const session = await this.session(projectId, conversationId);
     const fingerprint = createHash("sha256").update(JSON.stringify({ message, model, attachments, anchor })).digest("hex");
     const previous = session.receipts.find((entry) => entry.id === clientId);
     if (previous) {
@@ -253,15 +288,15 @@ export class ChatService extends EventEmitter {
     return [{ type: "text", text: content, text_elements: [] }];
   }
 
-  async interrupt(projectId) {
-    const session = await this.session(projectId);
+  async interrupt(projectId, conversationId = null) {
+    const session = await this.session(projectId, conversationId);
     if (session.busy || (session.active && !session.turnId)) throw new ChatError(409, "Đang gửi yêu cầu. Vui lòng chờ agent nhận xong.");
     if (session.active && session.turnId) await this.client.request("turn/interrupt", { threadId: session.threadId, turnId: session.turnId });
     return this.snapshot(session);
   }
 
   async answer(projectId, requestId, value) {
-    const session = await this.session(projectId);
+    const session = await this.session(projectId, value?.conversationId);
     const request = session.requests.get(requestId);
     if (!request) throw new ChatError(409, "Yêu cầu này đã được trả lời hoặc đã kết thúc. Hội thoại sẽ cập nhật lại.");
     const result = approvalAnswer(request, value);
@@ -271,35 +306,26 @@ export class ChatService extends EventEmitter {
   }
 
   async newConversation(projectId) {
-    const session = await this.session(projectId);
-    if (session.active || session.busy) throw new ChatError(409, "Dừng lượt đang chạy trước khi mở cuộc trò chuyện mới.");
-    if (session.threadId) session.previousThreads.push({ id: session.threadId, title: session.title, at: session.startedAt });
-    session.threadId = null; session.model = null; session.items = []; session.loaded = false; session.requests.clear(); session.error = null;
-    session.title = ""; session.startedAt = null;
+    const project = await this.#project(projectId);
+    const session = this.#conversation(projectId);
+    project.conversations.set(session.id, session); project.currentId = session.id;
     await this.#save(session); this.emit("change", projectId);
     return this.snapshot(session);
   }
 
-  #find(threadId) { return [...this.sessions.values()].find((session) => session.threadId === threadId); }
+  #find(threadId) {
+    if (!threadId) return null;
+    for (const project of this.sessions.values()) for (const session of project.conversations.values()) if (session.threadId === threadId) return session;
+    return null;
+  }
 
   async selectConversation(projectId, conversationId) {
-    const session = await this.session(projectId);
-    if (session.active || session.busy) throw new ChatError(409, "Dừng lượt đang chạy trước khi chuyển hội thoại.");
-    if (session.threadId === conversationId) return this.snapshot(session);
-    const target = session.previousThreads.find((entry) => entry.id === conversationId);
-    if (!target) throw new ChatError(404, "Hội thoại không thuộc dự án này.");
-    session.busy = true;
-    const previous = { threadId: session.threadId, title: session.title, startedAt: session.startedAt, model: session.model };
-    try {
-      await this.connect();
-      session.threadId = target.id; session.title = target.title; session.startedAt = target.at ?? null;
-      await this.#load(session);
-      session.previousThreads = session.previousThreads.filter((entry) => entry.id !== target.id);
-      if (previous.threadId) session.previousThreads.push({ id: previous.threadId, title: previous.title, at: previous.startedAt });
-      await this.#save(session); this.emit("change", projectId);
-      return this.snapshot(session);
-    } catch (error) { Object.assign(session, previous); session.loaded = false; throw error; }
-    finally { session.busy = false; }
+    const session = await this.session(projectId, conversationId);
+    // Compatibility for existing clients; explicit conversation IDs keep different browser windows isolated.
+    const result = await this.read(projectId, session.id);
+    this.sessions.get(projectId).currentId = session.id;
+    await this.#save(session);
+    return result;
   }
 
   #upsert(session, item, turnId) {

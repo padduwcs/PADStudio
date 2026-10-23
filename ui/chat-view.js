@@ -9,21 +9,23 @@ function action(label, handler, style = "button button-quiet") {
   button.addEventListener("click", handler); return button;
 }
 
-export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget = () => null }) {
+export function createChatPanel({ root, toggle, onProjectCreated }) {
   let projectId;
   let projectTitle = "";
+  let conversationId = null;
+  let openTabs = [];
+  let conversationEntries = [];
+  let tabsSignature = "";
+  const views = new Map();
   let state = { connected: false, authenticated: false, models: [] };
   let session = null;
   let stream = null;
   let generation = 0;
-  let sending = false;
-  let uploading = false;
   let opened = false;
   let returnFocus = null;
   let notice = "";
   let online = true;
   let requestSignature = "";
-  let conversationSignature = "";
   let renderedItems = new Map();
   const drafts = new Map();
   const smallScreen = window.matchMedia("(max-width: 900px)");
@@ -31,51 +33,40 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
   const head = node("header", undefined, "chat-head");
   const heading = node("div");
   const title = node("h2", "Trò chuyện"); title.id = "chat-title";
-  const subtitle = node("p", "Codex", "chat-subtitle");
-  heading.append(title, subtitle);
+  const projectName = node("p", "Một video mới", "chat-subtitle"); projectName.id = "chat-project-name";
+  heading.append(title, projectName);
+  const headActions = node("div", undefined, "chat-head-actions");
+  const historyButton = action("", () => { menu.hidden = !menu.hidden; historyButton.setAttribute("aria-expanded", String(!menu.hidden)); if (!menu.hidden) renderTabs(); }, "icon-button");
+  historyButton.id = "chat-history-button"; historyButton.title = "Lịch sử trò chuyện"; historyButton.setAttribute("aria-label", historyButton.title); historyButton.setAttribute("aria-expanded", "false");
+  historyButton.append(svgIcon("M3 11a9 9 0 1 1 2.5 7M3 4v7h7M12 7v5l3 2"));
   const closeButton = action("", () => close(), "icon-button"); closeButton.append(svgIcon(ICONS.close)); closeButton.setAttribute("aria-label", "Đóng trò chuyện");
-  head.append(heading, closeButton);
-  const projectBar = node("div", undefined, "chat-project");
-  const projectName = node("span", "Một video mới"); projectName.id = "chat-project-name";
+  headActions.append(historyButton, closeButton); head.append(heading, headActions);
+  const tabBar = node("div", undefined, "chat-tab-bar");
+  const tabs = node("div", undefined, "chat-tabs"); tabs.id = "chat-tabs"; tabs.setAttribute("role", "tablist"); tabs.setAttribute("aria-label", "Các cuộc trò chuyện đang mở");
+  const newChat = action("", () => newConversation(), "icon-button chat-tab-add"); newChat.id = "chat-new-conversation";
+  newChat.title = "Cuộc trò chuyện mới"; newChat.setAttribute("aria-label", newChat.title); newChat.append(svgIcon("M12 5v14M5 12h14"));
+  tabBar.append(tabs, newChat);
+  const menu = node("div", undefined, "chat-menu"); menu.hidden = true; menu.setAttribute("aria-label", "Lịch sử trò chuyện");
+  const menuHeading = node("p", "Lịch sử trò chuyện", "chat-menu-heading");
+  const conversations = node("div", undefined, "chat-conversations"); conversations.id = "chat-conversations";
   const createButton = action("Dự án mới", () => {
     newProjectForm.hidden = !newProjectForm.hidden;
     if (!newProjectForm.hidden) newProjectName.focus();
-  }, "button button-ghost"); createButton.id = "chat-new-project";
-  projectBar.append(projectName, createButton);
-  const conversations = node("select", undefined, "select chat-conversations"); conversations.id = "chat-conversations";
-  conversations.setAttribute("aria-label", "Chọn cuộc trò chuyện"); conversations.hidden = true;
-  conversations.addEventListener("change", async () => {
-    if (!conversations.value) return;
-    conversations.disabled = true;
-    try { acceptSession((await post(endpoint("conversation"), { conversationId: conversations.value })).session); }
-    catch (error) { setNotice(error.message); }
-    finally { updateControls(); }
-  });
+  }, "chat-menu-project"); createButton.id = "chat-new-project"; createButton.prepend(svgIcon(ICONS.film, { size: 16 }));
   const newProjectForm = node("form", undefined, "chat-new-project-form"); newProjectForm.hidden = true;
   const newProjectName = node("input"); newProjectName.placeholder = "Tên dự án"; newProjectName.maxLength = 160; newProjectName.required = true; newProjectName.setAttribute("aria-label", "Tên dự án mới");
   const createSubmit = node("button", "Tạo dự án", "button button-soft"); createSubmit.type = "submit";
   newProjectForm.append(newProjectName, createSubmit);
+  menu.append(menuHeading, conversations, createButton, newProjectForm);
   const connection = node("div", undefined, "chat-connection");
-  const options = node("div", undefined, "chat-options");
   const modelLabel = node("label", "Model", "sr-only"); modelLabel.htmlFor = "chat-model";
   const model = node("select", undefined, "select select-quiet"); model.id = "chat-model"; model.setAttribute("aria-label", "Model của agent");
-  const newChat = action("Hội thoại mới", () => {
-    resetBox.hidden = !resetBox.hidden;
-  }, "button button-ghost"); newChat.id = "chat-new-conversation";
-  options.append(modelLabel, model, newChat);
-  const resetBox = node("div", undefined, "chat-reset"); resetBox.hidden = true;
-  resetBox.append(node("p", "Mở cuộc trò chuyện mới cho dự án này? Bạn vẫn có thể mở lại hội thoại trước. Công việc trong dự án được giữ nguyên."));
-  resetBox.append(action("Mở hội thoại mới", async () => {
-    try { const result = await post(endpoint("new"), {}); acceptSession(result.session); resetBox.hidden = true; }
-    catch (error) { setNotice(error.message); }
-  }, "button button-soft"), action("Quay lại", () => { resetBox.hidden = true; }, "button button-ghost"));
-  const history = node("div", undefined, "chat-history"); history.id = "chat-history"; history.setAttribute("role", "log"); history.setAttribute("aria-label", "Lịch sử trò chuyện"); history.setAttribute("aria-live", "off"); history.tabIndex = 0;
+  const history = node("div", undefined, "chat-history"); history.id = "chat-history"; history.setAttribute("role", "tabpanel"); history.setAttribute("aria-label", "Lịch sử trò chuyện"); history.tabIndex = 0;
   const empty = node("div", undefined, "chat-empty");
-  empty.append(node("span", "Cùng làm một video", "chat-empty-title"), node("p", "Nói ý tưởng của bạn, thêm tư liệu và trao đổi với agent ngay tại đây."));
-  for (const suggestion of ["Tôi muốn làm một video giải thích…", "Xem dự án và cho tôi biết đang làm tới đâu."]) {
-    empty.append(action(suggestion, () => { input.value = suggestion; saveDraft(); resize(); input.focus(); }, "chat-suggestion"));
-  }
+  const emptyMark = node("div", undefined, "chat-empty-mark"); emptyMark.append(svgIcon("M12 3l2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2z", { size: 28, stroke: 1.3 }));
+  empty.append(emptyMark, node("span", "Bắt đầu từ ý tưởng của bạn", "chat-empty-title"), node("p", "Trao đổi với Codex để cùng làm video."));
   const messages = node("div", undefined, "chat-messages");
+  messages.setAttribute("role", "log"); messages.setAttribute("aria-label", "Tin nhắn"); messages.setAttribute("aria-live", "off");
   const older = node("p", "Đang hiển thị phần gần nhất của hội thoại.", "chat-older"); older.hidden = true;
   history.append(empty, older, messages);
   const jump = action("Tin nhắn mới ↓", () => scrollToEnd(true), "button button-soft chat-jump"); jump.hidden = true;
@@ -85,38 +76,155 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
   const composer = node("form", undefined, "chat-composer"); composer.id = "chat-composer";
   const chips = node("div", undefined, "chat-attachments"); chips.id = "chat-attachments";
   const inputLabel = node("label", "Tin nhắn cho agent", "sr-only"); inputLabel.htmlFor = "chat-input";
-  const input = node("textarea"); input.id = "chat-input"; input.rows = 3; input.maxLength = 32_000; input.placeholder = "Bạn muốn làm video như thế nào?";
+  const input = node("textarea"); input.id = "chat-input"; input.rows = 2; input.maxLength = 32_000; input.placeholder = "Nhắn tin cho Codex…";
   const composerActions = node("div", undefined, "chat-composer-actions");
-  const attach = action("Thêm tư liệu", () => fileInput.click(), "button button-ghost"); attach.id = "chat-attach"; attach.prepend(svgIcon(ICONS.file, { size: 16 }));
+  const attach = action("", () => fileInput.click(), "icon-button"); attach.id = "chat-attach"; attach.title = "Đính kèm file"; attach.setAttribute("aria-label", attach.title); attach.append(svgIcon("M8 12.5l6.3-6.3a3 3 0 0 1 4.2 4.2L10 19a5 5 0 0 1-7-7l9-9", { size: 17 }));
   const fileInput = node("input"); fileInput.type = "file"; fileInput.multiple = true; fileInput.hidden = true; fileInput.id = "chat-files";
   const controls = node("div", undefined, "chat-send-controls");
-  const stop = action("Dừng", async () => {
+  const stop = action("", async () => {
+    const current = projectId; const currentConversation = conversationId;
     stop.disabled = true;
-    try { const result = await post(endpoint("interrupt"), {}); acceptSession(result.session); }
-    catch (error) { setNotice(error.message); }
+    try { const result = await post(endpoint("interrupt"), { conversationId: currentConversation }); if (current === projectId && currentConversation === conversationId) acceptSession(result.session); }
+    catch (error) { if (current === projectId && currentConversation === conversationId) setNotice(error.message); }
     finally { updateControls(); }
-  }, "button button-quiet"); stop.id = "chat-stop"; stop.hidden = true;
-  const submit = node("button", "Gửi", "button button-primary"); submit.type = "submit"; submit.id = "chat-send";
-  controls.append(stop, submit); composerActions.append(attach, controls);
+  }, "icon-button chat-stop"); stop.id = "chat-stop"; stop.hidden = true; stop.title = "Dừng trả lời"; stop.setAttribute("aria-label", stop.title); stop.append(svgIcon("M6 6h12v12H6z", { size: 16 }));
+  const submit = node("button", undefined, "icon-button chat-send"); submit.type = "submit"; submit.id = "chat-send"; submit.append(svgIcon("M12 19V5m-6 6 6-6 6 6", { size: 18 }));
+  const composerTools = node("div", undefined, "chat-composer-tools"); composerTools.append(attach, modelLabel, model);
+  controls.append(stop, submit); composerActions.append(composerTools, controls);
   composer.append(chips, inputLabel, input, fileInput, composerActions);
-  const hint = node("p", "Enter để gửi · Shift + Enter để xuống dòng. Lượt chat dùng hạn mức tài khoản Codex đang kết nối.", "chat-hint");
-  root.append(head, projectBar, conversations, newProjectForm, connection, options, resetBox, history, jump, requests, status, noticeBox, composer, hint);
+  const hint = node("p", "Enter để gửi · Shift + Enter xuống dòng", "chat-hint");
+  root.append(head, tabBar, menu, connection, history, jump, requests, status, noticeBox, composer, hint);
 
+  function draftKey() { return `${projectId ?? "new"}:${conversationId ?? "new"}`; }
   function draft() {
-    const key = projectId ?? "new";
+    const key = draftKey();
     if (!drafts.has(key)) {
       let stored = null;
-      try { stored = JSON.parse(sessionStorage.getItem("padstudio-chat-draft:" + key)); } catch { /* Optional browser storage. */ }
+      try {
+        stored = JSON.parse(sessionStorage.getItem("padstudio-chat-draft:" + key));
+        if (!stored && !conversationId) stored = JSON.parse(sessionStorage.getItem("padstudio-chat-draft:" + (projectId ?? "new")));
+      } catch { /* Optional browser storage. */ }
       drafts.set(key, stored && typeof stored.text === "string" && Array.isArray(stored.attachments)
         ? stored : { text: "", attachments: [], anchor: null, model: "", attempt: null });
     }
     return drafts.get(key);
   }
 
+  function persistDraft(value, key) {
+    const { sending, uploading, ...stored } = value;
+    try { sessionStorage.setItem("padstudio-chat-draft:" + key, JSON.stringify(stored)); } catch { /* Optional browser storage. */ }
+  }
+
   function saveDraft() {
     const value = draft(); value.text = input.value; value.model = model.value;
-    try { sessionStorage.setItem("padstudio-chat-draft:" + (projectId ?? "new"), JSON.stringify(value)); } catch { /* Optional browser storage. */ }
+    persistDraft(value, draftKey());
     updateControls();
+  }
+
+  function saveTabs() {
+    try { sessionStorage.setItem("padstudio-chat-tabs:" + projectId, JSON.stringify({ ids: openTabs, selected: conversationId })); } catch { /* Optional browser storage. */ }
+  }
+
+  function saveView() {
+    if (!conversationId) return;
+    saveDraft();
+    if (!session) return;
+    views.set(draftKey(), { renderedItems, requestSignature, requestNodes: [...requests.childNodes], notice,
+      scrollTop: history.scrollTop, atEnd: history.scrollHeight - history.scrollTop - history.clientHeight < 100 });
+  }
+
+  function showConversation(id) {
+    saveView(); conversationId = id; generation += 1; session = null;
+    const view = views.get(draftKey());
+    renderedItems = view?.renderedItems ?? new Map(); requestSignature = view?.requestSignature ?? "";
+    messages.replaceChildren(...[...renderedItems.values()].map((entry) => entry.element));
+    requests.replaceChildren(...(view?.requestNodes ?? [])); setNotice(view?.notice ?? "");
+    input.value = draft().text; input.placeholder = "Nhắn tin cho Codex…";
+    renderConnection(); renderChips(); updateControls(); resize(); jump.hidden = true;
+    history.scrollTop = view?.atEnd ? history.scrollHeight : view?.scrollTop ?? 0;
+  }
+
+  async function activateTab(id) {
+    if (id === conversationId) { dismissMenu(); input.focus(); return; }
+    if (!openTabs.includes(id)) openTabs.push(id);
+    const entries = conversationEntries;
+    showConversation(id); renderTabs(entries); saveTabs(); dismissMenu(); subscribe();
+    try { await loadSession(); } catch (error) { setNotice(error.message); }
+    input.focus();
+  }
+
+  function dismissMenu() { menu.hidden = true; historyButton.setAttribute("aria-expanded", "false"); }
+
+  function revealSelectedTab() {
+    const selected = tabs.querySelector('[aria-selected="true"]')?.parentElement;
+    if (!selected) return;
+    const area = tabs.getBoundingClientRect(); const bounds = selected.getBoundingClientRect();
+    if (bounds.right > area.right) tabs.scrollLeft += bounds.right - area.right;
+    else if (bounds.left < area.left) tabs.scrollLeft -= area.left - bounds.left;
+  }
+  new ResizeObserver(revealSelectedTab).observe(tabs);
+
+  async function newConversation() {
+    if (!projectId) { input.focus(); return; }
+    const current = projectId; newChat.disabled = true;
+    try {
+      const result = await post(endpoint("new"), {});
+      if (current !== projectId) return;
+      showConversation(result.session.conversationId);
+      openTabs.push(conversationId); acceptSession(result.session); saveTabs(); dismissMenu(); subscribe(); input.focus();
+    } catch (error) { if (current === projectId) setNotice(error.message); }
+    finally { newChat.disabled = false; }
+  }
+
+  async function closeTab(id) {
+    const index = openTabs.indexOf(id); if (index < 0) return;
+    openTabs.splice(index, 1);
+    if (id === conversationId) {
+      if (openTabs.length) await activateTab(openTabs[Math.min(index, openTabs.length - 1)]);
+      else await newConversation();
+      if (conversationId === id && !openTabs.includes(id)) openTabs.push(id);
+    }
+    saveTabs(); renderTabs();
+  }
+
+  function renderTabs(entries = conversationEntries) {
+    if (!entries.length && conversationId) return;
+    const signature = JSON.stringify([entries, openTabs, conversationId]);
+    if (tabsSignature === signature) return;
+    tabsSignature = signature;
+    const activeElement = document.activeElement;
+    const focusedId = tabs.contains(activeElement) ? activeElement.dataset.conversationId : null;
+    const focusedClose = activeElement?.classList.contains("chat-tab-close");
+    tabs.replaceChildren(); conversations.replaceChildren();
+    for (const id of openTabs) {
+      const entry = entries.find((candidate) => candidate.id === id); if (!entry) continue;
+      const wrapper = node("div", undefined, "chat-tab" + (id === conversationId ? " is-selected" : "")); wrapper.setAttribute("role", "presentation");
+      const button = action("", () => activateTab(id), "chat-tab-label"); button.id = "chat-tab-" + id;
+      button.dataset.conversationId = id; button.setAttribute("role", "tab"); button.setAttribute("aria-selected", String(id === conversationId));
+      button.setAttribute("aria-controls", "chat-history"); button.tabIndex = id === conversationId ? 0 : -1;
+      const label = entry.title || "Chat mới"; button.title = label + (entry.waiting ? " · Đang chờ bạn" : entry.active ? " · Đang trả lời" : "");
+      const dot = node("span", undefined, "chat-tab-dot" + (entry.waiting ? " is-waiting" : entry.active ? " is-active" : ""));
+      button.append(dot, node("span", label));
+      button.addEventListener("keydown", (event) => {
+        let next;
+        if (event.key === "ArrowRight") next = openTabs[(openTabs.indexOf(id) + 1) % openTabs.length];
+        else if (event.key === "ArrowLeft") next = openTabs[(openTabs.indexOf(id) + openTabs.length - 1) % openTabs.length];
+        else if (event.key === "Home") next = openTabs[0]; else if (event.key === "End") next = openTabs.at(-1);
+        if (next) { event.preventDefault(); activateTab(next).then(() => document.getElementById("chat-tab-" + next)?.focus()); }
+        if (event.key === "Delete") { event.preventDefault(); closeTab(id).then(() => tabs.querySelector('[aria-selected="true"]')?.focus()); }
+      });
+      const remove = action("", () => closeTab(id), "chat-tab-close"); remove.dataset.conversationId = id; remove.title = "Đóng tab: " + label; remove.setAttribute("aria-label", remove.title);
+      remove.append(svgIcon(ICONS.close, { size: 12 })); remove.tabIndex = id === conversationId ? 0 : -1;
+      wrapper.append(button, remove); tabs.append(wrapper);
+    }
+    for (const entry of [...entries].reverse()) {
+      const button = action("", () => activateTab(entry.id), "chat-conversation-entry"); button.dataset.conversationId = entry.id;
+      button.append(node("span", entry.title || "Chat mới"), node("small", entry.waiting ? "Chờ bạn" : entry.active ? "Đang trả lời" : openTabs.includes(entry.id) ? "Đang mở" : ""));
+      conversations.append(button);
+    }
+    if (!entries.length) conversations.append(node("p", "Chưa có cuộc trò chuyện nào.", "chat-menu-empty"));
+    if (focusedId) tabs.querySelector(`${focusedClose ? ".chat-tab-close" : ".chat-tab-label"}[data-conversation-id="${CSS.escape(focusedId)}"]`)?.focus();
+    requestAnimationFrame(revealSelectedTab);
   }
 
   function resize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 180) + "px"; }
@@ -137,23 +245,23 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
   }
 
   function updateControls() {
+    const { sending = false, uploading = false } = draft();
     const waiting = Boolean(session?.requests.length);
-    submit.disabled = sending || uploading || !online || !state.connected || !state.authenticated || waiting || (!input.value.trim() && !draft().attachments.length);
-    submit.textContent = sending ? "Đang gửi…" : session?.active ? "Gửi bổ sung" : "Gửi";
+    submit.disabled = sending || uploading || !online || !state.connected || !state.authenticated || (Boolean(projectId) && !session) || waiting || (!input.value.trim() && !draft().attachments.length);
+    submit.title = sending ? "Đang gửi…" : session?.active ? "Gửi bổ sung" : "Gửi tin nhắn"; submit.setAttribute("aria-label", submit.title);
     stop.hidden = !session?.active; stop.disabled = sending || !online;
     attach.disabled = uploading || sending || !online;
     model.disabled = Boolean(session?.active) || sending;
-    newChat.disabled = Boolean(session?.active) || sending || !session?.hasConversation;
-    conversations.disabled = Boolean(session?.active) || sending;
     status.textContent = !online ? "Mất kết nối. Đang thử kết nối lại…" : sending ? "Đang gửi yêu cầu…" : uploading ? "Đang thêm tư liệu vào dự án…"
       : waiting ? "Đang chờ bạn trả lời" : session?.active ? "Agent đang làm việc…" : state.authenticated ? "Sẵn sàng" : "Kết nối Codex để bắt đầu";
     root.classList.toggle("is-working", Boolean(session?.active));
+    status.classList.toggle("is-idle", online && !sending && !uploading && !waiting && !session?.active);
+    submit.hidden = Boolean(session?.active) && !input.value.trim() && !draft().attachments.length;
   }
 
   function renderConnection() {
     connection.replaceChildren();
     connection.hidden = state.connected && state.authenticated && !state.error;
-    subtitle.textContent = !state.connected ? "Chưa kết nối Codex" : state.authenticated ? "Codex · Đã kết nối" : "Codex · Cần đăng nhập";
     if (!state.connected || state.error) {
       connection.append(node("p", state.error || "Dùng Codex trên máy để trò chuyện và làm video."));
       connection.append(action("Kết nối Codex", () => connect(), "button button-soft"));
@@ -173,7 +281,7 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
     const defaultOption = node("option", "Mặc định Codex"); defaultOption.value = ""; model.append(defaultOption);
     for (const entry of state.models ?? []) { const option = node("option", entry.name); option.value = entry.id; model.append(option); }
     if ([...model.options].some((option) => option.value === value)) model.value = value;
-    options.hidden = !state.authenticated;
+    model.hidden = !state.authenticated;
     updateControls();
   }
 
@@ -196,6 +304,7 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
     const items = session?.items ?? [];
     empty.hidden = items.length > 0; older.hidden = !session?.truncated;
     const present = new Set();
+    let previousElement = null;
     for (const item of items) {
       present.add(item.id);
       let rendered = renderedItems.get(item.id);
@@ -223,7 +332,9 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
         rendered.element.classList.toggle("is-uncertain", item.status === "uncertain");
         rendered.signature = signature;
       }
-      messages.append(rendered.element);
+      const expected = previousElement ? previousElement.nextElementSibling : messages.firstElementChild;
+      if (expected !== rendered.element) messages.insertBefore(rendered.element, expected);
+      previousElement = rendered.element;
     }
     for (const [id, rendered] of renderedItems) if (!present.has(id)) { rendered.element.remove(); renderedItems.delete(id); }
     if (nearBottom) scrollToEnd(true); else if (items.length) jump.hidden = false;
@@ -235,6 +346,7 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
     if (requestSignature === signature) return;
     requestSignature = signature; requests.replaceChildren();
     for (const request of values) {
+      const requestProject = projectId; const requestConversation = conversationId;
       const form = node("form", undefined, "chat-request"); form.dataset.requestId = request.id;
       form.append(node("h3", request.title));
       if (request.reason) form.append(node("p", request.reason));
@@ -275,13 +387,12 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
       const buttons = node("div", undefined, "chat-request-actions");
       const accept = node("button", request.kind === "questions" || request.kind === "form" ? "Gửi câu trả lời" : request.kind === "external" ? "Tôi đã hoàn tất" : "Cho phép lần này", "button button-soft"); accept.type = "submit";
       const answer = async (decision) => {
-        const currentProject = projectId;
         for (const button of buttons.querySelectorAll("button")) button.disabled = true;
         try {
           const data = Object.fromEntries([...fields].map(([key, value]) => [key, value()]));
-          const result = await post(endpoint("answer"), { requestId: request.id, decision, answers: data, content: data });
-          if (projectId === currentProject) { acceptSession(result.session); setNotice(""); }
-        } catch (error) { setNotice(error.message); for (const button of buttons.querySelectorAll("button")) button.disabled = false; }
+          const result = await post(`/api/chat/projects/${encodeURIComponent(requestProject)}/answer`, { conversationId: requestConversation, requestId: request.id, decision, answers: data, content: data });
+          if (projectId === requestProject && conversationId === requestConversation) { acceptSession(result.session); setNotice(""); }
+        } catch (error) { if (projectId === requestProject && conversationId === requestConversation) setNotice(error.message); for (const button of buttons.querySelectorAll("button")) button.disabled = false; }
       };
       buttons.append(accept, action(request.kind === "questions" ? "Bỏ qua" : "Từ chối", () => answer("decline"), "button button-ghost"));
       form.append(buttons); form.addEventListener("submit", (event) => { event.preventDefault(); answer("accept"); }); requests.append(form);
@@ -290,17 +401,22 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
 
   function acceptSession(next) {
     if (!next || next.projectId !== projectId) return;
-    session = next; renderMessages(); renderRequests(); updateControls();
-    const signature = JSON.stringify(session.conversations ?? []);
-    if (conversationSignature !== signature) {
-      conversationSignature = signature; conversations.replaceChildren();
-      if (!session.hasConversation) { const placeholder = node("option", "Cuộc trò chuyện mới"); placeholder.value = ""; conversations.append(placeholder); }
-      for (const entry of session.conversations ?? []) {
-        const option = node("option", entry.title); option.value = entry.id; option.selected = entry.current; conversations.append(option);
-      }
-      conversations.hidden = (session.conversations?.length ?? 0) < (session.hasConversation ? 2 : 1);
+    let adopted = false;
+    if (!conversationId) {
+      const pendingDraft = draft();
+      showConversation(next.conversationId);
+      if (pendingDraft.text || pendingDraft.attachments.length) { Object.assign(draft(), pendingDraft); input.value = draft().text; renderChips(); resize(); }
+      adopted = true;
     }
+    if (next.conversationId !== conversationId) return;
+    conversationEntries = next.conversations ?? [];
+    const validIds = new Set(conversationEntries.map((entry) => entry.id));
+    openTabs = openTabs.filter((id) => validIds.has(id));
+    if (!openTabs.includes(conversationId)) openTabs.push(conversationId);
+    saveTabs(); renderTabs(); history.setAttribute("aria-labelledby", "chat-tab-" + conversationId);
+    session = next; renderMessages(); renderRequests(); updateControls();
     if (session.error) setNotice(session.error);
+    if (adopted) subscribe();
   }
 
   function renderChips() {
@@ -312,9 +428,9 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
       const remove = action("×", () => { value.attachments = value.attachments.filter((entry) => entry.resourceId !== attachment.resourceId); saveDraft(); renderChips(); }, "chat-chip-remove");
       remove.setAttribute("aria-label", "Bỏ " + attachment.name + " khỏi tin nhắn"); chip.append(remove); chips.append(chip);
     }
-    if (value.anchor || (!value.omitVideoTarget && getVideoTarget())) {
-      const chip = node("span", undefined, "chat-attachment chat-anchor"); chip.append(node("span", value.anchor ? "Đã gắn mốc video đang xem" : "Kèm bản video đang xem"));
-      const remove = action("×", () => { value.anchor = null; value.omitVideoTarget = true; saveDraft(); renderChips(); }, "chat-chip-remove");
+    if (value.anchor) {
+      const chip = node("span", undefined, "chat-attachment chat-anchor"); chip.append(node("span", "Đã gắn mốc video đang xem"));
+      const remove = action("×", () => { value.anchor = null; saveDraft(); renderChips(); }, "chat-chip-remove");
       remove.setAttribute("aria-label", "Bỏ mốc video khỏi tin nhắn"); chip.append(remove); chips.append(chip);
     }
   }
@@ -322,7 +438,7 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
   async function loadSession() {
     if (!projectId) return;
     const current = projectId; const version = generation;
-    const response = await fetch(endpoint()); const result = await response.json();
+    const response = await fetch(endpoint() + (conversationId ? "?conversation=" + encodeURIComponent(conversationId) : "")); const result = await response.json();
     if (version !== generation || current !== projectId) return;
     if (!response.ok) throw new Error(result.error || "Không mở được hội thoại.");
     acceptSession(result.session);
@@ -332,7 +448,8 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
     stream?.close(); stream = null;
     if (!opened || document.hidden) return;
     const version = generation;
-    stream = new EventSource("/api/chat/events" + (projectId ? "?project=" + encodeURIComponent(projectId) : ""));
+    const query = new URLSearchParams(); if (projectId) query.set("project", projectId); if (conversationId) query.set("conversation", conversationId);
+    stream = new EventSource("/api/chat/events?" + query);
     stream.addEventListener("state", (event) => {
       if (version !== generation) return;
       const data = JSON.parse(event.data); online = true; acceptStatus(data.status); acceptSession(data.session); updateControls();
@@ -377,23 +494,31 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
 
   async function setProject(id, name = "") {
     if (id === projectId) { if (name) { projectTitle = name; projectName.textContent = name; } return; }
-    if (projectId !== undefined) saveDraft();
-    projectId = id; projectTitle = name; generation += 1; session = null; requestSignature = ""; conversationSignature = "";
-    conversations.hidden = true;
-    requests.replaceChildren(); messages.replaceChildren(); renderedItems = new Map();
+    saveView();
+    projectId = id; projectTitle = name; conversationId = null; openTabs = []; conversationEntries = []; tabsSignature = "";
+    try { const stored = JSON.parse(sessionStorage.getItem("padstudio-chat-tabs:" + projectId));
+      if (Array.isArray(stored?.ids) && stored.ids.every((entry) => typeof entry === "string")) { openTabs = stored.ids; conversationId = openTabs.includes(stored.selected) ? stored.selected : openTabs[0] ?? null; }
+    } catch { /* Optional browser storage. */ }
+    generation += 1; session = null;
+    const view = views.get(draftKey()); requestSignature = view?.requestSignature ?? "";
+    tabs.replaceChildren(); conversations.replaceChildren(); requests.replaceChildren(); messages.replaceChildren(); renderedItems = new Map();
+    requests.append(...(view?.requestNodes ?? []));
     projectName.textContent = projectTitle || "Một video mới"; projectName.title = projectTitle;
-    input.value = draft().text; renderChips(); renderMessages(); renderConnection(); setNotice(""); resize();
-    resetBox.hidden = true;
+    input.value = draft().text; renderChips(); renderMessages(); renderConnection(); setNotice(view?.notice ?? ""); resize();
+    dismissMenu(); newProjectForm.hidden = true;
     if (opened) { subscribe(); loadSession().catch((error) => setNotice(error.message)); }
   }
 
   async function addFiles(files) {
-    if (uploading || sending) return;
-    uploading = true; setNotice(""); updateControls();
+    if (draft().uploading || draft().sending) return;
+    let destination = draft(); destination.uploading = true; setNotice(""); updateControls();
     let current = projectId;
+    let currentConversation = conversationId; let key = draftKey();
     try {
       if (!current) current = await createProject("Video mới");
-      const destination = draft();
+      if (!conversationId) await loadSession();
+      destination.uploading = false; destination = draft(); destination.uploading = true;
+      currentConversation = conversationId; key = draftKey();
       for (const file of [...files]) {
         if (destination.attachments.length >= 12) throw new Error("Mỗi tin nhắn tối đa 12 tư liệu.");
         if (file.size > MAX_UPLOAD) throw new Error(file.name + ": mỗi tư liệu tối đa 100 MB.");
@@ -403,36 +528,53 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "Không thêm được tư liệu.");
         destination.attachments.push(result.attachment);
-        if (current === projectId) { renderChips(); saveDraft(); }
+        persistDraft(destination, key);
+        if (current === projectId && currentConversation === conversationId) renderChips();
       }
-    } catch (error) { setNotice(error.message); }
-    finally { uploading = false; fileInput.value = ""; updateControls(); }
+    } catch (error) { if (current === projectId && currentConversation === conversationId) setNotice(error.message); }
+    finally { destination.uploading = false; fileInput.value = ""; updateControls(); }
   }
 
   composer.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (submit.disabled) return;
-    sending = true; setNotice(""); updateControls();
-    const original = draft(); const message = input.value; let current = projectId;
+    const original = draft(); original.sending = true; setNotice(""); updateControls();
+    const message = input.value; let current = projectId; let currentConversation = conversationId;
+    let value = original; let key = draftKey();
     try {
       if (!current) {
         current = await createProject(message.trim().split("\n")[0].slice(0, 100) || "Video mới");
         Object.assign(draft(), original); input.value = message;
       }
-      const value = draft();
-      const base = { message, model: value.model || null, attachments: value.attachments.map((entry) => entry.resourceId), anchor: value.anchor };
-      const signature = JSON.stringify([base, Boolean(value.omitVideoTarget)]);
+      if (!currentConversation) {
+        if (current !== projectId) throw new Error("Dự án đang xem đã thay đổi. Tin nhắn chưa được gửi.");
+        await loadSession();
+        if (current !== projectId) throw new Error("Dự án đang xem đã thay đổi. Tin nhắn chưa được gửi.");
+        value = draft(); key = draftKey(); currentConversation = conversationId;
+      }
+      value.sending = true;
+      const base = { message, conversationId: currentConversation, model: value.model || null, attachments: value.attachments.map((entry) => entry.resourceId), anchor: value.anchor };
+      const signature = JSON.stringify(base);
       const sameAttempt = value.attempt?.signature === signature;
-      const body = sameAttempt ? value.attempt.body : { ...base, anchor: value.anchor || (!value.omitVideoTarget ? getVideoTarget() : null) };
+      const body = sameAttempt ? value.attempt.body : base;
       const clientId = sameAttempt ? value.attempt.clientId : crypto.randomUUID();
       value.attempt = { signature, clientId, body }; saveDraft();
       const result = await post(`/api/chat/projects/${encodeURIComponent(current)}/messages`, { ...body, clientId });
-      if (current === projectId) {
-        value.text = ""; value.attachments = []; value.anchor = null; value.omitVideoTarget = false; value.attempt = null; input.value = "";
+      // The user may already be drafting the next message while this request is in flight.
+      if (value.text === message) value.text = "";
+      value.attachments = value.attachments.filter((entry) => !base.attachments.includes(entry.resourceId));
+      if (value.anchor === base.anchor) value.anchor = null;
+      value.attempt = null; persistDraft(value, key);
+      if (current === projectId && currentConversation === conversationId) {
+        input.value = value.text;
         saveDraft(); renderChips(); acceptSession(result.session); resize(); scrollToEnd(true); input.focus();
       }
-    } catch (error) { setNotice(error.message + " Nếu mất kết nối khi gửi, kiểm tra lịch sử trước khi gửi lại."); }
-    finally { sending = false; updateControls(); }
+    } catch (error) {
+      const messageText = error.message + " Nếu mất kết nối khi gửi, kiểm tra lịch sử trước khi gửi lại.";
+      if (current === projectId && currentConversation === conversationId) setNotice(messageText);
+      else { const view = views.get(key); if (view) view.notice = messageText; }
+    }
+    finally { original.sending = false; value.sending = false; updateControls(); }
   });
   input.addEventListener("input", () => { saveDraft(); resize(); });
   input.addEventListener("keydown", (event) => {
@@ -444,7 +586,7 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
   history.addEventListener("scroll", () => { if (history.scrollHeight - history.scrollTop - history.clientHeight < 100) jump.hidden = true; });
   newProjectForm.addEventListener("submit", async (event) => {
     event.preventDefault(); createSubmit.disabled = true;
-    try { await createProject(newProjectName.value); newProjectName.value = ""; newProjectForm.hidden = true; input.focus(); }
+    try { await createProject(newProjectName.value); newProjectName.value = ""; newProjectForm.hidden = true; dismissMenu(); input.focus(); }
     catch (error) { setNotice(error.message); }
     finally { createSubmit.disabled = false; }
   });
@@ -452,7 +594,7 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
   root.addEventListener("dragleave", (event) => { if (!root.contains(event.relatedTarget)) root.classList.remove("is-dragging"); });
   root.addEventListener("drop", (event) => { event.preventDefault(); root.classList.remove("is-dragging"); if (event.dataTransfer.files.length) addFiles(event.dataTransfer.files); });
   root.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") { event.preventDefault(); close(); }
+    if (event.key === "Escape") { event.preventDefault(); if (!menu.hidden) { dismissMenu(); historyButton.focus(); } else close(); }
     if (event.key !== "Tab" || !smallScreen.matches) return;
     const candidates = [...root.querySelectorAll(focusable)].filter((element) => element.getClientRects().length);
     const first = candidates[0]; const last = candidates.at(-1);
@@ -462,10 +604,11 @@ export function createChatPanel({ root, toggle, onProjectCreated, getVideoTarget
   toggle.addEventListener("click", () => opened ? close() : openPanel());
   smallScreen.addEventListener("change", modalState);
   document.addEventListener("visibilitychange", subscribe);
+  document.addEventListener("pointerdown", (event) => { if (!menu.hidden && !menu.contains(event.target) && !historyButton.contains(event.target)) dismissMenu(); });
   document.addEventListener("padstudio-feedback", (event) => {
     if (event.detail.projectId !== projectId) return;
-    draft().anchor = { resultId: event.detail.resultId, text: event.detail.text }; draft().omitVideoTarget = false; renderChips(); saveDraft(); openPanel(); input.focus();
+    draft().anchor = { resultId: event.detail.resultId, text: event.detail.text }; renderChips(); saveDraft(); openPanel(); input.focus();
     input.placeholder = "Bạn muốn sửa gì ở vị trí này?";
   });
-  return { open: openPanel, close, setProject, refreshVideoTarget: renderChips, syncModal: modalState };
+  return { open: openPanel, close, setProject, syncModal: modalState };
 }

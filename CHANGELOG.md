@@ -4,6 +4,10 @@ Theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Các bản phát 
 
 ## [Chưa phát hành]
 
+- **Chat gọn hơn, có nhiều tab độc lập.** Mở cuộc trò chuyện mới bằng **+**, chuyển tab khi Agent vẫn làm việc, bản nháp/câu hỏi riêng từng tab.
+  Đóng tab vẫn giữ lịch sử và kết quả nền; mở lại qua nút lịch sử. Tinh giản đầu trang, đưa model/đính kèm vào ô nhập, chỉ đính kèm mốc video
+  khi bấm **Góp ý trong chat**. Sửa bố cục, chữ, màu sáng/tối và thanh tab trên màn hình nhỏ. Giữ nguyên các liên kết hội thoại cũ.
+
 - **Trò chuyện với Codex ngay trong PADStudio.** Gửi/nhận theo thời gian thực, lịch sử theo dự án, model, tư liệu đính kèm qua contract import,
   câu hỏi/xác nhận quyền, gửi bổ sung, dừng và nối lại sau mất kết nối. Góp ý kèm exact video đang xem. Agent tiếp tục đọc repo và làm video
   bằng CLI; không xây agent loop mới. Host ngoài vẫn dùng được. Lượt chat dùng hạn mức tài khoản Codex trên máy.

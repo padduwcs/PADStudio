@@ -112,7 +112,7 @@ export async function handleChatRequest(request, response, url, service) {
     if (request.method === "GET" && url.pathname === "/api/chat/status") { send(response, 200, { status: service.status() }); return true; }
     if (request.method === "GET" && url.pathname === "/api/chat/events") {
       const projectId = url.searchParams.get("project");
-      const session = projectId ? await service.session(projectId) : null;
+      const session = projectId ? await service.session(projectId, url.searchParams.get("conversation")) : null;
       events(request, response, service, session); return true;
     }
     if (write && uploadRoute) { send(response, 201, await upload(request, service, decodeURIComponent(uploadRoute[1]))); return true; }
@@ -126,11 +126,11 @@ export async function handleChatRequest(request, response, url, service) {
     const match = /^\/api\/chat\/projects\/([^/]+)(?:\/(messages|interrupt|answer|new|conversation))?$/.exec(url.pathname);
     if (match) {
       const projectId = decodeURIComponent(match[1]);
-      if (!match[2] && request.method === "GET") { send(response, 200, { session: await service.read(projectId) }); return true; }
+      if (!match[2] && request.method === "GET") { send(response, 200, { session: await service.read(projectId, url.searchParams.get("conversation")) }); return true; }
       if (write && match[2]) {
         const body = await jsonBody(request);
         if (match[2] === "messages") send(response, 200, await service.send(projectId, body));
-        else if (match[2] === "interrupt") send(response, 200, { session: await service.interrupt(projectId) });
+        else if (match[2] === "interrupt") send(response, 200, { session: await service.interrupt(projectId, body.conversationId) });
         else if (match[2] === "answer") send(response, 200, { session: await service.answer(projectId, body.requestId, body) });
         else if (match[2] === "conversation") send(response, 200, { session: await service.selectConversation(projectId, body.conversationId) });
         else send(response, 200, { session: await service.newConversation(projectId) });

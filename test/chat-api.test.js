@@ -124,6 +124,37 @@ test("UI file uploads use the existing import contract, reject path tricks and p
   assert.equal(await readFile(join(service.projectRoot, "demo", "inputs", second.name), "utf8"), "Nội dung thứ hai");
 });
 
+test("explicit conversation IDs keep HTTP and SSE clients on their own tab when another client opens a conversation", async (t) => {
+  const { origin, service, client, post } = await fixture(t);
+  await post("/api/chat/connect");
+  const first = (await (await fetch(origin + "/api/chat/projects/demo")).json()).session;
+  const second = (await post("/api/chat/projects/demo/new")).body.session;
+  for (const [conversationId, message] of [[first.conversationId, "Hội thoại đầu"], [second.conversationId, "Hội thoại sau"]]) {
+    const sent = await post("/api/chat/projects/demo/messages", { conversationId, message, clientId: "http-" + conversationId });
+    assert.equal(sent.status, 200); assert.equal(sent.body.session.conversationId, conversationId);
+  }
+  const one = await service.session("demo", first.conversationId); const two = await service.session("demo", second.conversationId);
+  const controller = new AbortController();
+  const response = await fetch(origin + "/api/chat/events?project=demo&conversation=" + first.conversationId, { signal: controller.signal });
+  const reader = response.body.getReader();
+  try {
+    const chunk = await reader.read();
+    const event = JSON.parse(new TextDecoder().decode(chunk.value).split("data: ")[1].trim());
+    assert.equal(event.session.conversationId, first.conversationId);
+    assert.equal(event.session.items[0].text, "Hội thoại đầu");
+    assert.equal(event.session.conversations.filter((entry) => entry.active).length, 2);
+  } finally { controller.abort(); await reader.cancel().catch(() => {}); }
+  client.ask(one.threadId, "item/commandExecution/requestApproval", { command: "only-one" });
+  const request = (await service.read("demo", first.conversationId)).requests[0];
+  assert.equal((await post("/api/chat/projects/demo/answer", { conversationId: second.conversationId, requestId: request.id, decision: "accept" })).status, 409);
+  assert.equal(client.responses.length, 0);
+  await post("/api/chat/projects/demo/interrupt", { conversationId: first.conversationId });
+  assert.equal(one.active, false); assert.equal(two.active, true);
+  assert.equal((await fetch(origin + "/api/chat/projects/demo?conversation=foreign-conversation")).status, 404);
+  assert.equal((await fetch(origin + "/api/chat/events?project=demo&conversation=foreign-conversation")).status, 404);
+  assert.equal((await post("/api/chat/projects/demo/messages", { conversationId: "", message: "No fallback", clientId: "http-empty-id" })).status, 400);
+});
+
 test("the new-project action creates exactly a normal empty project and model selection stays bounded", async (t) => {
   const { service, client, post } = await fixture(t);
   assert.equal((await post("/api/chat/projects", { title: "" })).status, 400);

@@ -46,6 +46,9 @@ test("chat connects without inference or leaking account data and binds threads 
 
 test("the same submission is sent once, including after restarting the server", async (t) => {
   const { client, service } = await fixture(t);
+  const blank = await service.read("alpha");
+  const beforeFirstMessage = new ChatService({ projectRoot: service.projectRoot, client }); t.after(() => beforeFirstMessage.close());
+  assert.equal((await beforeFirstMessage.read("alpha", blank.conversationId)).conversationId, blank.conversationId, "a blank tab survives a server restart before its first message");
   await service.send("alpha", message());
   client.complete((await service.session("alpha")).threadId);
   assert.equal((await service.send("alpha", message())).duplicate, true);
@@ -79,10 +82,65 @@ test("messages steer an active turn, concurrent sends cannot start two turns, an
   await service.send("alpha", message("request-0003", "Chậm hơn một chút"));
   const steer = client.calls.find((call) => call.method === "turn/steer");
   assert.equal(steer.params.expectedTurnId, turnId);
-  await assert.rejects(service.newConversation("alpha"), { status: 409 });
-  await service.interrupt("alpha");
-  assert.equal((await service.read("alpha")).active, false);
+  const other = await service.newConversation("alpha");
+  assert.notEqual(other.conversationId, current.id);
+  assert.equal((await service.read("alpha", current.id)).active, true);
+  await service.interrupt("alpha", current.id);
+  assert.equal((await service.read("alpha", current.id)).active, false);
   assert.equal(client.calls.find((call) => call.method === "turn/interrupt").params.turnId, turnId);
+});
+
+test("independent tabs stream, steer, approve and stop their own turns even while other tabs are active", async (t) => {
+  const { client, service } = await fixture(t);
+  const first = await service.read("alpha"); const second = await service.newConversation("alpha");
+  await Promise.all([
+    service.send("alpha", { ...message("parallel-tab-one", "Ý tưởng thứ nhất"), conversationId: first.conversationId }),
+    service.send("alpha", { ...message("parallel-tab-two", "Ý tưởng thứ hai"), conversationId: second.conversationId })
+  ]);
+  const one = await service.session("alpha", first.conversationId); const two = await service.session("alpha", second.conversationId);
+  assert.notEqual(one.threadId, two.threadId);
+  assert.equal(one.active && two.active, true);
+  assert.equal((await service.read("alpha", one.id)).conversations.filter((entry) => entry.active).length, 2);
+  client.ask(one.threadId, "item/commandExecution/requestApproval", { command: "only-first-tab" });
+  client.ask(two.threadId, "item/commandExecution/requestApproval", { command: "only-second-tab" });
+  const request = (await service.read("alpha", one.id)).requests[0];
+  await assert.rejects(service.answer("alpha", request.id, { conversationId: two.id, decision: "accept" }), { status: 409 });
+  await service.answer("alpha", request.id, { conversationId: one.id, decision: "decline" });
+  assert.equal(two.requests.size, 1); assert.equal(one.requests.size, 0);
+  await service.send("alpha", { ...message("parallel-steer-one", "Chỉnh ý tưởng thứ nhất"), conversationId: one.id });
+  assert.equal(client.calls.findLast((call) => call.method === "turn/steer").params.threadId, one.threadId);
+  await service.interrupt("alpha", one.id);
+  assert.equal(one.active, false); assert.equal(two.active, true); assert.equal(two.requests.size, 1);
+  client.complete(two.threadId, "Chỉ xuất hiện ở tab hai");
+  assert.equal((await service.read("alpha", one.id)).items.some((item) => item.text.includes("Chỉ xuất hiện")), false);
+  assert.equal((await service.read("alpha", two.id)).items.at(-1).text, "Chỉ xuất hiện ở tab hai");
+  await assert.rejects(service.read("beta", one.id), { status: 404 });
+  const restored = new ChatService({ projectRoot: service.projectRoot, client }); t.after(() => restored.close());
+  await restored.connect();
+  assert.equal((await restored.read("alpha", two.id)).items.at(-1).text, "Chỉ xuất hiện ở tab hai");
+  assert.equal((await restored.send("alpha", { ...message("parallel-tab-two", "Ý tưởng thứ hai"), conversationId: two.id })).duplicate, true);
+  assert.equal((await restored.read("alpha", one.id)).conversations.length, 2);
+});
+
+test("version 1 links migrate all conversations and receipts without losing history or copying transcripts", async (t) => {
+  const { client, service } = await fixture(t);
+  await service.send("alpha", message());
+  const one = await service.session("alpha"); client.complete(one.threadId, "Nội dung cũ đầu tiên");
+  await service.newConversation("alpha"); await service.send("alpha", message("legacy-second", "Tiếp theo"));
+  const two = await service.session("alpha"); client.complete(two.threadId, "Nội dung cũ thứ hai");
+  const savedPath = join(service.sessionRoot, (await readdir(service.sessionRoot))[0]);
+  await writeFile(savedPath, JSON.stringify({ version: "1.0", projectId: "alpha", threadId: two.threadId,
+    title: "Chat cũ thứ hai", previousThreads: [{ id: one.threadId, title: "Chat cũ đầu tiên" }], receipts: [...one.receipts, ...two.receipts] }));
+  const migrated = new ChatService({ projectRoot: service.projectRoot, client }); t.after(() => migrated.close());
+  await migrated.connect();
+  assert.equal((await migrated.read("alpha")).items.at(-1).text, "Nội dung cũ thứ hai");
+  assert.equal((await migrated.read("alpha", one.threadId)).items.at(-1).text, "Nội dung cũ đầu tiên");
+  assert.equal((await migrated.send("alpha", { ...message(), conversationId: one.threadId })).duplicate, true);
+  await migrated.newConversation("alpha");
+  const saved = JSON.parse(await readFile(savedPath, "utf8"));
+  assert.equal(saved.version, "2.0"); assert.equal(saved.conversations.length, 3);
+  assert.equal(JSON.stringify(saved).includes("Nội dung cũ"), false);
+  assert.equal(saved.conversations.find((entry) => entry.threadId === one.threadId).receipts.length, 1);
 });
 
 test("approval prompts are scoped, require an explicit answer and expire with the turn", async (t) => {

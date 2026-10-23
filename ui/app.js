@@ -1,5 +1,5 @@
 import { ICONS, clock, node, orientationLabel, relativeTime, statusChip, svgIcon } from "./dom.js";
-import { renderTheatre, clearTheatre, currentVideoChatTarget } from "./production-view.js";
+import { renderTheatre, clearTheatre } from "./production-view.js";
 import { renderSources, clearSources } from "./sources-view.js";
 import { createLibrary } from "./library-view.js";
 import { createToolsPanel } from "./tools-view.js";
@@ -49,7 +49,6 @@ const library = createLibrary({
 const tools = createToolsPanel({ root: $("#tools"), body: $("#tools-body"), refreshButton: $("#tools-refresh") });
 const chat = createChatPanel({
   root: $("#chat"), toggle: $("#chat-button"),
-  getVideoTarget: () => currentVideoChatTarget(elements.theatre),
   onProjectCreated: async (project) => {
     projectsById.set(project.id, project);
     projectsEtag = null;
@@ -125,7 +124,6 @@ function drawTheatre() {
     hasSources: (card?.counts?.sources ?? 0) > 0,
     onOpenSources: () => setView("sources", { focus: true })
   });
-  chat.refreshVideoTarget();
 }
 
 function drawSources() {
@@ -169,7 +167,6 @@ function setView(view, { updateUrl = true, focus = false } = {}) {
   }
   for (const panel of document.querySelectorAll(".view")) panel.hidden = panel.id !== "view-" + view;
   for (const media of document.querySelectorAll(".view[hidden] video, .view[hidden] audio")) media.pause();
-  chat.refreshVideoTarget();
   if (updateUrl) {
     const location = new URL(window.location.href);
     location.searchParams.set("view", view);

@@ -49,7 +49,7 @@ async function send(value) {
   await input(value);
   await page.waitFor("!document.querySelector('#chat-send').disabled");
   await page.evaluate("document.querySelector('#chat-composer').requestSubmit()");
-  await page.waitFor("document.querySelector('#chat-input').value === '' && document.querySelector('#chat-send').textContent !== 'Đang gửi…'", { label: "message accepted by the backend" });
+  await page.waitFor("document.querySelector('#chat-input').value === '' && document.querySelector('#chat-send').getAttribute('aria-label') !== 'Đang gửi…'", { label: "message accepted by the backend" });
 }
 async function chooseProject(id) {
   await click("#library-button");
@@ -64,6 +64,7 @@ try {
   assert.equal(client.calls.length, 0, "viewing videos does not launch or call an agent");
   await click("#chat-button");
   await waitText("#chat-status", "Sẵn sàng");
+  const firstConversationId = (await chat.read("alpha")).conversationId;
   assert.equal(client.calls.some((call) => call.method === "turn/start"), false);
   await send("Tôi muốn giải thích cách một chiếc lá quang hợp.");
   await waitText("#chat-history", "Đã nhận ý tưởng");
@@ -111,7 +112,6 @@ try {
   await page.evaluate("(() => {const select=document.querySelector('#chat-requests select'); select.value='Nhẹ nhàng'; select.dispatchEvent(new Event('change')); select.focus();})()");
   // An unrelated streamed event must not destroy the user's partially completed answer.
   const alpha = await chat.session("alpha");
-  const firstThreadId = alpha.threadId;
   client.notify("item/completed", { threadId: alpha.threadId, turnId: alpha.turnId,
     item: { type: "agentMessage", id: "while-answering", text: "Tôi đang chờ lựa chọn của bạn." } });
   await waitText("#chat-history", "Tôi đang chờ lựa chọn");
@@ -138,6 +138,74 @@ try {
   await waitText("#chat-notice", "Đã dừng lượt");
   assert.equal((await chat.read("alpha")).active, false);
 
+  // Several real conversations remain open. Switching, closing and reloading never interrupt or retarget an agent.
+  await click("#chat-new-conversation");
+  await page.waitFor("document.querySelectorAll('#chat-tabs [role=tab]').length === 2 && document.querySelectorAll('#chat .chat-message').length === 0");
+  await send("[wait] Một phương án mở đầu khác."); await waitText("#chat-status", "Agent đang làm việc");
+  const secondSession = await chat.session("alpha"); const secondConversationId = secondSession.id;
+  await input("Nháp riêng tab thứ hai");
+  const chooseTab = async (id) => {
+    await click(`#chat-tabs [role=tab][data-conversation-id="${id}"]`);
+    await page.waitFor(`document.querySelector('#chat-tabs [aria-selected="true"]')?.dataset.conversationId === ${JSON.stringify(id)}`);
+  };
+  await chooseTab(firstConversationId); await waitText("#chat-history", "Bạn đã cho phép thao tác.");
+  assert.equal(await page.evaluate("document.querySelector('#chat-input').value"), "");
+  const requestNormally = client.request.bind(client); let releaseSend;
+  const delayedSend = new Promise((resolveSend) => { releaseSend = resolveSend; });
+  client.request = async (method, params) => { const result = await requestNormally(method, params); if (method === "turn/start") await delayedSend; return result; };
+  try {
+    await input("[wait] Tiếp tục phương án ban đầu.");
+    await page.evaluate("document.querySelector('#chat-composer').requestSubmit()"); await waitText("#chat-status", "Đang gửi");
+    await input("Nháp riêng tab đầu tiên");
+    await chooseTab(secondConversationId);
+    releaseSend();
+    await page.waitFor(`fetch('/api/chat/projects/alpha?conversation=${firstConversationId}').then(response => response.json()).then(value => value.session.items.some(item => item.text.includes('Tiếp tục phương án ban đầu')))`, { label: "background send remains on its original tab" });
+    assert.equal(await page.evaluate("document.querySelector('#chat-input').value"), "Nháp riêng tab thứ hai");
+    await chooseTab(firstConversationId); await waitText("#chat-status", "Agent đang làm việc");
+    assert.equal(await page.evaluate("document.querySelector('#chat-input').value"), "Nháp riêng tab đầu tiên", "a delayed send must not clear a newly typed draft");
+  } finally { releaseSend(); client.request = requestNormally; }
+  assert.equal((await chat.read("alpha")).conversations.filter((entry) => entry.active).length, 2);
+  const firstSession = await chat.session("alpha", firstConversationId);
+  client.ask(firstSession.threadId, "item/tool/requestUserInput", { questions: [{ id: "style", question: "Chọn nhịp cho phương án đầu?", options: [{ label: "Chậm", description: "Đủ thời gian quan sát" }] }] });
+  await waitText("#chat-requests", "Chọn nhịp");
+  await page.evaluate("(() => {const field=document.querySelector('#chat-requests select'); field.value='Chậm'; field.dispatchEvent(new Event('change'));})()");
+  await input("Nháp riêng tab đầu tiên");
+  await chooseTab(secondConversationId);
+  assert.equal(await page.evaluate("document.querySelector('#chat-input').value"), "Nháp riêng tab thứ hai");
+  assert.equal(await page.evaluate("document.querySelector('#chat-requests').textContent"), "");
+  await chooseTab(firstConversationId);
+  assert.equal(await page.evaluate("document.querySelector('#chat-requests select').value"), "Chậm", "switching tabs preserves partially answered prompts");
+  await chooseTab(secondConversationId);
+  await page.goto(origin + "/?project=alpha&chat=1");
+  await waitText("#chat-history", "Một phương án mở đầu khác");
+  assert.equal(await page.evaluate("document.querySelectorAll('#chat-tabs [role=tab]').length"), 2);
+  assert.equal(await page.evaluate("document.querySelector('#chat-input').value"), "Nháp riêng tab thứ hai");
+  await chooseTab(firstConversationId); await waitText("#chat-requests", "Chọn nhịp");
+  assert.equal(await page.evaluate("document.querySelector('#chat-input').value"), "Nháp riêng tab đầu tiên");
+  assert.equal(await page.evaluate("document.querySelector('#chat-history').textContent.includes('Một phương án mở đầu khác')"), false);
+  await page.evaluate("document.querySelector('#chat-requests button[type=button]').click()");
+  await waitText("#chat-status", "Sẵn sàng");
+  await click(`#chat-tabs .chat-tab-close[data-conversation-id="${secondConversationId}"]`);
+  assert.equal(secondSession.active, true, "closing an active tab does not stop it");
+  client.complete(secondSession.threadId, "Phương án thứ hai đã xong ở nền.");
+  await click("#chat-history-button");
+  await click(`#chat-conversations [data-conversation-id="${secondConversationId}"]`);
+  await waitText("#chat-history", "Phương án thứ hai đã xong ở nền.");
+  assert.equal(await page.evaluate("document.querySelector('#chat-input').value"), "Nháp riêng tab thứ hai");
+  await chooseTab(firstConversationId); await input("");
+
+  // Visual review uses a representative conversation, without protocol test markers.
+  await click("#chat-new-conversation");
+  await page.waitFor("document.querySelectorAll('#chat .chat-message').length === 0");
+  await page.screenshot(join(shots, "chat-empty-desktop.png"));
+  client.automatic = false;
+  await send("Mình muốn làm một video 60 giây giải thích vì sao lá cây có màu xanh. Phong cách nhẹ nhàng, dễ hiểu nhé.");
+  const visualSession = await chat.session("alpha");
+  client.complete(visualSession.threadId, "Mình sẽ kể câu chuyện qua một chiếc lá, với hình ảnh gần gũi và chuyển động chậm.\n\n**Một hướng mở đầu**\n\nÁnh nắng đi qua tán cây. Máy quay đến gần một chiếc lá, rồi đưa người xem vào thế giới nhỏ bên trong.\n\n- **Mở đầu:** Vì sao lá cây lại có màu xanh?\n- **Giải thích:** Lá hấp thụ ánh sáng để tạo năng lượng.\n- **Kết:** Màu xanh là phần ánh sáng được phản chiếu lại.\n\nBạn muốn giọng kể ấm áp hay tươi vui hơn một chút?");
+  await waitText("#chat-history", "Bạn muốn giọng kể"); await waitText("#chat-status", "Sẵn sàng");
+  client.automatic = true;
+  await input("Giọng kể ấm áp nhé");
+
   for (const [width, height] of [[320, 780], [390, 844], [768, 900], [1024, 900], [1440, 1000]]) {
     await page.viewport(width, height, { mobile: width < 800 });
     await page.waitFor(`document.querySelector('#main').inert === ${width <= 900}`, { label: `chat responsive mode at ${width}px` });
@@ -152,6 +220,7 @@ try {
       assert.ok(layout.overflow <= 1 && layout.panel <= 1 && layout.input, `${width}/${theme}: unusable chat layout ${JSON.stringify(layout)}`);
       assert.equal(layout.mainInert, width <= 900);
       if (width <= 900) assert.equal(layout.modal, "true");
+      await page.waitFor(`(() => { const area=document.querySelector('#chat-tabs').getBoundingClientRect(); const tab=document.querySelector('#chat-tabs [aria-selected="true"]').parentElement.getBoundingClientRect(); return tab.left >= area.left - 1 && tab.right <= area.right + 1; })()`, { label: `selected conversation tab remains visible at ${width}px` });
       await page.screenshot(join(shots, `chat-${width}-${theme}.png`));
     }
   }
@@ -165,7 +234,7 @@ try {
   assert.equal(await page.evaluate("document.activeElement.id"), "chat-button");
 
   await page.viewport(1440, 1000);
-  await click("#chat-button"); await waitText("#chat-history", "Bạn đã cho phép thao tác.");
+  await click("#chat-button"); await waitText("#chat-history", "Bạn muốn giọng kể");
   await click("#library-button");
   await page.viewport(390, 844, { mobile: true });
   await page.waitFor("document.querySelector('#chat').classList.contains('is-covered') && document.querySelector('#chat').inert");
@@ -178,15 +247,15 @@ try {
   assert.equal(await page.evaluate("document.querySelectorAll('#chat .chat-message').length"), 0);
   await input("Nháp riêng dự án beta");
   await chooseProject("alpha");
-  await waitText("#chat-history", "Bạn đã cho phép thao tác.");
-  assert.equal(await page.evaluate("document.querySelector('#chat-input').value"), "");
+  await waitText("#chat-history", "Bạn muốn giọng kể");
+  assert.equal(await page.evaluate("document.querySelector('#chat-input').value"), "Giọng kể ấm áp nhé");
 
   await click("#chat-new-conversation");
-  await page.evaluate("document.querySelector('#chat .chat-reset .button').click()");
-  await page.waitFor("document.querySelectorAll('#chat .chat-message').length === 0 && !document.querySelector('#chat-conversations').hidden");
+  await page.waitFor("document.querySelectorAll('#chat .chat-message').length === 0");
   await send("Một cuộc trò chuyện mới trong cùng dự án.");
   await waitText("#chat-status", "Sẵn sàng");
-  await page.evaluate(`(() => {const select=document.querySelector('#chat-conversations'); select.value=${JSON.stringify(firstThreadId)}; select.dispatchEvent(new Event('change'));})()`);
+  await click("#chat-history-button");
+  await click(`#chat-conversations [data-conversation-id="${firstConversationId}"]`);
   await waitText("#chat-history", "Bạn đã cho phép thao tác.");
 
   const inferenceBeforeOffline = client.calls.filter((call) => call.method === "turn/start").length;
@@ -200,7 +269,7 @@ try {
   assert.equal(client.calls.filter((call) => call.method === "turn/start").length, inferenceBeforeOffline);
 
   // Normal UI project creation uses the same store as the observer and never sends an agent turn by itself.
-  await click("#chat-new-project");
+  await click("#chat-history-button"); await click("#chat-new-project");
   await page.evaluate("(() => {const form=document.querySelector('.chat-new-project-form'); form.querySelector('input').value='Dự án tạo từ giao diện'; form.requestSubmit();})()");
   await waitText("#chat-project-name", "Dự án tạo từ giao diện");
   assert.equal(client.calls.filter((call) => call.method === "turn/start").length, inferenceBeforeOffline);
@@ -245,7 +314,7 @@ try {
   } finally {
     await page.goto("about:blank"); emptyServer.closeAllConnections(); await new Promise((resolveEmpty) => emptyServer.close(resolveEmpty)); await emptyChat.close();
   }
-  console.log("Chat UI: passed (real HTTP/SSE, send/stream/reload, uploads, questions, approvals, steer/stop, project isolation, history, offline recovery, project creation, 320/390/768/1024/1440 px, light/dark)");
+  console.log("Chat UI: passed (real HTTP/SSE, independent parallel tabs, background completion, close/reopen, per-tab drafts and prompts, reload, uploads, steer/stop, project isolation, history, offline recovery, project creation, 320/390/768/1024/1440 px, light/dark)");
 } finally {
   await browser.close(); server.closeAllConnections(); await new Promise((resolveServer) => server.close(resolveServer)); await chat.close();
   const target = resolve(workspace);

@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 export class FixtureCodex extends EventEmitter {
   constructor({ threads = new Map(), automatic = false, authenticated = true } = {}) {
     super(); Object.assign(this, { threads, automatic, authenticated });
-    this.calls = []; this.responses = []; this.rejections = []; this.timers = new Set(); this.nextRequest = 100;
+    this.calls = []; this.responses = []; this.rejections = []; this.timers = new Set(); this.nextRequest = 100; this.waitingRequests = new Map();
   }
   async start() { if (this.failStart) throw new Error("Codex thử nghiệm không khởi động được"); return {}; }
   notify(method, params) { this.emit("notification", { method, params }); }
@@ -65,12 +65,13 @@ export class FixtureCodex extends EventEmitter {
   ask(threadId, method, params = {}) {
     const thread = this.threads.get(threadId); const id = ++this.nextRequest;
     const value = { id, method, params: { threadId, turnId: thread.turns.at(-1)?.id, itemId: "fixture-item", ...params } };
-    this.waiting = value; this.emit("serverRequest", value); return value;
+    this.waitingRequests.set(id, value); this.emit("serverRequest", value); return value;
   }
   respond(id, result) {
     this.responses.push({ id, result });
-    if (this.automatic && this.waiting?.id === id) {
-      this.complete(this.waiting.params.threadId, result.answers ? "Đã ghi nhận lựa chọn: " + Object.values(result.answers).flatMap((value) => value.answers).join(", ") : result.decision === "accept" ? "Bạn đã cho phép thao tác." : "Đã từ chối thao tác.");
+    const waiting = this.waitingRequests.get(id); this.waitingRequests.delete(id);
+    if (this.automatic && waiting) {
+      this.complete(waiting.params.threadId, result.answers ? "Đã ghi nhận lựa chọn: " + Object.values(result.answers).flatMap((value) => value.answers).join(", ") : result.decision === "accept" ? "Bạn đã cho phép thao tác." : "Đã từ chối thao tác.");
     }
   }
   reject(id) { this.rejections.push(id); }

@@ -59,13 +59,14 @@ Trong terminal, `tool:list` cho cùng danh sách ở dạng kỹ thuật. Phần
 
 1. Mở PADStudio: chạy `npm run observer:ensure`, rồi vào **http://127.0.0.1:7603**.
 2. Bấm **Trò chuyện** trên thanh đầu. Khung chat tự kết nối Codex; nếu cần, bấm **Đăng nhập ChatGPT** rồi mở trang đăng nhập được cung cấp.
-3. Chọn dự án để tiếp tục, hoặc mô tả ý tưởng để bắt đầu dự án mới. Nút **Dự án mới** cho đặt tên trước khi bắt đầu.
+3. Chọn dự án để tiếp tục, hoặc mô tả ý tưởng để bắt đầu dự án mới. Trong menu lịch sử có **Dự án mới** để đặt tên trước khi bắt đầu.
 
 Trên máy tính, chat nằm cạnh video; trên điện thoại, chat mở toàn màn hình và có nút đóng để quay lại video. Enter gửi tin,
-Shift + Enter xuống dòng. Có thể gửi yêu cầu bổ sung khi Agent đang làm hoặc bấm **Dừng**; dừng không hoàn tác công việc đã làm và
+Shift + Enter xuống dòng. Có thể gửi yêu cầu bổ sung khi Agent đang làm hoặc bấm nút dừng ■; dừng không hoàn tác công việc đã làm và
 không hoàn lại chi phí công cụ đã dùng. Agent cần ý kiến hoặc quyền bổ sung sẽ hiện câu hỏi/nút cho bạn trả lời; không có lựa chọn tự đồng ý.
 
-Mỗi dự án có lịch sử riêng; tải lại trang không gửi lại tin nhắn. Nút **Hội thoại mới** giữ hội thoại cũ trong danh sách để mở lại.
+Mỗi dự án có lịch sử riêng; tải lại trang không gửi lại tin nhắn. Bấm **+** trên thanh tab để mở thêm cuộc trò chuyện, chuyển tab để trao đổi
+song song. Mỗi tab giữ riêng bản nháp và file đính kèm. Bấm **×** để đóng tab; Agent vẫn tiếp tục làm, và nút lịch sử ở góc trên mở lại tab đó.
 Lượt chat dùng hạn mức tài khoản Codex đang kết nối. Nếu dùng Agent ngoài, mở Agent trong thư mục PADStudio như trước.
 
 ## 3. Làm video đầu tiên
@@ -76,7 +77,7 @@ Chỉ cần nói với Agent điều bạn muốn, càng cụ thể về ngườ
 
 > Đây là video quay buổi họp của tôi (gửi file). Cắt thành bản tóm tắt 1 phút có phụ đề.
 
-- **Có tài liệu:** bấm **Thêm tư liệu**, kéo thả hoặc dán file vào chat (100 MB/file, tối đa 12 file/tin nhắn); file được lưu vào đúng dự án trước khi gửi cho Agent. Thư mục cần nhập qua Agent ngoài/CLI. Bạn cũng có thể gửi đường link.
+- **Có tài liệu:** bấm biểu tượng kẹp giấy trong ô nhập, kéo thả hoặc dán file vào chat (100 MB/file, tối đa 12 file/tin nhắn); file được lưu vào đúng dự án trước khi gửi cho Agent. Thư mục cần nhập qua Agent ngoài/CLI. Bạn cũng có thể gửi đường link.
 - **Chưa có tài liệu:** không sao. Agent tự viết kịch bản, tìm ảnh miễn phí có ghi nguồn, dựng hoạt họa và đọc giọng.
 - **Có dịch vụ khác** (tạo ảnh, tạo nhạc, ứng dụng dựng hình): nếu Agent của bạn dùng được chúng, file tạo ra được nhập vào dự án
   kèm nhà cung cấp, prompt và bản quyền. PADStudio không tự gọi dịch vụ đó thay bạn.
@@ -87,7 +88,7 @@ tiên tự hiện ở tab **Video** khi xong.
 ## 4. Xem và góp ý
 
 - Xem ở tab **Video**. Có nhiều bản thì đổi hoặc so sánh được; mục **Các đoạn** cho nhảy tới từng đoạn.
-- Muốn sửa đúng một chỗ: **dừng video ở chỗ đó, bấm "Góp ý trong chat"** rồi nói bạn muốn đổi gì. Khi tab Video đang mở, tin nhắn cũng tự kèm bản đang xem; có thể bỏ mốc khỏi tin nhắn bằng nút ×. Với Agent ngoài, dùng **Sao chép mốc phản hồi** như trước.
+- Muốn sửa đúng một chỗ: **dừng video ở chỗ đó, bấm "Góp ý trong chat"** rồi nói bạn muốn đổi gì trong tab chat đang chọn; có thể bỏ mốc khỏi tin nhắn bằng nút ×. Với Agent ngoài, dùng **Sao chép mốc phản hồi** như trước.
   Mốc ghi chính xác bản video, đoạn và giây, nên Agent không hiểu nhầm.
 - Tab **Tư liệu** liệt kê ảnh, video, lời đọc và nhạc của dự án, nghe và xem ngay được.
 

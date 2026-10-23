@@ -1,6 +1,6 @@
 # PADStudio — trạng thái phát triển
 
-Cập nhật: **2026-10-23** (cửa sổ chat Codex local; xem mục “Chat trong PADStudio”). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
+Cập nhật: **2026-10-23** (chat nhiều tab, tinh giản giao diện; xem mục “Chat trong PADStudio”). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
 
 Đây là điểm vào ngắn để biết codebase đang ở đâu. PADStudio vẫn đang được xây dựng và chỉnh
 chu; các báo cáo có chữ `completion`, tên đợt hoặc số phiên bản ghi lại một mốc nghiệm thu kỹ
@@ -25,10 +25,12 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 ## Baseline kiểm chứng
 
-Ngày **2026-10-23**, Node v24.18.1, Windows: `npm test` **465 tests: 464 pass, 0 fail, 1 skipped** (symlink, thiếu quyền Windows).
+Ngày **2026-10-23**, Node v24.18.1, Windows: `npm test` **468 tests: 467 pass, 0 fail, 1 skipped** (symlink, thiếu quyền Windows).
 `npm run check` sạch. `chat:ui:test`, `observer:ui:empty-test`, `observer:ui:live-test`, `observer:ui:tools-test` passed.
 Live Codex CLI 0.163.0: gửi/nhận, đọc lại hội thoại sau khi đóng/mở process, và đọc đúng nonce trong checkpoint qua `project:resume` đã pass
 (hai xác nhận cho đúng lệnh chỉ đọc trong project tạm). Các test tự động không gọi model.
+Sau đợt nhiều tab, live Codex đã chạy hai hội thoại song song, trả đúng hai token riêng và khôi phục cả hai sau khi đóng/mở process;
+không gọi công cụ hay provider media. Browser kiểm thêm gửi chậm khi đổi tab, bảo toàn bản nháp mới và tab đang chọn luôn nằm trong vùng nhìn.
 Các baseline cũ sau đây là lịch sử tại ngày ghi nhận.
 
 ## Chat trong PADStudio — 2026-10-23
@@ -37,9 +39,12 @@ Các baseline cũ sau đây là lịch sử tại ngày ghi nhận.
   làm video bằng CLI. Các view video/tư liệu giữ project làm nguồn sự thật; host ngoài vẫn dùng được.
 - Tin nhắn theo thời gian thực, lịch sử theo từng project, hội thoại mới/mở lại, model, file import, góp ý kèm exact Result/playhead,
   câu hỏi và xác nhận quyền, gửi bổ sung, dừng, khôi phục kết nối. Bản đầu chỉ hỗ trợ Codex; tài khoản và hạn mức do Codex quản lý.
+- Nhiều tab hội thoại hoạt động độc lập trong cùng dự án; tạo/chuyển/đóng/mở lại khi Agent vẫn đang làm. Bản nháp, file, câu hỏi đang trả lời
+  và vị trí xem tách theo tab. Giao diện thu gọn về thanh tab, tin nhắn, ô nhập; model/đính kèm nằm trong ô nhập, lịch sử trong menu.
+  Mốc video chỉ được đính kèm khi bấm **Góp ý trong chat**. Metadata v1 tự chuyển sang v2, bảo toàn liên kết/biên nhận và ID của cả tab trống.
 - Chống gửi trùng bằng biên nhận lưu trước RPC; không tự replay sau reload/restart. Transcript do Codex giữ; liên kết và biên nhận nằm
   ngoài core project store, phân vùng theo gốc project. Mọi thao tác HTTP có guard riêng; không có gateway shell/RPC tùy ý.
-- 18 test mới cho peer stdio thật, lifecycle, lỗi, HTTP/SSE, approvals, lịch sử và upload. Browser dùng protocol peer giả, ProjectStore,
+- 21 test cho peer stdio thật, lifecycle, lỗi, HTTP/SSE, approvals, nhiều hội thoại, chuyển metadata, lịch sử và upload. Browser dùng protocol peer giả, ProjectStore,
   import và video FFmpeg thật; đã kiểm 320/390/768/1024/1440 px, sáng/tối, bàn phím, chọn project, offline, đăng nhập và lỗi kết nối.
 - Đã sửa hồi quy tên đầy đủ của studio ở 768 px; đóng protocol child đợi process thật kết thúc trên Windows. Full suite đã chạy lại sạch.
 - Contract và giới hạn: [`CHAT-CLIENT.md`](CHAT-CLIENT.md). Không gọi provider media trả phí hoặc dựng một pilot sáng tạo mới để nghiệm thu chat.
