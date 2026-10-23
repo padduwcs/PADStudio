@@ -197,15 +197,6 @@ function anchorControl(context, sequence, render, video) {
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
   box.append(copy, status);
-  const chat = button("Góp ý trong chat", "button button-soft");
-  chat.dataset.ui = "chat-anchor";
-  chat.addEventListener("click", () => {
-    document.dispatchEvent(new CustomEvent("padstudio-feedback", { detail: {
-      projectId: context.projectId, resultId: render.resultId,
-      text: feedbackAnchorText({ projectId: context.projectId, sequence, render, currentTime: video.currentTime })
-    } }));
-  });
-  box.prepend(chat);
   copy.addEventListener("click", async () => {
     const at = video.currentTime;
     const value = feedbackAnchorText({ projectId: context.projectId, sequence, render, currentTime: at });
@@ -468,7 +459,7 @@ function filmTheatre(container, context, extras) {
       const feedback = rail("Phản hồi");
       if (main.video && !baselineRender) feedback.append(anchorControl(context, revision, render, main.video));
       if (items.length) feedback.append(feedbackList(items, main.video));
-      else feedback.append(node("p", "Dừng video ở chỗ cần sửa rồi góp ý trong chat.", "rail-note"));
+      else feedback.append(node("p", "Sao chép mốc video để gửi cho Agent khi góp ý.", "rail-note"));
       side.append(feedback);
     }
 

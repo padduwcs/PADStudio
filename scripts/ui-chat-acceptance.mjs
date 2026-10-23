@@ -1,10 +1,11 @@
 // Real browser, actual HTTP/SSE endpoints and ProjectStore; the protocol peer never makes a model call.
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { ProjectStore } from "../src/project/project-store.js";
 import { ChatService } from "../src/chat/chat-service.js";
 import { ProjectReader } from "../src/web/project-reader.js";
 import { createPadStudioServer } from "../src/web/server.js";
@@ -14,34 +15,35 @@ import { FixtureCodex } from "./lib/chat-fixture.mjs";
 const workspace = await mkdtemp(join(tmpdir(), "padstudio-chat-ui-"));
 const shots = resolve(".cache/chat-ui"); await mkdir(shots, { recursive: true });
 const client = new FixtureCodex({ automatic: true });
-const chat = new ChatService({ projectRoot: join(workspace, "projects"), client });
-await chat.store.createProject({ projectId: "alpha", title: "Câu chuyện đầu tiên" });
-await chat.store.createProject({ projectId: "beta", title: "Một dự án khác" });
-const server = createPadStudioServer({ reader: new ProjectReader(chat.projectRoot), chat });
+const chat = new ChatService({ cwd: join(workspace, "PADStudio"), client });
+const store = new ProjectStore(join(workspace, "projects"));
+await store.createProject({ projectId: "alpha", title: "Câu chuyện đầu tiên" });
+await store.createProject({ projectId: "beta", title: "Một dự án khác" });
+const server = createPadStudioServer({ reader: new ProjectReader(join(workspace, "projects")), chat });
 await new Promise((resolveServer) => server.listen(0, "127.0.0.1", resolveServer));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await launchBrowser(); const { page } = browser;
 const waitText = (selector, value) => page.waitFor(`document.querySelector(${JSON.stringify(selector)})?.textContent.includes(${JSON.stringify(value)})`);
 const click = (selector) => page.evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
 async function seedVideo() {
-  const artifact = await chat.store.recordArtifact("alpha", {
+  const artifact = await store.recordArtifact("alpha", {
     key: "film", type: "video.sequence", name: "Bản xem thử", summary: "Chat feedback fixture", status: "active", createdBy: "agent",
     data: { version: "1.0", changeReason: "browser fixture", format: { width: 320, height: 180, fps: 25 },
       segments: [{ id: "opening", title: "Mở đầu", intent: "Test exact feedback", durationSeconds: 2, visual: null, narration: null, captions: [], references: [] }] }
   });
-  const run = await chat.store.startRun("alpha", { capability: "video.render-sequence", purpose: "Chat browser fixture", tool: { name: "fixture", version: "1", provider: "test" } });
-  const output = await chat.store.createRunOutputWorkspace("alpha", run.id);
+  const run = await store.startRun("alpha", { capability: "video.render-sequence", purpose: "Chat browser fixture", tool: { name: "fixture", version: "1", provider: "test" } });
+  const output = await store.createRunOutputWorkspace("alpha", run.id);
   const video = join(output.temporaryDirectory, "preview.mp4");
   await promisify(execFile)("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=0x006b8a:s=320x180:r=25:d=2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", video], { windowsHide: true });
   const size = (await stat(video)).size;
-  await chat.store.commitRunOutputWorkspace(output);
-  const result = await chat.store.addResult("alpha", {
+  await store.commitRunOutputWorkspace(output);
+  const result = await store.addResult("alpha", {
     runId: run.id, capability: "video.render-sequence", tool: run.tool, type: "video.sequence-render", name: "Bản xem thử",
     inputArtifacts: [artifact.id], files: [{ id: "primary", role: "primary", path: `${output.projectRelativeDirectory}/preview.mp4`, name: "preview.mp4", mediaType: "video", sizeBytes: size }],
     data: { sequence: { artifactId: artifact.id, revision: artifact.revision, key: "film" }, durationSeconds: 2, hasAudio: false },
     verification: { status: "passed", checks: ["fixture"] }
   });
-  await chat.store.finishRun("alpha", run.id, { status: "completed", outputs: [result.id] });
+  await store.finishRun("alpha", run.id, { status: "completed", outputs: [result.id] });
   return result;
 }
 const input = (value) => page.evaluate(`(() => { const field=document.querySelector('#chat-input'); field.value=${JSON.stringify(value)}; field.dispatchEvent(new Event('input',{bubbles:true})); })()`);
@@ -64,7 +66,7 @@ try {
   assert.equal(client.calls.length, 0, "viewing videos does not launch or call an agent");
   await click("#chat-button");
   await waitText("#chat-status", "Sẵn sàng");
-  const firstConversationId = (await chat.read("alpha")).conversationId;
+  const firstConversationId = (await chat.read()).conversationId;
   assert.equal(client.calls.some((call) => call.method === "turn/start"), false);
   await send("Tôi muốn giải thích cách một chiếc lá quang hợp.");
   await waitText("#chat-history", "Đã nhận ý tưởng");
@@ -82,28 +84,13 @@ try {
   assert.equal(await page.evaluate("document.querySelector('#chat-input').value"), "Bản nháp chưa gửi của tôi");
   assert.equal(client.calls.filter((call) => call.method === "turn/start").length, beforeReload);
 
-  const render = await seedVideo();
-  await page.waitFor("document.querySelector('#theatre video')?.readyState >= 1", { timeout: 30_000, label: "video appears beside chat" });
-  await page.evaluate("document.querySelector('#theatre video').currentTime = 0.8");
-  await click('[data-ui="chat-anchor"]');
-  await waitText("#chat-attachments", "Đã gắn mốc video");
-  await send("Đoạn này cần chậm hơn.");
-  await waitText("#chat-status", "Sẵn sàng");
-  const feedback = client.calls.findLast((call) => call.method === "turn/start").params.input[0].text;
-  assert.ok(feedback.includes(render.id) && feedback.includes("at=0.800"), "feedback must identify the exact video and playhead");
-  assert.equal(await page.evaluate(`document.querySelector('#chat-history').textContent.includes(${JSON.stringify(render.id)})`), false, "implementation IDs stay out of the conversation display");
-
-  // Add a real file through the file picker; verify it became a normal Resource before it is sent to Codex.
-  const narration = join(workspace, "lời dẫn.txt"); await writeFile(narration, "Ánh sáng giúp chiếc lá tạo năng lượng.");
-  const document = await page.send("DOM.getDocument", {});
-  const fileNode = await page.send("DOM.querySelector", { nodeId: document.root.nodeId, selector: "#chat-files" });
-  await page.send("DOM.setFileInputFiles", { nodeId: fileNode.nodeId, files: [narration] });
-  await waitText("#chat-attachments", "lời dẫn.txt");
-  const context = await chat.store.readContext("alpha"); assert.equal(context.resources.length, 1);
-  assert.equal(await readFile(join(chat.projectRoot, "alpha", "inputs", "lời dẫn.txt"), "utf8"), "Ánh sáng giúp chiếc lá tạo năng lượng.");
-  await send("Dùng tư liệu tôi vừa thêm.");
-  await waitText("#chat-status", "Sẵn sàng");
-  assert.ok(client.calls.findLast((call) => call.method === "turn/start").params.input[0].text.includes(context.resources[0].id));
+  await seedVideo();
+  await page.waitFor("document.querySelector('#theatre video')?.readyState >= 1", { timeout: 30_000 });
+  assert.equal(await page.evaluate("!!document.querySelector('[data-ui=chat-anchor], #chat-files, #chat-attach, #chat-new-project')"), false);
+  const plainPrompt = "Create project A and project B. I will decide which one to work on.";
+  await send(plainPrompt); await waitText("#chat-history", "Create project A and project B");
+  assert.equal(client.calls.findLast((call) => call.method === "turn/start").params.input[0].text, plainPrompt);
+  await page.waitFor("document.querySelector('#chat-stop').hidden");
 
   await send("[question] Hỏi tôi phong cách trước khi tiếp tục.");
   await waitText("#chat-requests", "Bạn chọn phong cách nào?");
@@ -111,7 +98,7 @@ try {
   await waitText("#chat-requests", "Bạn chọn phong cách nào?");
   await page.evaluate("(() => {const select=document.querySelector('#chat-requests select'); select.value='Nhẹ nhàng'; select.dispatchEvent(new Event('change')); select.focus();})()");
   // An unrelated streamed event must not destroy the user's partially completed answer.
-  const alpha = await chat.session("alpha");
+  const alpha = await chat.session();
   client.notify("item/completed", { threadId: alpha.threadId, turnId: alpha.turnId,
     item: { type: "agentMessage", id: "while-answering", text: "Tôi đang chờ lựa chọn của bạn." } });
   await waitText("#chat-history", "Tôi đang chờ lựa chọn");
@@ -136,13 +123,13 @@ try {
   assert.ok(client.calls.some((call) => call.method === "turn/steer"));
   await click("#chat-stop");
   await waitText("#chat-notice", "Đã dừng lượt");
-  assert.equal((await chat.read("alpha")).active, false);
+  assert.equal((await chat.read()).active, false);
 
   // Several real conversations remain open. Switching, closing and reloading never interrupt or retarget an agent.
   await click("#chat-new-conversation");
   await page.waitFor("document.querySelectorAll('#chat-tabs [role=tab]').length === 2 && document.querySelectorAll('#chat .chat-message').length === 0");
   await send("[wait] Một phương án mở đầu khác."); await waitText("#chat-status", "Agent đang làm việc");
-  const secondSession = await chat.session("alpha"); const secondConversationId = secondSession.id;
+  const secondSession = await chat.session(); const secondConversationId = secondSession.id;
   await input("Nháp riêng tab thứ hai");
   const chooseTab = async (id) => {
     await click(`#chat-tabs [role=tab][data-conversation-id="${id}"]`);
@@ -159,13 +146,13 @@ try {
     await input("Nháp riêng tab đầu tiên");
     await chooseTab(secondConversationId);
     releaseSend();
-    await page.waitFor(`fetch('/api/chat/projects/alpha?conversation=${firstConversationId}').then(response => response.json()).then(value => value.session.items.some(item => item.text.includes('Tiếp tục phương án ban đầu')))`, { label: "background send remains on its original tab" });
+    await page.waitFor(`fetch('/api/chat/conversations/${firstConversationId}').then(response => response.json()).then(value => value.session.items.some(item => item.text.includes('Tiếp tục phương án ban đầu')))`, { label: "background send remains on its original tab" });
     assert.equal(await page.evaluate("document.querySelector('#chat-input').value"), "Nháp riêng tab thứ hai");
     await chooseTab(firstConversationId); await waitText("#chat-status", "Agent đang làm việc");
     assert.equal(await page.evaluate("document.querySelector('#chat-input').value"), "Nháp riêng tab đầu tiên", "a delayed send must not clear a newly typed draft");
   } finally { releaseSend(); client.request = requestNormally; }
-  assert.equal((await chat.read("alpha")).conversations.filter((entry) => entry.active).length, 2);
-  const firstSession = await chat.session("alpha", firstConversationId);
+  assert.equal((await chat.read()).conversations.filter((entry) => entry.active).length, 2);
+  const firstSession = await chat.session(firstConversationId);
   client.ask(firstSession.threadId, "item/tool/requestUserInput", { questions: [{ id: "style", question: "Chọn nhịp cho phương án đầu?", options: [{ label: "Chậm", description: "Đủ thời gian quan sát" }] }] });
   await waitText("#chat-requests", "Chọn nhịp");
   await page.evaluate("(() => {const field=document.querySelector('#chat-requests select'); field.value='Chậm'; field.dispatchEvent(new Event('change'));})()");
@@ -200,11 +187,42 @@ try {
   await page.screenshot(join(shots, "chat-empty-desktop.png"));
   client.automatic = false;
   await send("Mình muốn làm một video 60 giây giải thích vì sao lá cây có màu xanh. Phong cách nhẹ nhàng, dễ hiểu nhé.");
-  const visualSession = await chat.session("alpha");
+  const visualSession = await chat.session();
   client.complete(visualSession.threadId, "Mình sẽ kể câu chuyện qua một chiếc lá, với hình ảnh gần gũi và chuyển động chậm.\n\n**Một hướng mở đầu**\n\nÁnh nắng đi qua tán cây. Máy quay đến gần một chiếc lá, rồi đưa người xem vào thế giới nhỏ bên trong.\n\n- **Mở đầu:** Vì sao lá cây lại có màu xanh?\n- **Giải thích:** Lá hấp thụ ánh sáng để tạo năng lượng.\n- **Kết:** Màu xanh là phần ánh sáng được phản chiếu lại.\n\nBạn muốn giọng kể ấm áp hay tươi vui hơn một chút?");
   await waitText("#chat-history", "Bạn muốn giọng kể"); await waitText("#chat-status", "Sẵn sàng");
   client.automatic = true;
   await input("Giọng kể ấm áp nhé");
+
+  // Resize the actual divider with the pointer, then reopen and use its keyboard controls.
+  await page.viewport(1440, 1000);
+  const turnsBeforeResize = client.calls.filter((call) => call.method === "turn/start").length;
+  await page.evaluate("(async () => {window.videoBeforeResize=document.querySelector('#theatre video'); videoBeforeResize.muted=true; videoBeforeResize.loop=true; await videoBeforeResize.play();})()");
+  const divider = await page.evaluate("(() => {const r=document.querySelector('#chat-resize-handle').getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+200};})()");
+  await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: divider.x, y: divider.y, buttons: 0 });
+  await page.send("Input.dispatchMouseEvent", { type: "mousePressed", x: divider.x, y: divider.y, button: "left", buttons: 1, clickCount: 1 });
+  await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 740, y: divider.y, buttons: 1 });
+  await page.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: 740, y: divider.y, button: "left", buttons: 0, clickCount: 1 });
+  await page.waitFor("Math.abs(document.querySelector('#chat').getBoundingClientRect().width - 700) < 1 && !document.body.classList.contains('chat-is-resizing')");
+  assert.equal(await page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"), true);
+  assert.equal(await page.evaluate("document.querySelector('#theatre video') === window.videoBeforeResize && !videoBeforeResize.paused"), true, "resizing must not replace or interrupt the video player");
+  await page.screenshot(join(shots, "chat-resized-wide.png"));
+  await page.goto(origin + "/?project=alpha&chat=1"); await waitText("#chat-history", "Bạn muốn giọng kể");
+  assert.equal(await page.evaluate("document.querySelector('#chat').getBoundingClientRect().width"), 700);
+  assert.equal(await page.evaluate("document.querySelector('#chat-input').value"), "Giọng kể ấm áp nhé");
+  await page.evaluate("document.querySelector('#chat-resize-handle').focus()");
+  await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "ArrowLeft", code: "ArrowLeft", windowsVirtualKeyCode: 37 });
+  await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: "ArrowLeft", code: "ArrowLeft", windowsVirtualKeyCode: 37 });
+  assert.equal(await page.evaluate("document.querySelector('#chat').getBoundingClientRect().width"), 716);
+  for (const [key, code] of [["Home", 36], ["End", 35]]) {
+    await page.send("Input.dispatchKeyEvent", { type: "keyDown", key, code: key, windowsVirtualKeyCode: code });
+    await page.send("Input.dispatchKeyEvent", { type: "keyUp", key, code: key, windowsVirtualKeyCode: code });
+    const metrics = await page.evaluate("({width:document.querySelector('#chat').getBoundingClientRect().width, overflow:document.documentElement.scrollWidth-innerWidth, min:Number(document.querySelector('#chat-resize-handle').getAttribute('aria-valuemin')),max:Number(document.querySelector('#chat-resize-handle').getAttribute('aria-valuemax'))})");
+    assert.equal(metrics.width, key === "Home" ? metrics.min : metrics.max); assert.ok(metrics.overflow <= 1);
+    await page.screenshot(join(shots, key === "Home" ? "chat-resized-narrow.png" : "chat-resized-max.png"));
+  }
+  await page.evaluate("document.querySelector('#chat-resize-handle').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))");
+  assert.equal(await page.evaluate("document.querySelector('#chat').getBoundingClientRect().width"), 490);
+  assert.equal(client.calls.filter((call) => call.method === "turn/start").length, turnsBeforeResize);
 
   for (const [width, height] of [[320, 780], [390, 844], [768, 900], [1024, 900], [1440, 1000]]) {
     await page.viewport(width, height, { mobile: width < 800 });
@@ -242,21 +260,15 @@ try {
   await page.waitFor("!document.querySelector('#chat').classList.contains('is-covered') && document.querySelector('#main').inert && !document.querySelector('#chat').inert");
   await page.viewport(1440, 1000);
   await page.waitFor("!document.querySelector('#main').inert");
+  const selectedBeforeProjectSwitch = await page.evaluate("document.querySelector('#chat-tabs [aria-selected=true]').dataset.conversationId");
+  const turnsBeforeProjectSwitch = client.calls.filter((call) => call.method === "turn/start").length;
   await chooseProject("beta");
-  await waitText("#chat-project-name", "Một dự án khác");
-  assert.equal(await page.evaluate("document.querySelectorAll('#chat .chat-message').length"), 0);
-  await input("Nháp riêng dự án beta");
+  assert.equal(await page.evaluate("document.querySelector('#chat-tabs [aria-selected=true]').dataset.conversationId"), selectedBeforeProjectSwitch);
+  assert.equal(await page.evaluate("document.querySelector('#chat-input').value.length > 0"), true);
   await chooseProject("alpha");
-  await waitText("#chat-history", "Bạn muốn giọng kể");
-  assert.equal(await page.evaluate("document.querySelector('#chat-input').value"), "Giọng kể ấm áp nhé");
-
-  await click("#chat-new-conversation");
-  await page.waitFor("document.querySelectorAll('#chat .chat-message').length === 0");
-  await send("Một cuộc trò chuyện mới trong cùng dự án.");
-  await waitText("#chat-status", "Sẵn sàng");
-  await click("#chat-history-button");
-  await click(`#chat-conversations [data-conversation-id="${firstConversationId}"]`);
-  await waitText("#chat-history", "Bạn đã cho phép thao tác.");
+  assert.equal(await page.evaluate("document.querySelector('#chat-tabs [aria-selected=true]').dataset.conversationId"), selectedBeforeProjectSwitch);
+  assert.equal(client.calls.filter((call) => call.method === "turn/start").length, turnsBeforeProjectSwitch);
+  assert.equal((await store.listProjects()).length, 2);
 
   const inferenceBeforeOffline = client.calls.filter((call) => call.method === "turn/start").length;
   await input("Tin nhắn giữ lại khi mất mạng");
@@ -266,12 +278,6 @@ try {
   await page.offline(false);
   await page.waitFor("document.querySelector('#chat-status').textContent === 'Sẵn sàng'", { timeout: 20_000 });
   assert.equal(await page.evaluate("document.querySelector('#chat-input').value"), "Tin nhắn giữ lại khi mất mạng");
-  assert.equal(client.calls.filter((call) => call.method === "turn/start").length, inferenceBeforeOffline);
-
-  // Normal UI project creation uses the same store as the observer and never sends an agent turn by itself.
-  await click("#chat-history-button"); await click("#chat-new-project");
-  await page.evaluate("(() => {const form=document.querySelector('.chat-new-project-form'); form.querySelector('input').value='Dự án tạo từ giao diện'; form.requestSubmit();})()");
-  await waitText("#chat-project-name", "Dự án tạo từ giao diện");
   assert.equal(client.calls.filter((call) => call.method === "turn/start").length, inferenceBeforeOffline);
 
   // First-time authentication and a failed runtime connection do not lose the conversation or expose credentials.
@@ -297,9 +303,9 @@ try {
   const unexpectedErrors = page.consoleErrors.filter((entry) => !/ERR_INTERNET_DISCONNECTED|Failed to load resource|EventSource/i.test(entry));
   assert.equal(unexpectedErrors.length, 0, unexpectedErrors.join("\n"));
 
-  // The welcome screen can start a project with the very first message, without any terminal command or existing project.
-  const emptyChat = new ChatService({ projectRoot: join(workspace, "empty", "projects"), client: new FixtureCodex({ automatic: true }) });
-  const emptyServer = createPadStudioServer({ reader: new ProjectReader(emptyChat.projectRoot), chat: emptyChat });
+  // Chat works with an empty video library. Sending a prompt does not create a project.
+  const emptyChat = new ChatService({ cwd: join(workspace, "empty"), client: new FixtureCodex({ automatic: true }) });
+  const emptyServer = createPadStudioServer({ reader: new ProjectReader(join(workspace, "empty", "projects")), chat: emptyChat });
   await new Promise((resolveEmpty) => emptyServer.listen(0, "127.0.0.1", resolveEmpty));
   try {
     await page.goto(`http://127.0.0.1:${emptyServer.address().port}/`);
@@ -307,14 +313,15 @@ try {
     await click("#welcome-chat"); await waitText("#chat-status", "Sẵn sàng");
     await send("Làm một video về những chiếc lá.");
     await waitText("#chat-history", "Đã nhận ý tưởng");
-    const projects = await emptyChat.store.listProjects();
-    assert.equal(projects.length, 1); assert.equal(projects[0].title, "Làm một video về những chiếc lá.");
-    assert.equal((await emptyChat.read(projects[0].id)).items.filter((item) => item.role === "user").length, 1);
+    const projects = await new ProjectStore(join(workspace, "empty", "projects")).listProjects();
+    assert.equal(projects.length, 0, "a prompt does not create a video project behind the user");
+    assert.equal((await emptyChat.read()).items.filter((item) => item.role === "user").length, 1);
+    assert.equal(await page.evaluate("new URL(location.href).searchParams.has('project')"), false);
     assert.equal(page.errors.length, 0, page.errors.join("\n"));
   } finally {
     await page.goto("about:blank"); emptyServer.closeAllConnections(); await new Promise((resolveEmpty) => emptyServer.close(resolveEmpty)); await emptyChat.close();
   }
-  console.log("Chat UI: passed (real HTTP/SSE, independent parallel tabs, background completion, close/reopen, per-tab drafts and prompts, reload, uploads, steer/stop, project isolation, history, offline recovery, project creation, 320/390/768/1024/1440 px, light/dark)");
+  console.log("Chat UI: passed (plain workspace Codex, no project binding/creation/import/context, parallel tabs, background completion, drafts, questions, permissions, steer/stop, pointer/keyboard resizing, persisted width, adaptive layout, reload/offline, 320/390/768/1024/1440 px, light/dark)");
 } finally {
   await browser.close(); server.closeAllConnections(); await new Promise((resolveServer) => server.close(resolveServer)); await chat.close();
   const target = resolve(workspace);

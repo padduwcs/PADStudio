@@ -4,7 +4,7 @@
 
 Agent nhận yêu cầu qua host bên ngoài hoặc cửa sổ chat Codex trong PADStudio. Cửa sổ chat chỉ là client của Agent; Agent vẫn đọc repo, chọn việc và dùng CLI/tool contract để lưu thay đổi vào đúng project. Các view video/tư liệu tiếp tục quan sát project.
 
-Trong chat tích hợp, project đã được chọn/tạo và tư liệu đính kèm đã được import thành Resource; không tạo lại project hoặc import lại tư liệu đó. Mốc video kèm tin nhắn xác định exact Result đang xem. Người dùng chốt trong cửa sổ này cũng là kênh `agent_host`; không tự suy diễn sự đồng ý. PADStudio đã chạy, không khởi động lại observer đang phục vụ chính hội thoại.
+Chat Codex trong PADStudio mở tại thư mục repo như host ngoài: không gắn project, không tạo project/Resource và không thêm ngữ cảnh video vào tin nhắn. Chọn hoặc tạo project theo lời người dùng bằng CLI như bình thường. Một hội thoại có thể làm nhiều project qua các yêu cầu khác nhau; mỗi thao tác vẫn truyền project ID tường minh. Người dùng chốt trong cửa sổ này cũng là kênh `agent_host`; không tự suy diễn sự đồng ý.
 
 ## Thước đo là người xem
 

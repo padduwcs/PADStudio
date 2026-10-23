@@ -41,16 +41,18 @@ npm run observer:ensure
 ```
 
 **3. Click Trò chuyện (Chat) in PADStudio.** The built-in client uses Codex CLI on your machine. Install Codex and sign in with ChatGPT
-when prompted; an existing Codex login is reused. Describe your video to start a new project, or select an existing project and continue:
+when prompted; an existing Codex login is reused. Chat opens in the PADStudio folder, like Codex in VS Code. Send a normal prompt;
+conversations are independent of the project viewer and can create or work on several video projects:
 
 > Make a 90-second vertical video explaining why the sky is blue, narrated in Vietnamese, for middle-school students.
 
-**4. Watch, give feedback, accept.** Builds appear beside the chat. To change one spot, pause there, click
-**Góp ý trong chat** (*give feedback in chat*) and describe the change. The message includes the exact video and playhead. When you are happy, say
-"accept" (in Vietnamese: "chốt") and download the accepted video.
+**4. Watch, give feedback, accept.** Choose a project in the library to watch it. To change one spot, pause there, click
+**Sao chép mốc phản hồi** (*copy feedback anchor*) and paste it into your chosen conversation. When you are happy, identify the exact version,
+say "accept" (in Vietnamese: "chốt") and download the accepted video.
 
 Open several conversations at once: **+** creates a tab, **×** closes it, and history reopens it. Each tab keeps its own draft;
-switching or closing tabs leaves agents running. Model selection and attachments (100 MB each) sit in the composer. Reopening the
+switching or closing tabs leaves agents running. Switching the viewed video project does not switch conversations. Model selection sits in the composer.
+Drag the chat divider to resize it; double-click to reset. Your chosen width is remembered. Reopening the
 page never automatically resends an agent turn. Chat uses the connected Codex account's allowance. External hosts such as Claude Code
 remain supported: open them in this folder, let them read [`AGENTS.md`](AGENTS.md), and use **Sao chép mốc phản hồi** to copy feedback anchors.
 
@@ -102,7 +104,7 @@ flowchart LR
 
 - **The Agent** is the only channel for commands: it understands the request and chooses the work and the tools.
 - **PADStudio** stores projects, runs tools and keeps the trail. Its chat is a client for an existing agent and makes no content decisions.
-- **The interface** supports chat, viewing, downloads and machine settings. Project creation and uploads use existing contracts; the Agent still makes videos through the CLI.
+- **The interface** supports chat, viewing, downloads and machine settings. Chat passes the user's prompt directly to Codex; the Agent chooses and operates projects through the CLI.
 
 ## Current limits
 

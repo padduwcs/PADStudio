@@ -28,38 +28,13 @@ export function externalUrl(value, { login = false } = {}) {
   } catch { return null; }
 }
 
-export function projectInstructions(project, rootDir) {
-  return [
-    "Bạn là agent làm video trong cửa sổ chat PADStudio trên máy người dùng. Trả lời bằng ngôn ngữ của người dùng.",
-    `Project đang được chọn: ${JSON.stringify({ id: project.id, title: project.title })}. Gốc kho project: ${JSON.stringify(rootDir)}.`,
-    "Chỉ vận hành project được chọn. Đọc AGENTS.md và PADSTUDIO-AGENT-RUNTIME.md, bắt đầu bằng npm run project:resume -- với đúng project ID. Chỉ đọc skill/context cần cho công việc hiện tại.",
-    "Làm việc như agent bên ngoài: dùng CLI/contract PADStudio, lưu input/output có giá trị trong đúng Resource/Run/Result/Artifact/Delivery. Không sửa mã nguồn PADStudio khi đang vận hành video.",
-    "Tin nhắn chat ở đây là tin nhắn trực tiếp của người dùng. Hỏi khi cần lựa chọn, phê duyệt chi phí hoặc chốt bản; không tự suy ra sự đồng ý.",
-    "Người dùng xem video trong cùng giao diện. Khi họ chốt một exact Result, ghi acceptance bằng project:accept --from-agent-host và xuất Delivery giữ nguyên byte theo runtime. Không tự khai rằng họ đã xem/nghe toàn bộ.",
-    "Tư liệu đính kèm đã được import thành Resource của project. Dùng resourceId và đường dẫn trong project được cung cấp; không nhập lại cùng tư liệu.",
-    "Không tự mở hoặc khởi động thêm observer: người dùng đang ở PADStudio. Dùng kết quả và mốc thời gian để hướng dẫn họ xem."
-  ].join("\n");
-}
-
-export function displayUserText(value) {
-  const content = text(value);
-  const match = /\n\n<PADStudio-context>\n([^]*?)\n<\/PADStudio-context>$/.exec(content);
-  if (!match) return content;
-  try {
-    const context = JSON.parse(match[1]);
-    if (context.version !== "1.0" || !Array.isArray(context.attachments)) return content;
-    return [content.slice(0, match.index), context.attachments.length ? "Tư liệu: " + context.attachments.map((entry) => text(entry.name, 200)).join(", ") : null,
-      context.video ? "Đã kèm mốc video đang xem." : null].filter(Boolean).join("\n\n");
-  } catch { return content; }
-}
-
 // Whitelist displayable items. Raw reasoning, tool arguments, auth data and the entire RPC envelope never reach the UI.
 export function displayItem(item, turnId) {
   if (!item || typeof item.id !== "string") return null;
   const base = { id: item.id, turnId, status: item.status ?? "completed" };
   if (item.type === "userMessage") return {
     ...base, role: "user", kind: "message", clientId: item.clientId ?? null,
-    text: (item.content ?? []).filter((part) => part.type === "text").map((part) => displayUserText(part.text)).join("\n")
+    text: (item.content ?? []).filter((part) => part.type === "text").map((part) => text(part.text)).join("\n")
   };
   if (item.type === "agentMessage") return { ...base, role: "assistant", kind: "message", text: text(item.text, 100_000) };
   if (item.type === "commandExecution") return {

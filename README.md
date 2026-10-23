@@ -45,15 +45,17 @@ npm run observer:ensure
 ```
 
 **3. Bấm Trò chuyện trên trang PADStudio.** Chat tích hợp dùng Codex CLI trên máy; cài Codex và đăng nhập tài khoản ChatGPT nếu được hỏi.
-Nếu máy đã dùng Codex, PADStudio dùng tài khoản hiện có. Nhập yêu cầu để bắt đầu dự án mới, hoặc chọn một dự án đang làm rồi trao đổi tiếp:
+Nếu máy đã dùng Codex, PADStudio dùng tài khoản hiện có. Chat mở tại thư mục PADStudio như khi mở Codex trong VS Code: nhập prompt bình thường,
+không cần chọn project. Một hội thoại có thể tạo hoặc tiếp tục nhiều project theo yêu cầu của bạn:
 
 > Làm video dọc 90 giây giải thích vì sao trời có màu xanh, giọng đọc tiếng Việt, cho học sinh cấp 2.
 
-**4. Xem, góp ý, chốt.** Bản dựng hiện cạnh chat. Muốn sửa một chỗ, dừng video tại đó, bấm **Góp ý trong chat** rồi nói điều muốn đổi.
-Tin nhắn kèm đúng bản video và thời điểm đang xem. Khi hài lòng, nói "chốt" rồi tải bản đã duyệt.
+**4. Xem, góp ý, chốt.** Chọn project trong thư viện để xem bản dựng. Muốn sửa một chỗ, dừng video tại đó, bấm **Sao chép mốc phản hồi**
+rồi dán vào cuộc trò chuyện bạn muốn. Khi hài lòng, nói "chốt" đúng bản rồi tải bản đã duyệt.
 
 Chat mở được nhiều tab cùng lúc: bấm **+** để trò chuyện mới, **×** để đóng tab, nút lịch sử để mở lại. Mỗi tab giữ riêng bản nháp;
-chuyển hoặc đóng tab không dừng Agent. Chọn model và đính kèm file (100 MB/file) nằm gọn trong ô nhập.
+chuyển hoặc đóng tab không dừng Agent. Chọn project để xem không thay cuộc trò chuyện. Model nằm gọn trong ô nhập.
+Kéo đường phân cách cạnh chat để đổi chiều rộng; nhấp đúp để đặt lại. Giao diện nhớ kích thước đã chọn.
 Đóng khung chat hoặc mất kết nối không tự gửi lại yêu cầu. Lượt chat dùng hạn mức tài khoản Codex đang kết nối. Host ngoài như Claude Code
 vẫn dùng được: mở trong thư mục này để Agent đọc [`AGENTS.md`](AGENTS.md); khi đó dùng **Sao chép mốc phản hồi** để dán mốc vào host ngoài.
 
@@ -105,7 +107,7 @@ flowchart LR
 
 - **Agent** là kênh ra lệnh duy nhất: hiểu yêu cầu, chọn việc và công cụ.
 - **PADStudio** lưu dự án, chạy công cụ và giữ dấu vết. Chat là giao diện cho Agent có sẵn, không tự quyết định nội dung.
-- **Giao diện** để trò chuyện, xem video, tải bản đã chốt và chỉnh cài đặt máy. Tạo dự án và đính kèm dùng contract có sẵn; Agent vẫn làm video qua CLI.
+- **Giao diện** để trò chuyện, xem video, tải bản đã chốt và chỉnh cài đặt máy. Chat chuyển nguyên prompt cho Codex; Agent tự tạo/làm việc với project qua CLI.
 
 ## Giới hạn hiện tại
 

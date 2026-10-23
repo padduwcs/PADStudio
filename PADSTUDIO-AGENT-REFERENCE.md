@@ -4,8 +4,8 @@
 
 Chat có thể nằm trong host bên ngoài hoặc cửa sổ Codex của PADStudio. Cửa sổ tích hợp
 chuyển tin nhắn, tiến độ và câu hỏi qua Codex App Server; Agent tiếp tục dùng CLI/contract
-trong tài liệu này. Các view video/tư liệu đọc project local. Tư liệu đính kèm trong chat
-tích hợp đã được import qua contract và không cần nhập lần nữa.
+trong tài liệu này. Các view video/tư liệu đọc project local. Chat mở tại thư mục repo,
+độc lập với project đang xem; không tự tạo project, nhập tư liệu hay thêm ngữ cảnh vào prompt.
 
 ## Bắt đầu hoặc tiếp tục project
 

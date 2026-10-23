@@ -4,13 +4,12 @@ Theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Các bản phát 
 
 ## [Chưa phát hành]
 
-- **Chat gọn hơn, có nhiều tab độc lập.** Mở cuộc trò chuyện mới bằng **+**, chuyển tab khi Agent vẫn làm việc, bản nháp/câu hỏi riêng từng tab.
-  Đóng tab vẫn giữ lịch sử và kết quả nền; mở lại qua nút lịch sử. Tinh giản đầu trang, đưa model/đính kèm vào ô nhập, chỉ đính kèm mốc video
-  khi bấm **Góp ý trong chat**. Sửa bố cục, chữ, màu sáng/tối và thanh tab trên màn hình nhỏ. Giữ nguyên các liên kết hội thoại cũ.
-
-- **Trò chuyện với Codex ngay trong PADStudio.** Gửi/nhận theo thời gian thực, lịch sử theo dự án, model, tư liệu đính kèm qua contract import,
-  câu hỏi/xác nhận quyền, gửi bổ sung, dừng và nối lại sau mất kết nối. Góp ý kèm exact video đang xem. Agent tiếp tục đọc repo và làm video
-  bằng CLI; không xây agent loop mới. Host ngoài vẫn dùng được. Lượt chat dùng hạn mức tài khoản Codex trên máy.
+- **Cửa sổ Codex độc lập ngay trong PADStudio.** Prompt như khi mở Codex tại thư mục repo trong VS Code. Nhiều tab chạy song song,
+  mỗi cuộc trò chuyện có thể tạo/làm việc với nhiều project. Không gắn chat với project đang xem, không chèn chỉ dẫn/ngữ cảnh video,
+  không tự tạo project hay nhập file. Codex dùng cấu hình trên máy; PADStudio chuyển nguyên prompt và hiển thị sự kiện.
+  Có lịch sử, bản nháp riêng, câu hỏi/quyền của Codex, gửi bổ sung và dừng. Giao diện dùng font/màu/đường chia vùng của PADStudio,
+  kéo divider để đổi chiều rộng và nhớ lựa chọn; phần xem video tự co giãn. Gọn ở cả sáng/tối và màn hình nhỏ.
+  Giữ nguyên dữ liệu chat cũ trên đĩa; các hội thoại mới dùng mô hình tự do theo thư mục.
 
 - Sửa: project đã giao vẫn hiện "Chờ chỉnh theo phản hồi" khi còn sót feedback cũ hơn bản giao (ví dụ feedback của bản pilot). Web nay
   hiện "Đã giao" trong trường hợp đó; feedback mới hơn bản giao vẫn được hiện. `project:accept --resolves` đóng được feedback của một

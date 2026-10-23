@@ -1,235 +1,139 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { ChatService } from "../src/chat/chat-service.js";
 import { FixtureCodex } from "../scripts/lib/chat-fixture.mjs";
-import { approvalAnswer, approvalView, ChatError, displayItem, displayUserText, externalUrl, safeError } from "../src/chat/chat-protocol.js";
+import { approvalAnswer, approvalView, ChatError, displayItem, externalUrl, safeError } from "../src/chat/chat-protocol.js";
 import { chatLink } from "../ui/chat-markdown.js";
 
-async function fixture(t, options = {}) {
-  const workspace = await mkdtemp(join(tmpdir(), "padstudio-chat-service-"));
-  const client = new FixtureCodex(options);
-  const service = new ChatService({ projectRoot: join(workspace, "projects"), client });
-  t.after(async () => { await service.close(); await rm(workspace, { recursive: true, force: true }); });
-  await service.store.createProject({ projectId: "alpha", title: "Video đầu tiên" });
-  await service.store.createProject({ projectId: "beta", title: "Video thứ hai" });
-  return { workspace, client, service };
+async function fixture(t) {
+  const cwd = await mkdtemp(join(tmpdir(), "padstudio-workspace-chat-"));
+  const client = new FixtureCodex(); const service = new ChatService({ cwd, client });
+  t.after(async () => { await service.close(); await rm(cwd, { recursive: true, force: true }); });
+  return { cwd, client, service, id: (await service.read()).conversationId };
 }
-const message = (id = "request-0001", text = "Làm video giải thích") => ({ clientId: id, message: text });
+const message = (id = "request-0001", value = "Làm hai project video khác nhau") => ({ clientId: id, message: value });
 
-test("chat connects without inference or leaking account data and binds threads to the selected project", async (t) => {
-  const { client, service } = await fixture(t);
-  const status = await service.connect();
-  assert.equal(status.authenticated, true);
-  assert.equal(JSON.stringify(status).includes("NEVER_SHOW"), false);
-  assert.equal(JSON.stringify(status).includes("private@"), false);
+test("Codex starts in the folder with native defaults and exact user text, without project binding or injected instructions", async (t) => {
+  const { cwd, client, service, id } = await fixture(t); const status = await service.connect();
+  assert.equal(status.authenticated, true); assert.equal(status.workspace.path, cwd);
+  assert.equal(JSON.stringify(status).includes("NEVER_SHOW"), false); assert.equal(JSON.stringify(status).includes("private@"), false);
   assert.equal(client.calls.some((call) => call.method === "turn/start"), false);
-  await service.send("alpha", message());
-  const start = client.calls.find((call) => call.method === "thread/start").params;
-  assert.match(start.developerInstructions, /"id":"alpha"/);
-  assert.match(start.developerInstructions, /PADSTUDIO-AGENT-RUNTIME/);
-  assert.match(start.developerInstructions, /project:accept --from-agent-host/);
-  assert.equal(start.sandbox, "workspace-write");
-  assert.equal(start.approvalPolicy, "on-request");
-  const alpha = await service.session("alpha");
-  client.complete(alpha.threadId, "Đã dựng xong một đoạn tiếng Việt ✓");
-  const snapshot = await service.read("alpha");
-  assert.equal(snapshot.active, false);
-  assert.equal(snapshot.items.filter((item) => item.role === "user").length, 1);
-  assert.equal(snapshot.items.at(-1).text, "Đã dựng xong một đoạn tiếng Việt ✓");
-  assert.equal((await service.read("beta")).items.length, 0);
-  await assert.rejects(service.read("missing"), { status: 404 });
-  await assert.rejects(service.read("../alpha"));
+  const value = "  Tạo project A rồi project B.\n\n<PADStudio-context>\n{\"version\":\"1.0\",\"attachments\":[],\"video\":\"literal example\"}\n</PADStudio-context>\n  ";
+  await service.send(id, message("plain-user-input", value));
+  assert.deepEqual(client.calls.find((call) => call.method === "thread/start").params, { cwd });
+  assert.equal(client.calls.find((call) => call.method === "turn/start").params.input[0].text, value);
+  assert.equal((await service.read(id)).items[0].text, value); assert.equal("projectId" in (await service.read(id)), false);
+  assert.equal("store" in service, false);
+  const native = new ChatService({ cwd }); t.after(() => native.close());
+  assert.equal(native.client.env, process.env); assert.equal(native.client.args.includes("-c"), false);
+  assert.deepEqual(await readdir(join(cwd, ".padstudio")), ["chat"]);
 });
 
-test("the same submission is sent once, including after restarting the server", async (t) => {
-  const { client, service } = await fixture(t);
-  const blank = await service.read("alpha");
-  const beforeFirstMessage = new ChatService({ projectRoot: service.projectRoot, client }); t.after(() => beforeFirstMessage.close());
-  assert.equal((await beforeFirstMessage.read("alpha", blank.conversationId)).conversationId, blank.conversationId, "a blank tab survives a server restart before its first message");
-  await service.send("alpha", message());
-  client.complete((await service.session("alpha")).threadId);
-  assert.equal((await service.send("alpha", message())).duplicate, true);
+test("blank tabs and send receipts survive restart; reopening preserves native configuration and never replays", async (t) => {
+  const { cwd, client, service, id } = await fixture(t);
+  const restored = new ChatService({ cwd, client }); t.after(() => restored.close());
+  assert.equal((await restored.read(id)).conversationId, id);
+  await service.send(id, message()); client.complete((await service.session(id)).threadId, "Đã xong ✓");
+  const reopened = new ChatService({ cwd, client }); t.after(() => reopened.close()); await reopened.connect();
+  assert.equal((await reopened.read(id)).items.at(-1).text, "Đã xong ✓");
+  assert.deepEqual(client.calls.findLast((call) => call.method === "thread/resume").params, { threadId: (await service.session(id)).threadId });
+  assert.equal((await reopened.send(id, message())).duplicate, true);
+  await assert.rejects(reopened.send(id, message("request-0001", "Khác")), { status: 409 });
   assert.equal(client.calls.filter((call) => call.method === "turn/start").length, 1);
-  await assert.rejects(service.send("alpha", message("request-0001", "Nội dung khác")), { status: 409 });
-  const restored = new ChatService({ projectRoot: service.projectRoot, client });
-  t.after(() => restored.close());
-  await restored.connect();
-  const read = await restored.read("alpha");
-  assert.equal(read.items.at(-1).text, "Đã hoàn tất.");
-  assert.equal((await restored.send("alpha", message())).duplicate, true);
-  assert.equal(client.calls.filter((call) => call.method === "turn/start").length, 1);
-  const saved = await readFile(join(service.sessionRoot, (await readdir(service.sessionRoot))[0]), "utf8");
-  assert.equal(saved.includes("Đã hoàn tất"), false, "transcript stays with Codex, not in a second project store");
+  const saved = await readFile(join(service.sessionRoot, service.workspaceKey + ".json"), "utf8"); assert.equal(saved.includes("Đã xong"), false);
 });
 
-test("an ambiguous RPC failure persists its receipt and is never automatically replayed", async (t) => {
-  const { client, service } = await fixture(t);
-  client.failSend = true;
-  await assert.rejects(service.send("alpha", message()), /ngắt/);
-  client.failSend = false;
-  assert.equal((await service.send("alpha", message())).duplicate, true);
+test("ambiguous RPC failures keep a durable receipt and are not replayed", async (t) => {
+  const { client, service, id } = await fixture(t); client.failSend = true;
+  await assert.rejects(service.send(id, message()), /ngắt/); client.failSend = false;
+  assert.equal((await service.send(id, message())).duplicate, true);
   assert.equal(client.calls.filter((call) => call.method === "turn/start").length, 1);
 });
 
-test("messages steer an active turn, concurrent sends cannot start two turns, and interrupt uses the exact turn", async (t) => {
-  const { client, service } = await fixture(t);
-  const results = await Promise.allSettled([service.send("alpha", message()), service.send("alpha", message("request-0002"))]);
-  assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
-  const current = await service.session("alpha"); const turnId = current.turnId;
-  await service.send("alpha", message("request-0003", "Chậm hơn một chút"));
-  const steer = client.calls.find((call) => call.method === "turn/steer");
-  assert.equal(steer.params.expectedTurnId, turnId);
-  const other = await service.newConversation("alpha");
-  assert.notEqual(other.conversationId, current.id);
-  assert.equal((await service.read("alpha", current.id)).active, true);
-  await service.interrupt("alpha", current.id);
-  assert.equal((await service.read("alpha", current.id)).active, false);
-  assert.equal(client.calls.find((call) => call.method === "turn/interrupt").params.turnId, turnId);
+test("parallel conversations keep separate turns, approvals, steering and results", async (t) => {
+  const { client, service, id } = await fixture(t); const two = await service.newConversation();
+  await Promise.all([service.send(id, message()), service.send(two.conversationId, message("parallel-second", "Tạo project khác"))]);
+  const one = await service.session(id), second = await service.session(two.conversationId);
+  assert.notEqual(one.threadId, second.threadId); assert.equal(one.active && second.active, true);
+  const approval = client.ask(one.threadId, "item/commandExecution/requestApproval", { command: "example-command" });
+  const request = (await service.read(id)).requests[0];
+  await assert.rejects(service.answer(second.id, request.id, { decision: "accept" }), { status: 409 });
+  await service.answer(id, request.id, { decision: "decline" });
+  assert.deepEqual(client.responses.at(-1), { id: approval.id, result: { decision: "decline" } });
+  await service.send(id, message("first-steer", "Bổ sung cho cuộc đầu"));
+  assert.equal(client.calls.findLast((call) => call.method === "turn/steer").params.expectedTurnId, one.turnId);
+  await service.interrupt(id); assert.equal(one.active, false); assert.equal(second.active, true);
+  client.complete(second.threadId, "Kết quả riêng cuộc thứ hai");
+  assert.equal((await service.read(id)).items.some((item) => item.text.includes("Kết quả riêng")), false);
+  assert.equal((await service.read(second.id)).items.at(-1).text, "Kết quả riêng cuộc thứ hai");
+  await assert.rejects(service.read("unknown"), { status: 404 });
 });
 
-test("independent tabs stream, steer, approve and stop their own turns even while other tabs are active", async (t) => {
-  const { client, service } = await fixture(t);
-  const first = await service.read("alpha"); const second = await service.newConversation("alpha");
-  await Promise.all([
-    service.send("alpha", { ...message("parallel-tab-one", "Ý tưởng thứ nhất"), conversationId: first.conversationId }),
-    service.send("alpha", { ...message("parallel-tab-two", "Ý tưởng thứ hai"), conversationId: second.conversationId })
-  ]);
-  const one = await service.session("alpha", first.conversationId); const two = await service.session("alpha", second.conversationId);
-  assert.notEqual(one.threadId, two.threadId);
-  assert.equal(one.active && two.active, true);
-  assert.equal((await service.read("alpha", one.id)).conversations.filter((entry) => entry.active).length, 2);
-  client.ask(one.threadId, "item/commandExecution/requestApproval", { command: "only-first-tab" });
-  client.ask(two.threadId, "item/commandExecution/requestApproval", { command: "only-second-tab" });
-  const request = (await service.read("alpha", one.id)).requests[0];
-  await assert.rejects(service.answer("alpha", request.id, { conversationId: two.id, decision: "accept" }), { status: 409 });
-  await service.answer("alpha", request.id, { conversationId: one.id, decision: "decline" });
-  assert.equal(two.requests.size, 1); assert.equal(one.requests.size, 0);
-  await service.send("alpha", { ...message("parallel-steer-one", "Chỉnh ý tưởng thứ nhất"), conversationId: one.id });
-  assert.equal(client.calls.findLast((call) => call.method === "turn/steer").params.threadId, one.threadId);
-  await service.interrupt("alpha", one.id);
-  assert.equal(one.active, false); assert.equal(two.active, true); assert.equal(two.requests.size, 1);
-  client.complete(two.threadId, "Chỉ xuất hiện ở tab hai");
-  assert.equal((await service.read("alpha", one.id)).items.some((item) => item.text.includes("Chỉ xuất hiện")), false);
-  assert.equal((await service.read("alpha", two.id)).items.at(-1).text, "Chỉ xuất hiện ở tab hai");
-  await assert.rejects(service.read("beta", one.id), { status: 404 });
-  const restored = new ChatService({ projectRoot: service.projectRoot, client }); t.after(() => restored.close());
-  await restored.connect();
-  assert.equal((await restored.read("alpha", two.id)).items.at(-1).text, "Chỉ xuất hiện ở tab hai");
-  assert.equal((await restored.send("alpha", { ...message("parallel-tab-two", "Ý tưởng thứ hai"), conversationId: two.id })).duplicate, true);
-  assert.equal((await restored.read("alpha", one.id)).conversations.length, 2);
+test("simultaneous sends on one conversation cannot start duplicate turns", async (t) => {
+  const { service, client, id } = await fixture(t);
+  const sent = await Promise.allSettled([service.send(id, message()), service.send(id, message("concurrent-2"))]);
+  assert.equal(sent.filter((entry) => entry.status === "fulfilled").length, 1);
+  assert.equal(client.calls.filter((call) => call.method === "turn/start").length, 1);
 });
 
-test("version 1 links migrate all conversations and receipts without losing history or copying transcripts", async (t) => {
-  const { client, service } = await fixture(t);
-  await service.send("alpha", message());
-  const one = await service.session("alpha"); client.complete(one.threadId, "Nội dung cũ đầu tiên");
-  await service.newConversation("alpha"); await service.send("alpha", message("legacy-second", "Tiếp theo"));
-  const two = await service.session("alpha"); client.complete(two.threadId, "Nội dung cũ thứ hai");
-  const savedPath = join(service.sessionRoot, (await readdir(service.sessionRoot))[0]);
-  await writeFile(savedPath, JSON.stringify({ version: "1.0", projectId: "alpha", threadId: two.threadId,
-    title: "Chat cũ thứ hai", previousThreads: [{ id: one.threadId, title: "Chat cũ đầu tiên" }], receipts: [...one.receipts, ...two.receipts] }));
-  const migrated = new ChatService({ projectRoot: service.projectRoot, client }); t.after(() => migrated.close());
-  await migrated.connect();
-  assert.equal((await migrated.read("alpha")).items.at(-1).text, "Nội dung cũ thứ hai");
-  assert.equal((await migrated.read("alpha", one.threadId)).items.at(-1).text, "Nội dung cũ đầu tiên");
-  assert.equal((await migrated.send("alpha", { ...message(), conversationId: one.threadId })).duplicate, true);
-  await migrated.newConversation("alpha");
-  const saved = JSON.parse(await readFile(savedPath, "utf8"));
-  assert.equal(saved.version, "2.0"); assert.equal(saved.conversations.length, 3);
-  assert.equal(JSON.stringify(saved).includes("Nội dung cũ"), false);
-  assert.equal(saved.conversations.find((entry) => entry.threadId === one.threadId).receipts.length, 1);
-});
-
-test("approval prompts are scoped, require an explicit answer and expire with the turn", async (t) => {
-  const { client, service } = await fixture(t);
-  await service.send("alpha", message());
-  const session = await service.session("alpha");
-  const request = client.ask(session.threadId, "item/commandExecution/requestApproval", { command: "render-video", reason: "Đọc file ngoài dự án" });
-  const prompt = (await service.read("alpha")).requests[0];
-  assert.equal(client.responses.length, 0);
-  await assert.rejects(service.answer("beta", prompt.id, { decision: "accept" }), { status: 409 });
-  await assert.rejects(service.answer("alpha", prompt.id, { decision: "acceptForSession" }), { status: 400 });
-  await service.answer("alpha", prompt.id, { decision: "decline" });
-  assert.deepEqual(client.responses, [{ id: request.id, result: { decision: "decline" } }]);
-  await assert.rejects(service.answer("alpha", prompt.id, { decision: "accept" }), { status: 409 });
-  client.ask(session.threadId, "item/tool/requestUserInput", { questions: [{ id: "look", question: "Phong cách?", header: "Hình" }] });
-  const question = (await service.read("alpha")).requests[0];
-  await assert.rejects(service.answer("alpha", question.id, { decision: "accept", answers: {} }), { status: 400 });
-  await service.answer("alpha", question.id, { decision: "accept", answers: { look: "Tối giản" } });
-  assert.deepEqual(client.responses.at(-1).result, { answers: { look: { answers: ["Tối giản"] } } });
-  client.ask(session.threadId, "item/permissions/requestApproval", { permissions: { network: { enabled: true } } });
-  const permission = (await service.read("alpha")).requests[0];
-  await service.answer("alpha", permission.id, { decision: "accept", permissions: { fileSystem: { write: ["C:/"] } } });
+test("Codex questions and requested permissions are explicit and scoped to their conversation", async (t) => {
+  const { service, client, id } = await fixture(t); await service.send(id, message()); const current = await service.session(id);
+  client.ask(current.threadId, "item/tool/requestUserInput", { questions: [{ id: "style", question: "Phong cách?" }] });
+  const question = (await service.read(id)).requests[0];
+  await assert.rejects(service.answer(id, question.id, { decision: "accept", answers: {} }), { status: 400 });
+  await service.answer(id, question.id, { decision: "accept", answers: { style: "Tối giản" } });
+  assert.deepEqual(client.responses.at(-1).result, { answers: { style: { answers: ["Tối giản"] } } });
+  client.ask(current.threadId, "item/permissions/requestApproval", { permissions: { network: { enabled: true } } });
+  const permission = (await service.read(id)).requests[0];
+  await service.answer(id, permission.id, { decision: "accept", permissions: { fileSystem: { write: ["C:/"] } } });
   assert.deepEqual(client.responses.at(-1).result, { permissions: { network: { enabled: true } }, scope: "turn" });
-  client.ask(session.threadId, "unknown/method"); assert.equal(client.rejections.length, 1);
-  client.ask(session.threadId, "item/fileChange/requestApproval", { grantRoot: "example" });
-  client.complete(session.threadId);
-  assert.equal((await service.read("alpha")).requests.length, 0);
+  client.ask(current.threadId, "unknown/method"); assert.equal(client.rejections.length, 1);
+  client.complete(current.threadId); assert.equal((await service.read(id)).requests.length, 0);
 });
 
-test("disconnection keeps project and transcript, resumes without replay and reports login needs", async (t) => {
-  const { client, service } = await fixture(t);
-  await service.send("alpha", message());
-  const current = await service.session("alpha");
-  client.emit("disconnect", new Error("Connection lost"));
-  assert.equal(service.status().connected, false);
-  assert.equal((await service.read("alpha")).items.length, 1);
-  client.complete(current.threadId, "Hoàn tất khi trình duyệt mất kết nối");
-  await service.connect();
-  assert.equal((await service.read("alpha")).items.at(-1).text, "Hoàn tất khi trình duyệt mất kết nối");
+test("disconnection and login preserve the conversation without replaying work", async (t) => {
+  const { service, client, id } = await fixture(t); await service.send(id, message());
+  const current = await service.session(id); client.emit("disconnect", new Error("Lost connection")); assert.equal(service.status().connected, false);
+  client.complete(current.threadId, "Xong ở nền"); await service.connect(); assert.equal((await service.read(id)).items.at(-1).text, "Xong ở nền");
   assert.equal(client.calls.filter((call) => call.method === "turn/start").length, 1);
-  client.authenticated = false; service.connecting = null;
-  await service.connect();
-  await assert.rejects(service.send("beta", message()), { status: 401 });
-  const login = await service.startLogin();
-  assert.equal(login.login.url, "https://auth.openai.com/authorize?fixture=1");
-  assert.equal(JSON.stringify(login).includes("private-login-id"), false);
+  client.authenticated = false; service.connecting = null; await service.connect(); const other = await service.newConversation();
+  await assert.rejects(service.send(other.conversationId, message()), { status: 401 });
+  assert.equal((await service.startLogin()).login.url, "https://auth.openai.com/authorize?fixture=1");
   await service.cancelLogin(); assert.equal(service.status().login, null);
 });
 
-test("attachments must belong to the chosen project and malformed saved state is preserved", async (t) => {
-  const { service } = await fixture(t);
-  await assert.rejects(service.send("alpha", { ...message(), attachments: ["resource-other-project"] }), { status: 400 });
-  await service.send("alpha", message());
-  const savedPath = join(service.sessionRoot, (await readdir(service.sessionRoot))[0]);
-  await writeFile(savedPath, "{broken");
-  const other = new ChatService({ projectRoot: service.projectRoot, client: new FixtureCodex() }); t.after(() => other.close());
-  await assert.rejects(other.read("alpha"), { code: "session_read_failed" });
-  assert.equal(await readFile(savedPath, "utf8"), "{broken");
+test("earlier project-bound chat metadata is untouched and never silently resumed; malformed new data is preserved", async (t) => {
+  const { cwd, client, service, id } = await fixture(t); const legacyRoot = join(cwd, ".padstudio", "chat", "old-project-links"); await mkdir(legacyRoot);
+  const legacy = '{"version":"2.0","projectId":"old","conversations":[{"threadId":"old-restricted-thread"}]}';
+  await writeFile(join(legacyRoot, "old.json"), legacy); await service.send(id, message());
+  assert.equal(await readFile(join(legacyRoot, "old.json"), "utf8"), legacy);
+  assert.equal(client.calls.some((call) => call.params.threadId === "old-restricted-thread"), false);
+  const path = join(service.sessionRoot, service.workspaceKey + ".json"); await writeFile(path, "{broken");
+  const other = new ChatService({ cwd, client: new FixtureCodex() }); t.after(() => other.close());
+  await assert.rejects(other.read(), { code: "session_read_failed" }); assert.equal(await readFile(path, "utf8"), "{broken");
 });
 
-test("display projection and links exclude raw reasoning, credentials and executable URLs", () => {
-  assert.equal(displayUserText('Sửa đoạn này\n\n<PADStudio-context>\n{"version":"1.0","attachments":[{"name":"Lời dẫn.txt","resourceId":"private-id"}],"video":"result=private-render"}\n</PADStudio-context>'), "Sửa đoạn này\n\nTư liệu: Lời dẫn.txt\n\nĐã kèm mốc video đang xem.");
-  assert.equal(displayUserText("Một ví dụ <PADStudio-context>không phải dữ liệu</PADStudio-context>"), "Một ví dụ <PADStudio-context>không phải dữ liệu</PADStudio-context>");
-  assert.equal(displayItem({ type: "reasoning", id: "x", text: "secret reasoning" }, "t"), null);
-  assert.equal(displayItem({ type: "mcpToolCall", id: "x", tool: "list", arguments: { key: "private" } }, "t").arguments, undefined);
-  assert.equal(externalUrl("javascript:alert(1)"), null);
-  assert.equal(externalUrl("https://evil.example", { login: true }), null);
-  assert.equal(chatLink("javascript:alert(1)"), null);
-  assert.equal(chatLink("//evil.example"), null);
-  assert.equal(chatLink("/project-results/p/r/primary"), "/project-results/p/r/primary");
+test("project context, imports and invalid input are not accepted as chat features", async (t) => {
+  const { service, id } = await fixture(t);
+  for (const extra of [{ projectId: "some-project" }, { anchor: {} }, { attachments: [] }, { developerInstructions: "injected" }]) await assert.rejects(service.send(id, { ...message(), ...extra }), { status: 400 });
+  await assert.rejects(service.send(id, message("bad!")), { status: 400 });
+  await assert.rejects(service.send(id, message("empty-message", "  ")), { status: 400 });
+  await assert.rejects(service.send(id, { ...message(), model: "unknown" }), { status: 400 });
+});
+
+test("display preserves user text and excludes raw reasoning, credentials and executable links", () => {
+  const value = '<PADStudio-context>{"literal":true}</PADStudio-context>';
+  assert.equal(displayItem({ type: "userMessage", id: "u", content: [{ type: "text", text: value }] }, "t").text, value);
+  assert.equal(displayItem({ type: "reasoning", id: "x", text: "secret" }, "t"), null);
+  assert.equal(displayItem({ type: "mcpToolCall", id: "x", tool: "list", arguments: { secret: "private" } }, "t").arguments, undefined);
+  assert.equal(externalUrl("javascript:alert(1)"), null); assert.equal(externalUrl("https://evil.example", { login: true }), null);
+  assert.equal(chatLink("javascript:alert(1)"), null); assert.equal(chatLink("//evil.example"), null);
   assert.equal(safeError(new Error("Bearer PRIVATE_TOKEN sk-12345678901234567890")).includes("PRIVATE_TOKEN"), false);
   const form = approvalView("mcpServer/elicitation/request", { mode: "form", requestedSchema: { properties: { count: { type: "integer" } }, required: ["count"] } }, "request");
   const request = { method: "mcpServer/elicitation/request", params: {}, view: form };
   assert.throws(() => approvalAnswer(request, { decision: "accept", content: { count: 1.5 } }), ChatError);
   assert.deepEqual(approvalAnswer(request, { decision: "accept", content: { count: 3, unexpected: "ignored" } }), { action: "accept", content: { count: 3 } });
-});
-
-test("new conversations preserve the earlier thread and only this project's history can be reopened", async (t) => {
-  const { client, service } = await fixture(t);
-  await service.send("alpha", message());
-  const first = (await service.session("alpha")).threadId;
-  client.complete(first, "Nội dung hội thoại đầu");
-  await service.newConversation("alpha");
-  await service.send("alpha", message("second-conversation", "Một ý tưởng nữa"));
-  const second = (await service.session("alpha")).threadId;
-  client.complete(second, "Nội dung hội thoại thứ hai");
-  const snapshot = await service.selectConversation("alpha", first);
-  assert.equal(snapshot.conversations.length, 2);
-  assert.equal(snapshot.items.at(-1).text, "Nội dung hội thoại đầu");
-  await assert.rejects(service.selectConversation("beta", first), { status: 404 });
-  assert.equal((await service.selectConversation("alpha", second)).items.at(-1).text, "Nội dung hội thoại thứ hai");
 });

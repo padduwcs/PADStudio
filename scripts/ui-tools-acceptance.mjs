@@ -125,9 +125,10 @@ try {
   await page.goto(`${origin}/?panel=tools&tab=voice`);
   await page.waitFor("!document.querySelector('#tools').hidden && document.querySelector('#tools-tab-voice').getAttribute('aria-selected') === 'true' && document.querySelector('#elevenlabs-key')", { timeout: 60_000, label: "the tab named in the link opens" });
   expect(!await page.evaluate("document.querySelector('#tools #elevenlabs-model')"), "the model and voice steps must wait for a key");
+  // Check before submitting: a fast successful save may already load the catalog by the next CDP response.
+  expect(providerRequests.length === 0, "nothing should be requested from ElevenLabs before a key is saved");
   await page.evaluate(`(() => { const input = document.querySelector('#elevenlabs-key'); input.value = ${JSON.stringify(KEY)};
     input.closest('form').requestSubmit(); })()`);
-  expect(providerRequests.length === 0, "nothing should be requested from ElevenLabs before a key is saved");
   await page.waitFor("document.querySelector('#tools-panel-voice .key-block .form-message')?.textContent.includes('Đã lưu khóa')", { timeout: 60_000, label: "key saved" });
   await page.waitFor("document.querySelector('#tools-panel-voice [data-tool=elevenlabs] .chip')?.textContent.includes('Sẵn sàng')", { timeout: 60_000, label: "ElevenLabs becomes available" });
   expect(!(await page.evaluate("document.documentElement.outerHTML")).includes(KEY), "the page shows the saved key");

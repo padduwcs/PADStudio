@@ -19,11 +19,12 @@ Chỉ nhánh `main` được sửa lỗi bảo mật. Dự án ở phiên bản 
 PADStudio là công cụ **chạy cục bộ cho một người dùng**, không phải dịch vụ cho nhiều người. Hãy hiểu rõ các điểm sau trước khi dùng.
 
 - **Web observer chỉ nghe trên `127.0.0.1`**, từ chối mọi request có `Host` không phải localhost, và chỉ nhận ghi cài đặt từ chính
-  trang PADStudio (cùng Origin, JSON và header riêng). Chat cũng chỉ nhận thao tác từ cùng trang, dùng intent riêng; upload nhận byte stream có giới hạn. Đừng đưa nó ra mạng bằng reverse proxy hoặc tunnel: nó không có đăng nhập cho truy cập web.
-- **Chat là client của Codex trên máy.** Backend chạy Codex App Server qua stdio với workspace-write và xác nhận quyền theo từng yêu cầu;
+  trang PADStudio (cùng Origin, JSON và header riêng). Chat cũng chỉ nhận thao tác từ cùng trang, dùng intent riêng. Đừng đưa nó ra mạng bằng reverse proxy hoặc tunnel: nó không có đăng nhập cho truy cập web.
+- **Chat là client Codex mở tại thư mục repo.** Backend chạy Codex App Server qua stdio, kế thừa cấu hình và quyền của Codex trên máy;
   không có endpoint RPC hoặc shell tùy ý cho trình duyệt. Token đăng nhập do Codex quản lý, không trả về UI. Hội thoại và nội dung Agent đọc
   được gửi đến nhà cung cấp model theo tài khoản/cấu hình Codex; chúng không phải xử lý AI hoàn toàn offline. Transcript do Codex lưu,
-  liên kết project/thread và biên nhận chống gửi trùng nằm trong `.padstudio/chat/`, bản nháp tin nhắn ở sessionStorage của trình duyệt.
+  liên kết hội thoại/thread và biên nhận chống gửi trùng nằm trong `.padstudio/chat/workspace/`, bản nháp tin nhắn ở sessionStorage của trình duyệt.
+  Chat không gắn project, chèn chỉ dẫn, nhập tư liệu hay sửa project qua HTTP. Agent dùng công cụ của Codex theo prompt như khi chạy ở host ngoài.
 - **Khóa API** (ví dụ ElevenLabs) lưu dạng văn bản thường (không mã hóa) trong `padstudio.local.json` ở thư mục dự án, bị Git bỏ qua. Ai đọc được file
   đó là dùng được khóa. Web không bao giờ trả lại khóa và PADStudio không đưa giá trị khóa vào context của Agent; tuy nhiên một Agent có quyền đọc file trên máy bạn vẫn đọc được `padstudio.local.json`. Đừng dán khóa vào chat. Hãy đặt
   giới hạn credit ngay ở nhà cung cấp, và đổi khóa nếu nghi ngờ lộ.

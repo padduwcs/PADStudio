@@ -177,7 +177,7 @@ function sendMediaFile(request, response, input) {
 }
 
 export function createPadStudioServer({ reader, staticDirectory = uiDirectory, settings = createSettingsService(), build = observerBuild(),
-  chat = new ChatService({ projectRoot: reader.rootDir }) }) {
+  chat = new ChatService() }) {
   const staticAssets = buildStaticAssets(staticDirectory);
   // Who this server is and which code it started with, so observer:ensure can replace a server left running
   // from before an update instead of silently reusing it.

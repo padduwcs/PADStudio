@@ -8,29 +8,27 @@ Tài liệu này ghi các định hướng đã chốt để làm rõ [`PADSTUDI
 > [`PADSTUDIO-DEVELOPMENT-STATUS.md`](./PADSTUDIO-DEVELOPMENT-STATUS.md) để biết baseline code/test
 > gần nhất. Không suy ra sản phẩm đã hoàn chỉnh chỉ từ một mục có chữ “hoàn thành”.
 
-## Cửa sổ chat là client của Agent — 2026-10-23
+## Chat Codex độc lập ở cấp thư mục — 2026-10-23
 
-Theo yêu cầu mới của người phụ trách, PADStudio tích hợp cửa sổ chat kiểu IDE extension. Quyết định này thay thế ranh giới cũ “không xây chat tích hợp” và “chat ngoài là kênh duy nhất”; các mục có ngày trước 2026-10-23 giữ bối cảnh lịch sử của chúng.
+Theo yêu cầu làm rõ của người phụ trách, cửa sổ chat chỉ là nơi prompt Codex thay cho VS Code, mở tại thư mục PADStudio. Quyết định hiện hành này thay thế cả ranh giới “không xây chat tích hợp” lẫn cách triển khai trung gian gắn hội thoại với project.
 
 - **Agent:** vẫn là chương trình đọc repo, hướng dẫn và skill, chọn việc sáng tạo, rồi gọi CLI/contract PADStudio. Host bên ngoài vẫn dùng được.
-- **Chat tích hợp:** là client của Codex App Server chạy nền qua stdio, gửi/nhận tin nhắn, tiến độ, câu hỏi và xác nhận quyền. Không tự xây agent loop hoặc buộc một pipeline video.
-- **Video và Tư liệu:** tiếp tục là các view quan sát cùng kho project. Người dùng gửi góp ý từ exact bản đang xem ngay vào chat.
+- **Chat:** client Codex App Server qua stdio. Thread mới chỉ nhận `cwd` và model nếu người dùng chọn; không override cấu hình quyền, không thêm developer/base instructions, project ID, ngữ cảnh video, workflow hay tool PADStudio riêng. Codex tự đọc cấu hình và hướng dẫn của thư mục như host ngoài.
+- **Video và Tư liệu:** là các view quan sát project; chọn project không đổi chat hay sửa prompt. Người dùng chủ động sao chép mốc video rồi dán vào hội thoại.
 
-Kho project giữ nguồn sự thật về công việc và kết quả. Codex giữ transcript; PADStudio chỉ lưu liên kết project/thread và biên nhận gửi tin trong `.padstudio/chat/` (phân vùng theo gốc project), không chép transcript vào core project store. MCP không bắt buộc cho lớp chat này. Bản đầu hỗ trợ Codex; không tự đổi sang agent/provider khác.
+Kho project giữ nguồn sự thật về công việc và kết quả. Codex giữ transcript; metadata hội thoại/thread và biên nhận gửi tin ở `.padstudio/chat/workspace/`, tách theo thư mục. Không có liên kết bắt buộc với project. Dữ liệu chat cũ gắn project giữ nguyên trên đĩa, không tự resume vào chat mới vì có chỉ dẫn hạn chế từ bản trước. MCP không bắt buộc. Bản đầu hỗ trợ Codex.
 
 Contract, vòng đời và cách kiểm chứng: [CHAT-CLIENT.md](CHAT-CLIENT.md).
 
-Theo phản hồi tiếp theo cùng ngày, chat được tinh giản về kiểu cửa sổ hội thoại IDE: thanh tab mở nhiều cuộc trò chuyện đồng thời,
-tin nhắn và ô nhập là nội dung chính. Mỗi tab giữ bản nháp và trạng thái riêng; đóng tab chỉ đóng cách xem, lịch sử vẫn mở lại được.
-Các tùy chọn phụ thu gọn vào ô nhập/menu. Mốc video chỉ đính kèm khi người dùng chủ động bấm **Góp ý trong chat**.
+Nhiều tab độc lập cùng mở tại thư mục repo; mỗi cuộc trò chuyện có thể tạo hoặc tiếp tục nhiều project theo prompt. Tin nhắn và ô nhập là nội dung chính. Mỗi tab giữ bản nháp/trạng thái riêng; đóng tab không dừng Agent. Giao diện dùng font, màu trung tính ấm, điểm nhấn cyan và đường chia vùng của PADStudio, không đưa bố cục sản xuất video vào chat.
 
 ## Agent điều khiển, UI chuyển lời và hiển thị
 
 Người dùng đưa yêu cầu, thay đổi hướng và phê duyệt trong host ngoài hoặc chat tích hợp. Agent hiểu phản hồi, chọn việc sáng tạo cần làm tiếp và cập nhật project qua CLI/contract. Acceptance trong chat tích hợp dùng cùng kênh `agent_host`, bind exact Result/revision/checksum, không tự tạo full-view/full-listen attestation.
 
-UI không tự chọn workflow, thay lựa chọn sáng tạo, quyết định duyệt, kết quả hay checkpoint. Các thao tác mới là chuyển tin tới Agent, tạo project qua ProjectStore và nhập file qua contract import hiện có; trang Công cụ vẫn chỉ ghi cài đặt của máy. Mọi route chat có ranh giới riêng, không cung cấp endpoint RPC hay shell tùy ý. Ghi chỉ nhận cùng Origin với header intent; server vẫn chỉ nghe localhost.
+UI không tự chọn workflow, thay lựa chọn sáng tạo, quyết định duyệt, kết quả hay checkpoint. Chat chỉ chuyển prompt và sự kiện của Codex, không gọi ProjectStore, import hay gắn mốc video. Trang Công cụ vẫn chỉ ghi cài đặt của máy. Mọi route chat có ranh giới riêng, không cung cấp endpoint RPC hay shell tùy ý. Ghi chỉ nhận cùng Origin với header intent; server vẫn chỉ nghe localhost.
 
-Tư liệu đính kèm trong chat được nhập thành Resource/Run trước khi gửi cho Agent (tối đa 100 MB/file, 12 file/tin). Với path hoặc URL bên ngoài, Agent xem rồi chỉ đưa phần cần thiết vào project. Đổi project không chuyển nhầm hội thoại; mất kết nối không tự gửi lại một lượt. Dừng agent không được mô tả là hoàn tác kết quả hoặc hoàn tiền công cụ đã chạy.
+Prompt được chuyển nguyên văn, không thêm/sửa nội dung. Agent dùng công cụ Codex để đọc file, chọn project và thao tác như host ngoài. Mất kết nối không tự gửi lại một lượt. Dừng agent không được mô tả là hoàn tác kết quả hoặc hoàn tiền công cụ đã chạy.
 
 ## Agent làm việc, người dùng kiểm soát hướng
 
@@ -48,7 +46,7 @@ kế hoạch, kết quả và quyết định đó tồn tại bền vững ngo�
 ```mermaid
 flowchart TB
     U[Người dùng<br/>Mục tiêu, tư liệu, phản hồi và phê duyệt]
-    W[Cùng một project<br/>Chat tích hợp hoặc host ngoài và các view quan sát]
+    W[Chat theo thư mục hoặc host ngoài<br/>Các view quan sát project]
     A[Agent<br/>Hiểu project, sáng tạo và chọn việc tiếp theo]
     I[Trí tuệ project<br/>Brief, hiểu tư liệu, hướng sáng tạo và tiêu chí review]
     F[Workflow thích nghi<br/>Kế hoạch hiện hành có thể thay đổi]

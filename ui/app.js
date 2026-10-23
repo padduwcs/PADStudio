@@ -47,15 +47,7 @@ const library = createLibrary({
 });
 
 const tools = createToolsPanel({ root: $("#tools"), body: $("#tools-body"), refreshButton: $("#tools-refresh") });
-const chat = createChatPanel({
-  root: $("#chat"), toggle: $("#chat-button"),
-  onProjectCreated: async (project) => {
-    projectsById.set(project.id, project);
-    projectsEtag = null;
-    selectProject(project.id);
-    await loadProjects();
-  }
-});
+const chat = createChatPanel({ root: $("#chat"), toggle: $("#chat-button") });
 
 /* ------------------------------------------------------------------------------------------------ */
 /* Small UI pieces                                                                                   */
@@ -98,7 +90,6 @@ function renderHeader() {
   const card = contexts.card?.card;
   const title = card?.project.title ?? project?.title ?? "Đang mở dự án…";
   elements.title.textContent = title;
-  chat.setProject(selectedProjectId, title);
   document.title = title + " · PADStudio";
   elements.meta.replaceChildren();
   if (!card) return;
@@ -299,7 +290,6 @@ async function loadProjects() {
     library.update(body.projects, selectedProjectId);
     if (!selectedProjectId) {
       showWorkspace(false);
-      chat.setProject(null);
       document.title = "PADStudio";
       return;
     }
