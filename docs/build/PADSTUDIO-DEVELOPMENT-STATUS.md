@@ -1,6 +1,6 @@
 # PADStudio — trạng thái phát triển
 
-Cập nhật: **2026-10-23** (Codex độc lập theo thư mục, nhiều tab và khung chat đổi kích thước; xem mục “Chat trong PADStudio”). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
+Cập nhật: **2026-10-24** (bổ sung input, thiết lập native và thao tác hội thoại Codex; xem mục “Chat trong PADStudio”). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
 
 Đây là điểm vào ngắn để biết codebase đang ở đâu. PADStudio vẫn đang được xây dựng và chỉnh
 chu; các báo cáo có chữ `completion`, tên đợt hoặc số phiên bản ghi lại một mốc nghiệm thu kỹ
@@ -10,7 +10,7 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 - Agent điều khiển qua host ngoài hoặc cửa sổ chat Codex trong PADStudio. Project local giữ nguồn sự thật; các view video/tư liệu chỉ quan sát.
   Chat là client Codex mở tại thư mục repo, chuyển nguyên prompt và dùng cấu hình Codex trên máy. Không gắn project, chèn chỉ dẫn/ngữ cảnh,
-  tạo project hoặc nhập file. Agent tự chọn công việc theo prompt như host ngoài; một hội thoại có thể làm nhiều project.
+  tạo project hoặc nhập Resource. File đính kèm chat chỉ lưu ngoài project để agent đọc. Agent tự chọn công việc theo prompt như host ngoài; một hội thoại có thể làm nhiều project.
 - Kho project, Resource/Run/Result, artifact có revision, workflow thích nghi, review, decision,
   checkpoint, recovery, QA và local delivery đã có đường triển khai và test.
 - Source understanding, sequence composition, asset preparation, TTS và code animation local là
@@ -26,28 +26,32 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 ## Baseline kiểm chứng
 
-Ngày **2026-10-23**, Node v24.18.1, Windows: `npm test` **464 tests: 463 pass, 0 fail, 1 skipped** (symlink, thiếu quyền Windows).
-`npm run check` sạch. `chat:ui:test`, `observer:ui:empty-test`, `observer:ui:live-test`, `observer:ui:tools-test` passed.
-Live Codex CLI 0.163.0 sau khi bỏ liên kết project: hai hội thoại song song dùng thread/start chỉ có cwd, trả đúng hai token riêng và khôi phục
-cả hai qua thread/resume sau khi đóng/mở process. Không gọi công cụ/provider media; test tự động không gọi model. Browser kiểm thêm đổi project
-không đổi chat, thư viện trống không tự tạo project, gửi chậm giữ bản nháp mới, tab luôn nằm trong vùng nhìn và khung chat đổi kích thước.
-Trước khi bỏ liên kết project, baseline là 468 tests/467 pass; các bài gắn project/import được thay bằng test contract Codex tự do và negative tests.
+Ngày **2026-10-24**, Node v24.18.1, Windows: `npm test` **474 tests: 473 pass, 0 fail, 1 skipped** (symlink, thiếu quyền Windows).
+`npm run check` sạch. `chat:ui:test`, `chat:ui:features-test`, `observer:ui:empty-test`, `observer:ui:live-test`, `observer:ui:tools-test` passed.
+Live Codex CLI 0.163.0: input ảnh, explicit effort/mode/quyền, rename/history, fork trước lượt, export và archive/restore dùng API gốc.
+Không gọi công cụ/provider media; thread thử được lưu trữ. Test tự động không gọi model. Browser kiểm chức năng mới lẫn nhiều tab, draft,
+đổi project không đổi chat, resize/reload/offline và các kích thước 320–1440 px ở sáng/tối.
+Baseline trước đợt bổ sung là 464 tests/463 pass/1 skip; trước khi bỏ liên kết project là 468 tests/467 pass.
 Các baseline cũ sau đây là lịch sử tại ngày ghi nhận.
 
-## Chat trong PADStudio — 2026-10-23
+## Chat trong PADStudio — 2026-10-24
 
 - Khung chat Codex là client cho App Server có sẵn, không xây agent loop hay MCP server mới. Agent tiếp tục đọc repo, runtime và skill rồi
   làm video bằng CLI. Các view video/tư liệu giữ project làm nguồn sự thật; host ngoài vẫn dùng được.
 - Tin nhắn theo thời gian thực, lịch sử theo thư mục, hội thoại mới/mở lại, model, câu hỏi/quyền do Codex yêu cầu, gửi bổ sung, dừng và nối lại.
   Thread mới không có developer/base instructions hay cấu hình quyền riêng của PADStudio; không sửa prompt. Bản đầu chỉ hỗ trợ Codex.
+- Ảnh/file qua picker, kéo/thả hoặc dán ảnh; tham chiếu file và skill; model/effort/Plan/Default/permission lấy từ catalog Codex.
+  Mặc định kế thừa cấu hình máy; chỉ override lựa chọn do người dùng chọn. File thường chuyển bằng path, ảnh bằng native localImage.
+- Native history của cwd có search/pagination/resume; rename/archive/restore/fork, sửa/gửi lại giữ hội thoại gốc, xuất Markdown/JSON,
+  tải trang cũ, tìm trong chat và slash commands. Command output/diff/plan/public summary/context usage hiển thị theo sự kiện native.
 - Nhiều tab hoạt động độc lập, không có liên kết với project viewer. Bản nháp, câu hỏi và vị trí xem riêng từng tab. UI chỉ có header Codex/thư mục,
   tab, tin nhắn, model và ô nhập; màu/font/đường chia vùng cùng thiết kế PADStudio. Desktop kéo divider để đổi chiều rộng, nhớ lựa chọn,
   hỗ trợ bàn phím và nhấp đúp đặt lại; phần video co giãn theo diện tích còn lại. Mobile là dialog toàn màn hình.
-- Bỏ route tạo project, upload/import, gắn mốc video và callbacks đổi chat theo project. Dữ liệu chat cũ giữ nguyên ở đường dẫn cũ,
+- Bỏ route tạo project, import Resource, gắn mốc video và callbacks đổi chat theo project. Upload chỉ là file đính kèm chat. Dữ liệu chat cũ giữ nguyên ở đường dẫn cũ,
   không tự resume vì các thread đó từng có chỉ dẫn hạn chế; metadata workspace mới không có project ID.
 - Chống gửi trùng bằng biên nhận lưu trước RPC; không tự replay sau reload/restart. Transcript do Codex giữ; liên kết và biên nhận nằm
   ngoài core project store, phân vùng theo cwd. Mọi thao tác HTTP có guard riêng; không có gateway shell/RPC tùy ý.
-- 17 test cho stdio thật, lifecycle, lỗi, exact prompt/native params, HTTP/SSE, quyền, nhiều hội thoại, dữ liệu cũ giữ nguyên và chống project context.
+- 27 test cho stdio thật, lifecycle, lỗi, exact prompt/native params, HTTP/SSE, input/options/history/fork/export, quyền, nhiều hội thoại, dữ liệu cũ giữ nguyên và chống project context.
   Browser dùng Codex giả, observer/ProjectStore/video FFmpeg thật; đã kiểm 320/390/768/1024/1440 px, sáng/tối, bàn phím, đổi project, offline và login.
 - Đã sửa hồi quy tên đầy đủ của studio ở 768 px; đóng protocol child đợi process thật kết thúc trên Windows. Full suite đã chạy lại sạch.
 - Contract và giới hạn: [`CHAT-CLIENT.md`](CHAT-CLIENT.md). Không gọi provider media trả phí hoặc dựng một pilot sáng tạo mới để nghiệm thu chat.

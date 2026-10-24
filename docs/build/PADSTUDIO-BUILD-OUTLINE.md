@@ -144,6 +144,10 @@ Giao diện không phải quy trình bắt buộc. Theo hướng đã chốt tro
 
 Các view video/tư liệu chỉ đọc kho dự án. Chat Codex mở tại thư mục repo, chuyển nguyên prompt và sự kiện của Agent, độc lập với project đang xem. Không tự gắn project, thêm chỉ dẫn/ngữ cảnh, tạo project hay nhập tư liệu. Agent tự chọn công việc theo lời người dùng và ghi qua CLI. Lịch sử chat thuộc Codex, không thay thế trạng thái chính của project.
 
+Chat có input ảnh/file do người dùng chọn, model/effort/mode/quyền gốc của Codex, lịch sử native, phân nhánh/sửa/gửi lại,
+đổi tên/lưu trữ/khôi phục, xuất và tìm trong hội thoại. File chat chỉ là đầu vào của agent, không được tự import vào project.
+Chi tiết và giới hạn của client tại [`CHAT-CLIENT.md`](CHAT-CLIENT.md).
+
 ## 7. Vòng chỉnh sửa
 
 Sau mỗi lần tạo kết quả, hệ thống cần hỗ trợ một trong ba hướng: giữ kết quả, sửa cục bộ hoặc đổi hướng. Phản hồi của người dùng phải được ghi vào dự án; Agent dùng bối cảnh mới đó để chọn việc tiếp theo.

@@ -66,3 +66,25 @@ test("HTTP and SSE conversations remain independent when other tabs open, send o
   assert.equal((await fetch(origin + "/api/chat/conversations/unknown")).status, 404);
   assert.equal((await fetch(origin + "/api/chat/events?conversation=unknown")).status, 404);
 });
+
+test("chat attachments, native history and conversation actions retain HTTP guards and explicit thread identity", async (t) => {
+  const { origin, service, client, post, cwd } = await fixture(t);
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j1XkAAAAASUVORK5CYII=";
+  const upload = await post("/api/chat/attachments", { name: "image.png", data: png }); assert.equal(upload.status, 201);
+  const image = await fetch(origin + `/api/chat/attachments/${upload.body.attachment.id}/image`); assert.equal(image.status, 200); assert.equal(image.headers.get("content-type"), "image/png");
+  assert.equal(Buffer.from(await image.arrayBuffer()).toString("base64"), png);
+  assert.equal((await fetch(origin + `/api/chat/attachments/${upload.body.attachment.id}/image`, { headers: { Origin: "https://other.example" } })).status, 403);
+  assert.equal((await post("/api/chat/attachments", { name: "x", data: png }, { Origin: "https://other.example" })).status, 403);
+  const external = (await client.request("thread/start", { cwd })).thread;
+  const history = await (await fetch(origin + "/api/chat/history")).json(); assert.equal(history.data[0].threadId, external.id);
+  const resumed = await post("/api/chat/resume", { threadId: external.id }); assert.equal(resumed.status, 200);
+  const id = resumed.body.session.conversationId;
+  assert.equal((await post(`/api/chat/conversations/${id}/rename`, { name: "HTTP name" })).status, 200);
+  assert.equal(client.threads.get(external.id).name, "HTTP name");
+  assert.equal((await post(`/api/chat/conversations/${id}/rename`, { name: "Forbidden" }, { Origin: "https://other.example" })).status, 403);
+  assert.equal((await fetch(origin + `/api/chat/conversations/${id}/export`)).status, 200);
+  assert.equal((await post(`/api/chat/conversations/${id}/archive`)).body.session.archived, true);
+  assert.equal((await post(`/api/chat/conversations/${id}/unarchive`)).body.session.archived, false);
+  assert.equal((await service.read(id)).conversationId, id);
+  assert.equal(client.calls.some((call) => call.method === "turn/start"), false);
+});

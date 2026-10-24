@@ -104,7 +104,8 @@ export class CodexClient extends EventEmitter {
     )));
     child.once("exit", () => this.#disconnected(child, new CodexConnectionError("Codex đã ngắt kết nối. Bạn có thể kết nối lại để mở lại hội thoại.")));
     const initialized = await this.request("initialize", {
-      clientInfo: { name: "padstudio", title: "PADStudio", version: "0.1.0" }
+      clientInfo: { name: "padstudio", title: "PADStudio", version: "0.1.0" },
+      capabilities: { experimentalApi: true }
     });
     this.notify("initialized", {});
     return initialized;

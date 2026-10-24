@@ -8,12 +8,12 @@ Tài liệu này ghi các định hướng đã chốt để làm rõ [`PADSTUDI
 > [`PADSTUDIO-DEVELOPMENT-STATUS.md`](./PADSTUDIO-DEVELOPMENT-STATUS.md) để biết baseline code/test
 > gần nhất. Không suy ra sản phẩm đã hoàn chỉnh chỉ từ một mục có chữ “hoàn thành”.
 
-## Chat Codex độc lập ở cấp thư mục — 2026-10-23
+## Chat Codex độc lập ở cấp thư mục — 2026-10-24
 
 Theo yêu cầu làm rõ của người phụ trách, cửa sổ chat chỉ là nơi prompt Codex thay cho VS Code, mở tại thư mục PADStudio. Quyết định hiện hành này thay thế cả ranh giới “không xây chat tích hợp” lẫn cách triển khai trung gian gắn hội thoại với project.
 
 - **Agent:** vẫn là chương trình đọc repo, hướng dẫn và skill, chọn việc sáng tạo, rồi gọi CLI/contract PADStudio. Host bên ngoài vẫn dùng được.
-- **Chat:** client Codex App Server qua stdio. Thread mới chỉ nhận `cwd` và model nếu người dùng chọn; không override cấu hình quyền, không thêm developer/base instructions, project ID, ngữ cảnh video, workflow hay tool PADStudio riêng. Codex tự đọc cấu hình và hướng dẫn của thư mục như host ngoài.
+- **Chat:** client Codex App Server qua stdio. Thread mới mặc định chỉ nhận `cwd`, thêm model khi người dùng chọn. UI có lựa chọn mức suy luận, Plan/Default và permission profile từ catalog Codex, chỉ chuyển override khi người dùng chủ động chọn. Plan/Default dùng preset gốc của Codex, không có chỉ dẫn do PADStudio soạn. Không thêm project ID, ngữ cảnh video, workflow hay tool PADStudio riêng. Codex tự đọc cấu hình và hướng dẫn của thư mục như host ngoài.
 - **Video và Tư liệu:** là các view quan sát project; chọn project không đổi chat hay sửa prompt. Người dùng chủ động sao chép mốc video rồi dán vào hội thoại.
 
 Kho project giữ nguồn sự thật về công việc và kết quả. Codex giữ transcript; metadata hội thoại/thread và biên nhận gửi tin ở `.padstudio/chat/workspace/`, tách theo thư mục. Không có liên kết bắt buộc với project. Dữ liệu chat cũ gắn project giữ nguyên trên đĩa, không tự resume vào chat mới vì có chỉ dẫn hạn chế từ bản trước. MCP không bắt buộc. Bản đầu hỗ trợ Codex.
@@ -21,6 +21,10 @@ Kho project giữ nguồn sự thật về công việc và kết quả. Codex g
 Contract, vòng đời và cách kiểm chứng: [CHAT-CLIENT.md](CHAT-CLIENT.md).
 
 Nhiều tab độc lập cùng mở tại thư mục repo; mỗi cuộc trò chuyện có thể tạo hoặc tiếp tục nhiều project theo prompt. Tin nhắn và ô nhập là nội dung chính. Mỗi tab giữ bản nháp/trạng thái riêng; đóng tab không dừng Agent. Giao diện dùng font, màu trung tính ấm, điểm nhấn cyan và đường chia vùng của PADStudio, không đưa bố cục sản xuất video vào chat.
+
+Người dùng được đính kèm ảnh/file vào **chat**, tham chiếu file/skill, mở lịch sử native Codex, đổi tên/lưu trữ/khôi phục,
+phân nhánh, sửa/gửi lại và xuất hội thoại. File chat nằm ngoài project store; không tự trở thành Resource. Sửa/gửi lại tạo nhánh trước lượt,
+giữ hội thoại gốc và không hoàn tác file. Menu gom các thao tác ít dùng; khung chat vẫn kéo đổi kích thước và hoạt động độc lập với viewer.
 
 ## Agent điều khiển, UI chuyển lời và hiển thị
 

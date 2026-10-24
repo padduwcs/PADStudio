@@ -56,6 +56,10 @@ rồi dán vào cuộc trò chuyện bạn muốn. Khi hài lòng, nói "chốt"
 Chat mở được nhiều tab cùng lúc: bấm **+** để trò chuyện mới, **×** để đóng tab, nút lịch sử để mở lại. Mỗi tab giữ riêng bản nháp;
 chuyển hoặc đóng tab không dừng Agent. Chọn project để xem không thay cuộc trò chuyện. Model nằm gọn trong ô nhập.
 Kéo đường phân cách cạnh chat để đổi chiều rộng; nhấp đúp để đặt lại. Giao diện nhớ kích thước đã chọn.
+Nút kẹp giấy đính kèm ảnh/file (tối đa 10 MB/file), `@` tham chiếu file/skill. Nút thiết lập cạnh model chọn mức suy luận,
+Lập kế hoạch/Làm việc và quyền chạy của Codex; mặc định giữ cấu hình sẵn có. Menu **…** đổi tên, phân nhánh, lưu trữ, xuất hoặc tìm trong chat.
+Sửa tin nhắn/gửi lại tạo nhánh riêng và giữ hội thoại gốc; các file trên máy không được hoàn tác. Nút lịch sử cũng mở lại hội thoại CLI/VS Code
+trong cùng thư mục. Gõ `/help` để xem lệnh nhanh và phím tắt. File đính kèm chat không tự trở thành tư liệu của project.
 Đóng khung chat hoặc mất kết nối không tự gửi lại yêu cầu. Lượt chat dùng hạn mức tài khoản Codex đang kết nối. Host ngoài như Claude Code
 vẫn dùng được: mở trong thư mục này để Agent đọc [`AGENTS.md`](AGENTS.md); khi đó dùng **Sao chép mốc phản hồi** để dán mốc vào host ngoài.
 

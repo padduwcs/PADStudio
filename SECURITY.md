@@ -25,6 +25,9 @@ PADStudio là công cụ **chạy cục bộ cho một người dùng**, không 
   được gửi đến nhà cung cấp model theo tài khoản/cấu hình Codex; chúng không phải xử lý AI hoàn toàn offline. Transcript do Codex lưu,
   liên kết hội thoại/thread và biên nhận chống gửi trùng nằm trong `.padstudio/chat/workspace/`, bản nháp tin nhắn ở sessionStorage của trình duyệt.
   Chat không gắn project, chèn chỉ dẫn, nhập tư liệu hay sửa project qua HTTP. Agent dùng công cụ của Codex theo prompt như khi chạy ở host ngoài.
+  Người dùng có thể chọn effort/mode/permission profile từ catalog native; mặc định không override. Chỉ chọn toàn quyền nếu bạn muốn cấp
+  chính quyền đó cho Codex. File đính kèm chat lưu riêng dưới workspace chat (10 MB/file); ảnh được kiểm byte trước preview, file khác không
+  được phục vụ như HTML. Các file này không tự thành Resource. Mở/sửa/phân nhánh hội thoại không hoàn tác thay đổi trên máy.
 - **Khóa API** (ví dụ ElevenLabs) lưu dạng văn bản thường (không mã hóa) trong `padstudio.local.json` ở thư mục dự án, bị Git bỏ qua. Ai đọc được file
   đó là dùng được khóa. Web không bao giờ trả lại khóa và PADStudio không đưa giá trị khóa vào context của Agent; tuy nhiên một Agent có quyền đọc file trên máy bạn vẫn đọc được `padstudio.local.json`. Đừng dán khóa vào chat. Hãy đặt
   giới hạn credit ngay ở nhà cung cấp, và đổi khóa nếu nghi ngờ lộ.

@@ -52,6 +52,10 @@ say "accept" (in Vietnamese: "chốt") and download the accepted video.
 
 Open several conversations at once: **+** creates a tab, **×** closes it, and history reopens it. Each tab keeps its own draft;
 switching or closing tabs leaves agents running. Switching the viewed video project does not switch conversations. Model selection sits in the composer.
+Use the paperclip for images/files (10 MB each), `@` for file/skill references, and the settings button for native reasoning effort,
+Plan/Default mode and permission profiles. Defaults inherit your Codex configuration. The **…** menu includes rename, fork, archive,
+export and search. Edit/retry creates a branch and preserves the original conversation; it does not undo files. History can also reopen
+CLI/VS Code threads in this folder. Type `/help` for shortcuts. Chat attachments are not automatically imported into video projects.
 Drag the chat divider to resize it; double-click to reset. Your chosen width is remembered. Reopening the
 page never automatically resends an agent turn. Chat uses the connected Codex account's allowance. External hosts such as Claude Code
 remain supported: open them in this folder, let them read [`AGENTS.md`](AGENTS.md), and use **Sao chép mốc phản hồi** to copy feedback anchors.

@@ -118,7 +118,7 @@ test("earlier project-bound chat metadata is untouched and never silently resume
 
 test("project context, imports and invalid input are not accepted as chat features", async (t) => {
   const { service, id } = await fixture(t);
-  for (const extra of [{ projectId: "some-project" }, { anchor: {} }, { attachments: [] }, { developerInstructions: "injected" }]) await assert.rejects(service.send(id, { ...message(), ...extra }), { status: 400 });
+  for (const extra of [{ projectId: "some-project" }, { anchor: {} }, { attachments: null }, { developerInstructions: "injected" }]) await assert.rejects(service.send(id, { ...message(), ...extra }), { status: 400 });
   await assert.rejects(service.send(id, message("bad!")), { status: 400 });
   await assert.rejects(service.send(id, message("empty-message", "  ")), { status: 400 });
   await assert.rejects(service.send(id, { ...message(), model: "unknown" }), { status: 400 });

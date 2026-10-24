@@ -1,5 +1,6 @@
 import { ICONS, node, svgIcon } from "./dom.js";
 import { renderChatMarkdown } from "./chat-markdown.js";
+import { createChatControls } from "./chat-controls.js";
 
 const focusable = 'button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]';
 
@@ -27,6 +28,7 @@ export function createChatPanel({ root, toggle }) {
   const drafts = new Map();
   const smallScreen = window.matchMedia("(max-width: 900px)");
   let preferredWidth = null;
+  let extras = null; let openNativeHistory = null;
   let resizePointer = null;
   try { const saved = Number(localStorage.getItem("padstudio-codex-width")); if (saved >= 320 && saved <= 960) preferredWidth = saved; } catch { /* Optional preference. */ }
 
@@ -42,7 +44,7 @@ export function createChatPanel({ root, toggle }) {
   const folderName = node("p", "PADStudio", "chat-subtitle"); folderName.id = "chat-folder-name";
   heading.append(title, folderName);
   const headActions = node("div", undefined, "chat-head-actions");
-  const historyButton = action("", () => { menu.hidden = !menu.hidden; historyButton.setAttribute("aria-expanded", String(!menu.hidden)); if (!menu.hidden) renderTabs(); }, "icon-button");
+  const historyButton = action("", () => { extras?.closePopup(); menu.hidden = !menu.hidden; historyButton.setAttribute("aria-expanded", String(!menu.hidden)); if (!menu.hidden) { renderTabs(); openNativeHistory?.(); } }, "icon-button");
   historyButton.id = "chat-history-button"; historyButton.title = "Lịch sử trò chuyện"; historyButton.setAttribute("aria-label", historyButton.title); historyButton.setAttribute("aria-expanded", "false");
   historyButton.append(svgIcon("M3 11a9 9 0 1 1 2.5 7M3 4v7h7M12 7v5l3 2"));
   const closeButton = action("", () => close(), "icon-button"); closeButton.append(svgIcon(ICONS.close)); closeButton.setAttribute("aria-label", "Đóng trò chuyện");
@@ -65,7 +67,11 @@ export function createChatPanel({ root, toggle }) {
   empty.append(emptyMark, node("span", "Bạn muốn làm gì?", "chat-empty-title"), node("p", "Trò chuyện với Codex trong thư mục PADStudio."));
   const messages = node("div", undefined, "chat-messages");
   messages.setAttribute("role", "log"); messages.setAttribute("aria-label", "Tin nhắn"); messages.setAttribute("aria-live", "off");
-  const older = node("p", "Đang hiển thị phần gần nhất của hội thoại.", "chat-older"); older.hidden = true;
+  const older = action("Tải tin nhắn cũ hơn", async () => {
+    const id = conversationId; const top = history.scrollTop, height = history.scrollHeight; older.disabled = true;
+    try { const result = await post(endpoint("older", id), {}); if (id === conversationId) { acceptSession(result.session); history.scrollTop = top + history.scrollHeight - height; } }
+    catch (error) { if (id === conversationId) setNotice(error.message); } finally { older.disabled = false; }
+  }, "button button-ghost chat-older"); older.hidden = true;
   history.append(empty, older, messages);
   const jump = action("Tin nhắn mới ↓", () => scrollToEnd(true), "button button-soft chat-jump"); jump.hidden = true;
   const requests = node("div", undefined, "chat-requests"); requests.id = "chat-requests";
@@ -87,8 +93,14 @@ export function createChatPanel({ root, toggle }) {
   const composerTools = node("div", undefined, "chat-composer-tools"); composerTools.append(modelLabel, model);
   controls.append(stop, submit); composerActions.append(composerTools, controls);
   composer.append(inputLabel, input, composerActions);
-  const hint = node("p", "Enter để gửi · Shift + Enter xuống dòng", "chat-hint");
-  root.append(resizeHandle, head, tabBar, menu, connection, history, jump, requests, status, noticeBox, composer, hint);
+  const hint = action("Enter để gửi · Shift + Enter xuống dòng · /help", () => extras.help(), "chat-hint");
+  extras = createChatControls({ root, composer, input, context: () => ({ state, session, id: conversationId, draft: draft() }), post, endpoint, save: saveDraft,
+    update: updateControls, notice: setNotice, adopt: adoptConversation, apply: acceptSession, newConversation });
+  openNativeHistory = extras.addHistory(menu);
+  headActions.insertBefore(extras.moreButton, closeButton);
+  composerTools.prepend(extras.attachButton, extras.referenceButton); composerTools.append(extras.optionsButton);
+  composer.prepend(extras.attachmentList); composer.append(extras.picker);
+  root.append(resizeHandle, head, tabBar, menu, extras.popup, connection, extras.findBar, history, jump, requests, status, noticeBox, composer, extras.info, hint);
 
   function widthLimits() { return { min: 320, max: Math.max(320, Math.min(960, Math.floor(innerWidth * 0.65), innerWidth - 320)) }; }
   function updateLayout() {
@@ -147,11 +159,12 @@ export function createChatPanel({ root, toggle }) {
   }
 
   function persistDraft(value, key) {
-    const { sending, ...stored } = value;
+    const { sending, uploading, ...stored } = value;
     try { sessionStorage.setItem("padstudio-codex-draft:" + key, JSON.stringify(stored)); } catch { /* Optional browser storage. */ }
   }
 
-  function saveDraft() {
+  function saveDraft(explicit = null, id = draftKey()) {
+    if (explicit && typeof explicit.text === "string") { persistDraft(explicit, id); if (id === draftKey()) updateControls(); return; }
     const value = draft(); value.text = input.value; value.model = model.value;
     persistDraft(value, draftKey());
     updateControls();
@@ -170,13 +183,13 @@ export function createChatPanel({ root, toggle }) {
   }
 
   function showConversation(id) {
-    saveView(); conversationId = id; generation += 1; session = null;
+    saveView(); extras?.closePopup(); conversationId = id; generation += 1; session = null;
     const view = views.get(draftKey());
     renderedItems = view?.renderedItems ?? new Map(); requestSignature = view?.requestSignature ?? "";
     messages.replaceChildren(...[...renderedItems.values()].map((entry) => entry.element));
     requests.replaceChildren(...(view?.requestNodes ?? [])); setNotice(view?.notice ?? "");
     input.value = draft().text; input.placeholder = "Nhắn tin cho Codex…";
-    renderConnection(); updateControls(); resize(); jump.hidden = true;
+    renderConnection(); extras?.refresh(); updateControls(); resize(); jump.hidden = true;
     history.scrollTop = view?.atEnd ? history.scrollHeight : view?.scrollTop ?? 0;
   }
 
@@ -221,6 +234,13 @@ export function createChatPanel({ root, toggle }) {
     saveTabs(); renderTabs();
   }
 
+  function adoptConversation(next) {
+    if (!next) return;
+    if (next.conversationId !== conversationId) showConversation(next.conversationId);
+    if (!openTabs.includes(next.conversationId)) openTabs.push(next.conversationId);
+    acceptSession(next); saveTabs(); dismissMenu(); subscribe(); input.focus();
+  }
+
   function renderTabs(entries = conversationEntries) {
     if (!entries.length && conversationId) return;
     const signature = JSON.stringify([entries, openTabs, conversationId]);
@@ -251,7 +271,7 @@ export function createChatPanel({ root, toggle }) {
       remove.append(svgIcon(ICONS.close, { size: 12 })); remove.tabIndex = id === conversationId ? 0 : -1;
       wrapper.append(button, remove); tabs.append(wrapper);
     }
-    for (const entry of [...entries].reverse()) {
+    for (const entry of [...entries].reverse().filter((entry) => !entry.archived)) {
       const button = action("", () => activateTab(entry.id), "chat-conversation-entry"); button.dataset.conversationId = entry.id;
       button.append(node("span", entry.title || "Chat mới"), node("small", entry.waiting ? "Chờ bạn" : entry.active ? "Đang trả lời" : openTabs.includes(entry.id) ? "Đang mở" : ""));
       conversations.append(button);
@@ -273,17 +293,18 @@ export function createChatPanel({ root, toggle }) {
   }
 
   function updateControls() {
-    const { sending = false } = draft();
+    const { sending = false, uploading = false } = draft();
     const waiting = Boolean(session?.requests.length);
-    submit.disabled = sending || !online || !state.connected || !state.authenticated || !session || waiting || !input.value.trim();
+    const hasInput = input.value.trim() || draft().attachments?.length || draft().references?.length || draft().skills?.length;
+    submit.disabled = sending || uploading || !online || !state.connected || !state.authenticated || !session || session.archived || waiting || !hasInput;
     submit.title = sending ? "Đang gửi…" : session?.active ? "Gửi bổ sung" : "Gửi tin nhắn"; submit.setAttribute("aria-label", submit.title);
     stop.hidden = !session?.active; stop.disabled = sending || !online;
     model.disabled = Boolean(session?.active) || sending;
-    status.textContent = !online ? "Mất kết nối. Đang thử kết nối lại…" : sending ? "Đang gửi yêu cầu…"
+    status.textContent = !online ? "Mất kết nối. Đang thử kết nối lại…" : uploading ? "Đang đính kèm file…" : session?.archived ? "Hội thoại đã lưu trữ. Mở menu để khôi phục." : sending ? "Đang gửi yêu cầu…"
       : waiting ? "Đang chờ bạn trả lời" : session?.active ? "Agent đang làm việc…" : state.authenticated ? "Sẵn sàng" : "Kết nối Codex để bắt đầu";
     root.classList.toggle("is-working", Boolean(session?.active));
-    status.classList.toggle("is-idle", online && !sending && !waiting && !session?.active);
-    submit.hidden = Boolean(session?.active) && !input.value.trim();
+    status.classList.toggle("is-idle", online && !sending && !uploading && !session?.archived && !waiting && !session?.active);
+    submit.hidden = Boolean(session?.active) && !hasInput;
   }
 
   function renderConnection() {
@@ -305,7 +326,7 @@ export function createChatPanel({ root, toggle }) {
     }
     const value = draft().model || "";
     model.replaceChildren();
-    const defaultOption = node("option", "Mặc định Codex"); defaultOption.value = ""; model.append(defaultOption);
+    const defaultOption = node("option", "Giữ model Codex"); defaultOption.value = ""; model.append(defaultOption);
     for (const entry of state.models ?? []) { const option = node("option", entry.name); option.value = entry.id; model.append(option); }
     if ([...model.options].some((option) => option.value === value)) model.value = value;
     model.hidden = !state.authenticated;
@@ -331,7 +352,7 @@ export function createChatPanel({ root, toggle }) {
   function renderMessages() {
     const nearBottom = history.scrollHeight - history.scrollTop - history.clientHeight < 100;
     const items = session?.items ?? [];
-    empty.hidden = items.length > 0; older.hidden = !session?.truncated;
+    empty.hidden = items.length > 0; older.hidden = !session?.hasOlder;
     const present = new Set();
     let previousElement = null;
     for (const item of items) {
@@ -345,11 +366,23 @@ export function createChatPanel({ root, toggle }) {
           rendered = { element, body, summary };
         } else {
           const label = node("span", item.role === "user" ? "Bạn" : "Codex", "chat-message-author");
-          const body = node("div", undefined, "chat-prose"); element.append(label, body); rendered = { element, body };
+          const body = node("div", undefined, "chat-prose"); const attachments = node("div", undefined, "chat-message-attachments");
+          const actions = node("div", undefined, "chat-message-actions");
+          rendered = { element, body, attachments, actions };
+          const current = rendered;
+          const copy = action("Sao chép", async () => {
+            try { await navigator.clipboard.writeText(current.item.text); copy.textContent = "Đã sao chép"; setTimeout(() => { copy.textContent = "Sao chép"; }, 2000); }
+            catch { setNotice("Không truy cập được clipboard. Bạn có thể chọn và sao chép nội dung."); }
+          }, "button button-ghost");
+          const edit = action(item.role === "user" ? "Sửa và phân nhánh" : "Gửi lại", () => editMessage(current.item), "button button-ghost");
+          current.edit = edit; actions.append(copy, edit);
+          element.append(label, body, attachments, actions);
         }
         renderedItems.set(item.id, rendered);
       }
       const signature = JSON.stringify(item);
+      rendered.item = item;
+      if (rendered.edit) rendered.edit.disabled = Boolean(session.active || session.archived || !item.turnId || item.status === "sending" || item.status === "uncertain");
       if (rendered.signature !== signature) {
         if (item.role === "tool") {
           const working = item.status === "inProgress";
@@ -358,6 +391,15 @@ export function createChatPanel({ root, toggle }) {
           rendered.body.textContent = [item.text, item.output].filter(Boolean).join("\n\n");
         } else if (item.role === "assistant") renderChatMarkdown(rendered.body, item.text);
         else rendered.body.textContent = item.text;
+        if (rendered.attachments) {
+          rendered.attachments.replaceChildren();
+          for (const attachment of item.attachments || []) {
+            const chip = node("span", undefined, "chat-attachment");
+            const src = attachment.id ? `/api/chat/attachments/${attachment.id}/image` : attachment.url;
+            if (attachment.kind === "image" && src) { const image = node("img"); image.src = src; image.alt = attachment.name || "Ảnh đính kèm"; chip.append(image); }
+            chip.append(node("span", attachment.name || "Ảnh đính kèm")); rendered.attachments.append(chip);
+          }
+        }
         rendered.element.classList.toggle("is-uncertain", item.status === "uncertain");
         rendered.signature = signature;
       }
@@ -367,6 +409,24 @@ export function createChatPanel({ root, toggle }) {
     }
     for (const [id, rendered] of renderedItems) if (!present.has(id)) { rendered.element.remove(); renderedItems.delete(id); }
     if (nearBottom) scrollToEnd(true); else if (items.length) jump.hidden = false;
+  }
+
+  async function editMessage(item) {
+    const id = conversationId;
+    const source = item.role === "user" ? item : session.items.find((entry) => entry.role === "user" && entry.turnId === item.turnId);
+    if (!source) { setNotice("Không tìm thấy tin nhắn gốc. Hãy tải phần lịch sử cũ hơn."); return; }
+    const images = (source.attachments || []).filter((entry) => entry.kind === "image");
+    if (images.some((entry) => !entry.id)) { setNotice("Ảnh của hội thoại từ host khác cần được đính kèm lại. Hãy phân nhánh và chọn lại ảnh."); return; }
+    try {
+      const result = await post(endpoint("fork", id), { beforeTurnId: item.turnId });
+      adoptConversation(result.session); input.value = source.text;
+      draft().attachments = (source.attachments || []).filter((entry) => entry.id && entry.kind !== "skill");
+      draft().references = (source.attachments || []).filter((entry) => entry.kind === "file" && !entry.id && entry.path).map((entry) => entry.path);
+      draft().skills = (source.attachments || []).filter((entry) => entry.kind === "skill" && state.skills.some((skill) => skill.name === entry.name)).map((entry) => entry.name);
+      saveDraft(); extras.refresh(); resize();
+      if (item.role === "assistant") composer.requestSubmit();
+      else setNotice("Đã tạo nhánh trước lượt này. Sửa nội dung rồi gửi; các file trên máy vẫn giữ trạng thái hiện tại.");
+    } catch (error) { if (id === conversationId) setNotice(error.message); }
   }
 
   function renderRequests() {
@@ -423,7 +483,11 @@ export function createChatPanel({ root, toggle }) {
           if (conversationId === requestConversation) { acceptSession(result.session); setNotice(""); }
         } catch (error) { if (conversationId === requestConversation) setNotice(error.message); for (const button of buttons.querySelectorAll("button")) button.disabled = false; }
       };
-      buttons.append(accept, action(request.kind === "questions" ? "Bỏ qua" : "Từ chối", () => answer("decline"), "button button-ghost"));
+      if (!request.decisions || request.decisions.includes("accept")) buttons.append(accept);
+      if (request.decisions?.includes("acceptForSession")) buttons.append(action("Cho phép trong phiên", () => answer("acceptForSession"), "button button-ghost"));
+      for (const rule of request.rules || []) { const button = action(rule.label, () => answer(rule.id), "button button-ghost"); button.title = rule.detail; form.insertBefore(node("pre", rule.detail), buttons.parentNode === form ? buttons : null); buttons.append(button); }
+      if (!request.decisions || request.decisions.includes("decline")) buttons.append(action(request.kind === "questions" ? "Bỏ qua" : "Từ chối", () => answer("decline"), "button button-ghost"));
+      if (request.decisions?.includes("cancel")) buttons.append(action("Dừng lượt", () => answer("cancel"), "button button-ghost"));
       form.append(buttons); form.addEventListener("submit", (event) => { event.preventDefault(); answer("accept"); }); requests.append(form);
     }
   }
@@ -443,7 +507,7 @@ export function createChatPanel({ root, toggle }) {
     openTabs = openTabs.filter((id) => validIds.has(id));
     if (!openTabs.includes(conversationId)) openTabs.push(conversationId);
     saveTabs(); renderTabs(); history.setAttribute("aria-labelledby", "chat-tab-" + conversationId);
-    session = next; renderMessages(); renderRequests(); updateControls();
+    session = next; renderMessages(); renderRequests(); extras?.refresh(); updateControls();
     if (session.error) setNotice(session.error);
     if (adopted) subscribe();
   }
@@ -498,7 +562,7 @@ export function createChatPanel({ root, toggle }) {
   }
   function historyUrl(url) { window.history.replaceState(null, "", url); }
   function close() {
-    stopResize(); dismissMenu(); opened = false; root.hidden = true; document.body.classList.remove("chat-is-open"); toggle.setAttribute("aria-expanded", "false");
+    stopResize(); dismissMenu(); extras.closePopup(); opened = false; root.hidden = true; document.body.classList.remove("chat-is-open"); toggle.setAttribute("aria-expanded", "false");
     stream?.close(); stream = null; modalState();
     const url = new URL(location.href); url.searchParams.delete("chat"); historyUrl(url);
     if (returnFocus?.isConnected && returnFocus !== document.body && !root.contains(returnFocus)) returnFocus.focus(); else toggle.focus();
@@ -507,15 +571,21 @@ export function createChatPanel({ root, toggle }) {
   composer.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (submit.disabled) return;
+    if (extras.slash()) { resize(); return; }
     const value = draft(); value.sending = true; setNotice(""); updateControls();
     const message = input.value; const currentConversation = conversationId; const key = draftKey();
     try {
-      const body = { message, model: value.model || null };
+      const attachments = (value.attachments || []).map((entry) => entry.id);
+      const references = [...(value.references || [])], skills = [...(value.skills || [])];
+      const body = { message, model: value.model || null, attachments, references, skills, options: session?.active ? {} : value.options || {} };
       const signature = JSON.stringify(body); const sameAttempt = value.attempt?.signature === signature;
       const clientId = sameAttempt ? value.attempt.clientId : crypto.randomUUID();
       value.attempt = { signature, clientId }; saveDraft();
       const result = await post(endpoint("messages", currentConversation), { ...body, clientId });
       if (value.text === message) value.text = "";
+      value.attachments = (value.attachments || []).filter((entry) => !attachments.includes(entry.id));
+      value.references = (value.references || []).filter((entry) => !references.includes(entry));
+      value.skills = (value.skills || []).filter((entry) => !skills.includes(entry));
       value.attempt = null; persistDraft(value, key);
       if (currentConversation === conversationId) {
         input.value = value.text; saveDraft(); acceptSession(result.session); resize(); scrollToEnd(true); input.focus();
@@ -530,10 +600,10 @@ export function createChatPanel({ root, toggle }) {
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (!submit.disabled) composer.requestSubmit(); }
   });
-  model.addEventListener("change", saveDraft);
+  model.addEventListener("change", () => { if (draft().options) delete draft().options.effort; saveDraft(); extras.closePopup(); extras.refresh(); });
   history.addEventListener("scroll", () => { if (history.scrollHeight - history.scrollTop - history.clientHeight < 100) jump.hidden = true; });
   root.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") { event.preventDefault(); if (!menu.hidden) { dismissMenu(); historyButton.focus(); } else close(); }
+    if (event.key === "Escape") { event.preventDefault(); if (extras.closePopup(true)) return; if (!menu.hidden) { dismissMenu(); historyButton.focus(); } else close(); }
     if (event.key !== "Tab" || !smallScreen.matches) return;
     const candidates = [...root.querySelectorAll(focusable)].filter((element) => element.getClientRects().length);
     const first = candidates[0]; const last = candidates.at(-1);

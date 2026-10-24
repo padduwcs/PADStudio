@@ -69,6 +69,11 @@ không hoàn lại chi phí công cụ đã dùng. Agent cần ý kiến hoặc 
 Chat độc lập với project đang xem. Một hội thoại có thể làm nhiều project; chọn project trong thư viện không đổi cuộc trò chuyện hay thêm
 ngữ cảnh vào prompt. Tải lại trang không gửi lại tin nhắn. Bấm **+** để mở thêm cuộc trò chuyện song song, mỗi tab giữ bản nháp riêng.
 Bấm **×** để đóng tab; Agent vẫn tiếp tục làm, và nút lịch sử ở góc trên mở lại tab đó.
+Nút kẹp giấy thêm ảnh/file (tối đa 10 MB/file); bạn cũng có thể kéo file vào ô nhập hoặc dán ảnh. `@` tìm file trong repo và chọn skill.
+Thiết lập cạnh model có mức suy luận, Lập kế hoạch/Làm việc và quyền chạy của Codex; mặc định kế thừa cấu hình đang có.
+Menu **…** có đổi tên, tìm trong chat, phân nhánh, thu gọn ngữ cảnh, xuất Markdown/JSON và lưu trữ/khôi phục.
+Sửa tin hoặc gửi lại câu trả lời tạo nhánh riêng, giữ hội thoại gốc; không hoàn tác file. Nút lịch sử còn mở được hội thoại CLI/VS Code
+trong cùng thư mục. Gõ `/help` để xem lệnh nhanh và phím tắt. File chat chỉ được đưa vào project khi Agent chủ động import theo yêu cầu.
 Lượt chat dùng hạn mức tài khoản Codex đang kết nối. Nếu dùng Agent ngoài, mở Agent trong thư mục PADStudio như trước.
 
 ## 3. Làm video đầu tiên

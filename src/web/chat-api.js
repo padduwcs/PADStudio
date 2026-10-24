@@ -20,15 +20,15 @@ function assertRequest(request, { write = false } = {}) {
   }
 }
 
-async function jsonBody(request) {
+async function jsonBody(request, maximum = 128 * 1024) {
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > 1024 * 1024) throw new ChatError(413, "Yêu cầu hội thoại quá lớn.");
-    if (size <= 128 * 1024) chunks.push(chunk);
+    if (size > Math.max(1024 * 1024, maximum + 1024)) throw new ChatError(413, "Yêu cầu hội thoại quá lớn.");
+    if (size <= maximum) chunks.push(chunk);
   }
-  if (size > 128 * 1024) throw new ChatError(413, "Yêu cầu hội thoại quá lớn.");
+  if (size > maximum) throw new ChatError(413, "Yêu cầu hội thoại quá lớn.");
   let value;
   try { value = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}"); } catch { throw new ChatError(400, "Nội dung không phải JSON hợp lệ."); }
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new ChatError(400, "Yêu cầu phải là một object.");
@@ -75,19 +75,35 @@ export async function handleChatRequest(request, response, url, service) {
     if (write && url.pathname === "/api/chat/connect") { await jsonBody(request); send(response, 200, { status: await service.connect() }); return true; }
     if (write && url.pathname === "/api/chat/login") { await jsonBody(request); send(response, 200, { status: await service.startLogin() }); return true; }
     if (write && url.pathname === "/api/chat/login/cancel") { await jsonBody(request); send(response, 200, { status: await service.cancelLogin() }); return true; }
+    if (write && url.pathname === "/api/chat/attachments") { send(response, 201, { attachment: await service.attachments.put(await jsonBody(request, 14 * 1024 * 1024)) }); return true; }
+    const image = /^\/api\/chat\/attachments\/([^/]+)\/image$/.exec(url.pathname);
+    if (request.method === "GET" && image) {
+      const value = await service.attachments.image(image[1]);
+      response.writeHead(200, { "Content-Type": value.mime, "Content-Length": value.data.length, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "default-src 'none'; sandbox" });
+      response.end(value.data); return true;
+    }
+    if (request.method === "GET" && url.pathname === "/api/chat/history") { send(response, 200, await service.history({ query: url.searchParams.get("q") || "", cursor: url.searchParams.get("cursor"), archived: url.searchParams.get("archived") === "1" })); return true; }
+    if (request.method === "GET" && url.pathname === "/api/chat/files") { send(response, 200, { data: await service.searchFiles(url.searchParams.get("q") || "") }); return true; }
+    if (write && ["/api/chat/resume", "/api/chat/restore"].includes(url.pathname)) {
+      const body = await jsonBody(request);
+      send(response, 200, { session: await (url.pathname.endsWith("restore") ? service.restoreThread(body.threadId) : service.resume(body.threadId)) }); return true;
+    }
     if (url.pathname === "/api/chat/conversations") {
       if (request.method === "GET") { send(response, 200, { session: await service.read() }); return true; }
       if (write) { await jsonBody(request); send(response, 201, { session: await service.newConversation() }); return true; }
     }
-    const match = /^\/api\/chat\/conversations\/([^/]+)(?:\/(messages|interrupt|answer))?$/.exec(url.pathname);
+    const match = /^\/api\/chat\/conversations\/([^/]+)(?:\/(messages|interrupt|answer|rename|archive|unarchive|fork|compact|older|export))?$/.exec(url.pathname);
     if (match) {
       const id = decodeURIComponent(match[1]);
       if (!match[2] && request.method === "GET") { send(response, 200, { session: await service.read(id) }); return true; }
+      if (match[2] === "export" && request.method === "GET") { send(response, 200, await service.exportConversation(id)); return true; }
       if (write && match[2]) {
         const body = await jsonBody(request);
         if (match[2] === "messages") send(response, 200, await service.send(id, body));
         else if (match[2] === "interrupt") send(response, 200, { session: await service.interrupt(id) });
-        else send(response, 200, { session: await service.answer(id, body.requestId, body) });
+        else if (match[2] === "answer") send(response, 200, { session: await service.answer(id, body.requestId, body) });
+        else if (match[2] === "older") send(response, 200, { session: await service.older(id) });
+        else send(response, 200, { session: await service.changeConversation(id, match[2], body) });
         return true;
       }
     }

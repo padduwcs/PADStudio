@@ -86,7 +86,8 @@ try {
 
   await seedVideo();
   await page.waitFor("document.querySelector('#theatre video')?.readyState >= 1", { timeout: 30_000 });
-  assert.equal(await page.evaluate("!!document.querySelector('[data-ui=chat-anchor], #chat-files, #chat-attach, #chat-new-project')"), false);
+  assert.equal(await page.evaluate("!!document.querySelector('[data-ui=chat-anchor], #chat-new-project')"), false);
+  assert.equal(await page.evaluate("!!document.querySelector('#chat-attach')"), true);
   const plainPrompt = "Create project A and project B. I will decide which one to work on.";
   await send(plainPrompt); await waitText("#chat-history", "Create project A and project B");
   assert.equal(client.calls.findLast((call) => call.method === "turn/start").params.input[0].text, plainPrompt);

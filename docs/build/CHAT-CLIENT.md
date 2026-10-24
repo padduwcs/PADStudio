@@ -1,56 +1,83 @@
-# Cửa sổ Codex theo thư mục — 2026-10-23
+# Cửa sổ Codex theo thư mục — 2026-10-24
 
-Người dùng prompt Codex trong PADStudio thay cho VS Code. Chat mở tại thư mục repo, không gắn với một project video.
-Một hội thoại có thể tạo hoặc tiếp tục nhiều project qua các yêu cầu của người dùng. Nhiều tab có thể chạy đồng thời.
+Người dùng prompt Codex trong PADStudio thay cho VS Code. Chat mở tại thư mục repo, độc lập với project video đang xem.
+Một hội thoại có thể tạo hoặc tiếp tục nhiều project theo yêu cầu. Nhiều tab có thể chạy đồng thời.
 Project viewer, CLI, Resource/Run/Result và Delivery giữ contract hiện có.
 
 ## Contract với Codex
 
 - [`CodexClient`](../../src/chat/codex-client.js) chạy Codex App Server qua stdio, `shell: false`, ẩn cửa sổ trên Windows.
   Hỗ trợ bản native hoặc npm; `PADSTUDIO_CODEX_PATH` là cấu hình máy tin cậy, không chỉnh qua browser.
-- Thread mới: `{cwd}` và chỉ thêm `model` khi người dùng chủ động chọn. Không override `approvalPolicy`, sandbox, permission profile,
-  base/developer instructions, tools hay biến môi trường project. Codex dùng cấu hình, AGENTS.md và skill của thư mục như host ngoài.
-- Gửi nguyên văn prompt trong text input, kể cả khoảng trắng và chuỗi trông giống metadata. Không trim, chèn project ID, thêm video context
-  hay dựng prompt wrapper. Không tự gọi `project:resume`, tạo project hoặc import file thay người dùng.
-- `thread/resume` chỉ nhận thread ID đã được client lưu; không ghi đè chỉ dẫn/cấu hình đã lưu của Codex. History hỗ trợ legacy và paginated;
-  hiển thị tối đa 500 item/50 lượt gần nhất, có thông báo khi cắt bớt. Raw reasoning không hiển thị.
-- `turn/start`, `turn/steer`, `turn/interrupt` và server requests dùng giao thức Codex. UI chuyển câu hỏi/quyền do Codex yêu cầu,
-  không tự phê duyệt hoặc phát sinh bước duyệt riêng cho project. Model lấy từ catalog runtime; dùng tài khoản Codex trên máy.
-- Không truyền token tài khoản hoặc stderr lên trình duyệt. Hiển thị Markdown bằng DOM text, không thực thi HTML.
+- Thread mới mặc định chỉ nhận `{cwd}`; thêm `model` khi người dùng chọn. Không tự override approval policy, sandbox, instructions,
+  tools hay biến môi trường project. Codex tự đọc cấu hình, AGENTS.md và skill của thư mục như host ngoài.
+- Catalog model, mức suy luận, mode, permission profile và skill lấy từ runtime. Catalog tùy chọn không có thì ẩn điều khiển tương ứng,
+  vẫn dùng chat thường. Chỉ các lựa chọn người dùng đã chọn mới được chuyển vào `turn/start`.
+- Plan/Default dùng preset Codex qua `collaborationMode`, `developer_instructions: null` để dùng preset gốc; không có prompt do PADStudio soạn.
+  Permission profile chỉ nhận ID `allowed` từ Codex, không có fallback tự nâng quyền. Chọn “Giữ cấu hình” bỏ override, không reset thiết lập sticky của thread.
+- Gửi nguyên văn text, kể cả khoảng trắng và chuỗi trông giống metadata. Không trim, chèn project ID, thêm video context hay dựng prompt wrapper.
+  Không tự gọi `project:resume`, tạo project hoặc import Resource. Lệnh nhanh chỉ xử lý khi toàn bộ ô nhập khớp một lệnh đã hỗ trợ.
+- Thread resume chỉ nhận ID, không override cấu hình/chỉ dẫn đã lưu. Lịch sử Codex trên máy được lọc đúng cwd trước phân trang; mở từ CLI/VS Code
+  là thao tác chủ động. Metadata chat cũ gắn project không tự nhập hay resume. Thread đã mở có thể đổi tên, lưu trữ và khôi phục qua API gốc.
+- Sửa tin nhắn tạo fork **trước cả lượt** chứa tin nhắn, điền lại để người dùng sửa rồi gửi. “Gửi lại” ở câu trả lời tạo fork tương tự và gửi lại
+  yêu cầu gốc. Hội thoại gốc giữ nguyên; thao tác không hoàn tác file trên máy. Fork toàn hội thoại không chạy inference.
+- Gửi bổ sung, dừng, thu gọn ngữ cảnh và approval dùng giao thức gốc. Không tự duyệt. Quyết định một lần/trong phiên/hủy và quy tắc lệnh/mạng
+  chỉ lấy từ lựa chọn mà Codex đưa ra; quy tắc trả về giữ đúng giá trị do server đề xuất. Permission bổ sung trả đúng tập quyền đã yêu cầu.
+- Không truyền token tài khoản hoặc stderr lên browser. Chỉ chuyển public reasoning **summary**, không chuyển raw reasoning `content` hay `textDelta`.
 
-Thiết kế theo [OpenAI Docs: Codex App Server](https://learn.chatgpt.com/docs/app-server). Đã kiểm chứng runtime CLI 0.163.0;
-đây là client riêng với giao diện PADStudio, không nhúng nguyên VS Code extension và không tuyên bố mọi tính năng extension đã có.
+Theo [OpenAI Docs: Codex App Server](https://learn.chatgpt.com/docs/app-server) và schema do CLI **0.163.0** đang cài sinh ra.
+Client bật capability `experimentalApi` để đọc/dùng preset collaboration; catalog lỗi thì tính năng tương ứng không hiện.
+Đây là client cửa sổ chat, không nhúng extension hoặc toàn bộ editor VS Code. Không cung cấp terminal tương tác, chạy cloud,
+quản lý plugin hoặc chỉnh toàn bộ config TOML trong UI.
+
+## File, ảnh và skill do người dùng chọn
+
+- [`ChatAttachments`](../../src/chat/chat-attachments.js) nhận file qua picker, kéo/thả vào ô nhập hoặc dán ảnh. Tối đa 10 file/tin, 10 MB/file.
+  Lưu tại `.padstudio/chat/workspace/attachments/<cwd-digest>/` bằng ID ngẫu nhiên và tên đã làm sạch, không ghi project store.
+- PNG/JPEG/GIF/WebP nhận diện theo byte và gửi bằng `localImage`. File khác gửi đường dẫn tuyệt đối trong một text input riêng,
+  để agent đọc bằng công cụ bình thường; không tự đọc/chèn nội dung file. UI hiện chip cho từng file người dùng chọn.
+- Chỉ ảnh được phục vụ preview, kiểm lại magic bytes, `nosniff` và CSP sandbox. Không có download/preview HTML tùy ý hay endpoint đọc một path bất kỳ.
+- Nút `@` tìm file bằng fuzzy search gốc của Codex tại cwd, kiểm đường dẫn thật còn trong thư mục (kể cả symlink) trước khi chuyển tham chiếu.
+  Tham chiếu file gửi path, skill dùng `UserInput.skill` với name/path từ catalog Codex. Không chèn skill PADStudio riêng.
+- File chat tồn tại để Codex đọc và resume về sau; xóa chip chỉ bỏ khỏi tin sắp gửi, không xóa file. Không tự dọn file còn được transcript tham chiếu.
+  Nếu cần dùng file làm đầu vào video, agent vẫn phải import vào đúng project theo contract hiện hành.
 
 ## Lịch sử và phục hồi
 
-- Transcript do Codex giữ. `.padstudio/chat/workspace/<digest-của-cwd>.json` chỉ lưu ID hội thoại/thread, tiêu đề, model và 200 biên nhận
-  gửi tin cho mỗi hội thoại. Không có ProjectStore hoặc project ID trong ChatService. Metadata có hàng đợi ghi nguyên tử.
-- Tab trống cũng có ID bền vững qua restart. Bản nháp/tab đang mở ở sessionStorage riêng từng cửa sổ trình duyệt; chuyển project viewer
-  không chuyển chat, không đổi input, không sinh inference. Đóng tab chỉ đóng cách xem, lịch sử mở lại được.
-- Biên nhận client ID/fingerprint lưu trước RPC để chống gửi trùng. Kết quả gửi không rõ thì không tự retry; reload/kết nối lại không replay.
-- Liên kết chat v1/v2 gắn project của bản trước được giữ nguyên ở đường dẫn cũ. Không tự nhập/resume vào chat mới: những thread đó đã có
-  chỉ dẫn gắn project và không đại diện cho phiên Codex tự do. Không sửa hoặc xóa transcript cũ.
+- Transcript do Codex giữ. `.padstudio/chat/workspace/<cwd-digest>.json` chỉ giữ liên kết ID, tiêu đề, model, lựa chọn UI, cờ lưu trữ và
+  200 biên nhận/từng hội thoại. Không lưu transcript vào metadata hay có ProjectStore trong ChatService. Ghi metadata có hàng đợi nguyên tử.
+- Lịch sử hỗ trợ legacy và paginated; tải 50 lượt gần nhất trước, thêm 25 lượt mỗi lần. View giới hạn 5.000 item để giữ UI hữu hạn.
+  Xuất Markdown/JSON đi qua các trang gốc, tối đa 10.000 lượt, chỉ xuất các trường được phép hiển thị.
+- Bản nháp gồm text, attachments, references, skill và lựa chọn; lưu theo tab tại sessionStorage riêng từng cửa sổ browser.
+  Đóng tab không dừng agent. Chuyển project viewer không chuyển chat, không đổi input và không sinh inference.
+- Biên nhận ID/fingerprint lưu trước RPC chống gửi trùng, gồm cả input/tùy chọn mới. Hỗ trợ fingerprint cũ cho gửi text thường.
+  Lỗi gửi không rõ thì không tự retry; reload/kết nối lại không replay.
+- Dữ liệu metadata cũ gắn project giữ nguyên trên đĩa. Những thread ấy có cấu hình hạn chế từ host cũ nên không tự resume vào chat workspace.
+  Mở lịch sử native là lựa chọn của người dùng và giữ đúng cấu hình của thread đó.
 
-## HTTP và UI
+## HTTP và giao diện
 
-- [`chat-api.js`](../../src/web/chat-api.js): status, connect, login/cancel; GET/POST `conversations`;
-  GET `conversations/:id`; POST `conversations/:id/messages|interrupt|answer`; SSE `events?conversation=:id`.
-- Các route tạo project, upload/import, video anchor và arbitrary RPC không tồn tại. ID tường minh giữ các cửa sổ/tab độc lập.
-- Host localhost; cùng Origin, JSON và header intent cho POST. GET từ foreign Origin/cross-site bị từ chối. JSON giới hạn kích thước,
-  SSE có heartbeat/coalescing và ngắt slow consumer. CSP frame-ancestors/X-Frame-Options ngăn trang khác nhúng UI quyền.
-- [`chat-view.js`](../../ui/chat-view.js): header Codex/tên thư mục, tab, transcript, model và ô nhập. Không có chọn/tạo project hay
-  import tư liệu. Muốn dùng file, người dùng đưa path/URL trong prompt để Codex xử lý bình thường. Mốc video chỉ được sao chép/dán bằng tay.
-- Dùng token font, nền trung tính ấm, accent cyan, đường chia vùng sáng/tối của PADStudio. Desktop nằm cạnh video; ≤900 px là dialog,
-  có focus trap/Esc. Tab dùng trái/phải, Home/End, Delete; tab được chọn giữ trong vùng nhìn khi resize. Tools/Library có modal riêng.
-- Desktop kéo đường phân cách để đổi chiều rộng (320–960 px, giới hạn theo viewport để giữ chỗ xem video). Nhớ chiều rộng trong localStorage,
-  tự co bố cục video/tư liệu theo vùng còn lại. Separator có phím trái/phải (Shift đổi bước lớn), Home/End, Enter hoặc nhấp đúp để đặt lại.
-  Mobile dùng toàn màn hình, không có tay kéo. Đổi kích thước không ảnh hưởng transcript, draft, video đang phát hoặc lượt Codex đang chạy.
+- [`chat-api.js`](../../src/web/chat-api.js) chỉ có thao tác cụ thể: status/connect/login/cancel, conversations, messages/interrupt/answer,
+  rename/archive/unarchive/fork/compact/older/export, native history/resume/restore, attachments/image và tìm file.
+  Không có route project/import hoặc arbitrary RPC. ID tường minh giữ các cửa sổ/tab độc lập.
+- Host localhost, cùng Origin/intent/JSON cho POST; GET foreign Origin/cross-site cũng bị từ chối. JSON thông thường 128 KiB,
+  chỉ upload có giới hạn 14 MiB cho base64. SSE heartbeat/coalescing, ngắt slow consumer; chống iframe bằng CSP và X-Frame-Options.
+- [`chat-view.js`](../../ui/chat-view.js) giữ tab/transcript/composer, [`chat-controls.js`](../../ui/chat-controls.js) giữ menu hành động,
+  lịch sử, thiết lập, tham chiếu, upload và tìm trong chat. Model nằm ở composer; tùy chọn khác nằm trong menu gọn.
+- Tin nhắn có sao chép, sửa/phân nhánh hoặc gửi lại. Markdown dùng DOM text: code/copy, bảng cuộn, trích dẫn, nhấn mạnh, checklist và list lồng;
+  không thực thi HTML. Công cụ có lệnh/output đang chạy, diff, kế hoạch, public summary; ngữ cảnh và hạn mức chỉ lấy số liệu được phép hiển thị.
+- Lệnh nhanh: `/new`, `/model`, `/permissions`, `/plan`, `/default`, `/compact`, `/fork`, `/status`, `/help`.
+  Enter gửi, Shift+Enter xuống dòng, Ctrl/Cmd+F tìm trong phần đang tải, Ctrl/Cmd+Shift+O chat mới.
+- Font, nền trung tính ấm, accent cyan và đường chia vùng cùng PADStudio. Desktop kéo separator để đổi chiều rộng (320–960 px trong giới hạn
+  viewport), nhớ lựa chọn; có phím trái/phải, Shift, Home/End và Enter/nhấp đúp để reset. Mobile ≤900 px là dialog toàn màn hình, focus trap/Esc.
+  Đổi kích thước không ảnh hưởng transcript, draft, video đang phát hoặc lượt Codex đang chạy.
 
 ## Xác minh
 
-- Unit/HTTP: exact prompt, native thread params, không inject môi trường/chỉ dẫn, không tạo/import project; history, restart, chống gửi trùng,
-  câu hỏi/quyền riêng từng hội thoại, parallel/steer/interrupt, dữ liệu cũ giữ nguyên và lỗi dữ liệu được bảo toàn.
-- `npm run chat:ui:test`: browser/HTTP/SSE thật, Codex giả; thư viện video trống và có project, đổi project không đổi chat, không auto-create,
-  nhiều tab, kết quả nền, drafts, prompts, gửi chậm khi chuyển tab, resize bằng chuột/bàn phím, nhớ chiều rộng, reload/offline, login
-  và 320/390/768/1024/1440 px ở sáng/tối.
-- Browser regression cho thư viện trống, video live và Công cụ. Live Codex chỉ dùng prompt kiểm thử, không gọi provider media trả phí.
+- Unit/HTTP: exact prompt/default params, không inject instructions/project context; input gốc của ảnh/file/skill, options từ catalog,
+  pagination/export, fork không replay, rename/archive/restore, restart/idempotence và quyền HTTP/request scoping.
+- `npm run chat:ui:test`: nhiều tab/nhiều project viewer, drafts, questions, approvals, gửi bổ sung/dừng, resize chuột/bàn phím,
+  persisted width, reload/offline, login; 320/390/768/1024/1440 px ở sáng/tối.
+- `npm run chat:ui:features-test`: picker upload, references/skill, reload với attachments/options; sửa/gửi lại giữ hội thoại gốc,
+  xuất Markdown thật, rename/archive, mở lịch sử CLI, slash commands, streaming và menu ở 320/390/768/1440 px, sáng/tối.
+- Live CLI 0.163.0: gửi ảnh với explicit mode/effort/permission, nhận token đúng, native rename/history/fork-before-turn/export/archive/restore.
+  Smoke chỉ dùng prompt kiểm thử, không chạy tools hoặc provider media; các thread thử được lưu trữ sau kiểm tra.

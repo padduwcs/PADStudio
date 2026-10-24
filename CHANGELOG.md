@@ -4,6 +4,11 @@ Theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Các bản phát 
 
 ## [Chưa phát hành]
 
+- **Bổ sung thao tác chat Codex:** ảnh/file, tham chiếu file/skill, mức suy luận, Plan/Default và permission profile theo catalog runtime.
+  Lịch sử native CLI/VS Code tại cùng thư mục có tìm kiếm/phân trang; đổi tên, lưu trữ/khôi phục, phân nhánh, sửa/gửi lại giữ hội thoại gốc,
+  xuất Markdown/JSON, tải lịch sử cũ, tìm trong chat và lệnh nhanh. Hiển thị command output, diff, kế hoạch, public summary và mức dùng ngữ cảnh.
+  Các tùy chọn nằm gọn trong menu, giữ thiết kế và resize của PADStudio. Không tự gắn project hoặc import file vào project video.
+
 - **Cửa sổ Codex độc lập ngay trong PADStudio.** Prompt như khi mở Codex tại thư mục repo trong VS Code. Nhiều tab chạy song song,
   mỗi cuộc trò chuyện có thể tạo/làm việc với nhiều project. Không gắn chat với project đang xem, không chèn chỉ dẫn/ngữ cảnh video,
   không tự tạo project hay nhập file. Codex dùng cấu hình trên máy; PADStudio chuyển nguyên prompt và hiển thị sự kiện.
