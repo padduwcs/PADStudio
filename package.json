@@ -65,6 +65,7 @@
     "tool:authorize": "node src/cli/authorize-tool.js",
     "tts:inspect": "node src/cli/inspect-tts.js",
     "test": "node --test",
+    "test:ui": "node scripts/ui-acceptance.mjs",
     "check": "node scripts/check.mjs",
     "observer:ui:test": "node scripts/ui-smoke.mjs",
     "observer:ui:empty-test": "node scripts/ui-empty-acceptance.mjs",

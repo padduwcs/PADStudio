@@ -1,4 +1,7 @@
 {
+  "chat": {
+    "codexPath": ""
+  },
   "piper": {
     "pythonCommand": "python",
     "modelDirectory": "D:/Models/piper",

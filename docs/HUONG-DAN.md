@@ -11,6 +11,15 @@ Chat tích hợp dùng Codex trên máy. Bạn vẫn có thể dùng một Agent
 | FFmpeg và ffprobe trong `PATH` | Nền tảng để ghép, cắt và xuất video. |
 | Codex CLI, để dùng chat tích hợp | Dùng tài khoản Codex hiện có; nếu chưa có đăng nhập, khung chat hiện nút đăng nhập ChatGPT. |
 
+Cài CLI theo [OpenAI Docs: Codex CLI](https://learn.chatgpt.com/docs/cli), chọn Windows và mở lại terminal sau khi cài.
+Chạy `codex --version` để kiểm tra; nếu muốn đăng nhập trước khi mở PADStudio, dùng `codex login` và hoàn tất trên trình duyệt
+theo [hướng dẫn xác thực chính thức](https://learn.chatgpt.com/docs/auth). Cài extension VS Code riêng không đảm bảo lệnh `codex` có trong `PATH` của terminal.
+
+Nếu dùng PADSwitcher, đăng nhập/đổi tài khoản ở PADSwitcher và giữ ứng dụng đó mở. Mỗi máy tự đặt `chat.codexPath` trong
+`padstudio.local.json` tới helper `PADCodex.exe` của mình; cấu hình này không đi theo Git. Để trống hoặc bỏ `chat.codexPath` để dùng
+Codex tìm được trên máy. File `padstudio.local.example.json` là mẫu, chỉ sao chép thành `padstudio.local.json` khi bạn chưa có file cấu hình;
+nếu đã có, ghép section cần dùng và giữ các cài đặt/khóa hiện tại. Khởi động lại backend sau khi các lượt chat hoàn tất nếu thay launcher.
+
 Kiểm tra máy đã sẵn sàng chưa:
 
 ```powershell
@@ -96,7 +105,7 @@ Chỉ cần nói với Agent điều bạn muốn, càng cụ thể về ngườ
 - **Có dịch vụ khác** (tạo ảnh, tạo nhạc, ứng dụng dựng hình): nếu Agent của bạn dùng được chúng, file tạo ra được nhập vào dự án
   kèm nhà cung cấp, prompt và bản quyền. PADStudio không tự gọi dịch vụ đó thay bạn.
 
-Trên web, bấm **Dự án** (hoặc logo) để thấy dự án mới. Trạng thái "Đang dựng video" nghĩa là Agent đang làm; bản xem thử đầu
+Trên web, bấm **Dự án** rồi chọn dự án mới; logo đưa về màn hình chờ. Trạng thái "Đang dựng video" nghĩa là Agent đang làm; bản xem thử đầu
 tiên tự hiện ở tab **Video** khi xong.
 
 ## 4. Xem và góp ý
@@ -124,6 +133,8 @@ nằm trong `.padstudio/projects/<tên-dự-án>`. Việc dọn không hoàn tá
 | --- | --- |
 | Trang web không mở | Chạy `npm run observer:ensure`, rồi mở lại địa chỉ ở mục 2. |
 | Trang báo "Mất kết nối" | Bấm **Thử lại**; nếu vẫn lỗi thì làm như dòng trên. |
+| Chat không tìm thấy Codex | Kiểm tra Codex CLI trên máy hoặc `chat.codexPath` nếu bạn chỉ định launcher; cài extension VS Code không đảm bảo CLI có trong `PATH`. Đóng các lượt đang chạy rồi khởi động lại PADStudio sau khi sửa. |
+| Chat báo không kết nối được PADSwitcher | Mở PADSwitcher, đăng nhập/chọn tài khoản và bật kết nối Codex; kiểm tra đường dẫn helper của chính máy bạn. Chat không tự chuyển sang Codex trực tiếp khi helper lỗi. |
 | Agent nói thiếu khóa API, hoặc một công cụ "Cần cài thêm" | Bấm **Công cụ** trên thanh đầu: dán khóa rồi **Kiểm tra kết nối**, hoặc đọc dòng hướng dẫn dưới công cụ đó và nhờ Agent cài. |
 | Trang thiếu nút **Công cụ** hay vẫn như bản cũ | Chạy `npm run observer:ensure`: lệnh tự thay trang đang chạy code cũ. Nếu nó báo phải tắt tay (server mở từ trước bản cập nhật 2026-10-09), đóng cửa sổ đang chạy `npm start` rồi chạy lại lệnh. |
 | Agent làm dở thì máy tắt | Mở lại và nói "tiếp tục dự án X". Agent đọc trạng thái đã lưu và tiếp tục, kể cả khi một lần dựng bị đứt giữa chừng. |

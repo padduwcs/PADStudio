@@ -1,6 +1,6 @@
 # PADStudio — trạng thái phát triển
 
-Cập nhật: **2026-10-24** (menu chat theo bố cục Codex trong VS Code; launcher máy kết nối qua PADSwitcher; xem mục “Chat trong PADStudio”). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
+Cập nhật: **2026-10-24** (rà soát repo cho người dùng mới, kiểm checkout sạch và mở rộng CI sang toàn bộ browser suite). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
 
 Đây là điểm vào ngắn để biết codebase đang ở đâu. PADStudio vẫn đang được xây dựng và chỉnh
 chu; các báo cáo có chữ `completion`, tên đợt hoặc số phiên bản ghi lại một mốc nghiệm thu kỹ
@@ -28,11 +28,24 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 Ngày **2026-10-24**, Node v24.18.1, Windows: `npm test` **479 tests: 478 pass, 0 fail, 1 skipped** (symlink, thiếu quyền Windows).
 `npm run check` sạch. `chat:ui:test`, `chat:ui:features-test`, `observer:ui:empty-test`, `observer:ui:live-test`, `observer:ui:tools-test` passed.
+Đợt rà soát repo cùng ngày chạy lại `npm test`: **479 tests, 478 pass, 0 fail, 1 skip** trên máy phát triển; trên checkout sạch:
+**479 tests, 473 pass, 0 fail, 6 skip** vì thiếu runtime phân tích tùy chọn và quyền symlink. Checkout sạch không sao chép `.padstudio/`,
+`padstudio.local.json`, `.runtime-tools/` hoặc `node_modules/`. `npm run check` **296 scripts/82 documents** và `npm run test:ui` (6 suite) đều passed trên cả hai bản.
 Live Codex CLI 0.163.0: input ảnh, explicit effort/mode/quyền, rename/history, fork trước lượt, export và archive/restore dùng API gốc.
 Không gọi công cụ/provider media; thread thử được lưu trữ. Test tự động không gọi model. Browser kiểm chức năng mới lẫn nhiều tab, draft,
 đổi project không đổi chat, resize/reload/offline và các kích thước 320–1440 px ở sáng/tối.
 Baseline trước đợt bổ sung là 464 tests/463 pass/1 skip; trước khi bỏ liên kết project là 468 tests/467 pass.
 Các baseline cũ sau đây là lịch sử tại ngày ghi nhận.
+
+## Rà soát repo và CI — 2026-10-24
+
+- README VI/EN, ảnh màn hình chờ, hướng dẫn sử dụng, CONTRIBUTING và mẫu issue/PR đã khớp chat Codex độc lập, home và hai ngôn ngữ hiện tại.
+  Mẫu cấu hình thêm `chat.codexPath` rỗng; hướng dẫn phân biệt đăng nhập native với tài khoản do PADSwitcher quản lý, cấu hình riêng theo máy
+  và ghép section thay vì ghi đè cấu hình đã có. Checkout mới không mang launcher hoặc tài khoản của người duy trì.
+- `npm run test:ui` chạy tuần tự cả 6 browser suite và trả lỗi ngay nếu một suite lỗi. CI Windows/Node 24 chạy cùng lệnh sau static/Node tests,
+  hủy run cũ trên cùng ref khi có commit mới và lưu ảnh minh chứng fixture khi lỗi. Không cần Codex thật, tài khoản, khóa API hoặc provider trả phí.
+- Kiểm các file được Git theo dõi và diff của 11 commit chưa publish: không thấy đường dẫn cá nhân, file cấu hình/dữ liệu bị cấm hoặc mẫu token/private key phổ biến.
+  Đây là kiểm tra kỹ thuật của bản dùng local trên Windows, không thay thế chứng nhận broad release; `release:gates` và các giới hạn sản phẩm giữ nguyên.
 
 ## Chat trong PADStudio — 2026-10-24
 

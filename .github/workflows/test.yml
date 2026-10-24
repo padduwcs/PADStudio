@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     # PADStudio targets Windows, and several tests drive real FFmpeg and a local browser.
@@ -38,3 +42,24 @@ jobs:
       # which the run page and the public API show without the admin-only log download.
       - name: Run tests
         run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./scripts/lib/github-test-reporter.mjs --test-reporter-destination=stdout
+
+      # Chrome/Edge is available on windows-latest. These suites use temporary projects,
+      # a deterministic Codex peer and simulated providers; no accounts or secrets are needed.
+      - name: Browser acceptance (observer, workspace and chat)
+        run: npm run test:ui
+
+      - name: Upload browser evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-failure-evidence
+          retention-days: 7
+          if-no-files-found: ignore
+          include-hidden-files: true
+          path: |
+            .cache/ui-focus-review/
+            .cache/ui-polish/live/
+            .cache/tools-ui/
+            .cache/workspace-ui/
+            .cache/chat-ui/
+            .cache/chat-features-ui/

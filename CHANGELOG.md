@@ -4,6 +4,10 @@ Theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Các bản phát 
 
 ## [Chưa phát hành]
 
+- Chuẩn bị repo cho người dùng mới: cập nhật hướng dẫn VI/EN, cách đăng nhập qua Codex/PADSwitcher, cấu hình launcher mẫu và quy tắc đóng góp
+  theo chat độc lập hiện tại. Thêm `npm run test:ui` chạy trọn 6 browser suite; CI nay chạy cùng các suite này và giữ ảnh minh chứng khi lỗi.
+  Kiểm thử dùng dữ liệu tạm, Codex/provider giả; không cần tài khoản hoặc khóa API. Không đưa cấu hình/tài khoản của máy người duy trì vào repo.
+
 - Chỉnh chat gần bố cục Codex trong VS Code hơn: **+ / chế độ** bên trái và **model / gửi** bên phải, menu **+** và **…** gọn.
   Thay form/select model native bằng menu chọn trực tiếp cùng màu sáng/tối, dấu tích và mức suy luận trong cùng menu.
   Hỗ trợ mũi tên, gõ đầu tên, Enter, Esc và Tab; chọn xong quay lại ô nhập. Sửa danh sách model trắng khó đọc trên nền tối.

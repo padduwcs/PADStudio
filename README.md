@@ -13,11 +13,11 @@
 
 <p align="center"><a href="README.en.md">English</a> · <a href="docs/HUONG-DAN.md">Hướng dẫn sử dụng</a> · <a href="docs/CAI-DAT-RUNTIME.md">Cài đặt runtime</a> · <a href="CHANGELOG.md">Lịch sử thay đổi</a></p>
 
-<p align="center"><img src="docs/images/library-dark.png" alt="Thư viện dự án của PADStudio, mỗi thẻ là một video đã làm bằng PADStudio" width="860" /></p>
+<p align="center"><img src="docs/images/home-dark.png" alt="Màn hình chờ PADStudio: trò chuyện với Codex hoặc mở dự án, có lựa chọn VI/EN" width="860" /></p>
 
 ## Giới thiệu
 
-Bạn mô tả video mình muốn cho một Agent AI (ví dụ [Claude Code](https://claude.com/claude-code)). Agent viết kịch bản, dựng hoạt họa,
+Bạn mô tả video mình muốn trong chat Codex của PADStudio hoặc một Agent ngoài (ví dụ [Claude Code](https://claude.com/claude-code)). Agent viết kịch bản, dựng hoạt họa,
 tạo giọng đọc rồi ghép và xuất video. PADStudio là phần nền bên dưới: lưu dự án, chạy công cụ và ghi lại mọi đầu vào, kết quả và phản hồi,
 nên dự án luôn mở lại và làm tiếp được, kể cả khi đổi phiên Agent.
 
@@ -27,8 +27,8 @@ nên dự án luôn mở lại và làm tiếp được, kể cả khi đổi ph
 
 ## Bắt đầu nhanh
 
-**Yêu cầu:** Windows 10/11, [Node.js](https://nodejs.org) 20 trở lên, [FFmpeg](https://ffmpeg.org) (kèm `ffprobe`) trong `PATH`, và một
-Agent chạy được lệnh trong thư mục dự án. PADStudio không có dependency npm nên không cần `npm install`.
+**Yêu cầu:** Windows 10/11, [Node.js](https://nodejs.org) 20 trở lên (khuyên dùng Node 24), [FFmpeg](https://ffmpeg.org) (kèm `ffprobe`) trong `PATH`, và
+Codex CLI để dùng chat tích hợp hoặc một Agent ngoài chạy được lệnh trong thư mục dự án. PADStudio không có dependency npm nên không cần `npm install`.
 
 **1. Tải về và kiểm tra máy**
 
@@ -49,13 +49,16 @@ Dự án mới do Agent tạo chỉ cập nhật danh sách, không tự mở ho
 Chọn **VI / EN** trên thanh đầu để đổi tiếng Việt/English; trình duyệt nhớ lựa chọn. Ngôn ngữ giao diện không đổi prompt, hội thoại hoặc tên dự án.
 
 **3. Bấm Trò chuyện trên trang PADStudio.** Chat tích hợp dùng Codex CLI trên máy; cài Codex và đăng nhập tài khoản ChatGPT nếu được hỏi.
+Nếu chưa có CLI, làm theo [OpenAI Docs: cài Codex CLI](https://learn.chatgpt.com/docs/cli) (chọn Windows), rồi mở lại terminal chạy PADStudio.
+Bạn cũng có thể đăng nhập trước bằng `codex login` theo [hướng dẫn xác thực chính thức](https://learn.chatgpt.com/docs/auth).
 Nếu máy đã dùng Codex, PADStudio dùng tài khoản hiện có. Chat mở tại thư mục PADStudio như khi mở Codex trong VS Code: nhập prompt bình thường,
 không cần chọn project. Một hội thoại có thể tạo hoặc tiếp tục nhiều project theo yêu cầu của bạn:
 
 > Làm video dọc 90 giây giải thích vì sao trời có màu xanh, giọng đọc tiếng Việt, cho học sinh cấp 2.
 
-Nếu dùng PADSwitcher, đặt `chat.codexPath` trong `padstudio.local.json` tới helper `PADCodex.exe`, rồi khởi động lại PADStudio khi chat đã rảnh.
-Giữ PADSwitcher mở và chọn tài khoản ở đó. Launcher lỗi sẽ báo lỗi, không tự dùng Codex trực tiếp.
+PADSwitcher là tùy chọn, cấu hình riêng trên từng máy. Nếu dùng, đặt `chat.codexPath` trong `padstudio.local.json` tới helper `PADCodex.exe` của bạn,
+rồi khởi động lại PADStudio khi chat đã rảnh. Giữ PADSwitcher mở; đăng nhập và chọn tài khoản ở đó. Bản clone mới mặc định tự tìm Codex trên máy,
+không mang đường dẫn launcher hoặc tài khoản của người duy trì. Để trống `chat.codexPath` trong cấu hình mẫu nếu muốn giữ mặc định này. Launcher lỗi sẽ báo lỗi, không tự dùng Codex trực tiếp.
 Chi tiết cấu hình và nhóm tài khoản: [kết nối PADSwitcher](docs/build/CHAT-CLIENT.md#kết-nối-qua-padswitcher-trên-máy-này).
 
 **4. Xem, góp ý, chốt.** Chọn project trong thư viện để xem bản dựng. Muốn sửa một chỗ, dừng video tại đó, bấm **Sao chép mốc phản hồi**
@@ -156,6 +159,7 @@ Rất hoan nghênh. Hãy đọc [`CONTRIBUTING.md`](CONTRIBUTING.md) (có phần
 ```powershell
 npm run check   # cú pháp, import thừa, link và đường dẫn trong tài liệu (vài giây)
 npm test        # toàn bộ test (khoảng một phút)
+npm run test:ui # 6 bộ kiểm tra trình duyệt; Node 24 + Chrome/Edge, không cần tài khoản
 ```
 
 Các browser test của trang xem được liệt kê trong [`CONTRIBUTING.md`](CONTRIBUTING.md). Lỗi bảo mật xin báo riêng theo

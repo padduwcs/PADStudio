@@ -51,6 +51,7 @@ body:
     attributes:
       label: Khu vực
       options:
+        - Chat Codex / đăng nhập / PADSwitcher
         - Web observer (giao diện xem)
         - Trang Công cụ (khóa API, giọng, dịch vụ)
         - Dựng video / render

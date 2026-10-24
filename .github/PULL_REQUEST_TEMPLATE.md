@@ -9,7 +9,7 @@
 - [ ] `npm run check` xanh
 - [ ] `npm test` xanh
 - [ ] Có test cho hành vi mới hoặc lỗi đã sửa
-- [ ] Nếu đụng giao diện: đã chạy `npm run observer:ui:tools-test` / `observer:ui:empty-test` và xem cả sáng/tối, khổ 390 px
+- [ ] `npm run test:ui` xanh; nếu đụng giao diện: đã xem cả sáng/tối, VI/EN và khổ 390 px
 - [ ] Tài liệu liên quan đã được cập nhật
 
 ## Lưu ý

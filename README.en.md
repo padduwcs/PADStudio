@@ -5,14 +5,14 @@
 
 <p align="center"><a href="README.md">Tiếng Việt</a> · <a href="CONTRIBUTING.md#english-summary">Contributing</a> · <a href="CHANGELOG.md">Changelog</a></p>
 
-<p align="center"><img src="docs/images/library-dark.png" alt="The PADStudio project library: every card is a video made with PADStudio" width="860" /></p>
+<p align="center"><img src="docs/images/home-dark-en.png" alt="PADStudio home: chat with Codex or open a project, with Vietnamese and English interface options" width="860" /></p>
 
-> **Language note.** PADStudio's interface and in-depth guides are in Vietnamese, and its narration, transcription and quality checks are
-> tuned for Vietnamese. This page is a short English guide to what it is and how to get it running.
+> **Language note.** The interface supports **Vietnamese and English**. In-depth guides are mainly in Vietnamese; narration, transcription and quality checks
+> are tuned for Vietnamese. This page explains what PADStudio does and how to get it running.
 
 ## Overview
 
-You describe the video you want to an AI Agent (for example [Claude Code](https://claude.com/claude-code)). The Agent writes the script,
+You describe the video you want in PADStudio's Codex chat or an external Agent (for example [Claude Code](https://claude.com/claude-code)). The Agent writes the script,
 builds the animation, makes the voice-over, then assembles and exports the video. PADStudio is the foundation underneath: it stores
 projects, runs the tools and records every input, result and piece of feedback, so a project can always be reopened and continued, even
 in a new Agent session.
@@ -23,8 +23,8 @@ in a new Agent session.
 
 ## Quick start
 
-**Requirements:** Windows 10/11, [Node.js](https://nodejs.org) 20+, [FFmpeg](https://ffmpeg.org) with `ffprobe` on `PATH`, and an Agent
-that can run commands in the project folder. PADStudio has no npm dependencies, so there is no `npm install`.
+**Requirements:** Windows 10/11, [Node.js](https://nodejs.org) 20+ (Node 24 recommended), [FFmpeg](https://ffmpeg.org) with `ffprobe` on `PATH`, and Codex CLI for built-in chat
+or an external Agent that can run commands in the project folder. PADStudio has no npm dependencies, so there is no `npm install`.
 
 **1. Clone and check your machine**
 
@@ -44,14 +44,16 @@ The base URL opens a home screen: choose **Open a project** or **Chat with Codex
 New projects only update the library; they never replace the home screen or your selected project. Links with `?project=<id>` open that project directly.
 Choose **VI / EN** in the top bar for Vietnamese or English. The browser remembers the choice; prompts, conversations and project names stay unchanged.
 
-**3. Click Chat in PADStudio.** The built-in client uses Codex CLI on your machine. Install Codex and sign in with ChatGPT
-when prompted; an existing Codex login is reused. Chat opens in the PADStudio folder, like Codex in VS Code. Send a normal prompt;
+**3. Click Chat in PADStudio.** The built-in client uses Codex CLI on your machine. If needed, follow [OpenAI Docs: install Codex CLI](https://learn.chatgpt.com/docs/cli)
+(choose Windows), then reopen the terminal running PADStudio. Sign in with ChatGPT when prompted, or run `codex login` first following the
+[official authentication guide](https://learn.chatgpt.com/docs/auth); an existing Codex login is reused. Chat opens in the PADStudio folder, like Codex in VS Code. Send a normal prompt;
 conversations are independent of the project viewer and can create or work on several video projects:
 
 > Make a 90-second vertical video explaining why the sky is blue, narrated in Vietnamese, for middle-school students.
 
-To use PADSwitcher, set `chat.codexPath` in `padstudio.local.json` to its `PADCodex.exe` helper, then restart PADStudio after active turns finish.
-Keep PADSwitcher open and select the account there. Launcher failures never silently fall back to direct Codex.
+PADSwitcher is optional and configured separately on each machine. To use it, set `chat.codexPath` in `padstudio.local.json` to your own `PADCodex.exe` helper,
+then restart PADStudio after active turns finish. Keep PADSwitcher open; sign in and select the account there. A fresh clone uses local Codex discovery by default;
+it never inherits the maintainer's launcher path or account. Leave `chat.codexPath` empty in the example config to keep that default. Launcher failures never silently fall back to direct Codex.
 See the [connection contract](docs/build/CHAT-CLIENT.md) for configuration and account grouping.
 
 **4. Watch, give feedback, accept.** Choose a project in the library to watch it. To change one spot, pause there, click
@@ -140,6 +142,7 @@ Contributions are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) (it has an 
 ```powershell
 npm run check   # syntax, unused imports, links and paths in the docs (a few seconds)
 npm test        # the full test suite (about a minute)
+npm run test:ui # all 6 browser suites; Node 24 + Chrome/Edge, no accounts needed
 ```
 
 Report vulnerabilities privately, see [`SECURITY.md`](SECURITY.md).
