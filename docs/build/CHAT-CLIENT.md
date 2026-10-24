@@ -62,8 +62,12 @@ quản lý plugin hoặc chỉnh toàn bộ config TOML trong UI.
 - Host localhost, cùng Origin/intent/JSON cho POST; GET foreign Origin/cross-site cũng bị từ chối. JSON thông thường 128 KiB,
   chỉ upload có giới hạn 14 MiB cho base64. SSE heartbeat/coalescing, ngắt slow consumer; chống iframe bằng CSP và X-Frame-Options.
 - [`chat-view.js`](../../ui/chat-view.js) giữ tab/transcript/composer, [`chat-controls.js`](../../ui/chat-controls.js) giữ menu hành động,
-  lịch sử, thiết lập, tham chiếu, upload và tìm trong chat. Bố cục theo sidebar Codex trong VS Code: header thấp, ô nhập có **+**, mode/quyền bên trái,
-  model/effort bên phải và nút gửi tròn. Header có lịch sử, cài đặt, chat mới, menu phụ và đóng. Một tab thì ẩn thanh tab, hiện tên hội thoại ở header.
+  lịch sử, thiết lập, tham chiếu, upload và tìm trong chat. Bố cục theo sidebar Codex trong VS Code: header gọn, ô nhập có **+**, mode/quyền và model/effort
+  nằm cùng một nhóm, nút gửi tròn ở mép phải. Header có chat mới, lịch sử, menu phụ và đóng; cài đặt ở menu phụ. Một tab thì ẩn thanh tab, hiện tên hội thoại ở header.
+- Transcript và vùng nhập dùng chung cột tối đa 720 px, lề 20 px (16 px khi màn hình ≤600 px); trừ chính xác bề rộng scrollbar để hai mép cột khớp nhau.
+  Vùng nhập gom câu hỏi, trạng thái, thông báo, composer và tên thư mục thành một cụm. Viewer căn giữa diện tích còn lại khi màn hình lớn.
+  Menu bám nút nguồn và tự đặt trên toàn bộ composer khi có nhiều dòng/attachments; ResizeObserver cập nhật khi đổi kích thước, không chồng lên ô nhập.
+  Ở viewport thấp, giới hạn chiều cao draft/attachments để vẫn còn chỗ đọc và gửi; đã kiểm trường hợp 390×420 px có file và nhiều dòng.
 - Lịch sử local/native gộp thành một danh sách, dedup bằng thread ID; chỉ lọc trong cwd. Metadata conversation trả thêm thread ID để UI nhận diện bản trùng.
   Thống kê, phím tắt và thao tác nâng cao chỉ xuất hiện khi mở menu; không có hàng hướng dẫn hoặc số liệu thường trực bên dưới ô nhập.
 - Tin nhắn có sao chép, sửa/phân nhánh hoặc gửi lại. Markdown dùng DOM text: code/copy, bảng cuộn, trích dẫn, nhấn mạnh, checklist và list lồng;

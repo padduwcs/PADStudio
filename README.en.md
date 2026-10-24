@@ -53,7 +53,7 @@ say "accept" (in Vietnamese: "chốt") and download the accepted video.
 Open several conversations at once: **New conversation** in the header creates a tab, **×** closes it, and history reopens it. Each tab keeps its own draft;
 switching or closing tabs leaves agents running. Switching the viewed video project does not switch conversations. Model selection sits in the composer.
 The chat follows the familiar Codex VS Code sidebar layout. Use **+** inside the composer for images/files (10 MB each) and file/skill references.
-Model and reasoning controls sit on the right; mode and permissions sit on the left. The header gear contains settings, usage and shortcuts.
+Model and mode controls sit together below the prompt, with Send on the right. Open **… → Cài đặt Codex** for settings, usage and shortcuts.
 The **…** menu includes rename, search, fork and archive; **Thêm thao tác…** contains compact and export. Defaults inherit your Codex configuration.
 Edit/retry creates a branch and preserves the original conversation; it does not undo files. History can also reopen
 CLI/VS Code threads in this folder. Type `/help` for shortcuts. Chat attachments are not automatically imported into video projects.

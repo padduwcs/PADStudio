@@ -48,6 +48,9 @@ Các baseline cũ sau đây là lịch sử tại ngày ghi nhận.
   header thấp, **+** thêm nội dung, mode/quyền và model cạnh ô nhập; một tab thì ẩn tab bar, tên hội thoại ở header. Lịch sử gộp một danh sách,
   thao tác phụ và thống kê chỉ nằm trong menu. Màu/font cùng PADStudio. Desktop kéo divider để đổi chiều rộng, nhớ lựa chọn,
   hỗ trợ bàn phím và nhấp đúp đặt lại; phần video co giãn theo diện tích còn lại. Mobile là dialog toàn màn hình.
+- Cột hội thoại/vùng nhập khớp hai mép khi resize (tối đa 720 px), model và mode nằm cùng nhóm; cài đặt nằm trong **…**.
+  Menu bám nút nguồn và tránh ô nhập, kể cả nhiều dòng/file; viewer căn giữa phần còn lại ở màn hình lớn. Browser kiểm hình học 320–1920 px,
+  hai giới hạn resize, căn hàng nút và menu với draft cao/attachments.
 - Bỏ route tạo project, import Resource, gắn mốc video và callbacks đổi chat theo project. Upload chỉ là file đính kèm chat. Dữ liệu chat cũ giữ nguyên ở đường dẫn cũ,
   không tự resume vì các thread đó từng có chỉ dẫn hạn chế; metadata workspace mới không có project ID.
 - Chống gửi trùng bằng biên nhận lưu trước RPC; không tự replay sau reload/restart. Transcript do Codex giữ; liên kết và biên nhận nằm

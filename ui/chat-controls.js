@@ -8,6 +8,26 @@ const icon = (label, path, run) => {
   const element = button("", run, "icon-button"); element.title = label; element.setAttribute("aria-label", label); element.append(svgIcon(path)); return element;
 };
 
+// Keep a menu next to its trigger and above the whole composer, including drafts and attachments.
+export function positionChatMenu(surface, trigger, root) {
+  if (surface.hidden || !trigger?.isConnected) return;
+  const panel = root.getBoundingClientRect(), anchor = trigger.getBoundingClientRect();
+  const composer = trigger.closest(".chat-composer");
+  const edge = 16, width = Math.min(320, panel.width - edge * 2);
+  const left = Math.max(edge, Math.min(panel.width - width - edge,
+    (composer ? anchor.left : anchor.right - width) - panel.left));
+  surface.style.width = width + "px"; surface.style.left = left + "px"; surface.style.right = "auto";
+  if (composer) {
+    const bottom = Math.min(panel.height - 56, panel.bottom - composer.getBoundingClientRect().top + 8);
+    surface.style.top = "auto"; surface.style.bottom = Math.max(edge, bottom) + "px";
+    surface.style.maxHeight = Math.max(40, Math.min(620, panel.height - bottom - edge)) + "px";
+  } else {
+    const top = Math.max(edge, anchor.bottom - panel.top + 8);
+    surface.style.top = top + "px"; surface.style.bottom = "auto";
+    surface.style.maxHeight = Math.max(40, Math.min(620, panel.height - top - edge)) + "px";
+  }
+}
+
 // Ordinary Codex client actions. No knowledge of the video viewer or ProjectStore.
 export function createChatControls({ root, composer, input, model, context, post, endpoint, save, update, notice, adopt, apply, activate, newConversation, dismissHistory }) {
   let active = null; let anchor = null; let historyGeneration = 0; let fileGeneration = 0; let attachmentSignature = "";
@@ -19,7 +39,8 @@ export function createChatControls({ root, composer, input, model, context, post
     closePopup(); dismissHistory(); active = kind; anchor = trigger; popup.hidden = false; popup.replaceChildren();
     popup.dataset.kind = kind; trigger?.setAttribute("aria-expanded", "true");
     const head = node("div", undefined, "chat-popover-head");
-    head.append(node("strong", title), button("Đóng", () => { closePopup(); trigger?.focus(); })); popup.append(head); return true;
+    head.append(node("strong", title), button("Đóng", () => { closePopup(); trigger?.focus(); })); popup.append(head);
+    queueMicrotask(() => positionChatMenu(popup, anchor, root)); return true;
   };
   const optionsButton = icon("Cài đặt Codex", "m9 3-1 3-3 1v3l-2 2 2 2v3l3 1 1 3h6l1-3 3-1v-3l2-2-2-2V7l-3-1-1-3zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6", settings); optionsButton.id = "chat-settings";
   const moreButton = icon("Thao tác hội thoại", "M5 12h.01M12 12h.01M19 12h.01", actions); moreButton.id = "chat-more";
@@ -57,7 +78,7 @@ export function createChatControls({ root, composer, input, model, context, post
     popup.append(attachButton, referenceButton);
   }
   function settings() {
-    if (!open("settings", optionsButton, "Cài đặt Codex")) return;
+    if (!open("settings", moreButton, "Cài đặt Codex")) return;
     popup.append(button("Model và mức suy luận", modelSettings, "chat-conversation-entry"), button("Chế độ và quyền", modeSettings, "chat-conversation-entry"), button("Mức sử dụng", usage, "chat-conversation-entry"), button("Phím tắt và lệnh nhanh", help, "chat-conversation-entry"));
   }
   function optionControls(keys) {
@@ -88,7 +109,7 @@ export function createChatControls({ root, composer, input, model, context, post
     optionControls(["mode", "permissions"]);
   }
   function usage() {
-    if (!open("usage", optionsButton, "Mức sử dụng")) return;
+    if (!open("usage", moreButton, "Mức sử dụng")) return;
     const { state, session } = context(); popup.append(info);
     if (session?.model) popup.append(node("p", "Model: " + session.model, "chat-menu-empty"));
     for (const [key, title] of [["primary", "Hạn mức ngắn hạn"], ["secondary", "Hạn mức dài hạn"]]) {
@@ -114,6 +135,9 @@ export function createChatControls({ root, composer, input, model, context, post
       ["Thêm thao tác…", advancedActions]
     ];
     for (const [label, handler, disabled] of entries) { const entry = button(label, handler, "chat-conversation-entry"); entry.disabled = Boolean(disabled); popup.append(entry); }
+    optionsButton.className = "chat-conversation-entry chat-menu-settings";
+    optionsButton.replaceChildren(svgIcon("M12 3v3m0 12v3M3 12h3m12 0h3M6 6l2 2m8 8 2 2M6 18l2-2M16 8l2-2M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8"), node("span", "Cài đặt Codex"));
+    popup.append(optionsButton);
   }
   function renameConversation() {
     if (!open("rename", moreButton, "Đổi tên hội thoại")) return;
@@ -279,6 +303,8 @@ export function createChatControls({ root, composer, input, model, context, post
   }
 
   document.addEventListener("pointerdown", (event) => { if (!popup.hidden && !popup.contains(event.target) && ![optionsButton, moreButton, addButton, modeButton, modelButton].some((button) => button.contains(event.target))) closePopup(); });
+  const menuObserver = new ResizeObserver(() => positionChatMenu(popup, anchor, root));
+  for (const element of [root, composer, popup]) menuObserver.observe(element);
   root.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") { event.preventDefault(); showFind(); }
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "o") { event.preventDefault(); newConversation(); }

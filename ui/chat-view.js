@@ -1,6 +1,6 @@
 import { ICONS, node, svgIcon } from "./dom.js";
 import { renderChatMarkdown } from "./chat-markdown.js";
-import { createChatControls } from "./chat-controls.js";
+import { createChatControls, positionChatMenu } from "./chat-controls.js";
 
 const focusable = 'button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]';
 
@@ -44,7 +44,7 @@ export function createChatPanel({ root, toggle }) {
   const folderName = node("p", "PADStudio", "chat-subtitle"); folderName.id = "chat-folder-name";
   heading.append(title);
   const headActions = node("div", undefined, "chat-head-actions");
-  const historyButton = action("", () => { extras?.closePopup(); menu.hidden = !menu.hidden; historyButton.setAttribute("aria-expanded", String(!menu.hidden)); if (!menu.hidden) { renderTabs(); openNativeHistory?.(); } }, "icon-button");
+  const historyButton = action("", () => { extras?.closePopup(); menu.hidden = !menu.hidden; historyButton.setAttribute("aria-expanded", String(!menu.hidden)); if (!menu.hidden) { renderTabs(); openNativeHistory?.(); positionChatMenu(menu, historyButton, root); } }, "icon-button");
   historyButton.id = "chat-history-button"; historyButton.title = "Lịch sử trò chuyện"; historyButton.setAttribute("aria-label", historyButton.title); historyButton.setAttribute("aria-expanded", "false");
   historyButton.append(svgIcon("M3 11a9 9 0 1 1 2.5 7M3 4v7h7M12 7v5l3 2"));
   const closeButton = action("", () => close(), "icon-button"); closeButton.append(svgIcon(ICONS.close)); closeButton.setAttribute("aria-label", "Đóng trò chuyện");
@@ -91,11 +91,18 @@ export function createChatPanel({ root, toggle }) {
   extras = createChatControls({ root, composer, input, model, context: () => ({ state, session, id: conversationId, draft: draft(), openTabs }), post, endpoint, save: saveDraft,
     update: updateControls, notice: setNotice, adopt: adoptConversation, apply: acceptSession, activate: activateTab, newConversation, dismissHistory: dismissMenu });
   openNativeHistory = extras.addHistory(menu);
-  headActions.insertBefore(extras.moreButton, historyButton); headActions.insertBefore(extras.optionsButton, closeButton); headActions.insertBefore(newChat, closeButton);
-  composerTools.append(extras.addButton, extras.modeButton); controls.prepend(extras.modelButton);
+  headActions.insertBefore(newChat, historyButton); headActions.insertBefore(extras.moreButton, closeButton);
+  composerTools.append(extras.addButton, extras.modeButton, extras.modelButton);
   composer.prepend(extras.attachmentList); composer.append(extras.picker);
   const workspace = node("div", undefined, "chat-workspace"); workspace.append(svgIcon("M3 7h6l2-3h10v16H3z", { size: 13 }), folderName);
-  root.append(resizeHandle, head, tabBar, menu, extras.popup, connection, extras.findBar, history, jump, requests, status, noticeBox, composer, workspace);
+  const dock = node("div", undefined, "chat-dock"); dock.append(requests, status, noticeBox, composer, workspace);
+  root.append(resizeHandle, head, tabBar, menu, extras.popup, connection, extras.findBar, history, jump, dock);
+  const historyObserver = new ResizeObserver(() => {
+    root.style.setProperty("--chat-scrollbar", Math.max(0, history.offsetWidth - history.clientWidth) + "px");
+    positionChatMenu(menu, historyButton, root);
+  });
+  historyObserver.observe(history);
+  new ResizeObserver(() => positionChatMenu(menu, historyButton, root)).observe(menu);
 
   function widthLimits() { return { min: 320, max: Math.max(320, Math.min(960, Math.floor(innerWidth * 0.65), innerWidth - 320)) }; }
   function updateLayout() {

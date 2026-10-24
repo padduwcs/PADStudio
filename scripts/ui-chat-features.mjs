@@ -36,6 +36,7 @@ async function more(label) {
   await page.evaluate(`([...document.querySelectorAll('#chat-popover button')].find(button => button.textContent === ${JSON.stringify(label)})).click()`);
 }
 async function reference() { await click("#chat-add"); await click("#chat-reference"); }
+async function settings() { await click("#chat-more"); await click("#chat-settings"); }
 
 try {
   await writeFile(join(cwd, "reference.md"), "# User reference\n"); client.files = [{ root: cwd, path: "reference.md" }];
@@ -65,6 +66,16 @@ try {
   await reference(); await fill("#chat-file-search", "reference"); await text(".chat-picker-results", "reference.md"); await click(".chat-picker-results button");
   await reference(); await page.evaluate("[...document.querySelectorAll('#chat-popover button')].find(button=>button.textContent==='fixture-skill').click()");
   await page.waitFor("document.querySelectorAll('#chat-attachments .chat-attachment').length === 4");
+  // Menus follow their source and clear the whole composer when it grows, then when the panel resizes.
+  await fill("#chat-input", "Bản nháp nhiều dòng\n".repeat(7)); await click("#chat-add");
+  await page.waitFor("document.querySelector('#chat-popover').getBoundingClientRect().bottom <= document.querySelector('#chat-composer').getBoundingClientRect().top - 6");
+  await page.viewport(390, 700, { mobile: true });
+  await page.waitFor("(()=>{const menu=document.querySelector('#chat-popover').getBoundingClientRect(),input=document.querySelector('#chat-composer').getBoundingClientRect();return menu.left>=0&&menu.right<=innerWidth&&menu.bottom<=input.top-6&&menu.top>=0})()");
+  await page.screenshot(join(shots, "menu-with-tall-draft-mobile.png"));
+  await page.viewport(390, 420, { mobile: true });
+  await page.waitFor("(()=>{const panel=document.querySelector('#chat').getBoundingClientRect(),dock=document.querySelector('.chat-dock').getBoundingClientRect(),menu=document.querySelector('#chat-popover').getBoundingClientRect(),input=document.querySelector('#chat-composer').getBoundingClientRect();return dock.bottom<=panel.bottom+1&&menu.bottom<=input.top-6&&menu.top>=panel.top})()");
+  await page.screenshot(join(shots, "menu-with-tall-draft-short-viewport.png"));
+  await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" }); await page.viewport(1440, 900);
   await fill("#chat-input", "  Đọc file tôi chọn, xem ảnh này.\n ");
   await page.goto(origin + "/?chat=1"); await idle();
   assert.equal(await page.evaluate("document.querySelectorAll('#chat-attachments .chat-attachment').length"), 4);
@@ -123,7 +134,7 @@ try {
   client.notify("thread/tokenUsage/updated", { ...base, tokenUsage: { total: { totalTokens: 1000 }, last: { totalTokens: 4200 }, modelContextWindow: 128000 } });
   await text("#chat-history", "v24.18.1");
   assert.equal(await page.evaluate("!!document.querySelector('#chat-context-info')"), false, "usage stays out of the conversation surface");
-  await click("#chat-settings"); await page.evaluate("[...document.querySelectorAll('#chat-popover button')].find(button=>button.textContent==='Mức sử dụng').click()"); await text("#chat-context-info", "3%");
+  await settings(); await page.evaluate("[...document.querySelectorAll('#chat-popover button')].find(button=>button.textContent==='Mức sử dụng').click()"); await text("#chat-context-info", "3%");
   await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
   client.complete(active.threadId, "Mở đầu bằng một chiếc lá trong nắng sớm. **Ánh sáng trở thành năng lượng.**\n\n> Giữ nhịp chậm để người xem theo kịp.\n\n| Cảnh | Nội dung |\n| --- | --- |\n| 01 | Chiếc lá đón ánh nắng |\n| 02 | Nước và khí CO₂ đi vào lá |\n\n- [x] Đọc tư liệu\n  - Ghi lại các điểm chính\n- [ ] Dựng bản xem thử\n\nBạn muốn thay đổi điều gì ở đoạn mở đầu?"); await idle();
   assert.equal(await page.evaluate("[...document.querySelectorAll('.chat-message-tool summary')].some(element => element.textContent.startsWith('Đang chạy'))"), false, "finished turns do not leave stale running indicators");
@@ -132,7 +143,7 @@ try {
   await page.waitFor("document.querySelectorAll('#chat-native-results [data-thread-id]').length >= 4");
   assert.equal(await page.evaluate("(()=>{const ids=[...document.querySelectorAll('#chat-native-results [data-thread-id]')].map(x=>x.dataset.threadId).filter(Boolean);return ids.length===new Set(ids).size})()"), true, "linked Codex threads appear once in history");
   await click("#chat-history-button");
-  const screenshotIds = ["chat-model-button", "chat-mode-button", "chat-settings", "chat-more", "chat-add", "chat-history-button"];
+  const screenshotIds = ["chat-model-button", "chat-mode-button", "chat-more", "chat-add", "chat-history-button"];
   for (const theme of ["light", "dark"]) {
     await page.evaluate(`document.documentElement.dataset.theme=${JSON.stringify(theme)}`);
     for (const width of [320, 390, 768, 1440]) {
@@ -142,8 +153,11 @@ try {
         await click("#" + id); await page.screenshot(join(shots, `${id}-${theme}-${width}.png`));
         const selector = id === "chat-history-button" ? ".chat-menu" : "#chat-popover";
         assert.equal(await page.evaluate(`(() => {const r=document.querySelector('${selector}').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.top>=0&&r.bottom<=innerHeight+1})()`), true, `${id} fits ${width}`);
+        if (["chat-model-button", "chat-mode-button", "chat-add"].includes(id)) assert.equal(await page.evaluate("document.querySelector('#chat-popover').getBoundingClientRect().bottom <= document.querySelector('#chat-composer').getBoundingClientRect().top - 6"), true, `${id} opens above the prompt at ${width}px`);
         await click("#" + id);
       }
+      await settings(); await page.screenshot(join(shots, `chat-settings-${theme}-${width}.png`));
+      await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
     }
   }
   assert.deepEqual(await readdir(join(cwd, ".padstudio")), ["chat"]);

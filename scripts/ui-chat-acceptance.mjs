@@ -217,15 +217,16 @@ try {
   for (const [key, code] of [["Home", 36], ["End", 35]]) {
     await page.send("Input.dispatchKeyEvent", { type: "keyDown", key, code: key, windowsVirtualKeyCode: code });
     await page.send("Input.dispatchKeyEvent", { type: "keyUp", key, code: key, windowsVirtualKeyCode: code });
-    const metrics = await page.evaluate("({width:document.querySelector('#chat').getBoundingClientRect().width, overflow:document.documentElement.scrollWidth-innerWidth, min:Number(document.querySelector('#chat-resize-handle').getAttribute('aria-valuemin')),max:Number(document.querySelector('#chat-resize-handle').getAttribute('aria-valuemax'))})");
+    const metrics = await page.evaluate("(()=>{const transcript=document.querySelector('.chat-messages').getBoundingClientRect(),composer=document.querySelector('.chat-composer').getBoundingClientRect();return {width:document.querySelector('#chat').getBoundingClientRect().width, overflow:document.documentElement.scrollWidth-innerWidth, min:Number(document.querySelector('#chat-resize-handle').getAttribute('aria-valuemin')),max:Number(document.querySelector('#chat-resize-handle').getAttribute('aria-valuemax')),alignment:Math.max(Math.abs(transcript.left-composer.left),Math.abs(transcript.right-composer.right))}})()");
     assert.equal(metrics.width, key === "Home" ? metrics.min : metrics.max); assert.ok(metrics.overflow <= 1);
+    assert.ok(metrics.alignment < 2, "the transcript and composer keep the same column at both resize limits");
     await page.screenshot(join(shots, key === "Home" ? "chat-resized-narrow.png" : "chat-resized-max.png"));
   }
   await page.evaluate("document.querySelector('#chat-resize-handle').dispatchEvent(new MouseEvent('dblclick',{bubbles:true}))");
   assert.equal(await page.evaluate("document.querySelector('#chat').getBoundingClientRect().width"), 490);
   assert.equal(client.calls.filter((call) => call.method === "turn/start").length, turnsBeforeResize);
 
-  for (const [width, height] of [[320, 780], [390, 844], [768, 900], [1024, 900], [1440, 1000]]) {
+  for (const [width, height] of [[320, 780], [390, 844], [768, 900], [1024, 900], [1440, 1000], [1920, 1000]]) {
     await page.viewport(width, height, { mobile: width < 800 });
     await page.waitFor(`document.querySelector('#main').inert === ${width <= 900}`, { label: `chat responsive mode at ${width}px` });
     for (const theme of ["light", "dark"]) {
@@ -239,6 +240,18 @@ try {
       assert.ok(layout.overflow <= 1 && layout.panel <= 1 && layout.input, `${width}/${theme}: unusable chat layout ${JSON.stringify(layout)}`);
       assert.equal(layout.mainInert, width <= 900);
       if (width <= 900) assert.equal(layout.modal, "true");
+      const alignment = await page.evaluate(`(() => {
+        const box = selector => document.querySelector(selector).getBoundingClientRect();
+        const messages = box('.chat-messages'), composer = box('.chat-composer'), workspace = box('.chat-workspace');
+        const choices = ['#chat-add','#chat-mode-button','#chat-model-button','#chat-send'].map(selector => {const r=box(selector);return {left:r.left,right:r.right,center:r.top+r.height/2};});
+        const viewer=box('#main'), panel=box('#chat');
+        return {left:Math.abs(messages.left-composer.left),right:Math.abs(messages.right-composer.right),footer:Math.abs(workspace.left-composer.left),
+          controls:Math.max(...choices.map(x=>x.center))-Math.min(...choices.map(x=>x.center)),
+          overlap:choices.some((choice,index)=>index>0&&choices[index-1].right>choice.left+1),
+          viewerBalance:Math.abs(viewer.left-(panel.left-viewer.right))};
+      })()`);
+      assert.ok(alignment.left < 2 && alignment.right < 2 && alignment.footer < 2 && alignment.controls < 1 && !alignment.overlap, `columns and composer controls align at ${width}/${theme}: ${JSON.stringify(alignment)}`);
+      if (width > 900) assert.ok(alignment.viewerBalance < 2, `video viewer remains centered in the available space at ${width}px`);
       await page.waitFor(`(() => { const area=document.querySelector('#chat-tabs').getBoundingClientRect(); const tab=document.querySelector('#chat-tabs [aria-selected="true"]').parentElement.getBoundingClientRect(); return tab.left >= area.left - 1 && tab.right <= area.right + 1; })()`, { label: `selected conversation tab remains visible at ${width}px` });
       await page.screenshot(join(shots, `chat-${width}-${theme}.png`));
     }
@@ -322,7 +335,7 @@ try {
   } finally {
     await page.goto("about:blank"); emptyServer.closeAllConnections(); await new Promise((resolveEmpty) => emptyServer.close(resolveEmpty)); await emptyChat.close();
   }
-  console.log("Chat UI: passed (plain workspace Codex, no project binding/creation/import/context, parallel tabs, background completion, drafts, questions, permissions, steer/stop, pointer/keyboard resizing, persisted width, adaptive layout, reload/offline, 320/390/768/1024/1440 px, light/dark)");
+  console.log("Chat UI: passed (plain workspace Codex, no project binding/creation/import/context, parallel tabs, background completion, drafts, questions, permissions, steer/stop, pointer/keyboard resizing, persisted width, aligned columns and controls, centered viewer, reload/offline, 320/390/768/1024/1440/1920 px, light/dark)");
 } finally {
   await browser.close(); server.closeAllConnections(); await new Promise((resolveServer) => server.close(resolveServer)); await chat.close();
   const target = resolve(workspace);

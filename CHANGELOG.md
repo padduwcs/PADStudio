@@ -4,6 +4,9 @@ Theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Các bản phát 
 
 ## [Chưa phát hành]
 
+- Căn lại bố cục chat: hội thoại, ô nhập và tên thư mục dùng cùng một cột khi resize; model/chế độ nằm cùng nhóm, cài đặt gom vào **…**.
+  Menu bám nút nguồn và tự tránh ô nhập khi có nhiều dòng/file. Trang video căn giữa diện tích còn lại trên màn hình lớn.
+
 - **Khung chat quen thuộc như sidebar Codex trong VS Code:** header gọn, một tab thì ẩn thanh tab, **+** gom ảnh/file/tham chiếu;
   model và chế độ ở hai bên ô nhập. Lịch sử local/native gộp một danh sách, thống kê và thao tác nâng cao chỉ mở từ menu.
   Giữ nhiều tab, resize và thiết kế sáng/tối của PADStudio; không đổi prompt hoặc cách agent làm việc.
