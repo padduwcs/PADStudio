@@ -30,17 +30,28 @@ export function positionChatMenu(surface, trigger, root) {
 }
 
 // Ordinary Codex client actions. No knowledge of the video viewer or ProjectStore.
-export function createChatControls({ root, composer, input, model, context, post, endpoint, save, update, notice, adopt, apply, activate, newConversation, dismissHistory }) {
+export function createChatControls({ root, composer, input, context, post, endpoint, save, update, notice, adopt, apply, activate, newConversation, dismissHistory }) {
   let active = null; let anchor = null; let historyGeneration = 0; let fileGeneration = 0; let attachmentSignature = "";
+  let searchKeys = "", searchTime = 0;
   const popup = node("section", undefined, "chat-popover"); popup.hidden = true; popup.id = "chat-popover";
   popup.setAttribute("aria-label", t("Tùy chọn trò chuyện"));
   const closePopup = (restoreFocus = false) => { if (!active) return false; popup.hidden = true; active = null; fileGeneration += 1; anchor?.setAttribute("aria-expanded", "false"); if (restoreFocus) anchor?.focus(); return true; };
-  const open = (kind, trigger, title) => {
+  const open = (kind, trigger, title, { choices = false } = {}) => {
     if (active === kind) { closePopup(); return false; }
     closePopup(); dismissHistory(); active = kind; anchor = trigger; popup.hidden = false; popup.replaceChildren();
     popup.dataset.kind = kind; trigger?.setAttribute("aria-expanded", "true");
-    const head = node("div", undefined, "chat-popover-head");
-    head.append(node("strong", title), button(t("Đóng"), () => { closePopup(); trigger?.focus(); })); popup.append(head);
+    popup.setAttribute("aria-label", title);
+    searchKeys = ""; searchTime = 0;
+    const actionMenu = ["add", "settings", "actions", "advanced", "help"].includes(kind);
+    if (choices || actionMenu) popup.setAttribute("role", "menu"); else popup.removeAttribute("role");
+    if (!choices && !actionMenu) {
+      const head = node("div", undefined, "chat-popover-head");
+      head.append(node("strong", title), button(t("Đóng"), () => { closePopup(); trigger?.focus(); })); popup.append(head);
+    }
+    if (actionMenu) queueMicrotask(() => {
+      for (const item of popup.querySelectorAll(".chat-conversation-entry")) { item.setAttribute("role", "menuitem"); item.tabIndex = -1; }
+      focusChoice();
+    });
     queueMicrotask(() => positionChatMenu(popup, anchor, root)); return true;
   };
   const optionsButton = icon(t("Cài đặt Codex"), "m9 3-1 3-3 1v3l-2 2 2 2v3l3 1 1 3h6l1-3 3-1v-3l2-2-2-2V7l-3-1-1-3zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6", settings); optionsButton.id = "chat-settings";
@@ -50,6 +61,7 @@ export function createChatControls({ root, composer, input, model, context, post
   const addButton = icon(t("Thêm nội dung"), "M12 5v14M5 12h14", addContent); addButton.id = "chat-add";
   const modeButton = button("", modeSettings, "chat-composer-choice"); modeButton.id = "chat-mode-button"; modeButton.setAttribute("aria-label", t("Chế độ và quyền"));
   const modelButton = button("", modelSettings, "chat-composer-choice chat-model-choice"); modelButton.id = "chat-model-button"; modelButton.setAttribute("aria-label", t("Model và mức suy luận"));
+  for (const trigger of [modeButton, modelButton, moreButton, addButton, optionsButton]) trigger.setAttribute("aria-haspopup", "menu");
   for (const trigger of [optionsButton, moreButton, referenceButton, addButton, modeButton, modelButton]) { trigger.setAttribute("aria-controls", popup.id); trigger.setAttribute("aria-expanded", "false"); }
   const picker = node("input"); picker.type = "file"; picker.multiple = true; picker.hidden = true; picker.id = "chat-file-picker";
   const attachmentList = node("div", undefined, "chat-attachments"); attachmentList.id = "chat-attachments";
@@ -82,33 +94,79 @@ export function createChatControls({ root, composer, input, model, context, post
     if (!open("settings", moreButton, t("Cài đặt Codex"))) return;
     popup.append(button(t("Model và mức suy luận"), modelSettings, "chat-conversation-entry"), button(t("Chế độ và quyền"), modeSettings, "chat-conversation-entry"), button(t("Mức sử dụng"), usage, "chat-conversation-entry"), button(t("Phím tắt và lệnh nhanh"), help, "chat-conversation-entry"));
   }
-  function optionControls(keys) {
+  const effortName = id => ({ minimal: t("Tối thiểu"), low: t("Thấp"), medium: t("Vừa"), high: t("Cao"), xhigh: t("Rất cao"), max: t("Tối đa"), ultra: "Ultra" })[id] || id;
+  function currentModel() {
     const { state, session, draft } = context();
-    const selectedModel = state.models.find((entry) => entry.id === (draft.model || session?.model)) || state.models.find((entry) => entry.isDefault);
-    const definitions = [
-      ["effort", t("Mức suy luận"), (selectedModel?.efforts || []).map((id) => ({ id, name: ({ minimal: t("Tối thiểu"), low: t("Thấp"), medium: t("Vừa"), high: t("Cao"), xhigh: t("Rất cao"), max: t("Tối đa"), ultra: "Ultra" })[id] || id }))],
-      ["mode", t("Chế độ làm việc"), (state.modes || []).map((entry) => ({ id: entry.mode, name: entry.mode === "plan" ? t("Lập kế hoạch") : t("Làm việc") }))],
-      ["permissions", t("Quyền chạy"), (state.permissions || []).map((entry) => ({ id: entry.id, name: ({ ":read-only": t("Chỉ đọc"), ":workspace": t("Trong thư mục làm việc"), ":danger-full-access": t("Toàn quyền trên máy") })[entry.id] || entry.id }))]
-    ];
-    for (const [key, title, entries] of definitions) {
-      if (!entries.length || !keys.includes(key)) continue;
-      const label = node("label", title, "chat-setting"); const select = node("select", undefined, "select"); select.id = "chat-option-" + key;
-      const inherit = node("option", t("Mặc định của Codex")); inherit.value = ""; select.append(inherit);
-      for (const entry of entries) { const option = node("option", entry.name); option.value = entry.id; select.append(option); }
-      select.value = draft.options?.[key] || ""; select.disabled = Boolean(session?.active || draft.sending);
-      select.addEventListener("change", () => { const current = context().draft; current.options ??= {}; if (select.value) current.options[key] = select.value; else delete current.options[key]; save(); refresh(); });
-      label.append(select); popup.append(label);
+    const id = draft.model || session?.model;
+    return state.models.find(entry => entry.id === id) || (!id ? state.models.find(entry => entry.isDefault) : null);
+  }
+  function selectChoice(key, value) {
+    const { draft, session } = context();
+    if (session?.active || draft.sending) return;
+    if (key === "model") { if (draft.model !== value && draft.options) delete draft.options.effort; draft.model = value; }
+    else { draft.options ??= {}; if (value) draft.options[key] = value; else delete draft.options[key]; }
+    save(); refresh(); closePopup(); input.focus();
+  }
+  function choiceGroup(key, title, entries, selected, { compact = false } = {}) {
+    const group = node("div", undefined, "chat-choice-group"); group.setAttribute("role", "group"); group.setAttribute("aria-label", title);
+    const heading = node("div", title, "chat-choice-heading"); heading.setAttribute("role", "presentation"); group.append(heading);
+    const list = node("div", undefined, compact ? "chat-effort-options" : "chat-choice-options"); list.setAttribute("role", "presentation");
+    const { draft, session } = context();
+    for (const entry of entries) {
+      const item = button("", () => selectChoice(key, entry.id), compact ? "chat-choice chat-choice-compact" : "chat-choice");
+      item.dataset.choice = key; item.dataset.value = entry.id; item.dataset.search = entry.name;
+      item.setAttribute("role", "menuitemradio"); item.setAttribute("aria-checked", String(entry.id === selected)); item.tabIndex = -1;
+      item.disabled = Boolean(session?.active || draft.sending);
+      const copy = node("span", undefined, "chat-choice-copy"); copy.append(node("span", entry.name, "chat-choice-name"));
+      item.append(copy, svgIcon("m5 12 4 4L19 6", { size: 15 })); list.append(item);
     }
-    popup.append(node("p", t("Áp dụng từ tin nhắn tiếp theo. Mặc định kế thừa cấu hình Codex hiện có."), "chat-menu-empty"));
+    group.append(list); popup.append(group);
+  }
+  function focusChoice(last = false) {
+    queueMicrotask(() => {
+      if (popup.hidden || popup.getAttribute("role") !== "menu") return;
+      const items = [...popup.querySelectorAll('[role^="menuitem"]:not(:disabled)')];
+      const target = last ? items.at(-1) : items.find(item => item.getAttribute("aria-checked") === "true") || items[0];
+      target?.focus({ preventScroll: true }); target?.scrollIntoView({ block: "nearest" });
+    });
   }
   function modelSettings() {
-    if (!open("model", modelButton, "Model")) return;
-    const label = node("label", "Model", "chat-setting"); label.append(model); popup.append(label); optionControls(["effort"]);
+    if (!open("model", modelButton, t("Model và mức suy luận"), { choices: true })) return;
+    const { state, draft } = context();
+    choiceGroup("model", t("Chọn model"), [{ id: "", name: t("Mặc định của Codex") }, ...state.models], draft.model || "");
+    const efforts = currentModel()?.efforts || [];
+    if (efforts.length) choiceGroup("effort", t("Mức suy luận"), [{ id: "", name: t("Mặc định") }, ...efforts.map(id => ({ id, name: effortName(id) }))], draft.options?.effort || "", { compact: true });
+    focusChoice();
   }
   function modeSettings() {
-    if (!open("mode", modeButton, t("Chế độ và quyền"))) return;
-    optionControls(["mode", "permissions"]);
+    if (!open("mode", modeButton, t("Chế độ và quyền"), { choices: true })) return;
+    const { state, draft } = context();
+    if (state.modes?.length) choiceGroup("mode", t("Chế độ làm việc"), [{ id: "", name: t("Mặc định của Codex") }, ...state.modes.map(entry => ({ id: entry.mode, name: entry.mode === "plan" ? t("Lập kế hoạch") : t("Làm việc") }))], draft.options?.mode || "");
+    if (state.permissions?.length) choiceGroup("permissions", t("Quyền chạy"), [{ id: "", name: t("Mặc định của Codex") }, ...state.permissions.map(entry => ({ id: entry.id, name: ({ ":read-only": t("Chỉ đọc"), ":workspace": t("Trong thư mục làm việc"), ":danger-full-access": t("Toàn quyền trên máy") })[entry.id] || entry.id }))], draft.options?.permissions || "");
+    if (!state.modes?.length && !state.permissions?.length) popup.append(node("p", t("Chế độ và quyền dùng cấu hình Codex hiện có."), "chat-menu-empty"));
+    focusChoice();
   }
+  popup.addEventListener("keydown", event => {
+    if (popup.getAttribute("role") !== "menu" || popup.hidden) return;
+    if (event.key === "Tab") { closePopup(true); return; }
+    const items = [...popup.querySelectorAll('[role^="menuitem"]:not(:disabled)')];
+    const index = items.indexOf(document.activeElement);
+    let target;
+    if (["ArrowDown", "ArrowRight"].includes(event.key)) target = items[(index + 1) % items.length];
+    else if (["ArrowUp", "ArrowLeft"].includes(event.key)) target = items[(index + items.length - 1) % items.length];
+    else if (event.key === "Home") target = items[0];
+    else if (event.key === "End") target = items.at(-1);
+    else if (event.key.length === 1 && event.key !== " " && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      const now = Date.now(); searchKeys = (now - searchTime < 700 ? searchKeys : "") + event.key; searchTime = now;
+      const query = searchKey(searchKeys);
+      target = [...items.slice(index + 1), ...items.slice(0, index + 1)].find(item => searchKey(item.dataset.search || item.textContent).startsWith(query));
+    }
+    if (target) { event.preventDefault(); target.focus(); target.scrollIntoView({ block: "nearest" }); }
+  });
+  for (const trigger of [modelButton, modeButton, moreButton, addButton]) trigger.addEventListener("keydown", event => {
+    if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
+    event.preventDefault(); if (popup.hidden || anchor !== trigger) trigger.click(); focusChoice(event.key === "ArrowUp");
+  });
   function usage() {
     if (!open("usage", moreButton, t("Mức sử dụng"))) return;
     const { state, session } = context(); popup.append(info);
@@ -208,18 +266,19 @@ export function createChatControls({ root, composer, input, model, context, post
     }
     attachmentList.hidden = !chips.length;
     const modelId = draft.model || session?.model;
-    const modelName = context().state.models.find((entry) => entry.id === modelId)?.name || modelId || t("Model mặc định");
+    const modelName = currentModel()?.name || modelId || t("Model mặc định");
     const effort = draft.options?.effort || session?.effective?.effort;
     modelButton.replaceChildren(node("span", modelName), svgIcon(ICONS.chevron, { size: 12 }));
     modelButton.title = modelName + (effort ? " · " + effort : "");
-    modelButton.disabled = Boolean(session?.active || draft.sending);
+    modelButton.disabled = Boolean(session?.active || draft.sending || !context().state.authenticated);
     const permissions = draft.options?.permissions || session?.effective?.permissions;
     const mode = draft.options?.mode || session?.effective?.mode;
-    const modeName = mode === "plan" ? t("Lập kế hoạch") : ({ ":read-only": t("Chỉ đọc"), ":workspace": "Agent", ":danger-full-access": t("Toàn quyền") })[permissions] || t("Mặc định");
-    modeButton.replaceChildren(node("span", modeName), svgIcon(ICONS.chevron, { size: 12 }));
+    const modeName = mode === "plan" ? t("Lập kế hoạch") : ({ ":read-only": t("Chỉ đọc"), ":workspace": "Agent", ":danger-full-access": t("Toàn quyền") })[permissions] || (mode === "default" ? t("Làm việc") : t("Mặc định"));
+    modeButton.replaceChildren(svgIcon(mode === "plan" ? "M5 6h14M5 12h14M5 18h9" : "m12 3 8 4v5c0 4-4 7-8 9-4-2-8-5-8-9V7z", { size: 13 }), node("span", modeName), svgIcon(ICONS.chevron, { size: 12 }));
     modeButton.title = t("Chế độ và quyền · ") + modeName; modeButton.disabled = Boolean(session?.active || draft.sending);
     addButton.disabled = Boolean(draft.uploading || draft.sending || session?.archived);
     attachButton.disabled = Boolean(draft.uploading || draft.sending || session?.archived);
+    for (const item of popup.querySelectorAll('[role="menuitemradio"]')) item.disabled = Boolean(session?.active || draft.sending);
     if (session?.usage) {
       const used = session.usage.last || 0, limit = session.usage.contextWindow;
       info.textContent = limit ? t("Ngữ cảnh: {0}% · {1} / {2} token", Math.min(100, Math.round(used / limit * 100)), used.toLocaleString(), limit.toLocaleString()) : t("Ngữ cảnh: {0} token", used.toLocaleString());

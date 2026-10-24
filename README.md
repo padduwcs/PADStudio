@@ -65,7 +65,8 @@ Chat mở được nhiều tab cùng lúc: bấm biểu tượng **Cuộc trò c
 chuyển hoặc đóng tab không dừng Agent. Chọn project để xem không thay cuộc trò chuyện. Model nằm gọn trong ô nhập.
 Kéo đường phân cách cạnh chat để đổi chiều rộng; nhấp đúp để đặt lại. Giao diện nhớ kích thước đã chọn.
 Khung chat dùng bố cục quen thuộc của Codex trong VS Code. Nút **+** trong ô nhập thêm ảnh/file (tối đa 10 MB/file) hoặc tham chiếu file/skill.
-Model và chế độ/quyền nằm cùng nhóm dưới ô nhập, nút gửi ở mép phải. Vào **… → Cài đặt Codex** để xem cài đặt, mức sử dụng và phím tắt.
+**+** và chế độ/quyền ở bên trái dưới ô nhập; model và nút gửi ở bên phải. Bấm model để chọn trực tiếp model/mức suy luận; menu cùng màu giao diện,
+có dấu tích và hỗ trợ phím mũi tên, Enter, Esc. Vào **… → Cài đặt Codex** để xem cài đặt, mức sử dụng và phím tắt.
 Menu **…** có đổi tên, tìm, phân nhánh và lưu trữ; **Thêm thao tác…** chứa thu gọn ngữ cảnh và xuất hội thoại. Mặc định giữ cấu hình Codex sẵn có.
 Sửa tin nhắn/gửi lại tạo nhánh riêng và giữ hội thoại gốc; các file trên máy không được hoàn tác. Nút lịch sử cũng mở lại hội thoại CLI/VS Code
 trong cùng thư mục. Gõ `/help` để xem lệnh nhanh và phím tắt. File đính kèm chat không tự trở thành tư liệu của project.

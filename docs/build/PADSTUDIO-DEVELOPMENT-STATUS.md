@@ -1,6 +1,6 @@
 # PADStudio — trạng thái phát triển
 
-Cập nhật: **2026-10-24** (launcher chat cấu hình máy để kết nối qua PADSwitcher; xem mục “Chat trong PADStudio”). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
+Cập nhật: **2026-10-24** (menu chat theo bố cục Codex trong VS Code; launcher máy kết nối qua PADSwitcher; xem mục “Chat trong PADStudio”). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
 
 Đây là điểm vào ngắn để biết codebase đang ở đâu. PADStudio vẫn đang được xây dựng và chỉnh
 chu; các báo cáo có chữ `completion`, tên đợt hoặc số phiên bản ghi lại một mốc nghiệm thu kỹ
@@ -36,6 +36,15 @@ Các baseline cũ sau đây là lịch sử tại ngày ghi nhận.
 
 ## Chat trong PADStudio — 2026-10-24
 
+- Composer đặt **+ / chế độ** bên trái, **model / gửi** bên phải; model mặc định hiển thị tên từ runtime. Model/effort/mode/quyền chọn trực tiếp
+  trong menu cùng theme, không dùng select model native hoặc form trung gian. Menu **+** và **…** gọn, có điều hướng mũi tên/Home/End/gõ đầu tên,
+  Enter/Esc/Tab và trả focus đúng chỗ. Chỉ các giá trị người dùng chọn mới ghi vào draft; đổi model xóa effort cũ.
+  `chat:ui:test`, `chat:ui:features-test`, `workspace:ui:test` passed; kiểm menu sáng/tối 320–1440 px, tương phản chữ ≥4.5:1, cuộn hết lựa chọn,
+  bản nháp cao/file trên cửa sổ 390×420 px, reload lựa chọn và exact prompt/native params. 31 test chat/i18n pass; `npm run check` sạch.
+  Browser live mở menu từ catalog PADSwitcher ở 390/1440 px, hai theme: 8 mục model gồm mặc định, không có select native/lỗi JS/HTTP;
+  5 hội thoại và native thread ID giữ nguyên qua restart. Process con của observer là `PADCodex.exe`; không gửi prompt hoặc gọi model để kiểm tra UI.
+  Đợt UI này không chạy lại full Node suite; số liệu baseline full suite giữ nguyên.
+
 - Launcher máy lấy từ env tường minh hoặc `chat.codexPath` trong `padstudio.local.json`; không đọc lỗi cấu hình media vào đường khởi động chat.
   Đã lưu helper PADSwitcher cho máy hiện tại, giữ nguyên các section khác; đường dẫn không commit và không chỉnh qua browser.
   Các client không có cấu hình vẫn dùng Codex native/npm như trước. Không có fallback khi launcher chỉ định không dùng được.
@@ -69,7 +78,7 @@ Các baseline cũ sau đây là lịch sử tại ngày ghi nhận.
   header thấp, **+** thêm nội dung, mode/quyền và model cạnh ô nhập; một tab thì ẩn tab bar, tên hội thoại ở header. Lịch sử gộp một danh sách,
   thao tác phụ và thống kê chỉ nằm trong menu. Màu/font cùng PADStudio. Desktop kéo divider để đổi chiều rộng, nhớ lựa chọn,
   hỗ trợ bàn phím và nhấp đúp đặt lại; phần video co giãn theo diện tích còn lại. Mobile là dialog toàn màn hình.
-- Cột hội thoại/vùng nhập khớp hai mép khi resize (tối đa 720 px), model và mode nằm cùng nhóm; cài đặt nằm trong **…**.
+- Cột hội thoại/vùng nhập khớp hai mép khi resize (tối đa 720 px), model ở bên phải và mode bên trái dưới ô nhập; cài đặt nằm trong **…**.
   Menu bám nút nguồn và tránh ô nhập, kể cả nhiều dòng/file; viewer căn giữa phần còn lại ở màn hình lớn. Browser kiểm hình học 320–1920 px,
   hai giới hạn resize, căn hàng nút và menu với draft cao/attachments.
 - Bỏ route tạo project, import Resource, gắn mốc video và callbacks đổi chat theo project. Upload chỉ là file đính kèm chat. Dữ liệu chat cũ giữ nguyên ở đường dẫn cũ,

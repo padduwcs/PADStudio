@@ -92,7 +92,11 @@ biến môi trường tường minh luôn có ưu tiên cao hơn. Browser không
   chỉ upload có giới hạn 14 MiB cho base64. SSE heartbeat/coalescing, ngắt slow consumer; chống iframe bằng CSP và X-Frame-Options.
 - [`chat-view.js`](../../ui/chat-view.js) giữ tab/transcript/composer, [`chat-controls.js`](../../ui/chat-controls.js) giữ menu hành động,
   lịch sử, thiết lập, tham chiếu, upload và tìm trong chat. Bố cục theo sidebar Codex trong VS Code: header gọn, ô nhập có **+**, mode/quyền và model/effort
-  nằm cùng một nhóm, nút gửi tròn ở mép phải. Header có chat mới, lịch sử, menu phụ và đóng; cài đặt ở menu phụ. Một tab thì ẩn thanh tab, hiện tên hội thoại ở header.
+  chia hai bên: **+** và mode/quyền bên trái, model/effort và nút gửi tròn bên phải. Header có chat mới, lịch sử, menu phụ và đóng; cài đặt ở menu phụ. Một tab thì ẩn thanh tab, hiện tên hội thoại ở header.
+- Model/effort/mode/quyền chọn trực tiếp qua menu radio lấy catalog runtime, không có select model native hoặc form Model/Close/Model.
+  Tên model mặc định trên composer lấy từ runtime; lựa chọn “Mặc định” không tự gửi override. Đổi model xóa effort đã chọn của model trước.
+  Menu **+**, **…**, settings/advanced/help dùng điều hướng bàn phím chung: mũi tên, Home/End, gõ đầu tên, Enter/Space, Esc trả focus nút nguồn, Tab thoát.
+  Chọn giá trị đóng menu và focus ô nhập. Chữ/menu cùng theme; browser test kiểm độ tương phản ≥4.5:1 và cuộn tới mọi lựa chọn trên màn hình nhỏ.
 - Transcript và vùng nhập dùng chung cột tối đa 720 px, lề 20 px (16 px khi màn hình ≤600 px); trừ chính xác bề rộng scrollbar để hai mép cột khớp nhau.
   Vùng nhập gom câu hỏi, trạng thái, thông báo, composer và tên thư mục thành một cụm. Viewer căn giữa diện tích còn lại khi màn hình lớn.
   Menu bám nút nguồn và tự đặt trên toàn bộ composer khi có nhiều dòng/attachments; ResizeObserver cập nhật khi đổi kích thước, không chồng lên ô nhập.

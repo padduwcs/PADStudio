@@ -57,7 +57,6 @@ export function createChatPanel({ root, toggle }) {
   tabBar.append(tabs); tabBar.hidden = true;
   const menu = node("div", undefined, "chat-menu"); menu.hidden = true; menu.setAttribute("aria-label", t("Lịch sử trò chuyện"));
   const connection = node("div", undefined, "chat-connection");
-  const model = node("select", undefined, "select select-quiet"); model.id = "chat-model"; model.setAttribute("aria-label", t("Model của agent"));
   const history = node("div", undefined, "chat-history"); history.id = "chat-history"; history.setAttribute("role", "tabpanel"); history.setAttribute("aria-label", t("Lịch sử trò chuyện")); history.tabIndex = 0;
   const empty = node("div", undefined, "chat-empty");
   empty.append(node("span", t("Bạn muốn làm gì?"), "chat-empty-title"));
@@ -89,11 +88,12 @@ export function createChatPanel({ root, toggle }) {
   const composerTools = node("div", undefined, "chat-composer-tools");
   controls.append(stop, submit); composerActions.append(composerTools, controls);
   composer.append(inputLabel, input, composerActions);
-  extras = createChatControls({ root, composer, input, model, context: () => ({ state, session, id: conversationId, draft: draft(), openTabs }), post, endpoint, save: saveDraft,
+  extras = createChatControls({ root, composer, input, context: () => ({ state, session, id: conversationId, draft: draft(), openTabs }), post, endpoint, save: saveDraft,
     update: updateControls, notice: setNotice, adopt: adoptConversation, apply: acceptSession, activate: activateTab, newConversation, dismissHistory: dismissMenu });
   openNativeHistory = extras.addHistory(menu);
   headActions.insertBefore(newChat, historyButton); headActions.insertBefore(extras.moreButton, closeButton);
-  composerTools.append(extras.addButton, extras.modeButton, extras.modelButton);
+  composerTools.append(extras.addButton, extras.modeButton);
+  controls.prepend(extras.modelButton);
   composer.prepend(extras.attachmentList); composer.append(extras.picker);
   const workspace = node("div", undefined, "chat-workspace"); workspace.append(svgIcon("M3 7h6l2-3h10v16H3z", { size: 13 }), folderName);
   const dock = node("div", undefined, "chat-dock"); dock.append(requests, status, noticeBox, composer, workspace);
@@ -168,7 +168,7 @@ export function createChatPanel({ root, toggle }) {
 
   function saveDraft(explicit = null, id = draftKey()) {
     if (explicit && typeof explicit.text === "string") { persistDraft(explicit, id); if (id === draftKey()) updateControls(); return; }
-    const value = draft(); value.text = input.value; value.model = model.value;
+    const value = draft(); value.text = input.value;
     persistDraft(value, draftKey());
     updateControls();
   }
@@ -300,7 +300,6 @@ export function createChatPanel({ root, toggle }) {
     submit.disabled = sending || uploading || !online || !state.connected || !state.authenticated || !session || session.archived || waiting || !hasInput;
     submit.title = sending ? t("Đang gửi…") : session?.active ? t("Gửi bổ sung") : t("Gửi tin nhắn"); submit.setAttribute("aria-label", submit.title);
     stop.hidden = !session?.active; stop.disabled = sending || !online;
-    model.disabled = Boolean(session?.active) || sending;
     status.textContent = !online ? t("Mất kết nối. Đang thử kết nối lại…") : uploading ? t("Đang đính kèm file…") : session?.archived ? t("Hội thoại đã lưu trữ. Mở menu để khôi phục.") : sending ? t("Đang gửi yêu cầu…")
       : waiting ? t("Đang chờ bạn trả lời") : session?.active ? t("Agent đang làm việc…") : state.authenticated ? t("Sẵn sàng") : t("Kết nối Codex để bắt đầu");
     root.classList.toggle("is-working", Boolean(session?.active));
@@ -325,12 +324,7 @@ export function createChatPanel({ root, toggle }) {
         try { acceptStatus((await post("/api/chat/login", {})).status); } catch (error) { setNotice(error.message); }
       }, "button button-soft"));
     }
-    const value = draft().model || "";
-    model.replaceChildren();
-    const defaultOption = node("option", t("Mặc định của Codex")); defaultOption.value = ""; model.append(defaultOption);
-    for (const entry of state.models ?? []) { const option = node("option", entry.name); option.value = entry.id; model.append(option); }
-    if ([...model.options].some((option) => option.value === value)) model.value = value;
-    model.hidden = !state.authenticated; extras?.refresh();
+    extras?.refresh();
     updateControls();
   }
 
@@ -604,7 +598,6 @@ export function createChatPanel({ root, toggle }) {
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (!submit.disabled) composer.requestSubmit(); }
   });
-  model.addEventListener("change", () => { if (draft().options) delete draft().options.effort; saveDraft(); extras.closePopup(); extras.refresh(); input.focus(); });
   history.addEventListener("scroll", () => { if (history.scrollHeight - history.scrollTop - history.clientHeight < 100) jump.hidden = true; });
   root.addEventListener("keydown", (event) => {
     if (event.key === "Escape") { event.preventDefault(); if (extras.closePopup(true)) return; if (!menu.hidden) { dismissMenu(); historyButton.focus(); } else close(); }

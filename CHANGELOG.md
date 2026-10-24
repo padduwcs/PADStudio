@@ -4,6 +4,10 @@ Theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Các bản phát 
 
 ## [Chưa phát hành]
 
+- Chỉnh chat gần bố cục Codex trong VS Code hơn: **+ / chế độ** bên trái và **model / gửi** bên phải, menu **+** và **…** gọn.
+  Thay form/select model native bằng menu chọn trực tiếp cùng màu sáng/tối, dấu tích và mức suy luận trong cùng menu.
+  Hỗ trợ mũi tên, gõ đầu tên, Enter, Esc và Tab; chọn xong quay lại ô nhập. Sửa danh sách model trắng khó đọc trên nền tối.
+
 - Lưu launcher chat vào `chat.codexPath` trong cấu hình máy để dùng helper PADSwitcher qua các lần mở lại.
   `PADSTUDIO_CODEX_PATH` có ưu tiên cao hơn; launcher lỗi không tự fallback sang Codex trực tiếp. Browser không xem/sửa đường dẫn này.
   Không đổi prompt, cwd hoặc hội thoại; cấu hình media và khóa API được giữ nguyên.
@@ -16,7 +20,7 @@ Theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Các bản phát 
 - Bố trí lại thanh trên: logo và nhóm Dự án/Công cụ bên trái, Trò chuyện và sáng/tối bên phải. Nút đang mở dùng màu nhấn của studio.
   Màn hình nhỏ có hàng điều hướng riêng, luôn giữ nhãn chữ và vùng bấm đủ rộng; bố cục ổn định khi mở hoặc resize chat.
 
-- Căn lại bố cục chat: hội thoại, ô nhập và tên thư mục dùng cùng một cột khi resize; model/chế độ nằm cùng nhóm, cài đặt gom vào **…**.
+- Căn lại bố cục chat: hội thoại, ô nhập và tên thư mục dùng cùng một cột khi resize; các lựa chọn nằm dưới ô nhập, cài đặt gom vào **…**.
   Menu bám nút nguồn và tự tránh ô nhập khi có nhiều dòng/file. Trang video căn giữa diện tích còn lại trên màn hình lớn.
 
 - **Khung chat quen thuộc như sidebar Codex trong VS Code:** header gọn, một tab thì ẩn thanh tab, **+** gom ảnh/file/tham chiếu;

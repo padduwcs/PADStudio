@@ -75,7 +75,8 @@ Chat độc lập với project đang xem. Một hội thoại có thể làm nh
 ngữ cảnh vào prompt. Tải lại trang không gửi lại tin nhắn. Bấm biểu tượng **Cuộc trò chuyện mới** trên thanh đầu để mở thêm cuộc trò chuyện song song, mỗi tab giữ bản nháp riêng.
 Bấm **×** để đóng tab; Agent vẫn tiếp tục làm, và nút lịch sử ở góc trên mở lại tab đó.
 Khung chat bố trí như sidebar Codex trong VS Code. Bấm **+** trong ô nhập để thêm ảnh/file (tối đa 10 MB/file) hoặc tham chiếu file/skill;
-bạn vẫn có thể kéo file vào ô nhập hoặc dán ảnh. Model và chế độ/quyền nằm cùng nhóm dưới ô nhập, nút gửi ở mép phải. Mặc định kế thừa cấu hình Codex đang có.
+bạn vẫn có thể kéo file vào ô nhập hoặc dán ảnh. **+** và chế độ/quyền ở bên trái dưới ô nhập; model và nút gửi ở bên phải. Bấm model để chọn model/mức suy luận trực tiếp.
+Menu có dấu tích, theo màu sáng/tối và dùng được bằng mũi tên, Enter, Esc; Tab thoát menu. Mặc định kế thừa cấu hình Codex đang có.
 Menu **…** có đổi tên, tìm trong chat, phân nhánh và lưu trữ/khôi phục; **Thêm thao tác…** chứa thu gọn và xuất Markdown/JSON.
 Vào **… → Cài đặt Codex** để xem cài đặt, mức sử dụng hoặc phím tắt. Khi chỉ mở một tab, thanh tab được ẩn; tên hội thoại nằm ở thanh đầu.
 Sửa tin hoặc gửi lại câu trả lời tạo nhánh riêng, giữ hội thoại gốc; không hoàn tác file. Nút lịch sử còn mở được hội thoại CLI/VS Code

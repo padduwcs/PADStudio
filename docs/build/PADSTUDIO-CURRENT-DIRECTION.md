@@ -35,6 +35,8 @@ phân nhánh, sửa/gửi lại và xuất hội thoại. File chat nằm ngoài
 giữ hội thoại gốc và không hoàn tác file. Menu gom các thao tác ít dùng; khung chat vẫn kéo đổi kích thước và hoạt động độc lập với viewer.
 
 Theo yêu cầu làm quen với VS Code, giao diện chat dùng bố cục sidebar Codex: header gọn, **+** thêm nội dung, mode/quyền và model cạnh ô nhập.
+**+** và mode/quyền ở bên trái; model và gửi ở bên phải. Model/effort/mode/quyền chọn trực tiếp trong menu cùng theme, có dấu tích và điều hướng bàn phím;
+không mở form thiết lập trung gian hoặc select model native.
 Các thao tác phụ/thống kê nằm trong menu, lịch sử local/native chỉ có một danh sách. Một tab thì ẩn thanh tab, nhiều tab vẫn đổi qua lại độc lập.
 Đây là thay đổi cách trình bày, không thêm prompt, workflow, ngữ cảnh project hay thay cấu hình mặc định của agent.
 

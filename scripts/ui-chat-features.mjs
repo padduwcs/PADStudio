@@ -10,6 +10,15 @@ import { launchBrowser } from "./lib/browser.mjs";
 
 const cwd = await mkdtemp(join(tmpdir(), "padstudio-chat-features-ui-"));
 const client = new FixtureCodex({ automatic: true }); const chat = new ChatService({ cwd, client });
+const nativeRequest = client.request.bind(client);
+client.request = async (method, params) => {
+  const result = await nativeRequest(method, params);
+  if (method === "model/list") {
+    result.data[0].displayName = "GPT-6.1-Sol";
+    for (const [index, name] of ["GPT-6-Astra", "GPT-6-Sol", "GPT-6-Luna", "GPT-5.6-Sol", "GPT-5.6-Terra", "GPT-5.6-Luna"].entries()) result.data.push({ ...result.data[0], model: "model-" + index, displayName: name, isDefault: false });
+  }
+  return result;
+};
 const server = createPadStudioServer({ reader: new ProjectReader(join(cwd, ".padstudio", "projects")), chat });
 await new Promise((done) => server.listen(0, "127.0.0.1", done)); const origin = `http://127.0.0.1:${server.address().port}`;
 const browser = await launchBrowser(); const { page } = browser;
@@ -18,7 +27,7 @@ const downloads = join(shots, "downloads"); await mkdir(downloads, { recursive: 
 const click = (selector) => page.evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
 const text = (selector, value) => page.waitFor(`document.querySelector(${JSON.stringify(selector)})?.textContent.includes(${JSON.stringify(value)})`);
 const fill = (selector, value) => page.evaluate(`(() => { const element = document.querySelector(${JSON.stringify(selector)}); element.value = ${JSON.stringify(value)}; element.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-const choose = (selector, value) => page.evaluate(`(() => { const element = document.querySelector(${JSON.stringify(selector)}); element.value = ${JSON.stringify(value)}; element.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+const choice = (key, value) => `#chat-popover [data-choice="${key}"][data-value="${value}"]`;
 const idle = () => page.waitFor("document.querySelector('#chat-status').textContent === 'Sẵn sàng'");
 async function send(message) {
   await fill("#chat-input", message); await page.waitFor("!document.querySelector('#chat-send').disabled");
@@ -29,6 +38,13 @@ const selected = () => page.evaluate("document.querySelector('#chat-tabs [aria-s
 async function pointerClick(selector) {
   const point = await page.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
   for (const type of ["mousePressed", "mouseReleased"]) await page.send("Input.dispatchMouseEvent", { type, ...point, button: "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 1 });
+}
+async function key(key, code, number, textValue) {
+  for (const type of ["keyDown", "keyUp"]) await page.send("Input.dispatchKeyEvent", { type, key, code, windowsVirtualKeyCode: number, ...(type === "keyDown" && textValue ? { text: textValue } : {}) });
+}
+function contrast(foreground, background) {
+  const luminance = value => value.match(/[\d.]+/g).slice(0,3).map(Number).map(channel => { const x=channel/255; return x<=0.04045 ? x/12.92 : ((x+0.055)/1.055)**2.4; }).reduce((sum,channel,index)=>sum+channel*[0.2126,0.7152,0.0722][index],0);
+  const colors=[luminance(foreground),luminance(background)].sort((a,b)=>b-a); return (colors[0]+0.05)/(colors[1]+0.05);
 }
 async function more(label) {
   await click("#chat-more");
@@ -49,12 +65,48 @@ try {
   await pointerClick("#chat-add"); await pointerClick("#chat-reference"); await page.waitFor("document.activeElement.id === 'chat-file-search'");
   await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
   assert.equal(await page.evaluate("document.querySelector('#chat-popover').hidden && document.activeElement.id === 'chat-add'"), true, "nested picker closes to its visible composer trigger");
-  await pointerClick("#chat-model-button"); await choose("#chat-model", "fixture-model");
+  assert.equal(await page.evaluate("document.querySelector('#chat-model-button').textContent"), "GPT-6.1-Sol", "the composer shows the actual default model from Codex");
+  await pointerClick("#chat-model-button");
+  assert.equal(await page.evaluate("!!document.querySelector('#chat-popover select')"), false, "model choices never open an OS-native dropdown");
+  assert.equal(await page.evaluate("document.activeElement.dataset.choice === 'model' && document.activeElement.dataset.value === ''"), true);
+  await key("End", "End", 35); assert.equal(await page.evaluate("document.activeElement.dataset.value"), "high");
+  await key("Home", "Home", 36); assert.equal(await page.evaluate("document.activeElement.dataset.value"), "");
+  await key("g", "KeyG", 71, "g"); assert.equal(await page.evaluate("document.activeElement.dataset.value"), "fixture-model");
+  await key("Home", "Home", 36);
+  await key("ArrowDown", "ArrowDown", 40);
+  assert.equal(await page.evaluate("document.activeElement.dataset.value"), "fixture-model");
+  await key("Enter", "Enter", 13, "\r");
   assert.equal(await page.evaluate("document.querySelector('#chat-popover').hidden && document.activeElement.id === 'chat-input'"), true, "choosing a model returns focus to the prompt");
-  await click("#chat-model-button"); await choose("#chat-option-effort", "high"); await click("#chat-model-button");
-  await click("#chat-mode-button"); await choose("#chat-option-mode", "plan"); await choose("#chat-option-permissions", ":read-only");
-  assert.equal(await page.evaluate("!!document.querySelector('#chat-option-permissions option[value=\":danger-full-access\"]')"), false);
+  await click("#chat-model-button"); await pointerClick(choice("effort", "high"));
+  await click("#chat-model-button"); await pointerClick(choice("model", "fixture-model"));
+  await click("#chat-model-button");
+  assert.equal(await page.evaluate(`document.querySelector('${choice("effort", "high")}').getAttribute('aria-checked')`), "true", "selecting the current model preserves its explicit effort");
+  await click("#chat-model-button");
+  await click("#chat-model-button"); await pointerClick(choice("model", "model-0"));
+  assert.equal(await page.evaluate("document.querySelector('#chat-model-button').textContent"), "GPT-6-Astra");
+  await click("#chat-model-button");
+  assert.equal(await page.evaluate(`document.querySelector('${choice("effort", "")}').getAttribute('aria-checked')`), "true", "changing a model clears an explicit effort from the previous model");
+  await pointerClick(choice("model", ""));
+  assert.equal(await page.evaluate("document.querySelector('#chat-model-button').textContent"), "GPT-6.1-Sol");
+  await click("#chat-model-button"); await pointerClick(choice("model", "fixture-model"));
+  await click("#chat-model-button"); await pointerClick(choice("effort", "high"));
+  await click("#chat-mode-button"); await pointerClick(choice("mode", "plan"));
+  await click("#chat-mode-button"); await pointerClick(choice("permissions", ":read-only"));
+  await click("#chat-mode-button");
+  assert.equal(await page.evaluate(`!!document.querySelector('${choice("permissions", ":danger-full-access")}')`), false);
   await page.screenshot(join(shots, "settings-light.png")); await click("#chat-mode-button");
+  await page.evaluate("document.querySelector('#chat-model-button').focus()");
+  await key("ArrowDown", "ArrowDown", 40);
+  await page.waitFor("document.activeElement.dataset.choice === 'model'");
+  await key("Escape", "Escape", 27);
+  assert.equal(await page.evaluate("document.querySelector('#chat-popover').hidden && document.activeElement.id === 'chat-model-button'"), true);
+  await page.evaluate("document.querySelector('#chat-model-button').focus()"); await key("ArrowDown", "ArrowDown", 40);
+  await key("Tab", "Tab", 9);
+  assert.equal(await page.evaluate("document.querySelector('#chat-popover').hidden && document.activeElement.id !== 'chat-model-button'"), true, "Tab leaves a picker without trapping focus");
+  await click("#chat-more"); await page.waitFor("document.activeElement.getAttribute('role') === 'menuitem'");
+  await key("End", "End", 35); assert.equal(await page.evaluate("document.activeElement.id"), "chat-settings");
+  await key("Enter", "Enter", 13, "\r"); await page.waitFor("document.querySelector('#chat-popover').dataset.kind === 'settings'");
+  await key("Escape", "Escape", 27); assert.equal(await page.evaluate("document.activeElement.id"), "chat-more");
   // Use browser File/DataTransfer, exercising the same FileReader/upload path as the picker.
   await page.evaluate(`(() => {
     const transfer = new DataTransfer();
@@ -75,6 +127,11 @@ try {
   await page.viewport(390, 420, { mobile: true });
   await page.waitFor("(()=>{const panel=document.querySelector('#chat').getBoundingClientRect(),dock=document.querySelector('.chat-dock').getBoundingClientRect(),menu=document.querySelector('#chat-popover').getBoundingClientRect(),input=document.querySelector('#chat-composer').getBoundingClientRect();return dock.bottom<=panel.bottom+1&&menu.bottom<=input.top-6&&menu.top>=panel.top})()");
   await page.screenshot(join(shots, "menu-with-tall-draft-short-viewport.png"));
+  await click("#chat-model-button");
+  await page.waitFor("document.querySelector('#chat-popover').dataset.kind === 'model'");
+  await key("End", "End", 35);
+  assert.equal(await page.evaluate("(()=>{const menu=document.querySelector('#chat-popover').getBoundingClientRect(),item=document.activeElement.getBoundingClientRect();return item.top>=menu.top&&item.bottom<=menu.bottom&&menu.bottom<=document.querySelector('#chat-composer').getBoundingClientRect().top-6})()"),true,"the last model/effort choice stays reachable above a tall draft on a short screen");
+  await page.screenshot(join(shots, "model-with-tall-draft-short-viewport.png"));
   await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" }); await page.viewport(1440, 900);
   await fill("#chat-input", "  Đọc file tôi chọn, xem ảnh này.\n ");
   await page.goto(origin + "/?chat=1"); await idle();
@@ -119,11 +176,13 @@ try {
   await text("#chat-history", "Lịch sử có sẵn trên máy");
   const requestsBefore = client.calls.filter((call) => call.method === "turn/start").length;
   await send("/plan"); assert.equal(client.calls.filter((call) => call.method === "turn/start").length, requestsBefore);
-  await click("#chat-mode-button"); assert.equal(await page.evaluate("document.querySelector('#chat-option-mode').value"), "plan"); await click("#chat-mode-button");
+  await click("#chat-mode-button"); assert.equal(await page.evaluate(`document.querySelector('${choice("mode", "plan")}').getAttribute('aria-checked')`), "true"); await click("#chat-mode-button");
   await send("/compact");
   const compactDeadline = Date.now() + 5000;
   while (!client.calls.some((call) => call.method === "thread/compact/start")) { if (Date.now() > compactDeadline) throw new Error("Compact was not requested"); await new Promise((done) => setTimeout(done, 50)); }
-  await send("/help"); await text("#chat-popover", "Phím tắt và lệnh nhanh"); await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
+  await send("/help"); await text("#chat-popover", "Shift+Enter");
+  assert.equal(await page.evaluate("document.querySelector('#chat-popover').getAttribute('aria-label')"), "Phím tắt và lệnh nhanh");
+  await page.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape" });
 
   await fill("#chat-input", "[wait] Tạo đoạn mở đầu cho bộ phim về chiếc lá.");
   await page.evaluate("document.querySelector('#chat-composer').requestSubmit()"); await text("#chat-status", "Agent đang làm việc");
@@ -154,6 +213,12 @@ try {
         const selector = id === "chat-history-button" ? ".chat-menu" : "#chat-popover";
         assert.equal(await page.evaluate(`(() => {const r=document.querySelector('${selector}').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth+1&&r.top>=0&&r.bottom<=innerHeight+1})()`), true, `${id} fits ${width}`);
         if (["chat-model-button", "chat-mode-button", "chat-add"].includes(id)) assert.equal(await page.evaluate("document.querySelector('#chat-popover').getBoundingClientRect().bottom <= document.querySelector('#chat-composer').getBoundingClientRect().top - 6"), true, `${id} opens above the prompt at ${width}px`);
+        if (["chat-model-button", "chat-mode-button"].includes(id)) {
+          const colors=await page.evaluate("(()=>{const popup=document.querySelector('#chat-popover'),item=popup.querySelector('.chat-choice');return {foreground:getComputedStyle(item).color,background:getComputedStyle(popup).backgroundColor,selected:getComputedStyle(popup.querySelector('[aria-checked=true]')).backgroundColor,native:!!popup.querySelector('select')};})()");
+          assert.equal(colors.native,false); assert.ok(contrast(colors.foreground,colors.background)>=4.5 && contrast(colors.foreground,colors.selected)>=4.5, `readable picker text ${theme}/${width}: ${JSON.stringify(colors)}`);
+          const reachable=await page.evaluate("(()=>{const menu=document.querySelector('#chat-popover'),items=[...menu.querySelectorAll('[role=menuitemradio]')];return items.every(item=>{item.scrollIntoView({block:'nearest'});const a=item.getBoundingClientRect(),b=menu.getBoundingClientRect();return a.top>=b.top && a.bottom<=b.bottom;});})()");
+          assert.equal(reachable,true,`${id}: all choices reachable at ${width}px`);
+        }
         await click("#" + id);
       }
       await settings(); await page.screenshot(join(shots, `chat-settings-${theme}-${width}.png`));
@@ -163,7 +228,7 @@ try {
   assert.deepEqual(await readdir(join(cwd, ".padstudio")), ["chat"]);
   assert.deepEqual(page.errors, []); assert.deepEqual(page.consoleErrors, []);
   assert.equal(page.failed.some((entry) => /\/api\/chat\//.test(entry)), false, page.failed.join("\n"));
-  console.log("Chat features UI: passed (native options, image/file uploads, references/skills, reload, rename, edit/retry branches, export, archive, native CLI history, slash commands, streaming, Markdown and menus at 320/390/768/1440 px in both themes)");
+  console.log("Chat features UI: passed (themed model/mode/permission pickers, keyboard selection/focus/Tab/Esc, readable contrast, native options, image/file uploads, references/skills, reload, edit/retry branches, export, archive, history, streaming, Markdown and menus at 320/390/768/1440 px in both themes)");
 } catch (error) {
   await page.screenshot(join(shots, "failure.png")).catch(() => {}); console.error("Browser errors:", page.errors); throw error;
 } finally {
