@@ -38,6 +38,8 @@ Các baseline cũ sau đây là lịch sử tại ngày ghi nhận.
 
 - Màn hình chờ ở trang gốc khi chưa chọn project; bỏ khôi phục localStorage và tự chọn mới nhất. Logo quay về chờ, giữ chat;
   project mới chỉ cập nhật thư viện, project mất khỏi danh sách không kéo viewer sang project khác. Link có `project` vẫn mở trực tiếp.
+  Cụm nội dung căn giữa cả hai chiều trong vùng dưới header, gồm trường hợp mở chat; hai nút chính bằng nhau và xếp dọc trên điện thoại.
+  Browser kiểm cân giữa ở 320–1920 px, hai locale/theme, và cuộn tới từng nút được ở cửa sổ thấp 390×420 px.
 - VI/EN gồm shell/chat/thư viện/viewer/công cụ và metadata trạng thái của ứng dụng, dùng catalog chung; không dịch dữ liệu hoặc truyền locale vào agent.
   Đổi ngôn ngữ reload UI, nhớ preference/URL, khôi phục tab/draft/resize và giữ các lượt đang chạy. Chẩn đoán native giữ nguyên.
   Hai unit test kiểm locale/fallback/nội suy và placeholder; browser `workspace:ui:test` kiểm hai chat chạy đồng thời khi tạo project,

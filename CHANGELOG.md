@@ -7,6 +7,7 @@ Theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Các bản phát 
 - Thêm **VI / EN** cho giao diện, nhớ ngôn ngữ trên trình duyệt; prompt, nội dung chat và dữ liệu dự án giữ nguyên.
   Trang gốc nay có màn hình chờ với **Trò chuyện với Codex / Mở dự án**; logo quay về trang này. Không tự chọn dự án gần nhất hoặc tự mở
   dự án mới do Agent tạo. Nhiều chat vẫn làm việc độc lập khi đang ở màn hình chờ hoặc đang xem một dự án khác.
+  Màn hình chờ căn giữa vùng còn lại dưới thanh trên, kể cả khi mở chat; hai nút chính bằng nhau, xếp dọc trên điện thoại.
 
 - Bố trí lại thanh trên: logo và nhóm Dự án/Công cụ bên trái, Trò chuyện và sáng/tối bên phải. Nút đang mở dùng màu nhấn của studio.
   Màn hình nhỏ có hàng điều hướng riêng, luôn giữ nhãn chữ và vùng bấm đủ rộng; bố cục ổn định khi mở hoặc resize chat.

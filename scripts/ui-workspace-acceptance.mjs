@@ -53,6 +53,13 @@ async function geometry(label) {
       labels:[...document.querySelectorAll('.topbar .button-label')].every(e=>r(e).width>0)};
   })()`);
   assert.ok(result.overflow<=1 && result.contained && !result.overlap && result.targets && result.tagline && result.labels, `${label}: ${JSON.stringify(result)}`);
+  const welcome = await page.evaluate(`(() => {
+    const home=document.querySelector('#welcome').getBoundingClientRect(),main=document.querySelector('#main').getBoundingClientRect();
+    const actions=[...document.querySelectorAll('.welcome-actions button')].map(e=>e.getBoundingClientRect());
+    return {x:Math.abs((home.left+home.right-main.left-main.right)/2),y:Math.abs((home.top+home.bottom-main.top-main.bottom)/2),
+      buttons:Math.abs(actions[0].width-actions[1].width),overlap:actions[0].right>actions[1].left&&actions[0].bottom>actions[1].top};
+  })()`);
+  assert.ok(welcome.x<1 && welcome.y<1 && welcome.buttons<1 && !welcome.overlap, `${label}: home is centered with balanced actions: ${JSON.stringify(welcome)}`);
 }
 
 try {
@@ -133,6 +140,12 @@ try {
         await geometry(`${locale}/${theme}/${width}`);
         if ([320,390,901,1440].includes(width)) await page.screenshot(join(shots, `home-${locale}-${theme}-${width}.png`));
       }
+      await page.viewport(390,420,{mobile:true});
+      await geometry(`${locale}/${theme}/short home`);
+      for (const selector of ['#welcome-chat','#welcome-projects','#welcome-tools']) {
+        const reachable=await page.evaluate(`(() => {const button=document.querySelector('${selector}');button.scrollIntoView({block:'center'});const r=button.getBoundingClientRect();return r.top>=document.querySelector('#topbar').getBoundingClientRect().bottom && r.bottom<=innerHeight;})()`);
+        assert.equal(reachable,true,`${locale}/${theme}: ${selector} remains reachable on a short viewport`);
+      }
     }
     await click("#tools-button");
     await page.waitFor("document.querySelector('#tools .tools-summary')");
@@ -145,6 +158,7 @@ try {
     await click("[data-tools-close]");
     await page.viewport(1440,900); await click("#welcome-chat");
     await page.waitFor("document.querySelectorAll('#chat-tabs [role=tab]').length === 2");
+    await geometry(`${locale}/home with chat open`);
     await click("#chat-more");
     await page.screenshot(join(shots, `chat-${locale}-desktop.png`));
     if (locale === "en") assert.ok(await page.evaluate("document.querySelector('#chat-popover').textContent.includes('Rename')"));
