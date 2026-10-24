@@ -40,26 +40,30 @@ npm run padstudio:doctor
 npm run observer:ensure
 ```
 
-**3. Click Trò chuyện (Chat) in PADStudio.** The built-in client uses Codex CLI on your machine. Install Codex and sign in with ChatGPT
+The base URL opens a home screen: choose **Open a project** or **Chat with Codex**. Click the logo to return home.
+New projects only update the library; they never replace the home screen or your selected project. Links with `?project=<id>` open that project directly.
+Choose **VI / EN** in the top bar for Vietnamese or English. The browser remembers the choice; prompts, conversations and project names stay unchanged.
+
+**3. Click Chat in PADStudio.** The built-in client uses Codex CLI on your machine. Install Codex and sign in with ChatGPT
 when prompted; an existing Codex login is reused. Chat opens in the PADStudio folder, like Codex in VS Code. Send a normal prompt;
 conversations are independent of the project viewer and can create or work on several video projects:
 
 > Make a 90-second vertical video explaining why the sky is blue, narrated in Vietnamese, for middle-school students.
 
 **4. Watch, give feedback, accept.** Choose a project in the library to watch it. To change one spot, pause there, click
-**Sao chép mốc phản hồi** (*copy feedback anchor*) and paste it into your chosen conversation. When you are happy, identify the exact version,
+**Copy feedback reference** and paste it into your chosen conversation. When you are happy, identify the exact version,
 say "accept" (in Vietnamese: "chốt") and download the accepted video.
 
 Open several conversations at once: **New conversation** in the header creates a tab, **×** closes it, and history reopens it. Each tab keeps its own draft;
 switching or closing tabs leaves agents running. Switching the viewed video project does not switch conversations. Model selection sits in the composer.
 The chat follows the familiar Codex VS Code sidebar layout. Use **+** inside the composer for images/files (10 MB each) and file/skill references.
-Model and mode controls sit together below the prompt, with Send on the right. Open **… → Cài đặt Codex** for settings, usage and shortcuts.
-The **…** menu includes rename, search, fork and archive; **Thêm thao tác…** contains compact and export. Defaults inherit your Codex configuration.
+Model and mode controls sit together below the prompt, with Send on the right. Open **… → Codex settings** for settings, usage and shortcuts.
+The **…** menu includes rename, search, fork and archive; **More actions…** contains compact and export. Defaults inherit your Codex configuration.
 Edit/retry creates a branch and preserves the original conversation; it does not undo files. History can also reopen
 CLI/VS Code threads in this folder. Type `/help` for shortcuts. Chat attachments are not automatically imported into video projects.
 Drag the chat divider to resize it; double-click to reset. Your chosen width is remembered. Reopening the
 page never automatically resends an agent turn. Chat uses the connected Codex account's allowance. External hosts such as Claude Code
-remain supported: open them in this folder, let them read [`AGENTS.md`](AGENTS.md), and use **Sao chép mốc phản hồi** to copy feedback anchors.
+remain supported: open them in this folder, let them read [`AGENTS.md`](AGENTS.md), and use **Copy feedback reference** to copy feedback anchors.
 
 <p align="center"><img src="docs/images/video-dark.png" alt="Observer page: play the video, download the accepted version and jump to each segment" width="760" /></p>
 

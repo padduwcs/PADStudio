@@ -1,6 +1,6 @@
 # PADStudio — trạng thái phát triển
 
-Cập nhật: **2026-10-24** (bố cục chat theo sidebar Codex trong VS Code và thanh điều hướng của studio; xem mục “Chat trong PADStudio”). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
+Cập nhật: **2026-10-24** (giao diện VI/EN, màn hình chờ và chọn project chủ động; xem mục “Chat trong PADStudio”). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
 
 Đây là điểm vào ngắn để biết codebase đang ở đâu. PADStudio vẫn đang được xây dựng và chỉnh
 chu; các báo cáo có chữ `completion`, tên đợt hoặc số phiên bản ghi lại một mốc nghiệm thu kỹ
@@ -26,7 +26,7 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 ## Baseline kiểm chứng
 
-Ngày **2026-10-24**, Node v24.18.1, Windows: `npm test` **474 tests: 473 pass, 0 fail, 1 skipped** (symlink, thiếu quyền Windows).
+Ngày **2026-10-24**, Node v24.18.1, Windows: `npm test` **476 tests: 475 pass, 0 fail, 1 skipped** (symlink, thiếu quyền Windows).
 `npm run check` sạch. `chat:ui:test`, `chat:ui:features-test`, `observer:ui:empty-test`, `observer:ui:live-test`, `observer:ui:tools-test` passed.
 Live Codex CLI 0.163.0: input ảnh, explicit effort/mode/quyền, rename/history, fork trước lượt, export và archive/restore dùng API gốc.
 Không gọi công cụ/provider media; thread thử được lưu trữ. Test tự động không gọi model. Browser kiểm chức năng mới lẫn nhiều tab, draft,
@@ -35,6 +35,13 @@ Baseline trước đợt bổ sung là 464 tests/463 pass/1 skip; trước khi b
 Các baseline cũ sau đây là lịch sử tại ngày ghi nhận.
 
 ## Chat trong PADStudio — 2026-10-24
+
+- Màn hình chờ ở trang gốc khi chưa chọn project; bỏ khôi phục localStorage và tự chọn mới nhất. Logo quay về chờ, giữ chat;
+  project mới chỉ cập nhật thư viện, project mất khỏi danh sách không kéo viewer sang project khác. Link có `project` vẫn mở trực tiếp.
+- VI/EN gồm shell/chat/thư viện/viewer/công cụ và metadata trạng thái của ứng dụng, dùng catalog chung; không dịch dữ liệu hoặc truyền locale vào agent.
+  Đổi ngôn ngữ reload UI, nhớ preference/URL, khôi phục tab/draft/resize và giữ các lượt đang chạy. Chẩn đoán native giữ nguyên.
+  Hai unit test kiểm locale/fallback/nội suy và placeholder; browser `workspace:ui:test` kiểm hai chat chạy đồng thời khi tạo project,
+  không tự mở viewer, title trùng key dịch vẫn nguyên văn, prompt/answer giữ byte, reload, archive, 320–1920 px, sáng/tối, công cụ/menu chat.
 
 - Thanh trên chia logo/nhóm Dự án–Công cụ và nhóm Trò chuyện/sáng–tối; màn hình ≤900 px có hàng điều hướng riêng với nhãn chữ và nút cao 44 px.
   Style responsive của thanh trên nằm trong shell, không bị chat CSS ghi đè. Browser observer kiểm 320/390/768/900/901/1024/1440/1920 px,

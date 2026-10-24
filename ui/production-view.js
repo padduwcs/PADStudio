@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 import { ICONS, clock, formatDateTime, formatSize, node, relativeTime, resultFileUrl, svgIcon } from "./dom.js";
 
 // Which revision/render the viewer chose for each film, remembered while the page stays open.
@@ -12,7 +13,7 @@ const seconds = (value) => `${Math.round(value * 1000) / 1000}s`;
 export function previewClipDescription(preview) {
   const range = preview?.range;
   const frameRate = preview?.clip?.frameRate;
-  if (!range || !Number.isInteger(range.startFrame) || !Number.isInteger(range.endFrame)) return "Đoạn preview ngắn";
+  if (!range || !Number.isInteger(range.startFrame) || !Number.isInteger(range.endFrame)) return t("Đoạn preview ngắn");
   const frames = `frame ${range.startFrame}–${range.endFrame}`;
   if (!Number.isFinite(frameRate) || frameRate <= 0) return frames;
   return `${seconds(range.startFrame / frameRate)}–${seconds((range.endFrame + 1) / frameRate)} · ${frames}`;
@@ -67,7 +68,7 @@ function timecode(seconds) {
 
 // The segment of the exact timeline whose picture track covers `seconds`; the last segment owns its end.
 export function segmentAtTime(sequence, seconds) {
-  const rows = (sequence?.timeline ?? []).filter((item) => item.track === "Hình" && item.segmentId);
+  const rows = (sequence?.timeline ?? []).filter((item) => item.track === t("Hình") && item.segmentId);
   if (!rows.length || !Number.isFinite(seconds) || seconds < 0) return null;
   const row = rows.find((item) => seconds >= item.startSeconds && seconds < item.endSeconds) ??
     (seconds <= rows.at(-1).endSeconds ? rows.at(-1) : null);
@@ -94,7 +95,7 @@ export function feedbackAnchorText({ projectId, sequence, render, currentTime = 
   return parts.join(" · ");
 }
 
-const OUTCOME_LABELS = Object.freeze({ accepted: "Đã duyệt", changes_requested: "Cần sửa", rejected: "Đã loại" });
+const OUTCOME_LABELS = Object.freeze({ accepted: t("Đã duyệt"), changes_requested: t("Cần sửa"), rejected: t("Đã loại") });
 
 /**
  * What the viewer should read as "feedback" for the shown render: every decision about it, newest first, with
@@ -124,7 +125,7 @@ export function deliveryDownloads(delivery, projectId) {
     .filter((file) => file.available !== false &&
       (["video", "audio"].includes(file.mediaType?.split("/")[0]) || /\.(mp4|webm|mov|m4v|mp3|wav)$/i.test(file.name)))
     .map((file) => ({
-      label: /\.(mp3|wav)$/i.test(file.name) || file.mediaType?.startsWith("audio") ? "Tải âm thanh đã duyệt" : "Tải bản đã duyệt",
+      label: /\.(mp3|wav)$/i.test(file.name) || file.mediaType?.startsWith("audio") ? t("Tải âm thanh đã duyệt") : t("Tải bản đã duyệt"),
       url: resultFileUrl(projectId, bundle.id, file.id),
       name: file.name,
       sizeBytes: file.sizeBytes ?? null,
@@ -170,18 +171,18 @@ function stageFor(sequence, render, context, { players, caption = null, working 
     players.delete(url);
     video.controls = true; video.preload = "metadata"; video.playsInline = true;
     video.dataset.ui = "video";
-    video.setAttribute("aria-label", `${sequence.name} · Bản ${sequence.revision}`);
+    video.setAttribute("aria-label", t("{0} · Bản {1}", sequence.name, sequence.revision));
     if (video.getAttribute("src") !== url) video.src = url;
     const poster = render.files.find((file) => file.id === render.segments?.[0]?.frameFileId && file.available);
     if (poster) video.poster = resultFileUrl(context.projectId, render.resultId, poster.id);
     stage.append(video);
   } else if (render) {
     stage.classList.add("is-unavailable");
-    stage.append(node("p", "Video này không còn khả dụng.", "stage-note"));
+    stage.append(node("p", t("Video này không còn khả dụng."), "stage-note"));
   } else {
     stage.classList.add("is-unavailable");
     if (working) stage.classList.add("is-working");
-    stage.append(createBrandArtwork(), node("p", working ? "Video đang thành hình…" : "Phiên bản này chưa có bản dựng.", "stage-note"));
+    stage.append(createBrandArtwork(), node("p", working ? t("Video đang thành hình…") : t("Phiên bản này chưa có bản dựng."), "stage-note"));
   }
   holder.append(stage);
   if (caption) holder.append(node("figcaption", caption, "stage-caption"));
@@ -190,9 +191,9 @@ function stageFor(sequence, render, context, { players, caption = null, working 
 
 function anchorControl(context, sequence, render, video) {
   const box = node("div", undefined, "anchor");
-  const copy = button("Sao chép mốc phản hồi", "button button-quiet", ICONS.copy);
+  const copy = button(t("Sao chép mốc phản hồi"), "button button-quiet", ICONS.copy);
   copy.dataset.ui = "anchor";
-  copy.title = "Sao chép vị trí đang xem của đúng bản này để gửi cho Agent trong cuộc trò chuyện";
+  copy.title = t("Sao chép vị trí đang xem của đúng bản này để gửi cho Agent trong cuộc trò chuyện");
   const status = node("span", undefined, "anchor-status");
   status.setAttribute("role", "status");
   status.setAttribute("aria-live", "polite");
@@ -201,16 +202,16 @@ function anchorControl(context, sequence, render, video) {
     const at = video.currentTime;
     const value = feedbackAnchorText({ projectId: context.projectId, sequence, render, currentTime: at });
     const segment = at > 0 ? segmentAtTime(sequence, at) : null;
-    const where = at > 0 ? " tại " + clock(at) + (segment ? " · " + segment.title : "") : " cho cả video";
+    const where = at > 0 ? t(" tại ") + clock(at) + (segment ? " · " + segment.title : "") : t(" cho cả video");
     box.querySelector(".anchor-fallback")?.remove();
     try {
       await navigator.clipboard.writeText(value);
-      status.textContent = "Đã sao chép mốc" + where + ". Dán vào cuộc trò chuyện với Agent.";
+      status.textContent = t("Đã sao chép mốc") + where + t(". Dán vào cuộc trò chuyện với Agent.");
     } catch {
       const field = node("input", undefined, "anchor-fallback");
-      field.readOnly = true; field.value = value; field.setAttribute("aria-label", "Mốc phản hồi");
+      field.readOnly = true; field.value = value; field.setAttribute("aria-label", t("Mốc phản hồi"));
       box.append(field); field.focus(); field.select();
-      status.textContent = "Không tự sao chép được. Hãy sao chép mã bên dưới.";
+      status.textContent = t("Không tự sao chép được. Hãy sao chép mã bên dưới.");
     }
   });
   return box;
@@ -218,11 +219,11 @@ function anchorControl(context, sequence, render, video) {
 
 function chapterList(context, sequence, render, video) {
   const list = node("ol", undefined, "chapters");
-  list.setAttribute("aria-label", "Các đoạn trong video");
+  list.setAttribute("aria-label", t("Các đoạn trong video"));
   const items = [];
   let elapsed = 0;
   for (const segment of sequence.segments) {
-    const row = sequence.timeline?.find((item) => item.track === "Hình" && item.segmentId === segment.id);
+    const row = sequence.timeline?.find((item) => item.track === t("Hình") && item.segmentId === segment.id);
     const start = row?.startSeconds ?? elapsed;
     elapsed += segment.durationSeconds;
     const item = node("li");
@@ -267,14 +268,14 @@ function feedbackList(items, video) {
     const row = node("li", undefined, `feedback-item is-${entry.outcome}${entry.pending ? " is-pending" : ""}`);
     const head = node("div", undefined, "feedback-head");
     head.append(node("strong", entry.label));
-    if (entry.pending) head.append(node("span", "Chờ xử lý", "feedback-flag"));
-    else if (entry.outcome === "changes_requested") head.append(node("span", "Đã xử lý", "feedback-flag is-done"));
+    if (entry.pending) head.append(node("span", t("Chờ xử lý"), "feedback-flag"));
+    else if (entry.outcome === "changes_requested") head.append(node("span", t("Đã xử lý"), "feedback-flag is-done"));
     head.append(node("time", relativeTime(entry.createdAt), "feedback-time"));
     head.lastChild.title = formatDateTime(entry.createdAt);
     row.append(head);
     if (entry.note) row.append(node("p", entry.note, "feedback-note"));
     if (Number.isFinite(entry.startSeconds) && video) {
-      const jump = node("button", `Đến ${clock(entry.startSeconds)}`, "feedback-jump");
+      const jump = node("button", t("Đến {0}", clock(entry.startSeconds)), "feedback-jump");
       jump.type = "button";
       jump.addEventListener("click", () => { video.currentTime = entry.startSeconds; video.play().catch(() => {}); });
       row.append(jump);
@@ -292,13 +293,13 @@ function emptyTheatre(status, hasSources, onOpenSources) {
   const box = node("div", undefined, "theatre-empty");
   box.append(createBrandArtwork());
   const working = status?.kind === "working";
-  box.append(node("h2", working ? "Video đang thành hình" : "Chưa có video"));
+  box.append(node("h2", working ? t("Video đang thành hình") : t("Chưa có video")));
   box.append(node("p", working
-    ? "Bản xem thử sẽ xuất hiện ở đây ngay khi dựng xong."
-    : "Khi Agent dựng xong một bản xem thử, bạn sẽ xem nó ở đây."));
+    ? t("Bản xem thử sẽ xuất hiện ở đây ngay khi dựng xong.")
+    : t("Khi Agent dựng xong một bản xem thử, bạn sẽ xem nó ở đây.")));
   if (working) box.classList.add("is-working");
   if (hasSources) {
-    const open = button("Xem tư liệu", "button button-soft");
+    const open = button(t("Xem tư liệu"), "button button-soft");
     open.addEventListener("click", onOpenSources);
     box.append(open);
   }
@@ -332,14 +333,14 @@ function animationTheatre(context) {
   stage.append(video);
   holder.append(stage);
   const side = node("aside", undefined, "theatre-rail");
-  const info = rail(null, node("p", isPreview ? "Bản xem thử hoạt họa" : "Bản dựng hoạt họa", "rail-kicker"),
-    node("p", `Bản ${composition.revision} · ${composition.runtime}`, "rail-line"));
+  const info = rail(null, node("p", isPreview ? t("Bản xem thử hoạt họa") : t("Bản dựng hoạt họa"), "rail-kicker"),
+    node("p", t("Bản {0} · {1}", composition.revision, composition.runtime), "rail-line"));
   if (isPreview) {
     info.append(node("p", previewClipDescription(result), "rail-note"));
     const label = node("label", undefined, "toggle");
     const loop = node("input"); loop.type = "checkbox";
     loop.addEventListener("change", () => { video.loop = loop.checked; });
-    label.append(loop, node("span", "Lặp đoạn xem thử để so hình với tiếng"));
+    label.append(loop, node("span", t("Lặp đoạn xem thử để so hình với tiếng")));
     info.append(label);
   }
   side.append(info);
@@ -374,11 +375,11 @@ function filmTheatre(container, context, extras) {
     if (baselineRender) theatre.classList.add("is-comparing");
 
     const stages = node("div", undefined, "theatre-stages");
-    const main = stageFor(revision, render, { ...context }, { players, working: extras.status?.kind === "working", caption: baselineRender ? `Bản ${revision.revision}` : null });
+    const main = stageFor(revision, render, { ...context }, { players, working: extras.status?.kind === "working", caption: baselineRender ? t("Bản {0}", revision.revision) : null });
     stages.append(main.holder);
     let other = null;
     if (baselineRender) {
-      other = stageFor(baseline, baselineRender, { ...context }, { players, caption: `Bản ${baseline.revision} · để so sánh` });
+      other = stageFor(baseline, baselineRender, { ...context }, { players, caption: t("Bản {0} · để so sánh", baseline.revision) });
       stages.append(other.holder);
       for (const pair of [[main, revision, render], [other, baseline, baselineRender]]) {
         if (pair[0].video) pair[0].holder.append(anchorControl(context, pair[1], pair[2], pair[0].video));
@@ -390,7 +391,7 @@ function filmTheatre(container, context, extras) {
 
     if (keys.length > 1) {
       const film = node("select", undefined, "select");
-      film.setAttribute("aria-label", "Chọn video trong dự án"); film.dataset.control = "film";
+      film.setAttribute("aria-label", t("Chọn video trong dự án")); film.dataset.control = "film";
       for (const key of keys) film.append(option(sequences.findLast((sequence) => sequence.key === key).name, key, key === chosenKey));
       film.addEventListener("change", () => { selectedFilm.set(context.projectId, film.value); lastSignature = null; render_(container, context, extras); });
       side.append(rail("Video", film));
@@ -399,9 +400,9 @@ function filmTheatre(container, context, extras) {
     // Versions -----------------------------------------------------------------------------------
     const versions = node("div", undefined, "versions");
     const revisionSelect = node("select", undefined, "select");
-    revisionSelect.setAttribute("aria-label", "Chọn bản video"); revisionSelect.dataset.control = "revision";
+    revisionSelect.setAttribute("aria-label", t("Chọn bản video")); revisionSelect.dataset.control = "revision";
     for (const entry of revisions) {
-      const label = `Bản ${entry.revision}${entry.active ? " · hiện hành" : entry.role === "candidate" ? " · đề xuất" : ""}`;
+      const label = t("Bản {0}{1}", entry.revision, entry.active ? t(" · hiện hành") : entry.role === "candidate" ? t(" · đề xuất") : "");
       revisionSelect.append(option(label, entry.artifactId, entry.artifactId === revision.artifactId));
     }
     revisionSelect.disabled = revisions.length < 2;
@@ -412,9 +413,9 @@ function filmTheatre(container, context, extras) {
     versions.append(revisionSelect);
     if (revision.renders.length > 1) {
       const renderSelect = node("select", undefined, "select");
-      renderSelect.setAttribute("aria-label", "Chọn lần dựng"); renderSelect.dataset.control = "render";
+      renderSelect.setAttribute("aria-label", t("Chọn lần dựng")); renderSelect.dataset.control = "render";
       revision.renders.forEach((entry, index) => renderSelect.append(
-        option(`Lần dựng ${index + 1} · ${relativeTime(entry.createdAt)}`, entry.resultId, entry.resultId === render?.resultId)));
+        option(t("Lần dựng {0} · {1}", index + 1, relativeTime(entry.createdAt)), entry.resultId, entry.resultId === render?.resultId)));
       renderSelect.addEventListener("change", () => {
         saved.manualRevision = saved.manualResult = true; saved.revisionId = revision.artifactId; saved.resultId = renderSelect.value;
         choices.set(storageKey, saved); draw("render");
@@ -423,15 +424,15 @@ function filmTheatre(container, context, extras) {
     }
     if (options.length > 1) {
       const compare = node("select", undefined, "select select-quiet");
-      compare.setAttribute("aria-label", "Chọn bản so sánh"); compare.dataset.control = "compare";
-      compare.append(option("So sánh với…", "", !baselineRender));
+      compare.setAttribute("aria-label", t("Chọn bản so sánh")); compare.dataset.control = "compare";
+      compare.append(option(t("So sánh với…"), "", !baselineRender));
       for (const entry of options.filter((candidate) => candidate.resultId !== render?.resultId)) {
-        compare.append(option(`Bản ${entry.revision} · ${relativeTime(entry.createdAt)}`, entry.resultId, entry.resultId === baselineRender?.resultId));
+        compare.append(option(t("Bản {0} · {1}", entry.revision, relativeTime(entry.createdAt)), entry.resultId, entry.resultId === baselineRender?.resultId));
       }
       compare.addEventListener("change", () => { saved.compareResultId = compare.value || null; choices.set(storageKey, saved); draw("compare"); });
       versions.append(compare);
     }
-    if (revisions.length > 1 || revision.renders.length > 1 || options.length > 1) side.append(rail("Phiên bản", versions));
+    if (revisions.length > 1 || revision.renders.length > 1 || options.length > 1) side.append(rail(t("Phiên bản"), versions));
 
     // Download of the approved version ---------------------------------------------------------------
     const latest = [...(render?.decisions ?? [])].at(-1) ?? null;
@@ -444,22 +445,22 @@ function filmTheatre(container, context, extras) {
         link.append(svgIcon(ICONS.download, { size: 17 }), node("span", entry.label));
         if (entry.sizeBytes) link.append(node("span", formatSize(entry.sizeBytes), "button-meta"));
         link.title = entry.sourceResultId && entry.sourceResultId !== render?.resultId
-          ? "Bản đã duyệt thuộc một lần dựng khác của video này" : "Bản đã được bạn duyệt";
+          ? t("Bản đã duyệt thuộc một lần dựng khác của video này") : t("Bản đã được bạn duyệt");
         state.append(link);
       }
       side.append(rail(null, state));
     }
 
     // Chapters -----------------------------------------------------------------------------------
-    if (main.video && revision.segments.length > 1) side.append(rail("Các đoạn", chapterList(context, revision, render, main.video)));
+    if (main.video && revision.segments.length > 1) side.append(rail(t("Các đoạn"), chapterList(context, revision, render, main.video)));
 
     // Feedback: only while there is still something to change ---------------------------------------
     const items = feedbackItems(sequences, render);
     if (latest?.outcome !== "accepted" && (main.video || items.length)) {
-      const feedback = rail("Phản hồi");
+      const feedback = rail(t("Phản hồi"));
       if (main.video && !baselineRender) feedback.append(anchorControl(context, revision, render, main.video));
       if (items.length) feedback.append(feedbackList(items, main.video));
-      else feedback.append(node("p", "Sao chép mốc video để gửi cho Agent khi góp ý.", "rail-note"));
+      else feedback.append(node("p", t("Sao chép mốc video để gửi cho Agent khi góp ý."), "rail-note"));
       side.append(feedback);
     }
 

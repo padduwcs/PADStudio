@@ -61,6 +61,11 @@ Trong terminal, `tool:list` cho cùng danh sách ở dạng kỹ thuật. Phần
 2. Bấm **Trò chuyện** trên thanh đầu. Khung chat tự kết nối Codex; nếu cần, bấm **Đăng nhập ChatGPT** rồi mở trang đăng nhập được cung cấp.
 3. Nhập prompt như khi mở Codex trong thư mục PADStudio ở VS Code. Bạn có thể yêu cầu tạo project mới, tiếp tục project cũ hoặc làm việc khác trong repo.
 
+Khi chưa chọn project, PADStudio giữ màn hình chờ với **Trò chuyện với Codex** và **Mở dự án**, kể cả khi kho đã có project.
+Agent có thể tạo hoặc quản lý các project từ nhiều cuộc trò chuyện; danh sách tự cập nhật nhưng không tự mở dự án nào.
+Bấm logo để quay về màn hình chờ, chat đang mở vẫn được giữ. Link có `?project=<id>` mở thẳng dự án đó.
+Chọn **VI / EN** trên thanh đầu để đổi ngôn ngữ giao diện. Trang tải lại, giữ tab chat/bản nháp và lượt đang chạy; không tự dịch nội dung hoặc đổi ngôn ngữ trả lời của Agent.
+
 Trên máy tính, chat nằm cạnh video; kéo đường phân cách cạnh trái để đổi chiều rộng, nhấp đúp để đặt lại. Kích thước được nhớ cho lần mở sau.
 Trên điện thoại, chat mở toàn màn hình và có nút đóng để quay lại video. Enter gửi tin, Shift + Enter xuống dòng.
 Có thể gửi yêu cầu bổ sung khi Agent đang làm hoặc bấm nút dừng ■; dừng không hoàn tác công việc đã làm và

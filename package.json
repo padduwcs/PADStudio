@@ -70,6 +70,7 @@
     "observer:ui:empty-test": "node scripts/ui-empty-acceptance.mjs",
     "observer:ui:live-test": "node scripts/ui-live-acceptance.mjs",
     "observer:ui:tools-test": "node scripts/ui-tools-acceptance.mjs",
+    "workspace:ui:test": "node scripts/ui-workspace-acceptance.mjs",
     "chat:ui:test": "node scripts/ui-chat-acceptance.mjs",
     "chat:ui:features-test": "node scripts/ui-chat-features.mjs",
     "project:sequence": "node src/cli/write-video-sequence.js",

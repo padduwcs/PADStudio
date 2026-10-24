@@ -1,3 +1,4 @@
+import { t, getLanguage } from "./i18n.js";
 import { ICONS, node, svgIcon } from "./dom.js";
 
 // The ElevenLabs voice and model picker, shown on the "Giọng đọc" tab of the Tools sheet. It reads the user's own
@@ -31,9 +32,9 @@ export function createVoicePicker({ post, save }) {
   }
 
   function modelLabel(model) {
-    const language = model.supportsLanguage === true ? "tiếng Việt ✓"
-      : model.supportsLanguage === false ? "không hỗ trợ tiếng Việt" : "chưa rõ tiếng Việt";
-    const cost = model.creditMultiplier === null ? "không rõ hệ số credit" : `${model.creditMultiplier} credit/ký tự`;
+    const language = model.supportsLanguage === true ? t("tiếng Việt ✓")
+      : model.supportsLanguage === false ? t("không hỗ trợ tiếng Việt") : t("chưa rõ tiếng Việt");
+    const cost = model.creditMultiplier === null ? t("không rõ hệ số credit") : t("{0} credit/ký tự", model.creditMultiplier);
     return `${model.name} · ${language} · ${cost}`;
   }
 
@@ -44,36 +45,36 @@ export function createVoicePicker({ post, save }) {
   function paintCurrent() {
     const voice = settings.elevenLabs.voice;
     const model = state.models?.find((entry) => entry.modelId === currentModelId());
-    nodes.voiceName.textContent = voice ? (voice.name ?? voice.id) : "Chưa chọn giọng";
+    nodes.voiceName.textContent = voice ? (voice.name ?? voice.id) : t("Chưa chọn giọng");
     nodes.voiceName.classList.toggle("is-empty", !voice);
-    const model_ = currentModelId() ? (model?.name ?? currentModelId()) : "chưa chọn model";
+    const model_ = currentModelId() ? (model?.name ?? currentModelId()) : t("chưa chọn model");
     nodes.voiceMeta.textContent = voice
-      ? `Model: ${model_} · mã ${voice.id}`
-      : `Model: ${model_} · Agent sẽ hỏi bạn khi cần giọng đọc`;
+      ? t("Model: {0} · mã {1}", model_, voice.id)
+      : t("Model: {0} · Agent sẽ hỏi bạn khi cần giọng đọc", model_);
   }
 
   function paintModels() {
     const select = nodes.model;
     select.replaceChildren();
     if (state.modelsError) { nodes.modelNote.textContent = state.modelsError; nodes.modelNote.className = "form-message is-error"; select.disabled = true; return; }
-    if (!state.models) { nodes.modelNote.textContent = "Đang đọc danh sách model…"; nodes.modelNote.className = "form-note"; select.disabled = true; return; }
+    if (!state.models) { nodes.modelNote.textContent = t("Đang đọc danh sách model…"); nodes.modelNote.className = "form-note"; select.disabled = true; return; }
     const saved = currentModelId();
-    const none = node("option", "Chọn model…"); none.value = ""; select.append(none);
+    const none = node("option", t("Chọn model…")); none.value = ""; select.append(none);
     for (const model of state.models) {
-      const option = node("option", modelLabel(model) + (model.usable ? "" : " (không dùng được)"));
+      const option = node("option", modelLabel(model) + (model.usable ? "" : t(" (không dùng được)")));
       option.value = model.modelId; option.disabled = !model.usable;
       select.append(option);
     }
     if (saved && !state.models.some((model) => model.modelId === saved)) {
-      const missing = node("option", `${saved} (không còn trong tài khoản)`); missing.value = saved; select.append(missing);
+      const missing = node("option", t("{0} (không còn trong tài khoản)", saved)); missing.value = saved; select.append(missing);
     }
     select.value = saved ?? "";
     select.disabled = false;
     const chosen = state.models.find((model) => model.modelId === saved);
     nodes.modelNote.className = "form-note";
     nodes.modelNote.textContent = chosen
-      ? (chosen.usable ? "Tối đa " + (chosen.maxCharacters ? chosen.maxCharacters.toLocaleString("vi") + " ký tự mỗi lần tạo." : "số ký tự mỗi lần tạo do ElevenLabs quy định.") : chosen.unusableReason ?? "")
-      : "Chỉ model hỗ trợ tiếng Việt và công bố hệ số credit mới chọn được.";
+      ? (chosen.usable ? t("Tối đa ") + (chosen.maxCharacters ? chosen.maxCharacters.toLocaleString(getLanguage()) + t(" ký tự mỗi lần tạo.") : t("số ký tự mỗi lần tạo do ElevenLabs quy định.")) : t(chosen.unusableReason ?? ""))
+      : t("Chỉ model hỗ trợ tiếng Việt và công bố hệ số credit mới chọn được.");
   }
 
   function voiceCard(voice) {
@@ -83,9 +84,9 @@ export function createVoicePicker({ post, save }) {
     const play = node("button", undefined, "voice-play");
     play.type = "button";
     const playing = state.playing === voice.voiceId;
-    play.setAttribute("aria-label", (playing ? "Dừng nghe thử " : "Nghe thử ") + voice.name);
+    play.setAttribute("aria-label", (playing ? t("Dừng nghe thử ") : t("Nghe thử ")) + voice.name);
     play.disabled = !voice.previewUrl;
-    if (!voice.previewUrl) play.title = "Giọng này không có bản nghe thử";
+    if (!voice.previewUrl) play.title = t("Giọng này không có bản nghe thử");
     play.append(svgIcon(playing ? ICONS.pause : ICONS.play, { size: 16 }));
     play.addEventListener("click", () => togglePreview(voice));
 
@@ -94,14 +95,14 @@ export function createVoicePicker({ post, save }) {
     const verified = voice.verifiedLanguages.some((language) => /^vi\b/i.test(language));
     const labels = [...voice.labels.map((label) => label.value), ...(voice.category ? [voice.category] : [])].slice(0, MAX_TAGS);
     for (const label of labels) tags.append(node("span", label, "voice-tag"));
-    if (verified) tags.append(node("span", "✓ tiếng Việt", "voice-tag is-verified"));
+    if (verified) tags.append(node("span", t("✓ tiếng Việt"), "voice-tag is-verified"));
     const head = node("div", undefined, "voice-line");
     head.append(node("span", voice.name, "voice-name"), tags);
     text.append(head);
     if (voice.description) text.append(node("span", voice.description, "voice-desc"));
-    if (voice.costNote) text.append(node("span", voice.costNote, "voice-desc is-warn"));
+    if (voice.costNote) text.append(node("span", t(voice.costNote), "voice-desc is-warn"));
 
-    const use = node("button", isCurrent ? "Đang dùng" : "Dùng giọng này", "button " + (isCurrent ? "button-soft" : "button-quiet"));
+    const use = node("button", isCurrent ? t("Đang dùng") : t("Dùng giọng này"), "button " + (isCurrent ? "button-soft" : "button-quiet"));
     use.type = "button"; use.disabled = isCurrent;
     use.dataset.control = "use-voice";
     use.addEventListener("click", () => chooseVoice(voice, use));
@@ -112,13 +113,13 @@ export function createVoicePicker({ post, save }) {
   function paintVoices() {
     const { list, status, more } = nodes;
     list.replaceChildren(...state.voices.map(voiceCard));
-    const query = state.search ? ` cho “${state.search}”` : "";
+    const query = state.search ? t(" cho “{0}”", state.search) : "";
     if (state.voicesError) { status.textContent = state.voicesError; status.className = "form-message is-error"; }
-    else if (state.loadingVoices && !state.voices.length) { status.textContent = "Đang tìm giọng…"; status.className = "form-note"; }
-    else if (!state.voices.length) { status.textContent = `Không có giọng nào${query}. Thử từ khóa khác, hoặc dán mã giọng nếu bạn đã dùng giọng này.`; status.className = "form-note"; }
+    else if (state.loadingVoices && !state.voices.length) { status.textContent = t("Đang tìm giọng…"); status.className = "form-note"; }
+    else if (!state.voices.length) { status.textContent = t("Không có giọng nào{0}. Thử từ khóa khác, hoặc dán mã giọng nếu bạn đã dùng giọng này.", query); status.className = "form-note"; }
     else {
       const total = Number.isFinite(state.total) ? ` / ${state.total}` : "";
-      status.textContent = `${state.voices.length}${total} giọng${query}`; status.className = "form-note";
+      status.textContent = t("{0}{1} giọng{2}", state.voices.length, total, query); status.className = "form-note";
     }
     more.hidden = !state.next;
     more.disabled = state.loadingVoices;
@@ -127,7 +128,7 @@ export function createVoicePicker({ post, save }) {
   function paintLookup() {
     const { lookupResult, lookupMessage } = nodes;
     lookupResult.replaceChildren(...(state.lookup ? [voiceCard(state.lookup)] : []));
-    lookupMessage.textContent = state.lookingUp ? "Đang tìm…" : state.lookupError ?? "";
+    lookupMessage.textContent = state.lookingUp ? t("Đang tìm…") : state.lookupError ?? "";
     lookupMessage.className = "form-message" + (state.lookupError ? " is-error" : "");
   }
 
@@ -185,7 +186,7 @@ export function createVoicePicker({ post, save }) {
       stopAudio();
       if (nodes) {
         paintAll();
-        nodes.status.textContent = "Không phát được bản nghe thử (cần kết nối mạng tới ElevenLabs).";
+        nodes.status.textContent = t("Không phát được bản nghe thử (cần kết nối mạng tới ElevenLabs).");
         nodes.status.className = "form-message is-error";
       }
     }
@@ -198,13 +199,13 @@ export function createVoicePicker({ post, save }) {
 
   async function chooseVoice(voice, button) {
     button.disabled = true;
-    try { await save({ elevenLabs: { voiceId: voice.voiceId, voiceName: voice.name } }, `Đã chọn giọng ${voice.name} làm mặc định.`); }
+    try { await save({ elevenLabs: { voiceId: voice.voiceId, voiceName: voice.name } }, t("Đã chọn giọng {0} làm mặc định.", voice.name)); }
     catch (error) { showError(error); button.disabled = false; }
   }
 
   async function chooseModel() {
     const value = nodes.model.value;
-    try { await save({ elevenLabs: { modelId: value || null } }, value ? "Đã lưu model mặc định." : "Đã bỏ model mặc định."); }
+    try { await save({ elevenLabs: { modelId: value || null } }, value ? t("Đã lưu model mặc định.") : t("Đã bỏ model mặc định.")); }
     catch (error) { showError(error); }
   }
 
@@ -241,7 +242,7 @@ export function createVoicePicker({ post, save }) {
     const summaryText = node("div", undefined, "voice-summary-text");
     const voiceName = node("strong", undefined, "voice-summary-name");
     const voiceMeta = node("span", undefined, "voice-summary-meta");
-    summaryText.append(node("span", "Đang dùng cho lời đọc", "kicker"), voiceName, voiceMeta);
+    summaryText.append(node("span", t("Đang dùng cho lời đọc"), "kicker"), voiceName, voiceMeta);
     summary.append(summaryText, ...(chip ? [chip] : []));
     const flash = node("p", undefined, "form-message voice-flash"); flash.setAttribute("role", "status");
 
@@ -251,33 +252,33 @@ export function createVoicePicker({ post, save }) {
     const modelNote = node("p", undefined, "form-note");
     modelStep.append(model, modelNote);
 
-    const voiceStep = step(3, "Giọng", "trong tài khoản ElevenLabs của bạn");
+    const voiceStep = step(3, t("Giọng"), t("trong tài khoản ElevenLabs của bạn"));
     const searchBox = node("label", undefined, "search voice-search");
     searchBox.append(svgIcon(ICONS.search, { size: 16 }));
-    const search = node("input"); Object.assign(search, { id: "voice-search", type: "search", autocomplete: "off", spellcheck: false, maxLength: 100, placeholder: "Tìm giọng theo tên…" });
-    search.setAttribute("aria-label", "Tìm giọng theo tên");
+    const search = node("input"); Object.assign(search, { id: "voice-search", type: "search", autocomplete: "off", spellcheck: false, maxLength: 100, placeholder: t("Tìm giọng theo tên…") });
+    search.setAttribute("aria-label", t("Tìm giọng theo tên"));
     search.value = state.search; search.dataset.control = "voice-search";
     searchBox.append(search);
     const status = node("p", undefined, "form-note voice-status"); status.setAttribute("role", "status");
-    const list = node("ul", undefined, "voice-list"); list.setAttribute("aria-label", "Danh sách giọng");
-    const more = node("button", "Tải thêm giọng", "button button-quiet voice-more"); more.type = "button"; more.dataset.control = "voice-more";
+    const list = node("ul", undefined, "voice-list"); list.setAttribute("aria-label", t("Danh sách giọng"));
+    const more = node("button", t("Tải thêm giọng"), "button button-quiet voice-more"); more.type = "button"; more.dataset.control = "voice-more";
 
     const lookup = node("details", undefined, "voice-lookup-details");
     lookup.open = state.lookupOpen;
     lookup.addEventListener("toggle", () => { state.lookupOpen = lookup.open; });
-    lookup.append(node("summary", "Đã dùng một giọng trước đó? Dán mã giọng (voice ID)"));
+    lookup.append(node("summary", t("Đã dùng một giọng trước đó? Dán mã giọng (voice ID)")));
     const lookupForm = node("form", undefined, "voice-lookup");
     lookupForm.noValidate = true;
     const lookupRow = node("div", undefined, "inline-form");
-    const lookupInput = node("input", undefined, "field"); Object.assign(lookupInput, { id: "voice-id", type: "text", autocomplete: "off", spellcheck: false, maxLength: 100, placeholder: "Ví dụ: 21m00Tcm4TlvDq8ikWAM" });
-    lookupInput.setAttribute("aria-label", "Mã giọng (voice ID)");
+    const lookupInput = node("input", undefined, "field"); Object.assign(lookupInput, { id: "voice-id", type: "text", autocomplete: "off", spellcheck: false, maxLength: 100, placeholder: t("Ví dụ: 21m00Tcm4TlvDq8ikWAM") });
+    lookupInput.setAttribute("aria-label", t("Mã giọng (voice ID)"));
     lookupInput.dataset.control = "voice-id";
-    const lookupButton = node("button", "Tìm theo mã", "button button-quiet"); lookupButton.type = "submit";
+    const lookupButton = node("button", t("Tìm theo mã"), "button button-quiet"); lookupButton.type = "submit";
     lookupRow.append(lookupInput, lookupButton);
     const lookupMessage = node("p", undefined, "form-message"); lookupMessage.setAttribute("role", "status");
     const lookupResult = node("ul", undefined, "voice-list voice-found");
     lookupForm.append(lookupRow, lookupMessage, lookupResult,
-      node("p", "Giọng phải nằm trong My Voices của tài khoản. Giọng ở Voice Library cần được thêm vào My Voices trước.", "form-note"));
+      node("p", t("Giọng phải nằm trong My Voices của tài khoản. Giọng ở Voice Library cần được thêm vào My Voices trước."), "form-note"));
     lookup.append(lookupForm);
 
     voiceStep.append(searchBox, status, list, more, lookup);
@@ -293,7 +294,7 @@ export function createVoicePicker({ post, save }) {
     lookupForm.addEventListener("submit", (event) => {
       event.preventDefault();
       const id = lookupInput.value.trim();
-      if (!id) { state.lookupError = "Dán mã giọng vào ô trước khi tìm."; paintLookup(); return; }
+      if (!id) { state.lookupError = t("Dán mã giọng vào ô trước khi tìm."); paintLookup(); return; }
       lookupVoice(id);
     });
 

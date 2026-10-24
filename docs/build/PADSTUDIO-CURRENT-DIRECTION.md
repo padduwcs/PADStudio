@@ -10,6 +10,10 @@ Tài liệu này ghi các định hướng đã chốt để làm rõ [`PADSTUDI
 
 ## Chat Codex độc lập ở cấp thư mục — 2026-10-24
 
+Trang gốc khi không có `project` trong URL giữ màn hình chờ, không khôi phục dự án từ localStorage hoặc tự chọn dự án mới nhất.
+Người dùng chủ động mở từ thư viện/link dự án và bấm logo để quay về. Project mới do Agent tạo chỉ cập nhật thư viện; không thay viewer hoặc hội thoại.
+Ngôn ngữ VI/EN là lựa chọn trình bày của browser, không truyền vào Codex, không dịch prompt, nội dung hội thoại hay dữ liệu project.
+
 Theo yêu cầu làm rõ của người phụ trách, cửa sổ chat chỉ là nơi prompt Codex thay cho VS Code, mở tại thư mục PADStudio. Quyết định hiện hành này thay thế cả ranh giới “không xây chat tích hợp” lẫn cách triển khai trung gian gắn hội thoại với project.
 
 - **Agent:** vẫn là chương trình đọc repo, hướng dẫn và skill, chọn việc sáng tạo, rồi gọi CLI/contract PADStudio. Host bên ngoài vẫn dùng được.

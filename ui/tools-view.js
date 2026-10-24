@@ -1,3 +1,4 @@
+import { t, getLanguage } from "./i18n.js";
 import { node } from "./dom.js";
 import { createVoicePicker } from "./voice-picker.js";
 
@@ -9,25 +10,25 @@ import { createVoicePicker } from "./voice-picker.js";
 // PUT /api/settings with the headers the server requires.
 
 const TABS = Object.freeze([
-  { id: "overview", label: "Tổng quan" },
-  { id: "voice", label: "Giọng đọc" },
-  { id: "services", label: "Dịch vụ của bạn" }
+  { id: "overview", label: t("Tổng quan") },
+  { id: "voice", label: t("Giọng đọc") },
+  { id: "services", label: t("Dịch vụ của bạn") }
 ]);
 const STATUS_CHIP = Object.freeze({ ready: "accepted", partial: "waiting", needs_key: "waiting", needs_setup: "empty" });
 const ATTENTION_ORDER = Object.freeze({ needs_key: 0, needs_setup: 1, partial: 2 });
 const WRITE_HEADERS = Object.freeze({ "Content-Type": "application/json", "X-PADStudio-Intent": "settings" });
-const COST_SUFFIX = Object.freeze({ network: "cần mạng", paid: "trả phí" });
+const COST_SUFFIX = Object.freeze({ network: t("cần mạng"), paid: t("trả phí") });
 
-const timeFormat = new Intl.DateTimeFormat("vi", { hour: "2-digit", minute: "2-digit" });
+const timeFormat = new Intl.DateTimeFormat(getLanguage(), { hour: "2-digit", minute: "2-digit" });
 
 function chip(status, label) {
   const element = node("span", undefined, "chip chip-" + (STATUS_CHIP[status] ?? "empty"));
-  element.append(node("span", undefined, "chip-dot"), node("span", label));
+  element.append(node("span", undefined, "chip-dot"), node("span", t(label)));
   return element;
 }
 
 function message(element, text, kind) {
-  element.textContent = text ?? "";
+  element.textContent = t(text ?? "");
   element.classList.toggle("is-ok", kind === "ok");
   element.classList.toggle("is-error", kind === "error");
 }
@@ -35,7 +36,7 @@ function message(element, text, kind) {
 async function send(path, method, body) {
   const response = await fetch(path, { method, headers: WRITE_HEADERS, body: JSON.stringify(body ?? {}) });
   const value = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(value.error || "Không lưu được cài đặt.");
+  if (!response.ok) throw new Error(value.error || t("Không lưu được cài đặt."));
   return value;
 }
 
@@ -57,20 +58,20 @@ export function createToolsPanel({ root, body, refreshButton }) {
     const card = node("li", undefined, "tool-card");
     card.dataset.tool = entry.id;
     const head = node("div", undefined, "tool-card-head");
-    head.append(node("strong", entry.name, "tool-name"));
-    if (entry.costLabel) head.append(node("span", entry.costLabel, "tool-cost"));
-    head.append(chip(entry.status, entry.statusLabel));
-    card.append(head, node("p", entry.summary, "tool-summary"));
-    if (entry.setup) card.append(node("p", entry.setup, "tool-setup"));
+    head.append(node("strong", t(entry.name), "tool-name"));
+    if (entry.costLabel) head.append(node("span", t(entry.costLabel), "tool-cost"));
+    head.append(chip(entry.status, t(entry.statusLabel)));
+    card.append(head, node("p", t(entry.summary), "tool-summary"));
+    if (entry.setup) card.append(node("p", t(entry.setup), "tool-setup"));
     if (entry.id === "elevenlabs" || entry.id === "piper") {
-      const go = node("button", entry.id === "elevenlabs" && entry.status === "needs_key" ? "Dán khóa API" : "Mở phần Giọng đọc", "button button-quiet");
+      const go = node("button", entry.id === "elevenlabs" && entry.status === "needs_key" ? t("Dán khóa API") : t("Mở phần Giọng đọc"), "button button-quiet");
       go.type = "button"; go.dataset.control = "goto-voice";
       go.addEventListener("click", () => showTab("voice", { focus: entry.id === "elevenlabs" && entry.status === "needs_key" ? "#elevenlabs-key" : null }));
       card.append(go);
     }
     if (entry.missing.length) {
       const details = node("details", undefined, "tool-details");
-      details.append(node("summary", "Chi tiết kỹ thuật"));
+      details.append(node("summary", t("Chi tiết kỹ thuật")));
       const list = node("ul");
       for (const missing of entry.missing) list.append(node("li", missing.reason ? `${missing.name}: ${missing.reason}` : missing.name));
       details.append(list);
@@ -82,10 +83,10 @@ export function createToolsPanel({ root, body, refreshButton }) {
   function readyPill(entry) {
     const pill = node("li", undefined, "tool-pill");
     pill.dataset.tool = entry.id;
-    pill.title = entry.summary;
-    pill.append(node("span", undefined, "pill-dot"), node("span", entry.name, "tool-name"));
+    pill.title = t(entry.summary);
+    pill.append(node("span", undefined, "pill-dot"), node("span", t(entry.name), "tool-name"));
     if (COST_SUFFIX[entry.cost]) pill.append(node("span", COST_SUFFIX[entry.cost], "tool-cost"));
-    pill.append(node("span", entry.summary, "sr-only"));
+    pill.append(node("span", t(entry.summary), "sr-only"));
     return pill;
   }
 
@@ -98,13 +99,13 @@ export function createToolsPanel({ root, body, refreshButton }) {
 
     const summary = node("p", undefined, "tools-summary");
     summary.append(node("span", undefined, "summary-dot" + (needs.length ? " is-attention" : "")),
-      node("strong", `${tools.summary.ready}/${tools.summary.total} mục sẵn sàng`),
-      node("span", Number.isFinite(checked) ? ` · kiểm tra lúc ${timeFormat.format(new Date(checked))}` : "", "form-note"));
+      node("strong", t("{0}/{1} mục sẵn sàng", tools.summary.ready, tools.summary.total)),
+      node("span", Number.isFinite(checked) ? t(" · kiểm tra lúc {0}", timeFormat.format(new Date(checked))) : "", "form-note"));
     parts.push(summary);
 
     if (needs.length) {
       const section = node("section", undefined, "tools-section");
-      const heading = node("h3", `Cần bạn làm (${needs.length})`, "tools-section-title");
+      const heading = node("h3", t("Cần bạn làm ({0})", needs.length), "tools-section-title");
       const list = node("ul", undefined, "tool-cards");
       for (const entry of needs) list.append(attentionCard(entry));
       section.append(heading, list);
@@ -115,10 +116,10 @@ export function createToolsPanel({ root, body, refreshButton }) {
     const readyCount = ready.reduce((sum, row) => sum + row.items.length, 0);
     if (readyCount) {
       const section = node("section", undefined, "tools-section");
-      section.append(node("h3", `Sẵn sàng (${readyCount})`, "tools-section-title"));
+      section.append(node("h3", t("Sẵn sàng ({0})", readyCount), "tools-section-title"));
       for (const row of ready) {
         const line = node("div", undefined, "ready-group");
-        line.append(node("span", row.group.label, "ready-label"));
+        line.append(node("span", t(row.group.label), "ready-label"));
         const pills = node("ul", undefined, "ready-pills");
         for (const entry of row.items) pills.append(readyPill(entry));
         line.append(pills);
@@ -144,20 +145,20 @@ export function createToolsPanel({ root, body, refreshButton }) {
 
   function keyStep(settings) {
     const state = settings.elevenLabs.apiKey;
-    const section = step(1, "Tài khoản ElevenLabs", "giọng chất lượng cao, tính phí theo ký tự");
+    const section = step(1, t("Tài khoản ElevenLabs"), t("giọng chất lượng cao, tính phí theo ký tự"));
     const wrap = node("div", undefined, "key-block");
     const status = node("p", undefined, "form-message");
     status.setAttribute("role", "status");
 
     if (state.configured) {
       const saved = node("div", undefined, "key-saved");
-      saved.append(node("span", "✓ Đã lưu khóa" + (state.hint ? " " + state.hint : ""), "key-state"));
-      const check = node("button", "Kiểm tra kết nối", "button button-quiet");
+      saved.append(node("span", t("✓ Đã lưu khóa") + (state.hint ? " " + state.hint : ""), "key-state"));
+      const check = node("button", t("Kiểm tra kết nối"), "button button-quiet");
       check.type = "button"; check.dataset.control = "elevenlabs-check";
-      const remove = node("button", "Xóa khóa", "button button-ghost");
+      const remove = node("button", t("Xóa khóa"), "button button-ghost");
       remove.type = "button"; remove.dataset.control = "elevenlabs-remove";
       check.addEventListener("click", async () => {
-        check.disabled = true; message(status, "Đang kết nối tới ElevenLabs…");
+        check.disabled = true; message(status, t("Đang kết nối tới ElevenLabs…"));
         try {
           const result = await send("/api/settings/elevenlabs/check", "POST");
           message(status, result.message, result.ok ? "ok" : "error");
@@ -166,7 +167,7 @@ export function createToolsPanel({ root, body, refreshButton }) {
       });
       remove.addEventListener("click", async () => {
         remove.disabled = true;
-        try { await save({ elevenLabs: { apiKey: null } }, "Đã xóa khóa."); }
+        try { await save({ elevenLabs: { apiKey: null } }, t("Đã xóa khóa.")); }
         catch (error) { message(status, error.message, "error"); remove.disabled = false; }
       });
       saved.append(check, remove);
@@ -177,19 +178,19 @@ export function createToolsPanel({ root, body, refreshButton }) {
     form.noValidate = true;
     const input = node("input", undefined, "field");
     Object.assign(input, { id: "elevenlabs-key", type: "password", autocomplete: "off", spellcheck: false,
-      placeholder: state.configured ? "Dán khóa mới để thay khóa đã lưu" : "Dán khóa API ElevenLabs (elevenlabs.io → Profile → API Keys)" });
-    input.setAttribute("aria-label", "Khóa API ElevenLabs");
+      placeholder: state.configured ? t("Dán khóa mới để thay khóa đã lưu") : t("Dán khóa API ElevenLabs (elevenlabs.io → Profile → API Keys)") });
+    input.setAttribute("aria-label", t("Khóa API ElevenLabs"));
     input.dataset.control = "elevenlabs-key";
-    const saveButton = node("button", "Lưu khóa", "button button-primary");
+    const saveButton = node("button", t("Lưu khóa"), "button button-primary");
     saveButton.type = "submit";
     form.append(input, saveButton);
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       const value = input.value.trim();
-      if (!value) { message(status, "Dán khóa vào ô trước khi lưu.", "error"); input.focus(); return; }
-      saveButton.disabled = true; message(status, "Đang lưu…");
+      if (!value) { message(status, t("Dán khóa vào ô trước khi lưu."), "error"); input.focus(); return; }
+      saveButton.disabled = true; message(status, t("Đang lưu…"));
       try {
-        await save({ elevenLabs: { apiKey: value } }, "Đã lưu khóa. Agent sẽ dùng được ElevenLabs.");
+        await save({ elevenLabs: { apiKey: value } }, t("Đã lưu khóa. Agent sẽ dùng được ElevenLabs."));
       } catch (error) {
         message(status, error.message, "error"); saveButton.disabled = false;
       }
@@ -197,7 +198,7 @@ export function createToolsPanel({ root, body, refreshButton }) {
     if (state.configured) {
       // A key is already saved: replacing it is rare, so the field stays folded away.
       const replace = node("details", undefined, "key-replace");
-      replace.append(node("summary", "Thay bằng khóa khác"), form);
+      replace.append(node("summary", t("Thay bằng khóa khác")), form);
       wrap.append(replace, status);
     } else {
       wrap.append(form, status);
@@ -211,9 +212,9 @@ export function createToolsPanel({ root, body, refreshButton }) {
     const row = node("div", undefined, "local-voice");
     row.dataset.tool = entry.id;
     const head = node("div", undefined, "local-voice-head");
-    head.append(node("strong", "Piper", "tool-name"), node("span", "miễn phí, chạy trên máy", "tool-cost"), chip(entry.status, entry.statusLabel));
+    head.append(node("strong", "Piper", "tool-name"), node("span", t("miễn phí, chạy trên máy"), "tool-cost"), chip(entry.status, entry.statusLabel));
     row.append(head);
-    if (entry.setup) row.append(node("p", entry.setup, "tool-setup"));
+    if (entry.setup) row.append(node("p", t(entry.setup), "tool-setup"));
     return row;
   }
 
@@ -231,17 +232,17 @@ export function createToolsPanel({ root, body, refreshButton }) {
       const empty = node("div", undefined, "voice-summary");
       empty.dataset.tool = "elevenlabs";
       const text = node("div", undefined, "voice-summary-text");
-      text.append(node("span", "Đang dùng cho lời đọc", "kicker"), node("strong", "Chưa có khóa ElevenLabs", "voice-summary-name is-empty"),
-        node("span", "Không có khóa thì Agent dùng giọng Piper miễn phí trên máy.", "voice-summary-meta"));
+      text.append(node("span", t("Đang dùng cho lời đọc"), "kicker"), node("strong", t("Chưa có khóa ElevenLabs"), "voice-summary-name is-empty"),
+        node("span", t("Không có khóa thì Agent dùng giọng Piper miễn phí trên máy."), "voice-summary-meta"));
       empty.append(text, ...(eleven ? [chip(eleven.status, eleven.statusLabel)] : []));
-      const later = step(2, "Model và giọng", "mở sau khi lưu khóa");
-      later.append(node("p", "Lưu khóa ở bước 1 rồi chọn model, tìm giọng, nghe thử và chọn giọng dùng cho lời đọc.", "form-note"));
+      const later = step(2, t("Model và giọng"), t("mở sau khi lưu khóa"));
+      later.append(node("p", t("Lưu khóa ở bước 1 rồi chọn model, tìm giọng, nghe thử và chọn giọng dùng cho lời đọc."), "form-note"));
       parts.push(empty, keyStep(settings), later);
     }
     const local = localVoiceNote(piper);
     if (local) parts.push(local);
-    parts.push(node("p", "Khóa API chỉ lưu trong padstudio.local.json trên máy này: không đưa lên Git, không gửi cho Agent, " +
-      "không hiện lại trên trang. Đừng dán khóa vào cuộc trò chuyện với Agent.", "tools-privacy"));
+    parts.push(node("p", t("Khóa API chỉ lưu trong padstudio.local.json trên máy này: không đưa lên Git, không gửi cho Agent, ") +
+      t("không hiện lại trên trang. Đừng dán khóa vào cuộc trò chuyện với Agent."), "tools-privacy"));
     return parts;
   }
 
@@ -250,24 +251,24 @@ export function createToolsPanel({ root, body, refreshButton }) {
   /* ------------------------------------------------------------------------------------------------ */
 
   function servicesPanel(settings) {
-    const intro = node("p", "Đánh dấu những dịch vụ bạn có tài khoản. PADStudio không tự gọi chúng: Agent biết để đề xuất cách làm, " +
-      "rồi lưu file tạo ra vào dự án kèm nguồn và bản quyền.", "tools-intro");
+    const intro = node("p", t("Đánh dấu những dịch vụ bạn có tài khoản. PADStudio không tự gọi chúng: Agent biết để đề xuất cách làm, ") +
+      t("rồi lưu file tạo ra vào dự án kèm nguồn và bản quyền."), "tools-intro");
     const form = node("form", undefined, "services-form");
     const grid = node("div", undefined, "service-grid");
     for (const category of settings.services.categories) {
       const option = node("label", undefined, "service-option");
       const box = node("input");
       Object.assign(box, { type: "checkbox", name: "service", value: category.id, checked: settings.services.available.includes(category.id) });
-      option.append(box, node("span", category.label, "service-name"), node("small", category.examples));
+      option.append(box, node("span", t(category.label), "service-name"), node("small", t(category.examples)));
       grid.append(option);
     }
-    const noteLabel = node("label", "Ghi chú cho Agent (không bắt buộc)", "form-label");
+    const noteLabel = node("label", t("Ghi chú cho Agent (không bắt buộc)"), "form-label");
     noteLabel.htmlFor = "services-note";
     const note = node("textarea", undefined, "field");
     Object.assign(note, { id: "services-note", maxLength: 500, rows: 3, value: settings.services.note ?? "",
-      placeholder: "Ví dụ: có ChatGPT Plus để tạo ảnh, Suno bản miễn phí; không muốn tốn quá 5 USD mỗi video." });
+      placeholder: t("Ví dụ: có ChatGPT Plus để tạo ảnh, Suno bản miễn phí; không muốn tốn quá 5 USD mỗi video.") });
     const actions = node("div", undefined, "form-actions");
-    const submit = node("button", "Lưu", "button button-primary");
+    const submit = node("button", t("Lưu"), "button button-primary");
     submit.type = "submit";
     const status = node("p", undefined, "form-message");
     status.setAttribute("role", "status");
@@ -276,12 +277,12 @@ export function createToolsPanel({ root, body, refreshButton }) {
     form.classList.add("services-form");
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      submit.disabled = true; message(status, "Đang lưu…");
+      submit.disabled = true; message(status, t("Đang lưu…"));
       try {
         await save({ services: {
           available: [...form.querySelectorAll("input[name=service]:checked")].map((box) => box.value),
           note: note.value.trim() || null
-        } }, "Đã lưu. Agent sẽ thấy ở lần đọc dự án tiếp theo.");
+        } }, t("Đã lưu. Agent sẽ thấy ở lần đọc dự án tiếp theo."));
       } catch (error) {
         message(status, error.message, "error"); submit.disabled = false;
       }
@@ -377,12 +378,12 @@ export function createToolsPanel({ root, body, refreshButton }) {
 
   async function load({ refresh = false } = {}) {
     if (loading && !refresh) return loading;
-    if (!data) body.replaceChildren(node("p", "Đang kiểm tra công cụ trên máy…", "tools-loading"));
+    if (!data) body.replaceChildren(node("p", t("Đang kiểm tra công cụ trên máy…"), "tools-loading"));
     refreshButton.disabled = true;
     loading = (async () => {
       const response = await fetch("/api/tools" + (refresh ? "?refresh=1" : ""));
       const value = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(value.error || "Không đọc được danh sách công cụ.");
+      if (!response.ok) throw new Error(value.error || t("Không đọc được danh sách công cụ."));
       data = value;
       render();
     })();

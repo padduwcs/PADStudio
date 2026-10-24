@@ -56,6 +56,11 @@ quản lý plugin hoặc chỉnh toàn bộ config TOML trong UI.
 
 ## HTTP và giao diện
 
+- Trang gốc không có `project` giữ màn hình chờ ngay cả khi kho có dự án hoặc Agent tạo thêm dự án. Chọn thư viện/link mới mở viewer;
+  logo quay về màn hình chờ và giữ chat. Project mất khỏi danh sách cũng quay về đó, không tự chọn project khác.
+- VI/EN dùng catalog giao diện tập trung trong [`i18n.js`](../../ui/i18n.js) và [`messages-en.js`](../../ui/messages-en.js), gồm shell, chat,
+  thư viện, video/tư liệu và công cụ. Chỉ copy do ứng dụng sở hữu được dịch; tên/file, prompt, transcript, câu hỏi/lựa chọn gốc và chẩn đoán native giữ nguyên.
+  Đổi ngôn ngữ lưu browser preference và `lang` trong URL rồi reload UI; tab/draft/chiều rộng được khôi phục, không dừng hoặc replay lượt Codex.
 - [`chat-api.js`](../../src/web/chat-api.js) chỉ có thao tác cụ thể: status/connect/login/cancel, conversations, messages/interrupt/answer,
   rename/archive/unarchive/fork/compact/older/export, native history/resume/restore, attachments/image và tìm file.
   Không có route project/import hoặc arbitrary RPC. ID tường minh giữ các cửa sổ/tab độc lập.
@@ -81,6 +86,8 @@ quản lý plugin hoặc chỉnh toàn bộ config TOML trong UI.
 
 ## Xác minh
 
+- `npm run workspace:ui:test`: màn hình chờ với kho đã có/mới tạo/archive, hai chat chạy song song, chọn dự án chủ động,
+  VI/EN qua reload, giữ nguyên prompt/answer/transcript/title/draft; 320–1920 px, sáng/tối, công cụ và menu chat.
 - Unit/HTTP: exact prompt/default params, không inject instructions/project context; input gốc của ảnh/file/skill, options từ catalog,
   pagination/export, fork không replay, rename/archive/restore, restart/idempotence và quyền HTTP/request scoping.
 - `npm run chat:ui:test`: nhiều tab/nhiều project viewer, drafts, questions, approvals, gửi bổ sung/dừng, resize chuột/bàn phím,

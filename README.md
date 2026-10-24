@@ -44,6 +44,10 @@ npm run padstudio:doctor
 npm run observer:ensure
 ```
 
+Trang gốc mở màn hình chờ để bạn chọn **Mở dự án** hoặc **Trò chuyện với Codex**. Bấm logo để quay về đó.
+Dự án mới do Agent tạo chỉ cập nhật danh sách, không tự mở hoặc thay dự án bạn đang xem. Link có `?project=<id>` vẫn mở thẳng dự án đó.
+Chọn **VI / EN** trên thanh đầu để đổi tiếng Việt/English; trình duyệt nhớ lựa chọn. Ngôn ngữ giao diện không đổi prompt, hội thoại hoặc tên dự án.
+
 **3. Bấm Trò chuyện trên trang PADStudio.** Chat tích hợp dùng Codex CLI trên máy; cài Codex và đăng nhập tài khoản ChatGPT nếu được hỏi.
 Nếu máy đã dùng Codex, PADStudio dùng tài khoản hiện có. Chat mở tại thư mục PADStudio như khi mở Codex trong VS Code: nhập prompt bình thường,
 không cần chọn project. Một hội thoại có thể tạo hoặc tiếp tục nhiều project theo yêu cầu của bạn:

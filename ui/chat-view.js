@@ -1,4 +1,5 @@
-import { ICONS, node, svgIcon } from "./dom.js";
+import { t } from "./i18n.js";
+import { ICONS, conversationLabel, node, svgIcon } from "./dom.js";
 import { renderChatMarkdown } from "./chat-markdown.js";
 import { createChatControls, positionChatMenu } from "./chat-controls.js";
 
@@ -34,9 +35,9 @@ export function createChatPanel({ root, toggle }) {
 
   const resizeHandle = node("div", undefined, "chat-resize-handle"); resizeHandle.id = "chat-resize-handle";
   resizeHandle.tabIndex = 0; resizeHandle.setAttribute("role", "separator"); resizeHandle.setAttribute("aria-orientation", "vertical");
-  resizeHandle.setAttribute("aria-label", "Điều chỉnh chiều rộng trò chuyện");
+  resizeHandle.setAttribute("aria-label", t("Điều chỉnh chiều rộng trò chuyện"));
   resizeHandle.setAttribute("aria-controls", "chat");
-  resizeHandle.title = "Kéo để đổi chiều rộng · Nhấp đúp để đặt lại";
+  resizeHandle.title = t("Kéo để đổi chiều rộng · Nhấp đúp để đặt lại");
 
   const head = node("header", undefined, "chat-head");
   const heading = node("div");
@@ -45,36 +46,36 @@ export function createChatPanel({ root, toggle }) {
   heading.append(title);
   const headActions = node("div", undefined, "chat-head-actions");
   const historyButton = action("", () => { extras?.closePopup(); menu.hidden = !menu.hidden; historyButton.setAttribute("aria-expanded", String(!menu.hidden)); if (!menu.hidden) { renderTabs(); openNativeHistory?.(); positionChatMenu(menu, historyButton, root); } }, "icon-button");
-  historyButton.id = "chat-history-button"; historyButton.title = "Lịch sử trò chuyện"; historyButton.setAttribute("aria-label", historyButton.title); historyButton.setAttribute("aria-expanded", "false");
+  historyButton.id = "chat-history-button"; historyButton.title = t("Lịch sử trò chuyện"); historyButton.setAttribute("aria-label", historyButton.title); historyButton.setAttribute("aria-expanded", "false");
   historyButton.append(svgIcon("M3 11a9 9 0 1 1 2.5 7M3 4v7h7M12 7v5l3 2"));
-  const closeButton = action("", () => close(), "icon-button"); closeButton.append(svgIcon(ICONS.close)); closeButton.setAttribute("aria-label", "Đóng trò chuyện");
+  const closeButton = action("", () => close(), "icon-button"); closeButton.append(svgIcon(ICONS.close)); closeButton.setAttribute("aria-label", t("Đóng trò chuyện"));
   headActions.append(historyButton, closeButton); head.append(heading, headActions);
   const tabBar = node("div", undefined, "chat-tab-bar");
-  const tabs = node("div", undefined, "chat-tabs"); tabs.id = "chat-tabs"; tabs.setAttribute("role", "tablist"); tabs.setAttribute("aria-label", "Các cuộc trò chuyện đang mở");
+  const tabs = node("div", undefined, "chat-tabs"); tabs.id = "chat-tabs"; tabs.setAttribute("role", "tablist"); tabs.setAttribute("aria-label", t("Các cuộc trò chuyện đang mở"));
   const newChat = action("", () => newConversation(), "icon-button chat-tab-add"); newChat.id = "chat-new-conversation";
-  newChat.title = "Cuộc trò chuyện mới"; newChat.setAttribute("aria-label", newChat.title); newChat.append(svgIcon("M12 4H5v15h14v-7M15 3l6 6M10 14l1-5 6-6 4 4-6 6z"));
+  newChat.title = t("Cuộc trò chuyện mới"); newChat.setAttribute("aria-label", newChat.title); newChat.append(svgIcon("M12 4H5v15h14v-7M15 3l6 6M10 14l1-5 6-6 4 4-6 6z"));
   tabBar.append(tabs); tabBar.hidden = true;
-  const menu = node("div", undefined, "chat-menu"); menu.hidden = true; menu.setAttribute("aria-label", "Lịch sử trò chuyện");
+  const menu = node("div", undefined, "chat-menu"); menu.hidden = true; menu.setAttribute("aria-label", t("Lịch sử trò chuyện"));
   const connection = node("div", undefined, "chat-connection");
-  const model = node("select", undefined, "select select-quiet"); model.id = "chat-model"; model.setAttribute("aria-label", "Model của agent");
-  const history = node("div", undefined, "chat-history"); history.id = "chat-history"; history.setAttribute("role", "tabpanel"); history.setAttribute("aria-label", "Lịch sử trò chuyện"); history.tabIndex = 0;
+  const model = node("select", undefined, "select select-quiet"); model.id = "chat-model"; model.setAttribute("aria-label", t("Model của agent"));
+  const history = node("div", undefined, "chat-history"); history.id = "chat-history"; history.setAttribute("role", "tabpanel"); history.setAttribute("aria-label", t("Lịch sử trò chuyện")); history.tabIndex = 0;
   const empty = node("div", undefined, "chat-empty");
-  empty.append(node("span", "Bạn muốn làm gì?", "chat-empty-title"));
+  empty.append(node("span", t("Bạn muốn làm gì?"), "chat-empty-title"));
   const messages = node("div", undefined, "chat-messages");
-  messages.setAttribute("role", "log"); messages.setAttribute("aria-label", "Tin nhắn"); messages.setAttribute("aria-live", "off");
-  const older = action("Tải tin nhắn cũ hơn", async () => {
+  messages.setAttribute("role", "log"); messages.setAttribute("aria-label", t("Tin nhắn")); messages.setAttribute("aria-live", "off");
+  const older = action(t("Tải tin nhắn cũ hơn"), async () => {
     const id = conversationId; const top = history.scrollTop, height = history.scrollHeight; older.disabled = true;
     try { const result = await post(endpoint("older", id), {}); if (id === conversationId) { acceptSession(result.session); history.scrollTop = top + history.scrollHeight - height; } }
     catch (error) { if (id === conversationId) setNotice(error.message); } finally { older.disabled = false; }
   }, "button button-ghost chat-older"); older.hidden = true;
   history.append(empty, older, messages);
-  const jump = action("Tin nhắn mới ↓", () => scrollToEnd(true), "button button-soft chat-jump"); jump.hidden = true;
+  const jump = action(t("Tin nhắn mới ↓"), () => scrollToEnd(true), "button button-soft chat-jump"); jump.hidden = true;
   const requests = node("div", undefined, "chat-requests"); requests.id = "chat-requests";
   const status = node("p", "", "chat-status"); status.id = "chat-status"; status.setAttribute("role", "status"); status.setAttribute("aria-live", "polite");
   const noticeBox = node("p", "", "chat-notice"); noticeBox.id = "chat-notice"; noticeBox.hidden = true; noticeBox.setAttribute("role", "alert");
   const composer = node("form", undefined, "chat-composer"); composer.id = "chat-composer";
-  const inputLabel = node("label", "Tin nhắn cho agent", "sr-only"); inputLabel.htmlFor = "chat-input";
-  const input = node("textarea"); input.id = "chat-input"; input.rows = 2; input.maxLength = 32_000; input.placeholder = "Nhắn tin cho Codex…";
+  const inputLabel = node("label", t("Tin nhắn cho agent"), "sr-only"); inputLabel.htmlFor = "chat-input";
+  const input = node("textarea"); input.id = "chat-input"; input.rows = 2; input.maxLength = 32_000; input.placeholder = t("Nhắn tin cho Codex…");
   const composerActions = node("div", undefined, "chat-composer-actions");
   const controls = node("div", undefined, "chat-send-controls");
   const stop = action("", async () => {
@@ -83,7 +84,7 @@ export function createChatPanel({ root, toggle }) {
     try { const result = await post(endpoint("interrupt", currentConversation), {}); if (currentConversation === conversationId) acceptSession(result.session); }
     catch (error) { if (currentConversation === conversationId) setNotice(error.message); }
     finally { updateControls(); }
-  }, "icon-button chat-stop"); stop.id = "chat-stop"; stop.hidden = true; stop.title = "Dừng trả lời"; stop.setAttribute("aria-label", stop.title); stop.append(svgIcon("M6 6h12v12H6z", { size: 16 }));
+  }, "icon-button chat-stop"); stop.id = "chat-stop"; stop.hidden = true; stop.title = t("Dừng trả lời"); stop.setAttribute("aria-label", stop.title); stop.append(svgIcon("M6 6h12v12H6z", { size: 16 }));
   const submit = node("button", undefined, "icon-button chat-send"); submit.type = "submit"; submit.id = "chat-send"; submit.append(svgIcon("M12 19V5m-6 6 6-6 6 6", { size: 18 }));
   const composerTools = node("div", undefined, "chat-composer-tools");
   controls.append(stop, submit); composerActions.append(composerTools, controls);
@@ -190,7 +191,7 @@ export function createChatPanel({ root, toggle }) {
     renderedItems = view?.renderedItems ?? new Map(); requestSignature = view?.requestSignature ?? "";
     messages.replaceChildren(...[...renderedItems.values()].map((entry) => entry.element));
     requests.replaceChildren(...(view?.requestNodes ?? [])); setNotice(view?.notice ?? "");
-    input.value = draft().text; input.placeholder = "Nhắn tin cho Codex…";
+    input.value = draft().text; input.placeholder = t("Nhắn tin cho Codex…");
     renderConnection(); extras?.refresh(); updateControls(); resize(); jump.hidden = true;
     history.scrollTop = view?.atEnd ? history.scrollHeight : view?.scrollTop ?? 0;
   }
@@ -262,7 +263,7 @@ export function createChatPanel({ root, toggle }) {
       const button = action("", () => activateTab(id), "chat-tab-label"); button.id = "chat-tab-" + id;
       button.dataset.conversationId = id; button.setAttribute("role", "tab"); button.setAttribute("aria-selected", String(id === conversationId));
       button.setAttribute("aria-controls", "chat-history"); button.tabIndex = id === conversationId ? 0 : -1;
-      const label = entry.title || "Chat mới"; button.title = label + (entry.waiting ? " · Đang chờ bạn" : entry.active ? " · Đang trả lời" : "");
+      const label = conversationLabel(entry); button.title = label + (entry.waiting ? t(" · Đang chờ bạn") : entry.active ? t(" · Đang trả lời") : "");
       const dot = node("span", undefined, "chat-tab-dot" + (entry.waiting ? " is-waiting" : entry.active ? " is-active" : ""));
       button.append(dot, node("span", label));
       button.addEventListener("keydown", (event) => {
@@ -273,7 +274,7 @@ export function createChatPanel({ root, toggle }) {
         if (next) { event.preventDefault(); activateTab(next).then(() => document.getElementById("chat-tab-" + next)?.focus()); }
         if (event.key === "Delete") { event.preventDefault(); closeTab(id).then(() => tabs.querySelector('[aria-selected="true"]')?.focus()); }
       });
-      const remove = action("", () => closeTab(id), "chat-tab-close"); remove.dataset.conversationId = id; remove.title = "Đóng tab: " + label; remove.setAttribute("aria-label", remove.title);
+      const remove = action("", () => closeTab(id), "chat-tab-close"); remove.dataset.conversationId = id; remove.title = t("Đóng tab: ") + label; remove.setAttribute("aria-label", remove.title);
       remove.append(svgIcon(ICONS.close, { size: 12 })); remove.tabIndex = id === conversationId ? 0 : -1;
       wrapper.append(button, remove); tabs.append(wrapper);
     }
@@ -283,12 +284,12 @@ export function createChatPanel({ root, toggle }) {
 
   function resize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 180) + "px"; }
   function endpoint(action = "", id = conversationId) { return "/api/chat/conversations" + (id ? "/" + encodeURIComponent(id) : "") + (action ? "/" + action : ""); }
-  function setNotice(message) { notice = message || ""; noticeBox.textContent = notice; noticeBox.hidden = !notice; }
+  function setNotice(message) { notice = message || ""; noticeBox.textContent = t(notice); noticeBox.hidden = !notice; }
 
   async function post(url, body) {
     const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-PADStudio-Intent": "chat" }, body: JSON.stringify(body) });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Không thể gửi yêu cầu.");
+    if (!response.ok) throw new Error(result.error || t("Không thể gửi yêu cầu."));
     return result;
   }
 
@@ -297,11 +298,11 @@ export function createChatPanel({ root, toggle }) {
     const waiting = Boolean(session?.requests.length);
     const hasInput = input.value.trim() || draft().attachments?.length || draft().references?.length || draft().skills?.length;
     submit.disabled = sending || uploading || !online || !state.connected || !state.authenticated || !session || session.archived || waiting || !hasInput;
-    submit.title = sending ? "Đang gửi…" : session?.active ? "Gửi bổ sung" : "Gửi tin nhắn"; submit.setAttribute("aria-label", submit.title);
+    submit.title = sending ? t("Đang gửi…") : session?.active ? t("Gửi bổ sung") : t("Gửi tin nhắn"); submit.setAttribute("aria-label", submit.title);
     stop.hidden = !session?.active; stop.disabled = sending || !online;
     model.disabled = Boolean(session?.active) || sending;
-    status.textContent = !online ? "Mất kết nối. Đang thử kết nối lại…" : uploading ? "Đang đính kèm file…" : session?.archived ? "Hội thoại đã lưu trữ. Mở menu để khôi phục." : sending ? "Đang gửi yêu cầu…"
-      : waiting ? "Đang chờ bạn trả lời" : session?.active ? "Agent đang làm việc…" : state.authenticated ? "Sẵn sàng" : "Kết nối Codex để bắt đầu";
+    status.textContent = !online ? t("Mất kết nối. Đang thử kết nối lại…") : uploading ? t("Đang đính kèm file…") : session?.archived ? t("Hội thoại đã lưu trữ. Mở menu để khôi phục.") : sending ? t("Đang gửi yêu cầu…")
+      : waiting ? t("Đang chờ bạn trả lời") : session?.active ? t("Agent đang làm việc…") : state.authenticated ? t("Sẵn sàng") : t("Kết nối Codex để bắt đầu");
     root.classList.toggle("is-working", Boolean(session?.active));
     status.classList.toggle("is-idle", online && !sending && !uploading && !session?.archived && !waiting && !session?.active);
     submit.hidden = Boolean(session?.active) && !hasInput;
@@ -311,22 +312,22 @@ export function createChatPanel({ root, toggle }) {
     connection.replaceChildren();
     connection.hidden = state.connected && state.authenticated && !state.error;
     if (!state.connected || state.error) {
-      connection.append(node("p", state.error || "Dùng Codex trên máy để trò chuyện."));
-      connection.append(action("Kết nối Codex", () => connect(), "button button-soft"));
+      connection.append(node("p", state.error || t("Dùng Codex trên máy để trò chuyện.")));
+      connection.append(action(t("Kết nối Codex"), () => connect(), "button button-soft"));
     } else if (!state.authenticated) {
-      connection.append(node("p", "Đăng nhập tài khoản ChatGPT để dùng Codex."));
+      connection.append(node("p", t("Đăng nhập tài khoản ChatGPT để dùng Codex.")));
       if (state.login?.url) {
-        const link = node("a", "Mở trang đăng nhập", "button button-soft"); link.href = state.login.url; link.target = "_blank"; link.rel = "noopener noreferrer";
-        connection.append(link, action("Hủy đăng nhập", async () => {
+        const link = node("a", t("Mở trang đăng nhập"), "button button-soft"); link.href = state.login.url; link.target = "_blank"; link.rel = "noopener noreferrer";
+        connection.append(link, action(t("Hủy đăng nhập"), async () => {
           try { acceptStatus((await post("/api/chat/login/cancel", {})).status); } catch (error) { setNotice(error.message); }
         }, "button button-ghost"));
-      } else connection.append(action("Đăng nhập ChatGPT", async () => {
+      } else connection.append(action(t("Đăng nhập ChatGPT"), async () => {
         try { acceptStatus((await post("/api/chat/login", {})).status); } catch (error) { setNotice(error.message); }
       }, "button button-soft"));
     }
     const value = draft().model || "";
     model.replaceChildren();
-    const defaultOption = node("option", "Mặc định của Codex"); defaultOption.value = ""; model.append(defaultOption);
+    const defaultOption = node("option", t("Mặc định của Codex")); defaultOption.value = ""; model.append(defaultOption);
     for (const entry of state.models ?? []) { const option = node("option", entry.name); option.value = entry.id; model.append(option); }
     if ([...model.options].some((option) => option.value === value)) model.value = value;
     model.hidden = !state.authenticated; extras?.refresh();
@@ -366,17 +367,17 @@ export function createChatPanel({ root, toggle }) {
           const summary = node("summary"); const body = node("pre"); element.append(summary, body);
           rendered = { element, body, summary };
         } else {
-          const label = node("span", item.role === "user" ? "Bạn" : "Codex", "chat-message-author");
+          const label = node("span", item.role === "user" ? t("Bạn") : "Codex", "chat-message-author");
           const body = node("div", undefined, "chat-prose"); const attachments = node("div", undefined, "chat-message-attachments");
           const actions = node("div", undefined, "chat-message-actions");
           rendered = { element, body, attachments, actions };
           const current = rendered;
           const copy = action("", async () => {
-            try { await navigator.clipboard.writeText(current.item.text); copy.title = "Đã sao chép"; setTimeout(() => { copy.title = "Sao chép"; }, 2000); }
-            catch { setNotice("Không truy cập được clipboard. Bạn có thể chọn và sao chép nội dung."); }
-          }, "icon-button"); copy.title = "Sao chép"; copy.setAttribute("aria-label", "Sao chép"); copy.append(svgIcon(ICONS.copy, { size: 14 }));
+            try { await navigator.clipboard.writeText(current.item.text); copy.title = t("Đã sao chép"); setTimeout(() => { copy.title = t("Sao chép"); }, 2000); }
+            catch { setNotice(t("Không truy cập được clipboard. Bạn có thể chọn và sao chép nội dung.")); }
+          }, "icon-button"); copy.title = t("Sao chép"); copy.setAttribute("aria-label", t("Sao chép")); copy.append(svgIcon(ICONS.copy, { size: 14 }));
           const edit = action("", () => editMessage(current.item), "icon-button");
-          edit.title = item.role === "user" ? "Sửa tin nhắn trong nhánh mới" : "Gửi lại trong nhánh mới"; edit.setAttribute("aria-label", edit.title);
+          edit.title = item.role === "user" ? t("Sửa tin nhắn trong nhánh mới") : t("Gửi lại trong nhánh mới"); edit.setAttribute("aria-label", edit.title);
           edit.append(svgIcon(item.role === "user" ? "m14 4 6 6M5 15l-1 5 5-1L20 8l-4-4z" : "M4 10a8 8 0 1 1 1 7M4 4v6h6", { size: 14 }));
           current.edit = edit; actions.append(copy, edit);
           element.append(label, body, attachments, actions);
@@ -389,8 +390,8 @@ export function createChatPanel({ root, toggle }) {
       if (rendered.signature !== signature) {
         if (item.role === "tool") {
           const working = item.status === "inProgress" && session.active && item.turnId === currentTurn;
-          rendered.summary.textContent = item.kind === "command" ? `${working ? "Đang chạy" : item.exitCode === 0 ? "Đã chạy" : "Lệnh"} ${(item.text || "").split("\n")[0].slice(0, 90)}`
-            : item.kind === "files" ? "Thay đổi file" : item.kind === "search" ? "Tìm kiếm trên web" : item.text;
+          rendered.summary.textContent = item.kind === "command" ? `${working ? t("Đang chạy") : item.exitCode === 0 ? t("Đã chạy") : t("Lệnh")} ${(item.text || "").split("\n")[0].slice(0, 90)}`
+            : item.kind === "files" ? t("Thay đổi file") : item.kind === "search" ? t("Tìm kiếm trên web") : item.text;
           rendered.body.textContent = [item.text, item.output].filter(Boolean).join("\n\n");
         } else if (item.role === "assistant") renderChatMarkdown(rendered.body, item.text);
         else rendered.body.textContent = item.text;
@@ -399,8 +400,8 @@ export function createChatPanel({ root, toggle }) {
           for (const attachment of item.attachments || []) {
             const chip = node("span", undefined, "chat-attachment");
             const src = attachment.id ? `/api/chat/attachments/${attachment.id}/image` : attachment.url;
-            if (attachment.kind === "image" && src) { const image = node("img"); image.src = src; image.alt = attachment.name || "Ảnh đính kèm"; chip.append(image); }
-            chip.append(node("span", attachment.name || "Ảnh đính kèm")); rendered.attachments.append(chip);
+            if (attachment.kind === "image" && src) { const image = node("img"); image.src = src; image.alt = attachment.name || t("Ảnh đính kèm"); chip.append(image); }
+            chip.append(node("span", attachment.name || t("Ảnh đính kèm"))); rendered.attachments.append(chip);
           }
         }
         rendered.element.classList.toggle("is-uncertain", item.status === "uncertain");
@@ -417,9 +418,9 @@ export function createChatPanel({ root, toggle }) {
   async function editMessage(item) {
     const id = conversationId;
     const source = item.role === "user" ? item : session.items.find((entry) => entry.role === "user" && entry.turnId === item.turnId);
-    if (!source) { setNotice("Không tìm thấy tin nhắn gốc. Hãy tải phần lịch sử cũ hơn."); return; }
+    if (!source) { setNotice(t("Không tìm thấy tin nhắn gốc. Hãy tải phần lịch sử cũ hơn.")); return; }
     const images = (source.attachments || []).filter((entry) => entry.kind === "image");
-    if (images.some((entry) => !entry.id)) { setNotice("Ảnh của hội thoại từ host khác cần được đính kèm lại. Hãy phân nhánh và chọn lại ảnh."); return; }
+    if (images.some((entry) => !entry.id)) { setNotice(t("Ảnh của hội thoại từ host khác cần được đính kèm lại. Hãy phân nhánh và chọn lại ảnh.")); return; }
     try {
       const result = await post(endpoint("fork", id), { beforeTurnId: item.turnId });
       adoptConversation(result.session); input.value = source.text;
@@ -428,7 +429,7 @@ export function createChatPanel({ root, toggle }) {
       draft().skills = (source.attachments || []).filter((entry) => entry.kind === "skill" && state.skills.some((skill) => skill.name === entry.name)).map((entry) => entry.name);
       saveDraft(); extras.refresh(); resize();
       if (item.role === "assistant") composer.requestSubmit();
-      else setNotice("Đã tạo nhánh trước lượt này. Sửa nội dung rồi gửi; các file trên máy vẫn giữ trạng thái hiện tại.");
+      else setNotice(t("Đã tạo nhánh trước lượt này. Sửa nội dung rồi gửi; các file trên máy vẫn giữ trạng thái hiện tại."));
     } catch (error) { if (id === conversationId) setNotice(error.message); }
   }
 
@@ -440,7 +441,7 @@ export function createChatPanel({ root, toggle }) {
     for (const request of values) {
       const requestConversation = conversationId;
       const form = node("form", undefined, "chat-request"); form.dataset.requestId = request.id;
-      form.append(node("h3", request.title));
+      form.append(node("h3", t(request.title)));
       if (request.reason) form.append(node("p", request.reason));
       if (request.detail) form.append(node("pre", request.detail));
       const fields = new Map();
@@ -449,12 +450,12 @@ export function createChatPanel({ root, toggle }) {
         let field;
         if (question.options.length && !question.secret) {
           field = node("select", undefined, "select");
-          const placeholder = node("option", "Chọn câu trả lời…"); placeholder.value = ""; field.append(placeholder);
+          const placeholder = node("option", t("Chọn câu trả lời…")); placeholder.value = ""; field.append(placeholder);
           for (const option of question.options) { const entry = node("option", option.label); entry.value = option.label; field.append(entry); }
-          const custom = node("option", "Nhập câu trả lời khác…"); custom.value = "__custom__"; field.append(custom);
+          const custom = node("option", t("Nhập câu trả lời khác…")); custom.value = "__custom__"; field.append(custom);
           const details = node("div", undefined, "chat-option-descriptions");
           for (const option of question.options) if (option.description) details.append(node("p", option.label + ": " + option.description));
-          const other = node("input"); other.placeholder = "Câu trả lời của bạn"; other.hidden = true; other.maxLength = 8_000;
+          const other = node("input"); other.placeholder = t("Câu trả lời của bạn"); other.hidden = true; other.maxLength = 8_000;
           field.addEventListener("change", () => { other.hidden = field.value !== "__custom__"; other.required = !other.hidden; if (!other.hidden) other.focus(); });
           label.append(field, other, details); fields.set(question.id, () => field.value === "__custom__" ? other.value : field.value);
         } else {
@@ -474,10 +475,10 @@ export function createChatPanel({ root, toggle }) {
         fields.set(spec.name, () => spec.type === "boolean" ? field.checked : ["integer", "number"].includes(spec.type) ? (field.value === "" ? "" : Number(field.value)) : field.value);
       }
       if (request.url) {
-        const link = node("a", "Mở trang cần xác nhận", "button button-soft"); link.href = request.url; link.target = "_blank"; link.rel = "noopener noreferrer"; form.append(link);
+        const link = node("a", t("Mở trang cần xác nhận"), "button button-soft"); link.href = request.url; link.target = "_blank"; link.rel = "noopener noreferrer"; form.append(link);
       }
       const buttons = node("div", undefined, "chat-request-actions");
-      const accept = node("button", request.kind === "questions" || request.kind === "form" ? "Gửi câu trả lời" : request.kind === "external" ? "Tôi đã hoàn tất" : "Cho phép lần này", "button button-soft"); accept.type = "submit";
+      const accept = node("button", request.kind === "questions" || request.kind === "form" ? t("Gửi câu trả lời") : request.kind === "external" ? t("Tôi đã hoàn tất") : t("Cho phép lần này"), "button button-soft"); accept.type = "submit";
       const answer = async (decision) => {
         for (const button of buttons.querySelectorAll("button")) button.disabled = true;
         try {
@@ -487,10 +488,10 @@ export function createChatPanel({ root, toggle }) {
         } catch (error) { if (conversationId === requestConversation) setNotice(error.message); for (const button of buttons.querySelectorAll("button")) button.disabled = false; }
       };
       if (!request.decisions || request.decisions.includes("accept")) buttons.append(accept);
-      if (request.decisions?.includes("acceptForSession")) buttons.append(action("Cho phép trong phiên", () => answer("acceptForSession"), "button button-ghost"));
-      for (const rule of request.rules || []) { const button = action(rule.label, () => answer(rule.id), "button button-ghost"); button.title = rule.detail; form.insertBefore(node("pre", rule.detail), buttons.parentNode === form ? buttons : null); buttons.append(button); }
-      if (!request.decisions || request.decisions.includes("decline")) buttons.append(action(request.kind === "questions" ? "Bỏ qua" : "Từ chối", () => answer("decline"), "button button-ghost"));
-      if (request.decisions?.includes("cancel")) buttons.append(action("Dừng lượt", () => answer("cancel"), "button button-ghost"));
+      if (request.decisions?.includes("acceptForSession")) buttons.append(action(t("Cho phép trong phiên"), () => answer("acceptForSession"), "button button-ghost"));
+      for (const rule of request.rules || []) { const button = action(t(rule.label), () => answer(rule.id), "button button-ghost"); button.title = rule.detail; form.insertBefore(node("pre", rule.detail), buttons.parentNode === form ? buttons : null); buttons.append(button); }
+      if (!request.decisions || request.decisions.includes("decline")) buttons.append(action(request.kind === "questions" ? t("Bỏ qua") : t("Từ chối"), () => answer("decline"), "button button-ghost"));
+      if (request.decisions?.includes("cancel")) buttons.append(action(t("Dừng lượt"), () => answer("cancel"), "button button-ghost"));
       form.append(buttons); form.addEventListener("submit", (event) => { event.preventDefault(); answer("accept"); }); requests.append(form);
     }
   }
@@ -519,7 +520,7 @@ export function createChatPanel({ root, toggle }) {
     const version = generation;
     const response = await fetch(endpoint()); const result = await response.json();
     if (version !== generation) return;
-    if (!response.ok) throw new Error(result.error || "Không mở được hội thoại.");
+    if (!response.ok) throw new Error(result.error || t("Không mở được hội thoại."));
     acceptSession(result.session);
   }
 
@@ -539,7 +540,7 @@ export function createChatPanel({ root, toggle }) {
 
   async function connect() {
     setNotice("");
-    connection.replaceChildren(node("p", "Đang kết nối Codex…"));
+    connection.replaceChildren(node("p", t("Đang kết nối Codex…")));
     try { acceptStatus((await post("/api/chat/connect", {})).status); await loadSession(); }
     catch (error) { state = { ...state, connected: false, error: error.message }; renderConnection(); }
   }
@@ -594,7 +595,7 @@ export function createChatPanel({ root, toggle }) {
         input.value = value.text; saveDraft(); acceptSession(result.session); resize(); scrollToEnd(true); input.focus();
       }
     } catch (error) {
-      const messageText = error.message + " Nếu mất kết nối khi gửi, kiểm tra lịch sử trước khi gửi lại.";
+      const messageText = error.message + t(" Nếu mất kết nối khi gửi, kiểm tra lịch sử trước khi gửi lại.");
       if (currentConversation === conversationId) setNotice(messageText);
       else { const view = views.get(key); if (view) view.notice = messageText; }
     } finally { value.sending = false; updateControls(); }

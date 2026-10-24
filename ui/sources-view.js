@@ -1,6 +1,7 @@
+import { t } from "./i18n.js";
 import { ICONS, formatSize, inputUrl, node, resultFileUrl, searchKey, svgIcon } from "./dom.js";
 
-const KINDS = Object.freeze({ video: "Video", audio: "Âm thanh", image: "Hình ảnh" });
+const KINDS = Object.freeze({ video: "Video", audio: t("Âm thanh"), image: t("Hình ảnh") });
 const state = { projectId: null, selectedPath: null, query: "", signature: null, previewKey: null };
 const SEARCH_FROM = 9;
 
@@ -24,8 +25,8 @@ export function collectSources({ resources = [], results = [], production = null
   for (const sequence of production?.sequences ?? []) {
     if (!sequence.active) continue;
     for (const segment of sequence.segments) collect(segment, segment.title);
-    collect(sequence.music, "Nhạc nền");
-    collect(sequence.audio, "Âm thanh");
+    collect(sequence.music, t("Nhạc nền"));
+    collect(sequence.audio, t("Âm thanh"));
   }
   for (const result of results) {
     if (result.type !== "media.acquired" && !used.has(result.id)) continue;
@@ -34,7 +35,7 @@ export function collectSources({ resources = [], results = [], production = null
     if (!file || !["image", "video", "audio"].includes(kind)) continue;
     items.push({
       path: "result:" + result.id + ":" + file.id, name: file.name,
-      displayName: result.type === "audio.tts" ? `Lời đọc · ${used.get(result.id) ?? result.name}` : result.name, mediaType: kind,
+      displayName: result.type === "audio.tts" ? t("Lời đọc · {0}", used.get(result.id) ?? result.name) : result.name, mediaType: kind,
       available: file.available !== false, modifiedAt: result.createdAt, sizeBytes: file.sizeBytes ?? null,
       resultId: result.id, fileId: file.id
     });
@@ -64,17 +65,17 @@ function preview(host, projectId, item) {
   state.previewKey = key;
   host.replaceChildren();
   if (!item) {
-    host.append(node("p", "Chọn một tư liệu để xem.", "empty-note"));
+    host.append(node("p", t("Chọn một tư liệu để xem."), "empty-note"));
     return;
   }
   const url = itemUrl(projectId, item);
   const head = node("header", undefined, "source-preview-head");
   const title = node("div");
   title.append(node("h2", item.displayName ?? item.name));
-  title.append(node("p", [KINDS[kindOf(item)] ?? "Tệp", formatSize(item.sizeBytes)].filter(Boolean).join(" · "), "rail-note"));
+  title.append(node("p", [KINDS[kindOf(item)] ?? t("Tệp"), formatSize(item.sizeBytes)].filter(Boolean).join(" · "), "rail-note"));
   const download = node("a", undefined, "button button-quiet");
   download.href = url; download.download = item.name;
-  download.append(svgIcon(ICONS.download, { size: 17 }), node("span", "Tải về"));
+  download.append(svgIcon(ICONS.download, { size: 17 }), node("span", t("Tải về")));
   head.append(title, download);
   const body = node("div", undefined, "source-preview-body");
   host.append(head, body);
@@ -107,7 +108,7 @@ export function renderSources(host, { projectId, resources, results, production 
 
   host.replaceChildren();
   if (!visible.length) {
-    host.append(node("p", "Dự án chưa có tư liệu. Tư liệu bạn gửi trong cuộc trò chuyện sẽ hiện ở đây.", "empty-note"));
+    host.append(node("p", t("Dự án chưa có tư liệu. Tư liệu Agent thêm vào dự án sẽ hiện ở đây."), "empty-note"));
     return;
   }
 
@@ -116,8 +117,8 @@ export function renderSources(host, { projectId, resources, results, production 
   const label = node("label", undefined, "search");
   label.hidden = visible.length < SEARCH_FROM;
   label.append(svgIcon(ICONS.search, { size: 16 }));
-  const search = node("input"); search.type = "search"; search.placeholder = "Tìm tư liệu…"; search.value = state.query;
-  search.setAttribute("aria-label", "Tìm tư liệu"); search.autocomplete = "off"; search.id = "source-search";
+  const search = node("input"); search.type = "search"; search.placeholder = t("Tìm tư liệu…"); search.value = state.query;
+  search.setAttribute("aria-label", t("Tìm tư liệu")); search.autocomplete = "off"; search.id = "source-search";
   label.append(search);
   const list = node("div", undefined, "source-list");
   list.setAttribute("role", "list");
@@ -130,7 +131,7 @@ export function renderSources(host, { projectId, resources, results, production 
     row.setAttribute("role", "listitem");
     const text = node("span", undefined, "source-text");
     text.append(node("span", item.displayName ?? item.name, "source-name"),
-      node("span", item.available ? [KINDS[kindOf(item)] ?? "Tệp", formatSize(item.sizeBytes)].filter(Boolean).join(" · ") : "Thiếu tệp", "source-meta"));
+      node("span", item.available ? [KINDS[kindOf(item)] ?? t("Tệp"), formatSize(item.sizeBytes)].filter(Boolean).join(" · ") : t("Thiếu tệp"), "source-meta"));
     row.append(thumbnail(projectId, item), text);
     row.classList.toggle("is-active", item.path === state.selectedPath);
     row.addEventListener("click", () => {
@@ -141,7 +142,7 @@ export function renderSources(host, { projectId, resources, results, production 
     rows.set(item.path, row);
     list.append(row);
   }
-  const none = node("p", "Không tìm thấy tư liệu.", "empty-note");
+  const none = node("p", t("Không tìm thấy tư liệu."), "empty-note");
   none.hidden = true;
   list.append(none);
   const filter = () => {

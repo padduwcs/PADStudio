@@ -1,3 +1,4 @@
+import { t, getLanguage } from "./i18n.js";
 // Small helpers shared by the observer's views. The interface builds its DOM with textContent only, never
 // innerHTML, so project text (titles, notes, transcripts) can never be interpreted as markup.
 
@@ -49,9 +50,9 @@ export function searchKey(value) {
   return String(value ?? "").normalize("NFD").replace(WITHOUT_MARKS, "").replace(/[đĐ]/g, "d").toLocaleLowerCase("vi");
 }
 
-const formatterDate = new Intl.DateTimeFormat("vi", { day: "numeric", month: "numeric", year: "numeric" });
-const formatterDateTime = new Intl.DateTimeFormat("vi", { dateStyle: "short", timeStyle: "short" });
-const formatterTime = new Intl.DateTimeFormat("vi", { hour: "2-digit", minute: "2-digit" });
+const formatterDate = new Intl.DateTimeFormat(getLanguage(), { day: "numeric", month: "numeric", year: "numeric" });
+const formatterDateTime = new Intl.DateTimeFormat(getLanguage(), { dateStyle: "short", timeStyle: "short" });
+const formatterTime = new Intl.DateTimeFormat(getLanguage(), { hour: "2-digit", minute: "2-digit" });
 
 export function formatDateTime(value) {
   const time = Date.parse(value);
@@ -63,14 +64,14 @@ export function relativeTime(value, now = Date.now()) {
   const time = Date.parse(value);
   if (!Number.isFinite(time)) return "";
   const seconds = Math.round((now - time) / 1000);
-  if (seconds < 45) return "Vừa xong";
-  if (seconds < 3600) return Math.max(1, Math.round(seconds / 60)) + " phút trước";
+  if (seconds < 45) return t("Vừa xong");
+  if (seconds < 3600) return Math.max(1, Math.round(seconds / 60)) + t(" phút trước");
   const start = new Date(now); start.setHours(0, 0, 0, 0);
   const today = start.getTime();
-  if (time >= today) return "Hôm nay " + formatterTime.format(new Date(time));
-  if (time >= today - 86_400_000) return "Hôm qua";
+  if (time >= today) return t("Hôm nay ") + formatterTime.format(new Date(time));
+  if (time >= today - 86_400_000) return t("Hôm qua");
   const days = Math.floor((today - time) / 86_400_000) + 1;
-  if (days < 7) return days + " ngày trước";
+  if (days < 7) return days + t(" ngày trước");
   return formatterDate.format(new Date(time));
 }
 
@@ -84,8 +85,8 @@ export function clock(seconds) {
 }
 
 export function formatDuration(seconds) {
-  if (!Number.isFinite(seconds)) return "không rõ";
-  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)} giây`;
+  if (!Number.isFinite(seconds)) return t("không rõ");
+  if (seconds < 60) return t("{0} giây", seconds.toFixed(seconds < 10 ? 1 : 0));
   return clock(seconds);
 }
 
@@ -109,7 +110,7 @@ export function inputUrl(projectId, item) {
 
 export function orientationLabel(width, height) {
   if (!width || !height) return "";
-  const shape = height > width ? "Dọc" : height < width ? "Ngang" : "Vuông";
+  const shape = height > width ? t("Dọc") : height < width ? t("Ngang") : t("Vuông");
   return `${shape} ${width}×${height}`;
 }
 
@@ -119,6 +120,11 @@ export const STATUS_KINDS = Object.freeze(["working", "waiting", "feedback", "dr
 export function statusChip(status) {
   const kind = STATUS_KINDS.includes(status?.kind) ? status.kind : "empty";
   const chip = node("span", undefined, "chip chip-" + kind);
-  chip.append(node("span", undefined, "chip-dot"), node("span", status?.label ?? ""));
+  chip.append(node("span", undefined, "chip-dot"), node("span", t(status?.label ?? "")));
   return chip;
+}
+
+export function conversationLabel(entry) {
+  // Only the local placeholder is translated. Real native/custom titles stay untouched.
+  return entry?.hasConversation === false && entry.title === "Chat mới" ? t("Chat mới") : entry?.title || t("Chat mới");
 }

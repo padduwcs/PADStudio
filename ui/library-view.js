@@ -1,3 +1,4 @@
+import { t } from "./i18n.js";
 import { clock, node, orientationLabel, relativeTime, resultFileUrl, searchKey, statusChip } from "./dom.js";
 
 const MAX_CONCURRENT_CARDS = 3;
@@ -103,7 +104,7 @@ export function createLibrary({ root, grid, search, count, onSelect }) {
       button.addEventListener("click", () => { close(); if (project.id !== selectedId) onSelect(project.id); });
       return button;
     }));
-    if (!shown.length) grid.append(node("p", projects.length ? "Không tìm thấy dự án." : "Chưa có dự án.", "empty-note library-empty"));
+    if (!shown.length) grid.append(node("p", projects.length ? t("Không tìm thấy dự án.") : t("Chưa có dự án."), "empty-note library-empty"));
     for (const button of grid.querySelectorAll(".project-card")) observer.observe(button);
   }
 

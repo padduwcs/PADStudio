@@ -55,7 +55,7 @@ async function checkShell(page, label) {
     `${label}: the full studio name must stay visible and unclipped`);
   const navigation = await page.evaluate(`(() => {
     const header=document.querySelector('#topbar').getBoundingClientRect();
-    const controls=[...document.querySelectorAll('.brand, .topbar button')].map(element => {
+    const controls=[...document.querySelectorAll('.brand, .topbar button, .topbar select')].map(element => {
       const r=element.getBoundingClientRect(), label=element.querySelector('.button-label');
       return {id:element.id || 'brand',left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height,
         labelled:!label || (label.getBoundingClientRect().width > 0 && label.scrollWidth <= label.clientWidth + 1)};
@@ -182,7 +182,7 @@ Screen: ${screen}`);
         const label = `${theme}-${width}`;
         await open(page, options, { width, height, mobile, theme });
         await checkShell(page, label);
-        if (options.empty && !options.projectId) {
+        if (!options.projectId && await page.evaluate("!document.querySelector('#welcome').hidden")) {
           expect(await page.evaluate("!document.querySelector('#welcome').hidden && document.querySelector('#project').hidden"), `${label}: expected the welcome screen`);
           if (options.shots) await page.screenshot(`${options.shots}/${label}-welcome.png`);
         } else {

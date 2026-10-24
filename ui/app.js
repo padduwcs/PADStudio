@@ -1,3 +1,4 @@
+import { t, getLanguage, setLanguage, localizeStatic } from "./i18n.js";
 import { ICONS, clock, node, orientationLabel, relativeTime, statusChip, svgIcon } from "./dom.js";
 import { renderTheatre, clearTheatre } from "./production-view.js";
 import { renderSources, clearSources } from "./sources-view.js";
@@ -5,6 +6,7 @@ import { createLibrary } from "./library-view.js";
 import { createToolsPanel } from "./tools-view.js";
 import { createChatPanel } from "./chat-view.js";
 
+localizeStatic();
 const $ = (selector) => document.querySelector(selector);
 const elements = {
   topbar: $("#topbar"), main: $("#main"), welcome: $("#welcome"), project: $("#project"),
@@ -14,8 +16,16 @@ const elements = {
   libraryButton: $("#library-button"), libraryCount: $("#library-count"), themeToggle: $("#theme-toggle"),
   toolsButton: $("#tools-button")
 };
+$("#language-select").value = getLanguage();
+$("#language-select").addEventListener("change", (event) => {
+  if (!setLanguage(event.target.value)) return;
+  const location = new URL(window.location.href);
+  location.searchParams.set("lang", getLanguage());
+  window.history.replaceState(null, "", location);
+  window.location.reload();
+});
 
-const VIEWS = Object.freeze({ video: "Video", sources: "Tư liệu" });
+const VIEWS = Object.freeze({ video: "Video", sources: t("Tư liệu") });
 const VIEW_SECTIONS = Object.freeze({
   video: ["production", "animation", "delivery"],
   sources: ["activity", "production"]
@@ -23,9 +33,6 @@ const VIEW_SECTIONS = Object.freeze({
 
 const parameters = new URLSearchParams(window.location.search);
 let selectedProjectId = parameters.get("project");
-if (!selectedProjectId) {
-  try { selectedProjectId = localStorage.getItem("padstudio-project"); } catch { /* Optional preference. */ }
-}
 let currentView = parameters.get("view") ?? "video";
 if (!VIEWS[currentView]) currentView = "video";
 
@@ -54,20 +61,20 @@ const chat = createChatPanel({ root: $("#chat"), toggle: $("#chat-button") });
 /* ------------------------------------------------------------------------------------------------ */
 
 function setConnection(connected) {
-  elements.connection.textContent = connected ? "Đã đồng bộ" : "Mất kết nối";
+  elements.connection.textContent = connected ? t("Đã đồng bộ") : t("Mất kết nối");
   document.body.classList.toggle("is-offline", !connected);
 }
 
 function showError(error) {
   elements.error.hidden = false;
-  elements.errorText.textContent = error.message;
+  elements.errorText.textContent = t(error.message);
   setConnection(false);
 }
 
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   elements.themeToggle.setAttribute("aria-pressed", String(theme === "dark"));
-  elements.themeToggle.setAttribute("aria-label", theme === "dark" ? "Chuyển sang giao diện sáng" : "Chuyển sang giao diện tối");
+  elements.themeToggle.setAttribute("aria-label", theme === "dark" ? t("Chuyển sang giao diện sáng") : t("Chuyển sang giao diện tối"));
   elements.themeToggle.title = elements.themeToggle.getAttribute("aria-label");
   elements.themeToggle.replaceChildren(svgIcon(theme === "dark" ? ICONS.sun : ICONS.moon, { size: 19 }));
   document.querySelector('meta[name="theme-color"]').content = theme === "dark" ? "#141613" : "#f6f6f2";
@@ -89,7 +96,7 @@ function showWorkspace(hasProject) {
 function renderHeader() {
   const project = projectsById.get(selectedProjectId);
   const card = contexts.card?.card;
-  const title = card?.project.title ?? project?.title ?? "Đang mở dự án…";
+  const title = card?.project.title ?? project?.title ?? t("Đang mở dự án…");
   elements.title.textContent = title;
   document.title = title + " · PADStudio";
   elements.meta.replaceChildren();
@@ -98,7 +105,7 @@ function renderHeader() {
   const facts = [
     card.video ? [Number.isFinite(card.video.durationSeconds) ? clock(card.video.durationSeconds) : null,
       orientationLabel(card.video.width, card.video.height).split(" ")[0]].filter(Boolean).join(" · ") : null,
-    card.lastActivityAt ? "Cập nhật " + relativeTime(card.lastActivityAt).toLocaleLowerCase("vi") : null
+    card.lastActivityAt ? t("Cập nhật ") + relativeTime(card.lastActivityAt).toLocaleLowerCase("vi") : null
   ].filter(Boolean);
   for (const fact of facts) elements.meta.append(node("span", fact, "project-meta-item"));
 }
@@ -226,7 +233,7 @@ async function loadSection(section, requestedGeneration = null) {
     }
     const body = await response.json();
     if (selectedProjectId !== projectId) return;
-    if (!response.ok) throw new Error(body.error || `Không thể đọc khu vực ${section}.`);
+    if (!response.ok) throw new Error(body.error || t("Không thể đọc khu vực {0}.", section));
     sectionEtags.set(key, response.headers.get("etag"));
     sectionGenerations.set(key, body.context.generation);
     loadedSections.add(section);
@@ -257,7 +264,6 @@ async function loadSelectedProject(generation) {
 
 function selectProject(projectId) {
   selectedProjectId = projectId;
-  try { localStorage.setItem("padstudio-project", projectId); } catch { /* Optional preference. */ }
   const location = new URL(window.location.href);
   location.searchParams.set("project", projectId);
   window.history.replaceState(null, "", location);
@@ -269,6 +275,22 @@ function selectProject(projectId) {
   elements.title.focus({ preventScroll: true });
 }
 
+function goHome({ focus = true } = {}) {
+  selectedProjectId = null;
+  setView("video", { updateUrl: false });
+  renderedProjectId = null;
+  renderedGeneration = null;
+  resetProject();
+  showWorkspace(false);
+  library.update([...projectsById.values()], null);
+  document.title = "PADStudio";
+  const location = new URL(window.location.href);
+  location.searchParams.delete("project");
+  location.searchParams.delete("view");
+  window.history.replaceState(null, "", location);
+  if (focus) $("#welcome-title").focus({ preventScroll: true });
+}
+
 async function loadProjects() {
   if (listRequestRunning) return;
   listRequestRunning = true;
@@ -278,16 +300,12 @@ async function loadProjects() {
     const response = await fetch("/api/projects", { headers });
     if (response.status === 304) { setConnection(true); return; }
     const body = await response.json();
-    if (!response.ok) throw new Error(body.error || "Không thể đọc danh sách dự án.");
+    if (!response.ok) throw new Error(body.error || t("Không thể đọc danh sách dự án."));
     setConnection(true);
     elements.error.hidden = true;
     projectsEtag = response.headers.get("etag");
     projectsById = new Map(body.projects.map((project) => [project.id, project]));
-    if (!projectsById.has(selectedProjectId)) {
-      const newest = [...body.projects].sort((left, right) =>
-        (Date.parse(right.modifiedAt ?? right.createdAt) || 0) - (Date.parse(left.modifiedAt ?? left.createdAt) || 0))[0];
-      selectedProjectId = newest?.id ?? null;
-    }
+    if (selectedProjectId && !projectsById.has(selectedProjectId)) goHome({ focus: false });
     library.update(body.projects, selectedProjectId);
     if (!selectedProjectId) {
       showWorkspace(false);
@@ -295,7 +313,6 @@ async function loadProjects() {
       return;
     }
     showWorkspace(true);
-    try { localStorage.setItem("padstudio-project", selectedProjectId); } catch { /* Optional preference. */ }
     await loadSelectedProject(projectsById.get(selectedProjectId).generation);
   } finally {
     listRequestRunning = false;
@@ -310,10 +327,11 @@ elements.libraryButton.addEventListener("click", () => library.open());
 $("#library").addEventListener("librarychange", (event) => {
   elements.libraryButton.setAttribute("aria-expanded", String(event.detail.open));
 });
-document.querySelector(".brand").addEventListener("click", (event) => { event.preventDefault(); library.open(); });
+document.querySelector(".brand").addEventListener("click", (event) => { event.preventDefault(); goHome(); });
 elements.toolsButton.addEventListener("click", () => tools.open());
 $("#welcome-tools").addEventListener("click", () => tools.open());
 $("#welcome-chat").addEventListener("click", () => chat.open());
+$("#welcome-projects").addEventListener("click", () => library.open());
 for (const [id, name] of [["library", "librarychange"], ["tools", "toolschange"]]) {
   $("#" + id).addEventListener(name, () => chat.syncModal());
 }
@@ -335,6 +353,7 @@ document.addEventListener("visibilitychange", () => {
 });
 
 applyTheme(initialTheme());
+showWorkspace(false);
 setView(currentView, { updateUrl: false });
 loadProjects().catch(showError);
 // The Agent sends the user to /?panel=tools to add a key or say which services they have.
