@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { mkdir, readFile, realpath, stat } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeJsonAtomic } from "../project/atomic-files.js";
 import { CodexClient } from "./codex-client.js";
@@ -10,6 +10,19 @@ import { approvalAnswer, approvalView, ChatError, displayItem, externalUrl, safe
 
 const applicationRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const MAX_ITEMS = 5000;
+
+function isDescendant(root, path) {
+  const rel = relative(root, path);
+  return Boolean(rel) && rel !== ".." && !rel.startsWith(".." + sep) && !isAbsolute(rel);
+}
+
+async function referenceTarget(cwd, path) {
+  if (!isDescendant(cwd, path)) return null;
+  // Windows temp folders can use an 8.3 name or a junction. Compare both real paths,
+  // while keeping the original cwd and input paths for Codex history and prompts.
+  const [root, actual] = await Promise.all([realpath(cwd), realpath(path)]).catch(() => []);
+  return root && actual && isDescendant(root, actual) ? actual : null;
+}
 
 export class ChatService extends EventEmitter {
   constructor({ cwd = applicationRoot, sessionRoot = join(cwd, ".padstudio", "chat", "workspace"), client = null } = {}) {
@@ -218,8 +231,8 @@ export class ChatService extends EventEmitter {
       for (const file of selectedFiles) input.push(file.kind === "image" ? { type: "localImage", path: file.path } : { type: "text", text: file.path, text_elements: [] });
       for (const path of references) {
         if (typeof path !== "string" || !isAbsolute(path) || path.length > 2000) throw new ChatError(400, "Đường dẫn tham chiếu không hợp lệ.");
-        const rel = relative(this.cwd, path), actual = await realpath(path).catch(() => null);
-        if (!rel || rel.startsWith("..") || isAbsolute(rel) || !actual || relative(this.cwd, actual).startsWith("..") || isAbsolute(relative(this.cwd, actual)) || !(await stat(actual)).isFile()) throw new ChatError(400, "File tham chiếu phải nằm trong thư mục làm việc.");
+        const actual = await referenceTarget(this.cwd, path);
+        if (!actual || !(await stat(actual)).isFile()) throw new ChatError(400, "File tham chiếu phải nằm trong thư mục làm việc.");
         input.push({ type: "text", text: path, text_elements: [] });
       }
       for (const name of skills) {
@@ -435,9 +448,7 @@ export class ChatService extends EventEmitter {
     for (const file of (result.files ?? []).slice(0, 40)) {
       const path = resolve(file.root || this.cwd, file.path);
       const rel = relative(this.cwd, path);
-      if (!rel || rel.startsWith("..") || isAbsolute(rel)) continue;
-      const actual = await realpath(path).catch(() => null);
-      if (!actual || relative(this.cwd, actual).startsWith("..") || isAbsolute(relative(this.cwd, actual))) continue;
+      if (!await referenceTarget(this.cwd, path)) continue;
       data.push({ name: rel, path });
     }
     return data;

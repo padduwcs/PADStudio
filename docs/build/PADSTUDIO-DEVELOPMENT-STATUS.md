@@ -26,9 +26,9 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 ## Baseline kiểm chứng
 
-Ngày **2026-10-24**, Node v24.18.1, Windows: `npm test` **479 tests: 478 pass, 0 fail, 1 skipped** (symlink, thiếu quyền Windows).
+Ngày **2026-10-24**, Node v24.18.1, Windows, sau sửa tham chiếu thư mục alias: `npm test` **480 tests: 479 pass, 0 fail, 1 skipped** (symlink file, thiếu quyền Windows).
 `npm run check` sạch. `chat:ui:test`, `chat:ui:features-test`, `observer:ui:empty-test`, `observer:ui:live-test`, `observer:ui:tools-test` passed.
-Đợt rà soát repo cùng ngày chạy lại `npm test`: **479 tests, 478 pass, 0 fail, 1 skip** trên máy phát triển; trên checkout sạch:
+Đợt rà soát repo trước bản sửa alias cùng ngày chạy `npm test`: **479 tests, 478 pass, 0 fail, 1 skip** trên máy phát triển; trên checkout sạch:
 **479 tests, 473 pass, 0 fail, 6 skip** vì thiếu runtime phân tích tùy chọn và quyền symlink. Checkout sạch không sao chép `.padstudio/`,
 `padstudio.local.json`, `.runtime-tools/` hoặc `node_modules/`. `npm run check` **296 scripts/82 documents** và `npm run test:ui` (6 suite) đều passed trên cả hai bản.
 Live Codex CLI 0.163.0: input ảnh, explicit effort/mode/quyền, rename/history, fork trước lượt, export và archive/restore dùng API gốc.
@@ -44,6 +44,10 @@ Các baseline cũ sau đây là lịch sử tại ngày ghi nhận.
   và ghép section thay vì ghi đè cấu hình đã có. Checkout mới không mang launcher hoặc tài khoản của người duy trì.
 - `npm run test:ui` chạy tuần tự cả 6 browser suite và trả lỗi ngay nếu một suite lỗi. CI Windows/Node 24 chạy cùng lệnh sau static/Node tests,
   hủy run cũ trên cùng ref khi có commit mới và lưu ảnh minh chứng fixture khi lỗi. Không cần Codex thật, tài khoản, khóa API hoặc provider trả phí.
+- Lần CI đầu phát hiện file search trả rỗng trên runner Windows. Đã tái hiện bằng cwd qua junction: code cũ so sánh file đã `realpath`
+  với cwd chưa chuẩn hóa. Nay kiểm containment theo đường dẫn thực của cả gốc và file, giữ nguyên cwd/native input/metadata identity.
+  Test hồi quy chứng minh alias hợp lệ hoạt động, đường dẫn thoát qua symlink vẫn bị chặn và không có lượt inference ngoài ý muốn.
+  Action lưu ảnh dùng Node 24 để tránh cảnh báo runtime cũ. Sau sửa: full Node suite 480 tests, 479 pass, 1 skip; `npm run check` và cả 6 browser suite passed.
 - Kiểm các file được Git theo dõi và diff của 11 commit chưa publish: không thấy đường dẫn cá nhân, file cấu hình/dữ liệu bị cấm hoặc mẫu token/private key phổ biến.
   Đây là kiểm tra kỹ thuật của bản dùng local trên Windows, không thay thế chứng nhận broad release; `release:gates` và các giới hạn sản phẩm giữ nguyên.
 

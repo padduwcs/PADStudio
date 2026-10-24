@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -44,6 +44,33 @@ test("explicit images, files, references, skills and native options do not intro
   assert.deepEqual((await resumed.read(id)).options, options);
   assert.equal((await resumed.read(id)).items[0].attachments.find((entry) => entry.kind === "image").id, image.id);
   assert.deepEqual(await readdir(join(cwd, ".padstudio")), ["chat"]);
+});
+
+test("file references work through a directory alias without exposing escaped targets or changing cwd", async (t) => {
+  const workspace = await mkdtemp(join(tmpdir(), "padstudio-chat-alias-"));
+  const directory = join(workspace, "actual"), cwd = join(workspace, "alias"), outside = join(workspace, "outside");
+  await mkdir(directory); await mkdir(outside);
+  await symlink(directory, cwd, process.platform === "win32" ? "junction" : "dir");
+  await symlink(outside, join(directory, "escape"), process.platform === "win32" ? "junction" : "dir");
+  await writeFile(join(directory, "reference.md"), "Selected reference");
+  await writeFile(join(directory, "..notes.md"), "A valid filename inside the workspace");
+  await writeFile(join(outside, "secret.md"), "Must not be exposed");
+  const client = new FixtureCodex(), service = new ChatService({ cwd, client });
+  t.after(async () => { await service.close(); await rm(workspace, { recursive: true, force: true }); });
+  const id = (await service.read()).conversationId;
+  client.files = ["reference.md", "..notes.md", "escape/secret.md", "missing.md"].map(path => ({ root: cwd, path }));
+  client.files.push({ root: outside, path: "secret.md" });
+  const reference = join(cwd, "reference.md"), notes = join(cwd, "..notes.md");
+  assert.deepEqual((await service.searchFiles("md")).map(entry => entry.path), [reference, notes]);
+  await service.send(id, { ...prompt(), references: [reference, notes] });
+  assert.equal(client.calls.find(call => call.method === "thread/start").params.cwd, cwd);
+  const input = client.calls.find(call => call.method === "turn/start").params.input;
+  assert.deepEqual(input.slice(1).map(entry => entry.text), [reference, notes], "native input retains the user-visible alias paths");
+  client.complete((await service.session(id)).threadId);
+  for (const reference of [join(cwd, "escape", "secret.md"), join(outside, "secret.md"), cwd, join(cwd, "missing.md")]) {
+    await assert.rejects(service.send(id, { ...prompt(), references: [reference] }), { status: 400 });
+  }
+  assert.equal(client.calls.filter(call => call.method === "turn/start").length, 1);
 });
 
 test("invalid attachments and runtime options are rejected before inference", async (t) => {

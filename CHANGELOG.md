@@ -4,6 +4,9 @@ Theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Các bản phát 
 
 ## [Chưa phát hành]
 
+- Sửa tìm/tham chiếu file khi thư mục làm việc dùng tên ngắn hoặc junction trên Windows: so sánh đường dẫn thực của cả thư mục gốc và file,
+  vẫn chặn đường dẫn thoát ra ngoài. Cwd, liên kết hội thoại và đường dẫn chuyển cho Codex giữ nguyên. Thêm test hồi quy cho alias và symlink thoát thư mục.
+
 - Chuẩn bị repo cho người dùng mới: cập nhật hướng dẫn VI/EN, cách đăng nhập qua Codex/PADSwitcher, cấu hình launcher mẫu và quy tắc đóng góp
   theo chat độc lập hiện tại. Thêm `npm run test:ui` chạy trọn 6 browser suite; CI nay chạy cùng các suite này và giữ ảnh minh chứng khi lỗi.
   Kiểm thử dùng dữ liệu tạm, Codex/provider giả; không cần tài khoản hoặc khóa API. Không đưa cấu hình/tài khoản của máy người duy trì vào repo.
