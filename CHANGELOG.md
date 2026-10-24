@@ -4,6 +4,9 @@ Theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Các bản phát 
 
 ## [Chưa phát hành]
 
+- Bố trí lại thanh trên: logo và nhóm Dự án/Công cụ bên trái, Trò chuyện và sáng/tối bên phải. Nút đang mở dùng màu nhấn của studio.
+  Màn hình nhỏ có hàng điều hướng riêng, luôn giữ nhãn chữ và vùng bấm đủ rộng; bố cục ổn định khi mở hoặc resize chat.
+
 - Căn lại bố cục chat: hội thoại, ô nhập và tên thư mục dùng cùng một cột khi resize; model/chế độ nằm cùng nhóm, cài đặt gom vào **…**.
   Menu bám nút nguồn và tự tránh ô nhập khi có nhiều dòng/file. Trang video căn giữa diện tích còn lại trên màn hình lớn.
 

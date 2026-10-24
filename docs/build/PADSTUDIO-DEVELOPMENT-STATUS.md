@@ -1,6 +1,6 @@
 # PADStudio — trạng thái phát triển
 
-Cập nhật: **2026-10-24** (bố cục chat theo sidebar Codex trong VS Code, giữ input và thao tác native; xem mục “Chat trong PADStudio”). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
+Cập nhật: **2026-10-24** (bố cục chat theo sidebar Codex trong VS Code và thanh điều hướng của studio; xem mục “Chat trong PADStudio”). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
 
 Đây là điểm vào ngắn để biết codebase đang ở đâu. PADStudio vẫn đang được xây dựng và chỉnh
 chu; các báo cáo có chữ `completion`, tên đợt hoặc số phiên bản ghi lại một mốc nghiệm thu kỹ
@@ -35,6 +35,11 @@ Baseline trước đợt bổ sung là 464 tests/463 pass/1 skip; trước khi b
 Các baseline cũ sau đây là lịch sử tại ngày ghi nhận.
 
 ## Chat trong PADStudio — 2026-10-24
+
+- Thanh trên chia logo/nhóm Dự án–Công cụ và nhóm Trò chuyện/sáng–tối; màn hình ≤900 px có hàng điều hướng riêng với nhãn chữ và nút cao 44 px.
+  Style responsive của thanh trên nằm trong shell, không bị chat CSS ghi đè. Browser observer kiểm 320/390/768/900/901/1024/1440/1920 px,
+  hai theme, tên đầy đủ/nhãn nút/vùng bấm/không chồng lấn; empty/live/tools và hai bộ chat UI đều passed. `npm run check` sạch.
+  Đợt trình bày này không chạy lại full Node suite; giữ nguyên số liệu full suite đã ghi.
 
 - Khung chat Codex là client cho App Server có sẵn, không xây agent loop hay MCP server mới. Agent tiếp tục đọc repo, runtime và skill rồi
   làm video bằng CLI. Các view video/tư liệu giữ project làm nguồn sự thật; host ngoài vẫn dùng được.

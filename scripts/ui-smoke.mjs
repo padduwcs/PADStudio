@@ -10,7 +10,7 @@ import { pathToFileURL } from "node:url";
 import { launchBrowser } from "./lib/browser.mjs";
 
 const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
-const VIEWPORTS = [[390, 844, true], [768, 1000, false], [1440, 900, false]];
+const VIEWPORTS = [[320, 780, true], [390, 844, true], [768, 1000, false], [900, 900, false], [901, 900, false], [1024, 900, false], [1440, 900, false], [1920, 1000, false]];
 const TABS = ["video", "sources"];
 
 function parseArguments(args) {
@@ -53,6 +53,20 @@ async function checkShell(page, label) {
   })()`);
   expect(brand.text === "Precise Animated Demonstration Studio" && brand.visible && !brand.clipped,
     `${label}: the full studio name must stay visible and unclipped`);
+  const navigation = await page.evaluate(`(() => {
+    const header=document.querySelector('#topbar').getBoundingClientRect();
+    const controls=[...document.querySelectorAll('.brand, .topbar button')].map(element => {
+      const r=element.getBoundingClientRect(), label=element.querySelector('.button-label');
+      return {id:element.id || 'brand',left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height,
+        labelled:!label || (label.getBoundingClientRect().width > 0 && label.scrollWidth <= label.clientWidth + 1)};
+    });
+    return {controls, contained:controls.every(r=>r.left>=0 && r.right<=innerWidth && r.top>=header.top && r.bottom<=header.bottom),
+      overlap:controls.some((a,i)=>controls.some((b,j)=>j>i && a.left<b.right && a.right>b.left && a.top<b.bottom && a.bottom>b.top)),
+      expectedHeight:Math.abs(header.height-parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topbar'))) < 1};
+  })()`);
+  expect(navigation.contained && !navigation.overlap && navigation.expectedHeight && navigation.controls.every(control =>
+    control.labelled && (control.id === 'brand' || (control.width >= 40 && control.height >= 40))),
+  `${label}: header controls must have visible labels, adequate targets and no overlap: ${JSON.stringify(navigation)}`);
   expect(await overflow(page) <= 1, `${label}: page scrolls sideways`);
 }
 

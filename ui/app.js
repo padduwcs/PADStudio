@@ -68,6 +68,7 @@ function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
   elements.themeToggle.setAttribute("aria-pressed", String(theme === "dark"));
   elements.themeToggle.setAttribute("aria-label", theme === "dark" ? "Chuyển sang giao diện sáng" : "Chuyển sang giao diện tối");
+  elements.themeToggle.title = elements.themeToggle.getAttribute("aria-label");
   elements.themeToggle.replaceChildren(svgIcon(theme === "dark" ? ICONS.sun : ICONS.moon, { size: 19 }));
   document.querySelector('meta[name="theme-color"]').content = theme === "dark" ? "#141613" : "#f6f6f2";
 }

@@ -124,11 +124,11 @@ body::after { width: 640px; height: 640px; left: -340px; bottom: -200px; }
 /* 3 · shell -------------------------------------------------------------------------------------- */
 .topbar {
   position: sticky; top: 0; z-index: 30; height: var(--topbar);
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
-  padding: 0 max(20px, calc((100vw - 1240px) / 2 + 32px));
-  background: color-mix(in srgb, var(--page) 84%, transparent);
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 24px;
+  padding: 0 24px;
+  background: color-mix(in srgb, var(--page) 94%, transparent);
   -webkit-backdrop-filter: blur(16px) saturate(1.2); backdrop-filter: blur(16px) saturate(1.2);
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-bottom: 1px solid var(--line);
 }
 .brand { display: inline-flex; align-items: center; gap: 12px; min-width: 0; color: inherit; text-decoration: none; border-radius: var(--radius); }
 .brand-mark { display: block; width: 64px; height: 34px; flex: none; }
@@ -136,7 +136,8 @@ body::after { width: 640px; height: 640px; left: -340px; bottom: -200px; }
 .brand-name { font-size: 1.125rem; font-weight: 750; letter-spacing: -0.02em; }
 .brand-name span { font-weight: 400; }
 .brand-tagline { color: var(--muted); font-size: 0.6875rem; letter-spacing: 0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.topbar-actions { display: flex; align-items: center; gap: 6px; }
+.topbar-nav { display: flex; align-items: center; gap: 4px; min-width: 0; padding-left: 24px; border-left: 1px solid var(--line); }
+.topbar-utilities { display: flex; align-items: center; padding-left: 16px; border-left: 1px solid var(--line); }
 
 .page { position: relative; z-index: 1; width: 100%; max-width: 1240px; margin: 0 auto; padding: 8px 32px 96px; outline: none; }
 
@@ -179,6 +180,14 @@ body::after { width: 640px; height: 640px; left: -340px; bottom: -200px; }
   border-radius: 999px; background: transparent; color: var(--ink-2); transition: background-color 0.15s, color 0.15s;
 }
 .icon-button:hover { background: var(--surface-2); color: var(--ink); }
+.topbar .topbar-button { min-height: 40px; padding: 0 14px; border-radius: 10px; color: var(--ink-2); }
+.topbar-button svg { flex: none; }
+.topbar .topbar-button:hover { background: var(--surface-2); color: var(--ink); transform: none; }
+.topbar .topbar-button[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent-ink); }
+.topbar #chat-button { margin-left: auto; border-color: var(--line); background: var(--surface); }
+.topbar #chat-button:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.topbar #chat-button[aria-expanded="true"] { border-color: var(--accent-line); background: var(--accent-soft); color: var(--accent-ink); }
+.topbar #theme-toggle { border-radius: 10px; }
 .select {
   min-width: 0; max-width: 100%; min-height: 40px; padding: 0 36px 0 14px; border: 1px solid var(--line-strong); border-radius: var(--radius);
   background-color: var(--surface); color: var(--ink); font-size: var(--text-sm); font-weight: 550; cursor: pointer;
@@ -467,6 +476,30 @@ textarea.field { display: block; width: 100%; min-height: 84px; padding: 10px 14
 
 body.is-offline .topbar { box-shadow: inset 0 -2px 0 var(--danger); }
 
+/* Keep the same labelled navigation on small screens, on a dedicated second row. */
+@media (max-width: 900px) {
+  :root { --topbar: 112px; }
+  .topbar { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 56px 44px; gap: 0 16px; padding: 0 16px 11px; }
+  .brand { grid-column: 1; grid-row: 1; justify-self: start; }
+  .brand-mark { width: 52px; height: 28px; }
+  .topbar-utilities { grid-column: 2; grid-row: 1; padding: 0; border: 0; }
+  .topbar #theme-toggle { width: 44px; height: 44px; }
+  .topbar-nav { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 0; border: 0; }
+  .topbar .topbar-button { width: 100%; min-width: 0; min-height: 44px; padding: 0 8px; background: var(--surface-2); }
+  .topbar #chat-button { margin-left: 0; border-color: transparent; background: var(--surface-2); }
+  .topbar #chat-button:hover { border-color: transparent; }
+  #library-count { display: none; }
+}
+@media (max-width: 600px) {
+  .topbar { padding-inline: 12px; gap: 0 12px; }
+  .brand { gap: 10px; }
+  .brand-mark { width: 44px; height: 24px; }
+  .brand-name { font-size: 1.0625rem; }
+  .brand-tagline { max-width: 190px; white-space: normal; font-size: 0.625rem; line-height: 1.2; }
+  .topbar .topbar-button { gap: 6px; padding-inline: 6px; font-size: 0.75rem; }
+  .topbar-button svg { width: 17px; height: 17px; }
+}
+
 @media (max-width: 1040px) {
   .theatre, .theatre.is-portrait, .theatre.is-landscape, .theatre.is-square { grid-template-columns: minmax(0, 1fr); justify-content: stretch; gap: 28px; }
   .theatre.is-portrait .theatre-stages { max-width: 440px; margin-inline: auto; width: 100%; }
@@ -478,14 +511,9 @@ body.is-offline .topbar { box-shadow: inset 0 -2px 0 var(--danger); }
 }
 
 @media (max-width: 720px) {
-  .topbar { padding: 0 16px; }
   .page { padding: 4px 16px 72px; }
-  .button-label, #library-count { display: none; }
-  .brand-mark { width: 52px; height: 28px; }
-  .brand-tagline { max-width: 150px; white-space: normal; font-size: 0.625rem; line-height: 1.2; }
   .project-meta { column-gap: 14px; }
   .project-meta-item + .project-meta-item::before { content: none; }
-  #library-button { padding: 0 12px; }
   .project-bar { padding-top: 20px; }
   .tabs { width: 100%; }
   .tab { flex: 1; padding: 0 8px; }
@@ -504,8 +532,6 @@ body.is-offline .topbar { box-shadow: inset 0 -2px 0 var(--danger); }
   .voice-card { grid-template-columns: auto minmax(0, 1fr); }
   .voice-card .button { grid-column: 2; justify-self: start; }
   .service-grid { grid-template-columns: minmax(0, 1fr); }
-  #tools-button { padding: 0 12px; }
-  #tools-button { padding: 0 12px; }
   .card-body { padding: 10px 12px 12px; }
   .source-preview-head { flex-direction: column; }
   body::before { width: 460px; height: 460px; right: -300px; }
