@@ -1,6 +1,6 @@
 # PADStudio — trạng thái phát triển
 
-Cập nhật: **2026-10-24** (giao diện VI/EN, màn hình chờ và chọn project chủ động; xem mục “Chat trong PADStudio”). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
+Cập nhật: **2026-10-24** (launcher chat cấu hình máy để kết nối qua PADSwitcher; xem mục “Chat trong PADStudio”). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
 
 Đây là điểm vào ngắn để biết codebase đang ở đâu. PADStudio vẫn đang được xây dựng và chỉnh
 chu; các báo cáo có chữ `completion`, tên đợt hoặc số phiên bản ghi lại một mốc nghiệm thu kỹ
@@ -26,7 +26,7 @@ thuật, không tuyên bố sản phẩm đã hoàn chỉnh hoặc sẵn sàng p
 
 ## Baseline kiểm chứng
 
-Ngày **2026-10-24**, Node v24.18.1, Windows: `npm test` **476 tests: 475 pass, 0 fail, 1 skipped** (symlink, thiếu quyền Windows).
+Ngày **2026-10-24**, Node v24.18.1, Windows: `npm test` **479 tests: 478 pass, 0 fail, 1 skipped** (symlink, thiếu quyền Windows).
 `npm run check` sạch. `chat:ui:test`, `chat:ui:features-test`, `observer:ui:empty-test`, `observer:ui:live-test`, `observer:ui:tools-test` passed.
 Live Codex CLI 0.163.0: input ảnh, explicit effort/mode/quyền, rename/history, fork trước lượt, export và archive/restore dùng API gốc.
 Không gọi công cụ/provider media; thread thử được lưu trữ. Test tự động không gọi model. Browser kiểm chức năng mới lẫn nhiều tab, draft,
@@ -35,6 +35,13 @@ Baseline trước đợt bổ sung là 464 tests/463 pass/1 skip; trước khi b
 Các baseline cũ sau đây là lịch sử tại ngày ghi nhận.
 
 ## Chat trong PADStudio — 2026-10-24
+
+- Launcher máy lấy từ env tường minh hoặc `chat.codexPath` trong `padstudio.local.json`; không đọc lỗi cấu hình media vào đường khởi động chat.
+  Đã lưu helper PADSwitcher cho máy hiện tại, giữ nguyên các section khác; đường dẫn không commit và không chỉnh qua browser.
+  Các client không có cấu hình vẫn dùng Codex native/npm như trước. Không có fallback khi launcher chỉ định không dùng được.
+  Ba test mới kiểm lưu/đọc lại launcher, override env, lỗi launcher, section riêng và chặn web ghi; full suite sạch.
+  Live PADSwitcher 1.19.1: initialize/account/model và đọc thread cũ qua helper thành công; thử helper với connection file không tồn tại báo lỗi,
+  không chạm gateway thật và không fallback. Không gửi prompt hay gọi model/provider để kiểm kết nối.
 
 - Màn hình chờ ở trang gốc khi chưa chọn project; bỏ khôi phục localStorage và tự chọn mới nhất. Logo quay về chờ, giữ chat;
   project mới chỉ cập nhật thư viện, project mất khỏi danh sách không kéo viewer sang project khác. Link có `project` vẫn mở trực tiếp.

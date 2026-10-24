@@ -312,7 +312,7 @@ export function createChatPanel({ root, toggle }) {
     connection.replaceChildren();
     connection.hidden = state.connected && state.authenticated && !state.error;
     if (!state.connected || state.error) {
-      connection.append(node("p", state.error || t("Dùng Codex trên máy để trò chuyện.")));
+      connection.append(node("p", state.error ? t(state.error) : t("Dùng Codex trên máy để trò chuyện.")));
       connection.append(action(t("Kết nối Codex"), () => connect(), "button button-soft"));
     } else if (!state.authenticated) {
       connection.append(node("p", t("Đăng nhập tài khoản ChatGPT để dùng Codex.")));

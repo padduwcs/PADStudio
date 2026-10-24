@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { CodexClient, codexLaunch } from "../src/chat/codex-client.js";
 
-async function peer(t, timeoutMs = 2_000) {
+async function peer(t, timeoutMs = 2_000, configure = null) {
   const root = await mkdtemp(join(tmpdir(), "padstudio-rpc-"));
   const script = join(root, "peer.mjs");
   await writeFile(script, `
@@ -24,7 +24,8 @@ async function peer(t, timeoutMs = 2_000) {
     });
     lines.on('close',()=>process.exit(0));
   `);
-  const client = new CodexClient({ command: process.execPath, args: [script], cwd: root, timeoutMs: 5_000 });
+  const launch = configure ? await configure(root, script) : { command: process.execPath, args: [script] };
+  const client = new CodexClient({ ...launch, cwd: root, timeoutMs: 5_000 });
   t.after(async () => { await client.close(); await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); });
   await client.start(); client.timeoutMs = timeoutMs; return client;
 }
@@ -38,6 +39,42 @@ test("Codex stdio handles split Unicode, interleaved notifications and server re
   const prompt = (await request)[0]; assert.equal(prompt.id, 101);
   client.respond(prompt.id, { answers: {} });
   await assert.rejects(client.request("failure"), { code: "rpc_error", message: "refused" });
+});
+
+test("a trusted local launcher persists across clients, with an explicit environment override taking precedence", async (t) => {
+  let savedScript;
+  const configured = await peer(t, 2_000, async (root, script) => {
+    savedScript = script;
+    const path = join(root, "padstudio.local.json");
+    await writeFile(path, JSON.stringify({ chat: { codexPath: script } }));
+    const env = { ...process.env, PADSTUDIO_LOCAL_CONFIG: path }; delete env.PADSTUDIO_CODEX_PATH;
+    return { env };
+  });
+  assert.equal(configured.command, process.execPath);
+  assert.deepEqual(configured.args, [savedScript, "app-server", "--listen", "stdio://"]);
+  assert.deepEqual(await configured.request("unicode"), { text: "Tiếng Việt ✓" });
+  await configured.close();
+  const reopened = new CodexClient({ cwd: configured.cwd, env: configured.env });
+  t.after(() => reopened.close());
+  await reopened.start(); assert.deepEqual(await reopened.request("unicode"), { text: "Tiếng Việt ✓" });
+  await reopened.close();
+  const overridden = await peer(t, 2_000, async (root, script) => {
+    const path = join(root, "padstudio.local.json"); await writeFile(path, "invalid JSON that must not be read");
+    return { env: { ...process.env, PADSTUDIO_LOCAL_CONFIG: path, PADSTUDIO_CODEX_PATH: script } };
+  });
+  assert.deepEqual(await overridden.request("unicode"), { text: "Tiếng Việt ✓" });
+});
+
+test("an unavailable configured launcher fails instead of silently using direct Codex", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "padstudio-launcher-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const path = join(root, "padstudio.local.json"), missing = join(root, "PADCodex.exe");
+  await writeFile(path, JSON.stringify({ chat: { codexPath: missing } }));
+  const env = { ...process.env, PADSTUDIO_LOCAL_CONFIG: path }; delete env.PADSTUDIO_CODEX_PATH;
+  const client = new CodexClient({ cwd: root, env, timeoutMs: 1_000 }); t.after(() => client.close());
+  await assert.rejects(client.start(), { code: "codex_unavailable" });
+  assert.equal(client.command, missing);
+  assert.equal(client.children.size, 0);
 });
 
 test("Codex RPC timeouts are explicit, late replies are ignored and disconnect rejects pending calls", async (t) => {

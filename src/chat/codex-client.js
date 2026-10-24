@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { spawn, execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { loadChatConfig, localConfigPath } from "../config/local-config.js";
 
 export function codexLaunch({ env = process.env, platform = process.platform, exists = existsSync } = {}) {
   const explicit = env.PADSTUDIO_CODEX_PATH;
@@ -36,6 +37,8 @@ export class CodexClient extends EventEmitter {
     const launch = codexLaunch({ env });
     Object.assign(this, { cwd, env, command: command ?? launch.command,
       args: args ?? [...launch.prefix, "app-server", "--listen", "stdio://"], spawnImpl, timeoutMs });
+    this.useLocalConfig = command === null && args === null && !env.PADSTUDIO_CODEX_PATH;
+    this.configPath = localConfigPath({ env });
     this.pending = new Map();
     this.nextId = 0;
     this.child = null;
@@ -54,6 +57,14 @@ export class CodexClient extends EventEmitter {
   }
 
   async #start() {
+    if (this.useLocalConfig) {
+      const { codexPath } = await loadChatConfig({ path: this.configPath });
+      const launch = codexLaunch({ env: codexPath ? { ...this.env, PADSTUDIO_CODEX_PATH: codexPath } : this.env });
+      this.command = launch.command;
+      this.args = [...launch.prefix, "app-server", "--listen", "stdio://"];
+    }
+    const throughPADSwitcher = /(?:^|[\\/])PADCodex\.exe$/i.test(this.command);
+    const switcherUnavailable = "Không kết nối được PADSwitcher. Mở PADSwitcher, chọn tài khoản và bật kết nối Codex rồi thử lại.";
     const child = this.spawnImpl(this.command, this.args, {
       cwd: this.cwd, env: this.env, windowsHide: true, shell: false, stdio: ["pipe", "pipe", "pipe"]
     });
@@ -99,10 +110,10 @@ export class CodexClient extends EventEmitter {
     });
     child.stdin.on("error", () => {});
     child.once("error", (error) => this.#disconnected(child, new CodexConnectionError(
-      error.code === "ENOENT" ? "Chưa tìm thấy Codex CLI. Cài Codex và mở lại PADStudio; hoặc đặt PADSTUDIO_CODEX_PATH tới chương trình Codex."
+      throughPADSwitcher ? switcherUnavailable : error.code === "ENOENT" ? "Chưa tìm thấy Codex CLI. Cài Codex và mở lại PADStudio; hoặc đặt PADSTUDIO_CODEX_PATH tới chương trình Codex."
         : "Không khởi động được Codex. Hãy kiểm tra cài đặt Codex trên máy."
     )));
-    child.once("exit", () => this.#disconnected(child, new CodexConnectionError("Codex đã ngắt kết nối. Bạn có thể kết nối lại để mở lại hội thoại.")));
+    child.once("exit", () => this.#disconnected(child, new CodexConnectionError(throughPADSwitcher ? switcherUnavailable : "Codex đã ngắt kết nối. Bạn có thể kết nối lại để mở lại hội thoại.")));
     const initialized = await this.request("initialize", {
       clientInfo: { name: "padstudio", title: "PADStudio", version: "0.1.0" },
       capabilities: { experimentalApi: true }

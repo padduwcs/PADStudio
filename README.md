@@ -54,6 +54,10 @@ không cần chọn project. Một hội thoại có thể tạo hoặc tiếp t
 
 > Làm video dọc 90 giây giải thích vì sao trời có màu xanh, giọng đọc tiếng Việt, cho học sinh cấp 2.
 
+Nếu dùng PADSwitcher, đặt `chat.codexPath` trong `padstudio.local.json` tới helper `PADCodex.exe`, rồi khởi động lại PADStudio khi chat đã rảnh.
+Giữ PADSwitcher mở và chọn tài khoản ở đó. Launcher lỗi sẽ báo lỗi, không tự dùng Codex trực tiếp.
+Chi tiết cấu hình và nhóm tài khoản: [kết nối PADSwitcher](docs/build/CHAT-CLIENT.md#kết-nối-qua-padswitcher-trên-máy-này).
+
 **4. Xem, góp ý, chốt.** Chọn project trong thư viện để xem bản dựng. Muốn sửa một chỗ, dừng video tại đó, bấm **Sao chép mốc phản hồi**
 rồi dán vào cuộc trò chuyện bạn muốn. Khi hài lòng, nói "chốt" đúng bản rồi tải bản đã duyệt.
 

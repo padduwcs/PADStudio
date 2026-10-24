@@ -4,6 +4,10 @@ Theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Các bản phát 
 
 ## [Chưa phát hành]
 
+- Lưu launcher chat vào `chat.codexPath` trong cấu hình máy để dùng helper PADSwitcher qua các lần mở lại.
+  `PADSTUDIO_CODEX_PATH` có ưu tiên cao hơn; launcher lỗi không tự fallback sang Codex trực tiếp. Browser không xem/sửa đường dẫn này.
+  Không đổi prompt, cwd hoặc hội thoại; cấu hình media và khóa API được giữ nguyên.
+
 - Thêm **VI / EN** cho giao diện, nhớ ngôn ngữ trên trình duyệt; prompt, nội dung chat và dữ liệu dự án giữ nguyên.
   Trang gốc nay có màn hình chờ với **Trò chuyện với Codex / Mở dự án**; logo quay về trang này. Không tự chọn dự án gần nhất hoặc tự mở
   dự án mới do Agent tạo. Nhiều chat vẫn làm việc độc lập khi đang ở màn hình chờ hoặc đang xem một dự án khác.

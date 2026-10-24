@@ -50,6 +50,10 @@ conversations are independent of the project viewer and can create or work on se
 
 > Make a 90-second vertical video explaining why the sky is blue, narrated in Vietnamese, for middle-school students.
 
+To use PADSwitcher, set `chat.codexPath` in `padstudio.local.json` to its `PADCodex.exe` helper, then restart PADStudio after active turns finish.
+Keep PADSwitcher open and select the account there. Launcher failures never silently fall back to direct Codex.
+See the [connection contract](docs/build/CHAT-CLIENT.md) for configuration and account grouping.
+
 **4. Watch, give feedback, accept.** Choose a project in the library to watch it. To change one spot, pause there, click
 **Copy feedback reference** and paste it into your chosen conversation. When you are happy, identify the exact version,
 say "accept" (in Vietnamese: "chốt") and download the accepted video.

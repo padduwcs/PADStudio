@@ -9,6 +9,7 @@ import {
   LocalConfigError,
   USER_SERVICE_CATEGORIES,
   loadLocalConfig,
+  loadChatConfig,
   localConfigPath,
   maskSecret,
   publicLocalSettings,
@@ -79,7 +80,8 @@ test("updates change only keys and services, keep runtime paths and never overwr
   const path = await temporary(t);
   await writeFile(path, JSON.stringify({
     piper: { pythonCommand: "D:/tools/python.exe", modelDirectory: "D:/models", defaultModel: "vi_VN-vais1000-medium" },
-    elevenLabs: { apiKey: "" }
+    elevenLabs: { apiKey: "" },
+    chat: { codexPath: "D:/PADSwitcher/PADCodex.exe" }
   }, null, 2));
 
   const key = "sk_test_1234567890abcdef";
@@ -88,6 +90,8 @@ test("updates change only keys and services, keep runtime paths and never overwr
   let raw = JSON.parse(await readFile(path, "utf8"));
   assert.equal(raw.elevenLabs.apiKey, key);
   assert.deepEqual(raw.piper, { pythonCommand: "D:/tools/python.exe", modelDirectory: "D:/models", defaultModel: "vi_VN-vais1000-medium" });
+  assert.deepEqual(raw.chat, { codexPath: "D:/PADSwitcher/PADCodex.exe" });
+  await assert.rejects(updateLocalConfig({ chat: { codexPath: "evil.exe" } }, { path }), /unsupported fields: chat/);
 
   await updateLocalConfig({ services: { available: ["video-generation"], note: "Có Sora" } }, { path });
   await updateLocalConfig({ services: { note: null } }, { path });
@@ -106,6 +110,18 @@ test("updates change only keys and services, keep runtime paths and never overwr
   await writeFile(path, JSON.stringify({ unknown: 1 }));
   await assert.rejects(updateLocalConfig({ services: { available: [] } }, { path }), /unsupported sections/);
   assert.deepEqual(JSON.parse(await readFile(path, "utf8")), { unknown: 1 });
+});
+
+test("trusted chat launch config is optional, validated and isolated from media settings", async (t) => {
+  const path = await temporary(t);
+  assert.deepEqual(await loadChatConfig({ path }), { codexPath: null });
+  await writeFile(path, "\uFEFF" + JSON.stringify({ chat: { codexPath: "  D:/PADSwitcher/PADCodex.exe  " }, elevenLabs: { apiKey: "bad" } }));
+  assert.deepEqual(await loadChatConfig({ path }), { codexPath: "D:/PADSwitcher/PADCodex.exe" });
+  await assert.rejects(loadLocalConfig({ path }), LocalConfigError);
+  for (const value of [{ chat: { command: "evil" } }, { chat: { codexPath: 42 } }, { chat: { codexPath: "bad\npath" } }, []]) {
+    await writeFile(path, JSON.stringify(value));
+    await assert.rejects(loadChatConfig({ path }), LocalConfigError);
+  }
 });
 
 test("concurrent updates do not lose each other's change", async (t) => {
@@ -127,7 +143,7 @@ test("what the web may show never contains a secret or a runtime path", async (t
 
   const path = await temporary(t);
   const secret = "sk_never_shown_9f3a";
-  await writeFile(path, JSON.stringify({ piper: { pythonCommand: "D:/secret-path/python.exe" }, elevenLabs: { apiKey: secret } }));
+  await writeFile(path, JSON.stringify({ piper: { pythonCommand: "D:/secret-path/python.exe" }, chat: { codexPath: "D:/secret-path/PADCodex.exe" }, elevenLabs: { apiKey: secret } }));
   const shown = JSON.stringify(publicLocalSettings(await loadLocalConfig({ path })));
   assert.equal(shown.includes(secret), false);
   assert.equal(shown.includes("secret-path"), false);

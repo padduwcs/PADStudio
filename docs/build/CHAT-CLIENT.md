@@ -7,7 +7,9 @@ Project viewer, CLI, Resource/Run/Result và Delivery giữ contract hiện có.
 ## Contract với Codex
 
 - [`CodexClient`](../../src/chat/codex-client.js) chạy Codex App Server qua stdio, `shell: false`, ẩn cửa sổ trên Windows.
-  Hỗ trợ bản native hoặc npm; `PADSTUDIO_CODEX_PATH` là cấu hình máy tin cậy, không chỉnh qua browser.
+  Hỗ trợ bản native/npm hoặc helper PADSwitcher. Thứ tự chọn launcher: `PADSTUDIO_CODEX_PATH`, `chat.codexPath` trong
+  `padstudio.local.json`, rồi tìm Codex trên PATH. Cả hai đường dẫn đều là cấu hình máy tin cậy, không chỉnh qua browser.
+  Chat chỉ đọc section của mình, nên lỗi cấu hình media không chặn chat. Launcher đã chỉ định lỗi thì báo lỗi, không tự fallback sang Codex trực tiếp.
 - Thread mới mặc định chỉ nhận `{cwd}`; thêm `model` khi người dùng chọn. Không tự override approval policy, sandbox, instructions,
   tools hay biến môi trường project. Codex tự đọc cấu hình, AGENTS.md và skill của thư mục như host ngoài.
 - Catalog model, mức suy luận, mode, permission profile và skill lấy từ runtime. Catalog tùy chọn không có thì ẩn điều khiển tương ứng,
@@ -28,6 +30,28 @@ Theo [OpenAI Docs: Codex App Server](https://learn.chatgpt.com/docs/app-server) 
 Client bật capability `experimentalApi` để đọc/dùng preset collaboration; catalog lỗi thì tính năng tương ứng không hiện.
 Đây là client cửa sổ chat, không nhúng extension hoặc toàn bộ editor VS Code. Không cung cấp terminal tương tác, chạy cloud,
 quản lý plugin hoặc chỉnh toàn bộ config TOML trong UI.
+
+## Kết nối qua PADSwitcher trên máy này
+
+Khi `chat.codexPath` trỏ tới helper, luồng là PADStudio → `PADCodex.exe` → gateway PADSwitcher → Codex App Server.
+Giữ PADSwitcher mở, chọn tài khoản và bật kết nối Codex. PADStudio vẫn gửi `clientInfo.name = padstudio`; PADSwitcher 1.19.1
+xếp client này vào nhóm chung (`other`), không giả làm VS Code/CLI và chưa có nhóm tài khoản riêng cho PADStudio.
+Tài khoản/auto switch do PADSwitcher quản lý; không sao chép credential hay URL/token gateway vào PADStudio.
+Thay đổi launcher cần khởi động lại backend sau khi các lượt chat hoàn tất. Cwd, prompt, thread ID và biên nhận giữ nguyên;
+chỉ đổi chương trình trung gian được gọi. Đăng nhập/đổi tài khoản khi dùng helper thực hiện trong PADSwitcher.
+
+Ví dụ cấu hình máy (thay đường dẫn bằng đường dẫn thực của người dùng):
+
+```json
+{
+  "chat": {
+    "codexPath": "C:/Users/<user>/AppData/Roaming/PADSwitcher/data/gateway/PADCodex.exe"
+  }
+}
+```
+
+Ghép section này vào file đang có, giữ các section khác. Xóa `chat.codexPath` để quay lại cơ chế tìm Codex mặc định;
+biến môi trường tường minh luôn có ưu tiên cao hơn. Browser không đọc hoặc thay đường dẫn thực thi.
 
 ## File, ảnh và skill do người dùng chọn
 

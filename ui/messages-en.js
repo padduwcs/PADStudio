@@ -1,6 +1,7 @@
 // Application copy only. Vietnamese is the source locale; placeholders preserve inserted content verbatim.
 export const EN_MESSAGES = Object.freeze({
   "Tư liệu": "Sources",
+  "Không kết nối được PADSwitcher. Mở PADSwitcher, chọn tài khoản và bật kết nối Codex rồi thử lại.": "Could not connect to PADSwitcher. Open PADSwitcher, select an account and enable the Codex connection, then try again.",
   "Không thể hoàn thành yêu cầu.": "Could not complete the request.",
   "Agent cần bạn xác nhận": "The agent needs your approval",
   "Cho phép kết nối mạng?": "Allow network access?",

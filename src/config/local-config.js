@@ -33,6 +33,7 @@ const MAX_NOTE_LENGTH = 500;
 // for the Agent, not a hidden default: every tts.synthesize request still names its model and voice explicitly.
 const ELEVENLABS_FIELDS = Object.freeze(["apiKey", "voiceId", "voiceName", "modelId"]);
 const SECTIONS = Object.freeze({
+  chat: ["codexPath"],
   piper: ["pythonCommand", "modelDirectory", "defaultModel"],
   elevenLabs: ELEVENLABS_FIELDS,
   services: ["available", "note"]
@@ -98,6 +99,13 @@ function services(value) {
   return { available: SERVICE_IDS.filter((id) => available.includes(id)), note };
 }
 
+function chat(value) {
+  const raw = section(value, "chat", SECTIONS.chat);
+  const codexPath = optionalText(raw.codexPath, "chat.codexPath");
+  if (codexPath && /[\u0000-\u001f\u007f]/.test(codexPath)) throw new LocalConfigError("chat.codexPath must not contain control characters.");
+  return { codexPath };
+}
+
 function normalize(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new LocalConfigError("Local configuration must be an object.");
@@ -107,6 +115,7 @@ function normalize(value) {
   const piper = section(value.piper, "piper", SECTIONS.piper);
   const elevenLabs = section(value.elevenLabs, "elevenLabs", SECTIONS.elevenLabs);
   return {
+    chat: chat(value.chat),
     piper: {
       pythonCommand: optionalText(piper.pythonCommand, "piper.pythonCommand"),
       modelDirectory: optionalText(piper.modelDirectory, "piper.modelDirectory"),
@@ -136,6 +145,13 @@ async function readRaw(path) {
 export async function loadLocalConfig({ path = localConfigPath() } = {}) {
   const raw = await readRaw(path);
   return { path, ...normalize(raw ?? {}) };
+}
+
+// Chat only needs its trusted launcher path. Unrelated media settings must not block a conversation.
+export async function loadChatConfig({ path = localConfigPath() } = {}) {
+  const raw = await readRaw(path);
+  if (raw !== null && (!raw || typeof raw !== "object" || Array.isArray(raw))) throw new LocalConfigError("Local configuration must be an object.");
+  return chat(raw?.chat);
 }
 
 // Writes are queued so two quick saves from the web page cannot interleave their read-modify-write.

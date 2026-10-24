@@ -10,6 +10,10 @@ Tài liệu này ghi các định hướng đã chốt để làm rõ [`PADSTUDI
 
 ## Chat Codex độc lập ở cấp thư mục — 2026-10-24
 
+Theo lựa chọn của người phụ trách trên máy hiện tại, chat đi qua helper/gateway PADSwitcher. Đường dẫn launcher nằm trong cấu hình máy
+`chat.codexPath`, không hard-code tài khoản hoặc đường dẫn cá nhân vào repo. `PADSTUDIO_CODEX_PATH` vẫn là override tường minh.
+Đổi transport không thay agent, prompt, cwd hoặc liên kết project; khi helper lỗi không tự đổi sang Codex trực tiếp.
+
 Trang gốc khi không có `project` trong URL giữ màn hình chờ, không khôi phục dự án từ localStorage hoặc tự chọn dự án mới nhất.
 Người dùng chủ động mở từ thư viện/link dự án và bấm logo để quay về. Project mới do Agent tạo chỉ cập nhật thư viện; không thay viewer hoặc hội thoại.
 Ngôn ngữ VI/EN là lựa chọn trình bày của browser, không truyền vào Codex, không dịch prompt, nội dung hội thoại hay dữ liệu project.
