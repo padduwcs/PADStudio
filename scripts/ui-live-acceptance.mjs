@@ -51,6 +51,9 @@ async function preview() {
 const productHandler = server.listeners("request")[0];
 server.removeAllListeners("request");
 server.on("request", async (request, response) => {
+  // A project deep link must wait for the list response, even while home is visible.
+  // Keep this latency in the fixture so fast local disks cannot hide navigation races.
+  if (request.method === "GET" && request.url === "/api/projects") await new Promise(resolve => setTimeout(resolve, 200));
   if (request.url !== "/_fixture/advance" || request.method !== "POST") return productHandler(request, response);
   try {
     phase += 1;

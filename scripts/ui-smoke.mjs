@@ -38,7 +38,11 @@ async function open(page, options, { width, height, mobile = false, theme = "lig
   await page.viewport(width, height, { mobile });
   const query = options.projectId ? `?project=${encodeURIComponent(options.projectId)}` : "";
   await page.goto(`${options.url}/${query}`);
-  await page.waitFor("!document.querySelector('#welcome').hidden || !document.querySelector('#project').hidden", { label: "first render" });
+  const ready = options.projectId
+    ? "!document.querySelector('#project').hidden && document.querySelector('#project-title').textContent.trim().length > 0"
+    : "!document.querySelector('#welcome').hidden && document.querySelector('#project').hidden";
+  await page.waitFor(ready, { label: options.projectId ? "requested project opens" : "welcome screen opens" });
+  await page.evaluate("document.fonts.ready.then(() => true)");
 }
 
 async function overflow(page) {
@@ -210,6 +214,9 @@ Screen: ${screen}`);
     report.status = "passed";
     report.writeRequests = 0;
     return report;
+  } catch (error) {
+    if (options.shots) await page.screenshot(`${options.shots}/failure.png`).catch(() => {});
+    throw error;
   } finally {
     await close();
   }

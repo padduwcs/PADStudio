@@ -48,6 +48,8 @@ Các baseline cũ sau đây là lịch sử tại ngày ghi nhận.
   với cwd chưa chuẩn hóa. Nay kiểm containment theo đường dẫn thực của cả gốc và file, giữ nguyên cwd/native input/metadata identity.
   Test hồi quy chứng minh alias hợp lệ hoạt động, đường dẫn thoát qua symlink vẫn bị chặn và không có lượt inference ngoài ý muốn.
   Action lưu ảnh dùng Node 24 để tránh cảnh báo runtime cũ. Sau sửa: full Node suite 480 tests, 479 pass, 1 skip; `npm run check` và cả 6 browser suite passed.
+- Browser CI tiếp tục phát hiện smoke nhận màn hình chờ ban đầu như trạng thái deep link đã sẵn sàng. Đã tái hiện local bằng fixture
+  chậm 200 ms ở `/api/projects`; smoke nay đợi đúng project/home và font, chụp ảnh lỗi trước khi đóng browser. Cả 6 browser suite và static check đã chạy lại passed.
 - Kiểm các file được Git theo dõi và diff của 11 commit chưa publish: không thấy đường dẫn cá nhân, file cấu hình/dữ liệu bị cấm hoặc mẫu token/private key phổ biến.
   Đây là kiểm tra kỹ thuật của bản dùng local trên Windows, không thay thế chứng nhận broad release; `release:gates` và các giới hạn sản phẩm giữ nguyên.
 
