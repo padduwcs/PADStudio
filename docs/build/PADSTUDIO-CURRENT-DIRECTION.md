@@ -26,6 +26,10 @@ Người dùng được đính kèm ảnh/file vào **chat**, tham chiếu file/
 phân nhánh, sửa/gửi lại và xuất hội thoại. File chat nằm ngoài project store; không tự trở thành Resource. Sửa/gửi lại tạo nhánh trước lượt,
 giữ hội thoại gốc và không hoàn tác file. Menu gom các thao tác ít dùng; khung chat vẫn kéo đổi kích thước và hoạt động độc lập với viewer.
 
+Theo yêu cầu làm quen với VS Code, giao diện chat dùng bố cục sidebar Codex: header gọn, **+** thêm nội dung, mode/quyền và model cạnh ô nhập.
+Các thao tác phụ/thống kê nằm trong menu, lịch sử local/native chỉ có một danh sách. Một tab thì ẩn thanh tab, nhiều tab vẫn đổi qua lại độc lập.
+Đây là thay đổi cách trình bày, không thêm prompt, workflow, ngữ cảnh project hay thay cấu hình mặc định của agent.
+
 ## Agent điều khiển, UI chuyển lời và hiển thị
 
 Người dùng đưa yêu cầu, thay đổi hướng và phê duyệt trong host ngoài hoặc chat tích hợp. Agent hiểu phản hồi, chọn việc sáng tạo cần làm tiếp và cập nhật project qua CLI/contract. Acceptance trong chat tích hợp dùng cùng kênh `agent_host`, bind exact Result/revision/checksum, không tự tạo full-view/full-listen attestation.

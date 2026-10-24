@@ -1,4 +1,4 @@
-import { node, svgIcon } from "./dom.js";
+import { ICONS, node, searchKey, svgIcon } from "./dom.js";
 
 const button = (text, run, className = "button button-ghost") => {
   const element = node("button", text, className); element.type = "button";
@@ -9,26 +9,29 @@ const icon = (label, path, run) => {
 };
 
 // Ordinary Codex client actions. No knowledge of the video viewer or ProjectStore.
-export function createChatControls({ root, composer, input, context, post, endpoint, save, update, notice, adopt, apply, newConversation }) {
+export function createChatControls({ root, composer, input, model, context, post, endpoint, save, update, notice, adopt, apply, activate, newConversation, dismissHistory }) {
   let active = null; let anchor = null; let historyGeneration = 0; let fileGeneration = 0; let attachmentSignature = "";
   const popup = node("section", undefined, "chat-popover"); popup.hidden = true; popup.id = "chat-popover";
   popup.setAttribute("aria-label", "Tùy chọn trò chuyện");
-  const closePopup = (restoreFocus = false) => { if (!active) return false; popup.hidden = true; active = null; anchor?.setAttribute("aria-expanded", "false"); if (restoreFocus) anchor?.focus(); return true; };
+  const closePopup = (restoreFocus = false) => { if (!active) return false; popup.hidden = true; active = null; fileGeneration += 1; anchor?.setAttribute("aria-expanded", "false"); if (restoreFocus) anchor?.focus(); return true; };
   const open = (kind, trigger, title) => {
     if (active === kind) { closePopup(); return false; }
-    closePopup(); active = kind; anchor = trigger; popup.hidden = false; popup.replaceChildren();
+    closePopup(); dismissHistory(); active = kind; anchor = trigger; popup.hidden = false; popup.replaceChildren();
     popup.dataset.kind = kind; trigger?.setAttribute("aria-expanded", "true");
     const head = node("div", undefined, "chat-popover-head");
     head.append(node("strong", title), button("Đóng", () => { closePopup(); trigger?.focus(); })); popup.append(head); return true;
   };
-  const optionsButton = icon("Thiết lập Codex", "M4 7h16M4 17h16M8 4v6m8 4v6", settings); optionsButton.id = "chat-settings";
+  const optionsButton = icon("Cài đặt Codex", "m9 3-1 3-3 1v3l-2 2 2 2v3l3 1 1 3h6l1-3 3-1v-3l2-2-2-2V7l-3-1-1-3zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6", settings); optionsButton.id = "chat-settings";
   const moreButton = icon("Thao tác hội thoại", "M5 12h.01M12 12h.01M19 12h.01", actions); moreButton.id = "chat-more";
   const attachButton = icon("Đính kèm file", "m8 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l8-8m-1 8-5 5", () => picker.click()); attachButton.id = "chat-attach";
   const referenceButton = button("@", references, "icon-button chat-reference"); referenceButton.title = "Tham chiếu file hoặc skill"; referenceButton.setAttribute("aria-label", referenceButton.title); referenceButton.id = "chat-reference";
-  for (const trigger of [optionsButton, moreButton, referenceButton]) { trigger.setAttribute("aria-controls", popup.id); trigger.setAttribute("aria-expanded", "false"); }
+  const addButton = icon("Thêm nội dung", "M12 5v14M5 12h14", addContent); addButton.id = "chat-add";
+  const modeButton = button("", modeSettings, "chat-composer-choice"); modeButton.id = "chat-mode-button"; modeButton.setAttribute("aria-label", "Chế độ và quyền");
+  const modelButton = button("", modelSettings, "chat-composer-choice chat-model-choice"); modelButton.id = "chat-model-button"; modelButton.setAttribute("aria-label", "Model và mức suy luận");
+  for (const trigger of [optionsButton, moreButton, referenceButton, addButton, modeButton, modelButton]) { trigger.setAttribute("aria-controls", popup.id); trigger.setAttribute("aria-expanded", "false"); }
   const picker = node("input"); picker.type = "file"; picker.multiple = true; picker.hidden = true; picker.id = "chat-file-picker";
   const attachmentList = node("div", undefined, "chat-attachments"); attachmentList.id = "chat-attachments";
-  const info = button("", settings, "chat-context-info"); info.id = "chat-context-info"; info.hidden = true;
+  const info = node("p", "Chưa có số liệu ngữ cảnh.", "chat-menu-empty"); info.id = "chat-context-info";
   const findBar = node("div", undefined, "chat-find"); findBar.hidden = true;
   const find = node("input"); find.type = "search"; find.placeholder = "Tìm trong hội thoại…"; find.setAttribute("aria-label", find.placeholder);
   const found = node("span"); let matches = []; let foundIndex = -1;
@@ -46,28 +49,48 @@ export function createChatControls({ root, composer, input, context, post, endpo
   findBar.append(find, found, button("↑", () => findNext(-1)), button("↓", () => findNext()), button("Đóng", closeFind));
   function showFind() { closePopup(); findBar.hidden = false; find.focus(); find.select(); }
 
+  function addContent() {
+    if (!open("add", addButton, "Thêm nội dung")) return;
+    attachButton.className = "chat-conversation-entry"; attachButton.replaceChildren(svgIcon(ICONS.file), node("span", "Thêm ảnh hoặc tệp…"));
+    attachButton.onclick = () => closePopup();
+    referenceButton.className = "chat-conversation-entry"; referenceButton.replaceChildren(node("span", "@", "chat-menu-at"), node("span", "Tham chiếu file hoặc skill…"));
+    popup.append(attachButton, referenceButton);
+  }
   function settings() {
-    if (!open("settings", optionsButton, "Thiết lập Codex")) return;
+    if (!open("settings", optionsButton, "Cài đặt Codex")) return;
+    popup.append(button("Model và mức suy luận", modelSettings, "chat-conversation-entry"), button("Chế độ và quyền", modeSettings, "chat-conversation-entry"), button("Mức sử dụng", usage, "chat-conversation-entry"), button("Phím tắt và lệnh nhanh", help, "chat-conversation-entry"));
+  }
+  function optionControls(keys) {
     const { state, session, draft } = context();
-    const model = state.models.find((entry) => entry.id === (draft.model || session?.model)) || state.models.find((entry) => entry.isDefault);
+    const selectedModel = state.models.find((entry) => entry.id === (draft.model || session?.model)) || state.models.find((entry) => entry.isDefault);
     const definitions = [
-      ["effort", "Mức suy luận", (model?.efforts || []).map((id) => ({ id, name: ({ minimal: "Tối thiểu", low: "Thấp", medium: "Vừa", high: "Cao", xhigh: "Rất cao", max: "Tối đa", ultra: "Ultra" })[id] || id }))],
+      ["effort", "Mức suy luận", (selectedModel?.efforts || []).map((id) => ({ id, name: ({ minimal: "Tối thiểu", low: "Thấp", medium: "Vừa", high: "Cao", xhigh: "Rất cao", max: "Tối đa", ultra: "Ultra" })[id] || id }))],
       ["mode", "Chế độ làm việc", (state.modes || []).map((entry) => ({ id: entry.mode, name: entry.mode === "plan" ? "Lập kế hoạch" : "Làm việc" }))],
       ["permissions", "Quyền chạy", (state.permissions || []).map((entry) => ({ id: entry.id, name: ({ ":read-only": "Chỉ đọc", ":workspace": "Trong thư mục làm việc", ":danger-full-access": "Toàn quyền trên máy" })[entry.id] || entry.id }))]
     ];
     for (const [key, title, entries] of definitions) {
-      if (!entries.length) continue;
+      if (!entries.length || !keys.includes(key)) continue;
       const label = node("label", title, "chat-setting"); const select = node("select", undefined, "select"); select.id = "chat-option-" + key;
-      const inherit = node("option", "Giữ cấu hình Codex"); inherit.value = ""; select.append(inherit);
+      const inherit = node("option", "Mặc định của Codex"); inherit.value = ""; select.append(inherit);
       for (const entry of entries) { const option = node("option", entry.name); option.value = entry.id; select.append(option); }
       select.value = draft.options?.[key] || ""; select.disabled = Boolean(session?.active || draft.sending);
       select.addEventListener("change", () => { const current = context().draft; current.options ??= {}; if (select.value) current.options[key] = select.value; else delete current.options[key]; save(); refresh(); });
       label.append(select); popup.append(label);
     }
-    popup.append(node("p", "Thiết lập được áp dụng khi bạn gửi tin tiếp theo. Codex giữ lựa chọn này cho các lượt sau; “Giữ cấu hình” không ghi đè lựa chọn đang có.", "chat-menu-empty"));
-    const current = session?.effective || {};
-    popup.append(node("p", `Hiện tại: ${session?.model || "model mặc định"}${current.effort ? " · " + current.effort : ""}${current.mode ? " · " + current.mode : ""}${current.permissions ? " · " + current.permissions : ""}`, "chat-menu-empty"));
-    if (session?.usage) popup.append(node("p", `Ngữ cảnh: ${(session.usage.last ?? 0).toLocaleString()} token${session.usage.contextWindow ? " / " + session.usage.contextWindow.toLocaleString() : ""}`, "chat-menu-empty"));
+    popup.append(node("p", "Áp dụng từ tin nhắn tiếp theo. Mặc định kế thừa cấu hình Codex hiện có.", "chat-menu-empty"));
+  }
+  function modelSettings() {
+    if (!open("model", modelButton, "Model")) return;
+    const label = node("label", "Model", "chat-setting"); label.append(model); popup.append(label); optionControls(["effort"]);
+  }
+  function modeSettings() {
+    if (!open("mode", modeButton, "Chế độ và quyền")) return;
+    optionControls(["mode", "permissions"]);
+  }
+  function usage() {
+    if (!open("usage", optionsButton, "Mức sử dụng")) return;
+    const { state, session } = context(); popup.append(info);
+    if (session?.model) popup.append(node("p", "Model: " + session.model, "chat-menu-empty"));
     for (const [key, title] of [["primary", "Hạn mức ngắn hạn"], ["secondary", "Hạn mức dài hạn"]]) {
       const rate = state.rateLimits?.[key]; if (!rate) continue;
       const row = node("label", `${title}: ${Math.round(rate.usedPercent)}% đã dùng`, "chat-setting");
@@ -84,20 +107,32 @@ export function createChatControls({ root, composer, input, context, post, endpo
   function actions() {
     if (!open("actions", moreButton, "Hội thoại")) return;
     const { session } = context();
+    const entries = [
+      ["Đổi tên", renameConversation], ["Tìm trong hội thoại", showFind],
+      ["Phân nhánh hội thoại", () => run("fork"), !session?.hasConversation || session?.active],
+      [session?.archived ? "Khôi phục hội thoại" : "Lưu trữ hội thoại", () => run(session?.archived ? "unarchive" : "archive"), session?.active],
+      ["Thêm thao tác…", advancedActions]
+    ];
+    for (const [label, handler, disabled] of entries) { const entry = button(label, handler, "chat-conversation-entry"); entry.disabled = Boolean(disabled); popup.append(entry); }
+  }
+  function renameConversation() {
+    if (!open("rename", moreButton, "Đổi tên hội thoại")) return;
+    const { session } = context();
     const rename = node("form", undefined, "chat-rename"); const name = node("input"); name.id = "chat-rename-input"; name.setAttribute("aria-label", "Tên hội thoại"); name.placeholder = "Tên hội thoại"; name.maxLength = 120;
     name.value = session?.conversations.find((entry) => entry.id === context().id)?.title || "";
     const submit = node("button", "Đổi tên", "button button-soft"); submit.type = "submit";
     rename.append(name, submit); rename.addEventListener("submit", (event) => { event.preventDefault(); run("rename", { name: name.value }); }); popup.append(rename);
+    name.focus(); name.select();
+  }
+  function advancedActions() {
+    if (!open("advanced", moreButton, "Thêm thao tác")) return;
+    const { session } = context();
     const entries = [
-      ["Cuộc trò chuyện mới", () => { closePopup(); newConversation(); }],
-      ["Tìm trong hội thoại", showFind],
-      ["Phân nhánh hội thoại", () => run("fork"), !session?.hasConversation],
-      ["Thu gọn ngữ cảnh", () => run("compact"), !session?.hasConversation],
-      ["Xuất Markdown", () => download("md")], ["Xuất JSON", () => download("json")],
-      [session?.archived ? "Khôi phục hội thoại" : "Lưu trữ hội thoại", () => run(session?.archived ? "unarchive" : "archive")]
+      ["Thu gọn ngữ cảnh", () => run("compact"), !session?.hasConversation || session?.active],
+      ["Xuất Markdown", () => download("md")], ["Xuất JSON", () => download("json")]
     ];
     for (const [label, handler, disabled] of entries) {
-      const entry = button(label, handler, "chat-conversation-entry"); entry.disabled = Boolean(disabled || session?.active && ["Phân nhánh hội thoại", "Thu gọn ngữ cảnh", "Lưu trữ hội thoại"].includes(label)); popup.append(entry);
+      const entry = button(label, handler, "chat-conversation-entry"); entry.disabled = Boolean(disabled); popup.append(entry);
     }
   }
   async function download(format) {
@@ -141,23 +176,33 @@ export function createChatControls({ root, composer, input, context, post, endpo
     if (signature !== attachmentSignature) {
       attachmentSignature = signature; attachmentList.replaceChildren();
       for (const chip of chips) {
-      const element = node("div", undefined, "chat-attachment"); element.title = chip.name;
-      if (chip.kind === "image") { const image = node("img"); image.src = `/api/chat/attachments/${chip.id}/image`; image.alt = ""; element.append(image); }
-      element.append(node("span", chip.name), button("×", () => { draft[chip.group] = draft[chip.group].filter((entry) => entry !== chip.entry); save(); refresh(); }, "chat-attachment-remove")); attachmentList.append(element);
+        const element = node("div", undefined, "chat-attachment"); element.title = chip.name;
+        if (chip.kind === "image") { const image = node("img"); image.src = `/api/chat/attachments/${chip.id}/image`; image.alt = ""; element.append(image); }
+        element.append(node("span", chip.name), button("×", () => { draft[chip.group] = draft[chip.group].filter((entry) => entry !== chip.entry); save(); refresh(); }, "chat-attachment-remove")); attachmentList.append(element);
       }
     }
     attachmentList.hidden = !chips.length;
-    optionsButton.classList.toggle("has-options", Object.keys(draft.options || {}).length > 0);
+    const modelId = draft.model || session?.model;
+    const modelName = context().state.models.find((entry) => entry.id === modelId)?.name || modelId || "Model mặc định";
+    const effort = draft.options?.effort || session?.effective?.effort;
+    modelButton.replaceChildren(node("span", modelName), svgIcon(ICONS.chevron, { size: 12 }));
+    modelButton.title = modelName + (effort ? " · " + effort : "");
+    modelButton.disabled = Boolean(session?.active || draft.sending);
+    const permissions = draft.options?.permissions || session?.effective?.permissions;
+    const mode = draft.options?.mode || session?.effective?.mode;
+    const modeName = mode === "plan" ? "Lập kế hoạch" : ({ ":read-only": "Chỉ đọc", ":workspace": "Agent", ":danger-full-access": "Toàn quyền" })[permissions] || "Mặc định";
+    modeButton.replaceChildren(node("span", modeName), svgIcon(ICONS.chevron, { size: 12 }));
+    modeButton.title = "Chế độ và quyền · " + modeName; modeButton.disabled = Boolean(session?.active || draft.sending);
+    addButton.disabled = Boolean(draft.uploading || draft.sending || session?.archived);
     attachButton.disabled = Boolean(draft.uploading || draft.sending || session?.archived);
-    info.hidden = !session?.usage;
     if (session?.usage) {
       const used = session.usage.last || 0, limit = session.usage.contextWindow;
-      info.textContent = limit ? `${Math.min(100, Math.round(used / limit * 100))}% ngữ cảnh` : `${used.toLocaleString()} token`;
-    }
+      info.textContent = limit ? `Ngữ cảnh: ${Math.min(100, Math.round(used / limit * 100))}% · ${used.toLocaleString()} / ${limit.toLocaleString()} token` : `Ngữ cảnh: ${used.toLocaleString()} token`;
+    } else info.textContent = "Chưa có số liệu ngữ cảnh.";
   }
 
   function references() {
-    if (!open("references", referenceButton, "Tham chiếu file hoặc skill")) return;
+    if (!open("references", addButton, "Tham chiếu file hoặc skill")) return;
     const query = node("input"); query.type = "search"; query.placeholder = "Tìm file trong thư mục…"; query.id = "chat-file-search"; query.setAttribute("aria-label", query.placeholder);
     const results = node("div", undefined, "chat-picker-results"); const skills = node("div", undefined, "chat-picker-results");
     popup.append(query, results, node("p", "Skill có sẵn", "chat-menu-heading"), skills);
@@ -181,39 +226,59 @@ export function createChatControls({ root, composer, input, context, post, endpo
 
   function addHistory(menu) {
     const section = node("section", undefined, "chat-native-history");
-    const search = node("input"); search.type = "search"; search.id = "chat-history-search"; search.placeholder = "Tìm lịch sử Codex trên máy…"; search.setAttribute("aria-label", search.placeholder);
+    const search = node("input"); search.type = "search"; search.id = "chat-history-search"; search.placeholder = "Tìm cuộc trò chuyện…"; search.setAttribute("aria-label", search.placeholder);
     const label = node("label", "Đã lưu trữ", "chat-history-archived"); const archived = node("input"); archived.type = "checkbox"; archived.id = "chat-history-archived"; label.prepend(archived);
     const results = node("div", undefined, "chat-native-results"); results.id = "chat-native-results";
-    let cursor = null; let timer;
+    let cursor = null; let timer; let nativeEntries = [];
     const more = button("Xem thêm", () => load(true), "button button-ghost"); more.hidden = true;
     async function load(append = false) {
       const version = ++historyGeneration;
-      if (!append) { cursor = null; results.replaceChildren(node("p", "Đang tải lịch sử…", "chat-menu-empty")); }
+      if (!append) { cursor = null; nativeEntries = []; render(); }
       more.disabled = true;
       try {
         const query = new URLSearchParams({ q: search.value, archived: archived.checked ? "1" : "0" }); if (append && cursor) query.set("cursor", cursor);
         const response = await fetch("/api/chat/history?" + query); const data = await response.json();
         if (version !== historyGeneration) return; if (!response.ok) throw new Error(data.error);
-        if (!append) results.replaceChildren(); cursor = data.nextCursor;
-        for (const entry of data.data) {
-          const row = button("", async () => {
-            row.disabled = true;
-            try { const result = await post(entry.archived ? "/api/chat/restore" : "/api/chat/resume", { threadId: entry.threadId }); menu.hidden = true; adopt(result.session); }
-            catch (error) { notice(error.message); } finally { row.disabled = false; }
-          }, "chat-conversation-entry");
-          row.append(node("span", entry.title), node("small", entry.archived ? "Khôi phục" : entry.source)); row.title = entry.title; results.append(row);
-        }
-        if (!results.childNodes.length) results.append(node("p", "Chưa có hội thoại phù hợp trong thư mục này.", "chat-menu-empty"));
+        cursor = data.nextCursor; nativeEntries.push(...data.data); render();
         more.hidden = !cursor;
-      } catch (error) { if (version === historyGeneration) results.replaceChildren(node("p", error.message, "chat-menu-empty")); }
-      finally { more.disabled = false; }
+      } catch (error) { if (version === historyGeneration) { render(); results.append(node("p", error.message, "chat-menu-empty")); } }
+      finally { if (version === historyGeneration) more.disabled = false; }
+    }
+    function render() {
+      const { session, id, openTabs } = context();
+      const locals = session?.conversations || [];
+      const localByThread = new Map(locals.filter((entry) => entry.threadId).map((entry) => [entry.threadId, entry]));
+      const seen = new Set();
+      const merged = [...nativeEntries.map((entry) => ({ ...entry, ...localByThread.get(entry.threadId), archived: entry.archived })), ...[...locals].reverse()];
+      results.replaceChildren();
+      for (const entry of merged) {
+        const key = entry.threadId || entry.id;
+        if (seen.has(key)) continue; seen.add(key);
+        if (Boolean(entry.archived) !== archived.checked || !searchKey(entry.title).includes(searchKey(search.value))) continue;
+        const row = button("", async () => {
+          row.disabled = true;
+          try {
+            if (entry.id && !entry.archived) { dismissHistory(); await activate(entry.id); }
+            else {
+              const result = entry.id ? await post(endpoint("unarchive", entry.id), {}) : await post(entry.archived ? "/api/chat/restore" : "/api/chat/resume", { threadId: entry.threadId });
+              dismissHistory(); adopt(result.session);
+            }
+          } catch (error) { notice(error.message); } finally { row.disabled = false; }
+        }, "chat-conversation-entry");
+        if (entry.id) row.dataset.conversationId = entry.id;
+        row.dataset.threadId = entry.threadId || "";
+        if (entry.id === id) row.setAttribute("aria-current", "true");
+        row.append(node("span", entry.title || "Chat mới"), node("small", entry.archived ? "Khôi phục" : entry.waiting ? "Chờ bạn" : entry.active ? "Đang làm việc" : openTabs.includes(entry.id) ? "Đang mở" : ""));
+        row.title = entry.title || "Chat mới"; results.append(row);
+      }
+      if (!results.childNodes.length) results.append(node("p", "Chưa có cuộc trò chuyện phù hợp.", "chat-menu-empty"));
     }
     search.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => load(), 200); }); archived.addEventListener("change", () => load());
-    section.append(node("p", "Lịch sử Codex · thư mục hiện tại", "chat-menu-heading"), search, label, results, more); menu.append(section);
+    section.append(node("p", "Lịch sử trò chuyện", "chat-menu-heading"), search, label, results, more); menu.append(section);
     return () => { load(); search.focus(); };
   }
 
-  document.addEventListener("pointerdown", (event) => { if (!popup.hidden && !popup.contains(event.target) && ![optionsButton, moreButton, referenceButton, info].some((button) => button.contains(event.target))) closePopup(); });
+  document.addEventListener("pointerdown", (event) => { if (!popup.hidden && !popup.contains(event.target) && ![optionsButton, moreButton, addButton, modeButton, modelButton].some((button) => button.contains(event.target))) closePopup(); });
   root.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") { event.preventDefault(); showFind(); }
     if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "o") { event.preventDefault(); newConversation(); }
@@ -221,7 +286,7 @@ export function createChatControls({ root, composer, input, context, post, endpo
   // Slash commands are client actions, not instructions inserted into a model prompt.
   function slash() {
     const command = input.value.trim();
-    const commands = { "/new": newConversation, "/model": settings, "/permissions": settings, "/plan": () => { context().draft.options = { ...context().draft.options, mode: "plan" }; save(); refresh(); }, "/default": () => { context().draft.options = { ...context().draft.options, mode: "default" }; save(); refresh(); }, "/compact": () => run("compact"), "/fork": () => run("fork"), "/status": settings, "/help": help };
+    const commands = { "/new": newConversation, "/model": modelSettings, "/permissions": modeSettings, "/plan": () => { context().draft.options = { ...context().draft.options, mode: "plan" }; save(); refresh(); }, "/default": () => { context().draft.options = { ...context().draft.options, mode: "default" }; save(); refresh(); }, "/compact": () => run("compact"), "/fork": () => run("fork"), "/status": usage, "/help": help };
     if (!commands[command]) return false;
     input.value = ""; save(); commands[command](); return true;
   }
@@ -230,5 +295,5 @@ export function createChatControls({ root, composer, input, context, post, endpo
     popup.append(node("p", "Enter: gửi · Shift+Enter: xuống dòng · Ctrl+F: tìm hội thoại · Ctrl+Shift+O: chat mới", "chat-menu-empty"));
     for (const [command, label] of [["/new", "Chat mới"], ["/model", "Model và thiết lập"], ["/plan", "Chọn chế độ lập kế hoạch"], ["/default", "Chọn chế độ làm việc"], ["/permissions", "Quyền chạy"], ["/compact", "Thu gọn ngữ cảnh"], ["/fork", "Phân nhánh"], ["/status", "Trạng thái và hạn mức"]]) popup.append(button(command + " · " + label, () => { input.value = command; save(); closePopup(); input.focus(); }, "chat-conversation-entry"));
   }
-  return { popup, optionsButton, moreButton, attachButton, referenceButton, picker, attachmentList, info, findBar, refresh, closePopup, addHistory, slash, help, run };
+  return { popup, optionsButton, moreButton, addButton, modeButton, modelButton, picker, attachmentList, findBar, refresh, closePopup, addHistory, slash, help, run };
 }

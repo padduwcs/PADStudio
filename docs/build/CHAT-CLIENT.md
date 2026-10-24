@@ -13,7 +13,7 @@ Project viewer, CLI, Resource/Run/Result và Delivery giữ contract hiện có.
 - Catalog model, mức suy luận, mode, permission profile và skill lấy từ runtime. Catalog tùy chọn không có thì ẩn điều khiển tương ứng,
   vẫn dùng chat thường. Chỉ các lựa chọn người dùng đã chọn mới được chuyển vào `turn/start`.
 - Plan/Default dùng preset Codex qua `collaborationMode`, `developer_instructions: null` để dùng preset gốc; không có prompt do PADStudio soạn.
-  Permission profile chỉ nhận ID `allowed` từ Codex, không có fallback tự nâng quyền. Chọn “Giữ cấu hình” bỏ override, không reset thiết lập sticky của thread.
+  Permission profile chỉ nhận ID `allowed` từ Codex, không có fallback tự nâng quyền. Chọn “Mặc định của Codex” bỏ override, không reset thiết lập sticky của thread.
 - Gửi nguyên văn text, kể cả khoảng trắng và chuỗi trông giống metadata. Không trim, chèn project ID, thêm video context hay dựng prompt wrapper.
   Không tự gọi `project:resume`, tạo project hoặc import Resource. Lệnh nhanh chỉ xử lý khi toàn bộ ô nhập khớp một lệnh đã hỗ trợ.
 - Thread resume chỉ nhận ID, không override cấu hình/chỉ dẫn đã lưu. Lịch sử Codex trên máy được lọc đúng cwd trước phân trang; mở từ CLI/VS Code
@@ -62,9 +62,13 @@ quản lý plugin hoặc chỉnh toàn bộ config TOML trong UI.
 - Host localhost, cùng Origin/intent/JSON cho POST; GET foreign Origin/cross-site cũng bị từ chối. JSON thông thường 128 KiB,
   chỉ upload có giới hạn 14 MiB cho base64. SSE heartbeat/coalescing, ngắt slow consumer; chống iframe bằng CSP và X-Frame-Options.
 - [`chat-view.js`](../../ui/chat-view.js) giữ tab/transcript/composer, [`chat-controls.js`](../../ui/chat-controls.js) giữ menu hành động,
-  lịch sử, thiết lập, tham chiếu, upload và tìm trong chat. Model nằm ở composer; tùy chọn khác nằm trong menu gọn.
+  lịch sử, thiết lập, tham chiếu, upload và tìm trong chat. Bố cục theo sidebar Codex trong VS Code: header thấp, ô nhập có **+**, mode/quyền bên trái,
+  model/effort bên phải và nút gửi tròn. Header có lịch sử, cài đặt, chat mới, menu phụ và đóng. Một tab thì ẩn thanh tab, hiện tên hội thoại ở header.
+- Lịch sử local/native gộp thành một danh sách, dedup bằng thread ID; chỉ lọc trong cwd. Metadata conversation trả thêm thread ID để UI nhận diện bản trùng.
+  Thống kê, phím tắt và thao tác nâng cao chỉ xuất hiện khi mở menu; không có hàng hướng dẫn hoặc số liệu thường trực bên dưới ô nhập.
 - Tin nhắn có sao chép, sửa/phân nhánh hoặc gửi lại. Markdown dùng DOM text: code/copy, bảng cuộn, trích dẫn, nhấn mạnh, checklist và list lồng;
-  không thực thi HTML. Công cụ có lệnh/output đang chạy, diff, kế hoạch, public summary; ngữ cảnh và hạn mức chỉ lấy số liệu được phép hiển thị.
+  không thực thi HTML. Công cụ có lệnh/output đang chạy, diff, kế hoạch, public summary; ngữ cảnh và hạn mức nằm trong mục Mức sử dụng.
+  Thao tác tin nhắn dùng icon với nhãn/tooltip, hiện khi hover/focus (luôn hiện trên touch). Lượt đã kết thúc không giữ nhãn “Đang chạy”.
 - Lệnh nhanh: `/new`, `/model`, `/permissions`, `/plan`, `/default`, `/compact`, `/fork`, `/status`, `/help`.
   Enter gửi, Shift+Enter xuống dòng, Ctrl/Cmd+F tìm trong phần đang tải, Ctrl/Cmd+Shift+O chat mới.
 - Font, nền trung tính ấm, accent cyan và đường chia vùng cùng PADStudio. Desktop kéo separator để đổi chiều rộng (320–960 px trong giới hạn

@@ -156,7 +156,7 @@ export class ChatService extends EventEmitter {
       items: session.items.slice(-MAX_ITEMS), requests: [...session.requests.values()].map((entry) => entry.view), error: session.error,
       options: session.options, effective: session.effective, usage: session.usage, archived: session.archived, hasOlder: Boolean(session.cursor),
       truncated: session.truncated || session.items.length > MAX_ITEMS,
-      conversations: [...this.sessions.values()].map((entry) => ({ id: entry.id, title: entry.title || "Chat mới", current: entry.id === session.id,
+      conversations: [...this.sessions.values()].map((entry) => ({ id: entry.id, threadId: entry.threadId, title: entry.title || "Chat mới", current: entry.id === session.id,
         active: entry.active, archived: entry.archived, waiting: entry.requests.size > 0, hasConversation: Boolean(entry.threadId), startedAt: entry.startedAt })) };
   }
 

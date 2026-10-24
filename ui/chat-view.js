@@ -42,7 +42,7 @@ export function createChatPanel({ root, toggle }) {
   const heading = node("div");
   const title = node("h2", "Codex"); title.id = "chat-title";
   const folderName = node("p", "PADStudio", "chat-subtitle"); folderName.id = "chat-folder-name";
-  heading.append(title, folderName);
+  heading.append(title);
   const headActions = node("div", undefined, "chat-head-actions");
   const historyButton = action("", () => { extras?.closePopup(); menu.hidden = !menu.hidden; historyButton.setAttribute("aria-expanded", String(!menu.hidden)); if (!menu.hidden) { renderTabs(); openNativeHistory?.(); } }, "icon-button");
   historyButton.id = "chat-history-button"; historyButton.title = "Lịch sử trò chuyện"; historyButton.setAttribute("aria-label", historyButton.title); historyButton.setAttribute("aria-expanded", "false");
@@ -52,19 +52,14 @@ export function createChatPanel({ root, toggle }) {
   const tabBar = node("div", undefined, "chat-tab-bar");
   const tabs = node("div", undefined, "chat-tabs"); tabs.id = "chat-tabs"; tabs.setAttribute("role", "tablist"); tabs.setAttribute("aria-label", "Các cuộc trò chuyện đang mở");
   const newChat = action("", () => newConversation(), "icon-button chat-tab-add"); newChat.id = "chat-new-conversation";
-  newChat.title = "Cuộc trò chuyện mới"; newChat.setAttribute("aria-label", newChat.title); newChat.append(svgIcon("M12 5v14M5 12h14"));
-  tabBar.append(tabs, newChat);
+  newChat.title = "Cuộc trò chuyện mới"; newChat.setAttribute("aria-label", newChat.title); newChat.append(svgIcon("M12 4H5v15h14v-7M15 3l6 6M10 14l1-5 6-6 4 4-6 6z"));
+  tabBar.append(tabs); tabBar.hidden = true;
   const menu = node("div", undefined, "chat-menu"); menu.hidden = true; menu.setAttribute("aria-label", "Lịch sử trò chuyện");
-  const menuHeading = node("p", "Lịch sử trò chuyện", "chat-menu-heading");
-  const conversations = node("div", undefined, "chat-conversations"); conversations.id = "chat-conversations";
-  menu.append(menuHeading, conversations);
   const connection = node("div", undefined, "chat-connection");
-  const modelLabel = node("label", "Model", "sr-only"); modelLabel.htmlFor = "chat-model";
   const model = node("select", undefined, "select select-quiet"); model.id = "chat-model"; model.setAttribute("aria-label", "Model của agent");
   const history = node("div", undefined, "chat-history"); history.id = "chat-history"; history.setAttribute("role", "tabpanel"); history.setAttribute("aria-label", "Lịch sử trò chuyện"); history.tabIndex = 0;
   const empty = node("div", undefined, "chat-empty");
-  const emptyMark = node("div", undefined, "chat-empty-mark"); emptyMark.append(svgIcon("M12 3l2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2z", { size: 28, stroke: 1.3 }));
-  empty.append(emptyMark, node("span", "Bạn muốn làm gì?", "chat-empty-title"), node("p", "Trò chuyện với Codex trong thư mục PADStudio."));
+  empty.append(node("span", "Bạn muốn làm gì?", "chat-empty-title"));
   const messages = node("div", undefined, "chat-messages");
   messages.setAttribute("role", "log"); messages.setAttribute("aria-label", "Tin nhắn"); messages.setAttribute("aria-live", "off");
   const older = action("Tải tin nhắn cũ hơn", async () => {
@@ -90,17 +85,17 @@ export function createChatPanel({ root, toggle }) {
     finally { updateControls(); }
   }, "icon-button chat-stop"); stop.id = "chat-stop"; stop.hidden = true; stop.title = "Dừng trả lời"; stop.setAttribute("aria-label", stop.title); stop.append(svgIcon("M6 6h12v12H6z", { size: 16 }));
   const submit = node("button", undefined, "icon-button chat-send"); submit.type = "submit"; submit.id = "chat-send"; submit.append(svgIcon("M12 19V5m-6 6 6-6 6 6", { size: 18 }));
-  const composerTools = node("div", undefined, "chat-composer-tools"); composerTools.append(modelLabel, model);
+  const composerTools = node("div", undefined, "chat-composer-tools");
   controls.append(stop, submit); composerActions.append(composerTools, controls);
   composer.append(inputLabel, input, composerActions);
-  const hint = action("Enter để gửi · Shift + Enter xuống dòng · /help", () => extras.help(), "chat-hint");
-  extras = createChatControls({ root, composer, input, context: () => ({ state, session, id: conversationId, draft: draft() }), post, endpoint, save: saveDraft,
-    update: updateControls, notice: setNotice, adopt: adoptConversation, apply: acceptSession, newConversation });
+  extras = createChatControls({ root, composer, input, model, context: () => ({ state, session, id: conversationId, draft: draft(), openTabs }), post, endpoint, save: saveDraft,
+    update: updateControls, notice: setNotice, adopt: adoptConversation, apply: acceptSession, activate: activateTab, newConversation, dismissHistory: dismissMenu });
   openNativeHistory = extras.addHistory(menu);
-  headActions.insertBefore(extras.moreButton, closeButton);
-  composerTools.prepend(extras.attachButton, extras.referenceButton); composerTools.append(extras.optionsButton);
+  headActions.insertBefore(extras.moreButton, historyButton); headActions.insertBefore(extras.optionsButton, closeButton); headActions.insertBefore(newChat, closeButton);
+  composerTools.append(extras.addButton, extras.modeButton); controls.prepend(extras.modelButton);
   composer.prepend(extras.attachmentList); composer.append(extras.picker);
-  root.append(resizeHandle, head, tabBar, menu, extras.popup, connection, extras.findBar, history, jump, requests, status, noticeBox, composer, extras.info, hint);
+  const workspace = node("div", undefined, "chat-workspace"); workspace.append(svgIcon("M3 7h6l2-3h10v16H3z", { size: 13 }), folderName);
+  root.append(resizeHandle, head, tabBar, menu, extras.popup, connection, extras.findBar, history, jump, requests, status, noticeBox, composer, workspace);
 
   function widthLimits() { return { min: 320, max: Math.max(320, Math.min(960, Math.floor(innerWidth * 0.65), innerWidth - 320)) }; }
   function updateLayout() {
@@ -243,13 +238,17 @@ export function createChatPanel({ root, toggle }) {
 
   function renderTabs(entries = conversationEntries) {
     if (!entries.length && conversationId) return;
+    const current = entries.find((entry) => entry.id === conversationId);
+    const named = openTabs.length === 1 && current?.hasConversation;
+    title.textContent = named ? current.title : "Codex";
+    title.title = named ? current.title : "Codex"; title.classList.toggle("is-conversation", Boolean(named));
     const signature = JSON.stringify([entries, openTabs, conversationId]);
     if (tabsSignature === signature) return;
     tabsSignature = signature;
     const activeElement = document.activeElement;
     const focusedId = tabs.contains(activeElement) ? activeElement.dataset.conversationId : null;
     const focusedClose = activeElement?.classList.contains("chat-tab-close");
-    tabs.replaceChildren(); conversations.replaceChildren();
+    tabs.replaceChildren(); tabBar.hidden = openTabs.length < 2;
     for (const id of openTabs) {
       const entry = entries.find((candidate) => candidate.id === id); if (!entry) continue;
       const wrapper = node("div", undefined, "chat-tab" + (id === conversationId ? " is-selected" : "")); wrapper.setAttribute("role", "presentation");
@@ -271,12 +270,6 @@ export function createChatPanel({ root, toggle }) {
       remove.append(svgIcon(ICONS.close, { size: 12 })); remove.tabIndex = id === conversationId ? 0 : -1;
       wrapper.append(button, remove); tabs.append(wrapper);
     }
-    for (const entry of [...entries].reverse().filter((entry) => !entry.archived)) {
-      const button = action("", () => activateTab(entry.id), "chat-conversation-entry"); button.dataset.conversationId = entry.id;
-      button.append(node("span", entry.title || "Chat mới"), node("small", entry.waiting ? "Chờ bạn" : entry.active ? "Đang trả lời" : openTabs.includes(entry.id) ? "Đang mở" : ""));
-      conversations.append(button);
-    }
-    if (!entries.length) conversations.append(node("p", "Chưa có cuộc trò chuyện nào.", "chat-menu-empty"));
     if (focusedId) tabs.querySelector(`${focusedClose ? ".chat-tab-close" : ".chat-tab-label"}[data-conversation-id="${CSS.escape(focusedId)}"]`)?.focus();
     requestAnimationFrame(revealSelectedTab);
   }
@@ -326,10 +319,10 @@ export function createChatPanel({ root, toggle }) {
     }
     const value = draft().model || "";
     model.replaceChildren();
-    const defaultOption = node("option", "Giữ model Codex"); defaultOption.value = ""; model.append(defaultOption);
+    const defaultOption = node("option", "Mặc định của Codex"); defaultOption.value = ""; model.append(defaultOption);
     for (const entry of state.models ?? []) { const option = node("option", entry.name); option.value = entry.id; model.append(option); }
     if ([...model.options].some((option) => option.value === value)) model.value = value;
-    model.hidden = !state.authenticated;
+    model.hidden = !state.authenticated; extras?.refresh();
     updateControls();
   }
 
@@ -352,6 +345,7 @@ export function createChatPanel({ root, toggle }) {
   function renderMessages() {
     const nearBottom = history.scrollHeight - history.scrollTop - history.clientHeight < 100;
     const items = session?.items ?? [];
+    const currentTurn = items.findLast((item) => item.turnId)?.turnId;
     empty.hidden = items.length > 0; older.hidden = !session?.hasOlder;
     const present = new Set();
     let previousElement = null;
@@ -370,23 +364,25 @@ export function createChatPanel({ root, toggle }) {
           const actions = node("div", undefined, "chat-message-actions");
           rendered = { element, body, attachments, actions };
           const current = rendered;
-          const copy = action("Sao chép", async () => {
-            try { await navigator.clipboard.writeText(current.item.text); copy.textContent = "Đã sao chép"; setTimeout(() => { copy.textContent = "Sao chép"; }, 2000); }
+          const copy = action("", async () => {
+            try { await navigator.clipboard.writeText(current.item.text); copy.title = "Đã sao chép"; setTimeout(() => { copy.title = "Sao chép"; }, 2000); }
             catch { setNotice("Không truy cập được clipboard. Bạn có thể chọn và sao chép nội dung."); }
-          }, "button button-ghost");
-          const edit = action(item.role === "user" ? "Sửa và phân nhánh" : "Gửi lại", () => editMessage(current.item), "button button-ghost");
+          }, "icon-button"); copy.title = "Sao chép"; copy.setAttribute("aria-label", "Sao chép"); copy.append(svgIcon(ICONS.copy, { size: 14 }));
+          const edit = action("", () => editMessage(current.item), "icon-button");
+          edit.title = item.role === "user" ? "Sửa tin nhắn trong nhánh mới" : "Gửi lại trong nhánh mới"; edit.setAttribute("aria-label", edit.title);
+          edit.append(svgIcon(item.role === "user" ? "m14 4 6 6M5 15l-1 5 5-1L20 8l-4-4z" : "M4 10a8 8 0 1 1 1 7M4 4v6h6", { size: 14 }));
           current.edit = edit; actions.append(copy, edit);
           element.append(label, body, attachments, actions);
         }
         renderedItems.set(item.id, rendered);
       }
-      const signature = JSON.stringify(item);
+      const signature = JSON.stringify(item.role === "tool" ? [item, session.active, currentTurn] : item);
       rendered.item = item;
       if (rendered.edit) rendered.edit.disabled = Boolean(session.active || session.archived || !item.turnId || item.status === "sending" || item.status === "uncertain");
       if (rendered.signature !== signature) {
         if (item.role === "tool") {
-          const working = item.status === "inProgress";
-          rendered.summary.textContent = item.kind === "command" ? (working ? "Đang chạy lệnh" : item.exitCode === 0 ? "Đã chạy lệnh" : "Kết quả chạy lệnh")
+          const working = item.status === "inProgress" && session.active && item.turnId === currentTurn;
+          rendered.summary.textContent = item.kind === "command" ? `${working ? "Đang chạy" : item.exitCode === 0 ? "Đã chạy" : "Lệnh"} ${(item.text || "").split("\n")[0].slice(0, 90)}`
             : item.kind === "files" ? "Thay đổi file" : item.kind === "search" ? "Tìm kiếm trên web" : item.text;
           rendered.body.textContent = [item.text, item.output].filter(Boolean).join("\n\n");
         } else if (item.role === "assistant") renderChatMarkdown(rendered.body, item.text);
@@ -600,7 +596,7 @@ export function createChatPanel({ root, toggle }) {
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (!submit.disabled) composer.requestSubmit(); }
   });
-  model.addEventListener("change", () => { if (draft().options) delete draft().options.effort; saveDraft(); extras.closePopup(); extras.refresh(); });
+  model.addEventListener("change", () => { if (draft().options) delete draft().options.effort; saveDraft(); extras.closePopup(); extras.refresh(); input.focus(); });
   history.addEventListener("scroll", () => { if (history.scrollHeight - history.scrollTop - history.clientHeight < 100) jump.hidden = true; });
   root.addEventListener("keydown", (event) => {
     if (event.key === "Escape") { event.preventDefault(); if (extras.closePopup(true)) return; if (!menu.hidden) { dismissMenu(); historyButton.focus(); } else close(); }

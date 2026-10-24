@@ -53,11 +53,12 @@ không cần chọn project. Một hội thoại có thể tạo hoặc tiếp t
 **4. Xem, góp ý, chốt.** Chọn project trong thư viện để xem bản dựng. Muốn sửa một chỗ, dừng video tại đó, bấm **Sao chép mốc phản hồi**
 rồi dán vào cuộc trò chuyện bạn muốn. Khi hài lòng, nói "chốt" đúng bản rồi tải bản đã duyệt.
 
-Chat mở được nhiều tab cùng lúc: bấm **+** để trò chuyện mới, **×** để đóng tab, nút lịch sử để mở lại. Mỗi tab giữ riêng bản nháp;
+Chat mở được nhiều tab cùng lúc: bấm biểu tượng **Cuộc trò chuyện mới** trên thanh đầu để thêm tab, **×** để đóng tab, nút lịch sử để mở lại. Mỗi tab giữ riêng bản nháp;
 chuyển hoặc đóng tab không dừng Agent. Chọn project để xem không thay cuộc trò chuyện. Model nằm gọn trong ô nhập.
 Kéo đường phân cách cạnh chat để đổi chiều rộng; nhấp đúp để đặt lại. Giao diện nhớ kích thước đã chọn.
-Nút kẹp giấy đính kèm ảnh/file (tối đa 10 MB/file), `@` tham chiếu file/skill. Nút thiết lập cạnh model chọn mức suy luận,
-Lập kế hoạch/Làm việc và quyền chạy của Codex; mặc định giữ cấu hình sẵn có. Menu **…** đổi tên, phân nhánh, lưu trữ, xuất hoặc tìm trong chat.
+Khung chat dùng bố cục quen thuộc của Codex trong VS Code. Nút **+** trong ô nhập thêm ảnh/file (tối đa 10 MB/file) hoặc tham chiếu file/skill.
+Chọn model và mức suy luận ở bên phải ô nhập; chế độ/quyền ở bên trái. Bánh răng trên cùng có cài đặt, mức sử dụng và phím tắt.
+Menu **…** có đổi tên, tìm, phân nhánh và lưu trữ; **Thêm thao tác…** chứa thu gọn ngữ cảnh và xuất hội thoại. Mặc định giữ cấu hình Codex sẵn có.
 Sửa tin nhắn/gửi lại tạo nhánh riêng và giữ hội thoại gốc; các file trên máy không được hoàn tác. Nút lịch sử cũng mở lại hội thoại CLI/VS Code
 trong cùng thư mục. Gõ `/help` để xem lệnh nhanh và phím tắt. File đính kèm chat không tự trở thành tư liệu của project.
 Đóng khung chat hoặc mất kết nối không tự gửi lại yêu cầu. Lượt chat dùng hạn mức tài khoản Codex đang kết nối. Host ngoài như Claude Code

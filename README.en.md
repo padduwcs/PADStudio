@@ -50,11 +50,12 @@ conversations are independent of the project viewer and can create or work on se
 **Sao chép mốc phản hồi** (*copy feedback anchor*) and paste it into your chosen conversation. When you are happy, identify the exact version,
 say "accept" (in Vietnamese: "chốt") and download the accepted video.
 
-Open several conversations at once: **+** creates a tab, **×** closes it, and history reopens it. Each tab keeps its own draft;
+Open several conversations at once: **New conversation** in the header creates a tab, **×** closes it, and history reopens it. Each tab keeps its own draft;
 switching or closing tabs leaves agents running. Switching the viewed video project does not switch conversations. Model selection sits in the composer.
-Use the paperclip for images/files (10 MB each), `@` for file/skill references, and the settings button for native reasoning effort,
-Plan/Default mode and permission profiles. Defaults inherit your Codex configuration. The **…** menu includes rename, fork, archive,
-export and search. Edit/retry creates a branch and preserves the original conversation; it does not undo files. History can also reopen
+The chat follows the familiar Codex VS Code sidebar layout. Use **+** inside the composer for images/files (10 MB each) and file/skill references.
+Model and reasoning controls sit on the right; mode and permissions sit on the left. The header gear contains settings, usage and shortcuts.
+The **…** menu includes rename, search, fork and archive; **Thêm thao tác…** contains compact and export. Defaults inherit your Codex configuration.
+Edit/retry creates a branch and preserves the original conversation; it does not undo files. History can also reopen
 CLI/VS Code threads in this folder. Type `/help` for shortcuts. Chat attachments are not automatically imported into video projects.
 Drag the chat divider to resize it; double-click to reset. Your chosen width is remembered. Reopening the
 page never automatically resends an agent turn. Chat uses the connected Codex account's allowance. External hosts such as Claude Code

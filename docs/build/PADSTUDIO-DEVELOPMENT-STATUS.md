@@ -1,6 +1,6 @@
 # PADStudio — trạng thái phát triển
 
-Cập nhật: **2026-10-24** (bổ sung input, thiết lập native và thao tác hội thoại Codex; xem mục “Chat trong PADStudio”). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
+Cập nhật: **2026-10-24** (bố cục chat theo sidebar Codex trong VS Code, giữ input và thao tác native; xem mục “Chat trong PADStudio”). Các mốc kiểm chứng trước đó giữ nguyên ngày của chúng.
 
 Đây là điểm vào ngắn để biết codebase đang ở đâu. PADStudio vẫn đang được xây dựng và chỉnh
 chu; các báo cáo có chữ `completion`, tên đợt hoặc số phiên bản ghi lại một mốc nghiệm thu kỹ
@@ -44,8 +44,9 @@ Các baseline cũ sau đây là lịch sử tại ngày ghi nhận.
   Mặc định kế thừa cấu hình máy; chỉ override lựa chọn do người dùng chọn. File thường chuyển bằng path, ảnh bằng native localImage.
 - Native history của cwd có search/pagination/resume; rename/archive/restore/fork, sửa/gửi lại giữ hội thoại gốc, xuất Markdown/JSON,
   tải trang cũ, tìm trong chat và slash commands. Command output/diff/plan/public summary/context usage hiển thị theo sự kiện native.
-- Nhiều tab hoạt động độc lập, không có liên kết với project viewer. Bản nháp, câu hỏi và vị trí xem riêng từng tab. UI chỉ có header Codex/thư mục,
-  tab, tin nhắn, model và ô nhập; màu/font/đường chia vùng cùng thiết kế PADStudio. Desktop kéo divider để đổi chiều rộng, nhớ lựa chọn,
+- Nhiều tab hoạt động độc lập, không có liên kết với project viewer. Bản nháp, câu hỏi và vị trí xem riêng từng tab. UI theo sidebar Codex trong VS Code:
+  header thấp, **+** thêm nội dung, mode/quyền và model cạnh ô nhập; một tab thì ẩn tab bar, tên hội thoại ở header. Lịch sử gộp một danh sách,
+  thao tác phụ và thống kê chỉ nằm trong menu. Màu/font cùng PADStudio. Desktop kéo divider để đổi chiều rộng, nhớ lựa chọn,
   hỗ trợ bàn phím và nhấp đúp đặt lại; phần video co giãn theo diện tích còn lại. Mobile là dialog toàn màn hình.
 - Bỏ route tạo project, import Resource, gắn mốc video và callbacks đổi chat theo project. Upload chỉ là file đính kèm chat. Dữ liệu chat cũ giữ nguyên ở đường dẫn cũ,
   không tự resume vì các thread đó từng có chỉ dẫn hạn chế; metadata workspace mới không có project ID.

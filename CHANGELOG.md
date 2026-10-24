@@ -4,6 +4,10 @@ Theo [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Các bản phát 
 
 ## [Chưa phát hành]
 
+- **Khung chat quen thuộc như sidebar Codex trong VS Code:** header gọn, một tab thì ẩn thanh tab, **+** gom ảnh/file/tham chiếu;
+  model và chế độ ở hai bên ô nhập. Lịch sử local/native gộp một danh sách, thống kê và thao tác nâng cao chỉ mở từ menu.
+  Giữ nhiều tab, resize và thiết kế sáng/tối của PADStudio; không đổi prompt hoặc cách agent làm việc.
+
 - **Bổ sung thao tác chat Codex:** ảnh/file, tham chiếu file/skill, mức suy luận, Plan/Default và permission profile theo catalog runtime.
   Lịch sử native CLI/VS Code tại cùng thư mục có tìm kiếm/phân trang; đổi tên, lưu trữ/khôi phục, phân nhánh, sửa/gửi lại giữ hội thoại gốc,
   xuất Markdown/JSON, tải lịch sử cũ, tìm trong chat và lệnh nhanh. Hiển thị command output, diff, kế hoạch, public summary và mức dùng ngữ cảnh.

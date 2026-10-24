@@ -87,7 +87,7 @@ try {
   await seedVideo();
   await page.waitFor("document.querySelector('#theatre video')?.readyState >= 1", { timeout: 30_000 });
   assert.equal(await page.evaluate("!!document.querySelector('[data-ui=chat-anchor], #chat-new-project')"), false);
-  assert.equal(await page.evaluate("!!document.querySelector('#chat-attach')"), true);
+  assert.equal(await page.evaluate("!!document.querySelector('#chat-add')"), true);
   const plainPrompt = "Create project A and project B. I will decide which one to work on.";
   await send(plainPrompt); await waitText("#chat-history", "Create project A and project B");
   assert.equal(client.calls.findLast((call) => call.method === "turn/start").params.input[0].text, plainPrompt);
@@ -177,7 +177,7 @@ try {
   assert.equal(secondSession.active, true, "closing an active tab does not stop it");
   client.complete(secondSession.threadId, "Phương án thứ hai đã xong ở nền.");
   await click("#chat-history-button");
-  await click(`#chat-conversations [data-conversation-id="${secondConversationId}"]`);
+  await click(`#chat-native-results [data-conversation-id="${secondConversationId}"]`);
   await waitText("#chat-history", "Phương án thứ hai đã xong ở nền.");
   assert.equal(await page.evaluate("document.querySelector('#chat-input').value"), "Nháp riêng tab thứ hai");
   await chooseTab(firstConversationId); await input("");
